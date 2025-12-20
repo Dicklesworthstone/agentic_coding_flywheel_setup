@@ -147,7 +147,11 @@ cleanup() {
     local exit_code=$?
     if [[ $exit_code -ne 0 ]]; then
         log_error ""
-        log_error "ACFS installation failed!"
+        if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]]; then
+            log_error "ACFS installation completed, but the post-install smoke test failed."
+        else
+            log_error "ACFS installation failed!"
+        fi
         log_error ""
         log_error "To debug:"
         log_error "  1. Check the log: cat $ACFS_LOG_DIR/install.log"
@@ -205,6 +209,30 @@ parse_args() {
 # ============================================================
 command_exists() {
     command -v "$1" &>/dev/null
+}
+
+run_as_target() {
+    local user="$TARGET_USER"
+
+    # Already the target user
+    if [[ "$(whoami)" == "$user" ]]; then
+        "$@"
+        return $?
+    fi
+
+    # Preferred: sudo
+    if command_exists sudo; then
+        sudo -u "$user" -H "$@"
+        return $?
+    fi
+
+    # Fallbacks (root-only typically)
+    if command_exists runuser; then
+        runuser -u "$user" -- "$@"
+        return $?
+    fi
+
+    su - "$user" -c "$(printf '%q ' "$@")"
 }
 
 ensure_root() {
@@ -369,14 +397,14 @@ setup_shell() {
     if [[ ! -d "$omz_dir" ]]; then
         log_detail "Installing Oh My Zsh for $TARGET_USER"
         # Run as target user to install in their home
-        $SUDO -u "$TARGET_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+        run_as_target sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
     fi
 
     # Install Powerlevel10k theme
     local p10k_dir="$omz_dir/custom/themes/powerlevel10k"
     if [[ ! -d "$p10k_dir" ]]; then
         log_detail "Installing Powerlevel10k theme"
-        $SUDO -u "$TARGET_USER" git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"
+        run_as_target git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"
     fi
 
     # Install zsh plugins
@@ -384,12 +412,12 @@ setup_shell() {
 
     if [[ ! -d "$custom_plugins/zsh-autosuggestions" ]]; then
         log_detail "Installing zsh-autosuggestions"
-        $SUDO -u "$TARGET_USER" git clone https://github.com/zsh-users/zsh-autosuggestions "$custom_plugins/zsh-autosuggestions"
+        run_as_target git clone https://github.com/zsh-users/zsh-autosuggestions "$custom_plugins/zsh-autosuggestions"
     fi
 
     if [[ ! -d "$custom_plugins/zsh-syntax-highlighting" ]]; then
         log_detail "Installing zsh-syntax-highlighting"
-        $SUDO -u "$TARGET_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$custom_plugins/zsh-syntax-highlighting"
+        run_as_target git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$custom_plugins/zsh-syntax-highlighting"
     fi
 
     # Copy ACFS zshrc
@@ -465,13 +493,13 @@ install_languages() {
     # Bun (install as target user)
     if [[ ! -d "$TARGET_HOME/.bun" ]]; then
         log_detail "Installing Bun for $TARGET_USER"
-        $SUDO -u "$TARGET_USER" bash -c 'curl -fsSL https://bun.sh/install | bash'
+        run_as_target bash -c 'curl -fsSL https://bun.sh/install | bash'
     fi
 
     # Rust (install as target user)
     if [[ ! -d "$TARGET_HOME/.cargo" ]]; then
         log_detail "Installing Rust for $TARGET_USER"
-        $SUDO -u "$TARGET_USER" bash -c 'curl https://sh.rustup.rs -sSf | sh -s -- -y'
+        run_as_target bash -c 'curl https://sh.rustup.rs -sSf | sh -s -- -y'
     fi
 
     # Go (system-wide)
@@ -483,19 +511,19 @@ install_languages() {
     # uv (install as target user)
     if [[ ! -f "$TARGET_HOME/.local/bin/uv" ]]; then
         log_detail "Installing uv for $TARGET_USER"
-        $SUDO -u "$TARGET_USER" bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+        run_as_target bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
     fi
 
     # Atuin (install as target user)
     if [[ ! -d "$TARGET_HOME/.atuin" ]]; then
         log_detail "Installing Atuin for $TARGET_USER"
-        $SUDO -u "$TARGET_USER" bash -c 'curl --proto "=https" --tlsv1.2 -LsSf https://setup.atuin.sh | sh'
+        run_as_target bash -c 'curl --proto "=https" --tlsv1.2 -LsSf https://setup.atuin.sh | sh'
     fi
 
     # Zoxide (install as target user)
     if [[ ! -f "$TARGET_HOME/.local/bin/zoxide" ]]; then
         log_detail "Installing Zoxide for $TARGET_USER"
-        $SUDO -u "$TARGET_USER" bash -c 'curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh'
+        run_as_target bash -c 'curl -sSfL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh'
     fi
 
     log_success "Language runtimes installed"
@@ -515,21 +543,17 @@ install_agents() {
         return 0
     fi
 
+    # Claude Code (install as target user)
+    log_detail "Installing Claude Code for $TARGET_USER"
+    run_as_target "$bun_bin" install -g @anthropic-ai/claude-code@latest 2>/dev/null || true
+
     # Codex CLI (install as target user)
     log_detail "Installing Codex CLI for $TARGET_USER"
-    $SUDO -u "$TARGET_USER" "$bun_bin" install -g @openai/codex@latest 2>/dev/null || true
+    run_as_target "$bun_bin" install -g @openai/codex@latest 2>/dev/null || true
 
     # Gemini CLI (install as target user)
     log_detail "Installing Gemini CLI for $TARGET_USER"
-    $SUDO -u "$TARGET_USER" "$bun_bin" install -g @google/gemini-cli@latest 2>/dev/null || true
-
-    # Claude Code (if installer is available)
-    log_detail "Checking Claude Code"
-    if command_exists claude; then
-        log_detail "Claude Code already installed"
-    else
-        log_warn "Claude Code may need manual installation: https://docs.anthropic.com/claude-code"
-    fi
+    run_as_target "$bun_bin" install -g @google/gemini-cli@latest 2>/dev/null || true
 
     log_success "Coding agents installed"
 }
@@ -541,43 +565,43 @@ install_stack() {
     log_step "7/8" "Installing Dicklesworthstone stack..."
 
     # Helper to run install scripts as target user
-    run_as_target() {
+    run_install_as_target() {
         local url="$1"
         local args="${2:-}"
-        $SUDO -u "$TARGET_USER" bash -c "curl -fsSL '$url' 2>/dev/null | bash -s -- $args" || return 1
+        run_as_target bash -c "curl -fsSL '$url' 2>/dev/null | bash -s -- $args" || return 1
     }
 
     # NTM (Named Tmux Manager)
     log_detail "Installing NTM"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh" || log_warn "NTM installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh" || log_warn "NTM installation may have failed"
 
     # MCP Agent Mail
     log_detail "Installing MCP Agent Mail"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh?$(date +%s)" "--yes" || log_warn "MCP Agent Mail installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh?$(date +%s)" "--yes" || log_warn "MCP Agent Mail installation may have failed"
 
     # Ultimate Bug Scanner
     log_detail "Installing Ultimate Bug Scanner"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh?$(date +%s)" "--easy-mode" || log_warn "UBS installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh?$(date +%s)" "--easy-mode" || log_warn "UBS installation may have failed"
 
     # Beads Viewer
     log_detail "Installing Beads Viewer"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh?$(date +%s)" || log_warn "Beads Viewer installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh?$(date +%s)" || log_warn "Beads Viewer installation may have failed"
 
     # CASS (Coding Agent Session Search)
     log_detail "Installing CASS"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh" "--easy-mode --verify" || log_warn "CASS installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh" "--easy-mode --verify" || log_warn "CASS installation may have failed"
 
     # CASS Memory System
     log_detail "Installing CASS Memory System"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/cass_memory_system/main/install.sh" "--easy-mode --verify" || log_warn "CM installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/cass_memory_system/main/install.sh" "--easy-mode --verify" || log_warn "CM installation may have failed"
 
     # CAAM (Coding Agent Account Manager)
     log_detail "Installing CAAM"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh?$(date +%s)" || log_warn "CAAM installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh?$(date +%s)" || log_warn "CAAM installation may have failed"
 
     # SLB (Simultaneous Launch Button)
     log_detail "Installing SLB"
-    run_as_target "https://raw.githubusercontent.com/Dicklesworthstone/simultaneous_launch_button/main/scripts/install.sh" || log_warn "SLB installation may have failed"
+    run_install_as_target "https://raw.githubusercontent.com/Dicklesworthstone/simultaneous_launch_button/main/scripts/install.sh" || log_warn "SLB installation may have failed"
 
     log_success "Dicklesworthstone stack installed"
 }
@@ -595,8 +619,34 @@ finalize() {
 
     # Link to target user's tmux.conf if it doesn't exist
     if [[ ! -f "$TARGET_HOME/.tmux.conf" ]]; then
-        $SUDO -u "$TARGET_USER" ln -sf "$ACFS_HOME/tmux/tmux.conf" "$TARGET_HOME/.tmux.conf"
+        run_as_target ln -sf "$ACFS_HOME/tmux/tmux.conf" "$TARGET_HOME/.tmux.conf"
     fi
+
+    # Install onboard lessons + command
+    log_detail "Installing onboard lessons"
+    $SUDO mkdir -p "$ACFS_HOME/onboard/lessons"
+    local lesson_files=(
+        "00_welcome.md"
+        "01_linux_basics.md"
+        "02_ssh_basics.md"
+        "03_tmux_basics.md"
+        "04_agents_login.md"
+        "05_ntm_core.md"
+        "06_ntm_command_palette.md"
+        "07_flywheel_loop.md"
+    )
+    local lesson
+    for lesson in "${lesson_files[@]}"; do
+        curl -fsSL "$ACFS_RAW/acfs/onboard/lessons/$lesson" -o "$ACFS_HOME/onboard/lessons/$lesson"
+    done
+
+    log_detail "Installing onboard command"
+    curl -fsSL "$ACFS_RAW/acfs/onboard/onboard.sh" -o "$ACFS_HOME/onboard/onboard.sh"
+    $SUDO chmod 755 "$ACFS_HOME/onboard/onboard.sh"
+    $SUDO chown -R "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/onboard"
+
+    run_as_target mkdir -p "$TARGET_HOME/.local/bin"
+    run_as_target ln -sf "$ACFS_HOME/onboard/onboard.sh" "$TARGET_HOME/.local/bin/onboard"
 
     # Create state file
     cat > "$ACFS_STATE_FILE" << EOF
@@ -611,6 +661,169 @@ EOF
     $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_STATE_FILE"
 
     log_success "Installation complete!"
+}
+
+# ============================================================
+# Post-install smoke test
+# Runs quick, automatic verification at the end of install.sh
+# ============================================================
+_smoke_run_as_target() {
+    local cmd="$1"
+
+    if [[ "$(whoami)" == "$TARGET_USER" ]]; then
+        bash -c "$cmd"
+        return $?
+    fi
+
+    if command_exists sudo; then
+        sudo -u "$TARGET_USER" -H bash -c "$cmd"
+        return $?
+    fi
+
+    # Fallback: use su if sudo isn't available
+    su - "$TARGET_USER" -c "bash -c $(printf %q "$cmd")"
+}
+
+run_smoke_test() {
+    local critical_total=8
+    local critical_passed=0
+    local critical_failed=0
+    local warnings=0
+
+    echo "" >&2
+    echo "[Smoke Test]" >&2
+
+    # 1) User is ubuntu
+    if [[ "$TARGET_USER" == "ubuntu" ]] && id "$TARGET_USER" &>/dev/null; then
+        echo "✅ User: ubuntu" >&2
+        ((critical_passed++))
+    else
+        echo "✖ User: expected ubuntu (TARGET_USER=$TARGET_USER)" >&2
+        echo "    Fix: set TARGET_USER=ubuntu and ensure the user exists" >&2
+        ((critical_failed++))
+    fi
+
+    # 2) Shell is zsh
+    local target_shell=""
+    target_shell=$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f7 || true)
+    if [[ "$target_shell" == *"zsh"* ]]; then
+        echo "✅ Shell: zsh" >&2
+        ((critical_passed++))
+    else
+        echo "✖ Shell: zsh (found: ${target_shell:-unknown})" >&2
+        echo "    Fix: sudo chsh -s \"\$(command -v zsh)\" \"$TARGET_USER\"" >&2
+        ((critical_failed++))
+    fi
+
+    # 3) Passwordless sudo works
+    if _smoke_run_as_target "sudo -n true" &>/dev/null; then
+        echo "✅ Sudo: passwordless" >&2
+        ((critical_passed++))
+    else
+        echo "✖ Sudo: passwordless" >&2
+        echo "    Fix: re-run installer with --mode vibe (or configure NOPASSWD for $TARGET_USER)" >&2
+        ((critical_failed++))
+    fi
+
+    # 4) /data/projects exists
+    if _smoke_run_as_target "[[ -d /data/projects && -w /data/projects ]]" &>/dev/null; then
+        echo "✅ Workspace: /data/projects exists" >&2
+        ((critical_passed++))
+    else
+        echo "✖ Workspace: /data/projects exists" >&2
+        echo "    Fix: sudo mkdir -p /data/projects && sudo chown -R \"$TARGET_USER:$TARGET_USER\" /data" >&2
+        ((critical_failed++))
+    fi
+
+    # 5) bun, uv, cargo, go available
+    local missing_lang=()
+    [[ -x "$TARGET_HOME/.bun/bin/bun" ]] || missing_lang+=("bun")
+    [[ -x "$TARGET_HOME/.local/bin/uv" ]] || missing_lang+=("uv")
+    [[ -x "$TARGET_HOME/.cargo/bin/cargo" ]] || missing_lang+=("cargo")
+    command_exists go || missing_lang+=("go")
+    if [[ ${#missing_lang[@]} -eq 0 ]]; then
+        echo "✅ Languages: bun, uv, cargo, go available" >&2
+        ((critical_passed++))
+    else
+        echo "✖ Languages: missing ${missing_lang[*]}" >&2
+        echo "    Fix: re-run installer (phase 5) and check $ACFS_LOG_DIR/install.log" >&2
+        ((critical_failed++))
+    fi
+
+    # 6) claude, codex, gemini commands exist
+    local missing_agents=()
+    [[ -x "$TARGET_HOME/.bun/bin/claude" ]] || missing_agents+=("claude")
+    [[ -x "$TARGET_HOME/.bun/bin/codex" ]] || missing_agents+=("codex")
+    [[ -x "$TARGET_HOME/.bun/bin/gemini" ]] || missing_agents+=("gemini")
+    if [[ ${#missing_agents[@]} -eq 0 ]]; then
+        echo "✅ Agents: claude, codex, gemini" >&2
+        ((critical_passed++))
+    else
+        echo "✖ Agents: missing ${missing_agents[*]}" >&2
+        echo "    Fix: re-run installer (phase 6) to install agent CLIs" >&2
+        ((critical_failed++))
+    fi
+
+    # 7) ntm command works
+    if _smoke_run_as_target "command -v ntm >/dev/null && ntm --help >/dev/null 2>&1"; then
+        echo "✅ NTM: working" >&2
+        ((critical_passed++))
+    else
+        echo "✖ NTM: not working" >&2
+        echo "    Fix: re-run installer (phase 7) or run NTM installer: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh | bash" >&2
+        ((critical_failed++))
+    fi
+
+    # 8) onboard command exists
+    if [[ -x "$TARGET_HOME/.local/bin/onboard" ]]; then
+        echo "✅ Onboard: installed" >&2
+        ((critical_passed++))
+    else
+        echo "✖ Onboard: missing" >&2
+        echo "    Fix: re-run installer (phase 8) or install onboard to $TARGET_HOME/.local/bin/onboard" >&2
+        ((critical_failed++))
+    fi
+
+    # Non-critical: Agent Mail server can start
+    if [[ -x "$TARGET_HOME/mcp_agent_mail/scripts/run_server_with_token.sh" ]]; then
+        echo "✅ Agent Mail: installed (run 'am' to start)" >&2
+    else
+        echo "⚠️ Agent Mail: not installed (re-run installer phase 7)" >&2
+        ((warnings++))
+    fi
+
+    # Non-critical: Stack tools respond to --help
+    local stack_help_fail=()
+    local stack_tools=(ntm ubs bv cass cm caam slb)
+    for tool in "${stack_tools[@]}"; do
+        if ! _smoke_run_as_target "command -v $tool >/dev/null && $tool --help >/dev/null 2>&1"; then
+            stack_help_fail+=("$tool")
+        fi
+    done
+    if [[ ${#stack_help_fail[@]} -gt 0 ]]; then
+        echo "⚠️ Stack tools: --help failed for ${stack_help_fail[*]}" >&2
+        ((warnings++))
+    fi
+
+    # Non-critical: PostgreSQL service running
+    if [[ "$SKIP_POSTGRES" == "true" ]]; then
+        echo "⚠️ PostgreSQL: skipped (optional)" >&2
+        ((warnings++))
+    elif command_exists systemctl && systemctl is-active --quiet postgresql 2>/dev/null; then
+        echo "✅ PostgreSQL: running" >&2
+    else
+        echo "⚠️ PostgreSQL: not running (optional)" >&2
+        ((warnings++))
+    fi
+
+    echo "" >&2
+    if [[ $critical_failed -eq 0 ]]; then
+        echo "Smoke test: ${critical_passed}/${critical_total} critical passed, ${warnings} warnings" >&2
+        return 0
+    fi
+
+    echo "Smoke test: ${critical_passed}/${critical_total} critical passed, ${critical_failed} critical failed, ${warnings} warnings" >&2
+    return 1
 }
 
 # ============================================================
@@ -725,9 +938,18 @@ main() {
         install_agents
         install_stack
         finalize
+
+        SMOKE_TEST_FAILED=false
+        if ! run_smoke_test; then
+            SMOKE_TEST_FAILED=true
+        fi
     fi
 
     print_summary
+
+    if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]]; then
+        exit 1
+    fi
 }
 
 main "$@"
