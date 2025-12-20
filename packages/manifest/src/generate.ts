@@ -57,9 +57,10 @@ function toFunctionName(moduleId: string): string {
 
 /**
  * Convert module ID to a check ID for doctor
+ * Currently a passthrough - kept for future extensibility
  */
 function toCheckId(moduleId: string): string {
-  return moduleId.replace(/\./g, '.');
+  return moduleId;
 }
 
 /**
@@ -180,7 +181,8 @@ function generateCategoryScript(manifest: Manifest, category: ModuleCategory): s
 function generateDoctorChecks(manifest: Manifest): string {
   const lines: string[] = [HEADER];
   lines.push('# Doctor checks generated from manifest');
-  lines.push('# Format: ID|DESCRIPTION|CHECK_COMMAND');
+  lines.push('# Format: ID<TAB>DESCRIPTION<TAB>CHECK_COMMAND<TAB>REQUIRED/OPTIONAL');
+  lines.push('# Using tab delimiter to avoid conflicts with | in shell commands');
   lines.push('');
 
   // Export check array
@@ -198,7 +200,8 @@ function generateDoctorChecks(manifest: Manifest): string {
       const suffix = module.verify.length > 1 ? `.${i + 1}` : '';
       const description = escapeBash(module.description);
 
-      lines.push(`    "${checkId}${suffix}|${description}|${escapeBash(cleanCmd)}|${isOptional ? 'optional' : 'required'}"`);
+      // Use tab delimiter (\t) instead of pipe to avoid conflicts with || in commands
+      lines.push(`    "${checkId}${suffix}\t${description}\t${escapeBash(cleanCmd)}\t${isOptional ? 'optional' : 'required'}"`);
     }
   }
 
@@ -213,7 +216,8 @@ function generateDoctorChecks(manifest: Manifest): string {
   lines.push('    local skipped=0');
   lines.push('');
   lines.push('    for check in "${MANIFEST_CHECKS[@]}"; do');
-  lines.push('        IFS="|" read -r id desc cmd optional <<< "$check"');
+  lines.push('        # Use tab as delimiter (safe - won\'t appear in commands)');
+  lines.push('        IFS=$\'\\t\' read -r id desc cmd optional <<< "$check"');
   lines.push('        ');
   lines.push('        if eval "$cmd" &>/dev/null; then');
   lines.push('            echo -e "\\033[0;32m[ok]\\033[0m $id - $desc"');
