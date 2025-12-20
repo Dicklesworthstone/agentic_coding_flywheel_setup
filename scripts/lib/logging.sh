@@ -15,15 +15,35 @@ export ACFS_NC='\033[0m' # No Color
 # Log a major step (blue)
 # Usage: log_step "1/8" "Installing packages..."
 log_step() {
-    local step="$1"
-    local message="$2"
-    echo -e "${ACFS_BLUE}[$step]${ACFS_NC} $message" >&2
+    if [[ $# -ge 2 ]]; then
+        local step="$1"
+        local message="$2"
+        echo -e "${ACFS_BLUE}[$step]${ACFS_NC} $message" >&2
+        return 0
+    fi
+
+    local message="${1:-}"
+    echo -e "${ACFS_BLUE}[•]${ACFS_NC} $message" >&2
+}
+
+# Log a section header (blue)
+# Usage: log_section "Phase: Shell setup"
+log_section() {
+    local title="$1"
+    echo "" >&2
+    echo -e "${ACFS_BLUE}$title${ACFS_NC}" >&2
 }
 
 # Log detail information (gray, indented)
 # Usage: log_detail "Installing zsh..."
 log_detail() {
     echo -e "${ACFS_GRAY}    $1${ACFS_NC}" >&2
+}
+
+# Log informational message (alias for log_detail)
+# Usage: log_info "Downloading..."
+log_info() {
+    log_detail "$1"
 }
 
 # Log success message (green with checkmark)

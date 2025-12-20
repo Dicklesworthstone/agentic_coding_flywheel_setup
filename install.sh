@@ -84,7 +84,7 @@ print_banner() {
     if [[ "$HAS_GUM" == "true" ]]; then
         echo "$banner" | gum style --foreground "$ACFS_PRIMARY" --bold >&2
     else
-        echo -e "${BLUE}$banner${NC}"
+        echo -e "${BLUE}$banner${NC}" >&2
     fi
 }
 
@@ -261,17 +261,19 @@ confirm_or_exit() {
         return 0
     fi
 
-    if [[ ! -t 0 ]]; then
-        log_fatal "--yes is required when stdin is not a TTY"
-    fi
-
-    if [[ "$HAS_GUM" == "true" ]]; then
-        gum confirm "Proceed with ACFS install? (mode=$MODE)" || exit 1
+    if [[ "$HAS_GUM" == "true" ]] && [[ -r /dev/tty ]]; then
+        gum confirm "Proceed with ACFS install? (mode=$MODE)" < /dev/tty > /dev/tty || exit 1
         return 0
     fi
 
     local reply=""
-    read -r -p "Proceed with ACFS install? (mode=$MODE) [y/N] " reply
+    if [[ -t 0 ]]; then
+        read -r -p "Proceed with ACFS install? (mode=$MODE) [y/N] " reply
+    elif [[ -r /dev/tty ]]; then
+        read -r -p "Proceed with ACFS install? (mode=$MODE) [y/N] " reply < /dev/tty
+    else
+        log_fatal "--yes is required when no TTY is available"
+    fi
     case "$reply" in
         y|Y|yes|YES) return 0 ;;
         *) exit 1 ;;
@@ -881,44 +883,46 @@ Next steps:
   4. Start your agent cockpit:
      ntm"
 
-    if [[ "$HAS_GUM" == "true" ]]; then
-        echo ""
-        gum style \
-            --border double \
-            --border-foreground "$ACFS_SUCCESS" \
-            --padding "1 3" \
-            --margin "1 0" \
-            --align left \
-            "$(gum style --foreground "$ACFS_SUCCESS" --bold '🎉 ACFS Installation Complete!')
+    {
+        if [[ "$HAS_GUM" == "true" ]]; then
+            echo ""
+            gum style \
+                --border double \
+                --border-foreground "$ACFS_SUCCESS" \
+                --padding "1 3" \
+                --margin "1 0" \
+                --align left \
+                "$(gum style --foreground "$ACFS_SUCCESS" --bold '🎉 ACFS Installation Complete!')
 
 $summary_content"
-    else
-        echo ""
-        echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}║            🎉 ACFS Installation Complete!                   ║${NC}"
-        echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
-        echo ""
-        echo -e "Version: ${BLUE}$ACFS_VERSION${NC}"
-        echo -e "Mode:    ${BLUE}$MODE${NC}"
-        echo ""
-        echo -e "${YELLOW}Next steps:${NC}"
-        echo ""
-        echo "  1. If you logged in as root, reconnect as ubuntu:"
-        echo -e "     ${GRAY}exit${NC}"
-        echo -e "     ${GRAY}ssh ubuntu@YOUR_SERVER_IP${NC}"
-        echo ""
-        echo "  2. Run the onboarding tutorial:"
-        echo -e "     ${BLUE}onboard${NC}"
-        echo ""
-        echo "  3. Check everything is working:"
-        echo -e "     ${BLUE}acfs doctor${NC}"
-        echo ""
-        echo "  4. Start your agent cockpit:"
-        echo -e "     ${BLUE}ntm${NC}"
-        echo ""
-        echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
-        echo ""
-    fi
+        else
+            echo ""
+            echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+            echo -e "${GREEN}║            🎉 ACFS Installation Complete!                   ║${NC}"
+            echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
+            echo ""
+            echo -e "Version: ${BLUE}$ACFS_VERSION${NC}"
+            echo -e "Mode:    ${BLUE}$MODE${NC}"
+            echo ""
+            echo -e "${YELLOW}Next steps:${NC}"
+            echo ""
+            echo "  1. If you logged in as root, reconnect as ubuntu:"
+            echo -e "     ${GRAY}exit${NC}"
+            echo -e "     ${GRAY}ssh ubuntu@YOUR_SERVER_IP${NC}"
+            echo ""
+            echo "  2. Run the onboarding tutorial:"
+            echo -e "     ${BLUE}onboard${NC}"
+            echo ""
+            echo "  3. Check everything is working:"
+            echo -e "     ${BLUE}acfs doctor${NC}"
+            echo ""
+            echo "  4. Start your agent cockpit:"
+            echo -e "     ${BLUE}ntm${NC}"
+            echo ""
+            echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+            echo ""
+        fi
+    } >&2
 }
 
 # ============================================================

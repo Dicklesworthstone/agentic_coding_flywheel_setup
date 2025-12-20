@@ -8,11 +8,11 @@
  *   bun run generate (from packages/manifest)
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseManifestFile } from './parser.js';
 import {
-  getModuleCategory,
   getCategories,
   getModulesByCategory,
   sortModulesByInstallOrder,
@@ -23,11 +23,13 @@ import type { Module, ModuleCategory, Manifest } from './types.js';
 // Configuration
 // ============================================================
 
-const PROJECT_ROOT = resolve(dirname(import.meta.path), '../../..');
+const SCRIPT_FILE = fileURLToPath(import.meta.url);
+const PROJECT_ROOT = resolve(dirname(SCRIPT_FILE), '../../..');
 const MANIFEST_PATH = join(PROJECT_ROOT, 'acfs.manifest.yaml');
 const OUTPUT_DIR = join(PROJECT_ROOT, 'scripts/generated');
 
 const HEADER = `#!/usr/bin/env bash
+# shellcheck disable=SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
 # Regenerate: bun run generate (from packages/manifest)
@@ -214,13 +216,13 @@ function generateDoctorChecks(manifest: Manifest): string {
   lines.push('        IFS="|" read -r id desc cmd optional <<< "$check"');
   lines.push('        ');
   lines.push('        if eval "$cmd" &>/dev/null; then');
-  lines.push('            echo -e "\\033[0;32m[ok]\\033[0m $id"');
+  lines.push('            echo -e "\\033[0;32m[ok]\\033[0m $id - $desc"');
   lines.push('            ((passed++))');
   lines.push('        elif [[ "$optional" == "optional" ]]; then');
-  lines.push('            echo -e "\\033[0;33m[skip]\\033[0m $id"');
+  lines.push('            echo -e "\\033[0;33m[skip]\\033[0m $id - $desc"');
   lines.push('            ((skipped++))');
   lines.push('        else');
-  lines.push('            echo -e "\\033[0;31m[fail]\\033[0m $id"');
+  lines.push('            echo -e "\\033[0;31m[fail]\\033[0m $id - $desc"');
   lines.push('            ((failed++))');
   lines.push('        fi');
   lines.push('    done');

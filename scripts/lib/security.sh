@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 # ============================================================
 # ACFS Installer - Security Verification Library
 # Provides checksum verification and HTTPS enforcement

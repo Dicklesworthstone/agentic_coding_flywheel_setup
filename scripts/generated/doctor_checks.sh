@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
 # Regenerate: bun run generate (from packages/manifest)
@@ -68,13 +69,13 @@ run_manifest_checks() {
         IFS="|" read -r id desc cmd optional <<< "$check"
         
         if eval "$cmd" &>/dev/null; then
-            echo -e "\033[0;32m[ok]\033[0m $id"
+            echo -e "\033[0;32m[ok]\033[0m $id - $desc"
             ((passed++))
         elif [[ "$optional" == "optional" ]]; then
-            echo -e "\033[0;33m[skip]\033[0m $id"
+            echo -e "\033[0;33m[skip]\033[0m $id - $desc"
             ((skipped++))
         else
-            echo -e "\033[0;31m[fail]\033[0m $id"
+            echo -e "\033[0;31m[fail]\033[0m $id - $desc"
             ((failed++))
         fi
     done
