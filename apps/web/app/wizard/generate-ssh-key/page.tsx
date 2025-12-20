@@ -67,7 +67,7 @@ export default function GenerateSSHKeyPage() {
         </p>
         <CommandCard
           command='ssh-keygen -t ed25519 -C "acfs" -f ~/.ssh/acfs_ed25519'
-          windowsCommand='ssh-keygen -t ed25519 -C "acfs" -f $HOME\.ssh\acfs_ed25519'
+          windowsCommand='ssh-keygen -t ed25519 -C "acfs" -f $HOME\\.ssh\\acfs_ed25519'
           showCheckbox
           persistKey="generate-ssh-key"
         />
@@ -85,7 +85,7 @@ export default function GenerateSSHKeyPage() {
         </p>
         <CommandCard
           command="cat ~/.ssh/acfs_ed25519.pub"
-          windowsCommand="type $HOME\.ssh\acfs_ed25519.pub"
+          windowsCommand="type $HOME\\.ssh\\acfs_ed25519.pub"
           showCheckbox
           persistKey="copy-ssh-pubkey"
         />
