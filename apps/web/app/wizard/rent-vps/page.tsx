@@ -27,40 +27,30 @@ interface ProviderInfo {
 
 const PROVIDERS: ProviderInfo[] = [
   {
+    id: "contabo",
+    name: "Contabo",
+    tagline: "Best value for high specs",
+    url: "https://contabo.com/en/vps/",
+    pros: [
+      "32GB RAM for ~$35/month",
+      "Excellent specs-to-price ratio",
+      "EU and US data centers",
+      "Instant activation",
+    ],
+    recommended: "Cloud VPS L (6 vCPU, 32GB RAM) — ~$35/mo",
+  },
+  {
     id: "ovh",
     name: "OVH",
-    tagline: "European, good value",
+    tagline: "Reliable, good support",
     url: "https://www.ovhcloud.com/en/vps/",
     pros: [
       "Great EU data centers",
-      "Competitive pricing",
+      "Good customer support",
       "Solid network performance",
+      "Instant activation",
     ],
-    recommended: "VPS Starter or VPS Essential",
-  },
-  {
-    id: "contabo",
-    name: "Contabo",
-    tagline: "Budget-friendly, high specs",
-    url: "https://contabo.com/en/vps/",
-    pros: [
-      "Very high specs for the price",
-      "Good for compute-heavy workloads",
-      "EU and US locations",
-    ],
-    recommended: "Cloud VPS M",
-  },
-  {
-    id: "hetzner",
-    name: "Hetzner",
-    tagline: "Developer favorite",
-    url: "https://www.hetzner.com/cloud/",
-    pros: [
-      "Excellent reputation with developers",
-      "Great API and tooling",
-      "EU data centers",
-    ],
-    recommended: "CX32 or CX42",
+    recommended: "VPS Comfort (4 vCPU, 16GB) or VPS Elite (8 vCPU, 32GB)",
   },
 ];
 
@@ -148,10 +138,10 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
 
 const SPEC_CHECKLIST = [
   { label: "OS", value: "Ubuntu 25.x (or newest Ubuntu)" },
-  { label: "CPU", value: "4-8 vCPU" },
-  { label: "RAM", value: "8-16 GB" },
-  { label: "Storage", value: "100GB+ NVMe SSD" },
-  { label: "Price", value: "~$50/month sweet spot" },
+  { label: "CPU", value: "6-8 vCPU" },
+  { label: "RAM", value: "32 GB (minimum 16 GB)" },
+  { label: "Storage", value: "200GB+ NVMe SSD" },
+  { label: "Price", value: "$35-60/month" },
 ];
 
 export default function RentVPSPage() {
@@ -179,7 +169,7 @@ export default function RentVPSPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              Rent a VPS (~$50/month)
+              Rent a VPS ($35-60/month)
             </h1>
             <p className="text-sm text-muted-foreground">
               ~5 min
