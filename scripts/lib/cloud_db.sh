@@ -134,7 +134,7 @@ install_postgresql() {
         $sudo_cmd gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg 2>/dev/null || true
 
     # Add repository
-    echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" | \
+    echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" | \
         $sudo_cmd tee /etc/apt/sources.list.d/pgdg.list > /dev/null
 
     # Update and install

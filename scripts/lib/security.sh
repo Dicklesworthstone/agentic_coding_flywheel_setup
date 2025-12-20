@@ -97,13 +97,10 @@ fetch_checksum() {
         return 1
     fi
 
-    local content
-    content=$(curl -fsSL "$url" 2>/dev/null) || {
+    if ! curl -fsSL "$url" 2>/dev/null | calculate_sha256; then
         echo "ERROR: Failed to fetch $url" >&2
         return 1
-    }
-
-    echo "$content" | calculate_sha256
+    fi
 }
 
 # Verify URL content against expected checksum
@@ -116,14 +113,11 @@ verify_checksum() {
         return 1
     fi
 
-    local content
-    content=$(curl -fsSL "$url" 2>/dev/null) || {
+    local actual_sha256
+    actual_sha256=$(curl -fsSL "$url" 2>/dev/null | calculate_sha256) || {
         echo -e "${RED}Security Error:${NC} Failed to fetch $name" >&2
         return 1
     }
-
-    local actual_sha256
-    actual_sha256=$(echo "$content" | calculate_sha256)
 
     if [[ "$actual_sha256" != "$expected_sha256" ]]; then
         echo -e "${RED}Security Error:${NC} Checksum mismatch for $name" >&2
@@ -134,8 +128,11 @@ verify_checksum() {
     fi
 
     echo -e "${GREEN}Verified:${NC} $name" >&2
-    # Return the verified content
-    echo "$content"
+    # Return the verified content (verbatim bytes) on stdout.
+    curl -fsSL "$url" 2>/dev/null || {
+        echo -e "${RED}Security Error:${NC} Failed to fetch $name (post-verify)" >&2
+        return 1
+    }
 }
 
 # Fetch and run with optional verification
@@ -150,18 +147,11 @@ fetch_and_run() {
         return 1
     fi
 
-    local content
     if [[ -n "$expected_sha256" ]]; then
-        content=$(verify_checksum "$url" "$expected_sha256" "$name") || return 1
+        verify_checksum "$url" "$expected_sha256" "$name" | bash -s -- "${args[@]}"
     else
-        content=$(curl -fsSL "$url" 2>/dev/null) || {
-            echo -e "${RED}Error:${NC} Failed to fetch $name" >&2
-            return 1
-        }
+        curl -fsSL "$url" 2>/dev/null | bash -s -- "${args[@]}"
     fi
-
-    # Run the content
-    echo "$content" | bash -s -- "${args[@]}"
 }
 
 # ============================================================

@@ -248,6 +248,10 @@ ensure_root() {
     if [[ $EUID -ne 0 ]]; then
         if command_exists sudo; then
             SUDO="sudo"
+        elif [[ "$DRY_RUN" == "true" ]]; then
+            # Dry-run should be able to print actions even on systems without sudo.
+            SUDO="sudo"
+            log_warn "sudo not found (dry-run mode). No commands will be executed."
         else
             log_fatal "This script requires root privileges. Please run as root or install sudo."
         fi
@@ -322,6 +326,17 @@ ensure_ubuntu() {
 
 ensure_base_deps() {
     log_step "0/8" "Checking base dependencies..."
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        local sudo_prefix=""
+        if [[ -n "${SUDO:-}" ]]; then
+            sudo_prefix="$SUDO "
+        fi
+
+        log_detail "dry-run: would run: ${sudo_prefix}apt-get update -y"
+        log_detail "dry-run: would install: curl git ca-certificates unzip tar xz-utils jq build-essential sudo gnupg"
+        return 0
+    fi
 
     log_detail "Updating apt package index"
     $SUDO apt-get update -y
@@ -665,7 +680,7 @@ finalize() {
     done
 
     log_detail "Installing onboard command"
-    install_asset "acfs/onboard/onboard.sh" "$ACFS_HOME/onboard/onboard.sh"
+    install_asset "packages/onboard/onboard.sh" "$ACFS_HOME/onboard/onboard.sh"
     $SUDO chmod 755 "$ACFS_HOME/onboard/onboard.sh"
     $SUDO chown -R "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/onboard"
 
