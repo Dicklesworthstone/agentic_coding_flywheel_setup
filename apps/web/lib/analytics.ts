@@ -601,7 +601,7 @@ export const trackFunnelStepEnter = (
     entered: now,
   };
 
-  localStorage.setItem(FUNNEL_STORAGE_KEY, JSON.stringify(funnelData));
+  safeSetJSON(FUNNEL_STORAGE_KEY, funnelData);
 
   // Calculate time from previous step
   let timeFromPreviousStep: number | undefined;

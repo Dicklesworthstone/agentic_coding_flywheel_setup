@@ -8,6 +8,14 @@ import { CommandCard } from "@/components/command-card";
 import { AlertCard, DetailsSection } from "@/components/alert-card";
 import { markStepComplete } from "@/lib/wizardSteps";
 import { useUserOS, useMounted } from "@/lib/userPreferences";
+import {
+  SimplerGuide,
+  GuideSection,
+  GuideStep,
+  GuideExplain,
+  GuideTip,
+  GuideCaution,
+} from "@/components/simpler-guide";
 
 export default function GenerateSSHKeyPage() {
   const router = useRouter();
