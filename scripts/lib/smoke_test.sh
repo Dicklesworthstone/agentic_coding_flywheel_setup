@@ -228,7 +228,7 @@ _check_onboard() {
 
 # Check: Agent Mail can respond
 _check_agent_mail() {
-    if curl -fsS http://127.0.0.1:8765/health &>/dev/null; then
+    if curl -fsS --max-time 5 http://127.0.0.1:8765/health &>/dev/null; then
         _smoke_info "Agent Mail: running"
     else
         _smoke_warn "Agent Mail: not started" "run 'am' to start"

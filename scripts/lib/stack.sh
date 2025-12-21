@@ -141,7 +141,7 @@ _stack_run_installer() {
         return 1
     fi
 
-    _stack_run_as_user "source '$SCRIPT_DIR/security.sh'; verify_checksum '$url' '$expected_sha256' '$tool' | bash -s -- $args"
+    _stack_run_as_user "source '$SCRIPT_DIR/security.sh'; verify_checksum '$url' '$expected_sha256' '$tool' | bash -s -- ${args:-}"
 }
 
 # Check if a stack tool is installed

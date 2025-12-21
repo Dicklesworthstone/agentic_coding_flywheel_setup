@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn, safeGetItem, safeSetItem } from "@/lib/utils";
 import { useDetectedOS, useUserOS } from "@/lib/userPreferences";
+import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import { springs } from "@/components/motion";
 
 export interface CommandCardProps {
@@ -70,6 +71,7 @@ export function CommandCard({
   const [storedOS] = useUserOS();
   const detectedOS = useDetectedOS();
   const os: OS = storedOS ?? detectedOS ?? "mac";
+  const prefersReducedMotion = useReducedMotion();
 
   // Use TanStack Query for completion state
   const completionKey = getCompletionKey(persistKey);
@@ -220,9 +222,9 @@ export function CommandCard({
           </Button>
         </motion.div>
 
-        {/* Shimmer effect on copy */}
+        {/* Shimmer effect on copy - respects reduced motion preference */}
         <AnimatePresence>
-          {copyAnimation && (
+          {copyAnimation && !prefersReducedMotion && (
             <motion.div
               className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent"
               initial={{ x: "-100%" }}
