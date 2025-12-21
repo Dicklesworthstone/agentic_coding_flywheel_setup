@@ -535,6 +535,256 @@ ACFS_KEEP_BOOTSTRAP=1 curl -fsSL ... | bash -s -- --mode vibe
 ls /tmp/acfs-bootstrap.*/
 ```
 
+---
+
+## Generated Module Runtime Contract (Phase 0 Spec)
+
+This section defines the contract between `install.sh` (orchestrator) and generated module functions.
+
+### Core Principles
+
+1. **Generated scripts are libraries:** Safe to `source` at any time (no side effects at import)
+2. **Contract validation at call-time:** Each module function validates its environment at entry
+3. **Orchestrator owns reliability UX:** Resume/state, phase framing, error reporting live in install.sh
+4. **Modules are deterministic units:** Run install/verify, return status code, never `exit`
+
+### Module Function Structure
+
+Every generated module function follows this structure:
+
+```bash
+acfs_install_<module_id>() {
+    # ─────────────────────────────────────────────────────────────
+    # 1. LOCAL IDENTITY + CONTRACT CHECK
+    # ─────────────────────────────────────────────────────────────
+    local module_id="lang.bun"
+    local module_phase=6
+    local module_optional=false  # true for optional modules
+
+    acfs_require_contract "module:${module_id}" || return 1
+
+    # ─────────────────────────────────────────────────────────────
+    # 2. SELECTION CHECK (no side effects if filtered)
+    # ─────────────────────────────────────────────────────────────
+    if ! should_run_module "$module_id" "$module_phase"; then
+        log_debug "$module_id: skipped (not in effective plan)"
+        return 0
+    fi
+
+    # ─────────────────────────────────────────────────────────────
+    # 3. IDEMPOTENCY CHECK (runs even in DRY_RUN)
+    # ─────────────────────────────────────────────────────────────
+    if acfs_module_installed "$module_id"; then
+        log_info "$module_id: already installed, skipping"
+        return 0
+    fi
+
+    # ─────────────────────────────────────────────────────────────
+    # 4. DRY RUN HANDLING
+    # ─────────────────────────────────────────────────────────────
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log_info "dry-run: would install $module_id"
+        # Show what would happen:
+        log_detail "  → curl -fsSL https://bun.sh/install | bash"
+        return 0
+    fi
+
+    # ─────────────────────────────────────────────────────────────
+    # 5. INSTALLATION (wrapped for strict-mode safety)
+    # ─────────────────────────────────────────────────────────────
+    log_info "Installing $module_id..."
+
+    # Option A: Verified upstream installer
+    if ! acfs_run_verified_upstream_script_as_target_user "bun" "bash"; then
+        return $(acfs_handle_module_failure "$module_id" "$module_optional" "Verified installer failed")
+    fi
+
+    # Option B: Direct commands (each wrapped)
+    # if ! run_as_target_user_shell 'curl -fsSL https://bun.sh/install | bash'; then
+    #     return $(acfs_handle_module_failure "$module_id" "$module_optional" "Install command failed")
+    # fi
+
+    # ─────────────────────────────────────────────────────────────
+    # 6. VERIFICATION
+    # ─────────────────────────────────────────────────────────────
+    log_detail "Verifying $module_id..."
+    if ! run_as_target_user_shell '~/.bun/bin/bun --version'; then
+        return $(acfs_handle_module_failure "$module_id" "$module_optional" "Verification failed")
+    fi
+
+    log_success "$module_id installed"
+    return 0
+}
+```
+
+### Entry Requirements
+
+| Requirement | Purpose |
+|-------------|---------|
+| `local module_id="..."` | Self-identification for logging/state |
+| `local module_phase=N` | Phase number for selection filtering |
+| `local module_optional=true/false` | Failure behavior control |
+| `acfs_require_contract "module:${module_id}"` | Validate orchestrator environment |
+
+### Contract Validation
+
+`acfs_require_contract()` verifies the module is running in a properly initialized environment:
+
+```bash
+acfs_require_contract() {
+    local contract="$1"
+
+    case "$contract" in
+        module:*)
+            # Verify orchestrator has initialized these
+            [[ -n "${ACFS_EFFECTIVE_RUN[*]:-}" ]] || return 1
+            [[ -n "${ACFS_LIB_DIR:-}" ]] || return 1
+            [[ "$(type -t should_run_module)" == "function" ]] || return 1
+            [[ "$(type -t run_as_target_user_shell)" == "function" ]] || return 1
+            ;;
+    esac
+    return 0
+}
+```
+
+### Selection Check Semantics
+
+```bash
+should_run_module() {
+    local module_id="$1"
+    local module_phase="$2"
+
+    # O(1) lookup in associative array populated by selection algorithm
+    [[ -n "${ACFS_EFFECTIVE_RUN[$module_id]:-}" ]]
+}
+```
+
+### Idempotency Check
+
+Installed check MUST be side-effect-free and run even in DRY_RUN mode:
+
+```bash
+acfs_module_installed() {
+    local module_id="$1"
+
+    # Use manifest's installed_check if available
+    case "$module_id" in
+        lang.bun)
+            [[ -x "$HOME/.bun/bin/bun" ]] && return 0 ;;
+        lang.rust)
+            [[ -x "$HOME/.cargo/bin/cargo" ]] && return 0 ;;
+        # ... generated from manifest installed_check field
+    esac
+    return 1
+}
+```
+
+### DRY_RUN Semantics
+
+| Mode | Behavior |
+|------|----------|
+| `DRY_RUN=false` | Normal execution |
+| `DRY_RUN=true` | Show what would happen, skip side effects |
+
+In DRY_RUN mode, modules MUST:
+- Run installed_check and report current state
+- Print what they would do (log_info "dry-run: would ...")
+- NOT execute install commands
+- NOT modify any files
+- Return 0 (no simulated failures)
+
+### Return Code Semantics
+
+| Module Type | Condition | Return | Side Effect |
+|-------------|-----------|--------|-------------|
+| Non-optional | Install success | 0 | None |
+| Non-optional | Install failure | 1 | Orchestrator aborts |
+| Non-optional | Verify failure | 1 | Orchestrator aborts |
+| Optional | Install failure | 0 | Log warning, record skip |
+| Optional | Verify failure | 0 | Log warning, record skip |
+
+### Failure Handling Helper
+
+```bash
+acfs_handle_module_failure() {
+    local module_id="$1"
+    local is_optional="$2"
+    local reason="$3"
+
+    if [[ "$is_optional" == "true" ]]; then
+        log_warn "$module_id: $reason (optional, continuing)"
+        record_skipped_tool "$module_id" "$reason"
+        echo 0  # return 0
+    else
+        log_error "$module_id: $reason"
+        echo 1  # return 1
+    fi
+}
+```
+
+### Verified Installer Execution
+
+Remote installers MUST use shared verified pathways:
+
+```bash
+# RIGHT: Uses checksums.yaml validation
+acfs_run_verified_upstream_script_as_target_user "bun" "bash"
+
+# WRONG: Never inline curl|bash in generated code
+curl -fsSL https://bun.sh/install | bash
+```
+
+### Strict-Mode Safety
+
+Generated modules must NEVER rely on `set -e` for flow control. Every risky operation is explicitly wrapped:
+
+```bash
+# WRONG: set -e makes this a landmine
+curl ... | bash
+bun --version
+
+# RIGHT: Explicit error handling
+if ! curl ... | bash; then
+    return $(acfs_handle_module_failure ...)
+fi
+if ! bun --version; then
+    return $(acfs_handle_module_failure ...)
+fi
+```
+
+### Skip Tracking Integration
+
+Optional module failures integrate with:
+- `record_skipped_tool()` — Logs skip reason (from `scripts/lib/tools.sh`)
+- `report_skipped_tools()` — End-of-install summary
+- `acfs doctor` — Shows skipped tools in "Intentionally Skipped" section
+
+### Module Function Naming Convention
+
+| Pattern | Generated From |
+|---------|----------------|
+| `acfs_install_lang_bun` | Module ID `lang.bun` |
+| `acfs_install_stack_ntm` | Module ID `stack.ntm` |
+| `acfs_install_base_system` | Module ID `base.system` |
+
+Dots in module IDs are converted to underscores.
+
+### Generated Script Header
+
+All generated module scripts include:
+
+```bash
+#!/usr/bin/env bash
+# ============================================================
+# AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
+# Regenerate: bun run generate (from packages/manifest)
+# Manifest SHA256: abc123...
+# Generated: 2025-12-21T12:00:00Z
+# ============================================================
+# This file is a library. Source it, then call functions.
+# It has no side effects when sourced.
+```
+
 ## How This Plan Interacts With Other ACFS Work
 
 This plan is intentionally focused on **eliminating “two universes” drift** (manifest vs install.sh), but it must coexist cleanly with the project’s other reliability initiatives.
