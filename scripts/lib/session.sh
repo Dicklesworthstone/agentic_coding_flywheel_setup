@@ -318,7 +318,7 @@ sanitize_session_export() {
 
     # Create temp file for atomic write
     local tmpfile
-    tmpfile=$(mktemp)
+    tmpfile=$(mktemp "${TMPDIR:-/tmp}/acfs_session_sanitize.XXXXXX" 2>/dev/null) || tmpfile="/tmp/acfs_session_sanitize.$$"
 
     # Sanitize all string values in the JSON
     # This processes the transcript content, summary, key_prompts, etc.
@@ -577,7 +577,7 @@ export_session() {
     if [[ "$sanitize" == "true" && "$format" == "json" ]]; then
         # Create temp file for sanitization
         local tmpfile
-        tmpfile=$(mktemp)
+        tmpfile=$(mktemp "${TMPDIR:-/tmp}/acfs_session_export.XXXXXX" 2>/dev/null) || tmpfile="/tmp/acfs_session_export.$$"
         printf '%s' "$exported" > "$tmpfile"
 
         # Apply sanitization

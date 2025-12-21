@@ -132,7 +132,7 @@ try_step() {
 
     # Create temp file for capturing output
     local temp_output
-    temp_output=$(mktemp)
+    temp_output=$(mktemp "${TMPDIR:-/tmp}/acfs_context.XXXXXX" 2>/dev/null) || temp_output="/tmp/acfs_context_output.$$"
     trap 'rm -f "$temp_output"' RETURN
 
     # Execute command, capturing both stdout and stderr
@@ -173,7 +173,7 @@ try_step_eval() {
 
     # Create temp file for capturing output
     local temp_output
-    temp_output=$(mktemp)
+    temp_output=$(mktemp "${TMPDIR:-/tmp}/acfs_context.XXXXXX" 2>/dev/null) || temp_output="/tmp/acfs_context_output.$$"
     trap 'rm -f "$temp_output"' RETURN
 
     # Execute command string via bash -c
