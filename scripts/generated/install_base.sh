@@ -21,6 +21,11 @@ else
     log_info() { echo "    $*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false
@@ -53,21 +58,23 @@ install_base_system() {
     log_step "Installing base.system"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get update -y"
+        log_info "dry-run: install: apt-get update -y (root)"
     else
-        if ! {
-            apt-get update -y
-        }; then
+        if ! run_as_root_shell <<'INSTALL_BASE_SYSTEM'
+apt-get update -y
+INSTALL_BASE_SYSTEM
+        then
             log_error "base.system: install command failed: apt-get update -y"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential"
+        log_info "dry-run: install: apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential (root)"
     else
-        if ! {
-            apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential
-        }; then
+        if ! run_as_root_shell <<'INSTALL_BASE_SYSTEM'
+apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential
+INSTALL_BASE_SYSTEM
+        then
             log_error "base.system: install command failed: apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential"
             return 1
         fi
@@ -115,21 +122,23 @@ install_base_filesystem() {
     log_step "Installing base.filesystem"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: mkdir -p /data/projects /data/cache"
+        log_info "dry-run: install: mkdir -p /data/projects /data/cache (root)"
     else
-        if ! {
-            mkdir -p /data/projects /data/cache
-        }; then
+        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
+mkdir -p /data/projects /data/cache
+INSTALL_BASE_FILESYSTEM
+        then
             log_error "base.filesystem: install command failed: mkdir -p /data/projects /data/cache"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: chown -R ubuntu:ubuntu /data"
+        log_info "dry-run: install: chown -R ubuntu:ubuntu /data (root)"
     else
-        if ! {
-            chown -R ubuntu:ubuntu /data
-        }; then
+        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
+chown -R ubuntu:ubuntu /data
+INSTALL_BASE_FILESYSTEM
+        then
             log_error "base.filesystem: install command failed: chown -R ubuntu:ubuntu /data"
             return 1
         fi

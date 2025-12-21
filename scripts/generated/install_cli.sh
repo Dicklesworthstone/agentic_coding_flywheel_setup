@@ -21,6 +21,11 @@ else
     log_info() { echo "    $*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false
@@ -53,111 +58,122 @@ install_cli_modern() {
     log_step "Installing cli.modern"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync"
+        log_info "dry-run: install: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync (root)"
     else
-        if ! {
-            apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y lsd || true"
+        log_info "dry-run: install: apt-get install -y lsd || true (root)"
     else
-        if ! {
-            apt-get install -y lsd || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y lsd || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y lsd || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y eza || true"
+        log_info "dry-run: install: apt-get install -y eza || true (root)"
     else
-        if ! {
-            apt-get install -y eza || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y eza || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y eza || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y bat || apt-get install -y batcat || true"
+        log_info "dry-run: install: apt-get install -y bat || apt-get install -y batcat || true (root)"
     else
-        if ! {
-            apt-get install -y bat || apt-get install -y batcat || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y bat || apt-get install -y batcat || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y bat || apt-get install -y batcat || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y fd-find || true"
+        log_info "dry-run: install: apt-get install -y fd-find || true (root)"
     else
-        if ! {
-            apt-get install -y fd-find || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y fd-find || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y fd-find || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y btop || true"
+        log_info "dry-run: install: apt-get install -y btop || true (root)"
     else
-        if ! {
-            apt-get install -y btop || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y btop || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y btop || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y dust || true"
+        log_info "dry-run: install: apt-get install -y dust || true (root)"
     else
-        if ! {
-            apt-get install -y dust || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y dust || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y dust || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y neovim || true"
+        log_info "dry-run: install: apt-get install -y neovim || true (root)"
     else
-        if ! {
-            apt-get install -y neovim || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y neovim || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y neovim || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y docker.io docker-compose-plugin || true"
+        log_info "dry-run: install: apt-get install -y docker.io docker-compose-plugin || true (root)"
     else
-        if ! {
-            apt-get install -y docker.io docker-compose-plugin || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y docker.io docker-compose-plugin || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y docker.io docker-compose-plugin || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y lazygit || true"
+        log_info "dry-run: install: apt-get install -y lazygit || true (root)"
     else
-        if ! {
-            apt-get install -y lazygit || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y lazygit || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y lazygit || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y lazydocker || true"
+        log_info "dry-run: install: apt-get install -y lazydocker || true (root)"
     else
-        if ! {
-            apt-get install -y lazydocker || true
-        }; then
+        if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
+apt-get install -y lazydocker || true
+INSTALL_CLI_MODERN
+        then
             log_error "cli.modern: install command failed: apt-get install -y lazydocker || true"
             return 1
         fi

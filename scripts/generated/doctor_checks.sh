@@ -21,6 +21,11 @@ else
     log_info() { echo "    $*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false

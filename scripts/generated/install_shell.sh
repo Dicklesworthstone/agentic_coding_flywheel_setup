@@ -21,6 +21,11 @@ else
     log_info() { echo "    $*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false
@@ -53,11 +58,12 @@ install_shell_zsh() {
     log_step "Installing shell.zsh"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: sudo apt-get install -y zsh"
+        log_info "dry-run: install: sudo apt-get install -y zsh (target_user)"
     else
-        if ! {
-            sudo apt-get install -y zsh
-        }; then
+        if ! run_as_target_shell <<'INSTALL_SHELL_ZSH'
+sudo apt-get install -y zsh
+INSTALL_SHELL_ZSH
+        then
             log_error "shell.zsh: install command failed: sudo apt-get install -y zsh"
             return 1
         fi

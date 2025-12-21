@@ -55,6 +55,11 @@ else
     log_info() { echo "    \$*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "\$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "\$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false
@@ -105,6 +110,29 @@ function buildVerifiedInstallerPipe(module: Module): string {
     }
   }
   return parts.join(' ');
+}
+
+/**
+ * Map module.run_as to the appropriate shell helper function name
+ */
+function getRunAsShellHelper(runAs: string): string {
+  switch (runAs) {
+    case 'target_user':
+      return 'run_as_target_shell';
+    case 'root':
+      return 'run_as_root_shell';
+    case 'current':
+    default:
+      return 'run_as_current_shell';
+  }
+}
+
+/**
+ * Generate a heredoc delimiter from module ID (sanitized, collision-resistant)
+ */
+function toHeredocDelimiter(moduleId: string): string {
+  // Convert module.id to SCREAMING_SNAKE_CASE and prefix with INSTALL_
+  return 'INSTALL_' + moduleId.replace(/\./g, '_').toUpperCase();
 }
 
 /**
@@ -175,6 +203,38 @@ function wrapCommandBlock(
   lines.push('        if ! {');
   lines.push(...indentLines(commandLines, 12));
   lines.push('        }; then');
+  lines.push(...indentLines(moduleFailureLines(module, failureReason), 12));
+  lines.push('        fi');
+  lines.push('    fi');
+
+  return lines;
+}
+
+/**
+ * Wrap install commands in a run_as_*_shell heredoc
+ * Uses single-quoted delimiter to prevent outer shell expansion
+ */
+function wrapInstallHeredoc(
+  module: Module,
+  summary: string,
+  commandLines: string[],
+  failureReason: string
+): string[] {
+  const lines: string[] = [];
+  const escapedSummary = escapeBash(summary);
+  const shellHelper = getRunAsShellHelper(module.run_as);
+  const delimiter = toHeredocDelimiter(module.id);
+
+  lines.push('    if [[ "${DRY_RUN:-false}" == "true" ]]; then');
+  lines.push(`        log_info "dry-run: ${escapedSummary} (${module.run_as})"`);
+  lines.push('    else');
+  lines.push(`        if ! ${shellHelper} <<'${delimiter}'`);
+  // Commands inside heredoc (no extra indentation - heredoc is literal)
+  for (const cmd of commandLines) {
+    lines.push(cmd);
+  }
+  lines.push(delimiter);
+  lines.push('        then');
   lines.push(...indentLines(moduleFailureLines(module, failureReason), 12));
   lines.push('        fi');
   lines.push('    fi');
@@ -295,18 +355,21 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
 
 /**
  * Generate the install commands for a module
+ * Uses run_as_*_shell heredocs for proper user context execution
  */
 function generateInstallCommands(module: Module): string[] {
   const lines: string[] = [];
 
   // If module has verified_installer, generate that first (before any install commands)
+  // Note: verified_installer runs in current context since it needs access to security.sh
+  // The actual installer script is piped through the runner, so it runs correctly
   if (module.verified_installer) {
     const snippet = generateVerifiedInstallerSnippet(module);
     const summary = `verified installer: ${module.id}`;
     lines.push(...wrapCommandBlock(module, summary, snippet, 'verified installer failed'));
   }
 
-  // Process remaining install commands
+  // Process remaining install commands via heredocs
   for (const cmd of module.install) {
     // Check if it's a description (not an actual command)
     if (cmd.startsWith('"') || cmd.match(/^[A-Z][a-z]/)) {
@@ -318,7 +381,7 @@ function generateInstallCommands(module: Module): string[] {
       const blockLines = cleanCmd.split('\n');
       const summary = blockLines[0]?.trim() || 'install command';
       lines.push(
-        ...wrapCommandBlock(
+        ...wrapInstallHeredoc(
           module,
           `install: ${summary}`,
           blockLines,
@@ -328,7 +391,7 @@ function generateInstallCommands(module: Module): string[] {
     } else {
       const summary = cmd.trim();
       lines.push(
-        ...wrapCommandBlock(
+        ...wrapInstallHeredoc(
           module,
           `install: ${summary}`,
           [summary],

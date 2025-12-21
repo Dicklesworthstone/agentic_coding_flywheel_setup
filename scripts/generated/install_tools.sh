@@ -21,6 +21,11 @@ else
     log_info() { echo "    $*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false
@@ -147,11 +152,12 @@ install_tools_ast_grep() {
     log_step "Installing tools.ast_grep"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: ~/.cargo/bin/cargo install ast-grep --locked"
+        log_info "dry-run: install: ~/.cargo/bin/cargo install ast-grep --locked (target_user)"
     else
-        if ! {
-            ~/.cargo/bin/cargo install ast-grep --locked
-        }; then
+        if ! run_as_target_shell <<'INSTALL_TOOLS_AST_GREP'
+~/.cargo/bin/cargo install ast-grep --locked
+INSTALL_TOOLS_AST_GREP
+        then
             log_error "tools.ast_grep: install command failed: ~/.cargo/bin/cargo install ast-grep --locked"
             return 1
         fi
@@ -179,11 +185,12 @@ install_tools_vault() {
     log_step "Installing tools.vault"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg"
+        log_info "dry-run: install: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg (root)"
     else
-        if ! {
-            curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-        }; then
+        if ! run_as_root_shell <<'INSTALL_TOOLS_VAULT'
+curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+INSTALL_TOOLS_VAULT
+        then
             log_warn "tools.vault: install command failed: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg"
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "tools.vault" "install command failed: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg"
@@ -194,11 +201,12 @@ install_tools_vault() {
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com \$(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list"
+        log_info "dry-run: install: echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com \$(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list (root)"
     else
-        if ! {
-            echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list
-        }; then
+        if ! run_as_root_shell <<'INSTALL_TOOLS_VAULT'
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list
+INSTALL_TOOLS_VAULT
+        then
             log_warn "tools.vault: install command failed: echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com \$(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list"
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "tools.vault" "install command failed: echo \"deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com \$(lsb_release -cs) main\" > /etc/apt/sources.list.d/hashicorp.list"
@@ -209,11 +217,12 @@ install_tools_vault() {
         fi
     fi
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get update && apt-get install -y vault"
+        log_info "dry-run: install: apt-get update && apt-get install -y vault (root)"
     else
-        if ! {
-            apt-get update && apt-get install -y vault
-        }; then
+        if ! run_as_root_shell <<'INSTALL_TOOLS_VAULT'
+apt-get update && apt-get install -y vault
+INSTALL_TOOLS_VAULT
+        then
             log_warn "tools.vault: install command failed: apt-get update && apt-get install -y vault"
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "tools.vault" "install command failed: apt-get update && apt-get install -y vault"

@@ -21,6 +21,11 @@ else
     log_info() { echo "    $*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false
@@ -53,11 +58,12 @@ install_db_postgres18() {
     log_step "Installing db.postgres18"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y postgresql-18"
+        log_info "dry-run: install: apt-get install -y postgresql-18 (root)"
     else
-        if ! {
-            apt-get install -y postgresql-18
-        }; then
+        if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
+apt-get install -y postgresql-18
+INSTALL_DB_POSTGRES18
+        then
             log_warn "db.postgres18: install command failed: apt-get install -y postgresql-18"
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "db.postgres18" "install command failed: apt-get install -y postgresql-18"

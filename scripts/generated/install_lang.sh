@@ -21,6 +21,11 @@ else
     log_info() { echo "    $*"; }
 fi
 
+# Source install helpers (run_as_*_shell, selection helpers)
+if [[ -f "$SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    source "$SCRIPT_DIR/../lib/install_helpers.sh"
+fi
+
 # Optional security verification for upstream installer scripts.
 # Scripts that need it should call: acfs_security_init
 ACFS_SECURITY_READY=false
@@ -194,11 +199,12 @@ install_lang_go() {
     log_step "Installing lang.go"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: apt-get install -y golang-go"
+        log_info "dry-run: install: apt-get install -y golang-go (root)"
     else
-        if ! {
-            apt-get install -y golang-go
-        }; then
+        if ! run_as_root_shell <<'INSTALL_LANG_GO'
+apt-get install -y golang-go
+INSTALL_LANG_GO
+        then
             log_error "lang.go: install command failed: apt-get install -y golang-go"
             return 1
         fi
