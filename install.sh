@@ -72,6 +72,22 @@ install_gum_early() {
         return 0
     fi
 
+    # Need curl to fetch gum - if curl isn't installed yet, skip early install
+    # (gum will be installed later in install_cli_tools after ensure_base_deps)
+    if ! command -v curl &>/dev/null; then
+        return 0
+    fi
+
+    # Need gpg for apt key handling
+    if ! command -v gpg &>/dev/null; then
+        return 0
+    fi
+
+    # Need apt-get for installation
+    if ! command -v apt-get &>/dev/null; then
+        return 0
+    fi
+
     # Need root/sudo for apt operations
     local sudo_cmd=""
     if [[ $EUID -ne 0 ]]; then
@@ -217,6 +233,9 @@ parse_args() {
                 shift
                 ;;
             --mode)
+                if [[ -z "${2:-}" ]]; then
+                    log_fatal "--mode requires a value (e.g., --mode vibe)"
+                fi
                 MODE="$2"
                 shift 2
                 ;;
@@ -744,12 +763,22 @@ install_github_cli() {
 install_cli_tools() {
     log_step "4/9" "Installing CLI tools..."
 
-    # Note: gum is installed early (before banner) via install_gum_early()
-    # Just verify it's working
+    # Install gum if not already installed (install_gum_early may have skipped
+    # if curl/gpg weren't available at that point)
     if command_exists gum; then
-        log_detail "gum already installed (installed early for enhanced UI)"
+        log_detail "gum already installed"
     else
-        log_detail "gum not available (optional)"
+        log_detail "Installing gum for glamorous shell scripts"
+        $SUDO mkdir -p /etc/apt/keyrings
+        acfs_curl https://repo.charm.sh/apt/gpg.key | $SUDO gpg --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null || true
+        echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | $SUDO tee /etc/apt/sources.list.d/charm.list > /dev/null
+        $SUDO apt-get update -y >/dev/null 2>&1 || true
+        if $SUDO apt-get install -y gum 2>/dev/null; then
+            HAS_GUM=true
+            log_success "gum installed - enhanced UI now available"
+        else
+            log_detail "gum installation failed (optional, continuing)"
+        fi
     fi
 
     log_detail "Installing required apt packages"
