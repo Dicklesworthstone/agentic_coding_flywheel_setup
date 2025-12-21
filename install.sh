@@ -248,6 +248,12 @@ parse_args() {
                     log_fatal "--mode requires a value (e.g., --mode vibe)"
                 fi
                 MODE="$2"
+                case "$MODE" in
+                    vibe|safe) ;;
+                    *)
+                        log_fatal "Invalid --mode '$MODE' (expected: vibe or safe)"
+                        ;;
+                esac
                 shift 2
                 ;;
             --skip-postgres)
@@ -296,14 +302,22 @@ install_asset() {
         return 1
     fi
 
+    if [[ -z "${ACFS_HOME:-}" ]] || [[ -z "${TARGET_HOME:-}" ]]; then
+        log_error "install_asset: ACFS_HOME/TARGET_HOME not set (call init_target_paths first)"
+        return 1
+    fi
+
     # Security: Validate dest_path is under expected directories
     local allowed_prefixes=("$ACFS_HOME" "$TARGET_HOME" "/data")
     local valid_dest=false
     for prefix in "${allowed_prefixes[@]}"; do
-        if [[ "$dest_path" == "$prefix"* ]]; then
-            valid_dest=true
-            break
-        fi
+        [[ -n "$prefix" ]] || continue
+        case "$dest_path" in
+            "$prefix" | "$prefix"/*)
+                valid_dest=true
+                break
+                ;;
+        esac
     done
     if [[ "$valid_dest" != "true" ]]; then
         log_error "install_asset: Destination outside allowed paths: $dest_path"
@@ -546,6 +560,17 @@ init_target_paths() {
     log_detail "Target home: $TARGET_HOME"
 }
 
+validate_target_user() {
+    if [[ -z "${TARGET_USER:-}" ]]; then
+        log_fatal "TARGET_USER is empty"
+    fi
+
+    # Hard-stop on unsafe usernames (prevents injection into sudoers/paths).
+    if [[ ! "$TARGET_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        log_fatal "Invalid TARGET_USER '$TARGET_USER' (expected: lowercase user name like 'ubuntu')"
+    fi
+}
+
 ensure_ubuntu() {
     if [[ ! -f /etc/os-release ]]; then
         log_fatal "Cannot detect OS. This script requires Ubuntu 24.04+ or 25.x"
@@ -606,6 +631,9 @@ normalize_user() {
         log_detail "Enabling passwordless sudo for $TARGET_USER"
         echo "$TARGET_USER ALL=(ALL) NOPASSWD:ALL" | $SUDO tee /etc/sudoers.d/90-ubuntu-acfs > /dev/null
         $SUDO chmod 440 /etc/sudoers.d/90-ubuntu-acfs
+        if command_exists visudo && ! $SUDO visudo -c -f /etc/sudoers.d/90-ubuntu-acfs >/dev/null 2>&1; then
+            log_fatal "Invalid sudoers file generated at /etc/sudoers.d/90-ubuntu-acfs"
+        fi
     fi
 
     # Copy SSH keys from root if running as root
@@ -1128,6 +1156,7 @@ finalize() {
     # Install script libraries
     install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh"
     install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh"
+    install_asset "scripts/lib/security.sh" "$ACFS_HOME/scripts/lib/security.sh"
     install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh"
     install_asset "scripts/lib/update.sh" "$ACFS_HOME/scripts/lib/update.sh"
 
@@ -1136,6 +1165,11 @@ finalize() {
     $SUDO chmod 755 "$ACFS_HOME/scripts/services-setup.sh"
     $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"*.sh
     $SUDO chown -R "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts"
+
+    # Install checksums + version metadata so `acfs update --stack` can verify upstream scripts.
+    install_asset "checksums.yaml" "$ACFS_HOME/checksums.yaml"
+    install_asset "VERSION" "$ACFS_HOME/VERSION"
+    $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" "$ACFS_HOME/VERSION" 2>/dev/null || true
 
     # Legacy: Install doctor as acfs binary (for backwards compat)
     install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs"
@@ -1494,6 +1528,7 @@ main() {
     fi
 
     ensure_root
+    validate_target_user
     init_target_paths
     ensure_ubuntu
     confirm_or_exit
