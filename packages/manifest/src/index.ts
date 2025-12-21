@@ -57,3 +57,17 @@ export {
 
 // Export stats interface
 export type { ManifestStats } from './utils.js';
+
+// Export advanced validation API (bead mjt.3.2)
+export {
+  validateDependencyExistence,
+  detectDependencyCycles,
+  validatePhaseOrdering,
+  validateManifest as validateManifestAdvanced,
+  formatValidationErrors,
+} from './validate.js';
+
+export type {
+  ValidationError as AdvancedValidationError,
+  ValidationResult as AdvancedValidationResult,
+} from './validate.js';

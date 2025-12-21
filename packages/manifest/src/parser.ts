@@ -184,6 +184,11 @@ export function validateManifest(manifest: unknown): ValidationResult {
   const cycleErrors = detectDependencyCycles(data.modules);
   errors.push(...cycleErrors);
 
+  // Check for phase ordering violations (deps must be same or earlier phase)
+  // Related: bead mjt.3.2
+  const phaseErrors = validatePhaseOrdering(data.modules);
+  errors.push(...phaseErrors);
+
   // Warnings for modules with install steps that look like descriptions
   for (const module of data.modules) {
     if (module.install.length === 0) {
@@ -248,6 +253,38 @@ function detectDependencyCycles(modules: Manifest['modules']): ValidationError[]
         message: `Dependency cycle detected: ${cycle.join(' -> ')} -> ${cycle[0]}`,
       });
       break; // Only report first cycle found
+    }
+  }
+
+  return errors;
+}
+
+/**
+ * Validate phase ordering: dependencies must be in same or earlier phase
+ * Related: bead mjt.3.2
+ */
+function validatePhaseOrdering(modules: Manifest['modules']): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const moduleMap = new Map(modules.map((m) => [m.id, m]));
+
+  for (const module of modules) {
+    if (!module.dependencies) continue;
+
+    const modulePhase = module.phase ?? 1;
+
+    for (const depId of module.dependencies) {
+      const dep = moduleMap.get(depId);
+      if (!dep) continue; // Missing dependency is caught by existence check
+
+      const depPhase = dep.phase ?? 1;
+
+      if (depPhase > modulePhase) {
+        errors.push({
+          path: `modules.${module.id}.dependencies`,
+          message: `Phase violation: "${module.id}" (phase ${modulePhase}) depends on "${depId}" (phase ${depPhase}). Dependencies must be in same or earlier phase.`,
+          value: depId,
+        });
+      }
     }
   }
 

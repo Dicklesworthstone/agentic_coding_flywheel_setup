@@ -143,6 +143,71 @@ function escapeBash(str: string): string {
     .replace(/`/g, '\\`');   // Backticks (prevents command substitution)
 }
 
+function indentLines(lines: string[], spaces: number): string[] {
+  const pad = ' '.repeat(spaces);
+  return lines.map((line) => (line.length === 0 ? line : `${pad}${line}`));
+}
+
+function moduleFailureLines(module: Module, reason: string): string[] {
+  const escapedReason = escapeBash(reason);
+
+  if (module.optional) {
+    return [
+      `log_warn "${module.id}: ${escapedReason}"`,
+      'if type -t record_skipped_tool >/dev/null 2>&1; then',
+      `  record_skipped_tool "${module.id}" "${escapedReason}"`,
+      'elif type -t state_tool_skip >/dev/null 2>&1; then',
+      `  state_tool_skip "${module.id}"`,
+      'fi',
+      'return 0',
+    ];
+  }
+
+  return [
+    `log_error "${module.id}: ${escapedReason}"`,
+    'return 1',
+  ];
+}
+
+function wrapCommandBlock(
+  module: Module,
+  summary: string,
+  commandLines: string[],
+  failureReason: string
+): string[] {
+  const lines: string[] = [];
+  const escapedSummary = escapeBash(summary);
+
+  lines.push('    if [[ "${DRY_RUN:-false}" == "true" ]]; then');
+  lines.push(`        log_info "dry-run: ${escapedSummary}"`);
+  lines.push('    else');
+  lines.push('        if ! {');
+  lines.push(...indentLines(commandLines, 12));
+  lines.push('        }; then');
+  lines.push(...indentLines(moduleFailureLines(module, failureReason), 12));
+  lines.push('        fi');
+  lines.push('    fi');
+
+  return lines;
+}
+
+function wrapOptionalVerifyBlock(module: Module, summary: string, commandLines: string[]): string[] {
+  const lines: string[] = [];
+  const escapedSummary = escapeBash(summary);
+
+  lines.push('    if [[ "${DRY_RUN:-false}" == "true" ]]; then');
+  lines.push(`        log_info "dry-run: verify (optional): ${escapedSummary}"`);
+  lines.push('    else');
+  lines.push('        if ! {');
+  lines.push(...indentLines(commandLines, 12));
+  lines.push('        }; then');
+  lines.push(`            log_warn "Optional verify failed: ${module.id}"`);
+  lines.push('        fi');
+  lines.push('    fi');
+
+  return lines;
+}
+
 function getModulePhase(module: Module): number {
   return module.phase ?? 1;
 }
@@ -218,21 +283,22 @@ function isCurlPipeInstaller(cmd: string): boolean {
 
 function generateVerifiedInstallerSnippet(moduleId: string, spec: VerifiedInstallerSpec): string[] {
   return [
-    '    # Verified upstream installer script (checksums.yaml)',
-    '    if ! acfs_security_init; then',
-    `        log_error "Security verification unavailable for ${moduleId}"`,
-    '        return 1',
-    '    fi',
-    '',
+    '# Verified upstream installer script (checksums.yaml)',
+    'if ! acfs_security_init; then',
+    `    log_error "Security verification unavailable for ${moduleId}"`,
+    '    false',
+    'else',
     `    local tool="${spec.tool}"`,
     '    local url="${KNOWN_INSTALLERS[$tool]:-}"',
     '    local expected_sha256',
     '    expected_sha256="$(get_checksum "$tool")"',
     '    if [[ -z "$url" ]] || [[ -z "$expected_sha256" ]]; then',
     '        log_error "Missing checksum entry for $tool"',
-    '        return 1',
+    '        false',
+    '    else',
+    `        verify_checksum "$url" "$expected_sha256" "$tool" | ${spec.pipe}`,
     '    fi',
-    `    verify_checksum "$url" "$expected_sha256" "$tool" | ${spec.pipe}`,
+    'fi',
   ];
 }
 
@@ -251,7 +317,9 @@ function generateInstallCommands(module: Module): string[] {
 
     // Rewrite known upstream curl|bash/sh install commands to verified execution.
     if (verifiedSpec && !verifiedInserted && isCurlPipeInstaller(normalized)) {
-      lines.push(...generateVerifiedInstallerSnippet(module.id, verifiedSpec));
+      const snippet = generateVerifiedInstallerSnippet(module.id, verifiedSpec);
+      const summary = `verified installer: ${module.id}`;
+      lines.push(...wrapCommandBlock(module, summary, snippet, 'verified installer failed'));
       verifiedInserted = true;
       continue;
     }
@@ -263,9 +331,26 @@ function generateInstallCommands(module: Module): string[] {
     } else if (cmd.includes('\n') || cmd.startsWith('|')) {
       // Multi-line command (from YAML literal block)
       const cleanCmd = cmd.replace(/^\|?\n?/, '').trim();
-      lines.push(`    ${cleanCmd}`);
+      const blockLines = cleanCmd.split('\n');
+      const summary = blockLines[0]?.trim() || 'install command';
+      lines.push(
+        ...wrapCommandBlock(
+          module,
+          `install: ${summary}`,
+          blockLines,
+          `install command failed: ${summary}`
+        )
+      );
     } else {
-      lines.push(`    ${cmd}`);
+      const summary = cmd.trim();
+      lines.push(
+        ...wrapCommandBlock(
+          module,
+          `install: ${summary}`,
+          [summary],
+          `install command failed: ${summary}`
+        )
+      );
     }
   }
 
@@ -282,11 +367,22 @@ function generateVerifyCommands(module: Module): string[] {
     // Skip commands with || true at the end for required checks
     const isOptional = cmd.includes('|| true');
     const cleanCmd = cmd.replace(/\s*\|\|\s*true\s*$/, '').trim();
+    const blockLines = cleanCmd.includes('\n') || cleanCmd.startsWith('|')
+      ? cleanCmd.replace(/^\|?\n?/, '').trim().split('\n')
+      : [cleanCmd];
+    const summary = blockLines[0]?.trim() || 'verify command';
 
     if (isOptional) {
-      lines.push(`    ${cleanCmd} || log_warn "Optional: ${module.id} verify skipped"`);
+      lines.push(...wrapOptionalVerifyBlock(module, summary, blockLines));
     } else {
-      lines.push(`    ${cleanCmd} || { log_error "Verify failed: ${module.id}"; return 1; }`);
+      lines.push(
+        ...wrapCommandBlock(
+          module,
+          `verify: ${summary}`,
+          blockLines,
+          `verify failed: ${summary}`
+        )
+      );
     }
   }
 
