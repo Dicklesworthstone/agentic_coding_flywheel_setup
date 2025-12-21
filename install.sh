@@ -25,9 +25,11 @@ ACFS_VERSION="0.1.0"
 ACFS_RAW="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main"
 # Note: ACFS_HOME is set after TARGET_HOME is determined
 ACFS_LOG_DIR="/var/log/acfs"
-# SCRIPT_DIR is empty when running via curl|bash (BASH_SOURCE is unset)
-if [[ -n "${BASH_SOURCE[0]:-}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# SCRIPT_DIR is only used when running from a checked-out repo (local assets).
+# When running via `curl ... | bash -s`, `BASH_SOURCE[0]` is unset under `set -u`.
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-}"
+if [[ -n "$SCRIPT_SOURCE" ]] && [[ -f "$SCRIPT_SOURCE" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 else
     SCRIPT_DIR=""
 fi
