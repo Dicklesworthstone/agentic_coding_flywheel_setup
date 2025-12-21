@@ -167,7 +167,7 @@ export default function OSSelectionPage() {
       </div>
 
       {/* OS Options */}
-      <div className="grid gap-6 sm:grid-cols-2" role="radiogroup" aria-label="Select your operating system">
+      <div data-os-selection className="grid gap-6 sm:grid-cols-2" role="radiogroup" aria-label="Select your operating system">
         <OSCard
           icon={<Apple className="h-10 w-10" />}
           title="Mac"
