@@ -15,6 +15,7 @@ import {
   GuideTip,
 } from "@/components/simpler-guide";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { Jargon } from "@/components/jargon";
 
 // Confetti colors
 const CONFETTI_COLORS = [
@@ -122,8 +123,7 @@ export default function LaunchOnboardingPage() {
           Congratulations! You&apos;re all set up!
         </h1>
         <p className="text-lg text-muted-foreground">
-          Your VPS is now a powerful coding environment ready for AI-assisted
-          development.
+          Your <Jargon term="vps">VPS</Jargon> is now a powerful coding environment ready for <Jargon term="agentic">AI-assisted</Jargon> development.
         </p>
       </div>
 
@@ -156,21 +156,21 @@ export default function LaunchOnboardingPage() {
             <code className="rounded bg-muted px-2 py-1 text-sm">cc</code>
           </Card>
           <Card className="p-4">
-            <h3 className="mb-2 font-medium">Use tmux with ntm</h3>
+            <h3 className="mb-2 font-medium">Use <Jargon term="tmux">tmux</Jargon> with <Jargon term="ntm">ntm</Jargon></h3>
             <p className="mb-3 text-sm text-muted-foreground">
               Manage terminal sessions
             </p>
             <code className="rounded bg-muted px-2 py-1 text-sm">ntm new myproject</code>
           </Card>
           <Card className="p-4">
-            <h3 className="mb-2 font-medium">Search with ripgrep</h3>
+            <h3 className="mb-2 font-medium">Search with <Jargon term="ripgrep">ripgrep</Jargon></h3>
             <p className="mb-3 text-sm text-muted-foreground">
               Fast code search
             </p>
             <code className="rounded bg-muted px-2 py-1 text-sm">rg &quot;pattern&quot;</code>
           </Card>
           <Card className="p-4">
-            <h3 className="mb-2 font-medium">Git with lazygit</h3>
+            <h3 className="mb-2 font-medium"><Jargon term="git">Git</Jargon> with <Jargon term="lazygit">lazygit</Jargon></h3>
             <p className="mb-3 text-sm text-muted-foreground">
               Visual git interface
             </p>

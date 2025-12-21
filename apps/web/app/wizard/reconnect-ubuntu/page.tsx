@@ -16,6 +16,7 @@ import {
   GuideTip,
 } from "@/components/simpler-guide";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { Jargon } from "@/components/jargon";
 
 export default function ReconnectUbuntuPage() {
   const router = useRouter();
@@ -81,7 +82,7 @@ export default function ReconnectUbuntuPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          If you ran the installer as root, reconnect as the ubuntu user to get
+          If you ran the installer as <Jargon term="root-user">root</Jargon>, reconnect as the <Jargon term="ubuntu-user">ubuntu user</Jargon> to get
           the full shell experience.
         </p>
       </div>

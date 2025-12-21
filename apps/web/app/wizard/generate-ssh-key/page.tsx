@@ -17,6 +17,7 @@ import {
   GuideTip,
   GuideCaution,
 } from "@/components/simpler-guide";
+import { Jargon } from "@/components/jargon";
 
 export default function GenerateSSHKeyPage() {
   const router = useRouter();
@@ -72,14 +73,14 @@ export default function GenerateSSHKeyPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          This is your secure &quot;login key&quot; for connecting to your VPS.
+          This is your secure &quot;login key&quot; for connecting to your <Jargon term="vps">VPS</Jargon>.
         </p>
       </div>
 
       {/* Explanation */}
       <AlertCard variant="info" title="How SSH keys work">
-        You&apos;re creating a <strong className="text-foreground">key pair</strong>: a private key (stays on
-        your computer) and a public key (you&apos;ll paste into your VPS
+        You&apos;re creating a <strong className="text-foreground">key pair</strong>: a <Jargon term="private-key">private key</Jargon> (stays on
+        your computer) and a <Jargon term="public-key">public key</Jargon> (you&apos;ll paste into your <Jargon term="vps">VPS</Jargon>{" "}
         provider). Think of it like a lock and key — you share the lock, but
         only you have the key.
       </AlertCard>
@@ -88,7 +89,7 @@ export default function GenerateSSHKeyPage() {
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Step 1: Generate the key</h2>
         <p className="text-sm text-muted-foreground">
-          Run this command in your terminal. Press <strong>Enter</strong> twice
+          Run this command in your <Jargon term="terminal">terminal</Jargon>. Press <strong>Enter</strong> twice
           when asked for a passphrase (leave it empty for now).
         </p>
         <CommandCard

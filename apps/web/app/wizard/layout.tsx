@@ -23,7 +23,6 @@ export default function WizardLayout({
     return step?.id ?? 1;
   }, [pathname]);
 
-  const currentStepData = WIZARD_STEPS.find((s) => s.id === currentStep);
   const prevStep = WIZARD_STEPS.find((s) => s.id === currentStep - 1);
   const nextStep = WIZARD_STEPS.find((s) => s.id === currentStep + 1);
 
@@ -122,11 +121,6 @@ export default function WizardLayout({
                   </span>
                   <span>Step {currentStep} of {WIZARD_STEPS.length}</span>
                 </div>
-                {currentStepData && (
-                  <h1 className="font-mono text-2xl font-bold tracking-tight">
-                    {currentStepData.title}
-                  </h1>
-                )}
               </div>
 
               {/* Page content */}

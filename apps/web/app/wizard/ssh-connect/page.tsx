@@ -18,6 +18,7 @@ import {
   GuideTip,
   GuideCaution,
 } from "@/components/simpler-guide";
+import { Jargon } from "@/components/jargon";
 
 interface TroubleshootingItem {
   error: string;
@@ -182,7 +183,7 @@ export default function SSHConnectPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              SSH into your VPS
+              <Jargon term="ssh">SSH</Jargon> into your <Jargon term="vps">VPS</Jargon>
             </h1>
             <p className="text-sm text-muted-foreground">
               ~1 min
@@ -190,7 +191,7 @@ export default function SSHConnectPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Connect to your new VPS for the first time.
+          Connect to your new <Jargon term="vps">VPS</Jargon> for the first time.
         </p>
       </div>
 

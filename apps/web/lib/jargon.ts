@@ -542,6 +542,114 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     why: "Having a consistent environment prevents 'works on my machine' problems. Agent Flywheel gives everyone the same, reproducible development environment.",
     related: ["vps", "deployment"],
   },
+
+  script: {
+    term: "Script",
+    short: "A file containing commands that run automatically in sequence",
+    long: "A script is a text file containing a series of commands that execute one after another. Instead of typing commands manually, you run the script and it does everything for you. Shell scripts (ending in .sh) run in the terminal. The Agent Flywheel install script contains hundreds of commands that set up your entire development environment automatically.",
+    analogy: "Like a recipe that a robot chef can follow automatically. You give it the recipe once, and it executes every step in order without you having to supervise each one.",
+    why: "Scripts automate repetitive tasks and ensure consistency. Our install script means you don't have to manually type hundreds of commands — one script does everything perfectly every time.",
+    related: ["bash", "one-liner", "curl"],
+  },
+
+  "root-user": {
+    term: "Root User",
+    short: "The superuser account with unlimited control over a Linux system",
+    long: "The root user (also called 'superuser') has complete control over a Linux system — it can modify any file, install any software, and change any setting. Root access is powerful but dangerous; a mistake as root can break your entire system. That's why we switch to a regular 'ubuntu' user for day-to-day work, only using root powers when absolutely necessary.",
+    analogy: "Like the master key to a building. The janitor with the master key can open any door, but you wouldn't use it for everyday access — too risky if it gets lost or misused.",
+    why: "The installer runs as root to set everything up, then creates a safer 'ubuntu' user for your actual work. This follows security best practices.",
+    related: ["sudo", "ubuntu-user"],
+  },
+
+  "ubuntu-user": {
+    term: "Ubuntu User",
+    short: "A regular user account for safe day-to-day work",
+    long: "The 'ubuntu' user is a standard Linux account created during VPS setup. Unlike root, it has limited permissions — you need to explicitly ask for admin powers (using 'sudo') to make system changes. This prevents accidental damage and follows security best practices. After Agent Flywheel installs, you'll reconnect as the ubuntu user for all your coding work.",
+    analogy: "Like having a regular office key that opens your own office but not the server room. You can request access to the server room (using sudo), but you have to be deliberate about it.",
+    why: "Using a regular user account is safer. If something goes wrong, the damage is limited to your user space, not the entire system.",
+    related: ["root-user", "sudo"],
+  },
+
+  "public-key": {
+    term: "Public Key",
+    short: "The shareable half of your SSH key pair — like your email address",
+    long: "Your public key is one half of an SSH key pair. It's designed to be shared freely — you give it to servers you want to access. The public key can only encrypt data; it cannot decrypt. When you add your public key to a VPS, you're telling that server 'trust the person who has the matching private key.' Your public key typically starts with 'ssh-ed25519' or 'ssh-rsa'.",
+    analogy: "Like your email address: you share it with everyone who needs to contact you. Anyone can send you encrypted messages using your public key, but only you (with your private key) can read them.",
+    why: "Public keys enable passwordless, secure authentication. You share this with every VPS provider; they use it to verify you're really you.",
+    related: ["private-key", "ssh", "ssh-key"],
+  },
+
+  "private-key": {
+    term: "Private Key",
+    short: "The secret half of your SSH key pair — NEVER share this",
+    long: "Your private key is the secret half of your SSH key pair. It lives on your computer (in ~/.ssh/) and should NEVER be shared, copied to servers, or shown to anyone. When you connect to a VPS, your computer uses the private key to prove your identity. If someone gets your private key, they can access all your servers. Keep it secret!",
+    analogy: "Like the PIN to your bank card: anyone can know your card number (public key), but only you should know the PIN (private key). Together, they prove you're authorized.",
+    why: "The private key is your proof of identity. Guard it carefully — it's the only thing standing between your servers and unauthorized access.",
+    related: ["public-key", "ssh", "ssh-key"],
+  },
+
+  "ip-address": {
+    term: "IP Address",
+    short: "A unique number that identifies a computer on the internet (like 192.168.1.100)",
+    long: "An IP address is a numerical label assigned to every device connected to the internet. It's like a phone number for computers — when you want to connect to your VPS, you use its IP address. IPv4 addresses look like '192.168.1.100' (four numbers 0-255, separated by dots). When you create a VPS, the provider gives you an IP address to use for SSH connections.",
+    analogy: "Like a street address for your house. When you want to send mail (data), you need to know the exact address. Every house (computer) on the internet has a unique address.",
+    why: "You need your VPS's IP address to connect to it. The wizard asks you to enter it so we can generate the correct SSH command for you.",
+    related: ["vps", "ssh"],
+  },
+
+  configuration: {
+    term: "Configuration",
+    short: "Settings that control how software behaves",
+    long: "Configuration (or 'config') refers to settings that customize how software works. Config files are text files (often ending in .conf, .json, or .yaml) that tell programs what to do. For example, your shell config (~/.zshrc) controls your terminal's appearance and behavior. Agent Flywheel sets up optimal configurations for all installed tools.",
+    analogy: "Like the settings app on your phone. You configure your phone's behavior (ringtone, wallpaper, notifications) through settings. Software config is the same concept.",
+    why: "Good configuration makes tools more productive. Agent Flywheel pre-configures everything with power-user settings so you get the best experience immediately.",
+    related: ["zsh", "environment"],
+  },
+
+  cargo: {
+    term: "Cargo",
+    short: "Rust's package manager and build tool",
+    long: "Cargo is the official tool for Rust projects. It handles downloading dependencies, compiling code, running tests, and publishing packages. 'cargo install' is how you install Rust-based command-line tools. Many modern developer tools are installed via Cargo because it produces fast, native executables.",
+    analogy: "Cargo is to Rust what npm is to JavaScript — the central hub for getting packages and building projects.",
+    why: "With Cargo installed, you can install any Rust-based tool with a single command. The Rust ecosystem has many excellent developer tools.",
+    related: ["rust", "package-manager"],
+  },
+
+  postgresql: {
+    term: "PostgreSQL",
+    short: "Powerful open-source database for storing and querying data",
+    long: "PostgreSQL (often 'Postgres') is a robust, open-source relational database. It stores data in tables with rows and columns, supporting complex queries, transactions, and data integrity. It's the database of choice for many production applications. We install PostgreSQL 18, the latest version with enhanced performance and features.",
+    analogy: "Like a highly organized filing cabinet for your application's data. You can store millions of records and find any specific one instantly using queries.",
+    why: "Most real applications need a database. Having PostgreSQL ready means you can build full applications with persistent data storage.",
+    related: ["supabase", "deployment"],
+  },
+
+  supabase: {
+    term: "Supabase",
+    short: "Open-source Firebase alternative — database + auth + APIs instantly",
+    long: "Supabase gives you a PostgreSQL database plus authentication, real-time subscriptions, storage, and auto-generated APIs — all in one platform. It's 'backend-as-a-service' that lets you build full applications without writing backend code. You get an admin dashboard, client libraries, and can self-host or use their cloud.",
+    analogy: "Like getting a pre-built backend for your app instead of building it from scratch. Database, user login, file storage — it's all there, ready to use.",
+    why: "Supabase CLI lets you manage your Supabase projects from the terminal. Combined with AI coding agents, you can rapidly build full-stack applications.",
+    related: ["postgresql", "deployment"],
+  },
+
+  wrangler: {
+    term: "Wrangler",
+    short: "Cloudflare's CLI for deploying serverless functions worldwide",
+    long: "Wrangler is Cloudflare's command-line tool for building and deploying Workers — serverless functions that run at the edge (close to users worldwide). Workers start in milliseconds and scale automatically. Wrangler handles local development, testing, and deployment. Cloudflare's free tier is generous enough for most projects.",
+    analogy: "Like having tiny restaurants in every city serving your app's logic, instead of one central kitchen. Users get served by the nearest location, making everything faster.",
+    why: "Edge functions are the future of fast, scalable web apps. Wrangler makes deploying them as easy as 'wrangler deploy'.",
+    related: ["deployment", "cli-tools"],
+  },
+
+  vault: {
+    term: "Vault",
+    short: "HashiCorp's secret management tool for storing passwords and API keys",
+    long: "Vault is a tool for securely storing and accessing secrets — passwords, API keys, certificates, and other sensitive data. Instead of putting secrets in config files or environment variables (which can leak), you store them in Vault and fetch them when needed. Vault provides access control, audit logs, and automatic secret rotation.",
+    analogy: "Like a bank vault for your passwords and API keys. Instead of keeping them in your pocket (config files), you store them securely and retrieve them only when needed, with full audit trail.",
+    why: "As you build real applications, secret management becomes critical. Vault is the industry standard for secure secret storage.",
+    related: ["configuration", "deployment"],
+  },
 };
 
 /**

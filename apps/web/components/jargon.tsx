@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { motion, AnimatePresence, springs } from "@/components/motion";
-import { X, Lightbulb, HelpCircle } from "lucide-react";
+import { X, Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getJargon, type JargonTerm } from "@/lib/jargon";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
@@ -184,14 +184,13 @@ export function Jargon({ term, children, className }: JargonProps) {
         onFocus={handleFocus}
         onBlur={handleBlur}
         className={cn(
-          "group/jargon relative inline-flex items-baseline gap-0.5 cursor-help",
-          // Gradient underline effect
-          "decoration-2 underline underline-offset-4",
+          "relative inline cursor-help",
+          // Subtle dotted underline - very gentle visual hint
+          "decoration-[1.5px] underline underline-offset-[3px]",
           "decoration-primary/30 decoration-dotted",
-          // Hover state - solid underline with glow
-          "transition-all duration-200",
-          "hover:decoration-solid hover:decoration-primary",
-          "hover:text-primary",
+          // Hover/active state - slightly more visible
+          "transition-colors duration-150",
+          "hover:decoration-primary/60 hover:text-primary/90",
           // Focus state for accessibility
           "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm",
           className
@@ -200,7 +199,6 @@ export function Jargon({ term, children, className }: JargonProps) {
         aria-expanded={isOpen}
       >
         {displayText}
-        <HelpCircle className="inline-block h-3 w-3 opacity-40 transition-opacity group-hover/jargon:opacity-70 group-focus-visible/jargon:opacity-70" />
       </button>
 
       {/* Desktop Tooltip */}

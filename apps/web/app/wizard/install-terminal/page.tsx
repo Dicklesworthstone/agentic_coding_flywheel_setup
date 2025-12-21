@@ -19,6 +19,7 @@ import {
   GuideCaution,
   DirectDownloadButton,
 } from "@/components/simpler-guide";
+import { Jargon } from "@/components/jargon";
 
 interface TerminalCardProps {
   name: string;
@@ -74,8 +75,8 @@ function MacContent() {
       </div>
 
       <AlertCard variant="success" icon={Check} title="SSH is already installed">
-        macOS includes SSH by default, so you&apos;re ready to connect to
-        your VPS.
+        macOS includes <Jargon term="ssh">SSH</Jargon> by default, so you&apos;re ready to connect to
+        your <Jargon term="vps">VPS</Jargon>.
       </AlertCard>
 
       {/* Beginner Guide for Mac */}
@@ -89,7 +90,7 @@ function MacContent() {
             Think of it like texting your computer instead of tapping on apps.
             You type a command, press Enter, and the computer does what you asked.
             <br /><br />
-            We&apos;ll be using the terminal to connect to your remote server (VPS)
+            We&apos;ll be using the terminal to connect to your remote server (<Jargon term="vps">VPS</Jargon>)
             and run programs on it.
           </GuideExplain>
 

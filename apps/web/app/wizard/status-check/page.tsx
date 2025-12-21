@@ -16,6 +16,7 @@ import {
   GuideCaution,
 } from "@/components/simpler-guide";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
+import { Jargon } from "@/components/jargon";
 
 const QUICK_CHECKS = [
   {
@@ -68,7 +69,7 @@ export default function StatusCheckPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Let&apos;s verify everything installed correctly.
+          Let&apos;s verify everything installed correctly on your <Jargon term="vps">VPS</Jargon>.
         </p>
       </div>
 
@@ -93,7 +94,7 @@ export default function StatusCheckPage() {
           <p className="text-muted-foreground">================================</p>
           <p className="text-[oklch(0.72_0.19_145)]">✔ Shell: zsh with oh-my-zsh</p>
           <p className="text-[oklch(0.72_0.19_145)]">✔ Languages: bun, uv, rust, go</p>
-          <p className="text-[oklch(0.72_0.19_145)]">✔ Tools: tmux, ripgrep, lazygit</p>
+          <p className="text-[oklch(0.72_0.19_145)]">✔ Tools: <Jargon term="tmux">tmux</Jargon>, <Jargon term="ripgrep">ripgrep</Jargon>, <Jargon term="lazygit">lazygit</Jargon></p>
           <p className="text-[oklch(0.72_0.19_145)]">✔ Agents: claude-code, codex</p>
           <p className="mt-2 text-foreground">All checks passed!</p>
         </div>

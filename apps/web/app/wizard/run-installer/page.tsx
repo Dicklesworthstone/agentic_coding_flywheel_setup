@@ -22,6 +22,7 @@ import {
   GuideTip,
   GuideCaution,
 } from "@/components/simpler-guide";
+import { Jargon } from "@/components/jargon";
 
 const INSTALL_COMMAND = `curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?$(date +%s)" | bash -s -- --yes --mode vibe`;
 
@@ -95,7 +96,7 @@ export default function RunInstallerPage() {
 
       {/* Warning */}
       <AlertCard variant="warning" title="Don't close the terminal">
-        Stay connected during installation. If disconnected, SSH back in
+        Stay connected during installation. If disconnected, <Jargon term="ssh">SSH</Jargon> back in
         and check if it&apos;s still running.
       </AlertCard>
 
@@ -170,14 +171,14 @@ export default function RunInstallerPage() {
             everything you need on your VPS. Think of it like running an installer
             on your computer — but this one installs dozens of tools at once!
             <br /><br />
-            The script is &quot;idempotent&quot; which means it&apos;s safe to run multiple times.
+            The script is <Jargon term="idempotent">&quot;idempotent&quot;</Jargon> which means it&apos;s safe to run multiple times.
             If something fails, you can just run it again.
           </GuideExplain>
 
           <GuideSection title="Step-by-Step">
             <div className="space-y-4">
               <GuideStep number={1} title="Make sure you're connected to your VPS">
-                Your terminal should show something like{" "}
+                Your <Jargon term="terminal">terminal</Jargon> should show something like{" "}
                 <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ubuntu@vps:~$</code>
                 or <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">root@vps:~#</code>.
                 <br /><br />

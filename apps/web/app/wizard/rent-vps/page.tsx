@@ -16,6 +16,7 @@ import {
   GuideTip,
   GuideCaution,
 } from "@/components/simpler-guide";
+import { Jargon } from "@/components/jargon";
 
 interface ProviderInfo {
   id: string;
@@ -178,7 +179,7 @@ export default function RentVPSPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              Rent a VPS ($35-60/month)
+              Rent a <Jargon term="vps">VPS</Jargon> ($35-60/month)
             </h1>
             <p className="text-sm text-muted-foreground">
               ~5 min
@@ -186,8 +187,7 @@ export default function RentVPSPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Pick a VPS provider and rent a server. This is where your coding
-          agents will live.
+          Pick a <Jargon term="vps">VPS</Jargon> provider and rent a server. This is where your <Jargon term="ai-agents">coding agents</Jargon> will live.
         </p>
       </div>
 
@@ -226,8 +226,8 @@ export default function RentVPSPage() {
 
       {/* Other providers note */}
       <AlertCard variant="tip" title="Using a different provider?">
-        Any provider with Ubuntu VPS and SSH key login works. Just make sure
-        you can add your SSH public key during setup.
+        Any provider with <Jargon term="ubuntu">Ubuntu</Jargon> <Jargon term="vps">VPS</Jargon> and <Jargon term="ssh">SSH</Jargon> key login works. Just make sure
+        you can add your <Jargon term="public-key">SSH public key</Jargon> during setup.
       </AlertCard>
 
       {/* Beginner Guide */}

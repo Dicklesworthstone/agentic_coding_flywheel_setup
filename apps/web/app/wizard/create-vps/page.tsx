@@ -18,6 +18,7 @@ import {
   GuideTip,
   GuideCaution,
 } from "@/components/simpler-guide";
+import { Jargon } from "@/components/jargon";
 
 const CHECKLIST_ITEMS = [
   { id: "ubuntu", label: "Selected Ubuntu 25.x (or newest Ubuntu available)" },
@@ -169,7 +170,7 @@ export default function CreateVPSPage() {
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
-              Create your VPS instance
+              Create your <Jargon term="vps">VPS</Jargon> instance
             </h1>
             <p className="text-sm text-muted-foreground">
               ~5 min
@@ -177,7 +178,7 @@ export default function CreateVPSPage() {
           </div>
         </div>
         <p className="text-muted-foreground">
-          Launch your VPS and attach your SSH key. Follow the checklist below.
+          Launch your <Jargon term="vps">VPS</Jargon> and attach your <Jargon term="ssh">SSH</Jargon> key. Follow the checklist below.
         </p>
       </div>
 
