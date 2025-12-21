@@ -50,6 +50,16 @@ _stack_command_exists() {
     command -v "$1" &>/dev/null
 }
 
+# Check if we're in interactive mode (fallback if security.sh isn't loaded yet).
+_stack_is_interactive() {
+    if declare -f _acfs_is_interactive >/dev/null 2>&1; then
+        _acfs_is_interactive
+        return $?
+    fi
+
+    [[ "${ACFS_INTERACTIVE:-true}" == "true" ]] && [[ -t 0 ]]
+}
+
 # Get the sudo command if needed
 _stack_get_sudo() {
     if [[ $EUID -eq 0 ]]; then
@@ -204,7 +214,7 @@ install_mcp_agent_mail() {
 
     # MCP Agent Mail uses --yes for non-interactive install
     local args=""
-    if ! _acfs_is_interactive; then
+    if ! _stack_is_interactive; then
         args="--yes"
     fi
 
@@ -234,7 +244,7 @@ install_ubs() {
     # UBS uses --easy-mode for simplified setup
     # Also add --yes for non-interactive installs if needed by UBS installer
     local args="--easy-mode"
-    if ! _acfs_is_interactive; then
+    if ! _stack_is_interactive; then
         args="$args --yes"
     fi
 
