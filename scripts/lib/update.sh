@@ -717,6 +717,215 @@ update_stack() {
 }
 
 # ============================================================
+# Shell Tool Updates
+# Related: bead db0
+# ============================================================
+
+# Update Oh-My-Zsh via its built-in upgrade script
+update_omz() {
+    local omz_dir="${ZSH:-$HOME/.oh-my-zsh}"
+
+    if [[ ! -d "$omz_dir" ]]; then
+        log_item "skip" "Oh-My-Zsh" "not installed"
+        return 0
+    fi
+
+    capture_version_before "omz"
+
+    # OMZ has its own upgrade script that handles everything
+    # Set DISABLE_UPDATE_PROMPT to avoid interactive prompts
+    local upgrade_script="$omz_dir/tools/upgrade.sh"
+    if [[ -x "$upgrade_script" ]]; then
+        run_cmd "Oh-My-Zsh upgrade" env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" "$upgrade_script"
+    elif [[ -f "$upgrade_script" ]]; then
+        run_cmd "Oh-My-Zsh upgrade" env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" bash "$upgrade_script"
+    else
+        # Fallback to git pull
+        if [[ -d "$omz_dir/.git" ]]; then
+            run_cmd "Oh-My-Zsh (git pull)" git -C "$omz_dir" pull --ff-only
+        else
+            log_item "skip" "Oh-My-Zsh" "no upgrade mechanism found"
+            return 0
+        fi
+    fi
+
+    if capture_version_after "omz"; then
+        log_item "ok" "Oh-My-Zsh updated" "${VERSION_BEFORE[omz]} → ${VERSION_AFTER[omz]}"
+    fi
+}
+
+# Update Powerlevel10k theme via git
+update_p10k() {
+    local p10k_dir="${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}/themes/powerlevel10k"
+
+    if [[ ! -d "$p10k_dir" ]]; then
+        log_item "skip" "Powerlevel10k" "not installed"
+        return 0
+    fi
+
+    if [[ ! -d "$p10k_dir/.git" ]]; then
+        log_item "skip" "Powerlevel10k" "not a git repo"
+        return 0
+    fi
+
+    capture_version_before "p10k"
+
+    # Use --ff-only to avoid merge conflicts
+    local output=""
+    local exit_code=0
+    output=$(git -C "$p10k_dir" pull --ff-only 2>&1) || exit_code=$?
+
+    if [[ $exit_code -eq 0 ]]; then
+        if capture_version_after "p10k"; then
+            log_item "ok" "Powerlevel10k updated" "${VERSION_BEFORE[p10k]} → ${VERSION_AFTER[p10k]}"
+        else
+            log_item "ok" "Powerlevel10k" "already up to date"
+        fi
+    else
+        # Check if it's a ff-only failure (local changes)
+        if echo "$output" | grep -q "fatal.*not possible to fast-forward"; then
+            log_item "skip" "Powerlevel10k" "local changes detected, manual merge required"
+            log_to_file "P10K update failed: $output"
+        else
+            log_item "fail" "Powerlevel10k" "git pull failed"
+            log_to_file "P10K update failed: $output"
+            ((FAIL_COUNT += 1))
+        fi
+    fi
+}
+
+# Update zsh plugins via git
+update_zsh_plugins() {
+    local zsh_custom="${ZSH_CUSTOM:-${ZSH:-$HOME/.oh-my-zsh}/custom}"
+    local plugins_dir="$zsh_custom/plugins"
+
+    # Known plugins to update
+    local -a plugins=(
+        "zsh-autosuggestions"
+        "zsh-syntax-highlighting"
+        "zsh-completions"
+        "zsh-history-substring-search"
+    )
+
+    local updated=0
+    local skipped=0
+
+    for plugin in "${plugins[@]}"; do
+        local plugin_dir="$plugins_dir/$plugin"
+
+        if [[ ! -d "$plugin_dir" ]]; then
+            continue
+        fi
+
+        if [[ ! -d "$plugin_dir/.git" ]]; then
+            log_to_file "Plugin $plugin exists but is not a git repo"
+            continue
+        fi
+
+        local output=""
+        local exit_code=0
+        output=$(git -C "$plugin_dir" pull --ff-only 2>&1) || exit_code=$?
+
+        if [[ $exit_code -eq 0 ]]; then
+            if ! echo "$output" | grep -q "Already up to date"; then
+                log_item "ok" "$plugin" "updated"
+                ((updated += 1))
+            else
+                ((skipped += 1))
+            fi
+        else
+            if echo "$output" | grep -q "fatal.*not possible to fast-forward"; then
+                log_item "skip" "$plugin" "local changes"
+            else
+                log_item "fail" "$plugin" "git pull failed"
+                log_to_file "$plugin update failed: $output"
+            fi
+        fi
+    done
+
+    if [[ $updated -eq 0 && $skipped -gt 0 ]]; then
+        log_item "ok" "zsh plugins" "$skipped plugins already up to date"
+    elif [[ $updated -eq 0 && $skipped -eq 0 ]]; then
+        log_item "skip" "zsh plugins" "no plugins installed"
+    fi
+}
+
+# Update Atuin - try self-update first, fallback to installer
+update_atuin() {
+    if ! cmd_exists atuin; then
+        log_item "skip" "Atuin" "not installed"
+        return 0
+    fi
+
+    capture_version_before "atuin"
+
+    # Try atuin self-update first (available in newer versions)
+    if atuin --help 2>&1 | grep -q "self-update"; then
+        run_cmd "Atuin self-update" atuin self-update
+    else
+        # Fallback to reinstall via official installer with checksum verification
+        if update_require_security; then
+            run_cmd "Atuin (reinstall)" update_run_verified_installer atuin
+        else
+            # Last resort: no checksum verification available
+            if [[ "$YES_MODE" == "true" ]]; then
+                log_item "skip" "Atuin" "checksum verification unavailable, use --force to bypass"
+            else
+                log_item "skip" "Atuin" "no self-update command, manual update recommended"
+                log_to_file "Atuin update: install newer version with: curl -fsSL https://setup.atuin.sh | bash"
+            fi
+            return 0
+        fi
+    fi
+
+    if capture_version_after "atuin"; then
+        log_item "ok" "Atuin updated" "${VERSION_BEFORE[atuin]} → ${VERSION_AFTER[atuin]}"
+    fi
+}
+
+# Update Zoxide via reinstall (checksum verified)
+update_zoxide() {
+    if ! cmd_exists zoxide; then
+        log_item "skip" "Zoxide" "not installed"
+        return 0
+    fi
+
+    capture_version_before "zoxide"
+
+    # Zoxide doesn't have self-update, reinstall via official installer
+    if update_require_security; then
+        run_cmd "Zoxide (reinstall)" update_run_verified_installer zoxide
+    else
+        log_item "skip" "Zoxide" "checksum verification unavailable"
+        log_to_file "Zoxide update: install newer version with: curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
+        return 0
+    fi
+
+    if capture_version_after "zoxide"; then
+        log_item "ok" "Zoxide updated" "${VERSION_BEFORE[zoxide]} → ${VERSION_AFTER[zoxide]}"
+    fi
+}
+
+# Main shell update dispatcher
+update_shell() {
+    log_section "Shell Tools"
+
+    if [[ "$UPDATE_SHELL" != "true" ]]; then
+        log_item "skip" "shell tools update" "disabled via --no-shell"
+        return 0
+    fi
+
+    # Git-based updates (OMZ, P10K, plugins)
+    update_omz
+    update_p10k
+    update_zsh_plugins
+
+    # Installer-based updates (Atuin, Zoxide)
+    update_atuin
+    update_zoxide
+}
+
+# ============================================================
 # Summary
 # ============================================================
 
@@ -795,10 +1004,12 @@ Options:
   --apt-only         Only update system packages
   --agents-only      Only update coding agents
   --cloud-only       Only update cloud CLIs
+  --shell-only       Only update shell tools (omz, p10k, plugins, atuin, zoxide)
   --stack            Include Dicklesworthstone stack updates
   --no-apt           Skip apt updates
   --no-agents        Skip agent updates
   --no-cloud         Skip cloud CLI updates
+  --no-shell         Skip shell tool updates
   --force            Install missing tools
   --dry-run          Show what would be updated without making changes
   --yes, -y          Non-interactive mode (skip all prompts)
@@ -823,6 +1034,7 @@ What gets updated:
   - Cloud CLIs (Wrangler, Supabase, Vercel)
   - Rust toolchain
   - uv (Python tools)
+  - Shell tools (Oh-My-Zsh, Powerlevel10k, plugins, Atuin, Zoxide)
   - Dicklesworthstone stack (with --stack flag)
 
 Logs:
@@ -839,6 +1051,7 @@ main() {
                 UPDATE_AGENTS=false
                 UPDATE_CLOUD=false
                 UPDATE_STACK=false
+                UPDATE_SHELL=false
                 shift
                 ;;
             --agents-only)
@@ -846,6 +1059,7 @@ main() {
                 UPDATE_AGENTS=true
                 UPDATE_CLOUD=false
                 UPDATE_STACK=false
+                UPDATE_SHELL=false
                 shift
                 ;;
             --cloud-only)
@@ -853,6 +1067,15 @@ main() {
                 UPDATE_AGENTS=false
                 UPDATE_CLOUD=true
                 UPDATE_STACK=false
+                UPDATE_SHELL=false
+                shift
+                ;;
+            --shell-only)
+                UPDATE_APT=false
+                UPDATE_AGENTS=false
+                UPDATE_CLOUD=false
+                UPDATE_STACK=false
+                UPDATE_SHELL=true
                 shift
                 ;;
             --stack)
@@ -869,6 +1092,10 @@ main() {
                 ;;
             --no-cloud)
                 UPDATE_CLOUD=false
+                shift
+                ;;
+            --no-shell)
+                UPDATE_SHELL=false
                 shift
                 ;;
             --force)
@@ -934,6 +1161,7 @@ main() {
     update_rust
     update_uv
     update_go
+    update_shell
     update_stack
 
     # Summary
