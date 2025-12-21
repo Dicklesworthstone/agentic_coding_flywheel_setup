@@ -505,6 +505,52 @@ The installer uses semantic colors for progress visibility:
 ✔ Shell setup complete                    # Green: success
 ```
 
+### Automatic Ubuntu Upgrade
+
+ACFS automatically upgrades Ubuntu to version **25.10** before installation when running on older versions. This ensures compatibility with the latest packages and optimal performance.
+
+**How it works:**
+1. Detects your current Ubuntu version
+2. Calculates the upgrade path (e.g., 24.04 → 24.10 → 25.04 → 25.10)
+3. Performs sequential `do-release-upgrade` operations
+4. Reboots after each upgrade (handled automatically)
+5. Resumes via systemd service after reboot
+6. Continues ACFS installation once at target version
+
+**Expected timeline:**
+- Each version hop takes 30-60 minutes
+- Full chain from 24.04 → 25.10 takes 1.5-3 hours
+- SSH sessions disconnect during reboots (reconnect to monitor)
+
+**To skip automatic upgrade:**
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --skip-ubuntu-upgrade
+```
+
+**To specify a different target version:**
+```bash
+# Upgrade only to 24.10 instead of 25.10
+curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe --target-ubuntu=24.10
+```
+
+**Monitoring upgrade progress:**
+```bash
+# Check current status
+/var/lib/acfs/check_status.sh
+
+# View upgrade logs
+journalctl -u acfs-upgrade-resume -f
+
+# View detailed logs
+tail -f /var/log/acfs/upgrade_resume.log
+```
+
+**Important notes:**
+- Create a VM snapshot before upgrading (recommended but not required)
+- Upgrades cannot be undone without restoring from snapshot
+- The system will reboot multiple times automatically
+- Reconnect via SSH after each reboot to monitor progress
+
 ---
 
 ## The Update Command
@@ -1149,46 +1195,45 @@ jobs:
 
 ## VPS Providers
 
-ACFS works on any Ubuntu VPS. Here are recommended providers:
+ACFS works on any Ubuntu VPS with SSH key login. Here are recommended providers optimized for multi-agent workloads.
 
-### OVH (Recommended for EU)
+> **Why 48-64GB RAM?** Each AI coding agent uses ~2GB RAM. To run 10-20+ agents simultaneously, you need 48GB+ RAM. Don't bottleneck a $400+/month AI investment to save $20 on hosting.
 
-| Plan | RAM | Storage | Price | Notes |
-|------|-----|---------|-------|-------|
-| VPS Starter | 2GB | 20GB | €3.50/mo | Good for testing |
-| VPS Essential | 4GB | 80GB | €7/mo | Recommended minimum |
-| VPS Comfort | 8GB | 160GB | €14/mo | Comfortable for agents |
+### Contabo (Best Value — Top Pick)
 
-### Contabo (Best Value)
+| Plan | RAM | vCPU | Storage | Price | Notes |
+|------|-----|------|---------|-------|-------|
+| **Cloud VPS 50** | 64GB | 16 | 400GB NVMe | ~$56/mo (US) | **Recommended** — Best for serious multi-agent work |
+| Cloud VPS 40 | 48GB | 12 | 300GB NVMe | ~$36/mo (US) | Budget option, still comfortable |
 
-| Plan | RAM | Storage | Price | Notes |
-|------|-----|---------|-------|-------|
-| Cloud VPS S | 8GB | 200GB | €4.99/mo | Excellent value |
-| Cloud VPS M | 16GB | 400GB | €8.99/mo | Great for heavy usage |
-| Cloud VPS L | 32GB | 800GB | €15.99/mo | Multi-agent workloads |
+- Best specs-to-price ratio on the market
+- Month-to-month pricing, no commitment required
+- US datacenter pricing includes ~$10/month premium
 
-### Hetzner (Best Performance)
+### OVH (Great Alternative)
 
-| Plan | RAM | Storage | Price | Notes |
-|------|-----|---------|-------|-------|
-| CX22 | 4GB | 40GB | €4.35/mo | Fast NVMe |
-| CX32 | 8GB | 80GB | €8.35/mo | Recommended |
-| CX42 | 16GB | 160GB | €16.35/mo | Heavy workloads |
+| Plan | RAM | vCore | Storage | Price | Notes |
+|------|-----|-------|---------|-------|-------|
+| **VPS-5** | 64GB | 16 | 320GB NVMe | ~$40/mo | **Recommended** — Great EU and US datacenters |
+| VPS-4 | 48GB | 12 | 240GB NVMe | ~$26/mo | Budget option |
+
+- Anti-DDoS included
+- Month-to-month, 5-15% discount for longer commitments
+- Typically faster activation than Contabo
 
 ### Requirements
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| **OS** | Ubuntu 24.04 LTS | Ubuntu 25.04 |
-| **RAM** | 4GB | 8GB+ |
-| **Storage** | 40GB | 80GB+ |
-| **CPU** | 2 vCPU | 4 vCPU |
-| **Network** | SSH access | Low latency |
+| **OS** | Ubuntu 24.04 LTS | Ubuntu 24.x or newer |
+| **RAM** | 32GB (tight) | 48-64GB |
+| **Storage** | 250GB NVMe SSD | 300GB+ NVMe SSD |
+| **CPU** | 12 vCPU | 16 vCPU |
+| **Price** | ~$26/mo | ~$40-56/mo |
 
-Detailed provider setup guides are available in `scripts/providers/`:
-- `ovh.md` - Step-by-step OVH setup
-- `contabo.md` - Step-by-step Contabo setup
-- `hetzner.md` - Step-by-step Hetzner setup
+### Other Providers
+
+Any provider with Ubuntu VPS and SSH key login works. The wizard at [acfs.ai](https://acfs.ai) has step-by-step guides.
 
 ---
 
