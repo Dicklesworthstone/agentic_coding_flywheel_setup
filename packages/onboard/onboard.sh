@@ -322,7 +322,7 @@ check_auth_status() {
             if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
                 return 0
             fi
-            if [[ -s "$HOME/.config/.wrangler/config/default.toml" || -s "$HOME/.config/wrangler/config/default.toml" || -s "$HOME/.wrangler/config/default.toml" ]]; then
+            if [[ -s "$HOME/.config/wrangler/config/default.toml" || -s "$HOME/.wrangler/config/default.toml" ]]; then
                 return 0
             fi
             return 1
@@ -680,7 +680,7 @@ show_lesson() {
     if has_gum; then
         # Build progress dots
         local dots=""
-        for ((i = 0; i < 8; i++)); do
+        for ((i = 0; i < 9; i++)); do
             if is_completed "$i"; then
                 dots+="$(gum style --foreground "$ACFS_SUCCESS" "●") "
             elif [[ $i -eq $idx ]]; then
@@ -695,7 +695,7 @@ show_lesson() {
             --border-foreground "$ACFS_PRIMARY" \
             --padding "1 2" \
             --margin "0 0 1 0" \
-            "$(gum style --foreground "$ACFS_ACCENT" "Lesson $((idx + 1)) of 8")
+            "$(gum style --foreground "$ACFS_ACCENT" "Lesson $((idx + 1)) of 9")
 $dots
 $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
     else
@@ -717,7 +717,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
         local -a nav_items=()
         nav_items+=("📋 [m] Menu")
         [[ $idx -gt 0 ]] && nav_items+=("⬅️  [p] Previous")
-        [[ $idx -lt 7 ]] && nav_items+=("➡️  [n] Next")
+        [[ $idx -lt 8 ]] && nav_items+=("➡️  [n] Next")
         nav_items+=("✅ [c] Mark complete")
         nav_items+=("👋 [q] Quit")
 
@@ -736,7 +736,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                 fi
                 ;;
             *"[n]"*)
-                if [[ $idx -lt 7 ]]; then
+                if [[ $idx -lt 8 ]]; then
                     set_current $((idx + 1))
                     show_lesson $((idx + 1))
                     return $?
@@ -746,7 +746,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                 mark_completed "$idx"
                 gum style --foreground "$ACFS_SUCCESS" --bold "✓ Lesson $((idx + 1)) marked complete!"
                 sleep 1
-                if [[ $idx -lt 7 ]]; then
+                if [[ $idx -lt 8 ]]; then
                     show_lesson $((idx + 1))
                     return $?
                 else
@@ -772,7 +772,7 @@ $(gum style --foreground "$ACFS_MUTED" "You're ready to fly!")"
         if [[ $idx -gt 0 ]]; then
             nav_options+="  [p] Previous"
         fi
-        if [[ $idx -lt 7 ]]; then
+        if [[ $idx -lt 8 ]]; then
             nav_options+="  [n] Next"
         fi
         nav_options+="  [c] Mark complete  [q] Quit"
@@ -792,7 +792,7 @@ $(gum style --foreground "$ACFS_MUTED" "You're ready to fly!")"
                     fi
                     ;;
                 n|N)
-                    if [[ $idx -lt 7 ]]; then
+                    if [[ $idx -lt 8 ]]; then
                         set_current $((idx + 1))
                         show_lesson $((idx + 1))
                         return $?
@@ -868,7 +868,7 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
 
         echo ""
 
-        if [[ $completed_count -eq 8 ]]; then
+        if [[ $completed_count -eq 9 ]]; then
             gum style \
                 --foreground "$ACFS_SUCCESS" \
                 --bold \
@@ -887,7 +887,7 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
 
         # Progress bar
         local filled=$((completed_count * 5))
-        local empty=$((40 - filled))
+        local empty=$((45 - filled))
         local i
         printf '%s' "${GREEN}"
         for ((i = 0; i < filled; i++)); do printf '█'; done

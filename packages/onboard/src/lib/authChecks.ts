@@ -150,11 +150,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     if (deps.existsSync(legacyConfigPath)) {
       return { authenticated: true };
     }
-    // Check for Gemini CLI config directory (may exist even without credentials.json)
-    const geminiConfigDir = path.join(homedir, '.config', 'gemini');
-    if (deps.existsSync(geminiConfigDir)) {
-      return { authenticated: true };
-    }
+    // Note: Just having the config directory is not enough - we need actual credential files
     return { authenticated: false };
   };
 
@@ -203,7 +199,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       if (auth?.token) {
         return { authenticated: true };
       }
-      return { authenticated: true };
+      // File exists but contains no valid token or user - not authenticated
     }
     return { authenticated: false };
   };
@@ -225,7 +221,8 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
         const token = deps.readFileSync(tokenPath, 'utf-8').trim();
         return token ? { authenticated: true } : { authenticated: false };
       } catch {
-        return { authenticated: true };
+        // File exists but unreadable - cannot confirm authentication
+        continue;
       }
     }
     const configPath = path.join(homedir, '.supabase', 'config.toml');
