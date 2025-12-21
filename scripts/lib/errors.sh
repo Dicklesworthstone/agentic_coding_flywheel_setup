@@ -105,6 +105,31 @@ declare -A ERROR_PATTERNS=(
 # Error Matching Functions
 # ============================================================
 
+# Get the matching pattern for an error (prioritizing specific/longer matches)
+# Usage: get_error_pattern "error message text"
+# Returns: The matched pattern, or empty string
+get_error_pattern() {
+    local error_text="$1"
+    local pattern
+
+    # Sort patterns by length (descending) to match specific errors before generic ones
+    # e.g. "curl: (28) Connection timed out" before "timed out"
+    # Use array for safety with spaces
+    local sorted_patterns=()
+    while IFS=$'\t' read -r _ len pat; do
+        sorted_patterns+=("$pat")
+    done < <(for p in "${!ERROR_PATTERNS[@]}"; do echo -e "${#p}\t$p"; done | sort -rn)
+
+    for pattern in "${sorted_patterns[@]}"; do
+        if [[ "$error_text" == *"$pattern"* ]]; then
+            echo "$pattern"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Get a suggested fix for an error message
 # Usage: get_suggested_fix "error message text"
 # Returns: Suggested fix text, or generic message if no match
@@ -113,14 +138,13 @@ get_suggested_fix() {
     local pattern
     local fix
 
-    # Search through patterns for a match
-    for pattern in "${!ERROR_PATTERNS[@]}"; do
-        if [[ "$error_text" == *"$pattern"* ]]; then
-            fix="${ERROR_PATTERNS[$pattern]}"
-            echo -e "$fix"
-            return 0
-        fi
-    done
+    pattern=$(get_error_pattern "$error_text")
+
+    if [[ -n "$pattern" ]]; then
+        fix="${ERROR_PATTERNS[$pattern]}"
+        echo -e "$fix"
+        return 0
+    fi
 
     # No pattern matched - return generic guidance
     echo -e "Unknown error. Troubleshooting steps:\n  1. Check internet connectivity: curl -I https://google.com\n  2. Verify disk space: df -h\n  3. Check system logs: journalctl -xe\n  4. Search the error message online\n  5. Report at: https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues"
@@ -132,31 +156,9 @@ get_suggested_fix() {
 # Returns: 0 if known, 1 if unknown
 is_known_error() {
     local error_text="$1"
-    local pattern
-
-    for pattern in "${!ERROR_PATTERNS[@]}"; do
-        if [[ "$error_text" == *"$pattern"* ]]; then
-            return 0
-        fi
-    done
-
-    return 1
-}
-
-# Get the matching pattern for an error (for logging/debugging)
-# Usage: get_error_pattern "error message text"
-# Returns: The matched pattern, or empty string
-get_error_pattern() {
-    local error_text="$1"
-    local pattern
-
-    for pattern in "${!ERROR_PATTERNS[@]}"; do
-        if [[ "$error_text" == *"$pattern"* ]]; then
-            echo "$pattern"
-            return 0
-        fi
-    done
-
+    if get_error_pattern "$error_text" >/dev/null; then
+        return 0
+    fi
     return 1
 }
 
