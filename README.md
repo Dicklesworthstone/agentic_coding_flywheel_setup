@@ -812,7 +812,7 @@ The `--deep` flag runs functional tests beyond binary existence:
 
 | Category | Checks |
 |----------|--------|
-| **Agent Auth** | Claude config, Codex API key, Gemini credentials |
+| **Agent Auth** | Claude config, Codex OAuth, Gemini credentials |
 | **Database** | PostgreSQL connection, ubuntu role exists |
 | **Cloud CLIs** | `gh auth status`, `wrangler whoami`, Supabase/Vercel tokens |
 | **Vault** | `VAULT_ADDR` configured |
@@ -824,7 +824,7 @@ Example output:
 Deep Checks
   ✔ Claude auth configured
   ✔ PostgreSQL connection working
-  ⚠ Codex API key not found (set OPENAI_API_KEY)
+  ⚠ Codex not authenticated (run: codex login)
   ✔ GitHub CLI authenticated
 
 8/9 functional tests passed in 3.2s
