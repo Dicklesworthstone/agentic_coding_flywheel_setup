@@ -223,14 +223,17 @@ check_session_deps() {
 # Core redaction patterns - always applied
 # These patterns detect secrets that MUST be redacted
 readonly REDACT_PATTERNS=(
-    # OpenAI API keys (sk-...)
-    'sk-[a-zA-Z0-9]{20,}'
+    # OpenAI API keys (sk-..., sk-proj-...)
+    'sk-[a-zA-Z0-9_-]{20,}'
 
     # Anthropic API keys (sk-ant-...)
     'sk-ant-[a-zA-Z0-9_-]{20,}'
 
     # Google API keys (AIza...)
     'AIza[a-zA-Z0-9_-]{35}'
+
+    # GitHub Fine-grained PATs
+    'github_pat_[a-zA-Z0-9_]{50,}'
 
     # GitHub Personal Access Tokens
     'ghp_[a-zA-Z0-9]{36}'
