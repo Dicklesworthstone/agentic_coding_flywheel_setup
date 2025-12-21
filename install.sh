@@ -961,8 +961,23 @@ finalize() {
     run_as_target mkdir -p "$TARGET_HOME/.local/bin"
     run_as_target ln -sf "$ACFS_HOME/onboard/onboard.sh" "$TARGET_HOME/.local/bin/onboard"
 
-    # Install acfs command (doctor)
-    log_detail "Installing acfs command"
+    # Install acfs scripts (for acfs CLI subcommands)
+    log_detail "Installing acfs scripts"
+    $SUDO mkdir -p "$ACFS_HOME/scripts/lib"
+
+    # Install script libraries
+    install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh"
+    install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh"
+    install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh"
+    install_asset "scripts/lib/update.sh" "$ACFS_HOME/scripts/lib/update.sh"
+
+    # Install services-setup wizard
+    install_asset "scripts/services-setup.sh" "$ACFS_HOME/scripts/services-setup.sh"
+    $SUDO chmod 755 "$ACFS_HOME/scripts/services-setup.sh"
+    $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"*.sh
+    $SUDO chown -R "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts"
+
+    # Legacy: Install doctor as acfs binary (for backwards compat)
     install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs"
     $SUDO chmod 755 "$ACFS_HOME/bin/acfs"
     $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/acfs"

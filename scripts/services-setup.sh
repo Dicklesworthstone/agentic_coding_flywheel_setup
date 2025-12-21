@@ -10,9 +10,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Source libraries
-source "$SCRIPT_DIR/lib/logging.sh"
-source "$SCRIPT_DIR/lib/gum_ui.sh"
+# Source libraries - try installed location first, then development location
+if [[ -f "$HOME/.acfs/scripts/lib/logging.sh" ]]; then
+    source "$HOME/.acfs/scripts/lib/logging.sh"
+    source "$HOME/.acfs/scripts/lib/gum_ui.sh"
+elif [[ -f "$SCRIPT_DIR/lib/logging.sh" ]]; then
+    source "$SCRIPT_DIR/lib/logging.sh"
+    source "$SCRIPT_DIR/lib/gum_ui.sh"
+else
+    echo "Error: Cannot find ACFS script libraries"
+    echo "Expected at: $HOME/.acfs/scripts/lib/ or $SCRIPT_DIR/lib/"
+    exit 1
+fi
 
 # ============================================================
 # Configuration
@@ -37,18 +46,6 @@ run_as_user() {
     else
         sudo -u "$TARGET_USER" -H bash -c "$cmd"
     fi
-}
-
-# Check if a command exists in user's PATH
-user_command_exists() {
-    local cmd="$1"
-    run_as_user "command -v '$cmd'" &>/dev/null
-}
-
-# Check if a file exists
-user_file_exists() {
-    local path="$1"
-    [[ -f "$path" ]]
 }
 
 # ============================================================
@@ -152,7 +149,7 @@ check_wrangler_status() {
     fi
 
     # Check for Cloudflare credentials
-    if [[ -f "$TARGET_HOME/.config/.wrangler/config/default.toml" ]] || \
+    if [[ -f "$TARGET_HOME/.config/wrangler/config/default.toml" ]] || \
        [[ -f "$TARGET_HOME/.wrangler/config/default.toml" ]] || \
        [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
         SERVICE_STATUS[wrangler]="configured"
@@ -308,11 +305,12 @@ Which method would you like to use?"
     if [[ "$method" == *"API Key"* ]]; then
         echo ""
         echo "Enter your OpenAI API key (starts with sk-):"
+        local api_key
         if [[ "$HAS_GUM" == "true" ]]; then
-            local api_key
             api_key=$(gum input --password --placeholder "sk-...")
         else
             read -r -s api_key
+            echo ""  # Newline after hidden input
         fi
 
         if [[ -n "$api_key" ]]; then
