@@ -6,12 +6,16 @@ on:
     paths:
       - 'install.sh'
       - 'scripts/**'
+      - 'acfs.manifest.yaml'
+      - 'packages/manifest/**'
       - '.github/workflows/installer.yml'
   pull_request:
     branches: [main]
     paths:
       - 'install.sh'
       - 'scripts/**'
+      - 'acfs.manifest.yaml'
+      - 'packages/manifest/**'
       - '.github/workflows/installer.yml'
 
 jobs:
@@ -32,6 +36,45 @@ jobs:
         run: |
           mapfile -t files < <(git ls-files '*.sh')
           shellcheck "${files[@]}"
+
+  manifest-drift:
+    name: Manifest Drift Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+        working-directory: packages/manifest
+
+      - name: Check manifest drift
+        run: bun run generate --diff
+        working-directory: packages/manifest
+
+  selection-tests:
+    name: Selection & Contract Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run selection tests
+        run: bash scripts/lib/test_selection.sh
+
+      - name: Run contract tests
+        run: bash scripts/lib/test_contract.sh
+
+      - name: Run security tests
+        run: bash scripts/lib/test_security.sh
+
+      - name: Run install helpers tests
+        run: bash scripts/lib/test_install_helpers.sh
 
   test-installer:
     name: Test installer (Ubuntu ${{ matrix.ubuntu }}, mode ${{ matrix.mode }})
