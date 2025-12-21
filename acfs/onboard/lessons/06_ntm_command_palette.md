@@ -145,5 +145,5 @@ ntm palette
 Now let's put it all together - the complete flywheel workflow:
 
 ```bash
-onboard lesson 7
+onboard 7
 ```

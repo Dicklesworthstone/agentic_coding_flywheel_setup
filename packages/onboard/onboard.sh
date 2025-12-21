@@ -7,7 +7,7 @@
 #
 # Usage:
 #   onboard           # Launch interactive menu
-#   onboard lesson N  # Jump to lesson N (0-8)
+#   onboard N         # Jump to lesson N (1-9)
 #   onboard reset     # Reset progress
 #   onboard status    # Show completion status
 #
@@ -970,14 +970,6 @@ main_menu() {
 
 # Handle command line arguments
 case "${1:-}" in
-    lesson)
-        if [[ -z "${2:-}" ]] || ! [[ "$2" =~ ^[0-8]$ ]]; then
-            echo "Usage: onboard lesson N (where N is 0-8)"
-            exit 1
-        fi
-        init_progress
-        show_lesson "$2"
-        ;;
     reset)
         init_progress
         reset_progress
@@ -995,21 +987,21 @@ ACFS Onboarding Tutorial
 
 Usage:
   onboard           Launch interactive menu
-  onboard lesson N  Jump to lesson N (0-8)
+  onboard N         Jump to lesson N (1-9)
   onboard reset     Reset all progress
   onboard status    Show completion status
   onboard --help    Show this help
 
 Lessons:
-  0 - Welcome & Overview
-  1 - Linux Navigation
-  2 - SSH & Persistence
-  3 - tmux Basics
-  4 - Agent Commands (cc, cod, gmi)
-  5 - NTM Command Center
-  6 - NTM Prompt Palette
-  7 - The Flywheel Loop
-  8 - Keeping Updated
+  1 - Welcome & Overview
+  2 - Linux Navigation
+  3 - SSH & Persistence
+  4 - tmux Basics
+  5 - Agent Commands (cc, cod, gmi)
+  6 - NTM Command Center
+  7 - NTM Prompt Palette
+  8 - The Flywheel Loop
+  9 - Keeping Updated
 
 Environment:
   ACFS_LESSONS_DIR   Path to lesson files (default: ~/.acfs/onboard/lessons)
@@ -1019,6 +1011,11 @@ EOF
     "")
         init_progress
         main_menu
+        ;;
+    [1-9])
+        init_progress
+        idx=$(( $1 - 1 ))
+        show_lesson "$idx"
         ;;
     *)
         echo "Unknown command: $1"

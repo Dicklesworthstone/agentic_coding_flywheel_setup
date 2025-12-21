@@ -175,7 +175,7 @@ Recommendations:
 You've learned the basics! Now put it all together:
 
 ```bash
-onboard lesson 7
+onboard 7
 ```
 
 Or return to the flywheel workflow for the complete picture.

@@ -132,5 +132,5 @@ If SSH drops, they keep running. When you reconnect and reattach, they're still 
 Now let's meet your coding agents:
 
 ```bash
-onboard lesson 4
+onboard 4
 ```

@@ -87,5 +87,5 @@ Answer these:
 This is why tmux is essential:
 
 ```bash
-onboard lesson 3
+onboard 3
 ```

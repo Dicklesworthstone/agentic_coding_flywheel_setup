@@ -33,6 +33,9 @@
     "next": "16.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {

@@ -105,5 +105,5 @@ If that all worked, you're ready for the next lesson!
 ## Next
 
 ```bash
-onboard lesson 2
+onboard 2
 ```

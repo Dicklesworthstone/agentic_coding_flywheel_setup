@@ -57,7 +57,7 @@ If your SSH connection drops? No problem. Your work continues in tmux.
 Run the next lesson:
 
 ```bash
-onboard lesson 1
+onboard 1
 ```
 
 Or continue in the TUI menu.

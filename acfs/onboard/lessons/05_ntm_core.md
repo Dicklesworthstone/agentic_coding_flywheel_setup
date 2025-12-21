@@ -140,5 +140,5 @@ ntm attach test-session
 The real power is in the command palette:
 
 ```bash
-onboard lesson 6
+onboard 6
 ```

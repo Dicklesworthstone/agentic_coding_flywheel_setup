@@ -137,5 +137,5 @@ gmi "Hello! Please confirm you're working."
 Now let's learn NTM - the tool that orchestrates all these agents:
 
 ```bash
-onboard lesson 5
+onboard 5
 ```
