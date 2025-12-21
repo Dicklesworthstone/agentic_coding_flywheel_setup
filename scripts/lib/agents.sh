@@ -92,14 +92,12 @@ _agent_check_bun() {
 # Claude Code Installation
 # ============================================================
 
-# Install Claude Code CLI via bun
-# The official package is @anthropic-ai/claude-code
+# Install Claude Code CLI (Native)
+# Official installer from https://claude.ai/install.sh
 install_claude_code() {
     local target_user="${TARGET_USER:-ubuntu}"
     local target_home="${TARGET_HOME:-/home/$target_user}"
-    local bun_bin
-    bun_bin=$(_agent_get_bun_bin)
-    local claude_bin="$target_home/.bun/bin/$CLAUDE_BIN"
+    local claude_bin="$target_home/.local/bin/claude"
 
     # Check if already installed
     if [[ -x "$claude_bin" ]]; then
@@ -107,38 +105,64 @@ install_claude_code() {
         return 0
     fi
 
-    # Verify bun is available
-    if ! _agent_check_bun; then
-        return 1
-    fi
+    log_detail "Installing Claude Code (native) for $target_user..."
 
-    log_detail "Installing Claude Code for $target_user..."
-
-    # Install via bun global
-    if _agent_run_as_user "\"$bun_bin\" install -g $CLAUDE_PACKAGE"; then
-        if [[ -x "$claude_bin" ]]; then
-            log_success "Claude Code installed"
-            log_detail "Note: Run 'claude' to complete login/setup"
-            return 0
+    # Try to use security.sh for verification
+    if [[ -f "$SCRIPT_DIR/security.sh" ]]; then
+        # shellcheck source=security.sh
+        source "$SCRIPT_DIR/security.sh"
+        if load_checksums; then
+            local url="${KNOWN_INSTALLERS[claude]}"
+            local sha="${LOADED_CHECKSUMS[claude]}"
+            if [[ -n "$url" && -n "$sha" ]]; then
+                if _agent_run_as_user "source '$SCRIPT_DIR/security.sh'; verify_checksum '$url' '$sha' 'claude' | bash"; then
+                    log_success "Claude Code installed (verified)"
+                    return 0
+                fi
+            fi
         fi
     fi
 
-    log_warn "Claude Code installation may have failed"
+    # Fallback to direct curl if security lib unavailable or check failed
+    log_warn "Security verification unavailable, falling back to direct install"
+    if _agent_run_as_user "curl -fsSL https://claude.ai/install.sh | bash"; then
+        log_success "Claude Code installed"
+        return 0
+    fi
+
+    log_warn "Claude Code installation failed"
     return 1
 }
 
 # Upgrade Claude Code to latest version
 upgrade_claude_code() {
     local target_user="${TARGET_USER:-ubuntu}"
-    local bun_bin
-    bun_bin=$(_agent_get_bun_bin)
+    local target_home="${TARGET_HOME:-/home/$target_user}"
+    local claude_bin="$target_home/.local/bin/claude"
 
-    if ! _agent_check_bun; then
-        return 1
+    if [[ -x "$claude_bin" ]]; then
+        log_detail "Upgrading Claude Code (native)..."
+        if _agent_run_as_user "\"$claude_bin\" update"; then
+            log_success "Claude Code upgraded"
+            return 0
+        fi
+
+        log_warn "Claude Code native update failed, attempting reinstall..."
+        install_claude_code
+        return $?
     fi
 
-    log_detail "Upgrading Claude Code..."
-    _agent_run_as_user "\"$bun_bin\" install -g $CLAUDE_PACKAGE" && log_success "Claude Code upgraded"
+    # Legacy fallback: bun-installed Claude Code
+    local bun_bin
+    bun_bin=$(_agent_get_bun_bin)
+    if _agent_check_bun; then
+        log_detail "Upgrading Claude Code (bun)..."
+        _agent_run_as_user "\"$bun_bin\" install -g $CLAUDE_PACKAGE" && log_success "Claude Code upgraded"
+        return 0
+    fi
+
+    log_warn "Claude Code not installed"
+    return 1
 }
 
 # ============================================================
@@ -261,7 +285,12 @@ verify_agents() {
     log_detail "Verifying coding agents..."
 
     # Check Claude Code
-    if [[ -x "$bun_bin_dir/$CLAUDE_BIN" ]]; then
+    local claude_native_bin="$target_home/.local/bin/claude"
+    if [[ -x "$claude_native_bin" ]]; then
+        local version
+        version=$(_agent_run_as_user "\"$claude_native_bin\" --version" 2>/dev/null || echo "installed")
+        log_detail "  claude: $version"
+    elif [[ -x "$bun_bin_dir/$CLAUDE_BIN" ]]; then
         local version
         version=$(_agent_run_as_user "\"$bun_bin_dir/$CLAUDE_BIN\" --version" 2>/dev/null || echo "installed")
         log_detail "  claude: $version"

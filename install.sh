@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1090,SC1091
 # ============================================================
 # ACFS - Agentic Coding Flywheel Setup
 # Main installer script
@@ -20,6 +21,8 @@
 #   --interactive     Enable interactive prompts for resume decisions
 #   --skip-preflight  Skip pre-flight system validation
 #   --strict          Treat ALL tools as critical (any checksum mismatch aborts)
+#   --list-modules    List available modules and exit
+#   --print-plan      Print execution plan and exit (no installs)
 # ============================================================
 
 set -euo pipefail
@@ -49,6 +52,10 @@ MODE="vibe"
 SKIP_POSTGRES=false
 SKIP_VAULT=false
 SKIP_CLOUD=false
+
+# Manifest-driven selection options (mjt.5.3)
+LIST_MODULES=false
+PRINT_PLAN_MODE=false
 
 # Resume/reinstall options (used by state.sh confirm_resume)
 export ACFS_FORCE_RESUME=false
@@ -352,6 +359,14 @@ parse_args() {
                 SKIP_PREFLIGHT=true
                 shift
                 ;;
+            --list-modules)
+                LIST_MODULES=true
+                shift
+                ;;
+            --print-plan)
+                PRINT_PLAN_MODE=true
+                shift
+                ;;
             *)
                 log_warn "Unknown option: $1"
                 shift
@@ -365,6 +380,161 @@ parse_args() {
 # ============================================================
 command_exists() {
     command -v "$1" &>/dev/null
+}
+
+# ============================================================
+# Environment Detection (mjt.5.3)
+# Sets up paths for libs and generated scripts BEFORE sourcing them.
+# ============================================================
+detect_environment() {
+    # Set lib and generated script directories based on context
+    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
+        # curl|bash mode: use bootstrap archive
+        ACFS_LIB_DIR="$ACFS_BOOTSTRAP_DIR/scripts/lib"
+        ACFS_GENERATED_DIR="$ACFS_BOOTSTRAP_DIR/scripts/generated"
+        ACFS_ASSETS_DIR="${ACFS_ASSETS_DIR:-$ACFS_BOOTSTRAP_DIR/acfs}"
+        ACFS_CHECKSUMS_YAML="${ACFS_CHECKSUMS_YAML:-$ACFS_BOOTSTRAP_DIR/checksums.yaml}"
+        ACFS_MANIFEST_YAML="${ACFS_MANIFEST_YAML:-$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml}"
+    elif [[ -n "${SCRIPT_DIR:-}" ]]; then
+        # Local checkout mode
+        ACFS_LIB_DIR="$SCRIPT_DIR/scripts/lib"
+        ACFS_GENERATED_DIR="$SCRIPT_DIR/scripts/generated"
+        ACFS_ASSETS_DIR="$SCRIPT_DIR/acfs"
+        ACFS_CHECKSUMS_YAML="$SCRIPT_DIR/checksums.yaml"
+        ACFS_MANIFEST_YAML="$SCRIPT_DIR/acfs.manifest.yaml"
+    else
+        # Fallback: current directory
+        ACFS_LIB_DIR="./scripts/lib"
+        ACFS_GENERATED_DIR="./scripts/generated"
+        ACFS_ASSETS_DIR="./acfs"
+        ACFS_CHECKSUMS_YAML="./checksums.yaml"
+        ACFS_MANIFEST_YAML="./acfs.manifest.yaml"
+    fi
+
+    export ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
+
+    # Source minimal libs in correct order (logging, then helpers)
+    if [[ -f "$ACFS_LIB_DIR/logging.sh" ]]; then
+        # shellcheck source=scripts/lib/logging.sh
+        source "$ACFS_LIB_DIR/logging.sh"
+    fi
+
+    if [[ -f "$ACFS_LIB_DIR/security.sh" ]]; then
+        # shellcheck source=scripts/lib/security.sh
+        source "$ACFS_LIB_DIR/security.sh"
+    fi
+
+    if [[ -f "$ACFS_LIB_DIR/contract.sh" ]]; then
+        # shellcheck source=scripts/lib/contract.sh
+        source "$ACFS_LIB_DIR/contract.sh"
+    fi
+
+    if [[ -f "$ACFS_LIB_DIR/install_helpers.sh" ]]; then
+        # shellcheck source=scripts/lib/install_helpers.sh
+        source "$ACFS_LIB_DIR/install_helpers.sh"
+    fi
+
+    # Source manifest index (data-only, safe to source)
+    if [[ -f "$ACFS_GENERATED_DIR/manifest_index.sh" ]]; then
+        # shellcheck source=scripts/generated/manifest_index.sh
+        source "$ACFS_GENERATED_DIR/manifest_index.sh"
+        ACFS_MANIFEST_INDEX_LOADED=true
+    else
+        ACFS_MANIFEST_INDEX_LOADED=false
+    fi
+
+    export ACFS_MANIFEST_INDEX_LOADED
+}
+
+# ============================================================
+# List Modules (mjt.5.3)
+# Prints available modules from manifest_index.sh
+# ============================================================
+list_modules() {
+    if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
+        echo "Error: Manifest index not loaded. Cannot list modules." >&2
+        return 1
+    fi
+
+    echo "Available ACFS Modules"
+    echo "======================"
+    echo ""
+
+    local current_phase=""
+    local module=""
+    local phase=""
+    local category=""
+    local deps=""
+    local enabled=""
+    local key=""
+    local enabled_marker=""
+    for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        # Use key variable to prevent arithmetic evaluation with dots
+        key="$module"
+        phase="${ACFS_MODULE_PHASE[$key]:-?}"
+        category="${ACFS_MODULE_CATEGORY[$key]:-?}"
+        deps="${ACFS_MODULE_DEPS[$key]:-none}"
+        enabled="${ACFS_MODULE_DEFAULT[$key]:-1}"
+
+        if [[ "$phase" != "$current_phase" ]]; then
+            echo ""
+            echo "Phase $phase:"
+            current_phase="$phase"
+        fi
+
+        enabled_marker="+"
+        if [[ "$enabled" == "0" || "$enabled" == "false" ]]; then
+            enabled_marker="-"
+        fi
+
+        echo "  [$enabled_marker] $module ($category)"
+        if [[ -n "$deps" ]] && [[ "$deps" != "none" ]]; then
+            echo "      deps: $deps"
+        fi
+    done
+
+    echo ""
+    echo "Legend: [+] enabled by default, [-] optional"
+    echo "Total: ${#ACFS_MODULES_IN_ORDER[@]} modules"
+}
+
+# ============================================================
+# Print Plan (mjt.5.3)
+# Prints the effective execution plan without running installs.
+# ============================================================
+print_execution_plan() {
+    if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
+        echo "Error: Manifest index not loaded. Cannot print plan." >&2
+        return 1
+    fi
+
+    echo "ACFS Installation Plan"
+    echo "======================"
+    echo ""
+    echo "Mode: $MODE"
+    echo "Effective modules: ${#ACFS_MODULES_IN_ORDER[@]}"
+    echo ""
+    echo "Execution order:"
+    echo ""
+
+    local idx=1
+    local module phase func key
+    for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
+        # Use key variable to prevent arithmetic evaluation with dots
+        key="$module"
+        phase="${ACFS_MODULE_PHASE[$key]:-?}"
+        func="${ACFS_MODULE_FUNC[$key]:-?}"
+        printf "  %2d. [Phase %s] %s -> %s()\n" "$idx" "$phase" "$module" "$func"
+        ((idx++))
+    done
+
+    echo ""
+    echo "Options:"
+    echo "  --skip-postgres: $SKIP_POSTGRES"
+    echo "  --skip-vault:    $SKIP_VAULT"
+    echo "  --skip-cloud:    $SKIP_CLOUD"
+    echo ""
+    echo "This is a preview. Run without --print-plan to execute."
 }
 
 # ============================================================
@@ -1342,7 +1512,7 @@ install_agents() {
         log_detail "Claude Code already installed ($claude_bin_bun)"
     else
         log_detail "Installing Claude Code (native) for $TARGET_USER"
-        try_step "Installing Claude Code" acfs_run_verified_upstream_script_as_target "claude" "bash" stable || return 1
+        try_step "Installing Claude Code" acfs_run_verified_upstream_script_as_target "claude" "bash" stable || log_warn "Claude Code installation failed"
     fi
 
     # Codex CLI (install as target user)
@@ -1971,6 +2141,22 @@ main() {
 
     if [[ -z "${SCRIPT_DIR:-}" ]]; then
         bootstrap_repo_archive
+    fi
+
+    # Detect environment and source manifest index (mjt.5.3)
+    # This must happen BEFORE any handlers that need module data
+    detect_environment
+
+    # Handle --list-modules: print available modules and exit (mjt.5.3)
+    if [[ "$LIST_MODULES" == "true" ]]; then
+        list_modules
+        exit 0
+    fi
+
+    # Handle --print-plan: print execution plan and exit (mjt.5.3)
+    if [[ "$PRINT_PLAN_MODE" == "true" ]]; then
+        print_execution_plan
+        exit 0
     fi
 
     # Handle --reset-state: just delete state file and exit

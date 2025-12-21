@@ -84,6 +84,7 @@ acfs_security_init() {
 `;
 
 const MANIFEST_INDEX_HEADER = `#!/usr/bin/env bash
+# shellcheck disable=SC2034
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
 # Regenerate: bun run generate (from packages/manifest)
