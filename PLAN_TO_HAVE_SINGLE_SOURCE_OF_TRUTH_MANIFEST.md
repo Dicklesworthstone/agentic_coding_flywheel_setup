@@ -651,7 +651,7 @@ declare -A ACFS_EFFECTIVE_RUN=()
 acfs_resolve_selection() {
     # Uses generated manifest index (module->phase, module->deps).
     # Expands ONLY_MODULES/ONLY_PHASES into a set, then adds dependency closure.
-    # Errors if SKIP removes a required dependency (unless explicitly allowed).
+    # Errors if SKIP removes a required dependency.
     :
 }
 
