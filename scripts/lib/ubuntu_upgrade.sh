@@ -450,6 +450,89 @@ ubuntu_check_reboot_required() {
 # Upgrade Execution Functions
 # ============================================================
 
+# Work around Ubuntu bug: do-release-upgrade fails with DEB822 sources
+# Bug: AttributeError: property 'suites' of 'ExplodedDeb822SourceEntry' object has no setter
+# Solution: Temporarily convert DEB822 (.sources) to legacy (.list) format before upgrade
+ubuntu_workaround_deb822_bug() {
+    local sources_file="/etc/apt/sources.list.d/ubuntu.sources"
+    local backup_file="/etc/apt/sources.list.d/ubuntu.sources.acfs-backup"
+    local legacy_file="/etc/apt/sources.list.d/ubuntu-acfs-temp.list"
+
+    # Check if DEB822 format sources exist
+    if [[ ! -f "$sources_file" ]]; then
+        log_detail "No DEB822 sources file found - skipping workaround"
+        return 0
+    fi
+
+    # Check if file uses DEB822 format (has "Types:" line)
+    if ! grep -q "^Types:" "$sources_file"; then
+        log_detail "Sources file not in DEB822 format - skipping workaround"
+        return 0
+    fi
+
+    log_step "Applying DEB822 workaround for do-release-upgrade bug..."
+
+    # Get current codename from the sources file or os-release
+    local current_codename
+    current_codename=$(grep "^Suites:" "$sources_file" | head -1 | awk '{print $2}' | sed 's/-updates$//' | sed 's/-backports$//' | sed 's/-security$//')
+    if [[ -z "$current_codename" ]]; then
+        # Fallback to os-release
+        # shellcheck disable=SC1091
+        source /etc/os-release
+        current_codename="${VERSION_CODENAME:-}"
+    fi
+
+    if [[ -z "$current_codename" ]]; then
+        log_warn "Cannot determine current codename - skipping DEB822 workaround"
+        return 0
+    fi
+
+    log_detail "Current Ubuntu codename: $current_codename"
+
+    # Backup the original DEB822 file
+    cp "$sources_file" "$backup_file"
+
+    # Create legacy format sources.list entries
+    cat > "$legacy_file" << LEGACY_SOURCES
+# Temporary legacy format sources for Ubuntu upgrade
+# Created by ACFS - will be removed after upgrade
+deb http://archive.ubuntu.com/ubuntu ${current_codename} main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu ${current_codename}-updates main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu ${current_codename}-backports main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu ${current_codename}-security main restricted universe multiverse
+LEGACY_SOURCES
+
+    # Disable the DEB822 file by renaming (not removing, for recovery)
+    mv "$sources_file" "${sources_file}.disabled"
+
+    # Update apt to use the new sources
+    apt-get update -qq 2>/dev/null || true
+
+    log_success "DEB822 workaround applied - using legacy sources format"
+    return 0
+}
+
+# Cleanup the DEB822 workaround after upgrade
+ubuntu_cleanup_deb822_workaround() {
+    local sources_file="/etc/apt/sources.list.d/ubuntu.sources"
+    local disabled_file="${sources_file}.disabled"
+    local backup_file="${sources_file}.acfs-backup"
+    local legacy_file="/etc/apt/sources.list.d/ubuntu-acfs-temp.list"
+
+    # Remove our temporary legacy file
+    if [[ -f "$legacy_file" ]]; then
+        rm -f "$legacy_file"
+        log_detail "Removed temporary legacy sources file"
+    fi
+
+    # The upgrade tool typically creates new proper sources
+    # We don't need to restore the old DEB822 file
+    # Just clean up our backup files
+    rm -f "$disabled_file" "$backup_file" 2>/dev/null || true
+
+    log_detail "DEB822 workaround cleanup complete"
+}
+
 # Prepare system before upgrade
 # Runs apt update and dist-upgrade to ensure clean state
 ubuntu_prepare_upgrade() {
@@ -511,12 +594,16 @@ ubuntu_do_upgrade() {
     fi
 
     log_section "Upgrading Ubuntu to $next_version"
-    log_warn "This will take 30-60 minutes. System will reboot when complete."
+    log_warn "This will take 15-30 minutes. System will reboot when complete."
 
     # Prepare the system first
     if ! ubuntu_prepare_upgrade; then
         return 1
     fi
+
+    # Apply workaround for DEB822 format bug in do-release-upgrade
+    # Bug: AttributeError: property 'suites' of 'ExplodedDeb822SourceEntry' object has no setter
+    ubuntu_workaround_deb822_bug || true
 
     # Run do-release-upgrade in non-interactive mode
     log_step "Starting do-release-upgrade..."
@@ -525,8 +612,16 @@ ubuntu_do_upgrade() {
     # DistUpgradeViewNonInteractive is for fully automated upgrades
     export DEBIAN_FRONTEND=noninteractive
 
+    local upgrade_result=0
     if ! do-release-upgrade -f DistUpgradeViewNonInteractive; then
         log_error "do-release-upgrade failed"
+        upgrade_result=1
+    fi
+
+    # Cleanup the DEB822 workaround (whether upgrade succeeded or failed)
+    ubuntu_cleanup_deb822_workaround || true
+
+    if [[ $upgrade_result -ne 0 ]]; then
         return 1
     fi
 
@@ -598,7 +693,12 @@ ubuntu_trigger_reboot() {
     local delay_minutes="${1:-1}"
 
     log_warn "System will reboot in $delay_minutes minute(s)..."
-    log_warn "Reconnect via SSH after reboot to continue."
+    echo ""
+    log_info "After reconnecting via SSH, the upgrade continues automatically in the background."
+    log_info "To monitor progress:"
+    log_info "  journalctl -u acfs-upgrade-resume -f"
+    log_info "  tail -f /var/log/acfs/upgrade_resume.log"
+    echo ""
 
     # Use shutdown for graceful reboot
     # Note: +N means N minutes from now
@@ -672,36 +772,51 @@ upgrade_update_motd() {
     local message="${1:-Ubuntu upgrade in progress}"
     local motd_file="/etc/update-motd.d/00-acfs-upgrade"
 
-    # Truncate message to fit in 60-char content area (leaving space for "║  " and " ║")
-    local max_len=60
+    # Truncate/pad message to fit (54 chars for content area)
+    local max_len=54
     if [[ ${#message} -gt $max_len ]]; then
         message="${message:0:$((max_len - 3))}..."
     fi
-    # Pad message to fill the box width
     local padded_msg
     padded_msg=$(printf "%-${max_len}s" "$message")
 
-    # Create MOTD script
+    # Create MOTD script with embedded ANSI colors
+    # Using printf with octal escapes for portability
     cat > "$motd_file" << 'MOTD_HEADER'
 #!/bin/bash
+# ACFS Upgrade MOTD - shows status when user logs in via SSH
+C='\033[0;36m'    # Cyan (borders)
+Y='\033[1;33m'    # Yellow (warnings)
+G='\033[0;32m'    # Green (success)
+B='\033[1m'       # Bold
+D='\033[2m'       # Dim
+N='\033[0m'       # Reset
+
 echo ""
-echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║                    ACFS UPGRADE IN PROGRESS                    ║"
-echo "╠════════════════════════════════════════════════════════════════╣"
+echo -e "${C}╔══════════════════════════════════════════════════════════════╗${N}"
+echo -e "${C}║${N}  ${Y}${B}          ⚡ ACFS UPGRADE IN PROGRESS ⚡${N}                 ${C}║${N}"
+echo -e "${C}╠══════════════════════════════════════════════════════════════╣${N}"
+echo -e "${C}║${N}                                                              ${C}║${N}"
 MOTD_HEADER
 
-    # Add the dynamic message (properly padded)
-    cat >> "$motd_file" << MOTD_MESSAGE
-echo "║  ${padded_msg} ║"
-MOTD_MESSAGE
+    # Add dynamic status line
+    cat >> "$motd_file" << MOTD_STATUS
+echo -e "\${C}║\${N}  \${B}Status:\${N} ${padded_msg}\${C}║\${N}"
+MOTD_STATUS
 
     cat >> "$motd_file" << 'MOTD_FOOTER'
-echo "║                                                                ║"
-echo "║  The system will reboot automatically when each upgrade       ║"
-echo "║  step completes. Do not interrupt this process.               ║"
-echo "║                                                                ║"
-echo "║  View logs: journalctl -u acfs-upgrade-resume -f              ║"
-echo "╚════════════════════════════════════════════════════════════════╝"
+echo -e "${C}║${N}                                                              ${C}║${N}"
+echo -e "${C}║${N}  The upgrade runs ${G}automatically${N} in the background.        ${C}║${N}"
+echo -e "${C}║${N}  System will reboot after each step. ${Y}Do NOT interrupt.${N}    ${C}║${N}"
+echo -e "${C}║${N}                                                              ${C}║${N}"
+echo -e "${C}╠══════════════════════════════════════════════════════════════╣${N}"
+echo -e "${C}║${N}  ${B}MONITOR PROGRESS:${N}                                           ${C}║${N}"
+echo -e "${C}║${N}                                                              ${C}║${N}"
+echo -e "${C}║${N}  ${D}journalctl -u acfs-upgrade-resume -f${N}    (live service log) ${C}║${N}"
+echo -e "${C}║${N}  ${D}tail -f /var/log/acfs/upgrade_resume.log${N}    (detailed log) ${C}║${N}"
+echo -e "${C}║${N}  ${D}systemctl status acfs-upgrade-resume${N}     (service status) ${C}║${N}"
+echo -e "${C}║${N}                                                              ${C}║${N}"
+echo -e "${C}╚══════════════════════════════════════════════════════════════╝${N}"
 echo ""
 MOTD_FOOTER
 
@@ -1075,7 +1190,6 @@ ubuntu_start_upgrade_sequence() {
 
     # Trigger reboot (1 minute delay for user to read messages)
     log_warn "Upgrade step complete. Rebooting in 1 minute..."
-    log_warn "Reconnect via SSH after reboot. Upgrade will continue automatically."
     ubuntu_trigger_reboot 1
 
     return 0

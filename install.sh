@@ -1719,8 +1719,13 @@ CONTINUE_SCRIPT
             fi
 
             # Trigger reboot
-            log_warn "Rebooting in 10 seconds... Reconnect via SSH after reboot."
-            log_info "The upgrade will continue automatically after reboot."
+            log_warn "Rebooting in 10 seconds..."
+            echo ""
+            log_info "After reconnecting via SSH, the upgrade continues automatically in the background."
+            log_info "To monitor progress:"
+            log_info "  journalctl -u acfs-upgrade-resume -f"
+            log_info "  tail -f /var/log/acfs/upgrade_resume.log"
+            echo ""
             sleep 10
             shutdown -r now "ACFS: Rebooting to apply pending updates before Ubuntu upgrade"
             exit 0
