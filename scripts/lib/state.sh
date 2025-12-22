@@ -399,17 +399,33 @@ state_phase_start() {
     local phase_id="$1"
     local step="${2:-}"
 
-    if command -v jq &>/dev/null; then
-        local jq_expr=".current_phase = \"$phase_id\""
-        if [[ -n "$step" ]]; then
-            jq_expr="$jq_expr | .current_step = \"$step\""
-        else
-            jq_expr="$jq_expr | .current_step = null"
-        fi
-        # Record start time for duration tracking
-        jq_expr="$jq_expr | .phase_start_time = $(date +%s)"
-        state_update "$jq_expr"
+    if ! command -v jq &>/dev/null; then
+        return 1
     fi
+
+    # Use jq --arg to safely handle steps with quotes/backslashes.
+    local state
+    state=$(state_load) || return 1
+
+    local start_time
+    start_time=$(date +%s)
+
+    local new_state
+    if [[ -n "$step" ]]; then
+        new_state=$(echo "$state" | jq --arg phase "$phase_id" --arg step "$step" --argjson start "$start_time" '
+            .current_phase = $phase |
+            .current_step = $step |
+            .phase_start_time = $start
+        ') || return 1
+    else
+        new_state=$(echo "$state" | jq --arg phase "$phase_id" --argjson start "$start_time" '
+            .current_phase = $phase |
+            .current_step = null |
+            .phase_start_time = $start
+        ') || return 1
+    fi
+
+    state_save "$new_state"
 }
 
 # Update the current step within a phase

@@ -381,6 +381,10 @@ log_detail() {
     fi
 }
 
+log_info() {
+    log_detail "$1"
+}
+
 log_success() {
     if [[ "$HAS_GUM" == "true" ]]; then
         gum style --foreground "$ACFS_SUCCESS" --bold "✓ $1" >&2
@@ -1428,22 +1432,31 @@ run_ubuntu_upgrade_phase() {
     export UBUNTU_TARGET_VERSION="$TARGET_UBUNTU_VERSION"
     export UBUNTU_TARGET_VERSION_NUM="$target_version_num"
 
-    # Check if upgrade is needed (using numeric comparison)
-    if ubuntu_version_gte "$current_version_num" "$target_version_num"; then
-        log_detail "Ubuntu $current_version_str meets target ($TARGET_UBUNTU_VERSION)"
-        return 0
-    fi
-
     # Check if we're resuming an upgrade after reboot
     local upgrade_stage
     upgrade_stage=$(state_upgrade_get_stage 2>/dev/null || echo "not_started")
 
-    if [[ "$upgrade_stage" == "awaiting_reboot" ]]; then
-        # This shouldn't happen - the resume service handles this
-        # But if user manually runs install.sh, we can continue
-        log_info "Detected upgrade in progress (awaiting reboot)"
-        log_info "The systemd resume service should handle this automatically"
-        log_info "If the system just rebooted, please wait for automatic resume"
+    case "$upgrade_stage" in
+        initializing|upgrading|awaiting_reboot|resumed|step_complete)
+            log_info "Detected Ubuntu upgrade in progress (stage: $upgrade_stage)"
+            log_info "The systemd resume service should handle this automatically"
+            log_info "Monitoring:"
+            log_info "  - /var/lib/acfs/check_status.sh"
+            log_info "  - journalctl -u acfs-upgrade-resume -f"
+            log_info "  - tail -f /var/log/acfs/upgrade_resume.log"
+            return 0
+            ;;
+        error)
+            log_error "Previous Ubuntu upgrade attempt failed (stage: error)"
+            log_error "Check logs: journalctl -u acfs-upgrade-resume -f or /var/log/acfs/upgrade_resume.log"
+            log_error "To proceed without upgrading: re-run with --skip-ubuntu-upgrade (not recommended)"
+            return 1
+            ;;
+    esac
+
+    # Check if upgrade is needed (using numeric comparison)
+    if ubuntu_version_gte "$current_version_num" "$target_version_num"; then
+        log_detail "Ubuntu $current_version_str meets target ($TARGET_UBUNTU_VERSION)"
         return 0
     fi
 

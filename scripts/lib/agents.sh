@@ -124,14 +124,9 @@ install_claude_code() {
         fi
     fi
 
-    # Fallback to direct curl if security lib unavailable or check failed
-    log_warn "Security verification unavailable, falling back to direct install"
-    if _agent_run_as_user "curl -fsSL https://claude.ai/install.sh | bash"; then
-        log_success "Claude Code installed"
-        return 0
-    fi
-
-    log_warn "Claude Code installation failed"
+    # Fail closed: never execute unverified remote installer scripts.
+    log_error "Security verification unavailable or failed for Claude Code"
+    log_error "Refusing to execute unverified installer script"
     return 1
 }
 

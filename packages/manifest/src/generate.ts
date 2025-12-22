@@ -659,7 +659,7 @@ function generateDoctorChecks(manifest: Manifest): string {
 
     for (let i = 0; i < module.verify.length; i++) {
       const verify = module.verify[i];
-      const isOptional = verify.includes('|| true');
+      const isOptional = /\|\|\s*true\s*$/.test(verify);
       const cleanCmd = verify.replace(/\s*\|\|\s*true\s*$/, '').trim();
       const suffix = module.verify.length > 1 ? `.${i + 1}` : '';
       const description = escapeBash(module.description);
@@ -685,7 +685,10 @@ function generateDoctorChecks(manifest: Manifest): string {
   lines.push('        ');
   // Run checks in a subshell to avoid leaking side effects into this script.
   // Enable pipefail so pipeline-based checks behave as expected.
-  lines.push('        if bash -c "set -o pipefail; $cmd" &>/dev/null; then');
+  // Run the command string in a fresh bash so quoted commands remain intact.
+  // Use `bash -o pipefail -c "$cmd"` (NOT `bash -c "… $cmd"`) to avoid breaking
+  // when `$cmd` itself contains quotes.
+  lines.push('        if bash -o pipefail -c "$cmd" &>/dev/null; then');
   lines.push('            echo -e "\\033[0;32m[ok]\\033[0m $id - $desc"');
   lines.push('            ((passed += 1))');
   lines.push('        elif [[ "$optional" == "optional" ]]; then');

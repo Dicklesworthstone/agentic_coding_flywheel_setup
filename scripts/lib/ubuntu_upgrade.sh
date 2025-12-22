@@ -460,7 +460,7 @@ ubuntu_do_upgrade() {
     local expected_next_version="${1:-}"
 
     local next_version=""
-    next_version="$(ubuntu_get_next_upgrade 2>/dev/null || true)"
+    next_version="$(ubuntu_get_next_upgrade || true)"
 
     if [[ -z "$next_version" ]]; then
         log_error "No upgrade available"
@@ -827,6 +827,9 @@ upgrade_setup_infrastructure() {
     fi
     cp "${source_dir}/scripts/lib/upgrade_resume.sh" "${ACFS_RESUME_DIR}/"
     chmod +x "${ACFS_RESUME_DIR}/upgrade_resume.sh"
+
+    # Create a user-facing status helper (referenced by README).
+    upgrade_create_status_script
 
     # Copy current state file if exists
     local state_file

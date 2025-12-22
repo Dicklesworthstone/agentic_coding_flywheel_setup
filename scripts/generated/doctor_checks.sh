@@ -122,7 +122,7 @@ run_manifest_checks() {
         # Use tab as delimiter (safe - won't appear in commands)
         IFS=$'\t' read -r id desc cmd optional <<< "$check"
         
-        if bash -c "set -o pipefail; $cmd" &>/dev/null; then
+        if bash -o pipefail -c "$cmd" &>/dev/null; then
             echo -e "\033[0;32m[ok]\033[0m $id - $desc"
             ((passed += 1))
         elif [[ "$optional" == "optional" ]]; then

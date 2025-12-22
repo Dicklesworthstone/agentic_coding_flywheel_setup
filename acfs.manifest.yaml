@@ -155,7 +155,22 @@ modules:
       - |
         # Set default shell
         if [[ "$SHELL" != */zsh ]]; then
-          sudo chsh -s "$(which zsh)" "$(whoami)"
+          zsh_path="$(command -v zsh || true)"
+          if [[ -z "$zsh_path" ]]; then
+            echo "WARN: zsh not found; cannot set default shell automatically." >&2
+            exit 0
+          fi
+          if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+            sudo chsh -s "$zsh_path" "$(whoami)"
+          else
+            if [[ -t 0 ]]; then
+              if ! chsh -s "$zsh_path"; then
+                echo "WARN: Could not change default shell automatically. Run: chsh -s $zsh_path" >&2
+              fi
+            else
+              echo "WARN: Skipping shell change (no TTY). Run: chsh -s $zsh_path" >&2
+            fi
+          fi
         fi
     verify:
       - test -d ~/.oh-my-zsh
