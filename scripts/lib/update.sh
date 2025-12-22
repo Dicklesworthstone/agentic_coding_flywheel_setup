@@ -742,9 +742,45 @@ update_stack() {
         run_cmd "NTM" update_run_verified_installer ntm
     fi
 
-    # MCP Agent Mail
-    if [[ -d "$HOME/mcp_agent_mail" ]] || cmd_exists am; then
-        run_cmd "MCP Agent Mail" update_run_verified_installer mcp_agent_mail --yes
+    # MCP Agent Mail - Special handling for tmux (server blocks)
+    if cmd_exists "am" || [[ -d "$HOME/mcp_agent_mail" ]]; then
+        if cmd_exists tmux; then
+            capture_version_before "am"
+
+            local tool="mcp_agent_mail"
+            local url="${KNOWN_INSTALLERS[$tool]:-}"
+            local expected_sha256
+            expected_sha256="$(get_checksum "$tool")"
+
+            if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                # Fetch and verify content first
+                local tmp_install
+                tmp_install=$(mktemp "${TMPDIR:-/tmp}/acfs-install-am.XXXXXX")
+
+                if verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
+                    chmod +x "$tmp_install"
+
+                    local tmux_session="acfs-services"
+                    # Kill old session if exists
+                    tmux kill-session -t "$tmux_session" 2>/dev/null || true
+
+                    # Launch in tmux
+                    if run_cmd "MCP Agent Mail (tmux)" tmux new-session -d -s "$tmux_session" "$tmp_install --dir $HOME/mcp_agent_mail --yes"; then
+                        log_to_file "Started MCP Agent Mail update in tmux session: $tmux_session"
+                        [[ "$QUIET" != "true" ]] && echo -e "       ${DIM}Update running in tmux session '$tmux_session'${NC}"
+                    fi
+
+                    # Cleanup happens when system tmp is cleaned
+                else
+                    rm -f "$tmp_install"
+                    log_item "fail" "MCP Agent Mail" "verification failed"
+                fi
+            else
+                log_item "fail" "MCP Agent Mail" "unknown installer URL/checksum"
+            fi
+        else
+            log_item "skip" "MCP Agent Mail" "tmux not found (required for update)"
+        fi
     fi
 
     # UBS
