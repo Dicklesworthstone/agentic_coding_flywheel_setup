@@ -167,6 +167,28 @@ export default function ReconnectUbuntuPage() {
         </ul>
       </OutputPreview>
 
+      <AlertCard variant="tip" title="Prompt customization wizard?">
+        <p>
+          The first time you connect, you might see a &quot;Powerlevel10k configuration wizard&quot;
+          asking about fonts and prompt style.
+        </p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            Press{" "}
+            <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">q</kbd>{" "}
+            to quit and use defaults (recommended for now)
+          </li>
+          <li>Or go through it if you want to customize how your prompt looks</li>
+        </ul>
+        <p className="mt-2 text-xs text-muted-foreground">
+          You can always run{" "}
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+            p10k configure
+          </code>{" "}
+          later to customize.
+        </p>
+      </AlertCard>
+
       {/* Beginner Guide */}
       <SimplerGuide>
         <div className="space-y-6">
