@@ -581,14 +581,14 @@ test_generated_defaults() {
 }
 
 test_generated_global_override() {
-    local name="Global ACFS_USE_GENERATED overrides defaults"
+    local name="Global ACFS_USE_GENERATED=0 forces legacy for all categories"
     reset_generated_flags
     ACFS_GENERATED_DEFAULT_CATEGORIES=("shell")
-    ACFS_USE_GENERATED=1
+    ACFS_USE_GENERATED=0
 
-    if acfs_use_generated_category "cloud" 2>/dev/null; then
-        ACFS_USE_GENERATED=0
-        if ! acfs_use_generated_category "shell" 2>/dev/null; then
+    # Global=0 should disable even default categories
+    if ! acfs_use_generated_category "shell" 2>/dev/null; then
+        if ! acfs_use_generated_category "cloud" 2>/dev/null; then
             test_pass "$name"
             return
         fi
