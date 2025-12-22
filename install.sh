@@ -389,7 +389,7 @@ install_gum_early() {
     echo -e "\033[0;90m      ↳ Fetching Charm repository key...\033[0m" >&2
     $sudo_cmd mkdir -p /etc/apt/keyrings 2>/dev/null || true
     if ! curl --connect-timeout 10 --max-time 30 -fsSL https://repo.charm.sh/apt/gpg.key 2>/dev/null | \
-        $sudo_cmd gpg --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null; then
+        $sudo_cmd gpg --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null; then
         echo -e "\033[0;33m      ⚠ Could not fetch Charm key (skipping gum, will retry later)\033[0m" >&2
         return 0
     fi
@@ -2121,7 +2121,7 @@ install_cli_tools() {
     else
         log_detail "Installing gum for glamorous shell scripts"
         try_step "Creating apt keyrings directory" $SUDO mkdir -p /etc/apt/keyrings || true
-        try_step_eval "Adding Charm apt key" "acfs_curl https://repo.charm.sh/apt/gpg.key | $SUDO gpg --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null" || true
+        try_step_eval "Adding Charm apt key" "acfs_curl https://repo.charm.sh/apt/gpg.key | $SUDO gpg --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null" || true
         try_step_eval "Adding Charm apt repo" "printf 'Types: deb\nURIs: https://repo.charm.sh/apt/\nSuites: *\nComponents: *\nSigned-By: /etc/apt/keyrings/charm.gpg\n' | $SUDO tee /etc/apt/sources.list.d/charm.sources > /dev/null" || true
         try_step "Updating apt cache" $SUDO apt-get update -y || true
         if try_step "Installing gum" $SUDO apt-get install -y gum 2>/dev/null; then
@@ -2152,10 +2152,12 @@ install_cli_tools() {
         try_step "Configuring git-lfs" run_as_target git lfs install --skip-repo || true
     fi
 
+    # Install optional apt packages individually to prevent one failure from blocking others
     log_detail "Installing optional apt packages"
-    try_step "Installing optional apt packages" $SUDO apt-get install -y \
-        lsd eza bat fd-find btop dust neovim \
-        docker.io docker-compose-plugin || true
+    local optional_pkgs=(lsd eza bat fd-find btop dust neovim htop tree ncdu httpie entr mtr pv docker.io docker-compose-plugin)
+    for pkg in "${optional_pkgs[@]}"; do
+        $SUDO apt-get install -y "$pkg" >/dev/null 2>&1 || log_detail "$pkg not available (optional)"
+    done
 
     # Robust lazygit install (apt or binary fallback)
     if ! command_exists lazygit; then
@@ -2195,8 +2197,12 @@ install_cli_tools() {
         fi
     fi
 
-    # Add user to docker group
-    try_step "Adding $TARGET_USER to docker group" $SUDO usermod -aG docker "$TARGET_USER" || true
+    # Add user to docker group (only if docker group exists)
+    if getent group docker &>/dev/null; then
+        try_step "Adding $TARGET_USER to docker group" $SUDO usermod -aG docker "$TARGET_USER" || true
+    else
+        log_detail "Docker group not found, skipping group membership"
+    fi
 
     # Tailscale VPN for secure remote access (bt5)
     if [[ "$used_generated_network" == "true" ]]; then
@@ -2374,7 +2380,7 @@ install_cloud_db_legacy_db() {
         log_detail "Installing PostgreSQL 18 (PGDG repo, codename=$codename)"
         try_step "Creating apt keyrings for PostgreSQL" $SUDO mkdir -p /etc/apt/keyrings || true
 
-        if ! try_step_eval "Adding PostgreSQL apt key" "acfs_curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | $SUDO gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg 2>/dev/null"; then
+        if ! try_step_eval "Adding PostgreSQL apt key" "acfs_curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | $SUDO gpg --batch --yes --dearmor -o /etc/apt/keyrings/postgresql.gpg 2>/dev/null"; then
             log_warn "PostgreSQL: failed to install signing key (skipping)"
         else
             try_step_eval "Adding PostgreSQL apt repo" "echo 'deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main' | $SUDO tee /etc/apt/sources.list.d/pgdg.list > /dev/null" || true
@@ -2421,7 +2427,7 @@ install_cloud_db_legacy_tools() {
         log_detail "Installing Vault (HashiCorp repo, codename=$codename)"
         try_step "Creating apt keyrings for Vault" $SUDO mkdir -p /etc/apt/keyrings || true
 
-        if ! try_step_eval "Adding HashiCorp apt key" "acfs_curl https://apt.releases.hashicorp.com/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/hashicorp.gpg 2>/dev/null"; then
+        if ! try_step_eval "Adding HashiCorp apt key" "acfs_curl https://apt.releases.hashicorp.com/gpg | $SUDO gpg --batch --yes --dearmor -o /etc/apt/keyrings/hashicorp.gpg 2>/dev/null"; then
             log_warn "Vault: failed to install signing key (skipping)"
         else
             try_step_eval "Adding HashiCorp apt repo" "echo 'deb [signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com ${codename} main' | $SUDO tee /etc/apt/sources.list.d/hashicorp.list > /dev/null" || true

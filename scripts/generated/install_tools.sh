@@ -217,15 +217,15 @@ install_tools_vault() {
     log_step "Installing tools.vault"
 
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log_info "dry-run: install: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg (root)"
+        log_info "dry-run: install: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg (root)"
     else
         if ! run_as_root_shell <<'INSTALL_TOOLS_VAULT'
-curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 INSTALL_TOOLS_VAULT
         then
-            log_warn "tools.vault: install command failed: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg"
+            log_warn "tools.vault: install command failed: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg"
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "tools.vault" "install command failed: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg"
+              record_skipped_tool "tools.vault" "install command failed: curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "tools.vault"
             fi

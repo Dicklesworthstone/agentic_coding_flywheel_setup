@@ -479,7 +479,7 @@ modules:
       run_as: current
       command: "command -v vault"
     install:
-      - curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+      - curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
       - echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list
       - apt-get update && apt-get install -y vault
     verify:
@@ -503,7 +503,7 @@ modules:
     install:
       - |
         mkdir -p /etc/apt/keyrings
-        curl --proto '=https' --proto-redir '=https' -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+        curl --proto '=https' --proto-redir '=https' -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/postgresql.gpg
         CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
         case "$CODENAME" in
           oracular|plucky|questing) CODENAME="noble" ;;

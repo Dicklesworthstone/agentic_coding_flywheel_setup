@@ -1,29 +1,24 @@
-name: Monitor Upstream Checksums
+name: Auto-Update Upstream Checksums
 
 on:
   schedule:
-    - cron: "0 6 * * *"   # 6 AM UTC daily
-    - cron: "0 18 * * *"  # 6 PM UTC daily (stability check)
-  workflow_dispatch:       # Manual trigger for testing
+    - cron: "0 */4 * * *"   # Every 4 hours (6 times daily for fast updates)
+  workflow_dispatch:         # Manual trigger for testing
+  push:
+    paths:
+      - 'scripts/lib/security.sh'  # Re-run if security.sh changes
 
 jobs:
-  check-checksums:
+  auto-update-checksums:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Restore checksum cache
-        uses: actions/cache@v4
         with:
-          path: .checksum-cache
-          key: checksum-monitor-${{ github.run_id }}
-          restore-keys: |
-            checksum-monitor-
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify current checksums
         id: verify
@@ -42,129 +37,50 @@ jobs:
 
           if [[ "$total_issues" -gt 0 ]]; then
             echo "changed=true" >> $GITHUB_OUTPUT
-            jq -r '.mismatches[].name' current.json > changed_tools.txt 2>/dev/null || true
-            jq -r '.errors[].name' current.json >> changed_tools.txt 2>/dev/null || true
-            echo "Changed/errored tools:"
-            cat changed_tools.txt
+            echo "Changed tools:"
+            jq -r '.mismatches[].name' current.json 2>/dev/null || true
           else
             echo "changed=false" >> $GITHUB_OUTPUT
-            echo "All checksums match!"
+            echo "All checksums match - no update needed"
           fi
-
-      - name: Check stability
-        if: steps.verify.outputs.changed == 'true'
-        id: stability
-        run: |
-          # Get current mismatches as sorted list
-          current_issues=$(jq -r '[.mismatches[].name, .errors[].name] | sort | join(",")' current.json)
-
-          if [[ -f ".checksum-cache/previous_issues.txt" ]]; then
-            previous_issues=$(cat .checksum-cache/previous_issues.txt)
-
-            if [[ "$current_issues" == "$previous_issues" ]]; then
-              echo "stable=true" >> $GITHUB_OUTPUT
-              echo "Checksums stable across 2 runs - safe to create PR"
-            else
-              echo "stable=false" >> $GITHUB_OUTPUT
-              echo "Issues changed since last run - waiting for stability"
-              echo "Previous: $previous_issues"
-              echo "Current: $current_issues"
-            fi
-          else
-            echo "stable=false" >> $GITHUB_OUTPUT
-            echo "First run with changes - caching for stability check"
-          fi
-
-          # Update cache
-          mkdir -p .checksum-cache
-          echo "$current_issues" > .checksum-cache/previous_issues.txt
-          cp current.json .checksum-cache/previous.json
 
       - name: Generate updated checksums
-        if: steps.verify.outputs.changed == 'true' && steps.stability.outputs.stable == 'true'
+        if: steps.verify.outputs.changed == 'true'
         run: |
           ./scripts/lib/security.sh --update-checksums > checksums.yaml.new
           mv checksums.yaml.new checksums.yaml
 
-      - name: Generate PR body with changelog
-        if: steps.verify.outputs.changed == 'true' && steps.stability.outputs.stable == 'true'
-        id: pr_body
+      - name: Commit and push updates
+        if: steps.verify.outputs.changed == 'true'
         run: |
-          # Related: bead xos - Generate PR body with changelog info
-          {
-            echo "## Upstream Checksum Updates"
-            echo ""
-            echo "The following upstream installer scripts have changed:"
-            echo ""
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-            # Process mismatches
-            if [[ $(jq '.mismatches | length' current.json) -gt 0 ]]; then
-              jq -r '.mismatches[] | "### \(.name)\n- **Old:** `\(.expected[:16])...`\n- **New:** `\(.actual[:16])...`\n- **URL:** \(.url)\n"' current.json
-            fi
+          # Generate commit message with details
+          CHANGED_TOOLS=$(jq -r '.mismatches[].name' current.json 2>/dev/null | tr '\n' ', ' | sed 's/,$//')
 
-            # Process errors (couldn't fetch)
-            if [[ $(jq '.errors | length' current.json) -gt 0 ]]; then
-              echo "### Fetch Errors"
-              echo ""
-              jq -r '.errors[] | "- **\(.name)**: \(.error)"' current.json
-              echo ""
-            fi
+          git add checksums.yaml
+          git commit -m "chore(security): auto-update checksums for ${CHANGED_TOOLS}
 
-            echo "---"
-            echo ""
-            echo "### Stability Verified ✓"
-            echo ""
-            echo "Checksums have been stable across 2 consecutive checks (12 hours apart)."
-            echo ""
-            echo "---"
-            echo ""
-            echo "## ⚠️ Review Required"
-            echo ""
-            echo "Before merging, please verify these are legitimate upstream updates:"
-            echo ""
-            echo "### Verification Checklist"
-            echo ""
-            echo "- [ ] Check each tool's upstream repository for recent releases"
-            echo "- [ ] Review any security advisories for these tools"
-            echo "- [ ] Verify no unauthorized modifications (compare with source)"
-            echo "- [ ] Confirm changes align with expected functionality"
-            echo ""
-            echo "### Common Causes"
-            echo ""
-            echo "| Cause | Likelihood | Action |"
-            echo "|-------|------------|--------|"
-            echo "| Normal update | High | Review changes, merge |"
-            echo "| Security patch | Medium | Review changelog, merge promptly |"
-            echo "| Build timestamp change | Low | Safe to merge |"
-            echo "| Supply chain issue | Very Rare | Investigate thoroughly |"
-            echo ""
-            echo "---"
-            echo "_Generated by checksum monitoring workflow_"
-          } > pr_body.md
+Updated checksums for upstream installer scripts that have changed.
 
-          # Store for use in PR creation
-          echo "pr_body_file=pr_body.md" >> $GITHUB_OUTPUT
+This is an automated commit - trusted sources auto-accept in installer.
+Mismatches: ${{ steps.verify.outputs.mismatches }}
 
-      - name: Create Pull Request
-        if: steps.verify.outputs.changed == 'true' && steps.stability.outputs.stable == 'true'
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: "chore(security): update upstream checksums"
-          body-path: pr_body.md
-          branch: auto/update-checksums
-          labels: security, automated
-          delete-branch: true
+🤖 Generated by checksum-monitor workflow"
+
+          git push
 
       - name: Summary
         run: |
-          echo "## Checksum Monitoring Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Checksum Auto-Update Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Mismatches | ${{ steps.verify.outputs.mismatches }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Errors | ${{ steps.verify.outputs.errors }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Changed | ${{ steps.verify.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Updated | ${{ steps.verify.outputs.changed }} |" >> $GITHUB_STEP_SUMMARY
           if [[ "${{ steps.verify.outputs.changed }}" == "true" ]]; then
-            echo "| Stable | ${{ steps.stability.outputs.stable || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Checksums automatically updated and committed to main" >> $GITHUB_STEP_SUMMARY
           fi

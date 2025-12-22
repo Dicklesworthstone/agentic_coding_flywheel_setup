@@ -335,7 +335,7 @@ install_gum() {
     elif command -v apt-get &>/dev/null; then
         # Add charm repository (DEB822 format for Ubuntu 24.04+)
         $sudo_cmd mkdir -p /etc/apt/keyrings
-        curl --proto '=https' --proto-redir '=https' -fsSL https://repo.charm.sh/apt/gpg.key | $sudo_cmd gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+        curl --proto '=https' --proto-redir '=https' -fsSL https://repo.charm.sh/apt/gpg.key | $sudo_cmd gpg --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg
         printf 'Types: deb\nURIs: https://repo.charm.sh/apt/\nSuites: *\nComponents: *\nSigned-By: /etc/apt/keyrings/charm.gpg\n' | $sudo_cmd tee /etc/apt/sources.list.d/charm.sources > /dev/null
         $sudo_cmd apt-get update && $sudo_cmd apt-get install -y gum
     elif command -v go &>/dev/null; then

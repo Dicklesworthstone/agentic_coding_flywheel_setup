@@ -152,8 +152,9 @@ install_postgresql() {
     $sudo_cmd mkdir -p /etc/apt/keyrings
 
     # Download and install the repository signing key
+    # Use --yes to overwrite existing keyring file without prompting
     if ! curl --proto '=https' --proto-redir '=https' -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | \
-        $sudo_cmd gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg 2>/dev/null; then
+        $sudo_cmd gpg --batch --yes --dearmor -o /etc/apt/keyrings/postgresql.gpg 2>/dev/null; then
         log_warn "Failed to download/install PostgreSQL signing key"
         return 1
     fi
@@ -234,8 +235,9 @@ install_vault() {
     # Add HashiCorp GPG key and repository
     $sudo_cmd mkdir -p /etc/apt/keyrings
 
+    # Use --yes to overwrite existing keyring file without prompting
     if ! curl --proto '=https' --proto-redir '=https' -fsSL https://apt.releases.hashicorp.com/gpg | \
-        $sudo_cmd gpg --dearmor -o /etc/apt/keyrings/hashicorp.gpg 2>/dev/null; then
+        $sudo_cmd gpg --batch --yes --dearmor -o /etc/apt/keyrings/hashicorp.gpg 2>/dev/null; then
         log_warn "Failed to download/install HashiCorp signing key"
         return 1
     fi

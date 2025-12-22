@@ -67,7 +67,7 @@ install_db_postgres18() {
     else
         if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
 mkdir -p /etc/apt/keyrings
-curl --proto '=https' --proto-redir '=https' -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+curl --proto '=https' --proto-redir '=https' -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --batch --yes --dearmor -o /etc/apt/keyrings/postgresql.gpg
 CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
 case "$CODENAME" in
   oracular|plucky|questing) CODENAME="noble" ;;

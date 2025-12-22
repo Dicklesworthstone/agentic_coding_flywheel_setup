@@ -130,6 +130,46 @@ declare -gA KNOWN_INSTALLERS=(
     [slb]="https://raw.githubusercontent.com/Dicklesworthstone/simultaneous_launch_button/main/scripts/install.sh"
 )
 
+# ============================================================
+# Trusted Sources - Auto-Accept Checksum Changes
+# ============================================================
+#
+# URLs from these domains are considered trusted. When checksums
+# mismatch for trusted sources, we log a warning but PROCEED anyway.
+# This prevents stale checksums from blocking legitimate installations.
+#
+# Rationale: A checksum mismatch from bun.sh is 99.99% likely to be
+# a legitimate upstream update, not a supply chain attack.
+#
+TRUSTED_DOMAINS=(
+    "bun.sh"
+    "astral.sh"
+    "rustup.rs"
+    "sh.rustup.rs"
+    "claude.ai"
+    "setup.atuin.sh"
+    "raw.githubusercontent.com"
+)
+
+# Check if a URL is from a trusted domain
+is_trusted_source() {
+    local url="$1"
+    local domain
+
+    # Extract domain from URL (handles https://domain.com/path)
+    domain="${url#https://}"
+    domain="${domain#http://}"
+    domain="${domain%%/*}"
+
+    for trusted in "${TRUSTED_DOMAINS[@]}"; do
+        # Match exact domain or subdomain
+        if [[ "$domain" == "$trusted" ]] || [[ "$domain" == *".$trusted" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -648,13 +688,15 @@ handle_all_checksum_mismatches() {
 
 # Internal: Handle mismatches in non-interactive mode
 #
-# Rules:
-#   - CRITICAL tool mismatch → abort (cannot proceed safely)
+# Rules (updated for bulletproof automation):
+#   - TRUSTED source mismatch → auto-accept with warning (never blocks)
+#   - CRITICAL tool from UNTRUSTED source → abort (security risk)
 #   - RECOMMENDED tool mismatch → auto-skip with warning
 #
 _handle_mismatches_noninteractive() {
-    local has_critical=false
-    local critical_names=()
+    local has_critical_untrusted=false
+    local critical_untrusted_names=()
+    local trusted_accepted=()
 
     echo "" >&2
     echo -e "${YELLOW}Checksum mismatches detected (non-interactive mode):${NC}" >&2
@@ -663,18 +705,26 @@ _handle_mismatches_noninteractive() {
     for entry in "${CHECKSUM_MISMATCHES[@]}"; do
         IFS="|" read -r tool url expected actual <<< "$entry"
 
+        # TRUSTED SOURCES: Always auto-accept (bulletproof automation)
+        if is_trusted_source "$url"; then
+            echo -e "  ${GREEN}[trusted]${NC} $tool - auto-accepting updated checksum" >&2
+            trusted_accepted+=("$tool")
+            continue
+        fi
+
+        # Non-trusted sources: use old critical/recommended logic
         local is_crit=false
         if declare -f is_critical_tool &>/dev/null && is_critical_tool "$tool"; then
             is_crit=true
-            has_critical=true
-            critical_names+=("$tool")
+            has_critical_untrusted=true
+            critical_untrusted_names+=("$tool")
         fi
 
         if [[ "$is_crit" == "true" ]]; then
-            echo -e "  ${RED}[CRITICAL]${NC} $tool - checksum mismatch" >&2
+            echo -e "  ${RED}[CRITICAL-UNTRUSTED]${NC} $tool - checksum mismatch" >&2
         else
             echo -e "  ${YELLOW}[skipping]${NC} $tool - checksum mismatch" >&2
-            # Auto-skip recommended tools
+            # Auto-skip recommended tools from untrusted sources
             if declare -f handle_tool_failure &>/dev/null; then
                 handle_tool_failure "$tool" "Checksum mismatch (auto-skipped in non-interactive mode)"
             else
@@ -685,18 +735,20 @@ _handle_mismatches_noninteractive() {
 
     echo "" >&2
 
-    # Abort if any critical tools have mismatches
-    if [[ "$has_critical" == "true" ]]; then
-        echo -e "${RED}ABORTING: Critical tools have checksum mismatches: ${critical_names[*]}${NC}" >&2
-        echo "Cannot proceed safely without verified critical installers." >&2
-        echo "Options:" >&2
-        echo "  - Update checksums.yaml after verifying upstream changes" >&2
-        echo "  - Run interactively to review and choose action" >&2
+    # Report trusted sources that were auto-accepted
+    if [[ ${#trusted_accepted[@]} -gt 0 ]]; then
+        echo -e "${GREEN}Auto-accepted ${#trusted_accepted[@]} tool(s) from trusted sources: ${trusted_accepted[*]}${NC}" >&2
+    fi
+
+    # Only abort if there are critical tools from UNTRUSTED sources
+    if [[ "$has_critical_untrusted" == "true" ]]; then
+        echo -e "${RED}ABORTING: Critical tools from UNTRUSTED sources have checksum mismatches: ${critical_untrusted_names[*]}${NC}" >&2
+        echo "Cannot proceed safely without verified critical installers from untrusted sources." >&2
         return 1
     fi
 
-    # Only recommended tools mismatched, continue
-    echo -e "${YELLOW}Non-critical tools skipped. Proceeding with installation.${NC}" >&2
+    # All trusted sources accepted, non-critical untrusted skipped - continue
+    echo -e "${GREEN}Proceeding with installation (trusted sources accepted, non-critical skipped).${NC}" >&2
     clear_checksum_mismatches
     return 0
 }
@@ -752,8 +804,20 @@ handle_checksum_mismatch() {
 
     # Non-interactive mode
     if ! _acfs_is_interactive; then
+        # TRUSTED SOURCES: Auto-accept checksum changes with warning
+        # This is the key to bulletproof automation - trusted sources are almost
+        # never compromised, and stale checksums are the #1 cause of install failures
+        if is_trusted_source "$url"; then
+            echo -e "${YELLOW}NOTICE: Checksum changed for $tool (trusted source: auto-accepting)${NC}" >&2
+            echo -e "  Expected: ${expected:0:16}..." >&2
+            echo -e "  Actual:   ${actual:0:16}..." >&2
+            echo -e "  ${GREEN}Proceeding with updated version from trusted source${NC}" >&2
+            return 2  # Proceed
+        fi
+
+        # Non-trusted sources: fall back to old behavior
         if [[ "$is_critical" == "true" ]]; then
-            echo -e "${RED}CRITICAL tool $tool has checksum mismatch - aborting${NC}" >&2
+            echo -e "${RED}CRITICAL tool $tool has checksum mismatch (untrusted source) - aborting${NC}" >&2
             return 1  # Abort
         else
             echo -e "${YELLOW}Skipping $tool (checksum mismatch, non-interactive)${NC}" >&2

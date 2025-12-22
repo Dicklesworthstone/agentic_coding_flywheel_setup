@@ -257,7 +257,7 @@ install_gum() {
 
     # Add Charm repository (DEB822 format for Ubuntu 24.04+)
     $sudo_cmd mkdir -p /etc/apt/keyrings
-    curl --proto '=https' --proto-redir '=https' -fsSL https://repo.charm.sh/apt/gpg.key | $sudo_cmd gpg --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null || true
+    curl --proto '=https' --proto-redir '=https' -fsSL https://repo.charm.sh/apt/gpg.key | $sudo_cmd gpg --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null || true
     printf 'Types: deb\nURIs: https://repo.charm.sh/apt/\nSuites: *\nComponents: *\nSigned-By: /etc/apt/keyrings/charm.gpg\n' | $sudo_cmd tee /etc/apt/sources.list.d/charm.sources > /dev/null
     $sudo_cmd apt-get update -y >/dev/null 2>&1 || true
     $sudo_cmd apt-get install -y gum >/dev/null 2>&1 || log_warn "Could not install gum"
