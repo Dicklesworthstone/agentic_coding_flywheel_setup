@@ -446,10 +446,12 @@ print_upstream_urls() {
 
 # Print URLs with current checksums (for updating checksums.yaml)
 print_current_checksums() {
-    echo ""
-    echo -e "${CYAN}Current Installer Checksums${NC}"
-    echo "============================================================"
-    echo ""
+    # Progress info to stderr (not part of YAML output)
+    echo "" >&2
+    echo -e "${CYAN}Generating checksums.yaml...${NC}" >&2
+    echo "" >&2
+
+    # YAML output to stdout
     echo "# checksums.yaml - Auto-generated $(date -Iseconds)"
     echo "# Run: ./scripts/lib/security.sh --update-checksums"
     echo ""
