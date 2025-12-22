@@ -66,7 +66,7 @@ install_agents_claude() {
         log_info "dry-run: verified installer: agents.claude"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -89,10 +89,11 @@ install_agents_claude() {
                 fi
             fi
 
-            # Fallback: install directly from known URL
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_info "Using direct installer for Claude Code..."
-                run_as_target_shell 'curl -fsSL https://claude.ai/install.sh | bash' || false
+                log_error "Unverified fallback_url configured (refusing): https://claude.ai/install.sh"
+                log_error "Verified install failed for agents.claude"
+                false
             fi
         }; then
             log_error "agents.claude: verified installer failed"

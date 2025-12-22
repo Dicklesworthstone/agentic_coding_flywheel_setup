@@ -390,7 +390,7 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
   const fallbackUrl = vi.fallback_url;
   const runInTmux = vi.run_in_tmux === true;
 
-  // Build the args string for curl command (used in tmux mode)
+  // Build the args string for the installer runner invocation.
   const argsStr = vi.args && vi.args.length > 0
     ? vi.args.map(a => shellQuote(a)).join(' ')
     : '';
@@ -398,40 +398,51 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
   // If run_in_tmux is true, we run the installer in a detached tmux session
   // This prevents blocking when the installer starts a long-running server
   if (runInTmux) {
-    const tmuxSession = `acfs-${tool.replace(/_/g, '-')}`;
+    const tmuxSession = 'acfs-services';
     const lines: string[] = [
       '# Run installer in detached tmux session (run_in_tmux: true)',
       '# This prevents blocking when the installer starts a long-running service',
       `local tmux_session="${tmuxSession}"`,
       '',
-      '# Kill existing session if any (clean slate)',
-      'run_as_target tmux kill-session -t "$tmux_session" 2>/dev/null || true',
-      '',
-      '# Build install command',
-      'local install_cmd=""',
+      '# Resolve verified installer URL + checksum (fail closed)',
+      `local tool="${tool}"`,
+      'local url=""',
+      'local expected_sha256=""',
       'if acfs_security_init 2>/dev/null; then',
       "    if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then",
-      `        local tool="${tool}"`,
-      '        local url="${KNOWN_INSTALLERS[$tool]:-}"',
-      '        if [[ -n "$url" ]]; then',
-      argsStr
-        ? `            install_cmd="curl -fsSL '$url' | bash -s -- ${argsStr}"`
-        : '            install_cmd="curl -fsSL \'$url\' | bash"',
-      '        fi',
+      '        url="${KNOWN_INSTALLERS[$tool]:-}"',
+      '        expected_sha256="$(get_checksum "$tool" 2>/dev/null)" || expected_sha256=""',
       '    fi',
       'fi',
       '',
-      '# Fallback to direct URL if security init failed',
-      'if [[ -z "$install_cmd" ]]; then',
-      fallbackUrl
-        ? `    install_cmd="curl -fsSL '${fallbackUrl.replace(/'/g, "'\\''")}' | bash${argsStr ? ' -s -- ' + argsStr : ''}"`
-        : `    log_error "No install URL available for ${module.id}"`,
-      fallbackUrl ? '' : '    false',
+      'if [[ -z "$url" ]] || [[ -z "$expected_sha256" ]]; then',
+      `    log_error "Missing verified installer URL/checksum for ${module.id}"`,
+      '    false',
       'fi',
       '',
+      '# Download verified installer to a temp file (so tmux can exec it without pipes)',
+      'local tmp_install',
+      'tmp_install="$(mktemp "${TMPDIR:-/tmp}/acfs-install-${tool}.XXXXXX" 2>/dev/null)" || tmp_install=""',
+      'if [[ -z "$tmp_install" ]]; then',
+      `    log_error "Failed to create temp installer for ${module.id}"`,
+      '    false',
+      'fi',
+      '',
+      'if ! verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then',
+      '    rm -f "$tmp_install" 2>/dev/null || true',
+      `    log_error "${module.id}: installer verification failed"`,
+      '    false',
+      'fi',
+      'chmod 755 "$tmp_install" 2>/dev/null || true',
+      '',
+      '# Kill existing session if any (clean slate)',
+      'run_as_target tmux kill-session -t "$tmux_session" 2>/dev/null || true',
+      '',
       '# Create new detached tmux session and run the installer',
-      'if [[ -n "$install_cmd" ]]; then',
-      '    if run_as_target tmux new-session -d -s "$tmux_session" "$install_cmd"; then',
+      'if run_as_target tmux new-session -d -s "$tmux_session" ' +
+        `${shellQuote(vi.runner)} "$tmp_install"` +
+        (argsStr ? ` ${argsStr}` : '') +
+        '; then',
       `        log_success "${module.id} installing in tmux session '$tmux_session'"`,
       '        log_info "Attach with: tmux attach -t $tmux_session"',
       '        # Give it a moment to start',
@@ -439,14 +450,12 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
       '    else',
       `        log_warn "${module.id} tmux installation may have failed"`,
       '    fi',
-      'fi',
     ];
     return lines;
   }
 
   // Standard non-tmux installation
   let execCmd: string;
-  let fallbackShellCmd: string;
   if (module.run_as === 'target_user') {
     // Use run_as_target_runner to switch user while preserving stdin
     // When runner is bash/sh, we ALWAYS need -s to read from stdin (piped content)
@@ -471,16 +480,13 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
       }
     }
     execCmd = parts.join(' ');
-    fallbackShellCmd = 'run_as_target_shell';
   } else {
     // Default/root: run directly
     execCmd = buildVerifiedInstallerPipe(module);
-    // bash -c is needed because bash without -c treats argument as a file path, not a command
-    fallbackShellCmd = 'bash -c';
   }
 
   const lines: string[] = [
-    '# Try security-verified install first, fall back to direct install',
+    '# Try security-verified install (no unverified fallback; fail closed)',
     'local install_success=false',
     '',
     'if acfs_security_init 2>/dev/null; then',
@@ -504,30 +510,14 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     'fi',
   ];
 
-  // Add fallback if fallback_url is provided
+  lines.push('', '# No unverified fallback: verified install is required');
+  lines.push('if [[ "$install_success" != "true" ]]; then');
   if (fallbackUrl) {
-    // Use command argument instead of heredoc to avoid indentation issues
-    // The run_as_target_shell function accepts a command string directly
-    const escapedUrl = fallbackUrl.replace(/'/g, "'\\''"); // escape single quotes
-    lines.push(
-      '',
-      '# Fallback: install directly from known URL',
-      'if [[ "$install_success" != "true" ]]; then',
-      `    log_info "Using direct installer for ${module.description}..."`,
-      `    ${fallbackShellCmd} 'curl -fsSL ${escapedUrl} | bash' || false`,
-      'fi',
-    );
-  } else {
-    // No fallback - fail if verified install didn't work
-    lines.push(
-      '',
-      '# No fallback URL - verified install is required',
-      'if [[ "$install_success" != "true" ]]; then',
-      `    log_error "Verified install failed for ${module.id} and no fallback available"`,
-      '    false',
-      'fi',
-    );
+    lines.push(`    log_error "Unverified fallback_url configured (refusing): ${fallbackUrl}"`);
   }
+  lines.push(`    log_error "Verified install failed for ${module.id}"`);
+  lines.push('    false');
+  lines.push('fi');
 
   return lines;
 }
@@ -728,7 +718,7 @@ function generateCategoryScript(manifest: Manifest, category: ModuleCategory): s
     if (skipVerify) {
       lines.push('    # Verify skipped: run_in_tmux installs async in detached tmux session');
       lines.push(`    log_info "${module.id}: installation running in background tmux session"`);
-      const tmuxSession = `acfs-${module.verified_installer?.tool?.replace(/_/g, '-') ?? module.id}`;
+      const tmuxSession = 'acfs-services';
       lines.push(`    log_info "Attach with: tmux attach -t ${tmuxSession}"`);
     } else {
       lines.push('    # Verify');

@@ -66,7 +66,7 @@ install_stack_ntm() {
         log_info "dry-run: verified installer: stack.ntm"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -89,9 +89,9 @@ install_stack_ntm() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for stack.ntm and no fallback available"
+                log_error "Verified install failed for stack.ntm"
                 false
             fi
         }; then
@@ -128,32 +128,44 @@ install_stack_mcp_agent_mail() {
         if ! {
             # Run installer in detached tmux session (run_in_tmux: true)
             # This prevents blocking when the installer starts a long-running service
-            local tmux_session="acfs-mcp-agent-mail"
+            local tmux_session="acfs-services"
+
+            # Resolve verified installer URL + checksum (fail closed)
+            local tool="mcp_agent_mail"
+            local url=""
+            local expected_sha256=""
+            if acfs_security_init 2>/dev/null; then
+                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    expected_sha256="$(get_checksum "$tool" 2>/dev/null)" || expected_sha256=""
+                fi
+            fi
+
+            if [[ -z "$url" ]] || [[ -z "$expected_sha256" ]]; then
+                log_error "Missing verified installer URL/checksum for stack.mcp_agent_mail"
+                false
+            fi
+
+            # Download verified installer to a temp file (so tmux can exec it without pipes)
+            local tmp_install
+            tmp_install="$(mktemp "${TMPDIR:-/tmp}/acfs-install-${tool}.XXXXXX" 2>/dev/null)" || tmp_install=""
+            if [[ -z "$tmp_install" ]]; then
+                log_error "Failed to create temp installer for stack.mcp_agent_mail"
+                false
+            fi
+
+            if ! verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
+                rm -f "$tmp_install" 2>/dev/null || true
+                log_error "stack.mcp_agent_mail: installer verification failed"
+                false
+            fi
+            chmod 755 "$tmp_install" 2>/dev/null || true
 
             # Kill existing session if any (clean slate)
             run_as_target tmux kill-session -t "$tmux_session" 2>/dev/null || true
 
-            # Build install command
-            local install_cmd=""
-            if acfs_security_init 2>/dev/null; then
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
-                    local tool="mcp_agent_mail"
-                    local url="${KNOWN_INSTALLERS[$tool]:-}"
-                    if [[ -n "$url" ]]; then
-                        install_cmd="curl -fsSL '$url' | bash -s -- '--dir' '/home/ubuntu/mcp_agent_mail' '--yes'"
-                    fi
-                fi
-            fi
-
-            # Fallback to direct URL if security init failed
-            if [[ -z "$install_cmd" ]]; then
-                install_cmd="curl -fsSL 'https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh' | bash -s -- '--dir' '/home/ubuntu/mcp_agent_mail' '--yes'"
-
-            fi
-
             # Create new detached tmux session and run the installer
-            if [[ -n "$install_cmd" ]]; then
-                if run_as_target tmux new-session -d -s "$tmux_session" "$install_cmd"; then
+            if run_as_target tmux new-session -d -s "$tmux_session" 'bash' "$tmp_install" '--dir' '/home/ubuntu/mcp_agent_mail' '--yes'; then
                     log_success "stack.mcp_agent_mail installing in tmux session '$tmux_session'"
                     log_info "Attach with: tmux attach -t $tmux_session"
                     # Give it a moment to start
@@ -161,7 +173,6 @@ install_stack_mcp_agent_mail() {
                 else
                     log_warn "stack.mcp_agent_mail tmux installation may have failed"
                 fi
-            fi
         }; then
             log_error "stack.mcp_agent_mail: verified installer failed"
             return 1
@@ -170,7 +181,7 @@ install_stack_mcp_agent_mail() {
 
     # Verify skipped: run_in_tmux installs async in detached tmux session
     log_info "stack.mcp_agent_mail: installation running in background tmux session"
-    log_info "Attach with: tmux attach -t acfs-mcp-agent-mail"
+    log_info "Attach with: tmux attach -t acfs-services"
 
     log_success "stack.mcp_agent_mail installed"
 }
@@ -185,7 +196,7 @@ install_stack_ultimate_bug_scanner() {
         log_info "dry-run: verified installer: stack.ultimate_bug_scanner"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -208,9 +219,9 @@ install_stack_ultimate_bug_scanner() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for stack.ultimate_bug_scanner and no fallback available"
+                log_error "Verified install failed for stack.ultimate_bug_scanner"
                 false
             fi
         }; then
@@ -255,7 +266,7 @@ install_stack_beads_viewer() {
         log_info "dry-run: verified installer: stack.beads_viewer"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -278,9 +289,9 @@ install_stack_beads_viewer() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for stack.beads_viewer and no fallback available"
+                log_error "Verified install failed for stack.beads_viewer"
                 false
             fi
         }; then
@@ -315,7 +326,7 @@ install_stack_cass() {
         log_info "dry-run: verified installer: stack.cass"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -338,9 +349,9 @@ install_stack_cass() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for stack.cass and no fallback available"
+                log_error "Verified install failed for stack.cass"
                 false
             fi
         }; then
@@ -375,7 +386,7 @@ install_stack_cm() {
         log_info "dry-run: verified installer: stack.cm"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -398,9 +409,9 @@ install_stack_cm() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for stack.cm and no fallback available"
+                log_error "Verified install failed for stack.cm"
                 false
             fi
         }; then
@@ -445,7 +456,7 @@ install_stack_caam() {
         log_info "dry-run: verified installer: stack.caam"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -468,9 +479,9 @@ install_stack_caam() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for stack.caam and no fallback available"
+                log_error "Verified install failed for stack.caam"
                 false
             fi
         }; then

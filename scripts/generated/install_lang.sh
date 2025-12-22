@@ -66,7 +66,7 @@ install_lang_bun() {
         log_info "dry-run: verified installer: lang.bun"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -89,9 +89,9 @@ install_lang_bun() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for lang.bun and no fallback available"
+                log_error "Verified install failed for lang.bun"
                 false
             fi
         }; then
@@ -126,7 +126,7 @@ install_lang_uv() {
         log_info "dry-run: verified installer: lang.uv"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -149,9 +149,9 @@ install_lang_uv() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for lang.uv and no fallback available"
+                log_error "Verified install failed for lang.uv"
                 false
             fi
         }; then
@@ -186,7 +186,7 @@ install_lang_rust() {
         log_info "dry-run: verified installer: lang.rust"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -209,9 +209,9 @@ install_lang_rust() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for lang.rust and no fallback available"
+                log_error "Verified install failed for lang.rust"
                 false
             fi
         }; then
@@ -291,7 +291,7 @@ install_lang_nvm() {
         log_info "dry-run: verified installer: lang.nvm"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -314,9 +314,9 @@ install_lang_nvm() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for lang.nvm and no fallback available"
+                log_error "Verified install failed for lang.nvm"
                 false
             fi
         }; then

@@ -66,7 +66,7 @@ install_tools_atuin() {
         log_info "dry-run: verified installer: tools.atuin"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -89,9 +89,9 @@ install_tools_atuin() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for tools.atuin and no fallback available"
+                log_error "Verified install failed for tools.atuin"
                 false
             fi
         }; then
@@ -126,7 +126,7 @@ install_tools_zoxide() {
         log_info "dry-run: verified installer: tools.zoxide"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -149,9 +149,9 @@ install_tools_zoxide() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for tools.zoxide and no fallback available"
+                log_error "Verified install failed for tools.zoxide"
                 false
             fi
         }; then

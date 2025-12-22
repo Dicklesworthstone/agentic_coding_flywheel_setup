@@ -2673,22 +2673,47 @@ install_stack() {
         log_detail "MCP Agent Mail already installed"
     else
         log_detail "Installing MCP Agent Mail (in tmux session)"
-        # Create or use acfs-services tmux session, run installer in first pane
-        # The installer will start the server, which runs persistently in tmux
+        # Create or use acfs-services tmux session, run installer in first pane.
+        # The installer will start the server, which runs persistently in tmux.
         local tmux_session="acfs-services"
-        local install_cmd="curl -fsSL 'https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh' | bash -s -- --dir '$TARGET_HOME/mcp_agent_mail' --yes"
+        local tool="mcp_agent_mail"
+        local target_dir="$TARGET_HOME/mcp_agent_mail"
 
-        # Kill existing session if any (clean slate)
-        run_as_target tmux kill-session -t "$tmux_session" 2>/dev/null || true
+        # Fetch + verify the installer script, then run it in tmux to avoid blocking.
+        if acfs_load_upstream_checksums; then
+            local url="${ACFS_UPSTREAM_URLS[$tool]:-}"
+            local expected_sha256="${ACFS_UPSTREAM_SHA256[$tool]:-}"
 
-        # Create new detached session and run the installer
-        if try_step "Installing MCP Agent Mail in tmux" run_as_target tmux new-session -d -s "$tmux_session" "$install_cmd"; then
-            log_success "MCP Agent Mail installing in tmux session '$tmux_session'"
-            log_info "Attach with: tmux attach -t $tmux_session"
-            # Give it a moment to start
-            sleep 5
+            if [[ -z "$url" ]] || [[ -z "$expected_sha256" ]]; then
+                log_warn "MCP Agent Mail: missing installer URL/checksum"
+            else
+                local tmp_install
+                tmp_install="$(mktemp "${TMPDIR:-/tmp}/acfs-install-${tool}.XXXXXX" 2>/dev/null)" || tmp_install=""
+
+                if [[ -z "$tmp_install" ]]; then
+                    log_warn "MCP Agent Mail: failed to create temp installer file"
+                elif verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
+                    chmod 755 "$tmp_install" 2>/dev/null || true
+
+                    # Kill existing session if any (clean slate)
+                    run_as_target tmux kill-session -t "$tmux_session" 2>/dev/null || true
+
+                    # Create new detached session and run the installer
+                    if try_step "Installing MCP Agent Mail in tmux" run_as_target tmux new-session -d -s "$tmux_session" "$tmp_install" --dir "$target_dir" --yes; then
+                        log_success "MCP Agent Mail installing in tmux session '$tmux_session'"
+                        log_info "Attach with: tmux attach -t $tmux_session"
+                        # Give it a moment to start
+                        sleep 5
+                    else
+                        log_warn "MCP Agent Mail tmux installation may have failed"
+                    fi
+                else
+                    rm -f "$tmp_install" 2>/dev/null || true
+                    log_warn "MCP Agent Mail: installer verification failed"
+                fi
+            fi
         else
-            log_warn "MCP Agent Mail tmux installation may have failed"
+            log_warn "MCP Agent Mail: unable to load upstream checksums; refusing to run unverified installer"
         fi
     fi
 

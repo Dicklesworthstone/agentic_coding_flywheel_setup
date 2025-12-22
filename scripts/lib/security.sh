@@ -529,7 +529,7 @@ has_checksum_mismatches() {
 #
 # Instead of prompting for each mismatch, this function:
 #   1. Collects all mismatches first (via record_checksum_mismatch)
-#   2. Presents ONE decision prompt with P/S/A options
+#   2. Presents ONE decision prompt with S/A options (fail closed)
 #   3. Handles non-interactive mode based on tool classification
 #
 # Environment:
@@ -537,7 +537,7 @@ has_checksum_mismatches() {
 #   ACFS_STRICT_MODE - "true" treats all mismatches as critical
 #
 # Returns:
-#   0 - User chose to proceed or skip
+#   0 - User chose to skip mismatched tools (or no mismatches)
 #   1 - User chose to abort (or critical tool mismatch in non-interactive)
 #
 handle_all_checksum_mismatches() {

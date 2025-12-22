@@ -100,7 +100,7 @@ install_shell_omz() {
         log_info "dry-run: verified installer: shell.omz"
     else
         if ! {
-            # Try security-verified install first, fall back to direct install
+            # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
             if acfs_security_init 2>/dev/null; then
@@ -123,9 +123,9 @@ install_shell_omz() {
                 fi
             fi
 
-            # No fallback URL - verified install is required
+            # No unverified fallback: verified install is required
             if [[ "$install_success" != "true" ]]; then
-                log_error "Verified install failed for shell.omz and no fallback available"
+                log_error "Verified install failed for shell.omz"
                 false
             fi
         }; then
