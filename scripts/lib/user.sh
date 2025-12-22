@@ -183,6 +183,79 @@ can_sudo_nopasswd() {
     return 1
 }
 
+# ============================================================
+# SSH Key Prompting (Password-First Flow)
+# ============================================================
+
+# Prompt user for SSH public key and install it
+# Called when running as root with no existing key
+# Returns 0 on success or skip, 1 on invalid key
+prompt_ssh_key() {
+    local authorized_keys="/root/.ssh/authorized_keys"
+
+    # 1. Check if we already have a valid key
+    if [[ -f "$authorized_keys" ]]; then
+        if grep -q "^ssh-" "$authorized_keys" 2>/dev/null; then
+            log_detail "SSH key already present, skipping prompt"
+            return 0
+        fi
+    fi
+
+    # 2. Check if stdin is a terminal (interactive mode)
+    if [[ ! -t 0 ]]; then
+        log_warn "Non-interactive mode detected, skipping SSH key prompt"
+        log_detail "You can add your key later with: ssh-copy-id root@<ip>"
+        return 0
+    fi
+
+    # 3. Display prompt UI
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  SSH Key Setup                                               ║"
+    echo "╠══════════════════════════════════════════════════════════════╣"
+    echo "║  Let's set up SSH key authentication so you won't need      ║"
+    echo "║  to enter a password every time you connect.                ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "Your public key should start with:"
+    echo "  ssh-ed25519 AAAAC3NzaC1...  OR  ssh-rsa AAAAB3NzaC1..."
+    echo ""
+    echo "You saved this earlier when you ran ssh-keygen on your computer."
+    echo "(Press Enter to skip - you'll need password for future logins)"
+    echo ""
+
+    # 4. Read the key
+    local pubkey
+    read -r -p "Paste your public key: " pubkey
+
+    # 5. Handle skip (empty input)
+    if [[ -z "$pubkey" ]]; then
+        log_warn "SSH key setup skipped"
+        log_detail "You can add your key later by running:"
+        log_detail "  echo 'your-key-here' >> ~/.ssh/authorized_keys"
+        return 0
+    fi
+
+    # 6. Validate key format
+    if [[ ! "$pubkey" =~ ^ssh-(ed25519|rsa|ecdsa|dss)[[:space:]] ]]; then
+        log_error "Invalid SSH key format"
+        log_detail "Expected format: ssh-ed25519 AAAA... or ssh-rsa AAAA..."
+        log_detail "Make sure you copied the PUBLIC key (the .pub file)"
+        return 1
+    fi
+
+    # 7. Install the key
+    mkdir -p /root/.ssh
+    chmod 700 /root/.ssh
+    echo "$pubkey" >> "$authorized_keys"
+    chmod 600 "$authorized_keys"
+
+    log_success "SSH key installed successfully"
+    log_detail "You can now connect with: ssh -i ~/.ssh/your_key root@<this_ip>"
+
+    return 0
+}
+
 # Full user normalization sequence
 normalize_user() {
     log_step "1/8" "Normalizing user account..."
