@@ -73,7 +73,7 @@ declare -a AUTH_SERVICES=(
     "cloudflare"
 )
 
-declare -A AUTH_SERVICE_NAMES=(
+declare -gA AUTH_SERVICE_NAMES=(
     [tailscale]="Tailscale"
     [claude]="Claude Code"
     [codex]="Codex CLI"
@@ -84,7 +84,7 @@ declare -A AUTH_SERVICE_NAMES=(
     [cloudflare]="Cloudflare"
 )
 
-declare -A AUTH_SERVICE_DESCRIPTIONS=(
+declare -gA AUTH_SERVICE_DESCRIPTIONS=(
     [tailscale]="Secure VPS access via private network"
     [claude]="Anthropic's AI coding agent"
     [codex]="OpenAI's AI coding agent"
@@ -95,7 +95,7 @@ declare -A AUTH_SERVICE_DESCRIPTIONS=(
     [cloudflare]="CDN and edge computing"
 )
 
-declare -A AUTH_SERVICE_COMMANDS=(
+declare -gA AUTH_SERVICE_COMMANDS=(
     [tailscale]="sudo tailscale up"
     [claude]="claude"
     [codex]="codex login"

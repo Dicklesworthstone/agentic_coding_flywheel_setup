@@ -91,7 +91,8 @@ readonly ACFS_PHASE_IDS=(
 )
 
 # Human-readable phase names for display
-declare -A ACFS_PHASE_NAMES=(
+# Note: Must use -g for global scope when sourced from inside a function
+declare -gA ACFS_PHASE_NAMES=(
     [user_setup]="User Normalization"
     [filesystem]="Filesystem Setup"
     [shell_setup]="Shell Setup"

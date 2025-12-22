@@ -18,7 +18,7 @@ fi
 # ============================================================
 
 # Tool commands for verification
-declare -A STACK_COMMANDS=(
+declare -gA STACK_COMMANDS=(
     [ntm]="ntm"
     [mcp_agent_mail]="am"
     [ubs]="ubs"
@@ -30,7 +30,7 @@ declare -A STACK_COMMANDS=(
 )
 
 # Tool display names
-declare -A STACK_NAMES=(
+declare -gA STACK_NAMES=(
     [ntm]="NTM (Named Tmux Manager)"
     [mcp_agent_mail]="MCP Agent Mail"
     [ubs]="Ultimate Bug Scanner"

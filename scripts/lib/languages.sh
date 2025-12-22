@@ -19,7 +19,7 @@ fi
 
 # Version constraints (for documentation; installers fetch latest)
 # shellcheck disable=SC2034  # Used for reference
-declare -A LANGUAGE_VERSIONS=(
+declare -gA LANGUAGE_VERSIONS=(
     [bun]="latest"
     [uv]="latest"
     [rust]="stable"

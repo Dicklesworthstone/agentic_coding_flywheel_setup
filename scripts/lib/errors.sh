@@ -20,7 +20,7 @@ export ACFS_ERRORS_LOADED=1
 # Format: [error pattern]="suggested fix"
 # Note: Array keys must NOT use double quotes with set -u (causes variable expansion)
 # shellcheck disable=SC2034  # Used by get_suggested_fix()
-declare -A ERROR_PATTERNS=(
+declare -gA ERROR_PATTERNS=(
     # Network connectivity issues
     ['curl: (7) Failed to connect']="Network connection failed. Check internet connectivity:\n  curl -I https://google.com\nAlso verify firewall allows outbound HTTPS (port 443)."
 

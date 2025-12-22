@@ -47,8 +47,8 @@ UPDATE_LOG_DIR="${HOME}/.acfs/logs/updates"
 UPDATE_LOG_FILE=""
 
 # Version tracking
-declare -A VERSION_BEFORE=()
-declare -A VERSION_AFTER=()
+declare -gA VERSION_BEFORE=()
+declare -gA VERSION_AFTER=()
 
 # ============================================================
 # Path Setup

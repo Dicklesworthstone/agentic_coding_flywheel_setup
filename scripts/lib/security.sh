@@ -112,7 +112,7 @@ fi
 # Known installer URLs and their expected checksums
 # Format: URL|SHA256 (computed from the install script content)
 # These are reference checksums - actual scripts may change
-declare -A KNOWN_INSTALLERS=(
+declare -gA KNOWN_INSTALLERS=(
     [bun]="https://bun.sh/install"
     [claude]="https://claude.ai/install.sh"
     [uv]="https://astral.sh/uv/install.sh"
@@ -476,7 +476,7 @@ get_checksum() {
 }
 
 # Associative array to store loaded checksums
-declare -A LOADED_CHECKSUMS
+declare -gA LOADED_CHECKSUMS
 
 # ============================================================
 # Checksum Mismatch Batching
