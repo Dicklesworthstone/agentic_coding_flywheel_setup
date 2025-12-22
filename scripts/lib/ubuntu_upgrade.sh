@@ -217,6 +217,7 @@ ubuntu_get_next_version_hardcoded() {
 # Calculate full upgrade path from current to target
 # Returns: newline-separated list of versions to upgrade through
 # Usage: ubuntu_calculate_upgrade_path 2510
+# shellcheck disable=SC2120  # $1 is optional with default
 ubuntu_calculate_upgrade_path() {
     local target="${1:-$UBUNTU_TARGET_VERSION_NUM}"
     local current

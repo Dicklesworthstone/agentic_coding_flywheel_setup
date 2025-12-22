@@ -548,7 +548,7 @@ retry_with_backoff() {
     LAST_ERROR="$description failed after $max_attempts retry attempts"
     LAST_ERROR_CODE=$exit_code
     LAST_ERROR_TIME=$(date -Iseconds)
-    LAST_ERROR_OUTPUT=$(cat "$stderr_file" 2>/dev/null | head -c "$ERROR_OUTPUT_MAX_LENGTH" || echo "")
+    LAST_ERROR_OUTPUT=$(head -c "$ERROR_OUTPUT_MAX_LENGTH" "$stderr_file" 2>/dev/null || echo "")
 
     rm -f "$stderr_file" "$stdout_file" 2>/dev/null
     return "$exit_code"

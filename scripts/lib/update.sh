@@ -344,7 +344,7 @@ update_require_security() {
     return 0
 }
 
-# shellcheck disable=SC2329  # invoked indirectly via run_cmd()
+# shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
 update_run_verified_installer() {
     local tool="$1"
     shift || true

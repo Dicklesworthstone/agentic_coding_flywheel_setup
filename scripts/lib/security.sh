@@ -438,6 +438,7 @@ print_current_checksums() {
 # ============================================================
 
 # Load checksums from YAML file (simple parser)
+# shellcheck disable=SC2120  # $1 is optional with default
 load_checksums() {
     local file="${1:-$CHECKSUMS_FILE}"
     local current_tool=""

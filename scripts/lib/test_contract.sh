@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091,SC2034,SC2329
+# shellcheck disable=SC1091,SC2034,SC2317,SC2329
 # ============================================================
 # Test script for contract.sh
 # Run: bash scripts/lib/test_contract.sh

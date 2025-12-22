@@ -34,8 +34,8 @@ async function setupWizardState(
   await page.evaluate(
     ({ os, ip }) => {
       localStorage.clear();
-      if (os) localStorage.setItem("acfs-user-os", os);
-      if (ip) localStorage.setItem("acfs-vps-ip", ip);
+      if (os) localStorage.setItem("agent-flywheel-user-os", os);
+      if (ip) localStorage.setItem("agent-flywheel-vps-ip", ip);
     },
     { os: options.os, ip: options.ip }
   );
@@ -252,7 +252,7 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
     await page.goto("/");
     await page.evaluate(() => {
       localStorage.clear();
-      localStorage.setItem("acfs-vps-ip", "192.168.1.100");
+      localStorage.setItem("agent-flywheel-vps-ip", "192.168.1.100");
     });
 
     // Navigate to SSH connect page
@@ -310,7 +310,7 @@ test.describe("State Persistence", () => {
     await page.reload();
 
     // Check localStorage
-    const os = await page.evaluate(() => localStorage.getItem("acfs-user-os"));
+    const os = await page.evaluate(() => localStorage.getItem("agent-flywheel-user-os"));
     expect(os).toBe("windows");
 
     // URL query string should also reflect the selection
@@ -321,7 +321,7 @@ test.describe("State Persistence", () => {
     // Set up prerequisite state
     await page.goto("/");
     await page.evaluate(() => {
-      localStorage.setItem("acfs-user-os", "mac");
+      localStorage.setItem("agent-flywheel-user-os", "mac");
     });
 
     await page.goto("/wizard/create-vps");
@@ -344,7 +344,7 @@ test.describe("State Persistence", () => {
     await page.click('button:has-text("Continue to SSH")');
 
     // Check localStorage
-    const ip = await page.evaluate(() => localStorage.getItem("acfs-vps-ip"));
+    const ip = await page.evaluate(() => localStorage.getItem("agent-flywheel-vps-ip"));
     expect(ip).toBe("10.0.0.50");
 
     // URL query string should also reflect the IP
@@ -406,7 +406,7 @@ test.describe("IP Address Validation", () => {
   test("should reject invalid IP addresses", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => {
-      localStorage.setItem("acfs-user-os", "mac");
+      localStorage.setItem("agent-flywheel-user-os", "mac");
     });
 
     await page.goto("/wizard/create-vps");
@@ -426,7 +426,7 @@ test.describe("IP Address Validation", () => {
   test("should accept valid IP addresses", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => {
-      localStorage.setItem("acfs-user-os", "mac");
+      localStorage.setItem("agent-flywheel-user-os", "mac");
     });
 
     await page.goto("/wizard/create-vps");
@@ -446,7 +446,7 @@ test.describe("IP Address Validation", () => {
   test("should reject out-of-range IP octets", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => {
-      localStorage.setItem("acfs-user-os", "mac");
+      localStorage.setItem("agent-flywheel-user-os", "mac");
     });
 
     await page.goto("/wizard/create-vps");
@@ -1139,7 +1139,7 @@ test.describe("Edge Cases - Reload and Navigation", () => {
     await page.waitForLoadState("networkidle");
 
     // State should be preserved
-    const os = await page.evaluate(() => localStorage.getItem("acfs-user-os"));
+    const os = await page.evaluate(() => localStorage.getItem("agent-flywheel-user-os"));
     expect(os).toBe("mac");
 
     // Should still be on install-terminal (not redirected)
