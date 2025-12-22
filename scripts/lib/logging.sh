@@ -148,13 +148,13 @@ if ! declare -f show_progress_header >/dev/null; then
             display_name="${display_name:0:37}..."
         fi
 
-        # Print progress header
+        # Print progress header (box is 65 chars wide, content is 63 chars)
         echo "" >&2
         echo "╔═══════════════════════════════════════════════════════════════╗" >&2
-        printf "║  Progress: [%s] %3d%%  (%d of %d phases)          ║\n" \
+        printf "║  Progress: [%s] %3d%%  (%d/%d)                 ║\n" \
                "$bar" "$percent" "$current" "$total" >&2
         printf "║  Current:  %-51s ║\n" "$display_name" >&2
-        printf "║  Elapsed:  %dm %02ds                                           ║\n" \
+        printf "║  Elapsed:  %2dm %02ds                                            ║\n" \
                "$elapsed_min" "$elapsed_sec" >&2
         echo "╚═══════════════════════════════════════════════════════════════╝" >&2
         echo "" >&2
