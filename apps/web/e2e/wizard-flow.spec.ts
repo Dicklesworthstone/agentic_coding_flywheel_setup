@@ -1060,8 +1060,8 @@ test.describe("Create VPS - Button Disabled States", () => {
     const checkboxes = page.locator('button[role="checkbox"]');
     const count = await checkboxes.count();
 
-    // Should have 4 checklist items as defined in the page
-    expect(count).toBe(4);
+    // Should have 5 checklist items as defined in the page
+    expect(count).toBe(5);
   });
 });
 
