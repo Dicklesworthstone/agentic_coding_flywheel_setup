@@ -78,6 +78,32 @@ _cli_get_sudo() {
     fi
 }
 
+# Fetch latest version tag from GitHub
+# Usage: _fetch_github_version "owner/repo" [strip_v]
+_fetch_github_version() {
+    local repo="$1"
+    local strip_v="${2:-false}"
+    local json tag=""
+
+    json=$(curl -s --max-time 10 "https://api.github.com/repos/$repo/releases/latest") || return 1
+
+    if command -v jq &>/dev/null; then
+        tag=$(echo "$json" | jq -r '.tag_name // empty')
+    elif command -v python3 &>/dev/null; then
+        tag=$(echo "$json" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tag_name', ''))" 2>/dev/null)
+    else
+        tag=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+    fi
+
+    [[ -z "$tag" || "$tag" == "null" ]] && return 1
+
+    if [[ "$strip_v" == "true" ]]; then
+        echo "${tag#v}"
+    else
+        echo "$tag"
+    fi
+}
+
 # Run a command as target user
 _cli_run_as_user() {
     local target_user="${TARGET_USER:-ubuntu}"
@@ -295,9 +321,8 @@ install_lazygit() {
     esac
 
     local version
-    # POSIX-compatible: use sed instead of grep -P
-    version=$(curl -s "https://api.github.com/repos/jesseduffield/lazygit/releases/latest" | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p' 2>/dev/null | head -1) || version="0.44.1"
-    [[ -z "$version" ]] && version="0.44.1"
+    # Use helper for robust version fetching (strips 'v' prefix)
+    version=$(_fetch_github_version "jesseduffield/lazygit" true) || version="0.44.1"
 
     local tmpdir
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/acfs_lazygit.XXXXXX")
@@ -337,9 +362,8 @@ install_lazydocker() {
     esac
 
     local version
-    # POSIX-compatible: use sed instead of grep -P
-    version=$(curl -s "https://api.github.com/repos/jesseduffield/lazydocker/releases/latest" | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p' 2>/dev/null | head -1) || version="0.23.3"
-    [[ -z "$version" ]] && version="0.23.3"
+    # Use helper for robust version fetching (strips 'v' prefix)
+    version=$(_fetch_github_version "jesseduffield/lazydocker" true) || version="0.23.3"
 
     local tmpdir
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/acfs_lazydocker.XXXXXX")
@@ -379,8 +403,8 @@ install_yq() {
     esac
 
     local version
-    version=$(curl -s "https://api.github.com/repos/mikefarah/yq/releases/latest" | sed -n 's/.*"tag_name": "\([^"]*\)".*/\1/p' 2>/dev/null | head -1) || version="v4.44.1"
-    [[ -z "$version" ]] && version="v4.44.1"
+    # Use helper for robust version fetching (keeps 'v' prefix)
+    version=$(_fetch_github_version "mikefarah/yq" false) || version="v4.44.1"
 
     local tmpdir
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/acfs_yq.XXXXXX")
