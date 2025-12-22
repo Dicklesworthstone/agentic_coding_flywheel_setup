@@ -1424,6 +1424,10 @@ run_ubuntu_upgrade_phase() {
     target_minor="${TARGET_UBUNTU_VERSION#*.}"
     target_version_num=$(printf "%d%02d" "$target_major" "$target_minor")
 
+    # Ensure ubuntu_upgrade.sh uses the requested target (not just its defaults).
+    export UBUNTU_TARGET_VERSION="$TARGET_UBUNTU_VERSION"
+    export UBUNTU_TARGET_VERSION_NUM="$target_version_num"
+
     # Check if upgrade is needed (using numeric comparison)
     if ubuntu_version_gte "$current_version_num" "$target_version_num"; then
         log_detail "Ubuntu $current_version_str meets target ($TARGET_UBUNTU_VERSION)"

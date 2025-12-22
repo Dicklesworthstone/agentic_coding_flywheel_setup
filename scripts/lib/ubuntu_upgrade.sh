@@ -457,11 +457,22 @@ ubuntu_prepare_upgrade() {
 # Perform single-version Ubuntu upgrade (non-interactive)
 # Returns: 0 on success (reboot may be required), 1 on failure
 ubuntu_do_upgrade() {
-    local next_version
-    next_version=$(ubuntu_get_next_upgrade)
+    local expected_next_version="${1:-}"
+
+    local next_version=""
+    next_version="$(ubuntu_get_next_upgrade 2>/dev/null || true)"
 
     if [[ -z "$next_version" ]]; then
         log_error "No upgrade available"
+        return 1
+    fi
+
+    if [[ -n "$expected_next_version" ]] && [[ "$next_version" != "$expected_next_version" ]]; then
+        log_error "Unexpected upgrade target detected"
+        log_error "  Expected: $expected_next_version"
+        log_error "  Detected:  $next_version"
+        log_error "This is usually caused by LTS-only upgrade settings (Prompt=lts)."
+        log_error "Fix: set Prompt=normal in /etc/update-manager/release-upgrades and retry."
         return 1
     fi
 
@@ -967,6 +978,10 @@ ubuntu_start_upgrade_sequence() {
     log_step "Current: Ubuntu $current_version"
     log_step "Target:  Ubuntu $UBUNTU_TARGET_VERSION"
 
+    # Ensure non-LTS upgrades are permitted (LTS defaults to Prompt=lts).
+    # ACFS targets interim releases (e.g. 24.10, 25.04, 25.10) on the path to 25.10.
+    ubuntu_enable_normal_releases || true
+
     # Calculate upgrade path
     local upgrade_path
     upgrade_path=$(ubuntu_calculate_upgrade_path)
@@ -999,7 +1014,7 @@ ubuntu_start_upgrade_sequence() {
 
     state_upgrade_start "$current_version" "$first_target"
 
-    if ! ubuntu_do_upgrade; then
+    if ! ubuntu_do_upgrade "$first_target"; then
         log_error "First upgrade failed"
         state_upgrade_set_error "do-release-upgrade failed"
         return 1

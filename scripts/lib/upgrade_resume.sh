@@ -76,6 +76,9 @@ fi
 # Set state file location for resume context
 export ACFS_STATE_FILE="${ACFS_RESUME_DIR}/state.json"
 
+# Ensure non-LTS upgrades are permitted (LTS defaults to Prompt=lts).
+ubuntu_enable_normal_releases || true
+
 # Mark that we've successfully resumed after reboot
 log "Marking upgrade as resumed"
 state_upgrade_resumed
@@ -93,6 +96,12 @@ if state_upgrade_is_complete; then
 
     # Mark upgrade as fully completed
     state_upgrade_mark_complete
+
+    # Restore LTS-only upgrade settings if we changed them.
+    ubuntu_restore_lts_only || true
+
+    # Remove upgrade MOTD banner (so users aren't told upgrade is still running).
+    upgrade_remove_motd || true
 
     # Cleanup systemd service and temporary files
     log "Cleaning up resume infrastructure..."
@@ -143,7 +152,7 @@ log "Starting upgrade from $current_version to $next_version"
 state_upgrade_start "$current_version" "$next_version"
 
 # Perform the upgrade
-if ! ubuntu_do_upgrade; then
+if ! ubuntu_do_upgrade "$next_version"; then
     log_error "do-release-upgrade failed"
     state_upgrade_set_error "do-release-upgrade failed for $current_version → $next_version"
     upgrade_update_motd "UPGRADE FAILED - check logs"
