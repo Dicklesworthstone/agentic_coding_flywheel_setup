@@ -183,7 +183,7 @@ export default function GenerateSSHKeyPage() {
       {/* Beginner Guide */}
       <SimplerGuide>
         <div className="space-y-6">
-          <GuideExplain term="SSH Key">
+          <GuideExplain term="an SSH Key">
             An SSH key is like a special password that lets you securely connect
             to another computer over the internet.
             <br /><br />

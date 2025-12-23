@@ -258,7 +258,7 @@ export default function RentVPSPage() {
       {/* Beginner Guide */}
       <SimplerGuide>
         <div className="space-y-6">
-          <GuideExplain term="VPS (Virtual Private Server)">
+          <GuideExplain term="a VPS (Virtual Private Server)">
             A dedicated server in a data center that runs 24/7, even when your laptop is closed.
             You get root access and full control.
             <br /><br />

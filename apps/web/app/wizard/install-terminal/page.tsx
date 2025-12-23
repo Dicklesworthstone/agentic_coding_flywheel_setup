@@ -87,7 +87,7 @@ function MacContent() {
       {/* Beginner Guide for Mac */}
       <SimplerGuide>
         <div className="space-y-6">
-          <GuideExplain term="Terminal">
+          <GuideExplain term="a Terminal">
             A terminal is a program that lets you type commands to control your computer.
             Instead of clicking buttons and icons, you type text commands. It&apos;s like
             having a conversation with your computer!
@@ -306,7 +306,7 @@ function WindowsContent() {
       {/* Beginner Guide for Windows */}
       <SimplerGuide>
         <div className="space-y-6">
-          <GuideExplain term="Terminal">
+          <GuideExplain term="a Terminal">
             A terminal is a program that lets you type commands to control your computer.
             Instead of clicking buttons and icons, you type text commands. It&apos;s like
             having a conversation with your computer!

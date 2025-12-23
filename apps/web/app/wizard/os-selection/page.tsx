@@ -208,7 +208,7 @@ export default function OSSelectionPage() {
             </p>
           </GuideSection>
 
-          <GuideExplain term="Operating System">
+          <GuideExplain term="an Operating System">
             An operating system (or &quot;OS&quot;) is the main software that runs your
             computer. It&apos;s like the foundation that everything else runs on top of.
             <br /><br />

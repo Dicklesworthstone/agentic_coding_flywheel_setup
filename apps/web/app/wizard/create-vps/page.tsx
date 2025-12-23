@@ -269,7 +269,7 @@ export default function CreateVPSPage() {
         {/* Beginner Guide */}
         <SimplerGuide>
           <div className="space-y-6">
-            <GuideExplain term="IP Address">
+            <GuideExplain term="an IP Address">
               An IP address is like a phone number for computers. It&apos;s a series
               of numbers (like 192.168.1.100) that identifies your VPS on the internet.
               <br /><br />
