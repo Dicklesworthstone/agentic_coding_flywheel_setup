@@ -459,7 +459,7 @@ ubuntu_check_reboot_required() {
 # Solution: Temporarily convert DEB822 (.sources) to legacy (.list) format before upgrade
 ubuntu_workaround_deb822_bug() {
     local sources_file="/etc/apt/sources.list.d/ubuntu.sources"
-    local backup_file="/etc/apt/sources.list.d/ubuntu.sources.disabled"
+    local disabled_file="${sources_file}.disabled"
     local legacy_file="/etc/apt/sources.list.d/ubuntu-acfs-temp.list"
 
     # Check if DEB822 format sources exist
@@ -493,9 +493,6 @@ ubuntu_workaround_deb822_bug() {
 
     log_detail "Current Ubuntu codename: $current_codename"
 
-    # Backup the original DEB822 file
-    cp "$sources_file" "$backup_file"
-
     # Create legacy format sources.list entries
     cat > "$legacy_file" << LEGACY_SOURCES
 # Temporary legacy format sources for Ubuntu upgrade
@@ -507,7 +504,7 @@ deb http://security.ubuntu.com/ubuntu ${current_codename}-security main restrict
 LEGACY_SOURCES
 
     # Disable the DEB822 file by renaming (not removing, for recovery)
-    mv "$sources_file" "${sources_file}.disabled"
+    mv "$sources_file" "$disabled_file"
 
     # Update apt to use the new sources
     apt-get update -qq 2>/dev/null || true
@@ -520,7 +517,6 @@ LEGACY_SOURCES
 ubuntu_cleanup_deb822_workaround() {
     local sources_file="/etc/apt/sources.list.d/ubuntu.sources"
     local disabled_file="${sources_file}.disabled"
-    local backup_file="${sources_file}.disabled"
     local legacy_file="/etc/apt/sources.list.d/ubuntu-acfs-temp.list"
 
     # Remove our temporary legacy file
@@ -529,10 +525,22 @@ ubuntu_cleanup_deb822_workaround() {
         log_detail "Removed temporary legacy sources file"
     fi
 
-    # The upgrade tool typically creates new proper sources
-    # We don't need to restore the old DEB822 file
-    # Just clean up our backup files
-    rm -f "$disabled_file" "$backup_file" 2>/dev/null || true
+    # If do-release-upgrade succeeded, it typically writes a fresh ubuntu.sources.
+    # If it failed before doing so, restore the original DEB822 sources to avoid
+    # leaving the system without Ubuntu apt sources.
+    if [[ -f "$sources_file" ]]; then
+        if [[ -f "$disabled_file" ]]; then
+            log_detail "ubuntu.sources exists after upgrade; leaving backup at $disabled_file"
+        fi
+        return 0
+    fi
+
+    if [[ -f "$disabled_file" ]]; then
+        mv "$disabled_file" "$sources_file" 2>/dev/null || true
+        apt-get update -qq 2>/dev/null || true
+        log_warn "Restored ubuntu.sources from backup (upgrade may have failed before writing new sources)"
+        return 0
+    fi
 
     log_detail "DEB822 workaround cleanup complete"
 }
