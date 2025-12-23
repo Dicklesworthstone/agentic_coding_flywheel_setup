@@ -20,6 +20,9 @@ import {
   Server,
   Bot,
   Coins,
+  Laptop,
+  Cloud,
+  Moon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "@/components/motion";
 import { Button } from "@/components/ui/button";
@@ -584,6 +587,102 @@ function AboutSection() {
   );
 }
 
+// "Why VPS?" Explainer Section
+const WHY_VPS_ITEMS = [
+  {
+    icon: <Laptop className="h-6 w-6 text-white" />,
+    title: "Not Your Laptop",
+    description: "AI agents consume significant RAM and CPU. Running them locally drains your battery and slows everything down.",
+    detail: "Each agent uses ~2GB RAM. With 10+ agents, you need 48-64GB—more than most laptops have.",
+    gradient: "from-amber-400 to-orange-500",
+  },
+  {
+    icon: <Cloud className="h-6 w-6 text-white" />,
+    title: "Not AWS/GCP/Azure",
+    description: "Cloud giants charge by the hour and make billing unpredictable. A dedicated VPS is simpler and cheaper.",
+    detail: "A 64GB VPS costs ~$40-56/month flat. Equivalent cloud resources would cost 3-5x more.",
+    gradient: "from-sky-400 to-blue-500",
+  },
+  {
+    icon: <Moon className="h-6 w-6 text-white" />,
+    title: "Works While You Sleep",
+    description: "Your VPS runs 24/7. Queue up tasks before bed, wake up to completed code.",
+    detail: "AI agents can refactor, test, and iterate autonomously—compounding progress overnight.",
+    gradient: "from-violet-400 to-purple-500",
+  },
+];
+
+function WhyVPSSection() {
+  const { ref, isInView } = useScrollReveal({ threshold: 0.1 });
+
+  return (
+    <section ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 py-24 relative overflow-hidden">
+      <div className="pointer-events-none absolute -left-40 top-1/4 h-80 w-80 rounded-full bg-[oklch(0.75_0.18_195/0.08)] blur-[100px]" />
+      <div className="pointer-events-none absolute -right-40 bottom-1/4 h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[100px]" />
+
+      <div className="mx-auto max-w-7xl px-6 relative">
+        <motion.div
+          className="mb-12 text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+          transition={springs.smooth}
+        >
+          <div className="mb-4 flex items-center justify-center gap-3">
+            <div className="h-px w-8 bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+            <span className="text-[11px] font-bold uppercase tracking-[0.25em] text-primary">The Foundation</span>
+            <div className="h-px w-8 bg-gradient-to-l from-transparent via-primary/50 to-transparent" />
+          </div>
+          <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">Why a VPS?</h2>
+          <p className="mx-auto max-w-2xl text-muted-foreground">
+            <Jargon term="agentic">Agentic</Jargon> workflows need dedicated compute. A <Jargon term="vps">VPS</Jargon> gives you a 24/7 server that&apos;s always ready.
+          </p>
+        </motion.div>
+
+        <motion.div
+          className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          variants={staggerContainer}
+          initial="hidden"
+          animate={isInView ? "visible" : "hidden"}
+        >
+          {WHY_VPS_ITEMS.map((item, i) => (
+            <motion.div
+              key={item.title}
+              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary/30"
+              variants={fadeUp}
+              transition={{ delay: staggerDelay(i, 0.1) }}
+              whileHover={{ y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }}
+            >
+              <motion.div
+                className={`pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} blur-3xl opacity-0 group-hover:opacity-20 transition-opacity`}
+              />
+              <div className="relative">
+                <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient}`}>
+                  {item.icon}
+                </div>
+                <h3 className="mb-2 text-lg font-semibold">{item.title}</h3>
+                <p className="mb-3 text-sm leading-relaxed text-muted-foreground">{item.description}</p>
+                <p className="text-xs text-muted-foreground/70 italic">{item.detail}</p>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+
+        <motion.div
+          className="mt-10 text-center"
+          initial={{ opacity: 0, y: 10 }}
+          animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+          transition={{ ...springs.smooth, delay: 0.4 }}
+        >
+          <p className="mb-4 text-muted-foreground">Ready to see if this approach is right for you?</p>
+          <Button asChild variant="outline" className="border-primary/30 hover:bg-primary/10">
+            <a href="#is-this-for-you">Check If This Is For You<ChevronRight className="ml-2 h-4 w-4" /></a>
+          </Button>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
 // "Is This For You?" Decision Section
 const FOR_YOU_ITEMS = [
   { text: "You want AI to write real, production code for you", detail: "Full implementations, not just suggestions" },
@@ -603,7 +702,7 @@ function IsThisForYouSection() {
   const { ref, isInView } = useScrollReveal({ threshold: 0.1 });
 
   return (
-    <section ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 py-24 relative overflow-hidden">
+    <section id="is-this-for-you" ref={ref as React.RefObject<HTMLElement>} className="border-t border-border/30 py-24 relative overflow-hidden">
       <div className="pointer-events-none absolute -left-40 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-[oklch(0.72_0.19_145/0.08)] blur-[100px]" />
       <div className="pointer-events-none absolute -right-40 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-[oklch(0.65_0.22_25/0.08)] blur-[100px]" />
 
@@ -947,6 +1046,9 @@ export default function HomePage() {
 
         {/* Workflow Steps Preview */}
         <WorkflowStepsSection />
+
+        {/* Why VPS? Section */}
+        <WhyVPSSection />
 
         {/* Is This For You? Section */}
         <IsThisForYouSection />
