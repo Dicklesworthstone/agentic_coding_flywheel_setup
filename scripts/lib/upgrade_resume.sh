@@ -141,6 +141,7 @@ launch_continue_script() {
     # Use systemd-run to spawn a proper transient service that survives this script's exit
     # --collect: auto-cleanup unit after it finishes (avoids "unit already exists" errors)
     # --no-block: don't wait for service to complete (we want to exit immediately)
+    # --setenv: ensure HOME is set (required by preflight checks and installer)
     # Service output goes to journal (check with: journalctl -u acfs-continue-install)
     if command -v systemd-run &>/dev/null; then
         # Remove any stale unit from previous failed attempts
@@ -151,6 +152,7 @@ launch_continue_script() {
             --description="ACFS Installation Continuation" \
             --property=Type=oneshot \
             --property=TimeoutStartSec=7200 \
+            --setenv=HOME=/root \
             /bin/bash "$script" 2>&1 | tee -a "$ACFS_LOG"; then
             log "ACFS continuation launched via systemd-run"
             log "Monitor with: journalctl -u acfs-continue-install -f"

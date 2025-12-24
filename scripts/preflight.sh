@@ -393,6 +393,12 @@ check_sudo() {
 check_conflicts() {
     local conflicts_found=false
 
+    # Skip HOME-dependent checks if HOME is not set
+    if [[ -z "${HOME:-}" ]]; then
+        warn "Conflict checks skipped" "HOME not set, cannot check user directories"
+        return
+    fi
+
     # Check for nvm (may conflict with bun/mise)
     if [[ -d "${NVM_DIR:-$HOME/.nvm}" ]] || [[ -f "$HOME/.nvm/nvm.sh" ]]; then
         warn "nvm detected" "May conflict with bun; consider removing or deactivating"

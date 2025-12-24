@@ -1026,6 +1026,9 @@ upgrade_setup_infrastructure() {
 # Auto-generated script to continue ACFS installation after Ubuntu upgrades
 set -euo pipefail
 
+# Ensure HOME is set (required when running via systemd)
+export HOME="\${HOME:-/root}"
+
 echo "Ubuntu upgrade complete. Resuming ACFS installation..."
 
 # Prefer local source dir (only if it still exists), else fetch from GitHub.
