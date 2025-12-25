@@ -3,19 +3,35 @@ import { NextRequest, NextResponse } from 'next/server';
 const GA_MEASUREMENT_ID_RAW = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const GA_API_SECRET_RAW = process.env.GA_API_SECRET;
 
-function isValidGaMeasurementId(value: unknown): value is string {
+function sanitizeGaMeasurementId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  let trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  // Handle accidental quoting in env var values (common copy/paste mistake).
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+
   // GA4 measurement IDs look like: G-XXXXXXXXXX (letters/numbers)
-  return typeof value === 'string' && /^G-[A-Z0-9]+$/.test(value);
+  if (/^G-[A-Z0-9]+$/i.test(trimmed)) return trimmed;
+
+  return undefined;
 }
 
-function isValidGaApiSecret(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 200;
+function sanitizeGaApiSecret(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 200) return undefined;
+  return trimmed;
 }
 
-const GA_MEASUREMENT_ID = isValidGaMeasurementId(GA_MEASUREMENT_ID_RAW)
-  ? GA_MEASUREMENT_ID_RAW
-  : undefined;
-const GA_API_SECRET = isValidGaApiSecret(GA_API_SECRET_RAW) ? GA_API_SECRET_RAW : undefined;
+const GA_MEASUREMENT_ID = sanitizeGaMeasurementId(GA_MEASUREMENT_ID_RAW);
+const GA_API_SECRET = sanitizeGaApiSecret(GA_API_SECRET_RAW);
 
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
