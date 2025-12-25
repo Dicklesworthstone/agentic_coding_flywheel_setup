@@ -1,16 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { motion } from "@/components/motion";
 import {
   Bot,
   Key,
-  Shield,
   Zap,
   Terminal,
   CheckCircle2,
   AlertTriangle,
-  RefreshCw,
   Database,
   Sparkles,
 } from "lucide-react";
@@ -23,8 +20,6 @@ import {
   Divider,
   GoalBanner,
   InlineCode,
-  FeatureGrid,
-  FeatureCard,
   BulletList,
 } from "./lesson-components";
 

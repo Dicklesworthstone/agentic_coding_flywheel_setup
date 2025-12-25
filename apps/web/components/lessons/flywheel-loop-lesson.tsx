@@ -25,7 +25,6 @@ import {
   Highlight,
   Divider,
   GoalBanner,
-  InlineCode,
 } from "./lesson-components";
 
 export function FlywheelLoopLesson() {

@@ -20,10 +20,8 @@ import {
   Paragraph,
   CodeBlock,
   TipBox,
-  Highlight,
   Divider,
   GoalBanner,
-  InlineCode,
   BulletList,
 } from "./lesson-components";
 

@@ -22,8 +22,6 @@ import {
   Highlight,
   Divider,
   GoalBanner,
-  InlineCode,
-  BulletList,
 } from "./lesson-components";
 
 export function NtmCoreLesson() {
