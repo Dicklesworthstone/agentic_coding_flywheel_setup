@@ -567,7 +567,8 @@ function PhaseCard({
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl"
+      whileHover={{ x: 4 }}
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]"
     >
       <div className="flex items-center gap-4 mb-4">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold">
@@ -596,15 +597,18 @@ function ModelCard({
   focus: string;
 }) {
   return (
-    <div
-      className={`rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4`}
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ y: -4, scale: 1.02 }}
+      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
     >
       <div className="flex items-center gap-2 mb-2">
-        <Bot className="h-4 w-4 text-white/80" />
+        <Bot className="h-4 w-4 text-white/80 group-hover:scale-110 transition-transform" />
         <span className="font-semibold text-white text-sm">{name}</span>
       </div>
-      <p className="text-xs text-white/60">{focus}</p>
-    </div>
+      <p className="text-xs text-white/60 group-hover:text-white/80 transition-colors">{focus}</p>
+    </motion.div>
   );
 }
 
@@ -616,7 +620,8 @@ function SynthesisResultCard() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-purple-500/10 p-6"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-purple-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-violet-500/50"
     >
       <h4 className="font-bold text-white mb-3 flex items-center gap-2">
         <FileText className="h-5 w-5 text-violet-400" />
@@ -651,7 +656,8 @@ function BeadsTransformationCard() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-sky-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <LayoutDashboard className="h-5 w-5 text-sky-400" />
@@ -689,7 +695,8 @@ function SwarmSetupCard() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-amber-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <Users className="h-5 w-5 text-amber-400" />
@@ -737,7 +744,8 @@ function CommitStatsCard() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 to-pink-500/10 p-6"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 to-pink-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-rose-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <GitBranch className="h-5 w-5 text-rose-400" />

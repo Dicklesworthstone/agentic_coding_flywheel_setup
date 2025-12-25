@@ -452,7 +452,8 @@ function IdeaCard() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-amber-500/50"
     >
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500">
@@ -493,7 +494,8 @@ function TimelineCard() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6"
+      whileHover={{ y: -2 }}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]"
     >
       <h4 className="font-bold text-white mb-4 flex items-center gap-2">
         <Clock className="h-5 w-5 text-primary" />
@@ -507,17 +509,18 @@ function TimelineCard() {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.1 }}
-            className="flex items-center gap-4"
+            whileHover={{ x: 6 }}
+            className="group flex items-center gap-4 p-2 -mx-2 rounded-lg transition-all duration-300 hover:bg-white/[0.02]"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20 group-hover:bg-primary/30 group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
               <step.icon className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1 flex items-center gap-3">
               <span className="text-xs font-mono text-white/50 w-20">
                 {step.time}
               </span>
-              <ArrowRight className="h-3 w-3 text-white/30" />
-              <span className="text-sm text-white/70">{step.event}</span>
+              <ArrowRight className="h-3 w-3 text-white/30 group-hover:text-primary/50 transition-colors" />
+              <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">{step.event}</span>
             </div>
           </motion.div>
         ))}
@@ -539,15 +542,18 @@ function FeedbackCard({
   color: string;
 }) {
   return (
-    <div
-      className={`rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4`}
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ y: -4, scale: 1.02 }}
+      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
     >
       <div className="flex items-center gap-2 mb-2">
-        <Bot className="h-4 w-4 text-white/80" />
+        <Bot className="h-4 w-4 text-white/80 group-hover:scale-110 transition-transform" />
         <span className="font-semibold text-white text-sm">{model}</span>
       </div>
-      <p className="text-xs text-white/60">{focus}</p>
-    </div>
+      <p className="text-xs text-white/60 group-hover:text-white/80 transition-colors">{focus}</p>
+    </motion.div>
   );
 }
 
@@ -559,7 +565,8 @@ function BeadsResultCard() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-sky-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <LayoutDashboard className="h-5 w-5 text-sky-400" />
@@ -632,15 +639,16 @@ function RiskTierCard() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.1 }}
-          className={`rounded-xl border ${tier.border} bg-gradient-to-br ${tier.color} p-4`}
+          whileHover={{ y: -2, scale: 1.02 }}
+          className={`group rounded-xl border ${tier.border} bg-gradient-to-br ${tier.color} p-4 backdrop-blur-xl transition-all duration-300 hover:border-opacity-80`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="font-bold text-white text-sm">{tier.name}</span>
-            <span className="text-xs px-2 py-1 rounded bg-black/30 text-white/70">
+            <span className="text-xs px-2 py-1 rounded bg-black/30 text-white/70 group-hover:bg-black/40 transition-colors">
               {tier.approvals}{/^\d/.test(tier.approvals) ? (tier.approvals === "1" ? " approval" : " approvals") : ""}
             </span>
           </div>
-          <p className="text-xs text-white/60">{tier.examples}</p>
+          <p className="text-xs text-white/60 group-hover:text-white/80 transition-colors">{tier.examples}</p>
         </motion.div>
       ))}
     </div>
@@ -655,7 +663,8 @@ function ResultsCard() {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-emerald-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <CheckCircle2 className="h-5 w-5 text-emerald-400" />
@@ -696,13 +705,14 @@ function ComparisonCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5`}
+      whileHover={{ y: -4, scale: 1.02 }}
+      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
     >
-      <h4 className="font-bold text-white mb-3">{title}</h4>
+      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">{title}</h4>
       <ul className="space-y-2">
         {items.map((item, i) => (
-          <li key={i} className="text-sm text-white/70 flex items-center gap-2">
-            <div className="h-1 w-1 rounded-full bg-white/40 shrink-0" />
+          <li key={i} className="text-sm text-white/70 flex items-center gap-2 group-hover:text-white/80 transition-colors">
+            <div className="h-1.5 w-1.5 rounded-full bg-white/40 shrink-0 group-hover:bg-primary/60 transition-colors" />
             {item}
           </li>
         ))}

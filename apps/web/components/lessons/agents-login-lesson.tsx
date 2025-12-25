@@ -349,7 +349,8 @@ function AliasCard({
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className={`relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden`}
+      whileHover={{ x: 4, scale: 1.01 }}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]`}
     >
       <div className="flex items-center gap-3 mb-4">
         <code className="px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-lg font-mono font-bold text-primary">
@@ -394,16 +395,17 @@ function LoginStep({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl`}
+      whileHover={{ y: -2, scale: 1.01 }}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
     >
-      <h4 className="font-bold text-white mb-3">{agent}</h4>
-      <div className="mb-3 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden">
+      <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">{agent}</h4>
+      <div className="mb-3 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden group-hover:bg-black/40 transition-colors">
         <pre className="p-3 text-sm font-mono text-emerald-400">
           <span className="text-white/30">$ </span>
           {command}
         </pre>
       </div>
-      <p className="text-sm text-white/60">{description}</p>
+      <p className="text-sm text-white/60 group-hover:text-white/80 transition-colors">{description}</p>
     </motion.div>
   );
 }
@@ -416,7 +418,8 @@ function OpenAIAccountWarning() {
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-amber-500/50"
     >
       <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/20 rounded-full blur-3xl" />
 

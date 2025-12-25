@@ -406,12 +406,13 @@ function FlywheelNode({
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay }}
-      className={`flex items-center gap-3 px-5 py-3 rounded-2xl bg-gradient-to-br ${color} bg-opacity-20 border border-white/[0.1]`}
+      whileHover={{ y: -4, scale: 1.05 }}
+      className={`group flex items-center gap-3 px-5 py-3 rounded-2xl bg-gradient-to-br ${color} bg-opacity-20 border border-white/[0.1] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.2]`}
     >
-      <div className="text-white">{icon}</div>
+      <div className="text-white group-hover:scale-110 transition-transform">{icon}</div>
       <div>
         <span className="font-bold text-white text-sm">{label}</span>
-        <span className="block text-xs text-white/50">{sublabel}</span>
+        <span className="block text-xs text-white/50 group-hover:text-white/70 transition-colors">{sublabel}</span>
       </div>
     </motion.div>
   );
@@ -444,10 +445,11 @@ function ToolCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: number * 0.05 }}
-      className={`relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden`}
+      whileHover={{ x: 4, scale: 1.01 }}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]`}
     >
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white shadow-lg group-hover:bg-white/20 group-hover:shadow-xl group-hover:scale-110 transition-all duration-300">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
@@ -507,10 +509,11 @@ function FlywheelEffectList() {
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.1 }}
-          className="flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02]"
+          whileHover={{ x: 6, scale: 1.01 }}
+          className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
         >
-          <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-          <span className="text-white/70">
+          <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+          <span className="text-white/70 group-hover:text-white/90 transition-colors">
             <strong className="text-primary">{item.tool}</strong> {item.effect}
           </span>
         </motion.div>
@@ -535,12 +538,13 @@ function HelpCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-4 backdrop-blur-xl text-center`}
+      whileHover={{ y: -4, scale: 1.02 }}
+      className={`group relative rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-4 backdrop-blur-xl text-center transition-all duration-300 hover:border-white/[0.15]`}
     >
-      <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.08] text-sm font-mono text-primary mb-2">
+      <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.08] text-sm font-mono text-primary mb-2 group-hover:bg-black/40 transition-colors">
         {command}
       </code>
-      <span className="text-sm text-white/60">{description}</span>
+      <span className="text-sm text-white/60 group-hover:text-white/80 transition-colors">{description}</span>
     </motion.div>
   );
 }

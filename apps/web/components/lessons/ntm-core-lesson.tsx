@@ -289,11 +289,12 @@ function AgentPane({
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay }}
-      className={`flex flex-col items-center p-4 rounded-xl bg-gradient-to-br ${color} bg-opacity-20 border border-white/[0.1]`}
+      whileHover={{ y: -4, scale: 1.05 }}
+      className={`group flex flex-col items-center p-4 rounded-xl bg-gradient-to-br ${color} bg-opacity-20 border border-white/[0.1] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.2]`}
     >
-      <Bot className="h-6 w-6 text-white mb-2" />
+      <Bot className="h-6 w-6 text-white mb-2 group-hover:scale-110 transition-transform" />
       <span className="text-sm font-medium text-white">{name}</span>
-      <code className="text-xs text-white/60 mt-1">{shortcut}</code>
+      <code className="text-xs text-white/60 mt-1 group-hover:text-white/80 transition-colors">{shortcut}</code>
     </motion.div>
   );
 }
@@ -315,17 +316,22 @@ function CommandSection({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="space-y-4">
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      whileHover={{ x: 4 }}
+      className="group space-y-4 p-4 -mx-4 rounded-xl transition-all duration-300 hover:bg-white/[0.02]"
+    >
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
           {icon}
         </div>
-        <h4 className="text-lg font-semibold text-white">{title}</h4>
+        <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
       </div>
       <CodeBlock code={code} />
       <p className="text-white/60">{description}</p>
       {children}
-    </div>
+    </motion.div>
   );
 }
 
@@ -340,12 +346,15 @@ function SessionComponent({
   color: string;
 }) {
   return (
-    <div
-      className={`flex items-center gap-3 p-3 rounded-xl bg-gradient-to-br ${color} bg-opacity-10 border border-white/[0.08]`}
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: 1.02, x: 2 }}
+      className={`group flex items-center gap-3 p-3 rounded-xl bg-gradient-to-br ${color} bg-opacity-10 border border-white/[0.08] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
     >
-      <div className={`h-2 w-2 rounded-full bg-gradient-to-br ${color}`} />
-      <span className="text-sm text-white/70">{label}</span>
-    </div>
+      <div className={`h-2 w-2 rounded-full bg-gradient-to-br ${color} group-hover:scale-125 transition-transform`} />
+      <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">{label}</span>
+    </motion.div>
   );
 }
 
@@ -371,12 +380,13 @@ function WorkflowSteps() {
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.1 }}
-          className="relative flex items-center gap-4 pl-2"
+          whileHover={{ x: 6, scale: 1.01 }}
+          className="group relative flex items-center gap-4 pl-2 py-1 rounded-lg transition-all duration-300"
         >
-          <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-white text-sm font-bold shadow-lg shadow-primary/30">
+          <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-white text-sm font-bold shadow-lg shadow-primary/30 group-hover:shadow-xl group-hover:shadow-primary/40 group-hover:scale-110 transition-all">
             {i + 1}
           </div>
-          <span className="text-white/70">{step}</span>
+          <span className="text-white/70 group-hover:text-white/90 transition-colors">{step}</span>
         </motion.div>
       ))}
     </div>
@@ -391,7 +401,8 @@ function AgentRatioCard() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl"
+      whileHover={{ y: -2 }}
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]"
     >
       <h4 className="font-bold text-white mb-4">Why this ratio?</h4>
       <div className="space-y-3">
@@ -430,17 +441,22 @@ function RatioItem({
   color: string;
 }) {
   return (
-    <div className="flex items-center gap-4">
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      whileHover={{ x: 4 }}
+      className="group flex items-center gap-4 p-2 -mx-2 rounded-lg transition-all duration-300 hover:bg-white/[0.02]"
+    >
       <div
-        className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${color} text-white font-bold text-sm`}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${color} text-white font-bold text-sm shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all`}
       >
         {count}
       </div>
       <div>
-        <span className="font-medium text-white">{name}</span>
+        <span className="font-medium text-white group-hover:text-primary transition-colors">{name}</span>
         <span className="text-white/50"> - {reason}</span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

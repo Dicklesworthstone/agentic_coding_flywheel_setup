@@ -262,8 +262,13 @@ function CommandSection({
   description: string;
 }) {
   return (
-    <div className="space-y-4">
-      <h4 className="text-lg font-semibold text-white">{title}</h4>
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      whileHover={{ x: 4 }}
+      className="group space-y-4 p-4 -mx-4 rounded-xl transition-all duration-300 hover:bg-white/[0.02]"
+    >
+      <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
       {code && <CodeBlock code={code} />}
       {keyCombo && (
         <div className="flex items-center gap-2">
@@ -281,7 +286,7 @@ function CommandSection({
         </div>
       )}
       <p className="text-white/60">{description}</p>
-    </div>
+    </motion.div>
   );
 }
 
@@ -303,9 +308,10 @@ function KeyboardShortcutGrid({ shortcuts }: { shortcuts: ShortcutItem[] }) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.1 }}
-          className="flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+          whileHover={{ y: -2, scale: 1.01 }}
+          className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
         >
-          <div className="text-primary">{shortcut.icon}</div>
+          <div className="text-primary group-hover:text-primary/80 transition-colors">{shortcut.icon}</div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {shortcut.keys.map((key, j) => (

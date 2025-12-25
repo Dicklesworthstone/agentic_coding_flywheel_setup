@@ -291,7 +291,8 @@ function UpdateBenefitsCard() {
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl"
+      whileHover={{ y: -2 }}
+      className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-emerald-500/30"
     >
       <h4 className="font-bold text-white mb-4">Keeping things updated means:</h4>
       <div className="space-y-3">
@@ -305,10 +306,15 @@ function UpdateBenefitsCard() {
 
 function BenefitRow({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <div className="text-emerald-400 h-5 w-5">{icon}</div>
-      <span className="text-white/70">{text}</span>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      whileHover={{ x: 4 }}
+      className="group flex items-center gap-3 p-2 -mx-2 rounded-lg transition-all duration-300 hover:bg-white/[0.02]"
+    >
+      <div className="text-emerald-400 h-5 w-5 group-hover:scale-110 transition-transform">{icon}</div>
+      <span className="text-white/70 group-hover:text-white/90 transition-colors">{text}</span>
+    </motion.div>
   );
 }
 
@@ -325,13 +331,18 @@ function UpdateItem({
   description: string;
 }) {
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl border border-white/[0.08] bg-white/[0.02]">
-      <div className="text-primary">{icon}</div>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: 1.02, y: -2 }}
+      className="group flex items-center gap-3 p-3 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+    >
+      <div className="text-primary group-hover:scale-110 transition-transform">{icon}</div>
       <div>
-        <span className="text-sm font-medium text-white">{label}</span>
+        <span className="text-sm font-medium text-white group-hover:text-primary transition-colors">{label}</span>
         <span className="text-xs text-white/50 block">{description}</span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -351,9 +362,10 @@ function UpdatePattern({
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="space-y-3"
+      whileHover={{ x: 4 }}
+      className="group space-y-3 p-4 -mx-4 rounded-xl transition-all duration-300 hover:bg-white/[0.02]"
     >
-      <h4 className="font-bold text-white">{title}</h4>
+      <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
       <p className="text-white/60">{description}</p>
       <CodeBlock code={command} />
     </motion.div>
@@ -376,7 +388,8 @@ function TroubleshootingCard({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl"
+      whileHover={{ y: -2, scale: 1.01 }}
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl transition-all duration-300 hover:border-amber-500/50"
     >
       <h4 className="font-bold text-amber-400 mb-2">{title}</h4>
       <p className="text-white/60 mb-4">{description}</p>
@@ -439,15 +452,20 @@ function FrequencyItem({
   recommendation: string;
 }) {
   return (
-    <div className="flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02]">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      whileHover={{ x: 6, scale: 1.01 }}
+      className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
         <Clock className="h-5 w-5" />
       </div>
       <div>
-        <span className="font-bold text-white">{frequency}</span>
+        <span className="font-bold text-white group-hover:text-primary transition-colors">{frequency}</span>
         <span className="text-white/50"> - {recommendation}</span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -501,9 +519,14 @@ function CongratulationsCard() {
 
 function CompletionItem({ text }: { text: string }) {
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.05] border border-white/[0.08]">
-      <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" />
-      <span className="text-white/80 text-sm">{text}</span>
-    </div>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      whileHover={{ scale: 1.02, x: 2 }}
+      className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.08]"
+    >
+      <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
+      <span className="text-white/80 text-sm group-hover:text-white transition-colors">{text}</span>
+    </motion.div>
   );
 }
