@@ -348,7 +348,9 @@ check_agent_auth() {
     fi
 
     # Gemini: Check for credentials (OAuth web login, like Claude Code and Codex CLI)
-    if [[ -f "$target_home/.config/gemini/credentials.json" ]] || [[ -d "$target_home/.config/gemini" ]]; then
+    if [[ -f "$target_home/.config/gemini/credentials.json" ]] || \
+       [[ -d "$target_home/.config/gemini" && -n "$(ls -A "$target_home/.config/gemini" 2>/dev/null)" ]] || \
+       [[ -f "$target_home/.gemini/config" ]]; then
         log_detail "  Gemini: configured"
     else
         log_warn "  Gemini: not configured (run 'gemini' to login via browser)"
