@@ -408,9 +408,12 @@ _run_phase_context_only() {
 
     set_phase "$phase_id" "$phase_name"
 
+    # Execute and capture exit code correctly
+    # (can't use "if ! cmd; then exit_code=$?" because $? would be 0 from the negation)
     local exit_code=0
-    if ! "$func" "$@"; then
-        exit_code=$?
+    "$func" "$@" || exit_code=$?
+
+    if (( exit_code != 0 )); then
         # Error state already set by try_step calls within the function
         return "$exit_code"
     fi
