@@ -146,12 +146,16 @@ const categories: CommandCategory[] = [
 
 function CategoryCard({ category }: { category: CommandCategory }) {
   return (
-    <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm">
+    <Card className="overflow-hidden border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:border-primary/30">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-border/30 bg-muted/30 p-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <motion.div
+          className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"
+          whileHover={{ scale: 1.1, rotate: 5 }}
+          transition={springs.snappy}
+        >
           {category.icon}
-        </div>
+        </motion.div>
         <div>
           <h3 className="font-semibold text-foreground">{category.name}</h3>
           <p className="text-sm text-muted-foreground">{category.description}</p>
@@ -174,6 +178,8 @@ function CategoryCard({ category }: { category: CommandCategory }) {
 
 export default function NtmPalettePage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { ref: heroRef, isInView: heroInView } = useScrollReveal({ threshold: 0.1 });
   const { ref: contentRef, isInView: contentInView } = useScrollReveal({ threshold: 0.05 });
 
@@ -188,18 +194,52 @@ export default function NtmPalettePage() {
     }))
     .filter((category) => category.commands.length > 0);
 
+  // Keyboard navigation: "/" to focus search, j/k to navigate, Escape to clear
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (e.key === "Escape") {
+        setSearchQuery("");
+        setSelectedIndex(-1);
+        searchInputRef.current?.blur();
+      }
+      if ((e.key === "j" || e.key === "ArrowDown") && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev < filteredCategories.length - 1 ? prev + 1 : prev));
+      }
+      if ((e.key === "k" || e.key === "ArrowUp") && document.activeElement?.tagName !== "INPUT") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+      }
+    },
+    [filteredCategories.length]
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
+
   return (
     <div className="relative min-h-screen bg-background">
       {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
       <div className="pointer-events-none fixed inset-0 bg-grid-pattern opacity-20" />
       {/* Floating orbs - hidden on mobile for performance */}
-      <div className="pointer-events-none fixed -left-40 top-1/4 hidden h-80 w-80 rounded-full bg-[oklch(0.75_0.18_195/0.08)] blur-[100px] sm:block" />
-      <div className="pointer-events-none fixed -right-40 bottom-1/3 hidden h-80 w-80 rounded-full bg-[oklch(0.7_0.2_330/0.08)] blur-[100px] sm:block" />
+      <div className={backgrounds.orbCyan} />
+      <div className={backgrounds.orbPink} />
 
       <div className="relative mx-auto max-w-4xl px-6 py-8 md:px-12 md:py-12">
-        {/* Header - 48px touch targets */}
-        <div className="mb-8 flex items-center justify-between">
+        {/* Header with motion - 48px touch targets */}
+        <motion.div
+          className="mb-8 flex items-center justify-between"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={springs.smooth}
+        >
           <Link
             href="/learn"
             className="flex min-h-[48px] items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
@@ -214,7 +254,7 @@ export default function NtmPalettePage() {
             <Home className="h-4 w-4" />
             <span className="text-sm">Home</span>
           </Link>
-        </div>
+        </motion.div>
 
         {/* Hero with animation */}
         <motion.div
@@ -225,15 +265,24 @@ export default function NtmPalettePage() {
           transition={springs.smooth}
         >
           <motion.div
-            className="mb-4 flex justify-center"
-            whileHover={{ scale: 1.05, rotate: 5 }}
-            transition={springs.snappy}
+            className="relative mb-4 inline-flex justify-center"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ ...springs.snappy, delay: 0.2 }}
           >
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 to-blue-500 shadow-lg shadow-sky-500/20">
               <LayoutGrid className="h-8 w-8 text-white" />
             </div>
+            {/* Sparkle accent */}
+            <motion.div
+              className="absolute -right-1 -top-1"
+              animate={{ rotate: [0, 15, -15, 0], scale: [1, 1.2, 1] }}
+              transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+            >
+              <Sparkles className="h-5 w-5 text-sky-400" />
+            </motion.div>
           </motion.div>
-          <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-4xl">
+          <h1 className="mb-3 font-mono text-3xl font-bold tracking-tight md:text-4xl">
             NTM Commands
           </h1>
           <p className="mx-auto max-w-xl text-lg text-muted-foreground">
@@ -242,26 +291,41 @@ export default function NtmPalettePage() {
           </p>
         </motion.div>
 
-        {/* Search */}
-        <div className="relative mb-8">
+        {/* Search with motion */}
+        <motion.div
+          className="relative mb-8"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.smooth, delay: 0.2 }}
+        >
           <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search commands..."
+            placeholder="Search commands... (press / to focus)"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             aria-label="Search NTM commands"
-            className="w-full rounded-xl border border-border/50 bg-card/50 py-3 pl-12 pr-4 text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full rounded-xl border border-border/50 bg-card/50 py-3 pl-12 pr-4 text-foreground transition-all duration-200 placeholder:text-muted-foreground focus:border-primary/40 focus:shadow-lg focus:shadow-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
-        </div>
+        </motion.div>
 
-        {/* Quick start */}
-        <Card className="mb-10 border-sky-500/20 bg-sky-500/5 p-5">
-          <div className="flex items-start gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-500/10">
-              <Zap className="h-5 w-5 text-sky-500" />
-            </div>
-            <div>
+        {/* Quick start with motion */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.smooth, delay: 0.3 }}
+        >
+          <Card className="mb-10 border-sky-500/20 bg-sky-500/5 p-5 transition-all duration-300 hover:border-sky-500/40 hover:shadow-lg hover:shadow-sky-500/10">
+            <div className="flex items-start gap-4">
+              <motion.div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-500/10"
+                whileHover={{ scale: 1.1, rotate: 10 }}
+                transition={springs.snappy}
+              >
+                <Zap className="h-5 w-5 text-sky-500" />
+              </motion.div>
+              <div className="flex-1">
               <h2 className="mb-1 font-semibold">Quick Start</h2>
               <p className="mb-3 text-sm text-muted-foreground">
                 Start a new project with multiple agents in seconds:
@@ -277,9 +341,10 @@ ntm attach myproject
 ntm send myproject "Let's build something amazing"`}
                 language="bash"
               />
+              </div>
             </div>
-          </div>
-        </Card>
+          </Card>
+        </motion.div>
 
         {/* Command categories with stagger animation */}
         <motion.div
@@ -290,12 +355,22 @@ ntm send myproject "Let's build something amazing"`}
           variants={staggerContainer}
         >
           {filteredCategories.length > 0 ? (
-            filteredCategories.map((category) => (
+            filteredCategories.map((category, index) => (
               <motion.div
                 key={category.id}
                 variants={fadeUp}
-                whileHover={{ y: -4, boxShadow: "0 20px 40px -15px oklch(0.75 0.18 195 / 0.15)" }}
-                transition={springs.snappy}
+                className={`rounded-2xl transition-all duration-200 ${
+                  selectedIndex === index
+                    ? "ring-2 ring-primary/50 ring-offset-2 ring-offset-background"
+                    : ""
+                }`}
+                whileHover={{ y: -4 }}
+                style={{
+                  boxShadow:
+                    selectedIndex === index
+                      ? "0 20px 40px -15px oklch(0.75 0.18 195 / 0.2)"
+                      : undefined,
+                }}
               >
                 <CategoryCard category={category} />
               </motion.div>
@@ -315,51 +390,66 @@ ntm send myproject "Let's build something amazing"`}
           )}
         </motion.div>
 
-        {/* Related */}
-        <Card className="mt-10 p-6">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
-            <BookOpen className="h-5 w-5 text-primary" />
-            Related References
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Link
-              href="/learn/agent-commands"
-              className="flex items-center gap-3 rounded-lg border border-border/50 p-4 transition-colors hover:border-primary/40 hover:bg-primary/5"
-            >
-              <Terminal className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <div className="font-medium">Agent Commands</div>
-                <div className="text-sm text-muted-foreground">
-                  Claude, Codex, Gemini shortcuts
-                </div>
-              </div>
-              <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-            </Link>
-            <Link
-              href="/workflow"
-              className="flex items-center gap-3 rounded-lg border border-border/50 p-4 transition-colors hover:border-primary/40 hover:bg-primary/5"
-            >
-              <LayoutGrid className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <div className="font-medium">Flywheel Workflow</div>
-                <div className="text-sm text-muted-foreground">
-                  Full multi-agent ecosystem
-                </div>
-              </div>
-              <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
-            </Link>
-          </div>
-        </Card>
+        {/* Related with motion */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.smooth, delay: 0.5 }}
+        >
+          <Card className="mt-10 overflow-hidden border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary/30">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+              <BookOpen className="h-5 w-5 text-primary" />
+              Related References
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <motion.div whileHover={{ y: -2 }} transition={springs.snappy}>
+                <Link
+                  href="/learn/agent-commands"
+                  className="flex items-center gap-3 rounded-lg border border-border/50 p-4 transition-all duration-200 hover:border-primary/40 hover:bg-primary/5 hover:shadow-md hover:shadow-primary/5"
+                >
+                  <Terminal className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <div className="font-medium">Agent Commands</div>
+                    <div className="text-sm text-muted-foreground">
+                      Claude, Codex, Gemini shortcuts
+                    </div>
+                  </div>
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ y: -2 }} transition={springs.snappy}>
+                <Link
+                  href="/workflow"
+                  className="flex items-center gap-3 rounded-lg border border-border/50 p-4 transition-all duration-200 hover:border-primary/40 hover:bg-primary/5 hover:shadow-md hover:shadow-primary/5"
+                >
+                  <LayoutGrid className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <div className="font-medium">Flywheel Workflow</div>
+                    <div className="text-sm text-muted-foreground">
+                      Full multi-agent ecosystem
+                    </div>
+                  </div>
+                  <ChevronRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                </Link>
+              </motion.div>
+            </div>
+          </Card>
+        </motion.div>
 
-        {/* Footer */}
-        <div className="mt-12 text-center text-sm text-muted-foreground">
+        {/* Footer with motion */}
+        <motion.div
+          className="mt-12 text-center text-sm text-muted-foreground"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ ...springs.smooth, delay: 0.6 }}
+        >
           <p>
             Back to{" "}
             <Link href="/learn" className="text-primary hover:underline">
               Learning Hub &rarr;
             </Link>
           </p>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
