@@ -314,10 +314,13 @@ function VPSComponent({
   sublabel: string;
 }) {
   return (
-    <div className="flex flex-col items-center p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] text-center">
-      <div className="text-white/60 mb-1">{icon}</div>
-      <span className="text-xs font-medium text-white">{label}</span>
-      <span className="text-[10px] text-white/40">{sublabel}</span>
-    </div>
+    <motion.div
+      whileHover={{ y: -2, scale: 1.05 }}
+      className="group flex flex-col items-center p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] text-center transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
+    >
+      <div className="text-white/60 mb-1 group-hover:text-primary group-hover:scale-110 transition-all duration-300">{icon}</div>
+      <span className="text-xs font-medium text-white group-hover:text-primary transition-colors">{label}</span>
+      <span className="text-[10px] text-white/40 group-hover:text-white/60 transition-colors">{sublabel}</span>
+    </motion.div>
   );
 }

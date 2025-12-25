@@ -335,21 +335,22 @@ function StageCard({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -4, scale: 1.02 }}
       transition={{ delay: 0.2 + number * 0.1 }}
-      className={`relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
     >
       <div className="relative">
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white text-sm font-bold">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white text-sm font-bold group-hover:bg-white/20 group-hover:scale-110 transition-all duration-300">
             {number}
           </div>
           <div>
-            <h4 className="font-bold text-white">{title}</h4>
-            <span className="text-xs text-white/50">{subtitle}</span>
+            <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
+            <span className="text-xs text-white/50 group-hover:text-white/70 transition-colors">{subtitle}</span>
           </div>
         </div>
-        <p className="text-sm text-white/60 mb-4">{description}</p>
-        <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.06] text-xs font-mono text-white/80 overflow-x-auto">
+        <p className="text-sm text-white/60 mb-4 group-hover:text-white/70 transition-colors">{description}</p>
+        <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.06] text-xs font-mono text-white/80 overflow-x-auto group-hover:border-primary/20 group-hover:bg-black/40 transition-all duration-300">
           {code}
         </code>
       </div>
@@ -368,12 +369,15 @@ function CommandPart({
   description: string;
 }) {
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02]">
-      <code className="px-2 py-1 rounded bg-primary/10 border border-primary/20 text-xs font-mono text-primary">
+    <motion.div
+      whileHover={{ x: 4, scale: 1.02 }}
+      className="group flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
+    >
+      <code className="px-2 py-1 rounded bg-primary/10 border border-primary/20 text-xs font-mono text-primary group-hover:bg-primary/20 group-hover:border-primary/40 transition-all duration-300">
         {label}
       </code>
-      <span className="text-sm text-white/50">{description}</span>
-    </div>
+      <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">{description}</span>
+    </motion.div>
   );
 }
 
@@ -403,16 +407,17 @@ function QuizCards() {
           key={i}
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
+          whileHover={{ x: 4, scale: 1.01 }}
           transition={{ delay: i * 0.1 }}
-          className="group relative rounded-xl border border-white/[0.08] bg-white/[0.02] p-5 transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
+          className="group relative rounded-xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
         >
           <div className="flex items-start gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-300">
               {i + 1}
             </div>
             <div className="flex-1">
-              <p className="font-medium text-white">{q.question}</p>
-              <p className="mt-2 text-sm text-white/50">{q.answer}</p>
+              <p className="font-medium text-white group-hover:text-primary transition-colors">{q.question}</p>
+              <p className="mt-2 text-sm text-white/50 group-hover:text-white/70 transition-colors">{q.answer}</p>
             </div>
           </div>
         </motion.div>

@@ -335,19 +335,20 @@ function UsageOption({
     <motion.div
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl"
+      whileHover={{ x: 4, scale: 1.01 }}
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
     >
       <div className="flex items-center gap-4 mb-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold shadow-lg shadow-primary/20 group-hover:shadow-primary/40 group-hover:scale-110 transition-all duration-300">
           {number}
         </div>
-        <h4 className="text-lg font-bold text-white">{title}</h4>
+        <h4 className="text-lg font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
       </div>
 
       {steps.length > 0 && (
         <ol className="space-y-2 ml-14">
           {steps.map((step, i) => (
-            <li key={i} className="text-white/70 flex items-center gap-2">
+            <li key={i} className="text-white/70 flex items-center gap-2 group-hover:text-white/80 transition-colors">
               <span className="text-primary font-medium">{i + 1}.</span>
               {step}
             </li>
@@ -376,13 +377,14 @@ function ExamplePrompt({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} overflow-hidden`}
+      whileHover={{ y: -4, scale: 1.02 }}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} overflow-hidden transition-all duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
     >
-      <div className="p-4 border-b border-white/[0.08] bg-black/20">
-        <h4 className="font-bold text-white">{title}</h4>
+      <div className="p-4 border-b border-white/[0.08] bg-black/20 group-hover:bg-black/30 transition-colors">
+        <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
       </div>
       <div className="p-4">
-        <pre className="text-sm text-white/80 whitespace-pre-wrap font-mono">
+        <pre className="text-sm text-white/80 whitespace-pre-wrap font-mono group-hover:text-white/90 transition-colors">
           {prompt}
         </pre>
       </div>
