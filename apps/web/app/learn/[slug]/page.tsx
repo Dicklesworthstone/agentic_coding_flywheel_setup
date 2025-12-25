@@ -6,7 +6,7 @@ import { LESSONS, getLessonBySlug } from "@/lib/lessonProgress";
 import { LessonContent } from "./lesson-content";
 
 interface Props {
-  params: Promise<{ slug: string }>;
+  params: { slug: string };
 }
 
 // Generate static paths for all lessons
@@ -18,7 +18,7 @@ export async function generateStaticParams() {
 
 // Generate metadata for each lesson
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
+  const { slug } = params;
   const lesson = getLessonBySlug(slug);
 
   if (!lesson) {
@@ -51,7 +51,7 @@ async function loadLessonContent(filename: string): Promise<string> {
 }
 
 export default async function LessonPage({ params }: Props) {
-  const { slug } = await params;
+  const { slug } = params;
   const lesson = getLessonBySlug(slug);
 
   if (!lesson) {
