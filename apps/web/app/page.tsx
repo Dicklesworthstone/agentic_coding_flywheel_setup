@@ -422,7 +422,7 @@ function WorkflowStepsSection() {
           transition={springs.smooth}
         >
           <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight">
-            13 Steps to Liftoff
+            {WORKFLOW_STEPS.length} Steps to Liftoff
           </h2>
           <p className="mx-auto max-w-2xl text-muted-foreground">
             The wizard guides you from &quot;I have a laptop&quot; to &quot;<Jargon term="ai-agents">AI agents</Jargon> are coding for me&quot;
