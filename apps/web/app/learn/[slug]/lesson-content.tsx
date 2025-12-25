@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback, useRef } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { markdownComponents } from "@/lib/markdown-components";
+import { getLessonComponent } from "@/components/lessons";
 import {
   ArrowLeft,
   ArrowRight,
@@ -42,7 +40,6 @@ import {
 
 interface Props {
   lesson: Lesson;
-  content: string;
 }
 
 // Reading progress hook
@@ -291,7 +288,7 @@ function LessonSidebar({
   );
 }
 
-export function LessonContent({ lesson, content }: Props) {
+export function LessonContent({ lesson }: Props) {
   const router = useRouter();
   const [completedLessons, markComplete] = useCompletedLessons();
   const [completedSteps] = useCompletedSteps();
@@ -535,27 +532,19 @@ export function LessonContent({ lesson, content }: Props) {
                 </div>
               )}
 
-              {/* Premium markdown content */}
-              <article className="prose prose-neutral dark:prose-invert max-w-none
-                prose-headings:font-bold prose-headings:tracking-tight prose-headings:text-white
-                prose-h2:text-3xl prose-h2:mt-20 prose-h2:mb-8 prose-h2:relative prose-h2:before:absolute prose-h2:before:-left-6 prose-h2:before:top-1/2 prose-h2:before:-translate-y-1/2 prose-h2:before:w-1 prose-h2:before:h-8 prose-h2:before:rounded-full prose-h2:before:bg-gradient-to-b prose-h2:before:from-primary prose-h2:before:to-violet-500
-                prose-h3:text-2xl prose-h3:mt-16 prose-h3:mb-6
-                prose-h4:text-xl prose-h4:mt-12 prose-h4:mb-4
-                prose-p:text-white/60 prose-p:leading-[1.9] prose-p:mb-6 prose-p:text-lg
-                prose-a:text-primary prose-a:font-semibold prose-a:no-underline prose-a:transition-all prose-a:duration-300 prose-a:shadow-[inset_0_-2px_0_rgba(var(--primary-rgb),0.3)] hover:prose-a:shadow-[inset_0_-2px_0_rgba(var(--primary-rgb),0.8)] hover:prose-a:text-white
-                prose-strong:text-white prose-strong:font-bold
-                prose-code:text-sm prose-code:font-medium prose-code:text-primary prose-code:bg-primary/10 prose-code:px-2 prose-code:py-1 prose-code:rounded-lg prose-code:before:content-none prose-code:after:content-none prose-code:border prose-code:border-primary/20
-                prose-li:text-white/60 prose-li:leading-[1.9] prose-li:my-3 prose-li:text-lg
-                prose-ul:my-8 prose-ol:my-8
-                prose-blockquote:border-l-4 prose-blockquote:border-primary/50 prose-blockquote:bg-gradient-to-r prose-blockquote:from-primary/[0.08] prose-blockquote:to-transparent prose-blockquote:py-4 prose-blockquote:pl-6 prose-blockquote:pr-6 prose-blockquote:rounded-r-2xl prose-blockquote:not-italic prose-blockquote:text-white/70 prose-blockquote:shadow-[inset_0_0_30px_rgba(var(--primary-rgb),0.05)]
-                prose-hr:border-white/[0.08] prose-hr:my-16
-              ">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={markdownComponents}
-                >
-                  {content}
-                </ReactMarkdown>
+              {/* Custom lesson content */}
+              <article>
+                {(() => {
+                  const LessonComponent = getLessonComponent(lesson.slug);
+                  if (LessonComponent) {
+                    return <LessonComponent />;
+                  }
+                  return (
+                    <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-8 text-center">
+                      <p className="text-white/70">Lesson content not found for: {lesson.slug}</p>
+                    </div>
+                  );
+                })()}
               </article>
 
               {/* Jaw-dropping completion card */}

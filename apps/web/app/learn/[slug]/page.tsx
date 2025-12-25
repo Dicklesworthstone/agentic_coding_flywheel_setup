@@ -1,7 +1,5 @@
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
-import fs from "fs/promises";
-import path from "path";
 import { LESSONS, getLessonBySlug } from "@/lib/lessonProgress";
 import { LessonContent } from "./lesson-content";
 
@@ -31,25 +29,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-// Load markdown content at build time
-async function loadLessonContent(filename: string): Promise<string> {
-  const lessonsDir = path.join(process.cwd(), "..", "..", "acfs", "onboard", "lessons");
-  const filePath = path.join(lessonsDir, filename);
-
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    return content;
-  } catch {
-    // Fallback: try from project root
-    const altPath = path.join(process.cwd(), "../../acfs/onboard/lessons", filename);
-    try {
-      return await fs.readFile(altPath, "utf-8");
-    } catch {
-      return `# Content Not Found\n\nThe lesson content file \`${filename}\` could not be loaded.`;
-    }
-  }
-}
-
 export default async function LessonPage({ params }: Props) {
   const { slug } = await params;
   const lesson = getLessonBySlug(slug);
@@ -58,7 +37,5 @@ export default async function LessonPage({ params }: Props) {
     notFound();
   }
 
-  const content = await loadLessonContent(lesson.file);
-
-  return <LessonContent lesson={lesson} content={content} />;
+  return <LessonContent lesson={lesson} />;
 }
