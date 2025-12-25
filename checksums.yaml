@@ -20,7 +20,7 @@ installers:
 
   atuin:
     url: "https://setup.atuin.sh"
-    sha256: "7cfabf7e18c03953f3fbd9288c97d9d8b47df3666da522ef903608de617370e7"
+    sha256: "68f9d6dde067a9db9fc44cb6004cc9397e81dcfd69341fbaef037be5570a3661"
 
   bun:
     url: "https://bun.sh/install"
