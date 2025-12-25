@@ -270,7 +270,7 @@ install_cargo_cli_tools() {
 # ============================================================
 
 # Install gum (Charmbracelet's glamorous shell tool)
-install_gum() {
+install_gum_cli_tool() {
     local sudo_cmd
     sudo_cmd=$(_cli_get_sudo)
 
