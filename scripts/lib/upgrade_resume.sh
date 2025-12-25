@@ -165,10 +165,15 @@ mark_state_complete() {
         fi
 
         if jq '.ubuntu_upgrade.current_stage = "completed" | .ubuntu_upgrade.needs_reboot = false' "$ACFS_STATE_FILE" > "$tmp_file" 2>/dev/null; then
-            mv "$tmp_file" "$ACFS_STATE_FILE" || true
-            log "State updated to 'completed'"
+            if mv "$tmp_file" "$ACFS_STATE_FILE" 2>/dev/null; then
+                log "State updated to 'completed'"
+            else
+                rm -f "$tmp_file" 2>/dev/null || true
+                log_error "Failed to write updated state file"
+            fi
         else
             rm -f "$tmp_file" 2>/dev/null || true
+            log_error "Failed to update state file"
         fi
     fi
 }
