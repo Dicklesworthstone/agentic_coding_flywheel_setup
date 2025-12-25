@@ -76,7 +76,7 @@ function categorizeKey(key: string): Exclude<GlossaryCategory, "all"> {
 
   if (
     /(git|github|repo|repository|clone|branch|commit|pull-request)/.test(k) ||
-    /(bun|uv|rust|cargo|go|docker|wrangler|supabase|vercel|vault|jq|rg|ripgrep|lazygit|ast-grep)/.test(k)
+    /(bun|uv|rust|cargo|go|docker|wrangler|supabase|convex|vercel|vault|jq|rg|ripgrep|lazygit|ast-grep)/.test(k)
   ) {
     return "tools";
   }

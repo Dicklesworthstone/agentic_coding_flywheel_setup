@@ -180,6 +180,7 @@ verify:
 | Vault | HashiCorp apt repo | `tools.vault` ✓ | --skip-vault |
 | Wrangler | bun install -g | `cloud.wrangler` ✓ | --skip-cloud |
 | Supabase | bun install -g | `cloud.supabase` ✓ | --skip-cloud |
+| Convex | bun install -g | `cloud.convex` ✓ | --skip-cloud |
 | Vercel | bun install -g | `cloud.vercel` ✓ | --skip-cloud |
 
 **Gap:** Manifest doesn't specify skippability/tags. Installer creates postgres user/db.
@@ -338,7 +339,7 @@ orchestration:
 | `--mode safe` | Standard sudo, confirmation prompts | Default (no tag) |
 | `--skip-postgres` | Skip PostgreSQL 18 | `db.postgres18.enabled_by_default: false` or tag `skippable` |
 | `--skip-vault` | Skip Vault | `tools.vault.enabled_by_default: false` or tag `skippable` |
-| `--skip-cloud` | Skip wrangler/supabase/vercel | Tag `cloud` + `enabled_by_default: false` |
+| `--skip-cloud` | Skip wrangler/supabase/convex/vercel | Tag `cloud` + `enabled_by_default: false` |
 | `--resume` | Resume from checkpoint | Orchestration (state.sh) |
 | `--force-reinstall` | Start fresh | Orchestration |
 | `--reset-state` | Delete state file | Orchestration |

@@ -48,6 +48,7 @@ const TOOL_TERMS = new Set([
   "vault",
   "wrangler",
   "supabase",
+  "convex",
   "vercel",
   "postgres",
 ]);

@@ -107,7 +107,7 @@ Controls whether a module is included in the default install:
 **Rationale for opt-out defaults:**
 - PostgreSQL 18 is a heavy install (~500MB) that many users don't need
 - Vault is specialized for secrets management workflows
-- Cloud CLIs (wrangler, supabase, vercel) are only needed for specific providers
+- Cloud CLIs (wrangler, supabase, convex, vercel) are only needed for specific providers
 
 ### Legacy Flag → Module/Tag Mapping
 
@@ -117,7 +117,7 @@ Preserve existing CLI ergonomics while migrating to manifest-driven selection:
 |-------------|--------------|----------------|
 | `--skip-postgres` | `--skip db.postgres18` | Map in `parse_args` |
 | `--skip-vault` | `--skip tools.vault` | Map in `parse_args` |
-| `--skip-cloud` | `--skip cloud.wrangler,cloud.supabase,cloud.vercel` OR `--skip-tag cloud` | Map in `parse_args` |
+| `--skip-cloud` | `--skip cloud.wrangler,cloud.supabase,cloud.convex,cloud.vercel` OR `--skip-tag cloud` | Map in `parse_args` |
 | `--skip-preflight` | Orchestrator flag (not module-related) | Keep as-is |
 | `--mode vibe` | Sets `MODE=vibe` env var | Keep as-is |
 | `--mode safe` | Sets `MODE=safe` env var | Keep as-is |
@@ -204,7 +204,7 @@ This section defines the exact semantics for module filtering, dependency resolu
 **Legacy flags (mapped internally):**
 - `--skip-postgres` → `--skip db.postgres18`
 - `--skip-vault` → `--skip tools.vault`
-- `--skip-cloud` → `--skip cloud.wrangler,cloud.supabase,cloud.vercel`
+- `--skip-cloud` → `--skip cloud.wrangler,cloud.supabase,cloud.convex,cloud.vercel`
 
 ### Selection Algorithm
 
@@ -300,11 +300,11 @@ declare -A ACFS_PLAN_REASON=(
 
 #### 5. Install Only Cloud Tools (Opt-in)
 ```bash
-./install.sh --only cloud.wrangler,cloud.supabase,cloud.vercel
+./install.sh --only cloud.wrangler,cloud.supabase,cloud.convex,cloud.vercel
 ```
-- Starting set: `{cloud.wrangler, cloud.supabase, cloud.vercel}`
+- Starting set: `{cloud.wrangler, cloud.supabase, cloud.convex, cloud.vercel}`
 - Dependency expansion: Adds `base.system`, `lang.bun` (required by Bun CLIs)
-- Result: `base.system → lang.bun → cloud.wrangler → cloud.supabase → cloud.vercel`
+- Result: `base.system → lang.bun → cloud.wrangler → cloud.supabase → cloud.convex → cloud.vercel`
 
 #### 6. Legacy Flag Equivalence
 ```bash
@@ -1623,7 +1623,7 @@ curl -fsSL ... | bash -s -- --yes --mode vibe --skip-postgres
 ```bash
 --skip-postgres) SKIP_MODULES+=("db.postgres18") ;;
 --skip-vault)    SKIP_MODULES+=("tools.vault") ;;
---skip-cloud)    SKIP_MODULES+=("cloud.wrangler" "cloud.supabase" "cloud.vercel") ;;
+--skip-cloud)    SKIP_MODULES+=("cloud.wrangler" "cloud.supabase" "cloud.convex" "cloud.vercel") ;;
 ```
 
 ---
@@ -1702,6 +1702,7 @@ Phase 8 (cloud):
   [skip] tools.vault [disabled by default]
   [skip] cloud.wrangler [disabled by default]
   [skip] cloud.supabase [disabled by default]
+  [skip] cloud.convex [disabled by default]
   [skip] cloud.vercel [disabled by default]
 
 Phase 9 (stack):
@@ -1819,6 +1820,7 @@ db.postgres18                8      cloud     database, optional        [skip]
 tools.vault                  8      cloud     secrets, optional         [skip]
 cloud.wrangler               8      cloud     cloud, optional           [skip]
 cloud.supabase               8      cloud     cloud, optional           [skip]
+cloud.convex                 8      cloud     cloud, optional           [skip]
 cloud.vercel                 8      cloud     cloud, optional           [skip]
 stack.ntm                    9      stack     agent                     [ok]
 stack.mcp_agent_mail         9      stack     agent                     [ok]
@@ -1831,7 +1833,7 @@ stack.slb                    9      stack     agent                     [ok]
 acfs.onboard                 10     acfs      orchestration             [ok]
 acfs.doctor                  10     acfs      orchestration             [ok]
 
-Total: 30 modules (25 enabled by default, 5 opt-in)
+Total: 31 modules (25 enabled by default, 6 opt-in)
 
 Filtering:
   --only <id1,id2,...>     Install specific modules + dependencies
@@ -2375,7 +2377,7 @@ main() {
 
     # Phase 8: Cloud & database tools
     log_step "8/10" "Installing cloud & database tools..."
-    install_cloud  # FROM GENERATED (vault, postgres, wrangler, supabase, vercel)
+    install_cloud  # FROM GENERATED (vault, postgres, wrangler, supabase, convex, vercel)
 
     # Phase 9: Dicklesworthstone stack
     log_step "9/10" "Installing Dicklesworthstone stack..."

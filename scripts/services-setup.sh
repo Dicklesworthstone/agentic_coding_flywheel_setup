@@ -192,6 +192,26 @@ check_supabase_status() {
     fi
 }
 
+check_convex_status() {
+    local convex_bin="$TARGET_HOME/.bun/bin/convex"
+
+    if [[ ! -x "$convex_bin" ]]; then
+        SERVICE_STATUS[convex]="not_installed"
+        return
+    fi
+
+    # Best-effort: Convex stores auth under ~/.config/convex or ~/.convex (paths may vary).
+    if user_file_exists "$TARGET_HOME/.config/convex/config.json" || \
+       user_file_exists "$TARGET_HOME/.config/convex/credentials.json" || \
+       user_file_exists "$TARGET_HOME/.convex/config.json" || \
+       user_file_exists "$TARGET_HOME/.convex/credentials.json" || \
+       [[ -n "${CONVEX_DEPLOYMENT:-}" || -n "${CONVEX_URL:-}" || -n "${CONVEX_API_KEY:-}" ]]; then
+        SERVICE_STATUS[convex]="configured"
+    else
+        SERVICE_STATUS[convex]="installed"
+    fi
+}
+
 check_wrangler_status() {
     local wrangler_bin="$TARGET_HOME/.bun/bin/wrangler"
 
@@ -233,6 +253,7 @@ check_all_status() {
     check_gemini_status
     check_vercel_status
     check_supabase_status
+    check_convex_status
     check_wrangler_status
     check_postgres_status
 }
@@ -266,9 +287,9 @@ print_status_table() {
     gum_section "Service Status"
     echo ""
 
-    local services=("claude" "codex" "gemini" "vercel" "supabase" "wrangler" "postgres")
-    local labels=("Claude Code" "Codex CLI" "Gemini CLI" "Vercel" "Supabase" "Cloudflare" "PostgreSQL")
-    local categories=("AI Agent" "AI Agent" "AI Agent" "Cloud" "Cloud" "Cloud" "Database")
+    local services=("claude" "codex" "gemini" "vercel" "supabase" "convex" "wrangler" "postgres")
+    local labels=("Claude Code" "Codex CLI" "Gemini CLI" "Vercel" "Supabase" "Convex" "Cloudflare" "PostgreSQL")
+    local categories=("AI Agent" "AI Agent" "AI Agent" "Cloud" "Cloud" "Cloud" "Cloud" "Database")
 
     if [[ "$HAS_GUM" == "true" ]]; then
         # Use gum table for beautiful display
@@ -736,6 +757,34 @@ Press Enter to launch 'supabase login'..."
     fi
 }
 
+setup_convex() {
+    local convex_bin="$TARGET_HOME/.bun/bin/convex"
+
+    if [[ ! -x "$convex_bin" ]]; then
+        gum_error "Convex CLI not installed. Run the main installer first."
+        return 1
+    fi
+
+    if [[ "${SERVICE_STATUS[convex]}" == "configured" ]]; then
+        if ! gum_confirm "Convex appears to be configured. Reconfigure?"; then
+            return 0
+        fi
+    fi
+
+    gum_box "Convex Setup" "Convex CLI uses OAuth to authenticate.
+
+Press Enter to launch 'convex login'..."
+
+    read -r
+
+    run_as_user "'$convex_bin' login" || true
+
+    check_convex_status
+    if [[ "${SERVICE_STATUS[convex]}" == "configured" ]]; then
+        gum_success "Convex configured successfully!"
+    fi
+}
+
 setup_wrangler() {
     local wrangler_bin="$TARGET_HOME/.bun/bin/wrangler"
 
@@ -812,9 +861,9 @@ show_menu() {
     if [[ "$HAS_GUM" == "true" ]]; then
         # Build menu items with status indicators
         local -a items=()
-        local services=("claude" "codex" "gemini" "vercel" "supabase" "wrangler" "postgres")
-        local labels=("Claude Code" "Codex CLI" "Gemini CLI" "Vercel" "Supabase" "Cloudflare Wrangler" "PostgreSQL")
-        local descs=("AI coding assistant" "OpenAI assistant" "Google AI assistant" "Deployment platform" "Database platform" "Edge platform" "Local database")
+        local services=("claude" "codex" "gemini" "vercel" "supabase" "convex" "wrangler" "postgres")
+        local labels=("Claude Code" "Codex CLI" "Gemini CLI" "Vercel" "Supabase" "Convex" "Cloudflare Wrangler" "PostgreSQL")
+        local descs=("AI coding assistant" "OpenAI assistant" "Google AI assistant" "Deployment platform" "Database platform" "Realtime database" "Edge platform" "Local database")
 
         for i in "${!services[@]}"; do
             local svc="${services[$i]}"
@@ -849,6 +898,7 @@ show_menu() {
             *"Gemini"*)    setup_gemini ;;
             *"Vercel"*)    setup_vercel ;;
             *"Supabase"*)  setup_supabase ;;
+            *"Convex"*)    setup_convex ;;
             *"Wrangler"*)  setup_wrangler ;;
             *"PostgreSQL"*) setup_postgres ;;
             *"ALL"*)       setup_all_unconfigured ;;
@@ -864,11 +914,12 @@ show_menu() {
             "3. Gemini CLI (Google AI assistant)" \
             "4. Vercel (deployment platform)" \
             "5. Supabase (database platform)" \
-            "6. Cloudflare Wrangler (edge platform)" \
-            "7. PostgreSQL (check database)" \
-            "8. Install Claude destructive-command guard (recommended)" \
-            "9. Configure ALL unconfigured services" \
-            "10. Refresh status" \
+            "6. Convex (realtime database)" \
+            "7. Cloudflare Wrangler (edge platform)" \
+            "8. PostgreSQL (check database)" \
+            "9. Install Claude destructive-command guard (recommended)" \
+            "10. Configure ALL unconfigured services" \
+            "11. Refresh status" \
             "0. Exit")
 
         case "$choice" in
@@ -878,6 +929,7 @@ show_menu() {
             *"Gemini"*)    setup_gemini ;;
             *"Vercel"*)    setup_vercel ;;
             *"Supabase"*)  setup_supabase ;;
+            *"Convex"*)    setup_convex ;;
             *"Cloudflare"*) setup_wrangler ;;
             *"PostgreSQL"*) setup_postgres ;;
             *"ALL"*)       setup_all_unconfigured ;;
@@ -891,9 +943,9 @@ show_menu() {
 setup_all_unconfigured() {
     gum_section "Configuring All Unconfigured Services"
 
-    local services=("claude" "codex" "gemini" "vercel" "supabase" "wrangler")
-    local labels=("Claude Code" "Codex CLI" "Gemini CLI" "Vercel" "Supabase" "Cloudflare Wrangler")
-    local setup_funcs=("setup_claude" "setup_codex" "setup_gemini" "setup_vercel" "setup_supabase" "setup_wrangler")
+    local services=("claude" "codex" "gemini" "vercel" "supabase" "convex" "wrangler")
+    local labels=("Claude Code" "Codex CLI" "Gemini CLI" "Vercel" "Supabase" "Convex" "Cloudflare Wrangler")
+    local setup_funcs=("setup_claude" "setup_codex" "setup_gemini" "setup_vercel" "setup_supabase" "setup_convex" "setup_wrangler")
 
     # Count services needing setup
     local needs_setup=0

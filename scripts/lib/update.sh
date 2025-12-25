@@ -142,6 +142,9 @@ get_version() {
         supabase)
             version=$(supabase --version 2>/dev/null || echo "unknown")
             ;;
+        convex)
+            version=$(convex --version 2>/dev/null || echo "unknown")
+            ;;
         vercel)
             version=$(vercel --version 2>/dev/null || echo "unknown")
             ;;
@@ -628,6 +631,13 @@ update_cloud() {
         run_cmd "Supabase CLI" "$bun_bin" install -g --trust supabase@latest
     else
         log_item "skip" "Supabase CLI" "not installed"
+    fi
+
+    # Convex
+    if cmd_exists convex || [[ "$FORCE_MODE" == "true" ]]; then
+        run_cmd "Convex CLI" "$bun_bin" install -g --trust convex@latest
+    else
+        log_item "skip" "Convex CLI" "not installed"
     fi
 
     # Vercel (--trust allows postinstall scripts for native binaries)
@@ -1129,7 +1139,7 @@ USAGE:
 CATEGORY OPTIONS (select what to update):
   --apt-only         Only update system packages (apt)
   --agents-only      Only update coding agents (Claude, Codex, Gemini)
-  --cloud-only       Only update cloud CLIs (Wrangler, Supabase, Vercel)
+  --cloud-only       Only update cloud CLIs (Wrangler, Supabase, Convex, Vercel)
   --shell-only       Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
   --runtime-only     Only update runtimes (Bun, Rust, uv, Go)
   --stack            Include Dicklesworthstone stack tools (default: disabled)
@@ -1183,7 +1193,7 @@ WHAT EACH CATEGORY UPDATES:
   agents:   Claude Code (claude update)
             Codex CLI (bun install -g @openai/codex@latest)
             Gemini CLI (bun install -g @google/gemini-cli@latest)
-  cloud:    Wrangler, Supabase CLI, Vercel CLI (bun install -g @latest)
+  cloud:    Wrangler, Supabase CLI, Convex CLI, Vercel CLI (bun install -g @latest)
   runtime:  Bun (bun upgrade), Rust (rustup update), uv (uv self update), Go (apt-managed)
   stack:    NTM, UBS, BV, CASS, CM, CAAM, SLB (re-run upstream installers)
 

@@ -249,7 +249,7 @@ export default function StatusCheckPage() {
             <ul className="list-disc space-y-1 pl-5">
               <li><strong>Recommended now:</strong> Claude Code (so you can start coding immediately)</li>
               <li><strong>Optional now:</strong> Codex, Gemini (only if you plan to use them)</li>
-              <li><strong>Optional later:</strong> Cloud tools (Wrangler / Supabase / Vercel) and anything else you don&apos;t need yet</li>
+              <li><strong>Optional later:</strong> Cloud tools (Wrangler / Supabase / Convex / Vercel) and anything else you don&apos;t need yet</li>
             </ul>
             <p className="text-xs text-muted-foreground">
               If you skip a login, the tool is still installed — it just won&apos;t work until you authenticate.

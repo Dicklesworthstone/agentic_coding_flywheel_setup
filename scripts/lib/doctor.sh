@@ -779,6 +779,7 @@ check_cloud() {
     check_optional_command "cloud.postgres" "PostgreSQL" "psql"
     check_optional_command "cloud.wrangler" "Wrangler" "wrangler" "bun install -g --trust wrangler"
     check_optional_command "cloud.supabase" "Supabase CLI" "supabase" "bun install -g --trust supabase"
+    check_optional_command "cloud.convex" "Convex CLI" "convex" "bun install -g --trust convex"
     check_optional_command "cloud.vercel" "Vercel CLI" "vercel" "bun install -g --trust vercel"
 
     # Tailscale VPN (bt5)
@@ -1227,6 +1228,7 @@ deep_check_cloud() {
     check_gh_auth
     check_wrangler_auth
     check_supabase_auth
+    check_convex_auth
     check_vercel_auth
 }
 
@@ -1358,6 +1360,38 @@ check_supabase_auth() {
         check "deep.cloud.supabase" "Supabase CLI auth" "pass" "SUPABASE_ACCESS_TOKEN set"
     else
         check "deep.cloud.supabase" "Supabase CLI auth" "warn" "not authenticated" "supabase login"
+    fi
+}
+
+# check_convex_auth - Convex CLI authentication check
+# Best-effort: Convex stores auth under ~/.config/convex or ~/.convex (paths may vary).
+check_convex_auth() {
+    if ! command -v convex &>/dev/null; then
+        check "deep.cloud.convex" "Convex CLI" "warn" "not installed" "bun install -g --trust convex"
+        return
+    fi
+
+    # Check if binary works
+    if ! timeout 5 convex --version &>/dev/null; then
+        check "deep.cloud.convex" "Convex CLI" "fail" "binary error" "Reinstall: bun install -g --trust convex"
+        return
+    fi
+
+    local config_file="$HOME/.config/convex/config.json"
+    local credentials_file="$HOME/.config/convex/credentials.json"
+    local alt_config_file="$HOME/.convex/config.json"
+    local alt_credentials_file="$HOME/.convex/credentials.json"
+
+    if [[ -f "$config_file" || -f "$credentials_file" || -f "$alt_config_file" || -f "$alt_credentials_file" ]]; then
+        if [[ -s "$config_file" || -s "$credentials_file" || -s "$alt_config_file" || -s "$alt_credentials_file" ]]; then
+            check "deep.cloud.convex" "Convex CLI auth" "pass" "credentials file exists"
+        else
+            check "deep.cloud.convex" "Convex CLI auth" "warn" "empty credentials file" "convex login"
+        fi
+    elif [[ -n "${CONVEX_DEPLOYMENT:-}" || -n "${CONVEX_URL:-}" || -n "${CONVEX_API_KEY:-}" ]]; then
+        check "deep.cloud.convex" "Convex CLI auth" "pass" "CONVEX env var set"
+    else
+        check "deep.cloud.convex" "Convex CLI auth" "warn" "not authenticated" "convex login"
     fi
 }
 

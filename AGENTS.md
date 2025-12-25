@@ -239,6 +239,7 @@ These are installed on target VPS (not development machine).
 - **HashiCorp Vault** — Secrets management
 - **Wrangler** — Cloudflare CLI
 - **Supabase CLI** — Supabase management
+- **Convex CLI** — Convex backend tools
 - **Vercel CLI** — Vercel deployment
 
 ### Dicklesworthstone Stack (all 8 tools)
@@ -685,4 +686,3 @@ Parse: `file:line:col` → location | 💡 → how to fix | Exit 0/1 → pass/fa
 - ❌ Ignore findings → ✅ Investigate each
 - ❌ Full scan per edit → ✅ Scope to file
 - ❌ Fix symptom (`if (x) { x.y }`) → ✅ Root cause (`x?.y`)
-

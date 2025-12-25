@@ -230,6 +230,39 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     return { authenticated: false };
   };
 
+  const checkConvex = (): AuthStatus => {
+    if (deps.env.CONVEX_DEPLOYMENT) {
+      return { authenticated: true, details: 'via CONVEX_DEPLOYMENT' };
+    }
+    if (deps.env.CONVEX_URL) {
+      return { authenticated: true, details: 'via CONVEX_URL' };
+    }
+    if (deps.env.CONVEX_API_KEY) {
+      return { authenticated: true, details: 'via CONVEX_API_KEY' };
+    }
+
+    // Best-effort: Convex CLI stores credentials in ~/.config/convex or ~/.convex (paths may vary).
+    const credentialPaths = [
+      path.join(homedir, '.config', 'convex', 'config.json'),
+      path.join(homedir, '.config', 'convex', 'credentials.json'),
+      path.join(homedir, '.convex', 'config.json'),
+      path.join(homedir, '.convex', 'credentials.json'),
+    ];
+    for (const credentialPath of credentialPaths) {
+      if (!deps.existsSync(credentialPath)) {
+        continue;
+      }
+      try {
+        const contents = deps.readFileSync(credentialPath, 'utf-8').trim();
+        return contents ? { authenticated: true } : { authenticated: false };
+      } catch {
+        // File exists but unreadable - cannot confirm authentication.
+        continue;
+      }
+    }
+    return { authenticated: false };
+  };
+
   const checkWrangler = (): AuthStatus => {
     if (deps.env.CLOUDFLARE_API_TOKEN) {
       return { authenticated: true, details: 'via CLOUDFLARE_API_TOKEN' };
@@ -259,6 +292,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     github: checkGitHub,
     vercel: checkVercel,
     supabase: checkSupabase,
+    convex: checkConvex,
     cloudflare: checkWrangler,
   };
 
@@ -282,6 +316,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     checkGitHub,
     checkVercel,
     checkSupabase,
+    checkConvex,
     checkWrangler,
     AUTH_CHECKS,
     checkAllServices,
@@ -296,6 +331,7 @@ const {
   checkGitHub,
   checkVercel,
   checkSupabase,
+  checkConvex,
   checkWrangler,
   AUTH_CHECKS,
   checkAllServices,
@@ -309,6 +345,7 @@ export {
   checkGitHub,
   checkVercel,
   checkSupabase,
+  checkConvex,
   checkWrangler,
   AUTH_CHECKS,
   checkAllServices,

@@ -1066,6 +1066,23 @@ check_supabase_auth() {
     fi
 }
 
+check_convex_auth() {
+    if ! command -v convex &>/dev/null; then
+        return 2
+    fi
+
+    if [[ -n "${CONVEX_DEPLOYMENT:-}" || -n "${CONVEX_URL:-}" || -n "${CONVEX_API_KEY:-}" ]]; then
+        return 0
+    fi
+
+    # Best-effort: Convex stores auth under ~/.config/convex or ~/.convex (paths may vary).
+    if [[ -s "$HOME/.config/convex/config.json" || -s "$HOME/.config/convex/credentials.json" || -s "$HOME/.convex/config.json" || -s "$HOME/.convex/credentials.json" ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
 check_vercel_auth() {
     if ! command -v vercel &>/dev/null; then
         return 2
@@ -1111,6 +1128,9 @@ run_deep_checks() {
 
     check_with_status "Supabase auth" check_supabase_auth \
         "Run: supabase login"
+
+    check_with_status "Convex auth" check_convex_auth \
+        "Run: convex login"
 
     check_with_status "Vercel auth" check_vercel_auth \
         "Run: vercel login"

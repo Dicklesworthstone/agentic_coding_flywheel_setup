@@ -13,6 +13,7 @@ import {
   Wifi,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { CommandCard } from "@/components/command-card";
 import { AlertCard, OutputPreview, DetailsSection } from "@/components/alert-card";
 import { TrackedLink } from "@/components/tracked-link";
@@ -29,7 +30,8 @@ import {
 } from "@/components/simpler-guide";
 import { Jargon } from "@/components/jargon";
 
-const INSTALL_COMMAND = `curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?$(date +%s)" | bash -s -- --yes --mode vibe`;
+const INSTALL_BASE_COMMAND = `curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?$(date +%s)" | bash -s -- --yes`;
+const INSTALL_COMMAND = `${INSTALL_BASE_COMMAND} --mode vibe`;
 
 const WHAT_IT_INSTALLS = [
   {
@@ -50,7 +52,14 @@ const WHAT_IT_INSTALLS = [
   },
   {
     category: "Cloud & Database",
-    items: ["PostgreSQL 18", "Vault", "Wrangler", "Supabase CLI", "Vercel CLI"],
+    items: [
+      "PostgreSQL 18",
+      "Vault",
+      "Wrangler",
+      "Supabase CLI (optional)",
+      "Convex CLI (optional)",
+      "Vercel CLI",
+    ],
   },
   {
     category: "Dicklesworthstone Stack",
@@ -61,6 +70,19 @@ const WHAT_IT_INSTALLS = [
 export default function RunInstallerPage() {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
+  const [installSupabase, setInstallSupabase] = useState(false);
+  const [installConvex, setInstallConvex] = useState(false);
+
+  const selectedCloudModules = [
+    installSupabase ? "cloud.supabase" : null,
+    installConvex ? "cloud.convex" : null,
+  ].filter((moduleId): moduleId is string => Boolean(moduleId));
+
+  const optionalCloudCommand = selectedCloudModules.length
+    ? `${INSTALL_BASE_COMMAND} ${selectedCloudModules
+        .map((moduleId) => `--only ${moduleId}`)
+        .join(" ")}`
+    : "";
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -144,6 +166,69 @@ export default function RunInstallerPage() {
           persistKey="run-flywheel-installer"
           className="border-2 border-primary/20"
         />
+      </div>
+
+      {/* Optional cloud database CLIs */}
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <h2 className="text-xl font-semibold">Optional: add a cloud database CLI</h2>
+          <p className="text-sm text-muted-foreground">
+            Supabase and Convex are opt-in. Pick one or both and run the follow-up command after the main installer.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label
+            className={`flex items-start gap-3 rounded-xl border p-4 transition-colors ${
+              installSupabase
+                ? "border-[oklch(0.72_0.19_145/0.5)] bg-[oklch(0.72_0.19_145/0.05)]"
+                : "border-border/50 bg-card/50 hover:border-primary/30"
+            }`}
+          >
+            <Checkbox
+              checked={installSupabase}
+              onCheckedChange={(checked) => setInstallSupabase(checked === true)}
+              aria-label="Install Supabase CLI"
+            />
+            <div className="space-y-1">
+              <div className="font-medium text-foreground">Supabase CLI</div>
+              <p className="text-sm text-muted-foreground">
+                Postgres + auth + storage for full-stack apps.
+              </p>
+            </div>
+          </label>
+          <label
+            className={`flex items-start gap-3 rounded-xl border p-4 transition-colors ${
+              installConvex
+                ? "border-[oklch(0.72_0.19_145/0.5)] bg-[oklch(0.72_0.19_145/0.05)]"
+                : "border-border/50 bg-card/50 hover:border-primary/30"
+            }`}
+          >
+            <Checkbox
+              checked={installConvex}
+              onCheckedChange={(checked) => setInstallConvex(checked === true)}
+              aria-label="Install Convex CLI"
+            />
+            <div className="space-y-1">
+              <div className="font-medium text-foreground">Convex CLI</div>
+              <p className="text-sm text-muted-foreground">
+                Realtime database + backend functions.
+              </p>
+            </div>
+          </label>
+        </div>
+        {optionalCloudCommand ? (
+          <CommandCard
+            command={optionalCloudCommand}
+            description="Optional cloud DB CLI install"
+            runLocation="vps"
+            showCheckbox
+            persistKey="install-cloud-db-cli"
+          />
+        ) : (
+          <AlertCard variant="info" title="Select at least one option">
+            We&apos;ll generate a follow-up install command once you pick a CLI.
+          </AlertCard>
+        )}
       </div>
 
       {/* Connection drop reassurance */}

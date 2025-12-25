@@ -106,6 +106,7 @@ declare -a MANIFEST_CHECKS=(
     "db.postgres18.2	PostgreSQL 18	systemctl status postgresql --no-pager	optional"
     "cloud.wrangler	Cloudflare Wrangler CLI	wrangler --version	required"
     "cloud.supabase	Supabase CLI	supabase --version	required"
+    "cloud.convex	Convex CLI	convex --version	required"
     "cloud.vercel	Vercel CLI	vercel --version	required"
     "stack.ntm	Named tmux manager (agent cockpit)	ntm --help	required"
     "stack.mcp_agent_mail	Like gmail for coding agents; MCP HTTP server + token; installs beads tools	command -v am	required"

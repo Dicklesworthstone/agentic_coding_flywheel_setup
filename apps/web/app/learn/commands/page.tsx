@@ -356,6 +356,13 @@ const COMMANDS: CommandEntry[] = [
     category: "cloud",
   },
   {
+    name: "convex",
+    fullName: "Convex CLI",
+    description: "Convex database and backend CLI",
+    example: "convex --version",
+    category: "cloud",
+  },
+  {
     name: "vault",
     fullName: "HashiCorp Vault",
     description: "Secrets management",

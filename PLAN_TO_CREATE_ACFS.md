@@ -229,7 +229,7 @@ modules:
 5. **lang.** - Language runtimes (bun, uv, rust, go)
 6. **tools.** - Dev tools (atuin, ast-grep, tmux)
 7. **db.** - Databases (postgres18)
-8. **cloud.** - Cloud CLIs (vault, wrangler, supabase, vercel)
+8. **cloud.** - Cloud CLIs (vault, wrangler, supabase, convex, vercel)
 9. **agents.** - Coding agent CLIs (claude, codex, gemini)
 10. **stack.** - Dicklesworthstone stack (all 8 tools)
 
@@ -406,7 +406,7 @@ Stable IDs for mapping to website checklist:
 - `tool.bun`, `tool.uv`, `tool.cargo`, `tool.go`, `tool.tmux`, `tool.rg`, `tool.sg`
 - `agent.claude`, `agent.codex`, `agent.gemini`
 - `agent.alias.cc`, `agent.alias.cod`, `agent.alias.gmi`
-- `cloud.vault`, `cloud.postgres18`, `cloud.wrangler`, `cloud.supabase`, `cloud.vercel`
+- `cloud.vault`, `cloud.postgres18`, `cloud.wrangler`, `cloud.supabase`, `cloud.convex`, `cloud.vercel`
 - `stack.ntm`, `stack.slb`, `stack.ubs`, `stack.bv`, `stack.cass`, `stack.cm`, `stack.caam`, `stack.mcp_agent_mail`
 
 ---

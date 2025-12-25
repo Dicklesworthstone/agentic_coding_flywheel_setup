@@ -14,7 +14,7 @@
 #   --print       Print upstream scripts/versions that will be run
 #   --skip-postgres   Skip PostgreSQL 18 installation
 #   --skip-vault      Skip HashiCorp Vault installation
-#   --skip-cloud      Skip cloud CLIs (wrangler, supabase, vercel)
+#   --skip-cloud      Skip cloud CLIs (wrangler, supabase, convex, vercel)
 #   --resume          Resume from checkpoint (default when state exists)
 #   --force-reinstall Start fresh, ignore existing state
 #   --reset-state     Delete state file and exit (for debugging)
@@ -2648,7 +2648,7 @@ install_cloud_db_legacy_cloud() {
             log_warn "Cloud CLIs: bun not found at $bun_bin (skipping)"
         else
             local cli
-            for cli in wrangler supabase vercel; do
+            for cli in wrangler supabase convex vercel; do
                 if [[ -x "$TARGET_HOME/.bun/bin/$cli" ]]; then
                     log_detail "$cli already installed"
                     continue
@@ -3172,10 +3172,11 @@ run_smoke_test() {
         local missing_cloud=()
         [[ -x "$TARGET_HOME/.bun/bin/wrangler" ]] || missing_cloud+=("wrangler")
         [[ -x "$TARGET_HOME/.bun/bin/supabase" ]] || missing_cloud+=("supabase")
+        [[ -x "$TARGET_HOME/.bun/bin/convex" ]] || missing_cloud+=("convex")
         [[ -x "$TARGET_HOME/.bun/bin/vercel" ]] || missing_cloud+=("vercel")
 
         if [[ ${#missing_cloud[@]} -eq 0 ]]; then
-            echo "✅ Cloud CLIs: wrangler, supabase, vercel" >&2
+            echo "✅ Cloud CLIs: wrangler, supabase, convex, vercel" >&2
         else
             echo "⚠️ Cloud CLIs: missing ${missing_cloud[*]} (optional)" >&2
             ((warnings += 1))

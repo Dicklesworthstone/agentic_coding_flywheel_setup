@@ -282,6 +282,13 @@ export const COMMANDS: CommandRef[] = [
     example: "supabase status",
   },
   {
+    name: "convex",
+    fullName: "Convex CLI",
+    description: "Convex database and backend tools.",
+    category: "cloud",
+    example: "convex dev",
+  },
+  {
     name: "vercel",
     fullName: "Vercel CLI",
     description: "Vercel deployment tools.",

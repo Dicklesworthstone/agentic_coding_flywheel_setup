@@ -530,7 +530,7 @@ acfs_apply_legacy_skips() {
     fi
 
     if [[ "${SKIP_CLOUD:-false}" == "true" ]]; then
-        SKIP_MODULES+=("cloud.wrangler" "cloud.supabase" "cloud.vercel")
+        SKIP_MODULES+=("cloud.wrangler" "cloud.supabase" "cloud.convex" "cloud.vercel")
     fi
 }
 
