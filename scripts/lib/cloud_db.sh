@@ -81,7 +81,8 @@ _cloud_run_as_user() {
         return $?
     fi
 
-    su - "$target_user" -c "bash -c $(printf %q "$wrapped_cmd")"
+    # Avoid login shells: profile files are not a stable API and can break non-interactive runs.
+    su "$target_user" -c "bash -c $(printf %q "$wrapped_cmd")"
 }
 
 _cloud_run_as_postgres() {
@@ -94,7 +95,8 @@ _cloud_run_as_postgres() {
             return $?
         fi
 
-        su - postgres -c "bash -c $(printf %q "$wrapped_cmd")"
+        # Avoid login shells: profile files are not a stable API and can break non-interactive runs.
+        su postgres -c "bash -c $(printf %q "$wrapped_cmd")"
         return $?
     fi
 

@@ -599,7 +599,7 @@ run_as_target_runner() {
     fi
 
     # Pass args directly to run_as_target, which handles quoting
-    # run_as_target will invoke: su - user -c "runner args..."
+    # Note: run_as_target falls back to `su user -c` (non-login) to avoid profile-sourced failures.
     # stdin is passed through su to the runner
     run_as_target "$runner" "$@"
 }

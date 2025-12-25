@@ -125,7 +125,8 @@ _cli_run_as_user() {
         return $?
     fi
 
-    su - "$target_user" -c "bash -c $(printf %q "$wrapped_cmd")"
+    # Avoid login shells: profile files are not a stable API and can break non-interactive runs.
+    su "$target_user" -c "bash -c $(printf %q "$wrapped_cmd")"
 }
 
 # Load security helpers + checksums.yaml (fail closed if unavailable).
