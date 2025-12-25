@@ -2605,7 +2605,7 @@ install_languages() {
 # ============================================================
 # Phase 6: Coding agents
 # ============================================================
-install_agents() {
+install_agents_phase() {
     set_phase "agents" "Coding Agents"
     log_step "6/9" "Installing coding agents..."
 
@@ -2823,7 +2823,7 @@ binary_installed() {
     [[ -x "$TARGET_HOME/.cargo/bin/$name" ]]
 }
 
-install_stack() {
+install_stack_phase() {
     set_phase "stack" "Dicklesworthstone Stack"
     log_step "8/9" "Installing Dicklesworthstone stack..."
 
@@ -3081,6 +3081,10 @@ EOF
 # ============================================================
 _smoke_run_as_target() {
     local cmd="$1"
+    if type -t run_as_target_shell &>/dev/null; then
+        run_as_target_shell "$cmd"
+        return $?
+    fi
     run_as_target bash -c "$cmd"
 }
 
@@ -3613,9 +3617,9 @@ main() {
         _run_phase_with_report "shell_setup" "3/9 Shell Setup" setup_shell
         _run_phase_with_report "cli_tools" "4/9 CLI Tools" install_cli_tools
         _run_phase_with_report "languages" "5/9 Languages" install_languages
-        _run_phase_with_report "agents" "6/9 Coding Agents" install_agents
+        _run_phase_with_report "agents" "6/9 Coding Agents" install_agents_phase
         _run_phase_with_report "cloud_db" "7/9 Cloud & DB" install_cloud_db
-        _run_phase_with_report "stack" "8/9 Stack" install_stack
+        _run_phase_with_report "stack" "8/9 Stack" install_stack_phase
         _run_phase_with_report "finalize" "9/9 Finalize" finalize
 
         # Calculate installation time for success report
