@@ -209,7 +209,7 @@ export const COMMANDS: CommandRef[] = [
     fullName: "CASS",
     description: "Session search across agents.",
     category: "stack",
-    example: "cass",
+    example: "cass health",
   },
   {
     name: "cm",
