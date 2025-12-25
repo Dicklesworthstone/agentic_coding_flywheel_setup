@@ -343,7 +343,7 @@ test_legacy_skip_cloud() {
     acfs_apply_legacy_skips
 
     # Verify all cloud modules are in SKIP_MODULES
-    local expected=("cloud.wrangler" "cloud.supabase" "cloud.vercel")
+    local expected=("cloud.wrangler" "cloud.supabase" "cloud.convex" "cloud.vercel")
     local all_found=true
     for e in "${expected[@]}"; do
         local found=false

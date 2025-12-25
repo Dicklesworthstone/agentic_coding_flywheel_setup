@@ -23,6 +23,7 @@ POSTGRESQL_VERSION="${POSTGRESQL_VERSION:-18}"
 CLOUD_CLIS=(
     "wrangler"       # Cloudflare Workers CLI
     "supabase"       # Supabase CLI
+    "convex"         # Convex CLI
     "vercel"         # Vercel CLI
 )
 
@@ -282,7 +283,8 @@ _install_cloud_cli() {
 
     log_detail "Installing $cli..."
 
-    if _cloud_run_as_user "\"$bun_bin\" install -g $cli@latest"; then
+    # Use --trust to allow postinstall scripts for cloud CLIs.
+    if _cloud_run_as_user "\"$bun_bin\" install -g --trust $cli@latest"; then
         if [[ -x "$cli_bin" ]]; then
             log_success "$cli installed"
             return 0
@@ -317,6 +319,19 @@ install_supabase() {
     fi
 
     _install_cloud_cli "supabase"
+}
+
+# Install Convex CLI
+install_convex() {
+    local bun_bin
+    bun_bin=$(_cloud_get_bun_bin)
+
+    if [[ ! -x "$bun_bin" ]]; then
+        log_warn "Bun not found, skipping Convex CLI installation"
+        return 1
+    fi
+
+    _install_cloud_cli "convex"
 }
 
 # Install Vercel CLI

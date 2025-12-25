@@ -456,7 +456,7 @@ graph TD
     D["Phase 4: CLI Tools<br/><small>ripgrep, fzf, lazygit, etc.</small>"]
     E["Phase 5: Language Runtimes<br/><small>bun, uv, rust, go</small>"]
     F["Phase 6: AI Agents<br/><small>claude, codex, gemini</small>"]
-    G["Phase 7: Cloud Tools<br/><small>vault, wrangler, supabase, vercel</small>"]
+    G["Phase 7: Cloud Tools<br/><small>vault, wrangler, supabase, convex, vercel</small>"]
     H["Phase 8: Dicklesworthstone Stack<br/><small>ntm, slb, ubs, mcp_agent_mail, etc.</small>"]
     I["Phase 9: Configuration<br/><small>Deploy acfs.zshrc, tmux.conf</small>"]
     J["Phase 10: Verification<br/><small>acfs doctor</small>"]
@@ -775,9 +775,12 @@ This ensures proper authentication handling and avoids issues with alternative p
 | **HashiCorp Vault** | `vault` | Secrets management |
 | **Wrangler** | `wrangler` | Cloudflare CLI |
 | **Supabase CLI** | `supabase` | Supabase management |
+| **Convex CLI** | `convex` | Convex backend tools |
 | **Vercel CLI** | `vercel` | Vercel deployment |
 
 Vault is installed by default (skip with `--skip-vault`). ACFS installs the Vault **CLI** so you have a real secrets tool available early; it does not automatically configure a Vault server for you.
+
+Supabase and Convex CLIs are opt-in; install them only if you plan to use those services.
 
 Supabase networking note: some Supabase projects expose the **direct Postgres host over IPv6-only** (often on free tiers). If your VPS/network is **IPv4-only**, use the Supabase **pooler** connection string instead (or upgrade/configure networking for direct IPv4).
 
@@ -838,6 +841,7 @@ $ acfs doctor
 ║   ✔ vault 1.18.3                                              ║
 ║   ✔ wrangler 4.16.0                                           ║
 ║   ✔ supabase 2.23.4                                           ║
+║   ✔ convex 1.18.0                                             ║
 ║   ✔ vercel 41.7.6                                             ║
 ║                                                               ║
 ║ Dicklesworthstone Stack                                       ║
@@ -850,7 +854,7 @@ $ acfs doctor
 ║   ✔ caam 0.2.0                                                ║
 ║   ⚠ mcp_agent_mail (not running)                              ║
 ╠══════════════════════════════════════════════════════════════╣
-║ Overall: 31/32 checks passed                                  ║
+║ Overall: 32/33 checks passed                                  ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
@@ -875,7 +879,7 @@ The `--deep` flag runs functional tests beyond binary existence:
 |----------|--------|
 | **Agent Auth** | Claude config, Codex OAuth, Gemini credentials |
 | **Database** | PostgreSQL connection, ubuntu role exists |
-| **Cloud CLIs** | `gh auth status`, `wrangler whoami`, Supabase/Vercel tokens |
+| **Cloud CLIs** | `gh auth status`, `wrangler whoami`, Supabase/Convex/Vercel tokens |
 | **Vault** | `VAULT_ADDR` configured |
 
 Deep checks use 5-second timeouts to avoid hanging on network issues. Results are cached for 5 minutes to speed up repeated runs.

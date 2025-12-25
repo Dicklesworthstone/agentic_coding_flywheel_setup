@@ -778,7 +778,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     long: "PostgreSQL (often 'Postgres') is a robust, open-source relational database. It stores data in tables with rows and columns, supporting complex queries, transactions, and data integrity. It's the database of choice for many production applications. We install PostgreSQL 18, the latest version with enhanced performance and features.",
     analogy: "Like a highly organized filing cabinet for your application's data. You can store millions of records and find any specific one instantly using queries.",
     why: "Most real applications need a database. Having PostgreSQL ready means you can build full applications with persistent data storage.",
-    related: ["supabase", "deployment"],
+    related: ["supabase", "convex", "deployment"],
   },
 
   supabase: {
@@ -788,6 +788,15 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     analogy: "Like getting a pre-built backend for your app instead of building it from scratch. Database, user login, file storage: it's all there, ready to use.",
     why: "Supabase CLI lets you manage your Supabase projects from the terminal. Combined with AI coding agents, you can rapidly build full-stack applications.",
     related: ["postgresql", "deployment"],
+  },
+
+  convex: {
+    term: "Convex",
+    short: "Managed realtime database with serverless functions",
+    long: "Convex provides a hosted database with serverless functions and realtime subscriptions. You define functions, and Convex handles scaling, data sync, and auth integrations. It is a backend-as-a-service that emphasizes realtime workflows.",
+    analogy: "Like a backend that ships with database, serverless functions, and live updates built in.",
+    why: "The Convex CLI lets you run local dev, deploy functions, and manage projects from the terminal.",
+    related: ["supabase", "postgresql", "deployment"],
   },
 
   wrangler: {

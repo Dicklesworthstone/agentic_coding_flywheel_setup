@@ -373,7 +373,7 @@ function WorkflowStep({
 const TECH_STACK = [
   { name: "Next.js 16", desc: "App Router with React 19", icon: Layers },
   { name: "TypeScript", desc: "Strict mode enabled", icon: FileCode },
-  { name: "Supabase", desc: "Postgres + Auth + Storage", icon: Database },
+  { name: "Supabase or Convex", desc: "Managed database + auth + realtime", icon: Database },
   { name: "Drizzle ORM", desc: "Type-safe database access", icon: Database },
   { name: "Vercel AI SDK", desc: "For AI integrations", icon: Cpu },
   { name: "Tailwind CSS", desc: "Utility-first styling", icon: Sparkles },
@@ -385,6 +385,7 @@ const CLOUD_SERVICES = [
   { name: "Cloudflare", purpose: "Domain purchase, DNS, CDN", tool: "wrangler", icon: Globe },
   { name: "Vercel", purpose: "Frontend hosting & deployment", tool: "vercel", icon: Rocket },
   { name: "Supabase", purpose: "Database, auth, storage", tool: "supabase", icon: Database },
+  { name: "Convex", purpose: "Realtime database + backend", tool: "convex", icon: Database },
   { name: "Google Cloud", purpose: "Analytics (GA4)", tool: "gcloud", icon: BarChart3 },
 ];
 

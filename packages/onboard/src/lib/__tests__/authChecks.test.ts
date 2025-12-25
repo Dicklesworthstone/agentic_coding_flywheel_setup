@@ -131,6 +131,28 @@ describe('authChecks', () => {
     expect(checks.checkSupabase()).toEqual({ authenticated: true, details: 'via SUPABASE_ACCESS_TOKEN' });
   });
 
+  test('checkConvex returns authenticated with credentials file', () => {
+    const tokenPath = path.join(HOME, '.config', 'convex', 'credentials.json');
+    const checks = createAuthChecks(
+      makeDeps({
+        existsSync: (filePath) => filePath === tokenPath,
+        readFileSync: () => 'token-value',
+      }),
+    );
+
+    expect(checks.checkConvex()).toEqual({ authenticated: true });
+  });
+
+  test('checkConvex uses CONVEX_DEPLOYMENT when set', () => {
+    const checks = createAuthChecks(
+      makeDeps({
+        env: { CONVEX_DEPLOYMENT: 'dev:playground' } as NodeJS.ProcessEnv,
+      }),
+    );
+
+    expect(checks.checkConvex()).toEqual({ authenticated: true, details: 'via CONVEX_DEPLOYMENT' });
+  });
+
   test('checkWrangler reads email from whoami output', () => {
     const execSync = (command: string) => {
       if (command === 'wrangler whoami') {
@@ -153,7 +175,7 @@ describe('authChecks', () => {
     const checks = createAuthChecks(makeDeps());
     const ids = Object.keys(checks.AUTH_CHECKS).sort();
     expect(ids).toEqual(
-      ['tailscale', 'claude-code', 'codex-cli', 'gemini-cli', 'github', 'vercel', 'supabase', 'cloudflare'].sort(),
+      ['tailscale', 'claude-code', 'codex-cli', 'gemini-cli', 'github', 'vercel', 'supabase', 'convex', 'cloudflare'].sort(),
     );
   });
 });

@@ -501,16 +501,17 @@ test_legacy_skip_cloud() {
 
     acfs_apply_legacy_skips
 
-    local found_wrangler=false found_supabase=false found_vercel=false
+    local found_wrangler=false found_supabase=false found_convex=false found_vercel=false
     for module in "${SKIP_MODULES[@]}"; do
         case "$module" in
             "cloud.wrangler") found_wrangler=true ;;
             "cloud.supabase") found_supabase=true ;;
+            "cloud.convex") found_convex=true ;;
             "cloud.vercel") found_vercel=true ;;
         esac
     done
 
-    if [[ "$found_wrangler" == "true" && "$found_supabase" == "true" && "$found_vercel" == "true" ]]; then
+    if [[ "$found_wrangler" == "true" && "$found_supabase" == "true" && "$found_convex" == "true" && "$found_vercel" == "true" ]]; then
         test_pass "$name"
     else
         test_fail "$name" "Missing cloud modules in SKIP_MODULES"

@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="9999dcce0e232d0483126f88662b8d9f9befb5325424ebf51ae3a2b81eff9f28"
+ACFS_MANIFEST_SHA256="146bd252a01b5173b42ffcba94acb04eae966a27b43e5826a0e6f9be2f76917d"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -31,6 +31,7 @@ ACFS_MODULES_IN_ORDER=(
   "db.postgres18"
   "cloud.wrangler"
   "cloud.supabase"
+  "cloud.convex"
   "cloud.vercel"
   "stack.ntm"
   "stack.mcp_agent_mail"
@@ -68,6 +69,7 @@ declare -gA ACFS_MODULE_PHASE=(
   [db.postgres18]="8"
   [cloud.wrangler]="8"
   [cloud.supabase]="8"
+  [cloud.convex]="8"
   [cloud.vercel]="8"
   [stack.ntm]="9"
   [stack.mcp_agent_mail]="9"
@@ -105,6 +107,7 @@ declare -gA ACFS_MODULE_DEPS=(
   [db.postgres18]="base.system"
   [cloud.wrangler]="lang.bun"
   [cloud.supabase]="lang.bun"
+  [cloud.convex]="lang.bun"
   [cloud.vercel]="lang.bun"
   [stack.ntm]="cli.modern"
   [stack.mcp_agent_mail]="lang.bun,lang.uv,cli.modern"
@@ -142,6 +145,7 @@ declare -gA ACFS_MODULE_FUNC=(
   [db.postgres18]="install_db_postgres18"
   [cloud.wrangler]="install_cloud_wrangler"
   [cloud.supabase]="install_cloud_supabase"
+  [cloud.convex]="install_cloud_convex"
   [cloud.vercel]="install_cloud_vercel"
   [stack.ntm]="install_stack_ntm"
   [stack.mcp_agent_mail]="install_stack_mcp_agent_mail"
@@ -179,6 +183,7 @@ declare -gA ACFS_MODULE_CATEGORY=(
   [db.postgres18]="db"
   [cloud.wrangler]="cloud"
   [cloud.supabase]="cloud"
+  [cloud.convex]="cloud"
   [cloud.vercel]="cloud"
   [stack.ntm]="stack"
   [stack.mcp_agent_mail]="stack"
@@ -216,6 +221,7 @@ declare -gA ACFS_MODULE_TAGS=(
   [db.postgres18]="optional,database"
   [cloud.wrangler]="optional,cloud"
   [cloud.supabase]="optional,cloud"
+  [cloud.convex]="optional,cloud"
   [cloud.vercel]="optional,cloud"
   [stack.ntm]="recommended"
   [stack.mcp_agent_mail]="recommended,tmux-spawn"
@@ -253,6 +259,7 @@ declare -gA ACFS_MODULE_DEFAULT=(
   [db.postgres18]="0"
   [cloud.wrangler]="0"
   [cloud.supabase]="0"
+  [cloud.convex]="0"
   [cloud.vercel]="0"
   [stack.ntm]="1"
   [stack.mcp_agent_mail]="1"

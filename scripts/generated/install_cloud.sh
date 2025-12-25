@@ -59,7 +59,7 @@ acfs_security_init() {
 }
 
 # Category: cloud
-# Modules: 3
+# Modules: 4
 
 # Cloudflare Wrangler CLI
 install_cloud_wrangler() {
@@ -149,6 +149,50 @@ INSTALL_CLOUD_SUPABASE
     log_success "cloud.supabase installed"
 }
 
+# Convex CLI
+install_cloud_convex() {
+    local module_id="cloud.convex"
+    acfs_require_contract "module:${module_id}" || return 1
+    log_step "Installing cloud.convex"
+
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log_info "dry-run: install: ~/.bun/bin/bun install -g --trust convex (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_CLOUD_CONVEX'
+~/.bun/bin/bun install -g --trust convex
+INSTALL_CLOUD_CONVEX
+        then
+            log_warn "cloud.convex: install command failed: ~/.bun/bin/bun install -g --trust convex"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "cloud.convex" "install command failed: ~/.bun/bin/bun install -g --trust convex"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "cloud.convex"
+            fi
+            return 0
+        fi
+    fi
+
+    # Verify
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log_info "dry-run: verify: convex --version (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_CLOUD_CONVEX'
+convex --version
+INSTALL_CLOUD_CONVEX
+        then
+            log_warn "cloud.convex: verify failed: convex --version"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "cloud.convex" "verify failed: convex --version"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "cloud.convex"
+            fi
+            return 0
+        fi
+    fi
+
+    log_success "cloud.convex installed"
+}
+
 # Vercel CLI
 install_cloud_vercel() {
     local module_id="cloud.vercel"
@@ -198,6 +242,7 @@ install_cloud() {
     log_section "Installing cloud modules"
     install_cloud_wrangler
     install_cloud_supabase
+    install_cloud_convex
     install_cloud_vercel
 }
 

@@ -624,6 +624,25 @@ modules:
     verify:
       - supabase --version
 
+  - id: cloud.convex
+    description: Convex CLI
+    category: cloud
+    phase: 8
+    run_as: target_user
+    optional: true
+    enabled_by_default: false
+    tags: [optional, cloud]
+    dependencies:
+      - lang.bun
+    installed_check:
+      run_as: target_user
+      command: "command -v convex"
+    install:
+      # Use --trust for postinstall scripts if the CLI bundles native helpers.
+      - ~/.bun/bin/bun install -g --trust convex
+    verify:
+      - convex --version
+
   - id: cloud.vercel
     description: Vercel CLI
     category: cloud

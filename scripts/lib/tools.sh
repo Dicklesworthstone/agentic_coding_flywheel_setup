@@ -94,6 +94,7 @@ readonly RECOMMENDED_TOOLS=(
     "vault"
     "wrangler"
     "supabase"
+    "convex"
     "vercel"
     "fly"
     "docker"

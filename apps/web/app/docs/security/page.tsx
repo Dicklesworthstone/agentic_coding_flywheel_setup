@@ -158,7 +158,7 @@ export default function SecurityDocsPage() {
             <br />
             ├── Vercel (deployments)
             <br />
-            └── Supabase / Cloudflare (optional)
+            └── Supabase / Convex / Cloudflare (optional)
           </div>
         </div>
       </Card>

@@ -83,6 +83,7 @@ declare -a AUTH_SERVICES=(
     "github"
     "vercel"
     "supabase"
+    "convex"
     "cloudflare"
 )
 
@@ -94,6 +95,7 @@ declare -gA AUTH_SERVICE_NAMES=(
     [github]="GitHub"
     [vercel]="Vercel"
     [supabase]="Supabase"
+    [convex]="Convex"
     [cloudflare]="Cloudflare"
 )
 
@@ -105,6 +107,7 @@ declare -gA AUTH_SERVICE_DESCRIPTIONS=(
     [github]="Code hosting and version control"
     [vercel]="Frontend deployment platform"
     [supabase]="Database and auth backend"
+    [convex]="Realtime database and backend"
     [cloudflare]="CDN and edge computing"
 )
 
@@ -116,6 +119,7 @@ declare -gA AUTH_SERVICE_COMMANDS=(
     [github]="gh auth login"
     [vercel]="vercel login"
     [supabase]="supabase login"
+    [convex]="convex login"
     [cloudflare]="wrangler login"
 )
 
@@ -341,6 +345,19 @@ check_auth_status() {
                 return 0
             fi
             if [[ -s "$HOME/.supabase/access-token" || -s "$HOME/.config/supabase/access-token" ]]; then
+                return 0
+            fi
+            return 1
+            ;;
+        convex)
+            if ! command -v convex &>/dev/null; then
+                return 2
+            fi
+            if [[ -n "${CONVEX_DEPLOYMENT:-}" || -n "${CONVEX_URL:-}" || -n "${CONVEX_API_KEY:-}" ]]; then
+                return 0
+            fi
+            # Best-effort: Convex stores auth in ~/.config/convex or ~/.convex (paths may vary by version).
+            if [[ -s "$HOME/.config/convex/config.json" || -s "$HOME/.config/convex/credentials.json" || -s "$HOME/.convex/config.json" || -s "$HOME/.convex/credentials.json" ]]; then
                 return 0
             fi
             return 1
