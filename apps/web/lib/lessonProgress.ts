@@ -8,7 +8,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { safeGetJSON, safeSetJSON } from "./utils";
 
 export interface Lesson {
@@ -215,29 +215,52 @@ export function getPreviousLesson(currentId: number): Lesson | undefined {
 /** localStorage key for storing completed lessons */
 export const COMPLETED_LESSONS_KEY = "acfs-learning-hub-completed-lessons";
 
+export const COMPLETED_LESSONS_CHANGED_EVENT =
+  "acfs:learning-hub:completed-lessons-changed";
+
 // Query keys for TanStack Query
 export const lessonProgressKeys = {
   completedLessons: ["lessonProgress", "completed"] as const,
 };
 
+type CompletedLessonsChangedDetail = {
+  lessons: number[];
+};
+
+function normalizeCompletedLessons(lessons: readonly unknown[]): number[] {
+  const validLessons = lessons.filter(
+    (n): n is number =>
+      typeof n === "number" &&
+      Number.isInteger(n) &&
+      n >= 0 &&
+      n < TOTAL_LESSONS
+  );
+  return Array.from(new Set(validLessons)).sort((a, b) => a - b);
+}
+
+function emitCompletedLessonsChanged(lessons: number[]): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<CompletedLessonsChangedDetail>(COMPLETED_LESSONS_CHANGED_EVENT, {
+      detail: { lessons },
+    })
+  );
+}
+
 /** Get completed lesson IDs from localStorage */
 export function getCompletedLessons(): number[] {
   const parsed = safeGetJSON<unknown[]>(COMPLETED_LESSONS_KEY);
   if (Array.isArray(parsed)) {
-    // Filter to only valid lesson numbers (0..TOTAL_LESSONS-1)
-    return parsed.filter(
-      (n): n is number =>
-        typeof n === "number" && n >= 0 && n < TOTAL_LESSONS
-    );
+    return normalizeCompletedLessons(parsed);
   }
   return [];
 }
 
 /** Save completed lessons to localStorage */
 export function setCompletedLessons(lessons: number[]): void {
-  // Validate lessons before saving
-  const validLessons = lessons.filter((n) => n >= 0 && n < TOTAL_LESSONS);
-  safeSetJSON(COMPLETED_LESSONS_KEY, validLessons);
+  const normalized = normalizeCompletedLessons(lessons);
+  safeSetJSON(COMPLETED_LESSONS_KEY, normalized);
+  emitCompletedLessonsChanged(normalized);
 }
 
 /** Mark a lesson as completed (pure function, returns new array) */
@@ -275,22 +298,93 @@ export function getNextUncompletedLesson(
 export function useCompletedLessons(): [number[], (lessonId: number) => void] {
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleCompletedLessonsChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<CompletedLessonsChangedDetail>;
+      const nextLessons = customEvent.detail?.lessons ?? getCompletedLessons();
+      queryClient.setQueryData(
+        lessonProgressKeys.completedLessons,
+        normalizeCompletedLessons(nextLessons)
+      );
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== COMPLETED_LESSONS_KEY) return;
+      queryClient.setQueryData(lessonProgressKeys.completedLessons, getCompletedLessons());
+    };
+
+    window.addEventListener(
+      COMPLETED_LESSONS_CHANGED_EVENT,
+      handleCompletedLessonsChanged as EventListener
+    );
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener(
+        COMPLETED_LESSONS_CHANGED_EVENT,
+        handleCompletedLessonsChanged as EventListener
+      );
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [queryClient]);
+
   const { data: lessons } = useQuery({
     queryKey: lessonProgressKeys.completedLessons,
     queryFn: getCompletedLessons,
-    staleTime: Infinity,
+    staleTime: 0,
     gcTime: Infinity,
   });
 
   const mutation = useMutation({
     mutationFn: async (lessonId: number) => {
-      const currentLessons = getCompletedLessons();
+      // Use query cache as source of truth to avoid race conditions when
+      // markComplete is called rapidly multiple times. Falls back to
+      // localStorage for initial hydration.
+      const cachedLessons = queryClient.getQueryData<number[]>(
+        lessonProgressKeys.completedLessons
+      );
+      const currentLessons = normalizeCompletedLessons(
+        cachedLessons ?? getCompletedLessons()
+      );
       const newLessons = addCompletedLesson(currentLessons, lessonId);
       setCompletedLessons(newLessons);
       return newLessons;
     },
-    onSuccess: (newLessons) => {
+    onMutate: async (lessonId) => {
+      await queryClient.cancelQueries({
+        queryKey: lessonProgressKeys.completedLessons,
+      });
+
+      const cachedLessons = queryClient.getQueryData<number[]>(
+        lessonProgressKeys.completedLessons
+      );
+
+      const baseLessons = normalizeCompletedLessons(
+        cachedLessons ?? getCompletedLessons()
+      );
+      const newLessons = addCompletedLesson(baseLessons, lessonId);
       queryClient.setQueryData(lessonProgressKeys.completedLessons, newLessons);
+
+      return { previousLessons: cachedLessons };
+    },
+    onError: (_err, _lessonId, context) => {
+      if (context?.previousLessons !== undefined) {
+        queryClient.setQueryData(
+          lessonProgressKeys.completedLessons,
+          normalizeCompletedLessons(context.previousLessons)
+        );
+      } else {
+        queryClient.invalidateQueries({
+          queryKey: lessonProgressKeys.completedLessons,
+        });
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: lessonProgressKeys.completedLessons,
+      });
     },
   });
 
@@ -306,7 +400,8 @@ export function useCompletedLessons(): [number[], (lessonId: number) => void] {
 
 /**
  * Imperatively mark a lesson as complete (for use outside React components).
- * Note: If used, you should invalidate the query in components that depend on it.
+ * This writes to localStorage and notifies any mounted `useCompletedLessons()`
+ * hooks via a DOM event.
  */
 export function markLessonComplete(lessonId: number): number[] {
   const completed = getCompletedLessons();
