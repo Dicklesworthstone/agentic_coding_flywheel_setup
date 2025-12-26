@@ -49,7 +49,15 @@ ACFS_REPO_NAME="agentic_coding_flywheel_setup"
 ACFS_REF="${ACFS_REF:-main}"
 ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
 export ACFS_RAW ACFS_VERSION
-ACFS_COMMIT_SHA=""  # Will be fetched from GitHub API
+ACFS_COMMIT_SHA=""       # Short SHA for display (12 chars)
+ACFS_COMMIT_SHA_FULL=""  # Full SHA for pinning resume scripts (40 chars)
+
+# Early curl defaults: enforce HTTPS (including redirects) when supported.
+# This is used before security.sh is available (bootstrap / early library sourcing).
+ACFS_EARLY_CURL_ARGS=(-fsSL)
+if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
+    ACFS_EARLY_CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+fi
 # Note: ACFS_HOME is set after TARGET_HOME is determined
 ACFS_LOG_DIR="/var/log/acfs"
 # SCRIPT_DIR is empty when running via curl|bash (stdin; no file on disk)
@@ -140,7 +148,7 @@ _source_context_lib() {
         if command -v mktemp &>/dev/null; then
             tmp_context="$(mktemp "${TMPDIR:-/tmp}/acfs-context.XXXXXX" 2>/dev/null)" || tmp_context=""
         fi
-        if [[ -n "$tmp_context" ]] && curl -fsSL "$ACFS_RAW/scripts/lib/context.sh" -o "$tmp_context" 2>/dev/null; then
+        if [[ -n "$tmp_context" ]] && curl "${ACFS_EARLY_CURL_ARGS[@]}" "$ACFS_RAW/scripts/lib/context.sh" -o "$tmp_context" 2>/dev/null; then
             source "$tmp_context"
             rm -f "$tmp_context"
             return 0
@@ -194,7 +202,7 @@ _source_reliability_libs() {
                 if command -v mktemp &>/dev/null; then
                     tmp_state="$(mktemp "${TMPDIR:-/tmp}/acfs-state.XXXXXX" 2>/dev/null)" || tmp_state=""
                 fi
-                if [[ -n "$tmp_state" ]] && curl -fsSL "$ACFS_RAW/scripts/lib/state.sh" -o "$tmp_state" 2>/dev/null; then
+                if [[ -n "$tmp_state" ]] && curl "${ACFS_EARLY_CURL_ARGS[@]}" "$ACFS_RAW/scripts/lib/state.sh" -o "$tmp_state" 2>/dev/null; then
                     source "$tmp_state" && loaded_state=true
                     rm -f "$tmp_state"
                 fi
@@ -204,7 +212,7 @@ _source_reliability_libs() {
                 if command -v mktemp &>/dev/null; then
                     tmp_report="$(mktemp "${TMPDIR:-/tmp}/acfs-report.XXXXXX" 2>/dev/null)" || tmp_report=""
                 fi
-                if [[ -n "$tmp_report" ]] && curl -fsSL "$ACFS_RAW/scripts/lib/report.sh" -o "$tmp_report" 2>/dev/null; then
+                if [[ -n "$tmp_report" ]] && curl "${ACFS_EARLY_CURL_ARGS[@]}" "$ACFS_RAW/scripts/lib/report.sh" -o "$tmp_report" 2>/dev/null; then
                     source "$tmp_report" && loaded_report=true
                     rm -f "$tmp_report"
                 fi
@@ -271,7 +279,7 @@ _source_ubuntu_upgrade_lib() {
         if command -v mktemp &>/dev/null; then
             tmp_upgrade="$(mktemp "${TMPDIR:-/tmp}/acfs-ubuntu-upgrade.XXXXXX" 2>/dev/null)" || tmp_upgrade=""
         fi
-        if [[ -n "$tmp_upgrade" ]] && curl -fsSL "$ACFS_RAW/scripts/lib/ubuntu_upgrade.sh" -o "$tmp_upgrade" 2>/dev/null; then
+        if [[ -n "$tmp_upgrade" ]] && curl "${ACFS_EARLY_CURL_ARGS[@]}" "$ACFS_RAW/scripts/lib/ubuntu_upgrade.sh" -o "$tmp_upgrade" 2>/dev/null; then
             source "$tmp_upgrade"
             rm -f "$tmp_upgrade"
             export ACFS_UBUNTU_UPGRADE_LOADED=1
@@ -325,7 +333,7 @@ fetch_commit_sha() {
         else
             # Fallback: Extract SHA from JSON using grep/sed (works without jq/python)
             # Use grep -o to handle minified JSON (puts matches on new lines)
-            sha=$(echo "$response" | grep -o '"sha":[[:space:]]*"[^"]*"' | head -n 1 | sed 's/.*"\([a-f0-9]*\)".*/\1/' | head -c 12)
+            sha=$(echo "$response" | grep -o '"sha":[[:space:]]*"[^"]*"' | head -n 1 | sed 's/.*"\([a-f0-9]*\)".*/\1/')
 
             # Extract commit date (format: "2025-12-21T10:30:00Z")
             commit_date=$(echo "$response" | grep -o '"date":[[:space:]]*"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)".*/\1/')
@@ -333,6 +341,7 @@ fetch_commit_sha() {
 
         if [[ -n "$sha" && ${#sha} -ge 7 ]]; then
             ACFS_COMMIT_SHA="${sha:0:12}"
+            [[ ${#sha} -ge 40 ]] && ACFS_COMMIT_SHA_FULL="$sha"
         fi
 
         if [[ -n "$commit_date" ]]; then
@@ -1854,7 +1863,7 @@ run_ubuntu_upgrade_phase() {
                     local repo_owner repo_name repo_ref install_url
                     repo_owner="${ACFS_REPO_OWNER:-Dicklesworthstone}"
                     repo_name="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
-                    repo_ref="${ACFS_REF:-main}"
+                    repo_ref="${ACFS_COMMIT_SHA_FULL:-${ACFS_REF:-main}}"
                     install_url="https://raw.githubusercontent.com/${repo_owner}/${repo_name}/${repo_ref}/install.sh"
 
                     # Preserve the original installer argv so the post-reboot run
@@ -1898,7 +1907,12 @@ INSTALL_URL=${install_url_q}
 INSTALL_ARGS=(${continue_args_q})
 
 echo "Fetching installer: \${INSTALL_URL}"
-curl -fsSL "\${INSTALL_URL}" | bash -s -- "\${INSTALL_ARGS[@]}"
+CURL_ARGS=(-fsSL)
+if curl --help all 2>/dev/null | grep -q -- '--proto'; then
+    CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+fi
+
+curl "\${CURL_ARGS[@]}" "\${INSTALL_URL}" | bash -s -- "\${INSTALL_ARGS[@]}"
 
 echo "ACFS installation complete!"
 CONTINUE_SCRIPT

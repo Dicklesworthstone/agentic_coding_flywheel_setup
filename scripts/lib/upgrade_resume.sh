@@ -86,6 +86,31 @@ log_error() {
     echo "[$timestamp] ERROR: $*" | tee -a "$ACFS_LOG" >&2 || true
 }
 
+# Clean up the resume infrastructure on success.
+# This uses strict path checks because it runs as root on boot; a bad rm -rf would be catastrophic.
+cleanup_resume_files() {
+    local expected_resume_dir="/var/lib/acfs"
+    if [[ "${ACFS_RESUME_DIR:-}" != "$expected_resume_dir" ]]; then
+        log_error "Refusing to clean up unexpected ACFS_RESUME_DIR: ${ACFS_RESUME_DIR:-<unset>} (expected: $expected_resume_dir)"
+        return 1
+    fi
+
+    local script_path="${ACFS_RESUME_DIR}/upgrade_resume.sh"
+    local lib_dir="${ACFS_RESUME_DIR}/lib"
+
+    if [[ "$script_path" != "$expected_resume_dir/upgrade_resume.sh" ]]; then
+        log_error "Refusing to remove unexpected resume script path: $script_path"
+        return 1
+    fi
+    if [[ "$lib_dir" != "$expected_resume_dir/lib" ]]; then
+        log_error "Refusing to remove unexpected lib dir path: $lib_dir"
+        return 1
+    fi
+
+    rm -f -- "$script_path" 2>/dev/null || true
+    rm -rf -- "$lib_dir" 2>/dev/null || true
+}
+
 # Cleanup function - disables the service to prevent loops
 # NOTE: We do NOT call systemctl stop here because this script IS the running
 # service. Calling stop would kill ourselves before completing cleanup.
@@ -196,25 +221,25 @@ launch_continue_script() {
     # --no-block: don't wait for service to complete (we want to exit immediately)
     # --setenv: ensure HOME is set (required by preflight checks and installer)
     # Service output goes to journal (check with: journalctl -u acfs-continue-install)
-	    if command -v systemd-run &>/dev/null; then
-	        # Remove any stale unit from previous failed attempts
-	        systemctl reset-failed acfs-continue-install 2>/dev/null || true
-	
-	        if (
-	            set -o pipefail
-	            systemd-run --collect --no-block \
-	            --unit=acfs-continue-install \
-	            --description="ACFS Installation Continuation" \
-	            --property=Type=oneshot \
-	            --property=TimeoutStartSec=7200 \
-	            --setenv=HOME=/root \
-	            /bin/bash "$script" 2>&1 | tee -a "$ACFS_LOG"
-	        ); then
-	            log "ACFS continuation launched via systemd-run"
-	            log "Monitor with: journalctl -u acfs-continue-install -f"
-	        else
-	            log "systemd-run failed, falling back to nohup"
-	            nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
+    if command -v systemd-run &>/dev/null; then
+        # Remove any stale unit from previous failed attempts
+        systemctl reset-failed acfs-continue-install 2>/dev/null || true
+
+        if (
+            set -o pipefail
+            systemd-run --collect --no-block \
+                --unit=acfs-continue-install \
+                --description="ACFS Installation Continuation" \
+                --property=Type=oneshot \
+                --property=TimeoutStartSec=7200 \
+                --setenv=HOME=/root \
+                /bin/bash "$script" 2>&1 | tee -a "$ACFS_LOG"
+        ); then
+            log "ACFS continuation launched via systemd-run"
+            log "Monitor with: journalctl -u acfs-continue-install -f"
+        else
+            log "systemd-run failed, falling back to nohup"
+            nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
             log "ACFS continuation launched via nohup (PID: $!)"
         fi
     else
@@ -271,8 +296,7 @@ if [[ "$CURRENT_UBUNTU_VERSION" == "$UBUNTU_TARGET_VERSION" ]]; then
     launch_continue_script || log "Note: Manual installation may be needed"
 
     # Clean up resume files (after launching continue script)
-    rm -f "${ACFS_RESUME_DIR}/upgrade_resume.sh" 2>/dev/null || true
-    rm -rf "${ACFS_LIB_DIR}" 2>/dev/null || true
+    cleanup_resume_files || true
 
     log "=== Upgrade Resume Complete (target reached) ==="
     exit 0
@@ -364,8 +388,7 @@ if state_upgrade_is_complete; then
     launch_continue_script || log "Note: Manual installation may be needed"
 
     # Clean up resume files (after launching continue script)
-    rm -f "${ACFS_RESUME_DIR}/upgrade_resume.sh" 2>/dev/null || true
-    rm -rf "${ACFS_LIB_DIR}" 2>/dev/null || true
+    cleanup_resume_files || true
 
     log "=== Upgrade Resume Complete ==="
     exit 0

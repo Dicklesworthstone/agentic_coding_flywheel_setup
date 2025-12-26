@@ -1022,7 +1022,7 @@ upgrade_setup_infrastructure() {
     local repo_owner repo_name repo_ref
     repo_owner="${ACFS_REPO_OWNER:-Dicklesworthstone}"
     repo_name="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
-    repo_ref="${ACFS_REF:-main}"
+    repo_ref="${ACFS_COMMIT_SHA_FULL:-${ACFS_REF:-main}}"
     local source_dir_q repo_ref_q install_url install_url_q
     source_dir_q=$(printf '%q' "$source_dir")
     repo_ref_q=$(printf '%q' "$repo_ref")
@@ -1059,7 +1059,13 @@ if [[ -f "\${SOURCE_DIR}/install.sh" ]]; then
     (cd "\${SOURCE_DIR}" && bash ./install.sh "\${INSTALL_ARGS[@]}")
 else
     echo "Fetching installer: \${INSTALL_URL}"
-    curl -fsSL "\${INSTALL_URL}" | bash -s -- "\${INSTALL_ARGS[@]}"
+
+    CURL_ARGS=(-fsSL)
+    if curl --help all 2>/dev/null | grep -q -- '--proto'; then
+        CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+    fi
+
+    curl "\${CURL_ARGS[@]}" "\${INSTALL_URL}" | bash -s -- "\${INSTALL_ARGS[@]}"
 fi
 
 echo "ACFS installation complete!"
