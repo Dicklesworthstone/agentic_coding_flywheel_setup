@@ -59,6 +59,8 @@ const CUSTOM_DIMENSIONS = [
   // Progress tracking
   { name: 'completion_percentage', scope: 'EVENT', description: 'Progress through funnel (0-100%)' },
   { name: 'max_step_reached', scope: 'EVENT', description: 'Highest step/lesson reached in session' },
+  // NOTE: completed_count is registered but not currently used in analytics.ts
+  // Consider using completed_steps_count instead, or add events that send this parameter
   { name: 'completed_count', scope: 'EVENT', description: 'Number of steps/lessons completed' },
 
   // Context

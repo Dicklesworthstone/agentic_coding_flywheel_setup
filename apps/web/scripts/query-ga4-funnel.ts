@@ -18,7 +18,8 @@ interface FunnelStep {
   step: number;
   users: number;
   events: number;
-  dropoffRate?: number;
+  // NOTE: dropoffRate is calculated at display time in printFunnelChart, not stored here,
+  // to correctly handle gaps in step numbers (e.g., step 4 missing data)
 }
 
 /**
@@ -82,14 +83,9 @@ async function queryWizardFunnel(): Promise<FunnelStep[]> {
     // Sort by step number
     steps.sort((a, b) => a.step - b.step);
 
-    // Calculate drop-off rates
-    for (let i = 1; i < steps.length; i++) {
-      const prevUsers = steps[i - 1].users;
-      const currUsers = steps[i].users;
-      if (prevUsers > 0) {
-        steps[i].dropoffRate = ((prevUsers - currUsers) / prevUsers) * 100;
-      }
-    }
+    // NOTE: Drop-off rates are calculated in printFunnelChart based on sequential
+    // step numbers, not array indices. This handles gaps correctly (e.g., if step 4
+    // has no data, step 5's dropoff is calculated from step 4's 0 users, not step 3).
 
     return steps;
   } catch (error) {
@@ -146,14 +142,8 @@ async function queryLessonFunnel(): Promise<FunnelStep[]> {
     // Sort by lesson number
     steps.sort((a, b) => a.step - b.step);
 
-    // Calculate drop-off rates
-    for (let i = 1; i < steps.length; i++) {
-      const prevUsers = steps[i - 1].users;
-      const currUsers = steps[i].users;
-      if (prevUsers > 0) {
-        steps[i].dropoffRate = ((prevUsers - currUsers) / prevUsers) * 100;
-      }
-    }
+    // NOTE: Drop-off rates are calculated in printFunnelChart based on sequential
+    // step numbers, not array indices. This handles gaps correctly.
 
     return steps;
   } catch (error) {
@@ -261,19 +251,31 @@ function printFunnelChart(steps: FunnelStep[], title: string, maxSteps: number, 
   console.log('  ─'.repeat(35));
 
   const endAt = startAt + maxSteps;
+  let prevStepUsers = 0; // Track previous step's users for accurate dropoff calculation
+
   for (let i = startAt; i < endAt; i++) {
     const step = steps.find(s => s.step === i);
     const users = step?.users || 0;
-    const dropoff = step?.dropoffRate;
 
     const barLength = maxUsers > 0 ? Math.round((users / maxUsers) * barWidth) : 0;
     const bar = '█'.repeat(barLength) + '░'.repeat(barWidth - barLength);
 
-    const dropoffStr = dropoff !== undefined ? `${dropoff.toFixed(1)}%` : '-';
+    // Calculate dropoff from the immediately previous step (by step number, not array index)
+    // This correctly handles gaps - if step 4 has no data, step 5's dropoff is from step 4's 0
+    let dropoffStr = '-';
+    if (i > startAt) {
+      if (prevStepUsers > 0) {
+        const dropoff = ((prevStepUsers - users) / prevStepUsers) * 100;
+        dropoffStr = `${dropoff.toFixed(1)}%`;
+      }
+      // If prevStepUsers is 0, we can't calculate a meaningful dropoff percentage
+    }
 
     console.log(
       `  ${String(i).padStart(4)}   ${String(users).padStart(5)}    ${dropoffStr.padStart(7)}   ${bar}`
     );
+
+    prevStepUsers = users;
   }
 
   // Summary stats
