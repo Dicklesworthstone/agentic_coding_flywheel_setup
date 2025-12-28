@@ -22,14 +22,17 @@ export function useLessonAnalytics({
   totalLessons = TOTAL_LESSONS,
 }: UseLessonAnalyticsOptions) {
   const startTime = useRef<number>(0);
-  const hasTrackedView = useRef<boolean>(false);
+  const trackedLessonId = useRef<number | null>(null);
   const isCompleted = useRef<boolean>(false);
 
-  // Track lesson view on mount
+  // Track lesson view on mount AND when lesson changes (client-side navigation)
   useEffect(() => {
-    if (hasTrackedView.current) return;
-    hasTrackedView.current = true;
+    // Only track if this is a new lesson (prevents double-tracking on re-renders)
+    if (trackedLessonId.current === lesson.id) return;
 
+    // Reset state for new lesson
+    trackedLessonId.current = lesson.id;
+    isCompleted.current = false;
     startTime.current = Date.now();
 
     // Track lesson entry with full funnel tracking
@@ -43,7 +46,8 @@ export function useLessonAnalytics({
 
   // Track lesson completion
   const markComplete = useCallback((additionalData?: Record<string, unknown>) => {
-    if (isCompleted.current) return;
+    // Ensure we're marking complete for the currently tracked lesson
+    if (isCompleted.current || trackedLessonId.current !== lesson.id) return;
     isCompleted.current = true;
 
     trackLessonComplete(

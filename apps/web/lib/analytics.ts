@@ -490,7 +490,7 @@ export const getOrCreateUserId = (): string => {
  * Track key conversions (dual client + server-side for reliability)
  */
 export const trackConversion = (
-  conversionType: 'wizard_start' | 'wizard_complete' | 'vps_created' | 'installer_run' | 'learning_hub_started',
+  conversionType: 'wizard_start' | 'wizard_complete' | 'vps_created' | 'installer_run' | 'learning_hub_started' | 'lesson_funnel_complete',
   value?: number
 ): void => {
   const params = {
@@ -1082,7 +1082,7 @@ export const trackLessonFunnelComplete = (totalLessons: number): void => {
   });
 
   // Track as major conversion with value
-  trackConversion('wizard_complete', 100); // Reusing wizard_complete as learning_complete
+  trackConversion('lesson_funnel_complete', 100);
 
   // Also send server-side for reliability
   sendServerEvent('lesson_funnel_complete', {
