@@ -1,0 +1,64 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Dependencies (will be installed fresh in container)
+node_modules/
+**/node_modules/
+
+# Next.js build output (will be built in container)
+.next/
+**/.next/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (except example)
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+!.env.example
+
+# Test and coverage
+coverage/
+playwright-report/
+test-results/
+*.spec.ts
+*.test.ts
+
+# Project-specific exclusions
+.beads/
+scripts/
+tests/
+acfs/
+docs/
+
+# Documentation (except main README)
+*.md
+!README.md
+
+# IDE and editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+*.tgz
+.vercel
+.turbo

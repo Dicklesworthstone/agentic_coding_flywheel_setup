@@ -1,0 +1,24 @@
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # Google Analytics (optional)
+      - NEXT_PUBLIC_GA_MEASUREMENT_ID=${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}
+      - NEXT_PUBLIC_GTM_ID=${NEXT_PUBLIC_GTM_ID:-}
+      - GA_API_SECRET=${GA_API_SECRET:-}
+      # Microsoft Clarity (optional)
+      - NEXT_PUBLIC_CLARITY_PROJECT_ID=${NEXT_PUBLIC_CLARITY_PROJECT_ID:-}
+      # Vercel Analytics (optional, usually disabled for self-hosted)
+      - NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS=${NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS:-}
+      - NEXT_PUBLIC_ENABLE_SPEED_INSIGHTS=${NEXT_PUBLIC_ENABLE_SPEED_INSIGHTS:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

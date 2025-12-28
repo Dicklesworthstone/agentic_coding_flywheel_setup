@@ -1337,6 +1337,54 @@ agentic_coding_flywheel_setup/
 
 ---
 
+## Docker Deployment
+
+ACFS can be deployed using Docker Compose for self-hosted environments.
+
+### Quick Start
+
+```bash
+# Clone and build
+git clone https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git
+cd agentic_coding_flywheel_setup
+
+# Build and run
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+### Configuration
+
+Copy `.env.example` to `.env` to configure optional analytics:
+
+```bash
+cp .env.example .env
+# Edit .env with your values
+```
+
+Available environment variables:
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_GA_MEASUREMENT_ID` | Google Analytics 4 measurement ID |
+| `NEXT_PUBLIC_GTM_ID` | Google Tag Manager ID |
+| `GA_API_SECRET` | GA4 Measurement Protocol secret |
+| `NEXT_PUBLIC_CLARITY_PROJECT_ID` | Microsoft Clarity project ID |
+
+### Production Considerations
+
+For production deployments:
+- Use a reverse proxy (nginx, Traefik, Caddy) for SSL termination
+- Set resource limits in docker-compose.yml
+- Configure proper logging aggregation
+- Use Docker secrets for sensitive environment variables
+
+---
+
 ## Development
 
 ### Website Development
