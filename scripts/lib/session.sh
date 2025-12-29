@@ -258,12 +258,12 @@ readonly REDACT_PATTERNS=(
 
     # Generic password/secret patterns (key=value or key: value)
     # Using [[:space:]] for portability instead of \s
-    'password["[:space:]:=]+[^[:space:]"'\'']{8,}'
-    'secret["[:space:]:=]+[^[:space:]"'\'']{8,}'
-    'api_key["[:space:]:=]+[^[:space:]"'\'']{8,}'
-    'apikey["[:space:]:=]+[^[:space:]"'\'']{8,}'
-    'auth_token["[:space:]:=]+[^[:space:]"'\'']{8,}'
-    'access_token["[:space:]:=]+[^[:space:]"'\'']{8,}'
+    'password["[:space:]:=]+["'\'']?[^[:space:]"'\'']{8,}["'\'']?'
+    'secret["[:space:]:=]+["'\'']?[^[:space:]"'\'']{8,}["'\'']?'
+    'api_key["[:space:]:=]+["'\'']?[^[:space:]"'\'']{8,}["'\'']?'
+    'apikey["[:space:]:=]+["'\'']?[^[:space:]"'\'']{8,}["'\'']?'
+    'auth_token["[:space:]:=]+["'\'']?[^[:space:]"'\'']{8,}["'\'']?'
+    'access_token["[:space:]:=]+["'\'']?[^[:space:]"'\'']{8,}["'\'']?'
 )
 
 # Optional redaction patterns - applied when ACFS_SANITIZE_OPTIONAL=1
@@ -369,12 +369,12 @@ def sanitize_string:
         gsub("xoxb-[a-zA-Z0-9-]+"; "[REDACTED]") |
         gsub("xoxp-[a-zA-Z0-9-]+"; "[REDACTED]") |
         gsub("AKIA[A-Z0-9]{16}"; "[REDACTED]") |
-        gsub("(?i)password[\"\\s:=]+[^\\s\"']{8,}"; "[REDACTED]") |
-        gsub("(?i)secret[\"\\s:=]+[^\\s\"']{8,}"; "[REDACTED]") |
-        gsub("(?i)api_key[\"\\s:=]+[^\\s\"']{8,}"; "[REDACTED]") |
-        gsub("(?i)apikey[\"\\s:=]+[^\\s\"']{8,}"; "[REDACTED]") |
-        gsub("(?i)auth_token[\"\\s:=]+[^\\s\"']{8,}"; "[REDACTED]") |
-        gsub("(?i)access_token[\"\\s:=]+[^\\s\"']{8,}"; "[REDACTED]")
+        gsub("(?i)password[\"\\s:=]+[\"']?[^\\s\"']{8,}[\"']?"; "[REDACTED]") |
+        gsub("(?i)secret[\"\\s:=]+[\"']?[^\\s\"']{8,}[\"']?"; "[REDACTED]") |
+        gsub("(?i)api_key[\"\\s:=]+[\"']?[^\\s\"']{8,}[\"']?"; "[REDACTED]") |
+        gsub("(?i)apikey[\"\\s:=]+[\"']?[^\\s\"']{8,}[\"']?"; "[REDACTED]") |
+        gsub("(?i)auth_token[\"\\s:=]+[\"']?[^\\s\"']{8,}[\"']?"; "[REDACTED]") |
+        gsub("(?i)access_token[\"\\s:=]+[\"']?[^\\s\"']{8,}[\"']?"; "[REDACTED]")
 JQ_BASE
 
     local jq_filter_optional=""
