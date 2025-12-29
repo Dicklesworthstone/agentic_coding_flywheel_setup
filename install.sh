@@ -107,7 +107,10 @@ TARGET_UBUNTU_VERSION="25.10"
 # Advanced: override with env vars (see README):
 #   TARGET_USER=myuser TARGET_HOME=/home/myuser ...
 TARGET_USER="${TARGET_USER:-ubuntu}"
-TARGET_HOME="${TARGET_HOME:-/home/$TARGET_USER}"
+# Leave TARGET_HOME unset by default; init_target_paths will derive it from:
+# - $HOME when running as TARGET_USER
+# - /home/$TARGET_USER otherwise
+TARGET_HOME="${TARGET_HOME:-}"
 
 # Colors
 RED='\033[0;31m'
@@ -1703,10 +1706,17 @@ init_target_paths() {
     # If running as ubuntu, use ubuntu's home
     # If running as root, install for ubuntu user
     if [[ "$(whoami)" == "$TARGET_USER" ]]; then
-        TARGET_HOME="$HOME"
+        TARGET_HOME="${TARGET_HOME:-$HOME}"
     else
         # Respect an explicit TARGET_HOME env override (default is /home/$TARGET_USER).
         TARGET_HOME="${TARGET_HOME:-/home/$TARGET_USER}"
+    fi
+
+    if [[ -z "$TARGET_HOME" ]] || [[ "$TARGET_HOME" == "/" ]]; then
+        log_fatal "Invalid TARGET_HOME: '${TARGET_HOME:-<empty>}'"
+    fi
+    if [[ "$TARGET_HOME" != /* ]]; then
+        log_fatal "TARGET_HOME must be an absolute path (got: $TARGET_HOME)"
     fi
 
     # ACFS directories for target user
