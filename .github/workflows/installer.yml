@@ -63,6 +63,49 @@ jobs:
         run: bun run generate --diff
         working-directory: packages/manifest
 
+  checksum-verification:
+    name: Verify Upstream Checksums
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify all checksums match upstream
+        id: verify
+        run: |
+          chmod +x ./scripts/lib/security.sh
+
+          echo "Verifying checksums against upstream installer scripts..."
+
+          # Run verification and capture result
+          if ./scripts/lib/security.sh --verify --json > result.json 2>&1; then
+            echo "✅ All checksums match upstream"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Checksum mismatches detected!"
+            echo "status=mismatch" >> $GITHUB_OUTPUT
+
+            # Show what's wrong
+            echo ""
+            echo "=== Mismatched checksums ==="
+            jq -r '.mismatches[] | "  \(.name): expected \(.expected), got \(.actual)"' result.json 2>/dev/null || true
+
+            echo ""
+            echo "=== To fix locally ==="
+            echo "  ./scripts/lib/security.sh --update-checksums > checksums.yaml"
+            echo "  git add checksums.yaml && git commit -m 'chore: update checksums'"
+
+            # Fail the job
+            exit 1
+          fi
+
+      - name: Upload verification result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksum-verification
+          path: result.json
+
   selection-tests:
     name: Selection & Contract Tests
     runs-on: ubuntu-latest
