@@ -37,10 +37,6 @@ find_info_script() {
         echo "$script_dir/info.sh"
         return 0
     fi
-    if [[ -f "$script_dir/../scripts/lib/info.sh" ]]; then
-        echo "$script_dir/../scripts/lib/info.sh"
-        return 0
-    fi
 
     return 1
 }

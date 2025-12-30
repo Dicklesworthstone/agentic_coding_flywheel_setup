@@ -211,7 +211,15 @@ if ! declare -f show_completion >/dev/null; then
         echo "║                                                               ║" >&2
         echo "║  NEXT STEPS:                                                  ║" >&2
         echo "║  1. Type 'exit' to disconnect                                 ║" >&2
-        echo "║  2. Reconnect: ssh -i ~/.ssh/acfs_ed25519 ubuntu@YOUR_IP      ║" >&2
+        local ssh_user="${TARGET_USER:-ubuntu}"
+        local ssh_target="${ssh_user}@YOUR_IP"
+        local reconnect_line="  2. Reconnect: ssh -i ~/.ssh/acfs_ed25519 ${ssh_target}"
+        local reconnect_pad_len=$((63 - ${#reconnect_line}))
+        local reconnect_padding=""
+        if [[ $reconnect_pad_len -gt 0 ]]; then
+            reconnect_padding=$(printf "%${reconnect_pad_len}s" "")
+        fi
+        echo -e "║${reconnect_line}${reconnect_padding}║" >&2
         echo "║  3. Start coding: type 'cc' for Claude Code                   ║" >&2
         echo "╚═══════════════════════════════════════════════════════════════╝" >&2
         echo "" >&2
