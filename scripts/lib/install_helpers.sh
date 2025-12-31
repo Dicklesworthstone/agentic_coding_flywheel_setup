@@ -439,6 +439,25 @@ acfs_use_generated_for_category() {
     local category="${1:-}"
     [[ -n "$category" ]] || return 1
 
+    # Users is orchestration-only today: the install.sh orchestrator owns user creation,
+    # SSH key migration, and sudo policy. The manifest module `users.ubuntu` is marked
+    # `generated: false` with an empty install list, so enabling generated users would
+    # effectively skip user creation and fail verification.
+    #
+    # Guardrail: force legacy for users even if someone sets ACFS_USE_GENERATED_USERS=1.
+    if [[ "${category,,}" == "users" ]]; then
+        local users_flag
+        users_flag="$(acfs_flag_bool "ACFS_USE_GENERATED_USERS")"
+        if [[ "$users_flag" == "1" ]]; then
+            if declare -f log_warn >/dev/null 2>&1; then
+                log_warn "ACFS_USE_GENERATED_USERS=1 is not supported yet (users is orchestration-only); using legacy user normalization"
+            else
+                echo "WARN: ACFS_USE_GENERATED_USERS=1 is not supported yet (users is orchestration-only); using legacy user normalization" >&2
+            fi
+        fi
+        return 1
+    fi
+
     # 1) Per-category override
     local category_upper
     category_upper="$(_acfs_upper "$category")"
