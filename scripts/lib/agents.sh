@@ -251,6 +251,58 @@ upgrade_codex_cli() {
 # Gemini CLI Installation (Google)
 # ============================================================
 
+# Configure Gemini CLI settings for tmux/agent compatibility
+# Sets enableInteractiveShell: false to avoid node-pty issues in tmux panes
+_configure_gemini_settings() {
+    local target_home="$1"
+    local settings_dir="$target_home/.gemini"
+    local settings_file="$settings_dir/settings.json"
+
+    # Create settings directory if needed
+    _agent_run_as_user "mkdir -p '$settings_dir'" || return 1
+
+    # If settings file doesn't exist, create it with tmux-compatible defaults
+    if [[ ! -f "$settings_file" ]]; then
+        log_detail "Creating Gemini settings for tmux compatibility..."
+        _agent_run_as_user "cat > '$settings_file'" << 'EOF'
+{
+  "tools": {
+    "shell": {
+      "enableInteractiveShell": false
+    }
+  }
+}
+EOF
+        return $?
+    fi
+
+    # Settings file exists - merge our settings if jq is available
+    if command -v jq &>/dev/null; then
+        # Check if enableInteractiveShell is already set
+        local current_value
+        current_value=$(_agent_run_as_user "jq -r '.tools.shell.enableInteractiveShell // \"unset\"' '$settings_file'" 2>/dev/null || echo "error")
+
+        if [[ "$current_value" == "unset" || "$current_value" == "error" ]]; then
+            log_detail "Adding tmux-compatible shell settings to Gemini config..."
+            local tmp_file="$settings_dir/.settings.tmp.$$"
+            if _agent_run_as_user "jq '.tools = (.tools // {}) | .tools.shell = (.tools.shell // {}) | .tools.shell.enableInteractiveShell = false' '$settings_file'" > "$tmp_file" 2>/dev/null; then
+                _agent_run_as_user "mv '$tmp_file' '$settings_file'" 2>/dev/null || {
+                    rm -f "$tmp_file" 2>/dev/null
+                    log_warn "Could not update Gemini settings automatically"
+                }
+            else
+                rm -f "$tmp_file" 2>/dev/null
+            fi
+        else
+            log_detail "Gemini shell settings already configured (enableInteractiveShell=$current_value)"
+        fi
+    else
+        log_detail "jq not available; skipping Gemini settings merge"
+    fi
+
+    return 0
+}
+
 # Install Gemini CLI via bun
 # The official package is @google/gemini-cli
 install_gemini_cli() {
@@ -264,12 +316,16 @@ install_gemini_cli() {
     # Check if already installed (wrapper takes precedence)
     if [[ -x "$gemini_wrapper" ]]; then
         log_detail "Gemini CLI already installed at $gemini_wrapper"
+        # Ensure tmux-compatible settings are configured
+        _configure_gemini_settings "$target_home"
         return 0
     fi
     if [[ -x "$gemini_bin" ]]; then
         log_detail "Gemini CLI already installed at $gemini_bin"
         # Create wrapper if missing (fixes node PATH issues)
         _agent_create_bun_wrapper "$target_home" "gemini"
+        # Ensure tmux-compatible settings are configured
+        _configure_gemini_settings "$target_home"
         return 0
     fi
 
@@ -285,6 +341,8 @@ install_gemini_cli() {
         if [[ -x "$gemini_bin" ]]; then
             # Create wrapper script that uses bun as runtime (avoids node PATH issues)
             _agent_create_bun_wrapper "$target_home" "gemini"
+            # Configure settings for tmux/agent compatibility
+            _configure_gemini_settings "$target_home"
             log_success "Gemini CLI installed"
             log_detail "Note: Run 'gemini' to complete Google login"
             return 0
