@@ -1264,10 +1264,14 @@ check_postgres_role() {
     local role_check
     local connect_success=false
 
-    # Try localhost first
-    if role_check=$(timeout 5 psql -w -h localhost -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='${ACFS_TARGET_USER}'" 2>/dev/null); then
+    # Try as current user first (most likely to work, mirrors check_postgres_connection)
+    # pg_roles is readable by any authenticated user
+    if role_check=$(timeout 5 psql -w -tAc "SELECT 1 FROM pg_roles WHERE rolname='${ACFS_TARGET_USER}'" 2>/dev/null); then
         connect_success=true
-    # Try unix socket fallback
+    # Fall back to postgres user on localhost
+    elif role_check=$(timeout 5 psql -w -h localhost -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='${ACFS_TARGET_USER}'" 2>/dev/null); then
+        connect_success=true
+    # Fall back to postgres user on unix socket
     elif role_check=$(timeout 5 psql -w -h /var/run/postgresql -U postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='${ACFS_TARGET_USER}'" 2>/dev/null); then
         connect_success=true
     fi
@@ -1279,8 +1283,8 @@ check_postgres_role() {
             check "deep.db.postgres_role" "PostgreSQL ${ACFS_TARGET_USER} role" "warn" "role missing" "sudo -u postgres createuser -s ${ACFS_TARGET_USER}"
         fi
     else
-        # Connection failed
-        check "deep.db.postgres_role" "PostgreSQL ${ACFS_TARGET_USER} role" "warn" "could not verify (connection failed)" "sudo systemctl status postgresql"
+        # Connection failed - provide actionable fix
+        check "deep.db.postgres_role" "PostgreSQL ${ACFS_TARGET_USER} role" "warn" "could not verify" "sudo -u postgres createuser -s ${ACFS_TARGET_USER}"
     fi
 }
 
