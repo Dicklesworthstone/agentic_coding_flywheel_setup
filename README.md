@@ -788,9 +788,92 @@ Displays:
 
 ---
 
-## Interactive Onboarding
+## Learning Hub (Web)
 
-After installation, users can learn the ACFS workflow through an interactive tutorial system. The onboarding TUI guides users through 9 lessons covering Linux basics through full agentic workflows.
+In addition to the terminal-based onboarding, ACFS provides a comprehensive web-based Learning Hub at [agent-flywheel.com/learn](https://agent-flywheel.com/learn).
+
+### Web Lessons
+
+The Learning Hub provides interactive lessons with progress tracking:
+
+| # | Lesson | Duration | Topics |
+|---|--------|----------|--------|
+| 0 | Welcome & Overview | 5 min | What's installed, mental model |
+| 1 | Linux Navigation | 8 min | Filesystem structure, essential commands |
+| 2 | SSH & Persistence | 6 min | Secure connections, staying connected |
+| 3 | tmux Basics | 7 min | Sessions, windows, panes, survival |
+| 4 | Git Essentials | 10 min | Version control, dangerous operations |
+| 5 | GitHub CLI | 8 min | Issues, PRs, releases via `gh` |
+| 6 | Agent Commands | 10 min | Claude, Codex, Gemini usage |
+| 7 | NTM Command Center | 8 min | Session orchestration |
+| 8 | NTM Prompt Palette | 6 min | Quick command access |
+| 9 | The Flywheel Loop | 8 min | How all 8 tools work together |
+
+**Features:**
+- Progress tracking in localStorage
+- Code blocks with copy buttons
+- Expandable deep-dive sections
+- Practical exercises
+
+### Command Reference
+
+The [Command Reference](https://agent-flywheel.com/learn/commands) documents every installed tool:
+
+| Category | Commands |
+|----------|----------|
+| **Agents** | `cc`, `cod`, `gmi` |
+| **Search** | `rg`, `fd`, `sg`, `fzf` |
+| **Git** | `lg`, `gh`, `git-lfs` |
+| **System** | `z`, `bat`, `lsd`, `atuin`, `tmux` |
+| **Stack** | `ntm`, `bv`, `am`, `cass`, `cm`, `ubs`, `slb`, `caam` |
+| **Languages** | `bun`, `uv`, `cargo`, `go` |
+| **Cloud** | `wrangler`, `supabase`, `vercel`, `vault` |
+
+### Technical Glossary
+
+The [Glossary](https://agent-flywheel.com/glossary) defines 100+ technical terms with:
+
+- **One-liner**: Quick tooltip definition
+- **Full explanation**: Plain language description
+- **Analogy**: "Think of it like..."
+- **Why we use it**: Problem it solves
+- **Related terms**: For context
+
+Example entry:
+```
+RAM (Random Access Memory)
+├── Short: Fast temporary storage your computer uses while working
+├── Long: RAM is your computer's short-term memory...
+├── Analogy: Like your desk space while working
+├── Why: More RAM = run more programs simultaneously
+└── Related: vCPU, VPS, NVMe
+```
+
+### Flywheel Visualization
+
+The [Flywheel page](https://agent-flywheel.com/flywheel) visualizes tool interactions:
+
+```
+Plan (Beads) ──> Coordinate (Agent Mail) ──> Execute (NTM + Agents)
+      ^                                              │
+      │                                              v
+      └──── Remember (CASS Memory) <──── Scan (UBS) ┘
+```
+
+**Workflow Scenarios:**
+
+| Scenario | Description | Time |
+|----------|-------------|------|
+| Daily Parallel Progress | 3+ projects moving simultaneously | 3+ hours |
+| Agents Reviewing Agents | Cross-review before merging | 30 min |
+| Memory-Augmented Debugging | Past solutions for current bugs | 15 min |
+| Coordinated Feature Dev | Multiple agents, one feature | 2+ hours |
+
+---
+
+## Interactive Onboarding (TUI)
+
+After installation, users can learn the ACFS workflow through an interactive terminal-based tutorial. The onboarding TUI guides users through 9 lessons covering Linux basics through full agentic workflows.
 
 ### Running Onboarding
 
@@ -1554,6 +1637,74 @@ jobs:
     - Deploy to Vercel (production)
 ```
 
+### Automated Checksum Updates (`checksum-monitor.yml`)
+
+ACFS automatically monitors upstream installers for changes and updates checksums:
+
+```yaml
+# Runs every 2 hours + on upstream changes
+schedule: "0 */2 * * *"
+triggers:
+  - Schedule (every 2 hours)
+  - Webhook from upstream repos (repository_dispatch)
+  - Changes to security.sh
+```
+
+**How It Works:**
+
+1. **Verify Current Checksums**: Downloads all upstream installers, calculates SHA256
+2. **Detect Changes**: Compares against `checksums.yaml`
+3. **Categorize Tools**: Separates "trusted" tools (can auto-update) from others
+4. **Auto-Update**: For trusted tools, commits updated checksums automatically
+5. **Alert**: For non-trusted tools, creates GitHub issue for manual review
+
+**Trusted Tools (Auto-Update Enabled):**
+- Dicklesworthstone stack tools (ntm, cass, cm, ubs, slb, caam, bv, agent-mail)
+- These are maintained by the same author, so upstream changes are implicitly trusted
+
+**Non-Trusted Tools (Manual Review Required):**
+- Third-party installers (bun, uv, rust, oh-my-zsh, atuin, zoxide, nvm)
+- Changes trigger a GitHub issue with diff details for human review
+
+This ensures:
+- **Security**: Third-party changes are reviewed before deployment
+- **Velocity**: Internal tool updates are deployed automatically
+- **Auditability**: All changes tracked via git commits
+
+### Production Smoke Tests (`production-smoke.yml`)
+
+Validates deployments on real environments:
+
+```yaml
+# Runs after deployment
+jobs:
+  smoke:
+    - Fetches install.sh from production URL
+    - Verifies checksum matches repository
+    - Validates shell syntax
+    - Confirms no uncommitted drift
+```
+
+### Playwright E2E Tests (`playwright.yml`)
+
+Full browser testing of the wizard website:
+
+```yaml
+# Runs on PR to main
+browsers:
+  - Chromium
+  - Firefox
+  - WebKit
+  - Mobile Chrome
+  - Mobile Safari
+
+tests:
+  - Wizard flow completion
+  - Step navigation
+  - Copy button functionality
+  - Responsive design
+```
+
 ---
 
 ## VPS Providers
@@ -1725,6 +1876,47 @@ shellcheck install.sh scripts/lib/*.sh
 # Update checksums after reviewing upstream changes
 ./scripts/lib/security.sh --update-checksums > checksums.yaml
 ```
+
+### Website Design System
+
+The website uses a comprehensive design system (`apps/web/lib/design-tokens.ts`):
+
+**Color Tokens (OKLCH Color Space):**
+```typescript
+// Perceptually uniform colors
+colors: {
+  cyan:    "oklch(0.75 0.18 195)",   // Primary accent
+  pink:    "oklch(0.7 0.2 330)",     // Secondary accent
+  purple:  "oklch(0.65 0.18 290)",   // Tertiary
+  success: "oklch(0.72 0.19 145)",   // Green
+  warning: "oklch(0.78 0.16 75)",    // Yellow
+  error:   "oklch(0.65 0.22 25)",    // Red
+}
+```
+
+**Shadow Tokens:**
+```typescript
+shadows: {
+  cardHover: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)",
+  cardLifted: "0 25px 50px -12px oklch(0.75 0.18 195 / 0.2)",
+  primaryGlow: "0 0 40px -8px oklch(0.75 0.18 195 / 0.3)",
+}
+```
+
+**Animation Presets:**
+```typescript
+animations: {
+  hover: { scale: 1.02, transition: { duration: 0.2 } },
+  tap: { scale: 0.98 },
+  fadeIn: { opacity: [0, 1], transition: { duration: 0.3 } },
+}
+```
+
+**Accessibility:**
+- Reduced motion support via `useReducedMotion` hook
+- Semantic HTML structure
+- ARIA labels on interactive elements
+- Keyboard navigation support
 
 ### Requirements
 
@@ -1969,6 +2161,88 @@ The generator uses a **template expansion** pattern:
 5. **Verify** — Generate doctor checks from verification commands
 
 This ensures the manifest is the **single source of truth**—no drift between documentation, installer, and verification.
+
+### Code Generator Architecture
+
+The manifest generator (`packages/manifest/src/generate.ts`) is a sophisticated TypeScript program that transforms YAML into bash:
+
+**Input Processing:**
+```typescript
+// 1. Parse YAML with validation
+const manifest = parseManifestFile(MANIFEST_PATH);  // Zod-validated
+
+// 2. Load checksums for verified installers
+const checksums = parseYaml(readFileSync(CHECKSUMS_PATH));
+
+// 3. Topological sort for dependency order
+const sorted = sortModulesByInstallOrder(manifest.modules);
+```
+
+**Security-First Code Generation:**
+```typescript
+// Shell-safe quoting (prevents command injection)
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+// Allowlisted runners only (belt-and-suspenders)
+const ALLOWED_RUNNERS = ['bash', 'sh'] as const;
+
+// Verified installer pipe construction
+function buildVerifiedInstallerPipe(module: Module, checksums: Checksums): string {
+  // Generates: curl -fsSL "$URL" | verify_checksum "$SHA256" | bash
+}
+```
+
+**Output Structure:**
+```
+scripts/generated/
+├── install_base.sh        # Base system packages (apt)
+├── install_users.sh       # User normalization (ubuntu user)
+├── install_filesystem.sh  # Directory structure (/data/projects)
+├── install_shell.sh       # zsh + oh-my-zsh + p10k
+├── install_cli.sh         # ripgrep, tmux, fzf, lazygit, etc.
+├── install_network.sh     # Tailscale
+├── install_lang.sh        # bun, uv, rust, go
+├── install_tools.sh       # ast-grep, atuin, zoxide
+├── install_agents.sh      # claude, codex, gemini
+├── install_db.sh          # PostgreSQL 18, Vault
+├── install_cloud.sh       # wrangler, supabase, vercel
+├── install_stack.sh       # Dicklesworthstone 8-tool stack
+├── install_acfs.sh        # ACFS config deployment
+├── install_all.sh         # Orchestration helper
+├── doctor_checks.sh       # Health verification
+└── manifest_index.sh      # Module metadata arrays
+```
+
+**Generated Script Structure:**
+```bash
+#!/usr/bin/env bash
+# AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
+
+install_module_id() {
+    acfs_require_contract "module.id"  # Validate environment
+
+    if run_installed_check "module.id"; then
+        log_step "module.id already installed"
+        return 0
+    fi
+
+    set_phase "Installing module..."
+    run_as_target_shell <<'HEREDOC'
+        # Installation commands from manifest
+    HEREDOC
+
+    verify_module "module.id"  # Post-install checks
+}
+```
+
+**Regeneration:**
+```bash
+cd packages/manifest
+bun run generate           # Full regeneration
+bun run generate:dry       # Preview without writing
+```
 
 ### Progressive Disclosure in the Wizard
 
