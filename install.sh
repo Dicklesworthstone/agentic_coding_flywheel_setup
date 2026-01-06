@@ -2407,6 +2407,31 @@ setup_filesystem() {
     try_step "Creating .local/bin directory" run_as_target mkdir -p "$TARGET_HOME/.local/bin" || return 1
     try_step "Creating .bun directory" run_as_target mkdir -p "$TARGET_HOME/.bun" || return 1
 
+    # Configure SSH keepalive to prevent VPN/NAT connection drops
+    # This is critical for remote development - idle connections get dropped by intermediate devices
+    log_detail "Configuring SSH keepalive"
+    if [[ -f /etc/ssh/sshd_config ]]; then
+        # Back up original config
+        $SUDO cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.acfs 2>/dev/null || true
+
+        # Enable ClientAliveInterval (send keepalive every 60 seconds)
+        if grep -q '^#*ClientAliveInterval' /etc/ssh/sshd_config; then
+            try_step "Setting ClientAliveInterval" $SUDO sed -i 's/^#*ClientAliveInterval.*/ClientAliveInterval 60/' /etc/ssh/sshd_config || true
+        else
+            echo 'ClientAliveInterval 60' | $SUDO tee -a /etc/ssh/sshd_config >/dev/null
+        fi
+
+        # Enable ClientAliveCountMax (disconnect after 3 missed keepalives = 3 min)
+        if grep -q '^#*ClientAliveCountMax' /etc/ssh/sshd_config; then
+            try_step "Setting ClientAliveCountMax" $SUDO sed -i 's/^#*ClientAliveCountMax.*/ClientAliveCountMax 3/' /etc/ssh/sshd_config || true
+        else
+            echo 'ClientAliveCountMax 3' | $SUDO tee -a /etc/ssh/sshd_config >/dev/null
+        fi
+
+        # Reload sshd to apply changes (won't kill existing connections)
+        try_step "Reloading sshd" $SUDO systemctl reload sshd 2>/dev/null || $SUDO systemctl reload ssh 2>/dev/null || true
+    fi
+
     log_success "Filesystem setup complete"
 }
 
