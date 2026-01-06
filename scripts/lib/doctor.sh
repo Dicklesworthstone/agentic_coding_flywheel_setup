@@ -845,8 +845,9 @@ check_cloud() {
     # SSH keepalive configuration (prevents VPN/NAT disconnects)
     if [[ -f /etc/ssh/sshd_config ]]; then
         local keepalive_interval
-        keepalive_interval=$(grep -E '^ClientAliveInterval[[:space:]]+[0-9]+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' || echo "0")
-        if [[ "$keepalive_interval" -gt 0 ]]; then
+        keepalive_interval=$(grep -E '^ClientAliveInterval[[:space:]]+[0-9]+' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}')
+        keepalive_interval="${keepalive_interval:-0}"
+        if [[ "$keepalive_interval" -gt 0 ]] 2>/dev/null; then
             check "network.ssh_keepalive" "SSH keepalive" "pass" "ClientAliveInterval ${keepalive_interval}s"
         else
             if [[ "$doctor_ci" == "true" ]]; then
