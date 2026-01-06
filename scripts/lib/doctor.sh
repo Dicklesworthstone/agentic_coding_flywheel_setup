@@ -1099,19 +1099,32 @@ check_claude_auth() {
         return
     fi
 
-    # Check for config file (indicates previous auth)
-    local config_file="$HOME/.claude/config.json"
-    if [[ ! -f "$config_file" ]]; then
-        check "deep.agent.claude_auth" "Claude Code auth" "warn" "no config file" "Run: claude to authenticate"
+    # Check for credentials file (indicates previous auth)
+    # Claude Code stores OAuth credentials in .credentials.json (note the leading dot)
+    local creds_file="$HOME/.claude/.credentials.json"
+    if [[ ! -f "$creds_file" ]]; then
+        check "deep.agent.claude_auth" "Claude Code auth" "warn" "no credentials file" "Run: claude to authenticate"
         return
     fi
 
-    # Try low-cost API check: --print-system-info doesn't make API calls but verifies setup
-    if timeout 5 claude --print-system-info &>/dev/null; then
+    # Verify credentials file has valid OAuth tokens
+    # Check for accessToken which indicates successful authentication
+    local has_token=false
+    if command -v jq &>/dev/null; then
+        if jq -e '.claudeAiOauth.accessToken // empty' "$creds_file" >/dev/null 2>&1; then
+            has_token=true
+        fi
+    else
+        # Fallback: basic grep check
+        if grep -q '"accessToken"' "$creds_file" 2>/dev/null; then
+            has_token=true
+        fi
+    fi
+
+    if [[ "$has_token" == "true" ]]; then
         check "deep.agent.claude_auth" "Claude Code auth" "pass" "authenticated"
     else
-        # Config exists but system info fails - partial setup
-        check "deep.agent.claude_auth" "Claude Code auth" "warn" "config exists, verify failed" "Run: claude to re-authenticate"
+        check "deep.agent.claude_auth" "Claude Code auth" "warn" "credentials file exists but no valid token" "Run: claude to re-authenticate"
     fi
 }
 
@@ -1192,31 +1205,60 @@ check_gemini_auth() {
         return
     fi
 
-    # Gemini CLI uses OAuth web login (like Claude Code and Codex CLI)
-    # Users authenticate via `gemini` command which opens browser login
-    # Credentials are stored in config files, NOT via API keys
+    # Gemini CLI stores config in ~/.gemini/ (not ~/.config/gemini)
+    # Auth can be via Google OAuth or API key
+    local gemini_dir="$HOME/.gemini"
     local found_auth=false
+    local auth_method=""
 
-    # Check for Gemini CLI credentials
-    if [[ -f "$HOME/.config/gemini/credentials.json" ]]; then
-        found_auth=true
+    # Check for settings.json which indicates auth method
+    if [[ -f "$gemini_dir/settings.json" ]]; then
+        local selected_type=""
+        if command -v jq &>/dev/null; then
+            selected_type=$(jq -r '.security.auth.selectedType // empty' "$gemini_dir/settings.json" 2>/dev/null) || true
+        else
+            selected_type=$(sed -n 's/.*"selectedType"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$gemini_dir/settings.json" 2>/dev/null | head -1)
+        fi
+
+        if [[ "$selected_type" == "gemini-api-key" ]]; then
+            found_auth=true
+            auth_method="API key"
+        elif [[ "$selected_type" == "google-oauth" || "$selected_type" == "oauth" ]]; then
+            # For OAuth, also verify google_accounts.json has an active account
+            if [[ -f "$gemini_dir/google_accounts.json" ]]; then
+                local active_account=""
+                if command -v jq &>/dev/null; then
+                    active_account=$(jq -r '.active // empty' "$gemini_dir/google_accounts.json" 2>/dev/null) || true
+                fi
+                if [[ -n "$active_account" && "$active_account" != "null" ]]; then
+                    found_auth=true
+                    auth_method="Google OAuth"
+                fi
+            fi
+        fi
     fi
 
-    # Some versions may store auth tokens in other files; only treat the config
-    # directory as evidence of auth if it exists and is non-empty.
-    if [[ -d "$HOME/.config/gemini" ]] && [[ -n "$(ls -A "$HOME/.config/gemini" 2>/dev/null)" ]]; then
-        found_auth=true
+    # Fallback: check if ~/.gemini exists with config files (indicates setup completed)
+    if [[ "$found_auth" != "true" && -d "$gemini_dir" ]]; then
+        if [[ -f "$gemini_dir/settings.json" || -f "$gemini_dir/google_accounts.json" ]]; then
+            # Config exists but couldn't determine auth - likely partially configured
+            found_auth=true
+            auth_method="configured"
+        fi
     fi
 
-    # Check for legacy config
-    if [[ -f "$HOME/.gemini/config" ]]; then
-        found_auth=true
+    # Also check legacy ~/.config/gemini location
+    if [[ "$found_auth" != "true" && -d "$HOME/.config/gemini" ]]; then
+        if [[ -n "$(ls -A "$HOME/.config/gemini" 2>/dev/null)" ]]; then
+            found_auth=true
+            auth_method="legacy config"
+        fi
     fi
 
     if [[ "$found_auth" == "true" ]]; then
-        check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "authenticated"
+        check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "$auth_method"
     else
-        check "deep.agent.gemini_auth" "Gemini CLI auth" "warn" "not logged in" "Run 'gemini' to authenticate via browser"
+        check "deep.agent.gemini_auth" "Gemini CLI auth" "warn" "not configured" "Run 'gemini' to authenticate"
     fi
 }
 
