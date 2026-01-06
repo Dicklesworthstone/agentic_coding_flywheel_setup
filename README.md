@@ -476,6 +476,7 @@ graph TD
 | **Pre-flight validated** | Run `scripts/preflight.sh` to catch issues before install |
 | **Logged** | Colored output with progress indicators |
 | **Modular** | Each category is a separate sourceable script |
+| **VPN-friendly** | SSH keepalive configured to prevent connection drops over VPNs/NAT |
 
 ### Resume Capability
 
