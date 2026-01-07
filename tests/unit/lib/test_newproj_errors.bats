@@ -303,9 +303,6 @@ teardown() {
 
     run validate_project_name "project_name"
     assert_success
-
-    run validate_project_name "project.name"
-    assert_success
 }
 
 @test "validate_project_name rejects empty name" {
@@ -328,6 +325,10 @@ teardown() {
     assert_failure
 
     run validate_project_name "my/project"
+    assert_failure
+
+    # Dots are not allowed in project names
+    run validate_project_name "project.name"
     assert_failure
 }
 

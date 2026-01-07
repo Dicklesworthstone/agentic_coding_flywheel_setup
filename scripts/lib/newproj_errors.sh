@@ -568,9 +568,9 @@ validate_project_name() {
         error_msg="Project name must be at least 2 characters"
     elif [[ ${#name} -gt 100 ]]; then
         error_msg="Project name must be less than 100 characters"
-    # Check for valid characters (alphanumeric, dash, underscore, dot)
-    elif [[ ! "$name" =~ ^[a-zA-Z][a-zA-Z0-9._-]*$ ]]; then
-        error_msg="Project name must start with a letter and contain only letters, numbers, dashes, underscores, and dots"
+    # Check for valid characters (alphanumeric, dash, underscore)
+    elif [[ ! "$name" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+        error_msg="Project name must start with a letter and contain only letters, numbers, dashes, and underscores"
     # Check for reserved names
     elif [[ "$name" =~ ^(node_modules|\.git|\.beads|__pycache__|\.venv|venv)$ ]]; then
         error_msg="'$name' is a reserved name"

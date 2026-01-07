@@ -33,12 +33,12 @@ render_project_name_screen() {
 
     if [[ "$TERM_HAS_UNICODE" == "true" ]]; then
         echo -e "  ${BOX_BULLET} Must start with a letter"
-        echo -e "  ${BOX_BULLET} Only letters, numbers, hyphens, underscores, and dots"
+        echo -e "  ${BOX_BULLET} Only letters, numbers, hyphens, and underscores"
         echo -e "  ${BOX_BULLET} At least 2 characters"
         echo -e "  ${BOX_BULLET} Cannot be a reserved name (node_modules, .git, etc.)"
     else
         echo "  * Must start with a letter"
-        echo "  * Only letters, numbers, hyphens, underscores, and dots"
+        echo "  * Only letters, numbers, hyphens, and underscores"
         echo "  * At least 2 characters"
         echo "  * Cannot be a reserved name (node_modules, .git, etc.)"
     fi

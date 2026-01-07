@@ -39,7 +39,7 @@ get_files_to_create() {
 
     if [[ "$(state_get "enable_bd")" == "true" ]]; then
         files+=("$project_dir/.beads/")
-        files+=("$project_dir/.beads/beads.jsonl")
+        files+=("$project_dir/.beads/beads.db")
     fi
 
     if [[ "$(state_get "enable_claude")" == "true" ]]; then
