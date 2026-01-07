@@ -417,7 +417,8 @@ ubs .                                   # Whole project
 AGENTS_EOF
 
     # Replace placeholder with actual project name
-    sed -i "s/PROJECT_NAME_PLACEHOLDER/$project_name/g" AGENTS.md
+    # Use portable sed syntax that works on both GNU (Linux) and BSD (macOS)
+    sed -i.bak "s/PROJECT_NAME_PLACEHOLDER/$project_name/g" AGENTS.md && rm -f AGENTS.md.bak
 }
 
 # ============================================================

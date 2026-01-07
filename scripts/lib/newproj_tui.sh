@@ -324,6 +324,8 @@ draw_box() {
     while IFS= read -r line; do
         local line_len=${#line}
         local padding=$((inner_width - line_len))
+        # Clamp padding to avoid negative values for lines longer than box width
+        [[ $padding -lt 0 ]] && padding=0
         echo "$BOX_V $line$(printf '%*s' "$padding" '') $BOX_V"
     done <<< "$content"
 
