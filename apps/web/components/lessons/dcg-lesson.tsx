@@ -3,16 +3,12 @@
 import { motion } from "@/components/motion";
 import {
   ShieldAlert,
-  Shield,
+  ShieldCheck,
   Terminal,
   AlertTriangle,
-  CheckCircle,
-  XCircle,
+  Layers,
+  KeyRound,
   Zap,
-  Package,
-  Lightbulb,
-  Clock,
-  Key,
 } from "lucide-react";
 import {
   Section,
@@ -31,52 +27,50 @@ export function DcgLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Learn to use DCG to block dangerous commands before they execute.
+        Use DCG to block destructive commands before they do damage.
       </GoalBanner>
 
-      {/* What Is DCG */}
       <Section
         title="What Is DCG?"
         icon={<ShieldAlert className="h-5 w-5" />}
         delay={0.1}
       >
         <Paragraph>
-          <Highlight>DCG (Destructive Command Guard)</Highlight> is a safety net
-          that catches dangerous commands before they can cause damage. It works
-          as a Claude Code hook, intercepting commands in real-time.
+          <Highlight>DCG (Destructive Command Guard)</Highlight> is a Claude
+          Code hook that blocks dangerous commands before they execute. It
+          protects your repos from hard resets, recursive deletes, destructive
+          database commands, and more.
         </Paragraph>
         <Paragraph>
-          Think of it as a guard at the door who checks every command before
-          letting it through. Dangerous patterns like <code>rm -rf /</code>,{" "}
-          <code>git reset --hard</code>, or <code>DROP TABLE</code> get blocked
-          instantly.
+          Think of it as a safety interlock: if a command looks destructive,
+          DCG stops it and suggests a safer alternative.
         </Paragraph>
 
         <div className="mt-8">
           <FeatureGrid>
             <FeatureCard
-              icon={<Zap className="h-5 w-5" />}
-              title="Sub-50ms Latency"
-              description="Blocks in milliseconds, never slows you down"
-              gradient="from-yellow-500/20 to-amber-500/20"
+              icon={<ShieldCheck className="h-5 w-5" />}
+              title="Pre-Execution Blocking"
+              description="Stops damage before it happens"
+              gradient="from-red-500/20 to-rose-500/20"
             />
             <FeatureCard
-              icon={<Package className="h-5 w-5" />}
-              title="50+ Protection Packs"
-              description="Git, filesystem, database, K8s, cloud"
+              icon={<Layers className="h-5 w-5" />}
+              title="Protection Packs"
+              description="Git, filesystem, database, cloud, and more"
+              gradient="from-amber-500/20 to-orange-500/20"
+            />
+            <FeatureCard
+              icon={<KeyRound className="h-5 w-5" />}
+              title="Allow-Once Codes"
+              description="Explicit bypass when you know it is safe"
               gradient="from-primary/20 to-violet-500/20"
             />
             <FeatureCard
-              icon={<Shield className="h-5 w-5" />}
+              icon={<Zap className="h-5 w-5" />}
               title="Fail-Open Design"
-              description="Never blocks your workflow on errors"
+              description="Errors never block your workflow"
               gradient="from-emerald-500/20 to-teal-500/20"
-            />
-            <FeatureCard
-              icon={<Key className="h-5 w-5" />}
-              title="Allow-Once Bypass"
-              description="Legitimate bypasses with time-limited codes"
-              gradient="from-red-500/20 to-rose-500/20"
             />
           </FeatureGrid>
         </div>
@@ -84,55 +78,35 @@ export function DcgLesson() {
 
       <Divider />
 
-      {/* Why DCG Matters */}
       <Section
-        title="Why DCG Matters"
-        icon={<AlertTriangle className="h-5 w-5" />}
+        title="How DCG Intercepts Commands"
+        icon={<ShieldCheck className="h-5 w-5" />}
         delay={0.15}
       >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="relative p-6 rounded-2xl border border-red-500/30 bg-gradient-to-br from-red-500/10 to-rose-500/10"
-        >
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-500/20 text-red-400">
-              <AlertTriangle className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="text-lg font-bold text-white">
-                AI agents occasionally make destructive mistakes.
-              </p>
-              <p className="text-white/60 mt-1">
-                Hours of uncommitted work can vanish in seconds. DCG catches
-                these mistakes before damage occurs.
-              </p>
-            </div>
-          </div>
-        </motion.div>
+        <Paragraph>
+          DCG runs as a <Highlight>PreToolUse hook</Highlight> inside Claude
+          Code. Every command is checked against a set of rules before it runs.
+        </Paragraph>
 
-        <div className="mt-6 space-y-4">
-          <BlockedCommandCard
-            command="git reset --hard HEAD~5"
-            reason="Destroys uncommitted work and recent commits"
-            alternative="git stash && git revert HEAD~5"
-          />
-          <BlockedCommandCard
-            command="rm -rf /data/projects/*"
-            reason="Deletes source code recursively"
-            alternative="mv to archive or use git clean"
-          />
-          <BlockedCommandCard
-            command="DROP TABLE users;"
-            reason="Destroys database data permanently"
-            alternative="TRUNCATE or create backup first"
+        <div className="mt-6">
+          <CodeBlock
+            code={`# Example: test a command before running it
+$ dcg test "git reset --hard" --explain
+> BLOCKED: git.reset.hard
+> Why: hard reset discards uncommitted work
+> Safer: git restore --staged .`}
+            language="bash"
           />
         </div>
+
+        <TipBox variant="warning">
+          If DCG blocks a command, slow down and read the explanation. It is
+          showing you the dangerous part and a safer path.
+        </TipBox>
       </Section>
 
       <Divider />
 
-      {/* Essential Commands */}
       <Section
         title="Essential Commands"
         icon={<Terminal className="h-5 w-5" />}
@@ -141,28 +115,28 @@ export function DcgLesson() {
         <CommandList
           commands={[
             {
-              command: "dcg test 'command'",
+              command: "dcg test '<command>'",
               description: "Check if a command would be blocked",
             },
             {
-              command: "dcg test 'command' --explain",
-              description: "Get detailed explanation of why",
+              command: "dcg test '<command>' --explain",
+              description: "Explain why a command is unsafe",
             },
             {
               command: "dcg packs",
-              description: "List all protection packs",
-            },
-            {
-              command: "dcg packs --enabled",
-              description: "Show only enabled packs",
-            },
-            {
-              command: "dcg doctor",
-              description: "Check DCG installation health",
+              description: "List available protection packs",
             },
             {
               command: "dcg install",
-              description: "Register Claude Code hook",
+              description: "Register the Claude Code hook",
+            },
+            {
+              command: "dcg allow-once <code>",
+              description: "Bypass for a single approved command",
+            },
+            {
+              command: "dcg doctor",
+              description: "Check installation and hook status",
             },
           ]}
         />
@@ -170,147 +144,70 @@ export function DcgLesson() {
 
       <Divider />
 
-      {/* Allow-Once Workflow */}
       <Section
-        title="Allow-Once Workflow"
-        icon={<Key className="h-5 w-5" />}
+        title="Protection Packs"
+        icon={<Layers className="h-5 w-5" />}
         delay={0.25}
       >
         <Paragraph>
-          Sometimes you legitimately need to run a blocked command. DCG provides
-          the <Highlight>allow-once</Highlight> workflow for controlled bypasses.
+          Packs let you enable or disable rules based on your workflow. Keep the
+          ones you need to avoid false positives.
         </Paragraph>
 
-        <div className="mt-6 space-y-4">
-          <WorkflowStep
-            step={1}
-            title="Command Gets Blocked"
-            description="DCG blocks the dangerous command and provides a short code"
-          />
-          <WorkflowStep
-            step={2}
-            title="Use Allow-Once"
-            description="Run dcg allow-once CODE with the provided code"
-          />
-          <WorkflowStep
-            step={3}
-            title="Run Command"
-            description="The command can now execute (within time limit)"
-          />
-        </div>
-
         <div className="mt-6">
-          <CodeBlock language="bash">
-            {`# Command gets blocked with code ABC-123
-$ dcg allow-once ABC-123
-
-# Now the command will be allowed (for 60 seconds)`}
-          </CodeBlock>
+          <CodeBlock
+            code={`# ~/.config/dcg/config.toml
+[packs]
+enabled = ["git", "filesystem", "database.postgresql", "containers.docker"]`}
+            language="toml"
+            filename="config.toml"
+          />
         </div>
 
-        <div className="mt-6">
-          <TipBox variant="warning">
-            Allow-once codes expire after a short time. Use them promptly and
-            only when you&apos;re sure the command is safe in context.
-          </TipBox>
-        </div>
+        <TipBox variant="info">
+          Start with <Highlight>git</Highlight> and{" "}
+          <Highlight>filesystem</Highlight> packs. Add database or cloud packs
+          only when you use those tools.
+        </TipBox>
       </Section>
 
       <Divider />
 
-      {/* DCG + SLB */}
       <Section
-        title="DCG + SLB: Defense in Depth"
-        icon={<Shield className="h-5 w-5" />}
+        title="When You See a Block"
+        icon={<AlertTriangle className="h-5 w-5" />}
         delay={0.3}
       >
         <Paragraph>
-          DCG and SLB work together to provide layered safety:
+          A block is a warning, not a dead end. Use it as a checkpoint:
         </Paragraph>
+        <ul className="space-y-2 text-white/70 text-lg">
+          <li>1) Read the explanation carefully.</li>
+          <li>2) Prefer the safer alternative when possible.</li>
+          <li>3) Use allow-once only if you are confident.</li>
+          <li>4) Document the decision in your commit or notes.</li>
+        </ul>
+      </Section>
 
-        <div className="mt-8">
-          <FeatureGrid columns={2}>
-            <FeatureCard
-              icon={<ShieldAlert className="h-5 w-5" />}
-              title="DCG: Pre-Execution"
-              description="Blocks obvious destructive patterns instantly"
-              gradient="from-red-500/20 to-rose-500/20"
-            />
-            <FeatureCard
-              icon={<Shield className="h-5 w-5" />}
-              title="SLB: Post-Proposal"
-              description="Human approval for contextual risks"
-              gradient="from-amber-500/20 to-orange-500/20"
-            />
-          </FeatureGrid>
-        </div>
+      <Divider />
 
-        <div className="mt-6">
-          <TipBox variant="tip">
-            DCG catches the obvious mistakes. SLB catches the subtle ones that
-            require human judgment about context and intent.
-          </TipBox>
-        </div>
+      <Section
+        title="DCG + SLB"
+        icon={<Zap className="h-5 w-5" />}
+        delay={0.35}
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6"
+        >
+          <Paragraph>
+            DCG blocks obvious destructive commands instantly. SLB handles
+            contextual risk that needs human approval. Together, they form a
+            layered safety system.
+          </Paragraph>
+        </motion.div>
       </Section>
     </div>
-  );
-}
-
-// Helper Components
-
-function BlockedCommandCard({
-  command,
-  reason,
-  alternative,
-}: {
-  command: string;
-  reason: string;
-  alternative: string;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="p-4 rounded-xl border border-red-500/20 bg-gradient-to-r from-red-500/5 to-transparent"
-    >
-      <div className="flex items-start gap-3">
-        <XCircle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
-        <div className="flex-1">
-          <code className="text-red-300 font-mono text-sm">{command}</code>
-          <p className="text-white/60 text-sm mt-1">{reason}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <CheckCircle className="h-4 w-4 text-emerald-400" />
-            <span className="text-emerald-300 text-sm">{alternative}</span>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function WorkflowStep({
-  step,
-  title,
-  description,
-}: {
-  step: number;
-  title: string;
-  description: string;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: step * 0.1 }}
-      className="flex items-start gap-4"
-    >
-      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-primary font-bold text-sm flex-shrink-0">
-        {step}
-      </div>
-      <div>
-        <p className="font-semibold text-white">{title}</p>
-        <p className="text-white/60 text-sm">{description}</p>
-      </div>
-    </motion.div>
   );
 }

@@ -17,11 +17,11 @@ import { CassLesson } from "./cass-lesson";
 import { CmLesson } from "./cm-lesson";
 import { BeadsLesson } from "./beads-lesson";
 import { SafetyToolsLesson } from "./safety-tools-lesson";
+import { DcgLesson } from "./dcg-lesson";
 import { PromptEngineeringLesson } from "./prompt-engineering-lesson";
 import { RealWorldCaseStudyLesson } from "./real-world-case-study-lesson";
 import { SlbCaseStudyLesson } from "./slb-case-study-lesson";
 import { RuLesson } from "./ru-lesson";
-import { DcgLesson } from "./dcg-lesson";
 
 // Render the lesson content for a given slug.
 // This intentionally uses a static switch so ESLint can guarantee components are not created during render.
@@ -61,6 +61,8 @@ export function renderLessonComponent(slug: string): React.ReactNode | null {
       return <BeadsLesson />;
     case "safety-tools":
       return <SafetyToolsLesson />;
+    case "dcg":
+      return <DcgLesson />;
     case "prompt-engineering":
       return <PromptEngineeringLesson />;
     case "real-world-case-study":
@@ -95,6 +97,7 @@ export {
   CmLesson,
   BeadsLesson,
   SafetyToolsLesson,
+  DcgLesson,
   PromptEngineeringLesson,
   RealWorldCaseStudyLesson,
   SlbCaseStudyLesson,

@@ -4,6 +4,7 @@ import type React from "react";
 import { motion } from "@/components/motion";
 import {
   Shield,
+  ShieldAlert,
   Key,
   Users,
   AlertTriangle,
@@ -33,7 +34,7 @@ export function SafetyToolsLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Use SLB and CAAM for safety and account management.
+        Use DCG, SLB and CAAM for layered safety and account management.
       </GoalBanner>
 
       {/* Introduction */}
@@ -44,16 +45,22 @@ export function SafetyToolsLesson() {
       >
         <Paragraph>
           AI agents are powerful but can cause damage if misused. The
-          Dicklesworthstone stack includes two safety tools:
+          Dicklesworthstone stack includes three safety tools:
         </Paragraph>
 
         <div className="mt-8">
           <FeatureGrid>
             <FeatureCard
+              icon={<ShieldAlert className="h-5 w-5" />}
+              title="DCG"
+              description="Pre-execution blocking of destructive commands"
+              gradient="from-red-500/20 to-rose-500/20"
+            />
+            <FeatureCard
               icon={<Users className="h-5 w-5" />}
               title="SLB"
               description="Two-person rule for dangerous commands"
-              gradient="from-red-500/20 to-rose-500/20"
+              gradient="from-amber-500/20 to-orange-500/20"
             />
             <FeatureCard
               icon={<Key className="h-5 w-5" />}
@@ -148,6 +155,64 @@ export function SafetyToolsLesson() {
             {
               command: "slb status <request-id>",
               description: "Check status of a specific request",
+            },
+          ]}
+        />
+      </Section>
+
+      <Divider />
+
+      {/* DCG Section */}
+      <Section
+        title="DCG: Destructive Command Guard"
+        icon={<ShieldAlert className="h-5 w-5" />}
+        delay={0.3}
+      >
+        <Paragraph>
+          <Highlight>DCG</Highlight> blocks dangerous commands before they run.
+          It inspects every command from Claude Code and stops destructive
+          patterns like hard resets, force pushes, and recursive deletes.
+        </Paragraph>
+        <Paragraph>
+          If a command is safe, it runs normally. If it&apos;s risky, DCG blocks
+          it and suggests a safer alternative.
+        </Paragraph>
+
+        <div className="mt-6">
+          <TipBox variant="warning">
+            Treat a DCG block as a safety checkpoint. Read the explanation and
+            prefer the safer command whenever possible.
+          </TipBox>
+        </div>
+      </Section>
+
+      {/* DCG Commands */}
+      <Section
+        title="DCG Commands"
+        icon={<Terminal className="h-5 w-5" />}
+        delay={0.35}
+      >
+        <CommandList
+          commands={[
+            {
+              command: "dcg test '<command>' --explain",
+              description: "Explain why a command would be blocked",
+            },
+            {
+              command: "dcg packs",
+              description: "List available protection packs",
+            },
+            {
+              command: "dcg install",
+              description: "Register DCG as a Claude Code hook",
+            },
+            {
+              command: "dcg allow-once <code>",
+              description: "Bypass a single approved command",
+            },
+            {
+              command: "dcg doctor",
+              description: "Check installation and hook status",
             },
           ]}
         />
@@ -258,12 +323,17 @@ export function SafetyToolsLesson() {
         delay={0.45}
       >
         <Paragraph>
-          Both SLB and CAAM integrate with Claude Code, Codex, and Gemini:
+          DCG, SLB, and CAAM integrate with Claude Code, Codex, and Gemini:
         </Paragraph>
 
         <div className="mt-6">
           <CodeBlock
-            code={`# Example: Dangerous command triggers SLB
+            code={`# Example: DCG blocks a destructive command
+$ claude "reset the repo"
+> DCG: blocked git reset --hard
+> Suggestion: git restore --staged .
+
+# Example: Dangerous command triggers SLB
 $ claude "delete all test files"
 > SLB: This command requires approval
 > Waiting for second approval...
@@ -289,7 +359,7 @@ $ claude "continue the project"
         icon={<CheckCircle className="h-5 w-5" />}
         delay={0.5}
       >
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 md:grid-cols-3">
           {/* SLB Best Practices */}
           <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5">
             <h4 className="font-bold text-white flex items-center gap-2 mb-4">
@@ -301,6 +371,20 @@ $ claude "continue the project"
               <BestPractice text="Review commands before approving" />
               <BestPractice text="Use descriptive request messages" />
               <BestPractice text="Set up notifications for pending requests" />
+            </div>
+          </div>
+
+          {/* DCG Best Practices */}
+          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-5">
+            <h4 className="font-bold text-white flex items-center gap-2 mb-4">
+              <ShieldAlert className="h-5 w-5 text-rose-400" />
+              DCG Best Practices
+            </h4>
+            <div className="space-y-3">
+              <BestPractice text="Read the block explanation before acting" />
+              <BestPractice text="Prefer safer alternatives over allow-once" />
+              <BestPractice text="Enable only the packs you need" />
+              <BestPractice text="Re-register after updates: dcg install" />
             </div>
           </div>
 
@@ -328,7 +412,7 @@ $ claude "continue the project"
         icon={<Terminal className="h-5 w-5" />}
         delay={0.55}
       >
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
           <QuickRefCard
             title="SLB"
             commands={[
@@ -338,6 +422,16 @@ $ claude "continue the project"
               "slb status <id>",
             ]}
             color="from-red-500/20 to-rose-500/20"
+          />
+          <QuickRefCard
+            title="DCG"
+            commands={[
+              "dcg test '<cmd>' --explain",
+              "dcg packs",
+              "dcg allow-once <code>",
+              "dcg doctor",
+            ]}
+            color="from-rose-500/20 to-fuchsia-500/20"
           />
           <QuickRefCard
             title="CAAM"
