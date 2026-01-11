@@ -133,6 +133,10 @@ run_one() {
       su - ubuntu -c "zsh -ic '\''codex --version >/dev/null'\''"
       su - ubuntu -c "zsh -ic '\''gemini --version >/dev/null'\''"
       su - ubuntu -c "zsh -ic '\''claude --version >/dev/null'\''"
+      su - ubuntu -c "zsh -ic '\''dcg --version >/dev/null'\''"
+      su - ubuntu -c "zsh -ic '\''dcg doctor --format json | jq -e \".hook_registered == true\" >/dev/null'\''"
+      su - ubuntu -c "zsh -ic '\''dcg test \"git reset --hard\" | grep -Eqi \"deny|block\"'\''"
+      su - ubuntu -c "zsh -ic '\''dcg test \"git status\" | grep -Eqi \"allow\"'\''"
       su - ubuntu -c "bash -lc '\''/repo/tests/vm/resume_checks.sh'\''"
     '
 }
