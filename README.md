@@ -695,7 +695,7 @@ acfs newproj myapp --no-bd
 Notes:
 - The TUI uses gum when available (arrow keys, Space to toggle, Enter to confirm). Without gum, it falls back to numbered prompts.
 - Minimum terminal size: 60x15.
-- If AGENTS.md already exists, the wizard will not overwrite it; move it aside to regenerate.
+- If AGENTS.md already exists, it will not be overwritten; move it aside to regenerate.
 
 ### `acfs info` — System Overview
 

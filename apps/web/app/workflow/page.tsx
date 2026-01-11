@@ -27,6 +27,7 @@ import {
   Lightbulb,
   Target,
   Shield,
+  ShieldAlert,
   Search,
   Clock,
   ArrowRight,
@@ -394,6 +395,7 @@ const FLYWHEEL_CYCLE = [
   { name: "Mail", desc: "Coordinates", color: "from-violet-400 to-purple-500", icon: MessageSquare },
   { name: "Beads", desc: "Prioritizes", color: "from-emerald-400 to-teal-500", icon: Target },
   { name: "SLB", desc: "Safety", color: "from-amber-400 to-orange-500", icon: Shield },
+  { name: "DCG", desc: "Command guard", color: "from-red-400 to-rose-500", icon: ShieldAlert },
   { name: "UBS", desc: "Bug scan", color: "from-rose-400 to-red-500", icon: Bug },
   { name: "CM", desc: "Remembers", color: "from-pink-400 to-fuchsia-500", icon: Brain },
   { name: "CASS", desc: "Searches", color: "from-cyan-400 to-sky-500", icon: Search },
@@ -438,6 +440,8 @@ const PROMPT_CHECK_ORM_SCHEMAS = `Now reread AGENTS.md, read your README.md, and
 
 const PROMPT_APPLY_UBS = `Read about the ubs tool in AGENTS.md. Now run UBS and investigate and fix literally every single UBS issue once you determine (after reasoned consideration and close inspection) that it's legit.`;
 
+const PROMPT_USE_DCG = `Before running any destructive command, use DCG to test it. If DCG blocks, propose a safer alternative and proceed only when explicitly approved. Also verify the hook is installed with dcg doctor.`;
+
 const PROMPT_CREATE_TESTS = `Do we have full unit test coverage without using mocks/fake stuff? What about complete e2e integration test scripts with great, detailed logging? If not, then create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid with detailed comments.`;
 
 const PROMPT_COMPLETE_DOCS = `Now I need you to look through the existing documentation in our docusaurus site here and look for the (many, many) instances of functionality in our project that are not described or explained at all yet (or explained inadequately) in the docusaurus site, and then create and expand the documentation in the site to cover these in an exhaustive, intuitive, helpful, useful, pragmatic way. Don't just make a dump of methods, parameters, etc. Add actually well-written narrative explaining what the stuff does, how it is organized, etc. to help another developer understand how it all works so that they can usefully contribute to the system.`;
@@ -469,6 +473,7 @@ const PROMPT_LIBRARY = {
     { key: "scrutinize_ui", label: "Scrutinize UI/UX", prompt: PROMPT_SCRUTINIZE_UI, desc: "Polish to Stripe-level quality", icon: Sparkles },
     { key: "check_orm", label: "Check ORM/Schemas", prompt: PROMPT_CHECK_ORM_SCHEMAS, desc: "Review database design", icon: Database },
     { key: "apply_ubs", label: "Apply UBS", prompt: PROMPT_APPLY_UBS, desc: "Run bug scanner and fix all issues", icon: Bug },
+    { key: "use_dcg", label: "Use DCG", prompt: PROMPT_USE_DCG, desc: "Block destructive commands pre-execution", icon: ShieldAlert },
   ],
   coding: [
     { key: "fix_bug", label: "Fix Bug", prompt: PROMPT_FIX_BUG, desc: "Diagnose and fix root cause", icon: Bug },
@@ -585,6 +590,7 @@ export default function WorkflowPage() {
                 { icon: Users, label: "Multi-agent swarm", color: "text-[oklch(0.75_0.18_195)]" },
                 { icon: MessageSquare, label: "Agent Mail coordination", color: "text-[oklch(0.65_0.18_290)]" },
                 { icon: Shield, label: "SLB safety protocols", color: "text-[oklch(0.78_0.16_75)]" },
+                { icon: ShieldAlert, label: "DCG command guard", color: "text-[oklch(0.65_0.22_25)]" },
                 { icon: RefreshCw, label: "Continuous iteration", color: "text-primary" },
               ].map((item, i) => (
                 <motion.div
@@ -637,7 +643,7 @@ export default function WorkflowPage() {
               </div>
               <h3 className="text-xl font-bold tracking-tight mb-2">The Self-Reinforcing Flywheel</h3>
               <p className="text-sm text-muted-foreground max-w-lg mx-auto">
-                Each tool enhances the others. Agents spawn → coordinate → prioritize → check safety → scan bugs → remember → search → back to agents.
+                Each tool enhances the others. Agents spawn → coordinate → prioritize → check safety (DCG + SLB) → scan bugs → remember → search → back to agents.
               </p>
             </div>
 
@@ -874,11 +880,11 @@ export default function WorkflowPage() {
               </div>
             </WorkflowStep>
 
-            <WorkflowStep number={4} title="Safety with SLB" color="bg-violet-500">
+            <WorkflowStep number={4} title="Safety with DCG + SLB" color="bg-violet-500">
               <p>
-                For risky commands (e.g., delete Kubernetes nodes), SLB classifies as CRITICAL/DANGEROUS/CAUTION.
-                Requires quorum: agents approve via crypto signatures and Agent Mail notifications.
-                Think &quot;two-person rule&quot; like in WarGames.
+                DCG blocks destructive commands before they run. SLB handles the
+                &quot;two-person rule&quot; for high-risk operations (e.g., deleting
+                Kubernetes nodes), requiring quorum approvals via Agent Mail.
               </p>
             </WorkflowStep>
           </div>

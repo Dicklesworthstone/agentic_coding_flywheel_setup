@@ -71,8 +71,6 @@ export function renderLessonComponent(slug: string): React.ReactNode | null {
       return <SlbCaseStudyLesson />;
     case "ru":
       return <RuLesson />;
-    case "dcg":
-      return <DcgLesson />;
     default:
       return null;
   }

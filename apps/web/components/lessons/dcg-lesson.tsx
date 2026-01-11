@@ -21,6 +21,7 @@ import {
   CommandList,
   FeatureCard,
   FeatureGrid,
+  BulletList,
 } from "./lesson-components";
 
 export function DcgLesson() {
@@ -181,12 +182,14 @@ enabled = ["git", "filesystem", "database.postgresql", "containers.docker"]`}
         <Paragraph>
           A block is a warning, not a dead end. Use it as a checkpoint:
         </Paragraph>
-        <ul className="space-y-2 text-white/70 text-lg">
-          <li>1) Read the explanation carefully.</li>
-          <li>2) Prefer the safer alternative when possible.</li>
-          <li>3) Use allow-once only if you are confident.</li>
-          <li>4) Document the decision in your commit or notes.</li>
-        </ul>
+        <BulletList
+          items={[
+            "Read the explanation carefully.",
+            "Prefer the safer alternative when possible.",
+            "Use allow-once only if you are confident.",
+            "Document the decision in your commit or notes.",
+          ]}
+        />
       </Section>
 
       <Divider />
