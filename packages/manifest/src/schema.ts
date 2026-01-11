@@ -9,8 +9,14 @@ import { z } from 'zod';
  * Schema for manifest defaults
  */
 export const ManifestDefaultsSchema = z.object({
-  user: z.string().min(1, 'User cannot be empty'),
-  workspace_root: z.string().min(1, 'Workspace root cannot be empty'),
+  user: z
+    .string()
+    .min(1, 'User cannot be empty')
+    .refine((s) => s.trim().length > 0, 'User cannot be only whitespace'),
+  workspace_root: z
+    .string()
+    .min(1, 'Workspace root cannot be empty')
+    .refine((s) => s.trim().length > 0, 'Workspace root cannot be only whitespace'),
   mode: z.enum(['vibe', 'safe']).default('vibe'),
 });
 
@@ -39,7 +45,10 @@ export const ModuleSchema = z
         /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/,
         'Module ID must be lowercase with dots (e.g., "shell.zsh", "lang.bun")'
       ),
-    description: z.string().min(1, 'Description cannot be empty'),
+    description: z
+      .string()
+      .min(1, 'Description cannot be empty')
+      .refine((s) => s.trim().length > 0, 'Description cannot be only whitespace'),
 
     // SECURITY: Category is used in generated script filenames (install_<category>.sh)
     // and function names (install_<category>). Must be validated to prevent path traversal
@@ -81,7 +90,10 @@ export const ModuleSchema = z
     installed_check: z
       .object({
         run_as: RunAsSchema.default('target_user'),
-        command: z.string().min(1, 'Installed check command cannot be empty'),
+        command: z
+          .string()
+          .min(1, 'Installed check command cannot be empty')
+          .refine((s) => s.trim().length > 0, 'Installed check command cannot be only whitespace'),
       })
       .optional(),
     generated: z.boolean().default(true),
@@ -114,7 +126,10 @@ export const ModuleSchema = z
  */
 export const ManifestSchema = z.object({
   version: z.number().int().positive('Version must be a positive integer'),
-  name: z.string().min(1, 'Name cannot be empty'),
+  name: z
+    .string()
+    .min(1, 'Name cannot be empty')
+    .refine((s) => s.trim().length > 0, 'Name cannot be only whitespace'),
   id: z
     .string()
     .min(1, 'ID cannot be empty')

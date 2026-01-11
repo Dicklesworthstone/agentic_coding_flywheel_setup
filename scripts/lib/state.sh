@@ -435,7 +435,10 @@ state_save() {
         fi
     fi
 
-    state_write_atomic "$state_file" "$content"
+    if ! state_write_atomic "$state_file" "$content"; then
+        declare -f log_error &>/dev/null && log_error "state_save: state_write_atomic failed"
+        return 1
+    fi
 }
 
 # Update specific fields in state
