@@ -781,8 +781,8 @@ show_menu_gum() {
         --header.foreground "$ACFS_PRIMARY" \
         --header "Select a lesson:")
 
-    # Parse choice
-    if [[ "$choice" =~ \[([0-9])\] ]]; then
+    # Parse choice (handles single and double digit lesson numbers)
+    if [[ "$choice" =~ \[([0-9]+)\] ]]; then
         echo "${BASH_REMATCH[1]}"
     elif [[ "$choice" =~ \[a\] ]]; then
         echo "a"
@@ -1023,7 +1023,7 @@ show_lesson() {
             --border-foreground "$ACFS_PRIMARY" \
             --padding "1 2" \
             --margin "0 0 1 0" \
-            "$(gum style --foreground "$ACFS_ACCENT" "Lesson $((idx + 1)) of 9")
+            "$(gum style --foreground "$ACFS_ACCENT" "Lesson $((idx + 1)) of 11")
 $dots
 $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
     else
@@ -1202,8 +1202,8 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
         echo -e "${BOLD}Progress: $completed_count/11 lessons completed${NC}"
         echo ""
 
-        # Progress bar
-        local filled=$((completed_count * 5))
+        # Progress bar (45 chars wide for 11 lessons)
+        local filled=$((completed_count * 45 / 11))
         local empty=$((45 - filled))
         local i
         printf '%s' "${GREEN}"
