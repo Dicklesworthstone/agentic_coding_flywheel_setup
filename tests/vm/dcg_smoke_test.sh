@@ -29,10 +29,24 @@ fi
 
 # Test 2: Version check
 echo "2. Checking DCG version..."
-if dcg_version=$(dcg --version 2>/dev/null | head -1); then
+dcg_version=""
+if command -v script &>/dev/null; then
+    # dcg may only print version on a TTY; script provides a pseudo-tty
+    dcg_version=$(script -q -c 'dcg --version' /dev/null 2>/dev/null | head -1 || true)
+fi
+if [[ -n "$dcg_version" ]]; then
     pass "dcg version: $dcg_version"
 else
-    fail "dcg --version failed"
+    if dcg --version >/dev/null 2>&1; then
+        dcg_version=$(dcg --version 2>/dev/null | head -1 || true)
+        if [[ -n "$dcg_version" ]]; then
+            pass "dcg version: $dcg_version"
+        else
+            pass "dcg --version succeeded (output requires TTY)"
+        fi
+    else
+        fail "dcg --version failed"
+    fi
 fi
 
 # Test 3: Doctor output and hook status
