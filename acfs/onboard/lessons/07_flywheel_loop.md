@@ -212,7 +212,7 @@ What kind of project should we create?"
 One final lesson: keeping everything updated.
 
 ```bash
-onboard 9
+onboard 8
 ```
 
 ---

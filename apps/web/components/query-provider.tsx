@@ -29,20 +29,34 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   // Server and client both render QueryClientProvider initially,
   // then we upgrade to PersistQueryClientProvider on client after mount
   useEffect(() => {
-    const storagePersister = createSyncStoragePersister({
-      storage: window.localStorage,
-      key: "acfs-query-cache",
-    });
+    // Guard against localStorage being unavailable (private browsing, restrictions)
+    try {
+      // Test localStorage availability first
+      const testKey = "__acfs_test__";
+      window.localStorage.setItem(testKey, "test");
+      window.localStorage.removeItem(testKey);
 
-    // Defer state update to avoid setState-in-effect lint violations.
-    let cancelled = false;
-    Promise.resolve().then(() => {
-      if (!cancelled) setPersister(storagePersister);
-    });
+      const storagePersister = createSyncStoragePersister({
+        storage: window.localStorage,
+        key: "acfs-query-cache",
+      });
 
-    return () => {
-      cancelled = true;
-    };
+      // Defer state update to avoid setState-in-effect lint violations.
+      let cancelled = false;
+      Promise.resolve().then(() => {
+        if (!cancelled) setPersister(storagePersister);
+      });
+
+      return () => {
+        cancelled = true;
+      };
+    } catch {
+      // localStorage unavailable (private browsing, quota exceeded, etc.)
+      // Silently fall back to non-persisted state - app will still work
+      console.warn(
+        "[ACFS] localStorage unavailable, running without query persistence"
+      );
+    }
   }, []);
 
   // Always render PersistQueryClientProvider once we have a persister,

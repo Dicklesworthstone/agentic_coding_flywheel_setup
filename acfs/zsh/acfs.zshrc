@@ -145,7 +145,7 @@ alias install='sudo apt install'
 alias search='apt search'
 
 # Update agent CLIs
-alias uca='~/.local/bin/claude update; bun install -g --trust @openai/codex@latest; bun install -g --trust @google/gemini-cli@latest'
+alias uca='~/.local/bin/claude update && bun install -g --trust @openai/codex@latest && bun install -g --trust @google/gemini-cli@latest'
 
 # --- Custom functions ---
 mkcd() { mkdir -p "$1" && cd "$1" || return; }
@@ -266,12 +266,12 @@ acfs() {
       fi
       ;;
     session|sessions)
-      if [[ -f "$acfs_home/scripts/lib/doctor.sh" ]]; then
-        bash "$acfs_home/scripts/lib/doctor.sh" session "$@"
+      if [[ -f "$acfs_home/scripts/lib/session.sh" ]]; then
+        bash "$acfs_home/scripts/lib/session.sh" "$@"
       elif [[ -x "$acfs_bin" ]]; then
         "$acfs_bin" session "$@"
       else
-        echo "Error: doctor.sh not found"
+        echo "Error: session.sh not found"
         echo "Re-run the ACFS installer to get the latest scripts"
         return 1
       fi
