@@ -180,7 +180,7 @@ ACFS consists of **three products in one repo**:
 
 ```bash
 # Coding agents (dangerously enabled for vibe mode)
-alias cc='NODE_OPTIONS="--max-old-space-size=32768" ENABLE_BACKGROUND_TASKS=1 claude --dangerously-skip-permissions'
+alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
 alias cod='codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.2-codex -c model_reasoning_effort="xhigh" -c model_reasoning_summary_format=experimental --enable web_search_request'
 alias gmi='gemini --yolo --model gemini-3-pro-preview'
 

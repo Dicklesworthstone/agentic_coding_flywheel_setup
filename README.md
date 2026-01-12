@@ -1189,8 +1189,8 @@ Benefits for agentic workflows:
 
 **Vibe Mode Aliases:**
 ```bash
-# Claude Code with max memory and background tasks
-alias cc='NODE_OPTIONS="--max-old-space-size=32768" ENABLE_BACKGROUND_TASKS=1 claude --dangerously-skip-permissions'
+# Claude Code with max memory
+alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
 
 # Codex with bypass and dangerous filesystem access
 alias cod='codex --dangerously-bypass-approvals-and-sandbox'

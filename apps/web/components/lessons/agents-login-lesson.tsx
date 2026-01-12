@@ -87,11 +87,9 @@ export function AgentsLoginLesson() {
             alias="cc"
             name="Claude Code"
             code={`NODE_OPTIONS="--max-old-space-size=32768" \\
-  ENABLE_BACKGROUND_TASKS=1 \\
   claude --dangerously-skip-permissions`}
             features={[
               "Extra memory for large projects",
-              "Background task support",
               "No permission prompts",
             ]}
             gradient="from-orange-500/20 to-amber-500/20"
