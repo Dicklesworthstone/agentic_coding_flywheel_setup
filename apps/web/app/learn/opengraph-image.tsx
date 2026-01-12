@@ -10,14 +10,14 @@ export const size = {
 };
 export const contentType = "image/png";
 
-// Lesson categories with icons
+// Lesson categories
 const categories = [
-  { name: "Linux Basics", icon: "terminal", color: "#22d3ee" },
-  { name: "SSH & Tmux", icon: "connection", color: "#a855f7" },
-  { name: "Git & GitHub", icon: "git", color: "#f472b6" },
-  { name: "AI Agents", icon: "bot", color: "#22c55e" },
-  { name: "NTM & Tools", icon: "layers", color: "#f59e0b" },
-  { name: "The Flywheel", icon: "refresh", color: "#3b82f6" },
+  { name: "Linux Basics", color: "#22d3ee" },
+  { name: "SSH & Tmux", color: "#a855f7" },
+  { name: "Git & GitHub", color: "#f472b6" },
+  { name: "AI Agents", color: "#22c55e" },
+  { name: "NTM & Tools", color: "#f59e0b" },
+  { name: "The Flywheel", color: "#3b82f6" },
 ];
 
 export default async function Image() {
