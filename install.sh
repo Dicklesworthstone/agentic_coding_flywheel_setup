@@ -4352,6 +4352,19 @@ main() {
         _run_phase_with_report "stack" "8/9 Stack" install_stack_phase
         _run_phase_with_report "finalize" "9/9 Finalize" finalize
 
+        # Always update critical metadata files (checksums.yaml, VERSION) regardless
+        # of resume state. These files are needed by `acfs-update --stack` to verify
+        # upstream installers, and must stay in sync with the bootstrap archive.
+        # Bug fix: Previously, on resume, the finalize phase would be skipped if it
+        # had completed before, leaving stale checksums that cause verification failures.
+        log_detail "Ensuring critical metadata files are up to date..."
+        if [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]] && [[ -r "$ACFS_CHECKSUMS_YAML" ]]; then
+            install_asset "checksums.yaml" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
+            install_asset "VERSION" "$ACFS_HOME/VERSION" 2>/dev/null || true
+            $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" "$ACFS_HOME/VERSION" 2>/dev/null || true
+            log_detail "Updated checksums.yaml and VERSION from bootstrap archive"
+        fi
+
         # Calculate installation time for success report
         local installation_end_time total_seconds
         installation_end_time=$(date +%s)
