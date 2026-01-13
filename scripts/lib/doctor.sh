@@ -1319,20 +1319,20 @@ check_postgres_role() {
 
     # Try to check if target user role exists
     # pg_roles view is readable by any authenticated user - no superuser required
-    # SECURITY: Use psql -v to pass variable and :'var' syntax for safe interpolation
+    # SECURITY: Safe to use bash variable substitution since target_user is validated with regex above
     local role_check
     local connect_success=false
-    local sql_query="SELECT 1 FROM pg_roles WHERE rolname=:'target_user'"
+    local sql_query="SELECT 1 FROM pg_roles WHERE rolname='$target_user'"
 
     # Try connecting as current user first (mirrors check_postgres_connection behavior)
     # This works when pg_hba.conf allows peer auth for local users
-    if role_check=$(timeout 5 psql -w -tAc "$sql_query" -v target_user="$target_user" 2>/dev/null); then
+    if role_check=$(timeout 5 psql -w -tAc "$sql_query" 2>/dev/null); then
         connect_success=true
     # Try localhost with postgres user as fallback
-    elif role_check=$(timeout 5 psql -w -h localhost -U postgres -tAc "$sql_query" -v target_user="$target_user" 2>/dev/null); then
+    elif role_check=$(timeout 5 psql -w -h localhost -U postgres -tAc "$sql_query" 2>/dev/null); then
         connect_success=true
     # Try unix socket with postgres user as last resort
-    elif role_check=$(timeout 5 psql -w -h /var/run/postgresql -U postgres -tAc "$sql_query" -v target_user="$target_user" 2>/dev/null); then
+    elif role_check=$(timeout 5 psql -w -h /var/run/postgresql -U postgres -tAc "$sql_query" 2>/dev/null); then
         connect_success=true
     fi
 
