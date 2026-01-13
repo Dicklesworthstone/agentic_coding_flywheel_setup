@@ -1239,7 +1239,17 @@ check_gemini_auth() {
     # Credentials are stored in config files, NOT via API keys
     local found_auth=false
 
-    # Check for Gemini CLI credentials
+    # Check for actual Gemini CLI OAuth tokens (primary auth method)
+    if [[ -f "$HOME/.gemini/mcp-oauth-tokens-v2.json" ]]; then
+        found_auth=true
+    fi
+
+    # Check for Google accounts file (secondary auth evidence)
+    if [[ -f "$HOME/.gemini/google_accounts.json" ]]; then
+        found_auth=true
+    fi
+
+    # Check for alternative credential locations (fallback)
     if [[ -f "$HOME/.config/gemini/credentials.json" ]]; then
         found_auth=true
     fi
