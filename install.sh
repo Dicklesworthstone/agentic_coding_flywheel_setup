@@ -3544,6 +3544,14 @@ install_stack_phase() {
         try_step "Installing SLB" acfs_run_verified_upstream_script_as_target "slb" "bash" || log_warn "SLB installation may have failed"
     fi
 
+    # RU (Repo Updater)
+    if binary_installed "ru"; then
+        log_detail "RU already installed"
+    else
+        log_detail "Installing RU"
+        try_step "Installing RU" acfs_run_verified_upstream_script_as_target "ru" "bash"
+    fi
+
     # DCG (Destructive Command Guard)
     if binary_installed "dcg"; then
         log_detail "DCG already installed"
