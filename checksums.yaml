@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-01-14T12:08:10+00:00
+# checksums.yaml - Auto-generated 2026-01-14T08:06:49+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -40,7 +40,7 @@ installers:
 
   ntm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh"
-    sha256: "667fcb725e3a22a1b4e6317f8bd470bab9e1a4e6175df6e69e71c99d58dd727a"
+    sha256: "7b29cec4e2de0fd88c09dc50f99eebc21e64116dd7fe6269073640311ed34d35"
 
   cm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/cass_memory_system/main/install.sh"
