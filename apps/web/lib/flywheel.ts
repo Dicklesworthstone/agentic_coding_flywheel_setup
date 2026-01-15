@@ -790,43 +790,6 @@ export const flywheelTools: FlywheelTool[] = [
       'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh" | bash',
     language: "Bash",
   },
-  {
-    id: "ms",
-    name: "Meta Skill",
-    shortName: "MS",
-    href: "https://github.com/Dicklesworthstone/meta_skill",
-    icon: "Sparkles",
-    color: "from-teal-400 to-emerald-500",
-    tagline: "Complete skill management platform",
-    description:
-      "Store skills, search them, track effectiveness, package for sharing, and integrate with AI agents via MCP server. Skills come from hand-written files, CASS mining, bundles, or guided workflows.",
-    deepDescription:
-      "MS is the skill management layer for AI agents. Thompson sampling learns which skills work best over time. The MCP server exposes 6 native tools (search, load, evidence, list, show, doctor) so any AI agent can query skills directly. Multi-layer security: ACIP detects prompt injection, DCG classifies command safety, path policy prevents escapes, secret scanner redacts sensitive data.",
-    connectsTo: ["cass", "cm", "bv"],
-    connectionDescriptions: {
-      cass: "One input source for skill extraction (among several)",
-      cm: "Skills and CM memories are complementary knowledge layers",
-      bv: "Graph analysis via bv for PageRank, betweenness, cycles",
-    },
-    stars: 10,
-    features: [
-      "MCP server: Native AI agent integration (6 tools)",
-      "Thompson sampling: Learns from usage to optimize suggestions",
-      "ACIP: Prompt-injection detection with quarantine",
-      "DCG: Command safety tiers (Safe/Caution/Danger/Critical)",
-      "Hybrid search: BM25 + hash embeddings with RRF fusion",
-      "Token packing: Optimize skill loading for context budgets",
-    ],
-    cliCommands: [
-      "ms mcp serve              # Start MCP server for AI agents",
-      "ms search 'error handling' # Hybrid search",
-      "ms load <skill> --pack 2000 # Token-packed loading",
-      "ms security scan <file>   # ACIP prompt injection check",
-      "ms graph insights         # Dependency analysis via bv",
-    ],
-    installCommand: "cargo install --git https://github.com/Dicklesworthstone/meta_skill",
-    language: "Rust",
-  },
 ];
 
 // ============================================================
@@ -862,7 +825,7 @@ export const flywheelDescription = {
   ],
   metrics: {
     totalStars: "2K+",
-    toolCount: 11,
+    toolCount: 10,
     languages: ["Go", "Rust", "TypeScript", "Python", "Bash"],
     avgInstallTime: "< 30s each",
     projectsSimultaneous: "8+",

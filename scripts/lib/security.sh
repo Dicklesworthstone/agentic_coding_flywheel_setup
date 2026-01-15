@@ -1054,8 +1054,6 @@ verify_all_installers_json() {
         str="${str//$'\t'/\\t}"
         str="${str//$'\r'/\\r}"
         str="${str//$'\n'/\\n}"
-        str="${str//$'\b'/\\b}"
-        str="${str//$'\f'/\\f}"
         echo -n "$str"
     }
 
@@ -1069,28 +1067,9 @@ verify_all_installers_json() {
             continue
         fi
 
-        local actual=""
+        local actual
         local fetch_error=""
-        local tmp_err=""
-
-        # Create temp file for stderr capture
-        if command -v mktemp &>/dev/null; then
-            tmp_err=$(mktemp 2>/dev/null) || tmp_err="/tmp/acfs-err-$RANDOM"
-        else
-            tmp_err="/tmp/acfs-err-$RANDOM"
-        fi
-
-        # Capture stdout to variable, stderr to file
-        if actual=$(fetch_checksum "$url" 2>"$tmp_err"); then
-            # Success: actual contains the hash
-            :
-        else
-            # Failure: read error from stderr capture
-            fetch_error=$(cat "$tmp_err")
-            # Fallback if empty
-            [[ -z "$fetch_error" ]] && fetch_error="Unknown error fetching checksum"
-        fi
-        rm -f "$tmp_err"
+        actual=$(fetch_checksum "$url" 2>&1) || fetch_error="$actual"
 
         if [[ -n "$fetch_error" ]]; then
             local escaped_error

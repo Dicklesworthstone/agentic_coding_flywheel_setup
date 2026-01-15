@@ -3902,7 +3902,6 @@ ACFS supports various configuration mechanisms for advanced users.
 |----------|---------|-------------|
 | `ACFS_HOME` | `~/.acfs` | Configuration directory |
 | `ACFS_REF` | `main` | Git ref to install from (tag, branch, or commit SHA) |
-| `ACFS_CHECKSUMS_REF` | `main` (when pinned) / `ACFS_REF` (when branch) | Ref used to fetch `checksums.yaml` |
 | `ACFS_LOG_DIR` | `/var/log/acfs` | Log directory |
 | `TARGET_USER` | `ubuntu` | User to configure |
 | `TARGET_HOME` | `/home/$TARGET_USER` | User home directory |
@@ -3917,13 +3916,9 @@ ACFS_REF=feature/new-tool curl -fsSL "..." | bash -s -- --yes --mode vibe
 
 # Install from a specific commit (reproducibility)
 ACFS_REF=abc1234 curl -fsSL "..." | bash -s -- --yes --mode vibe
-
-# Pin installer version but use latest checksums (avoid stale hash mismatches)
-ACFS_REF=v0.5.0 ACFS_CHECKSUMS_REF=main curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/v0.5.0/install.sh" | bash -s -- --yes --mode vibe
 ```
 
 > **Tip:** Always match the URL path with `ACFS_REF` so the initial script and all subsequently fetched scripts come from the same ref.
-> **Tip:** For pinned installs (tags/SHAs), checksums default to `main` to avoid stale installer hashes. Override with `ACFS_CHECKSUMS_REF` if you want checksums pinned to the same ref.
 
 ### Complete Installer CLI Options
 
@@ -3937,7 +3932,6 @@ The installer supports extensive command-line customization:
 --mode vibe|safe       # Installation mode (default: vibe)
 --interactive          # Force interactive mode with prompts
 --strict               # Abort on any error (vs. continue with warnings)
---checksums-ref <ref>  # Fetch checksums.yaml from this ref (default: main for pinned tags/SHAs)
 ```
 
 **Resume & State:**

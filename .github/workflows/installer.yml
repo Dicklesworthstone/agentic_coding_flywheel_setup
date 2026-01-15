@@ -140,35 +140,6 @@ jobs:
           name: checksum-verification
           path: result.json
 
-  pinned-ref-smoke:
-    name: Pinned Ref Smoke (checksums from main)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    container:
-      image: ubuntu:24.04
-    env:
-      DEBIAN_FRONTEND: noninteractive
-    steps:
-      - name: Install container prerequisites
-        working-directory: /
-        run: |
-          apt-get update
-          apt-get install -y sudo curl git ca-certificates jq unzip tar xz-utils gnupg
-
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure CI sudo
-        run: |
-          echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/90-ci-ubuntu
-          chmod 440 /etc/sudoers.d/90-ci-ubuntu
-
-      - name: Run pinned-ref install (checksums from main)
-        run: |
-          ACFS_REF="$(cat VERSION)" \
-          ACFS_CHECKSUMS_REF=main \
-          bash install.sh --yes --skip-preflight --skip-ubuntu-upgrade --mode safe --only lang.uv
-
   selection-tests:
     name: Selection & Contract Tests
     runs-on: ubuntu-latest

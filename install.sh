@@ -29,7 +29,6 @@
 #   --only-phase <phase>  Only run modules in a specific phase (repeatable)
 #   --skip <module>       Skip a specific module (repeatable)
 #   --no-deps             Disable automatic dependency closure (expert/debug)
-#   --checksums-ref <ref> Fetch checksums.yaml from this ref (default: main for pinned tags/SHAs)
 # ============================================================
 
 set -euo pipefail
@@ -49,21 +48,8 @@ ACFS_VERSION="0.5.0"
 ACFS_REPO_OWNER="${ACFS_REPO_OWNER:-Dicklesworthstone}"
 ACFS_REPO_NAME="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
 ACFS_REF="${ACFS_REF:-main}"
-# Preserve the original ref (branch/tag/sha) before resolving to a commit SHA.
-ACFS_REF_INPUT="$ACFS_REF"
-# Checksums ref defaults to ACFS_REF_INPUT, but pinned tags/SHAs fall back to main
-# to avoid stale checksums for fast-moving upstream installers.
-ACFS_CHECKSUMS_REF="${ACFS_CHECKSUMS_REF:-}"
-if [[ -z "$ACFS_CHECKSUMS_REF" ]]; then
-    if [[ "$ACFS_REF_INPUT" =~ ^v[0-9]+(\.[0-9]+){1,2}([.-][A-Za-z0-9]+)*$ ]] || [[ "$ACFS_REF_INPUT" =~ ^[0-9a-f]{7,40}$ ]]; then
-        ACFS_CHECKSUMS_REF="main"
-    else
-        ACFS_CHECKSUMS_REF="$ACFS_REF_INPUT"
-    fi
-fi
 ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
-ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
-export ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_VERSION
+export ACFS_RAW ACFS_VERSION
 ACFS_COMMIT_SHA=""       # Short SHA for display (12 chars)
 ACFS_COMMIT_SHA_FULL=""  # Full SHA for pinning resume scripts (40 chars)
 
@@ -628,20 +614,6 @@ parse_args() {
             --skip-preflight)
                 SKIP_PREFLIGHT=true
                 shift
-                ;;
-            --checksums-ref|--checksums-ref=*)
-                if [[ "$1" == "--checksums-ref" ]]; then
-                    if [[ -z "${2:-}" ]]; then
-                        log_fatal "--checksums-ref requires a ref (e.g., --checksums-ref main)"
-                    fi
-                    ACFS_CHECKSUMS_REF="$2"
-                    shift 2
-                else
-                    ACFS_CHECKSUMS_REF="${1#*=}"
-                    shift
-                fi
-                ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
-                export ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW
                 ;;
             --skip-ubuntu-upgrade)
                 # Skip automatic Ubuntu version upgrade (nb4)
@@ -1398,58 +1370,6 @@ install_asset() {
     fi
 }
 
-install_checksums_yaml() {
-    local dest_path="$1"
-
-    if [[ -z "$dest_path" ]]; then
-        log_error "install_checksums_yaml: Missing destination path"
-        return 1
-    fi
-
-    # If checksums ref matches the install ref, use the standard asset path.
-    if [[ -z "${ACFS_CHECKSUMS_REF:-}" || -z "${ACFS_REF_INPUT:-}" || "$ACFS_CHECKSUMS_REF" == "$ACFS_REF_INPUT" ]]; then
-        install_asset "checksums.yaml" "$dest_path"
-        return $?
-    fi
-
-    # Otherwise, fetch checksums from the dedicated checksums ref.
-    local content=""
-    content="$(acfs_fetch_fresh_checksums_via_api)" || {
-        local cb
-        cb="$(date +%s)"
-        content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml?cb=${cb}")" || {
-            log_error "Failed to fetch checksums.yaml from ref '${ACFS_CHECKSUMS_REF}'"
-            return 1
-        }
-    }
-
-    local dest_dir
-    dest_dir="$(dirname "$dest_path")"
-
-    local sudo_cmd="${SUDO:-}"
-    if [[ -z "$sudo_cmd" ]] && [[ $EUID -ne 0 ]] && command -v sudo &>/dev/null; then
-        sudo_cmd="sudo"
-    fi
-
-    local need_sudo=false
-    if [[ -e "$dest_path" ]]; then
-        [[ -w "$dest_path" ]] || need_sudo=true
-    else
-        [[ -w "$dest_dir" ]] || need_sudo=true
-    fi
-
-    if [[ "$need_sudo" == "true" ]]; then
-        printf '%s' "$content" | $sudo_cmd tee "$dest_path" >/dev/null
-    else
-        printf '%s' "$content" > "$dest_path"
-    fi
-
-    if [[ ! -f "$dest_path" ]]; then
-        log_error "install_checksums_yaml: File not created: $dest_path"
-        return 1
-    fi
-}
-
 run_as_target() {
     local user="$TARGET_USER"
     local user_home="${TARGET_HOME:-/home/$user}"
@@ -1578,10 +1498,9 @@ acfs_fetch_url_content() {
 
 # Fetch checksums.yaml directly via GitHub API (bypasses CDN caching entirely).
 # This is used as a fallback when cached checksums don't match upstream.
-# Uses ACFS_CHECKSUMS_REF to avoid stale checksums when ACFS_REF is pinned.
 # Uses the raw content header to get the file directly without base64 encoding.
 acfs_fetch_fresh_checksums_via_api() {
-    local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/contents/checksums.yaml?ref=${ACFS_CHECKSUMS_REF}"
+    local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/contents/checksums.yaml?ref=${ACFS_REF}"
 
     # Use application/vnd.github.raw to get raw file content directly (no base64)
     local content
@@ -1657,22 +1576,14 @@ acfs_load_upstream_checksums() {
     local content=""
     local checksums_file=""
     local checksums_source="unknown"
-    local prefer_local_checksums=true
 
-    # If checksums ref differs from the install ref, avoid using bootstrapped/local
-    # checksums which may be stale for fast-moving upstream installers.
-    if [[ -n "${ACFS_CHECKSUMS_REF:-}" && -n "${ACFS_REF_INPUT:-}" && "$ACFS_CHECKSUMS_REF" != "$ACFS_REF_INPUT" ]]; then
-        prefer_local_checksums=false
-        log_detail "Using checksums from ref '${ACFS_CHECKSUMS_REF}' (install ref: '${ACFS_REF_INPUT}')"
-    fi
-
-    if [[ "$prefer_local_checksums" == "true" && -n "${ACFS_CHECKSUMS_YAML:-}" ]] && [[ -r "$ACFS_CHECKSUMS_YAML" ]]; then
+    if [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]] && [[ -r "$ACFS_CHECKSUMS_YAML" ]]; then
         checksums_file="$ACFS_CHECKSUMS_YAML"
         checksums_source="bootstrap"
-    elif [[ "$prefer_local_checksums" == "true" && -n "${SCRIPT_DIR:-}" ]] && [[ -r "$SCRIPT_DIR/checksums.yaml" ]]; then
+    elif [[ -n "${SCRIPT_DIR:-}" ]] && [[ -r "$SCRIPT_DIR/checksums.yaml" ]]; then
         checksums_file="$SCRIPT_DIR/checksums.yaml"
         checksums_source="local"
-    elif [[ "$prefer_local_checksums" == "true" && -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -r "$ACFS_BOOTSTRAP_DIR/checksums.yaml" ]]; then
+    elif [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -r "$ACFS_BOOTSTRAP_DIR/checksums.yaml" ]]; then
         checksums_file="$ACFS_BOOTSTRAP_DIR/checksums.yaml"
         checksums_source="bootstrap"
     fi
@@ -1685,7 +1596,7 @@ acfs_load_upstream_checksums() {
             # Fallback to raw.githubusercontent.com with cache-bust
             local cb
             cb="$(date +%s)"
-            content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml?cb=${cb}")" || {
+            content="$(acfs_fetch_url_content "$ACFS_RAW/checksums.yaml?cb=${cb}")" || {
                 log_error "Failed to fetch checksums.yaml from any source"
                 return 1
             }
@@ -3545,7 +3456,7 @@ install_stack_phase() {
         if [[ ! -f "$ntm_config_file" ]]; then
             log_detail "Creating NTM config with current model defaults"
             run_as_target mkdir -p "$ntm_config_dir" || true
-            if run_as_target cat > "$ntm_config_file" << 'NTM_CONFIG_EOF'
+            run_as_target cat > "$ntm_config_file" << 'NTM_CONFIG_EOF'
 # NTM Configuration - created by ACFS
 # Updated model defaults for ChatGPT Pro and Gemini accounts
 
@@ -3559,7 +3470,7 @@ default_gemini = "gemini-3-pro-preview"
 # Claude model - Opus 4.5 (most capable)
 default_claude = "claude-opus-4-5"
 NTM_CONFIG_EOF
-            then
+            if [[ $? -eq 0 ]]; then
                 log_success "NTM config created with current model defaults"
             else
                 log_warn "Failed to create NTM config"
@@ -3794,7 +3705,7 @@ finalize() {
     try_step "Setting scripts ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts" || return 1
 
     # Install checksums + version metadata so `acfs update --stack` can verify upstream scripts.
-    try_step "Installing checksums.yaml" install_checksums_yaml "$ACFS_HOME/checksums.yaml" || return 1
+    try_step "Installing checksums.yaml" install_asset "checksums.yaml" "$ACFS_HOME/checksums.yaml" || return 1
     try_step "Installing VERSION" install_asset "VERSION" "$ACFS_HOME/VERSION" || return 1
     try_step "Setting metadata ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" "$ACFS_HOME/VERSION" || true
 
@@ -4486,15 +4397,9 @@ main() {
         # Related: PR #44 - fix checksums.yaml becoming stale on resume installs
         if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -d "$ACFS_BOOTSTRAP_DIR" ]]; then
             if [[ -f "$ACFS_BOOTSTRAP_DIR/checksums.yaml" ]]; then
-                if [[ -n "${ACFS_CHECKSUMS_REF:-}" && -n "${ACFS_REF_INPUT:-}" && "$ACFS_CHECKSUMS_REF" != "$ACFS_REF_INPUT" ]]; then
-                    log_detail "Refreshing checksums.yaml from ref '${ACFS_CHECKSUMS_REF}'"
-                    install_checksums_yaml "$ACFS_HOME/checksums.yaml" || true
-                    $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
-                else
-                    log_detail "Ensuring checksums.yaml is up to date"
-                    $SUDO cp -f "$ACFS_BOOTSTRAP_DIR/checksums.yaml" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
-                    $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
-                fi
+                log_detail "Ensuring checksums.yaml is up to date"
+                $SUDO cp -f "$ACFS_BOOTSTRAP_DIR/checksums.yaml" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
+                $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
             fi
             if [[ -f "$ACFS_BOOTSTRAP_DIR/VERSION" ]]; then
                 log_detail "Ensuring VERSION is up to date"
