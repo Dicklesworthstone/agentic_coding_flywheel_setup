@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # Test session sanitization patterns
 
+source scripts/lib/logging.sh
 source scripts/lib/session.sh
-
-# Mock logging
-log_error() { echo "ERROR: $1" >&2; }
-log_warn() { echo "WARN: $1" >&2; }
 
 # Test Data
 # Construct keys dynamically to avoid secret scanning detection

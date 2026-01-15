@@ -99,10 +99,16 @@ fi
 run_one() {
   local ubuntu_version="$1"
   local image="ubuntu:${ubuntu_version}"
+  local timestamp
+  timestamp=$(date +%Y%m%d_%H%M%S)
+  local log_dir="${REPO_ROOT}/tests/logs/vm_test_${ubuntu_version}_${timestamp}"
+
+  mkdir -p "$log_dir"
 
   echo "" >&2
   echo "============================================================" >&2
   echo "[ACFS Test] Ubuntu ${ubuntu_version} (mode=${MODE})" >&2
+  echo "Logs: ${log_dir}" >&2
   echo "============================================================" >&2
 
   docker pull "$image" >/dev/null
@@ -114,8 +120,41 @@ run_one() {
     -e ACFS_CHECKSUMS_REF="${ACFS_CHECKSUMS_REF:-}" \
     -e ACFS_REF="${ACFS_REF:-}" \
     -v "${REPO_ROOT}:/repo:ro" \
+    -v "${log_dir}:/logs:rw" \
     "$image" bash -lc '
+      # Capture everything to log file while showing on screen
+      exec > >(tee -a /logs/install.log) 2>&1
+
       set -euo pipefail
+
+      echo "Starting ACFS E2E Test on Ubuntu ${ubuntu_version}"
+      echo "Start Time: $(date)"
+
+      # Cleanup function to save artifacts
+      cleanup() {
+        local exit_code=$?
+        echo "Test finished with exit code: $exit_code"
+        
+        # Save state.json if it exists
+        if [[ -f /home/ubuntu/.acfs/state.json ]]; then
+            cp /home/ubuntu/.acfs/state.json /logs/state.json
+            echo "Saved state.json to /logs/state.json"
+        else
+            echo "No state.json found to save"
+        fi
+
+        # Generate simple report
+        cat <<JSON > /logs/report.json
+{
+  "ubuntu_version": "${ubuntu_version}",
+  "exit_code": $exit_code,
+  "timestamp": "$(date -Iseconds)",
+  "mode": "${ACFS_TEST_MODE}"
+}
+JSON
+        exit $exit_code
+      }
+      trap cleanup EXIT
 
       apt-get update
       apt-get install -y sudo curl git ca-certificates jq unzip tar xz-utils gnupg
