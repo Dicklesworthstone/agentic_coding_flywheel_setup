@@ -27,12 +27,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log repository dispatch payload
-        if: github.event_name == 'repository_dispatch'
-        run: |
-          echo "Repository dispatch payload:"
-          echo '${{ toJson(github.event.client_payload) }}'
-
       - name: Verify current checksums
         id: verify
         run: |

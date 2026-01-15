@@ -681,7 +681,7 @@ generate_agents_md() {
         content+="$section_content"
     done
 
-    printf '%s\n' "$content"
+    echo "$content"
 }
 
 # Generate AGENTS.md and write to file

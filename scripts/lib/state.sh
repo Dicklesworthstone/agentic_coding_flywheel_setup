@@ -309,30 +309,6 @@ state_write_atomic() {
     # Set appropriate permissions before moving (state may include failure context; keep it owner-only).
     chmod 600 "$temp_file" 2>/dev/null || true
 
-    # If the installer is running as root but targeting a non-root user,
-    # ensure the file is owned by that user BEFORE the atomic move.
-    # This prevents a race window where the file is owned by root/600 and unreadable.
-    #
-    # Only do this for state files under TARGET_HOME (per-user state) and
-    # never for system state under /var/lib/acfs.
-    if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "$TARGET_USER" != "root" ]]; then
-        local target_home="${TARGET_HOME:-/home/${TARGET_USER}}"
-        if [[ -n "$target_home" ]] && [[ "$target_home" != "/" ]] && [[ "$target_home" == /* ]] && [[ "$file_path" == "$target_home/"* ]]; then
-            local target_group=""
-            if command -v id &>/dev/null; then
-                target_group="$(id -gn "$TARGET_USER" 2>/dev/null || true)"
-            fi
-
-            if [[ -n "$target_group" ]]; then
-                chown "$TARGET_USER:$target_group" "$temp_file" 2>/dev/null \
-                    || chown "$TARGET_USER:$TARGET_USER" "$temp_file" 2>/dev/null \
-                    || true
-            else
-                chown "$TARGET_USER" "$temp_file" 2>/dev/null || true
-            fi
-        fi
-    fi
-
     # Atomic rename: on POSIX filesystems, rename() is guaranteed atomic
     # when source and target are on the same filesystem
     mv -f "$temp_file" "$file_path" 2>/dev/null
@@ -348,6 +324,30 @@ state_write_atomic() {
 
         declare -f log_error &>/dev/null && log_error "state_write_atomic: atomic rename failed (error $mv_err)"
         return 1
+    fi
+
+    # If the installer is running as root but targeting a non-root user,
+    # ensure that user can read the state file. The atomic rename above
+    # replaces the prior file with a root-owned temp file.
+    #
+    # Only do this for state files under TARGET_HOME (per-user state) and
+    # never for system state under /var/lib/acfs.
+    if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "$TARGET_USER" != "root" ]]; then
+        local target_home="${TARGET_HOME:-/home/${TARGET_USER}}"
+        if [[ -n "$target_home" ]] && [[ "$target_home" != "/" ]] && [[ "$target_home" == /* ]] && [[ "$file_path" == "$target_home/"* ]]; then
+            local target_group=""
+            if command -v id &>/dev/null; then
+                target_group="$(id -gn "$TARGET_USER" 2>/dev/null || true)"
+            fi
+
+            if [[ -n "$target_group" ]]; then
+                chown "$TARGET_USER:$target_group" "$file_path" 2>/dev/null \
+                    || chown "$TARGET_USER:$TARGET_USER" "$file_path" 2>/dev/null \
+                    || true
+            else
+                chown "$TARGET_USER" "$file_path" 2>/dev/null || true
+            fi
+        fi
     fi
 
     # Optional: sync the directory entry to ensure the rename is durable

@@ -25,12 +25,12 @@ if ! declare -f log_step >/dev/null; then
         if [[ $# -ge 2 ]]; then
             local step="$1"
             local message="$2"
-            printf "${ACFS_BLUE}[%s]${ACFS_NC} %s\n" "$step" "$message" >&2
+            echo -e "${ACFS_BLUE}[$step]${ACFS_NC} $message" >&2
             return 0
         fi
 
         local message="${1:-}"
-        printf "${ACFS_BLUE}[•]${ACFS_NC} %s\n" "$message" >&2
+        echo -e "${ACFS_BLUE}[•]${ACFS_NC} $message" >&2
     }
 fi
 
@@ -40,7 +40,7 @@ if ! declare -f log_section >/dev/null; then
     log_section() {
         local title="$1"
         echo "" >&2
-        printf "${ACFS_BLUE}%s${ACFS_NC}\n" "$title" >&2
+        echo -e "${ACFS_BLUE}$title${ACFS_NC}" >&2
     }
 fi
 
@@ -48,7 +48,7 @@ fi
 # Usage: log_detail "Installing zsh..."
 if ! declare -f log_detail >/dev/null; then
     log_detail() {
-        printf "${ACFS_GRAY}    %s${ACFS_NC}\n" "$1" >&2
+        echo -e "${ACFS_GRAY}    $1${ACFS_NC}" >&2
     }
 fi
 
@@ -64,7 +64,7 @@ fi
 # Usage: log_success "Installation complete"
 if ! declare -f log_success >/dev/null; then
     log_success() {
-        printf "${ACFS_GREEN}%s${ACFS_NC}\n" "$1" >&2
+        echo -e "${ACFS_GREEN}$1${ACFS_NC}" >&2
     }
 fi
 
@@ -72,7 +72,7 @@ fi
 # Usage: log_warn "This may take a while"
 if ! declare -f log_warn >/dev/null; then
     log_warn() {
-        printf "${ACFS_YELLOW}%s${ACFS_NC}\n" "$1" >&2
+        echo -e "${ACFS_YELLOW}$1${ACFS_NC}" >&2
     }
 fi
 
@@ -80,7 +80,7 @@ fi
 # Usage: log_error "Failed to install package"
 if ! declare -f log_error >/dev/null; then
     log_error() {
-        printf "${ACFS_RED}%s${ACFS_NC}\n" "$1" >&2
+        echo -e "${ACFS_RED}$1${ACFS_NC}" >&2
     }
 fi
 
@@ -104,7 +104,7 @@ if ! declare -f log_to_file >/dev/null; then
         mkdir -p "$(dirname "$logfile")" 2>/dev/null || true
 
         # Write timestamped message
-        printf "[%s] %s\n" "$(date -Iseconds)" "$message" >> "$logfile" 2>/dev/null || true
+        echo "[$(date -Iseconds)] $message" >> "$logfile" 2>/dev/null || true
     }
 fi
 
