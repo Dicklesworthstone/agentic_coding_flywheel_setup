@@ -185,7 +185,7 @@ install_stack_mcp_agent_mail() {
         if ! {
             # Run installer in detached tmux session (run_in_tmux: true)
             # This prevents blocking when the installer starts a long-running service
-            local tmux_session="acfs-install-stack-mcp-agent-mail"
+            local tmux_session="acfs-services"
 
             # Resolve verified installer URL + checksum (fail closed)
             local tool="mcp_agent_mail"
@@ -249,7 +249,7 @@ install_stack_mcp_agent_mail() {
 
     # Verify skipped: run_in_tmux installs async in detached tmux session
     log_info "stack.mcp_agent_mail: installation running in background tmux session"
-    log_info "Attach with: tmux attach -t acfs-install-stack-mcp-agent-mail"
+    log_info "Attach with: tmux attach -t acfs-services"
 
     log_success "stack.mcp_agent_mail installed"
 }

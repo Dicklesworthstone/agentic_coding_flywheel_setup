@@ -165,45 +165,6 @@ Always fix the generator, then regenerate.
 
 ---
 
-## CRITICAL: Git Hooks Setup (Prevent Manifest Drift)
-
-**This section exists because someone pushed broken code to main that would have been caught by these hooks.**
-
-### Install the hooks (REQUIRED for all developers)
-
-```bash
-./scripts/hooks/install.sh
-```
-
-This installs a pre-commit hook that:
-1. **Auto-regenerates** `scripts/generated/` when you modify `acfs.manifest.yaml` or `packages/manifest/**`
-2. **Stages the changes** automatically so you never forget
-3. **Chains to beads** (bd) hooks if you use beads
-
-### What happens without hooks?
-
-If you edit the manifest and commit without regenerating:
-1. `scripts/generated/manifest_index.sh` will have a stale `ACFS_MANIFEST_SHA256`
-2. The installer will fail with: **"Bootstrap mismatch: generated scripts do not match manifest"**
-3. Users on Twitter will complain (this actually happened)
-
-### CI Enforcement
-
-Even if you bypass hooks (`git commit --no-verify`), CI runs `bun run generate --diff` on every PR and push to main. If there's drift, the PR will fail.
-
-**However, if you push directly to main without a PR, CI may not block the bad commit in time.** Don't do this.
-
-### Manual regeneration
-
-If hooks aren't working or you need to regenerate manually:
-
-```bash
-cd packages/manifest && bun run generate
-git add scripts/generated/
-```
-
----
-
 ## Code Editing Discipline
 
 - Do **not** run scripts that bulk-modify code (codemods, invented one-off scripts, giant `sed`/regex refactors).

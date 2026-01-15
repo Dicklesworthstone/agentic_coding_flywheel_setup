@@ -78,12 +78,10 @@ if [[ -f "$ZSH/oh-my-zsh.sh" ]]; then
 fi
 
 # --- Editor preference ---
-if command -v nvim &>/dev/null; then
-  export EDITOR='nvim'
-elif command -v vim &>/dev/null; then
+if [[ -n "$SSH_CONNECTION" ]]; then
   export EDITOR='vim'
 else
-  export EDITOR='vi'
+  export EDITOR='nvim'
 fi
 
 # --- Modern CLI aliases (only if present) ---
@@ -384,7 +382,7 @@ alias bl='bun run lint'
 alias bt='bun run type-check'
 
 # MCP Agent Mail helper (installer usually adds `am`, but keep a fallback)
-alias am='(cd ~/mcp_agent_mail 2>/dev/null && scripts/run_server_with_token.sh) || echo "mcp_agent_mail not found in ~/mcp_agent_mail"'
+alias am='cd ~/mcp_agent_mail 2>/dev/null && scripts/run_server_with_token.sh || echo "mcp_agent_mail not found in ~/mcp_agent_mail"'
 
 # --- Keybindings (quality of life) ---
 # Ctrl+Arrow for word movement

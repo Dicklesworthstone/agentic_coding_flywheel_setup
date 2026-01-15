@@ -19,7 +19,6 @@ ACFS_ERROR="#f38ba8"      # Red
 ACFS_MUTED="#6c7086"      # Gray
 ACFS_ACCENT="#cba6f7"     # Purple
 ACFS_PINK="#f5c2e7"       # Pink
-ACFS_TEAL="#94e2d5"       # Teal - highlights
 
 # ASCII Art Banner for ACFS
 print_banner() {

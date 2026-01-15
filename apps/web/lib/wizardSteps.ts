@@ -135,13 +135,9 @@ type CompletedStepsChangedDetail = {
   steps: number[];
 };
 
-function normalizeCompletedSteps(steps: readonly unknown[]): number[] {
+function normalizeCompletedSteps(steps: unknown[]): number[] {
   const validSteps = steps.filter(
-    (n): n is number =>
-      typeof n === "number" &&
-      Number.isInteger(n) &&
-      n >= 1 &&
-      n <= TOTAL_STEPS
+    (n): n is number => typeof n === "number" && n >= 1 && n <= TOTAL_STEPS
   );
   return Array.from(new Set(validSteps)).sort((a, b) => a - b);
 }

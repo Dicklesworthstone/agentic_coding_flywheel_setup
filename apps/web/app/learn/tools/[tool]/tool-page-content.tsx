@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -80,27 +80,12 @@ function RelatedToolCard({ toolId }: { toolId: ToolId }) {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const handleCopy = useCallback(async () => {
-    // Clear any existing timeout
-    if (copyTimeoutRef.current) {
-      clearTimeout(copyTimeoutRef.current);
-    }
-
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback for older browsers
       const textarea = document.createElement("textarea");
@@ -110,7 +95,7 @@ function CopyButton({ text }: { text: string }) {
       document.execCommand("copy");
       document.body.removeChild(textarea);
       setCopied(true);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2000);
     }
   }, [text]);
 

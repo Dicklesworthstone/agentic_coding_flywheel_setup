@@ -83,30 +83,16 @@ _cli_get_sudo() {
 _fetch_github_version() {
     local repo="$1"
     local strip_v="${2:-false}"
-    local tag=""
+    local json tag=""
 
-    # Strategy 1: Try HTTP HEAD request to /releases/latest (redirects to /releases/tag/vX.Y.Z)
-    # This avoids GitHub API rate limits (60 requests/hr for unauthenticated IP)
-    local location_header
-    if location_header=$(curl -sI --max-time 10 "https://github.com/$repo/releases/latest" | grep -i "^location:"); then
-        # Extract tag from URL: https://github.com/owner/repo/releases/tag/v1.2.3
-        # Remove trailing CR if present
-        location_header="${location_header%$'\r'}"
-        tag="${location_header##*/}"
-    fi
+    json=$(curl -s --max-time 10 "https://api.github.com/repos/$repo/releases/latest") || return 1
 
-    # Strategy 2: Fallback to GitHub API if HEAD failed or returned no tag
-    if [[ -z "$tag" ]]; then
-        local json
-        if json=$(curl -s --max-time 10 "https://api.github.com/repos/$repo/releases/latest"); then
-            if command -v jq &>/dev/null; then
-                tag=$(echo "$json" | jq -r '.tag_name // empty')
-            elif command -v python3 &>/dev/null; then
-                tag=$(echo "$json" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tag_name', ''))" 2>/dev/null)
-            else
-                tag=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
-            fi
-        fi
+    if command -v jq &>/dev/null; then
+        tag=$(echo "$json" | jq -r '.tag_name // empty')
+    elif command -v python3 &>/dev/null; then
+        tag=$(echo "$json" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tag_name', ''))" 2>/dev/null)
+    else
+        tag=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
     fi
 
     [[ -z "$tag" || "$tag" == "null" ]] && return 1

@@ -535,7 +535,7 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
   // If run_in_tmux is true, we run the installer in a detached tmux session
   // This prevents blocking when the installer starts a long-running server
   if (runInTmux) {
-    const tmuxSession = `acfs-install-${module.id.replace(/[^a-z0-9]/g, '-')}`;
+    const tmuxSession = 'acfs-services';
     const lines: string[] = [
       '# Run installer in detached tmux session (run_in_tmux: true)',
       '# This prevents blocking when the installer starts a long-running service',
@@ -953,7 +953,7 @@ function generateCategoryScript(manifest: Manifest, category: ModuleCategory): s
     if (skipVerify) {
       lines.push('    # Verify skipped: run_in_tmux installs async in detached tmux session');
       lines.push(`    log_info "${module.id}: installation running in background tmux session"`);
-      const tmuxSession = `acfs-install-${module.id.replace(/[^a-z0-9]/g, '-')}`;
+      const tmuxSession = 'acfs-services';
       lines.push(`    log_info "Attach with: tmux attach -t ${tmuxSession}"`);
     } else {
       lines.push('    # Verify');

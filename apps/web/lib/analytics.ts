@@ -147,7 +147,7 @@ export const sendServerEvent = async (
   if (!GA_MEASUREMENT_ID) return;
 
   try {
-    const response = await fetch('/api/track', {
+    await fetch('/api/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -155,15 +155,8 @@ export const sendServerEvent = async (
         events: [{ name: eventName, params }],
       }),
     });
-    // Log non-ok responses in development for visibility
-    if (!response.ok && process.env.NODE_ENV === 'development') {
-      console.warn(`[Analytics] Server event failed: ${response.status} ${response.statusText}`);
-    }
-  } catch (error) {
-    // Log errors in development, silently fail in production
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[Analytics] Server event error:', error);
-    }
+  } catch {
+    // Silently fail - don't disrupt user experience
   }
 };
 
@@ -679,9 +672,8 @@ export const trackSessionStart = (): void => {
     is_first_visit: isFirstVisit,
   });
 
-  // Check for returning user (with NaN protection for corrupted localStorage)
-  const rawVisitCount = parseInt(safeGetItem('acfs_visit_count') || '0', 10);
-  const visitCount = (Number.isFinite(rawVisitCount) && rawVisitCount >= 0 ? rawVisitCount : 0) + 1;
+  // Check for returning user
+  const visitCount = parseInt(safeGetItem('acfs_visit_count') || '0', 10) + 1;
   safeSetItem('acfs_visit_count', String(visitCount));
 
   // Set comprehensive user properties

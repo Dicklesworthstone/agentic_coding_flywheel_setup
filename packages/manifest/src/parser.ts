@@ -18,20 +18,12 @@ import type {
 
 function unwrapOptionalQuotes(value: string): string {
   const trimmed = value.trim();
-  
-  // Check for double quotes: must start/end with " and not be escaped
-  // Simple check: strict "..." wrapping
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-     // Verify it's not something like "foo" bar "baz" which naïvely looks like it's wrapped
-     // This is a loose heuristic for manifest strings, not a full parser
-     return trimmed.slice(1, -1).trim();
-  }
-
-  // Check for single quotes
-  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
     return trimmed.slice(1, -1).trim();
   }
-
   return trimmed;
 }
 

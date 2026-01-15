@@ -43,24 +43,17 @@ export function formatStarCountFull(count: number): string {
 
 /**
  * Parses a formatted star count string back to a number.
- * Returns 0 for invalid input to prevent NaN propagation.
  */
 export function parseStarCount(formatted: string): number {
   const trimmed = formatted.trim();
 
-  // Handle empty or invalid input
-  if (!trimmed) return 0;
-
-  let result: number;
-
   if (trimmed.endsWith("M")) {
-    result = parseFloat(trimmed.slice(0, -1)) * 1_000_000;
-  } else if (trimmed.endsWith("K")) {
-    result = parseFloat(trimmed.slice(0, -1)) * 1_000;
-  } else {
-    result = parseFloat(trimmed.replace(/,/g, ""));
+    return parseFloat(trimmed.slice(0, -1)) * 1_000_000;
   }
 
-  // Return 0 for NaN to prevent issues in consuming code
-  return Number.isFinite(result) ? result : 0;
+  if (trimmed.endsWith("K")) {
+    return parseFloat(trimmed.slice(0, -1)) * 1_000;
+  }
+
+  return parseFloat(trimmed.replace(/,/g, ""));
 }

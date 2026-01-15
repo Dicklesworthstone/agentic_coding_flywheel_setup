@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import {
   LayoutGrid,
   ShieldCheck,
@@ -267,29 +267,14 @@ function ToolDetailPanel({
 }) {
   const Icon = iconMap[tool.icon] || Zap;
   const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const copyInstallCommand = async () => {
     if (!tool.installCommand) return;
 
-    // Clear any existing timeout
-    if (copyTimeoutRef.current) {
-      clearTimeout(copyTimeoutRef.current);
-    }
-
     try {
       await navigator.clipboard.writeText(tool.installCommand);
       setCopied(true);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback for older browsers or when clipboard permission is denied
       const textArea = document.createElement("textarea");
@@ -301,7 +286,7 @@ function ToolDetailPanel({
       try {
         document.execCommand("copy");
         setCopied(true);
-        copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+        setTimeout(() => setCopied(false), 2000);
       } catch {
         // Silent fail - user can manually copy
       }

@@ -182,10 +182,8 @@ export function useUserOS(): [OperatingSystem | null, (os: OperatingSystem) => v
   }, []);
 
   const setOS = useCallback((newOS: OperatingSystem) => {
-    // Only update React state if storage operation succeeds
-    if (setUserOS(newOS)) {
-      setUserOSState({ os: newOS, loaded: true });
-    }
+    setUserOS(newOS);
+    setUserOSState({ os: newOS, loaded: true });
   }, []);
 
   return [userOSState.os, setOS, userOSState.loaded];

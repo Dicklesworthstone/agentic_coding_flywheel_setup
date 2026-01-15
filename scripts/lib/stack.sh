@@ -97,25 +97,7 @@ _stack_run_as_user() {
     fi
 
     # Avoid login shells: profile files are not a stable API and can break non-interactive runs.
-    # We must explicitly set HOME to the target user's home to avoid permissions issues
-    # when tools try to write config/cache files.
-    local target_home
-    target_home=$(getent passwd "$target_user" | cut -d: -f6)
-    
-    if [[ -z "$target_home" ]]; then
-        # Fallback if getent fails (unlikely)
-        target_home="/home/$target_user"
-    fi
-
-    # Use 'env -i' to clear environment (simulating sudo's clean env), then restore essential vars
-    # This prevents root's env vars from leaking into the user's session via su
-    env -i HOME="$target_home" \
-           PATH="/usr/local/bin:/usr/bin:/bin" \
-           USER="$target_user" \
-           LOGNAME="$target_user" \
-           SHELL="/bin/bash" \
-           TERM="$TERM" \
-           su "$target_user" -c "bash -c $(printf %q "$wrapped_cmd")"
+    su "$target_user" -c "bash -c $(printf %q "$wrapped_cmd")"
 }
 
 # Load security helpers + checksums.yaml (fail closed if unavailable).

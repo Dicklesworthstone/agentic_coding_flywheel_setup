@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import {
   Bot,
-  FileText,
   GitBranch,
   GitMerge,
   GraduationCap,
@@ -10,7 +9,6 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
-  Sparkles,
   Wrench,
 } from "lucide-react";
 
@@ -27,9 +25,7 @@ export type ToolId =
   | "caam"
   | "slb"
   | "dcg"
-  | "ru"
-  | "ms"
-  | "csctf";
+  | "ru";
 
 export type ToolCard = {
   id: ToolId;
@@ -197,30 +193,6 @@ export const TOOLS: Record<ToolId, ToolCard> = {
     docsLabel: "GitHub",
     quickCommand: "ru sync --parallel 4",
     relatedTools: ["ntm", "beads", "agent-mail"],
-  },
-  ms: {
-    id: "ms",
-    title: "Meta Skill",
-    tagline: "Complete skill management platform with MCP server for AI agents",
-    icon: <Sparkles className="h-8 w-8" aria-hidden="true" />,
-    gradient: "from-teal-500/20 via-emerald-500/20 to-teal-500/20",
-    glowColor: "rgba(20,184,166,0.4)",
-    docsUrl: "https://github.com/Dicklesworthstone/meta_skill",
-    docsLabel: "GitHub",
-    quickCommand: "ms mcp serve",
-    relatedTools: ["cass", "cm", "beads"],
-  },
-  csctf: {
-    id: "csctf",
-    title: "Chat Shared Conversation to File",
-    tagline: "Archive AI chat share links to Markdown + HTML",
-    icon: <FileText className="h-8 w-8" aria-hidden="true" />,
-    gradient: "from-indigo-500/20 via-violet-500/20 to-indigo-500/20",
-    glowColor: "rgba(99,102,241,0.4)",
-    docsUrl: "https://github.com/Dicklesworthstone/chat_shared_conversation_to_file",
-    docsLabel: "GitHub",
-    quickCommand: "csctf 'https://chatgpt.com/share/...'",
-    relatedTools: ["cass", "cm"],
   },
 };
 

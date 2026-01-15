@@ -1083,7 +1083,7 @@ update_stack() {
                     if verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then
                         chmod +x "$tmp_install"
 
-                        local tmux_session="acfs-install-stack-mcp-agent-mail"
+                        local tmux_session="acfs-services"
                         # Kill old session if exists
                         tmux kill-session -t "$tmux_session" 2>/dev/null || true
 

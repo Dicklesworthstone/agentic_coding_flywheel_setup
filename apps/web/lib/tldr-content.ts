@@ -38,7 +38,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "Mail",
     color: "from-violet-500 to-purple-600",
     category: "core",
-    stars: 1433,
+    stars: 1400,
     whatItDoes:
       "A mail-like coordination layer for multi-agent workflows. Agents send messages, read threads, and reserve files asynchronously via MCP tools - like Gmail for AI coding agents.",
     whyItsUseful:
@@ -84,7 +84,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "GitBranch",
     color: "from-emerald-500 to-teal-600",
     category: "core",
-    stars: 927,
+    stars: 891,
     whatItDoes:
       "A fast terminal UI for viewing and analyzing Beads issues. Applies graph theory (PageRank, betweenness centrality, critical path) to identify which tasks unblock the most other work.",
     whyItsUseful:
@@ -108,10 +108,6 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
         toolId: "cass",
         description: "Search prior sessions for task context",
       },
-      {
-        toolId: "ms",
-        description: "Skills can be linked to beads for guidance",
-      },
     ],
     techStack: ["Go", "Bubble Tea", "Lip Gloss", "Graph algorithms"],
     keyFeatures: [
@@ -134,7 +130,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "Search",
     color: "from-cyan-500 to-sky-600",
     category: "core",
-    stars: 312,
+    stars: 307,
     whatItDoes:
       "Blazing-fast search across all your past AI coding agent sessions. Indexes conversations from Claude Code, Codex, Cursor, Gemini, ChatGPT and more with sub-millisecond query times.",
     whyItsUseful:
@@ -158,10 +154,6 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
         toolId: "bv",
         description: "Links search results to related Beads tasks",
       },
-      {
-        toolId: "ms",
-        description: "Provides session data for skill extraction",
-      },
     ],
     techStack: ["Rust", "Tantivy", "Ratatui", "JSONL parsing"],
     keyFeatures: [
@@ -184,7 +176,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "Cog",
     color: "from-purple-500 to-violet-600",
     category: "core",
-    stars: 692,
+    stars: 234,
     whatItDoes:
       "One-command bootstrap that transforms a fresh Ubuntu VPS into a fully-configured agentic coding environment with all flywheel tools installed.",
     whyItsUseful:
@@ -272,7 +264,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "ShieldAlert",
     color: "from-red-500 to-rose-600",
     category: "core",
-    stars: 50,
+    stars: 89,
     whatItDoes:
       "Intercepts dangerous shell commands (rm -rf, git reset --hard, etc.) before execution. Requires confirmation for destructive operations.",
     whyItsUseful:
@@ -314,7 +306,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "RefreshCw",
     color: "from-orange-500 to-amber-600",
     category: "core",
-    stars: 50,
+    stars: 67,
     whatItDoes:
       "Keeps dozens (or hundreds) of Git repositories in sync with a single command. Clones missing repos, pulls updates, detects conflicts.",
     whyItsUseful:
@@ -381,10 +373,6 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
         toolId: "bv",
         description: "Task patterns and solutions remembered",
       },
-      {
-        toolId: "ms",
-        description: "Skills and memories complement each other",
-      },
     ],
     techStack: ["TypeScript", "Bun", "MCP Protocol", "SQLite"],
     keyFeatures: [
@@ -407,7 +395,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "LayoutGrid",
     color: "from-sky-500 to-blue-600",
     category: "core",
-    stars: 71,
+    stars: 69,
     whatItDoes:
       "Manages named tmux sessions with project-specific persistence. Creates organized workspaces for multi-agent development with typed panes.",
     whyItsUseful:
@@ -493,54 +481,6 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
       "Audit trail of dangerous command approvals",
     ],
   },
-  {
-    id: "ms",
-    name: "Meta Skill",
-    shortName: "MS",
-    href: "https://github.com/Dicklesworthstone/meta_skill",
-    icon: "Sparkles",
-    color: "from-teal-500 to-emerald-600",
-    category: "core",
-    stars: 10,
-    whatItDoes:
-      "Complete skill management platform: store, search, track effectiveness, package for sharing, and integrate with AI agents via MCP. Skills come from hand-written files, CASS mining, bundles, or guided workflows.",
-    whyItsUseful:
-      "AI agents need reusable context to be effective. MS doesn't just store skills—it learns which ones work. Thompson sampling optimizes suggestions over time, security systems (ACIP, DCG) keep content safe, and the MCP server makes skills native to any AI agent.",
-    implementationHighlights: [
-      "Dual persistence: SQLite for queries + Git for audit trails",
-      "Thompson sampling bandit learns from usage to optimize suggestions",
-      "MCP server exposes 6 native tools for AI agent integration",
-      "ACIP prompt-injection detection with quarantine system",
-      "DCG command safety tiers (Safe/Caution/Danger/Critical)",
-    ],
-    synergies: [
-      {
-        toolId: "cass",
-        description: "One input source for skill extraction (not the only one)",
-      },
-      {
-        toolId: "cm",
-        description: "Skills and CM memories are complementary knowledge layers",
-      },
-      {
-        toolId: "bv",
-        description: "Graph analysis via bv for skill dependency insights",
-      },
-    ],
-    techStack: ["Rust", "SQLite", "Tantivy", "Git", "MCP"],
-    keyFeatures: [
-      "MCP server for native AI agent integration",
-      "Thompson sampling optimizes suggestions over time",
-      "Multi-layer security (ACIP, DCG, path policy, secrets)",
-      "Hybrid search: BM25 + hash embeddings with RRF",
-      "Token packing for context budget optimization",
-    ],
-    useCases: [
-      "AI agents querying skills via MCP during sessions",
-      "Building team-wide skill libraries with effectiveness tracking",
-      "Packaging and sharing skills via signed bundles",
-    ],
-  },
   // ===========================================================================
   // SUPPORTING FLYWHEEL TOOLS
   // ===========================================================================
@@ -552,7 +492,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "Image",
     color: "from-slate-500 to-gray-600",
     category: "supporting",
-    stars: 21,
+    stars: 24,
     whatItDoes:
       "Downloads images from iCloud public share links for use in remote debugging sessions. Converts iCloud URLs to direct image downloads.",
     whyItsUseful:
@@ -594,7 +534,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "Archive",
     color: "from-blue-500 to-indigo-600",
     category: "supporting",
-    stars: 25,
+    stars: 156,
     whatItDoes:
       "Ultra-fast search over X/Twitter data archives. Uses hybrid BM25 + semantic search with Reciprocal Rank Fusion.",
     whyItsUseful:
@@ -636,7 +576,7 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
     icon: "FileCode",
     color: "from-green-500 to-emerald-600",
     category: "supporting",
-    stars: 8,
+    stars: 78,
     whatItDoes:
       "Terminal UI for combining source code files into LLM-ready prompts. Select files, preview output, copy to clipboard with token counting.",
     whyItsUseful:
@@ -670,48 +610,6 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
       "Managing context window budget",
     ],
   },
-  {
-    id: "csctf",
-    name: "Chat Shared Conversation to File",
-    shortName: "CSCTF",
-    href: "https://github.com/Dicklesworthstone/chat_shared_conversation_to_file",
-    icon: "FileText",
-    color: "from-indigo-400 to-violet-500",
-    category: "supporting",
-    stars: 20,
-    whatItDoes:
-      "Converts public ChatGPT, Gemini, Grok, and Claude share links into clean Markdown + HTML transcripts with preserved code fences.",
-    whyItsUseful:
-      "AI conversations are valuable knowledge artifacts, but share links can expire. CSCTF lets you archive important conversations locally with proper formatting, making them searchable and shareable.",
-    implementationHighlights: [
-      "Playwright-based scraping for reliable extraction",
-      "Multi-provider: ChatGPT, Gemini, Grok, Claude",
-      "Deterministic filenames with collision handling",
-      "Optional GitHub Pages publishing",
-    ],
-    synergies: [
-      {
-        toolId: "cass",
-        description: "Archived conversations can be indexed by CASS for search",
-      },
-      {
-        toolId: "cm",
-        description: "Valuable insights from chats can become memories",
-      },
-    ],
-    techStack: ["TypeScript", "Playwright", "Bun"],
-    keyFeatures: [
-      "Multi-provider chat extraction",
-      "Clean Markdown + HTML output",
-      "Syntax-highlighted code blocks",
-      "GitHub Pages publishing",
-    ],
-    useCases: [
-      "Archiving important AI debugging sessions",
-      "Building searchable knowledge base from chats",
-      "Sharing AI solutions with team members",
-    ],
-  },
 ];
 
 export const tldrPageData = {
@@ -719,17 +617,17 @@ export const tldrPageData = {
     title: "The Agentic Coding Flywheel",
     subtitle: "TL;DR Edition",
     description:
-      "11 core tools and 4 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
+      "10 core tools and 3 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
     stats: [
-      { label: "Ecosystem Tools", value: "15" },
-      { label: "GitHub Stars", value: "3,800+" },
+      { label: "Ecosystem Tools", value: "13" },
+      { label: "GitHub Stars", value: "3,600+" },
       { label: "Languages", value: "5" },
     ],
   },
   coreDescription:
-    "The core flywheel tools form the backbone: Agent Mail for coordination, BV for graph-based prioritization, CASS for instant session search, CM for persistent memory, MS for skill extraction, UBS for bug detection, plus session management, safety guards, and automated setup.",
+    "The core flywheel tools form the backbone: Agent Mail for coordination, BV for graph-based prioritization, CASS for instant session search, CM for persistent memory, UBS for bug detection, plus session management, safety guards, and automated setup.",
   supportingDescription:
-    "Supporting tools extend the ecosystem: GIIL for remote image debugging, XF for searching your X archive, S2P for crafting prompts from source code, and CSCTF for archiving AI conversations.",
+    "Supporting tools extend the ecosystem: GIIL for remote image debugging, XF for searching your X archive, and S2P for crafting prompts from source code.",
   flywheelExplanation: {
     title: "Why a Flywheel?",
     paragraphs: [

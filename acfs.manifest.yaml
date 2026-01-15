@@ -894,7 +894,7 @@ modules:
     verify:
       - command -v am
     notes:
-      - "Runs in tmux session 'acfs-install-stack-mcp-agent-mail' to prevent blocking installer"
+      - "Runs in tmux session 'acfs-services' to prevent blocking installer"
       - "Server accessible at http://127.0.0.1:8765 after install"
 
   - id: stack.ultimate_bug_scanner
