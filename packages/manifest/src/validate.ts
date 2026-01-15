@@ -225,6 +225,16 @@ const RESERVED_FUNCTION_NAMES = new Set([
   'state_tool_failed',
   'record_skipped_tool',
 
+  // Core install.sh functions
+  'install_asset',
+  'install_checksums_yaml',
+  'install_gum_early',
+  'install_cli_tools',
+  'install_languages',
+  'install_agents_phase',
+  'install_cloud_db',
+  'install_stack_phase',
+
   // Common shell builtins/functions that should never be shadowed
   'main',
   'usage',

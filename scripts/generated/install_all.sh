@@ -108,23 +108,65 @@ source "$ACFS_GENERATED_SCRIPT_DIR/install_cloud.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_stack.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_acfs.sh"
 
-# Install all modules in order
+# Install all modules in global dependency order
 install_all() {
     log_section "ACFS Full Installation"
 
-    install_base
-    install_users
-    install_filesystem
-    install_shell
-    install_cli
-    install_network
-    install_lang
-    install_tools
-    install_agents
-    install_db
-    install_cloud
-    install_stack
-    install_acfs
+    log_section "Category: base"
+    install_base_system
+    log_section "Category: users"
+    install_users_ubuntu
+    log_section "Category: filesystem"
+    install_base_filesystem
+    log_section "Category: shell"
+    install_shell_zsh
+    install_shell_omz
+    log_section "Category: cli"
+    install_cli_modern
+    log_section "Category: network"
+    install_network_tailscale
+    install_network_ssh_keepalive
+    log_section "Category: lang"
+    install_lang_bun
+    install_lang_uv
+    install_lang_rust
+    install_lang_go
+    install_lang_nvm
+    log_section "Category: tools"
+    install_tools_atuin
+    install_tools_zoxide
+    install_tools_ast_grep
+    log_section "Category: agents"
+    install_agents_claude
+    install_agents_codex
+    install_agents_gemini
+    log_section "Category: tools"
+    install_tools_vault
+    log_section "Category: db"
+    install_db_postgres18
+    log_section "Category: cloud"
+    install_cloud_wrangler
+    install_cloud_supabase
+    install_cloud_vercel
+    log_section "Category: stack"
+    install_stack_ntm
+    install_stack_mcp_agent_mail
+    install_stack_ultimate_bug_scanner
+    install_stack_beads_viewer
+    install_stack_cass
+    install_stack_cm
+    install_stack_caam
+    install_stack_slb
+    install_stack_dcg
+    install_stack_ru
+    log_section "Category: tools"
+    install_utils_giil
+    install_utils_csctf
+    log_section "Category: acfs"
+    install_acfs_workspace
+    install_acfs_onboard
+    install_acfs_update
+    install_acfs_doctor
 
     log_success "All modules installed!"
 }

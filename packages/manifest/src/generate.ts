@@ -21,6 +21,7 @@ import {
 import {
   getCategories,
   getModuleCategory,
+  resolveModuleCategory,
   getModulesByCategory,
   sortModulesByInstallOrder,
 } from './utils.js';
@@ -1082,13 +1083,24 @@ function generateMasterInstaller(manifest: Manifest): string {
   lines.push('');
 
   // Main install function
-  lines.push('# Install all modules in order');
+  lines.push('# Install all modules in global dependency order');
   lines.push('install_all() {');
   lines.push('    log_section "ACFS Full Installation"');
   lines.push('');
 
-  for (const category of categories) {
-    lines.push(`    install_${category}`);
+  // Use global sort to ensure dependencies are met across categories
+  const orderedModules = sortModulesByPhaseAndDependency(manifest);
+  let currentCategory: string | null = null;
+
+  for (const module of orderedModules) {
+    const category = resolveModuleCategory(module);
+    if (category !== currentCategory) {
+      lines.push(`    log_section "Category: ${category}"`);
+      currentCategory = category;
+    }
+
+    const funcName = toFunctionName(module.id);
+    lines.push(`    ${funcName}`);
   }
 
   lines.push('');

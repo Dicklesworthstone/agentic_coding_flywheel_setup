@@ -390,12 +390,12 @@ def sanitize_string:
         gsub("AKIA[A-Z0-9]{16}"; "[REDACTED]") |
         gsub("hf_[a-zA-Z0-9]{34}"; "[REDACTED]") |
         gsub("[rs]k_(live|test)_[a-zA-Z0-9]{24,}"; "[REDACTED]") |
-        gsub("(?i)password[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |
-        gsub("(?i)secret[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |
-        gsub("(?i)api_key[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |
-        gsub("(?i)apikey[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |
-        gsub("(?i)auth_token[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |
-        gsub("(?i)access_token[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]")
+        gsub("(?i)password[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "password=[REDACTED]") |
+        gsub("(?i)secret[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "secret=[REDACTED]") |
+        gsub("(?i)api_key[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "api_key=[REDACTED]") |
+        gsub("(?i)apikey[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "apikey=[REDACTED]") |
+        gsub("(?i)auth_token[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "auth_token=[REDACTED]") |
+        gsub("(?i)access_token[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "access_token=[REDACTED]")
 JQ_BASE
 
     local jq_filter_optional=""
@@ -641,48 +641,66 @@ export_session() {
         return 1
     fi
 
-    # Export via CASS
-    local exported
-    exported=$(cass export "$session_path" --format "$format" 2>/dev/null)
+    # Use a temp file for the export to handle large sessions efficiently
+    local tmp_export
+    tmp_export=$(mktemp "${TMPDIR:-/tmp}/acfs_session_export.XXXXXX" 2>/dev/null) || {
+        log_error "Failed to create temp file for session export"
+        return 1
+    }
 
-    if [[ -z "$exported" ]]; then
+    # Ensure cleanup on return
+    trap 'rm -f -- "$tmp_export"' RETURN
+
+    # Export via CASS to temp file
+    if ! cass export "$session_path" --format "$format" > "$tmp_export" 2>/dev/null; then
         log_error "Failed to export session: $session_path"
         return 1
     fi
 
-    # Apply sanitization if requested (and format is json)
-    if [[ "$sanitize" == "true" && "$format" == "json" ]]; then
-        # Create temp file for sanitization
-        local tmpfile
-        tmpfile=$(mktemp "${TMPDIR:-/tmp}/acfs_session_export.XXXXXX" 2>/dev/null) || {
-            log_error "Failed to create temp file for session export"
-            return 1
-        }
-        printf '%s' "$exported" > "$tmpfile"
+    # Verify export is not empty
+    if [[ ! -s "$tmp_export" ]]; then
+        log_error "Exported session is empty: $session_path"
+        return 1
+    fi
 
-        # Apply sanitization
-        if sanitize_session_export "$tmpfile"; then
-            exported=$(cat "$tmpfile")
+    # Apply sanitization if requested
+    if [[ "$sanitize" == "true" ]]; then
+        if [[ "$format" == "json" ]]; then
+            # In-place JSON sanitization
+            if ! sanitize_session_export "$tmp_export"; then
+                log_error "Sanitization failed; refusing to output unsanitized export"
+                return 1
+            fi
         else
-            log_error "Sanitization failed; refusing to output unsanitized export"
-            rm -f -- "$tmpfile" 2>/dev/null || true
-            return 1
-        fi
-        rm -f -- "$tmpfile" 2>/dev/null || true
-    elif [[ "$sanitize" == "true" && "$format" != "json" ]]; then
-        # For non-JSON formats, apply text sanitization
-        if ! exported=$(sanitize_content "$exported"); then
-            log_error "Sanitization failed; refusing to output unsanitized export"
-            return 1
+            # Text-based sanitization (stream through sed to new temp file)
+            local tmp_sanitized
+            tmp_sanitized="${tmp_export}.sanitized"
+            if sanitize_content "$(cat "$tmp_export")" > "$tmp_sanitized"; then
+                mv -- "$tmp_sanitized" "$tmp_export"
+            else
+                rm -f -- "$tmp_sanitized"
+                log_error "Sanitization failed; refusing to output unsanitized export"
+                return 1
+            fi
         fi
     fi
 
     # Output
     if [[ -n "$output_file" ]]; then
-        printf '%s' "$exported" > "$output_file"
+        # Move or copy to destination
+        # Try mv first (atomic if same fs), fall back to cat (streaming)
+        if ! mv -- "$tmp_export" "$output_file" 2>/dev/null; then
+            cat "$tmp_export" > "$output_file"
+        fi
         log_success "Exported to: $output_file"
+        # Since we moved/copied, clear the trap cleanup if we moved it successfully?
+        # Actually, if we moved it, the temp file is gone. If we cat, it remains.
+        # The trap will run rm -f which ignores missing files.
     else
-        printf '%s\n' "$exported"
+        cat "$tmp_export"
+        # Add newline if needed? cat output preserves original.
+        # Usually good to ensure newline at end of output for CLI niceness if missing.
+        # But for JSON/Markdown exact output is preferred.
     fi
 }
 
