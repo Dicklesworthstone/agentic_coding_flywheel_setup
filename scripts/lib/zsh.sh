@@ -207,7 +207,7 @@ set_zsh_default() {
     local current_shell
     current_shell=$(getent passwd "$(whoami)" | cut -d: -f7)
     local zsh_path
-    zsh_path=$(which zsh)
+    zsh_path=$(command -v zsh)
 
     if [[ "$current_shell" == "$zsh_path" ]]; then
         log_detail "zsh is already the default shell"

@@ -83,16 +83,30 @@ _cli_get_sudo() {
 _fetch_github_version() {
     local repo="$1"
     local strip_v="${2:-false}"
-    local json tag=""
+    local tag=""
 
-    json=$(curl -s --max-time 10 "https://api.github.com/repos/$repo/releases/latest") || return 1
+    # Strategy 1: Try HTTP HEAD request to /releases/latest (redirects to /releases/tag/vX.Y.Z)
+    # This avoids GitHub API rate limits (60 requests/hr for unauthenticated IP)
+    local location_header
+    if location_header=$(curl -sI --max-time 10 "https://github.com/$repo/releases/latest" | grep -i "^location:"); then
+        # Extract tag from URL: https://github.com/owner/repo/releases/tag/v1.2.3
+        # Remove trailing CR if present
+        location_header="${location_header%$'\r'}"
+        tag="${location_header##*/}"
+    fi
 
-    if command -v jq &>/dev/null; then
-        tag=$(echo "$json" | jq -r '.tag_name // empty')
-    elif command -v python3 &>/dev/null; then
-        tag=$(echo "$json" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tag_name', ''))" 2>/dev/null)
-    else
-        tag=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+    # Strategy 2: Fallback to GitHub API if HEAD failed or returned no tag
+    if [[ -z "$tag" ]]; then
+        local json
+        if json=$(curl -s --max-time 10 "https://api.github.com/repos/$repo/releases/latest"); then
+            if command -v jq &>/dev/null; then
+                tag=$(echo "$json" | jq -r '.tag_name // empty')
+            elif command -v python3 &>/dev/null; then
+                tag=$(echo "$json" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tag_name', ''))" 2>/dev/null)
+            else
+                tag=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -n1 | cut -d'"' -f4)
+            fi
+        fi
     fi
 
     [[ -z "$tag" || "$tag" == "null" ]] && return 1
@@ -185,13 +199,13 @@ install_apt_cli_tools() {
     # Handle bat/batcat naming issue (Ubuntu calls it batcat)
     if ! _cli_command_exists bat && _cli_command_exists batcat; then
         log_detail "Creating bat symlink for batcat..."
-        $sudo_cmd ln -sf "$(which batcat)" /usr/local/bin/bat 2>/dev/null || true
+        $sudo_cmd ln -sf "$(command -v batcat)" /usr/local/bin/bat 2>/dev/null || true
     fi
 
     # Handle fd-find naming issue (Ubuntu calls it fdfind)
     if ! _cli_command_exists fd && _cli_command_exists fdfind; then
         log_detail "Creating fd symlink for fdfind..."
-        $sudo_cmd ln -sf "$(which fdfind)" /usr/local/bin/fd 2>/dev/null || true
+        $sudo_cmd ln -sf "$(command -v fdfind)" /usr/local/bin/fd 2>/dev/null || true
     fi
 
     log_success "APT CLI tools installed"
@@ -338,8 +352,16 @@ install_lazygit() {
         return 1
     }
 
-    tar -xzf "$tmpdir/lazygit.tar.gz" -C "$tmpdir"
-    $sudo_cmd install "$tmpdir/lazygit" /usr/local/bin/lazygit
+    tar -xzf "$tmpdir/lazygit.tar.gz" -C "$tmpdir" || {
+        log_warn "Failed to extract lazygit tarball"
+        rm -rf -- "$tmpdir"
+        return 1
+    }
+    $sudo_cmd install "$tmpdir/lazygit" /usr/local/bin/lazygit || {
+        log_warn "Failed to install lazygit"
+        rm -rf -- "$tmpdir"
+        return 1
+    }
     rm -rf -- "$tmpdir"
 
     log_success "lazygit installed from GitHub"
@@ -383,8 +405,16 @@ install_lazydocker() {
         return 1
     }
 
-    tar -xzf "$tmpdir/lazydocker.tar.gz" -C "$tmpdir"
-    $sudo_cmd install "$tmpdir/lazydocker" /usr/local/bin/lazydocker
+    tar -xzf "$tmpdir/lazydocker.tar.gz" -C "$tmpdir" || {
+        log_warn "Failed to extract lazydocker tarball"
+        rm -rf -- "$tmpdir"
+        return 1
+    }
+    $sudo_cmd install "$tmpdir/lazydocker" /usr/local/bin/lazydocker || {
+        log_warn "Failed to install lazydocker"
+        rm -rf -- "$tmpdir"
+        return 1
+    }
     rm -rf -- "$tmpdir"
 
     log_success "lazydocker installed from GitHub"
@@ -428,8 +458,16 @@ install_yq() {
         return 1
     }
 
-    chmod +x "$tmpdir/yq"
-    $sudo_cmd install "$tmpdir/yq" /usr/local/bin/yq
+    chmod +x "$tmpdir/yq" || {
+        log_warn "Failed to make yq executable"
+        rm -rf -- "$tmpdir"
+        return 1
+    }
+    $sudo_cmd install "$tmpdir/yq" /usr/local/bin/yq || {
+        log_warn "Failed to install yq"
+        rm -rf -- "$tmpdir"
+        return 1
+    }
     rm -rf -- "$tmpdir"
 
     log_success "yq installed from GitHub"

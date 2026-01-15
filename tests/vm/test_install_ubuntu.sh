@@ -104,6 +104,8 @@ run_one() {
   docker run --rm -t \
     -e DEBIAN_FRONTEND=noninteractive \
     -e ACFS_TEST_MODE="$MODE" \
+    -e ACFS_CHECKSUMS_REF="${ACFS_CHECKSUMS_REF:-}" \
+    -e ACFS_REF="${ACFS_REF:-}" \
     -v "${REPO_ROOT}:/repo:ro" \
     "$image" bash -lc '
       set -euo pipefail
@@ -133,6 +135,7 @@ run_one() {
       su - ubuntu -c "zsh -ic '\''codex --version >/dev/null'\''"
       su - ubuntu -c "zsh -ic '\''gemini --version >/dev/null'\''"
       su - ubuntu -c "zsh -ic '\''claude --version >/dev/null'\''"
+      su - ubuntu -c "zsh -ic '\''ru --version >/dev/null'\''"
       su - ubuntu -c "zsh -ic '\''dcg --version >/dev/null'\''"
       su - ubuntu -c "zsh -ic '\''set -o pipefail; dcg doctor --format json 2>/dev/null | jq -e \".hook_registered == true\" >/dev/null || dcg doctor 2>/dev/null | grep -qi \"hook wiring.*OK\"'\''"
       su - ubuntu -c "zsh -ic '\''dcg test \"git reset --hard\" | grep -Eqi \"deny|block\"'\''"

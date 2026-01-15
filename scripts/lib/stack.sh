@@ -2,7 +2,7 @@
 # shellcheck disable=SC1091
 # ============================================================
 # ACFS Installer - Dicklesworthstone Stack Library
-# Installs all 8 Dicklesworthstone tools
+# Installs all 10 Dicklesworthstone tools
 # ============================================================
 
 STACK_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,6 +27,8 @@ declare -gA STACK_COMMANDS=(
     [cm]="cm"
     [caam]="caam"
     [slb]="slb"
+    [ru]="ru"
+    [dcg]="dcg"
 )
 
 # Tool display names
@@ -39,6 +41,8 @@ declare -gA STACK_NAMES=(
     [cm]="CM (CASS Memory System)"
     [caam]="CAAM (Coding Agent Account Manager)"
     [slb]="SLB (Simultaneous Launch Button)"
+    [ru]="RU (Repo Updater)"
+    [dcg]="DCG (Destructive Command Guard)"
 )
 
 # ============================================================
@@ -393,6 +397,70 @@ install_slb() {
     return 1
 }
 
+# Install RU (Repo Updater)
+# Multi-repo sync + AI automation
+install_ru() {
+    local tool="ru"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    # RU uses --easy-mode
+    local -a args=(--easy-mode)
+    if ! _stack_is_interactive; then
+        args+=(--yes)
+    fi
+
+    if _stack_run_installer "$tool" "${args[@]}"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install DCG (Destructive Command Guard)
+# Blocks dangerous commands
+install_dcg() {
+    local tool="dcg"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    # DCG uses --easy-mode
+    local -a args=(--easy-mode)
+    if ! _stack_is_interactive; then
+        args+=(--yes)
+    fi
+
+    if _stack_run_installer "$tool" "${args[@]}"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            
+            # Register hook if Claude Code is present
+            if _stack_command_exists claude; then
+                log_detail "Registering DCG hook..."
+                _stack_run_as_user "dcg install --force" || log_warn "Failed to register DCG hook"
+            fi
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
 # ============================================================
 # Verification Functions
 # ============================================================
@@ -405,7 +473,7 @@ verify_stack() {
 
     log_detail "Verifying Dicklesworthstone stack..."
 
-    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb; do
+    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg; do
         local cmd="${STACK_COMMANDS[$tool]}"
         local name="${STACK_NAMES[$tool]}"
 
@@ -433,7 +501,7 @@ verify_stack_help() {
 
     log_detail "Testing stack tools --help..."
 
-    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb; do
+    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg; do
         local cmd="${STACK_COMMANDS[$tool]}"
 
         if _stack_is_installed "$tool"; then
@@ -456,7 +524,7 @@ verify_stack_help() {
 get_stack_versions() {
     echo "Dicklesworthstone Stack Versions:"
 
-    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb; do
+    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg; do
         local cmd="${STACK_COMMANDS[$tool]}"
         local name="${STACK_NAMES[$tool]}"
 
@@ -485,6 +553,8 @@ install_all_stack() {
     install_cm
     install_caam
     install_slb
+    install_ru
+    install_dcg
 
     # Verify installation
     verify_stack

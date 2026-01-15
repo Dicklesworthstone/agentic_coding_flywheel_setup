@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowUpRight,
@@ -118,14 +118,12 @@ export function TldrToolCard({
 }: TldrToolCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [spotlightOpacity, setSpotlightOpacity] = useState(0);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const isTouchDevice = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches,
+    []
+  );
   const prefersReducedMotion = useReducedMotion();
   const reducedMotion = prefersReducedMotion ?? false;
-
-  // Detect touch device to disable spotlight effect (better mobile performance)
-  useEffect(() => {
-    setIsTouchDevice(window.matchMedia("(hover: none)").matches);
-  }, []);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {

@@ -692,7 +692,7 @@ It also supports optional protection packs (database, Kubernetes, cloud)."
         else
             if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" ]]; then
                 gum_detail "Registering DCG hook (noninteractive)"
-                run_as_user "$dcg_bin" install || gum_warn "DCG hook registration failed"
+                run_as_user "$dcg_bin" install --yes || gum_warn "DCG hook registration failed"
             else
                 if gum_confirm "Register DCG hook for Claude Code?"; then
                     run_as_user "$dcg_bin" install || gum_warn "DCG hook registration failed"
@@ -711,7 +711,7 @@ It also supports optional protection packs (database, Kubernetes, cloud)."
         gum_warn "DCG doctor reported issues"
         if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" ]]; then
             gum_detail "Attempting DCG repair (noninteractive)"
-            run_as_user "$dcg_bin" install --force || gum_warn "DCG repair failed"
+            run_as_user "$dcg_bin" install --force --yes || gum_warn "DCG repair failed"
         else
             if gum_confirm "Attempt DCG repair by re-registering the hook?"; then
                 run_as_user "$dcg_bin" install --force || gum_warn "DCG repair failed"
@@ -776,6 +776,7 @@ Interactive:
 
 Options:
   --yes, -y    Non-interactive mode
+  --install-claude-guard  Install DCG hook for Claude Code (non-interactive)
   --help, -h   Show this help
 EOF
 }
@@ -789,6 +790,10 @@ maybe_run_cli_action() {
             --yes|-y)
                 SERVICES_SETUP_NONINTERACTIVE="true"
                 ;;
+            --install-claude-guard)
+                SERVICES_SETUP_ACTION="install-claude-guard"
+                SERVICES_SETUP_NONINTERACTIVE="true"
+                ;;
             --help|-h)
                 SERVICES_SETUP_ACTION="help"
                 ;;
@@ -798,12 +803,26 @@ maybe_run_cli_action() {
         shift || true
     done
 
-    if [[ "${SERVICES_SETUP_ACTION:-}" == "help" ]]; then
-        print_cli_help
-        return 0
-    fi
+    return 0
+}
 
-    return 1
+run_cli_action() {
+    case "${SERVICES_SETUP_ACTION:-}" in
+        help)
+            print_cli_help
+            return 0
+            ;;
+        install-claude-guard)
+            if ! init_target_context; then
+                return 1
+            fi
+            configure_dcg
+            return $?
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 }
 
 setup_gemini() {
@@ -1233,8 +1252,10 @@ Happy coding!"
 
 # Run main if not sourced
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    if maybe_run_cli_action "$@"; then
-        exit 0
+    maybe_run_cli_action "$@"
+    if [[ -n "${SERVICES_SETUP_ACTION:-}" ]]; then
+        run_cli_action
+        exit $?
     fi
     main "$@"
 fi

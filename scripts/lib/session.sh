@@ -255,6 +255,12 @@ readonly REDACT_PATTERNS=(
 
     # AWS Access Keys
     'AKIA[A-Z0-9]{16}'
+
+    # HuggingFace Tokens
+    'hf_[a-zA-Z0-9]{34}'
+
+    # Stripe Secret Keys (live and test)
+    '[rs]k_(live|test)_[a-zA-Z0-9]{24,}'
 )
 
 # Optional redaction patterns - applied when ACFS_SANITIZE_OPTIONAL=1
@@ -382,6 +388,8 @@ def sanitize_string:
         gsub("xoxb-[a-zA-Z0-9-]+"; "[REDACTED]") |
         gsub("xoxp-[a-zA-Z0-9-]+"; "[REDACTED]") |
         gsub("AKIA[A-Z0-9]{16}"; "[REDACTED]") |
+        gsub("hf_[a-zA-Z0-9]{34}"; "[REDACTED]") |
+        gsub("[rs]k_(live|test)_[a-zA-Z0-9]{24,}"; "[REDACTED]") |
         gsub("(?i)password[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |
         gsub("(?i)secret[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |
         gsub("(?i)api_key[\"\\s:=]+[\"']?[^\\s\"'\\}\\]\\),;\\[]{8,}[\"']?"; "[REDACTED]") |

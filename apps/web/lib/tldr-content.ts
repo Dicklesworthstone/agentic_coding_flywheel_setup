@@ -481,6 +481,54 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = [
       "Audit trail of dangerous command approvals",
     ],
   },
+  {
+    id: "ms",
+    name: "Meta Skill",
+    shortName: "MS",
+    href: "https://github.com/Dicklesworthstone/meta_skill",
+    icon: "Sparkles",
+    color: "from-teal-500 to-emerald-600",
+    category: "core",
+    stars: 10,
+    whatItDoes:
+      "Complete skill management platform: store, search, track effectiveness, package for sharing, and integrate with AI agents via MCP. Skills come from hand-written files, CASS mining, bundles, or guided workflows.",
+    whyItsUseful:
+      "AI agents need reusable context to be effective. MS doesn't just store skills—it learns which ones work. Thompson sampling optimizes suggestions over time, security systems (ACIP, DCG) keep content safe, and the MCP server makes skills native to any AI agent.",
+    implementationHighlights: [
+      "Dual persistence: SQLite for queries + Git for audit trails",
+      "Thompson sampling bandit learns from usage to optimize suggestions",
+      "MCP server exposes 6 native tools for AI agent integration",
+      "ACIP prompt-injection detection with quarantine system",
+      "DCG command safety tiers (Safe/Caution/Danger/Critical)",
+    ],
+    synergies: [
+      {
+        toolId: "cass",
+        description: "One input source for skill extraction (not the only one)",
+      },
+      {
+        toolId: "cm",
+        description: "Skills and CM memories are complementary knowledge layers",
+      },
+      {
+        toolId: "bv",
+        description: "Graph analysis via bv for skill dependency insights",
+      },
+    ],
+    techStack: ["Rust", "SQLite", "Tantivy", "Git", "MCP"],
+    keyFeatures: [
+      "MCP server for native AI agent integration",
+      "Thompson sampling optimizes suggestions over time",
+      "Multi-layer security (ACIP, DCG, path policy, secrets)",
+      "Hybrid search: BM25 + hash embeddings with RRF",
+      "Token packing for context budget optimization",
+    ],
+    useCases: [
+      "AI agents querying skills via MCP during sessions",
+      "Building team-wide skill libraries with effectiveness tracking",
+      "Packaging and sharing skills via signed bundles",
+    ],
+  },
   // ===========================================================================
   // SUPPORTING FLYWHEEL TOOLS
   // ===========================================================================
@@ -617,15 +665,15 @@ export const tldrPageData = {
     title: "The Agentic Coding Flywheel",
     subtitle: "TL;DR Edition",
     description:
-      "10 core tools and 3 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
+      "11 core tools and 3 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
     stats: [
-      { label: "Ecosystem Tools", value: "13" },
+      { label: "Ecosystem Tools", value: "14" },
       { label: "GitHub Stars", value: "3,600+" },
       { label: "Languages", value: "5" },
     ],
   },
   coreDescription:
-    "The core flywheel tools form the backbone: Agent Mail for coordination, BV for graph-based prioritization, CASS for instant session search, CM for persistent memory, UBS for bug detection, plus session management, safety guards, and automated setup.",
+    "The core flywheel tools form the backbone: Agent Mail for coordination, BV for graph-based prioritization, CASS for instant session search, CM for persistent memory, UBS for bug detection, MS for skill management with MCP integration, plus session management, safety guards, and automated setup.",
   supportingDescription:
     "Supporting tools extend the ecosystem: GIIL for remote image debugging, XF for searching your X archive, and S2P for crafting prompts from source code.",
   flywheelExplanation: {

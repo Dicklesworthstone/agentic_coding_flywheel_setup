@@ -182,7 +182,7 @@ log_state() {
     local timestamp
     timestamp=$(date +"%H:%M:%S.%3N" 2>/dev/null || date +"%H:%M:%S")
 
-    echo "[$timestamp] [STATE] $key: '$old_value' -> '$new_value'" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
+    printf '[%s] [STATE] %s: \047%s\047 -> \047%s\047\n' "$timestamp" "$key" "$old_value" "$new_value" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }
 
 # Log screen transitions
@@ -196,7 +196,7 @@ log_screen() {
     local timestamp
     timestamp=$(date +"%H:%M:%S.%3N" 2>/dev/null || date +"%H:%M:%S")
 
-    echo "[$timestamp] [SCRN ] $action: $screen" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
+    printf '[%s] [SCRN ] %s: %s\n' "$timestamp" "$action" "$screen" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }
 
 # Log user input (sanitized for security)
@@ -219,7 +219,7 @@ log_input() {
     local timestamp
     timestamp=$(date +"%H:%M:%S.%3N" 2>/dev/null || date +"%H:%M:%S")
 
-    echo "[$timestamp] [INPUT] $field: '$sanitized'" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
+    printf '[%s] [INPUT] %s: \047%s\047\n' "$timestamp" "$field" "$sanitized" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }
 
 # Log key press events
@@ -232,7 +232,7 @@ log_key() {
     local timestamp
     timestamp=$(date +"%H:%M:%S.%3N" 2>/dev/null || date +"%H:%M:%S")
 
-    echo "[$timestamp] [KEY  ] $key" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
+    printf '[%s] [KEY  ] %s\n' "$timestamp" "$key" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }
 
 # Log validation results
@@ -250,8 +250,11 @@ log_validation() {
 
     local msg="$field='$value' -> $result"
     [[ -n "$error_msg" ]] && msg="$msg: $error_msg"
+    
+    # Sanitize newlines in validation message
+    msg="${msg//[$'\r\n']/ }"
 
-    echo "[$timestamp] [VALID] $msg" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
+    printf '[%s] [VALID] %s\n' "$timestamp" "$msg" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }
 
 # Log file operations
@@ -266,7 +269,7 @@ log_file_op() {
     local timestamp
     timestamp=$(date +"%H:%M:%S.%3N" 2>/dev/null || date +"%H:%M:%S")
 
-    echo "[$timestamp] [FILE ] $operation: $path ($status)" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
+    printf '[%s] [FILE ] %s: %s (%s)\n' "$timestamp" "$operation" "$path" "$status" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }
 
 # Log command execution
@@ -287,7 +290,7 @@ log_cmd() {
     local short_cmd="${cmd:0:200}"
     [[ ${#cmd} -gt 200 ]] && short_cmd="$short_cmd..."
 
-    echo "[$timestamp] [CMD  ] $short_cmd -> $status" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
+    printf '[%s] [CMD  ] %s -> %s\n' "$timestamp" "$short_cmd" "$status" >> "$ACFS_SESSION_LOG" 2>/dev/null || true
 }
 
 # Log structured JSON data (for debugging complex state)

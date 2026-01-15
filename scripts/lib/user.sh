@@ -232,7 +232,7 @@ set_default_shell() {
     local target="$ACFS_TARGET_USER"
 
     if [[ -z "$shell" ]]; then
-        shell=$(which zsh)
+        shell=$(command -v zsh)
     fi
 
     if [[ ! -x "$shell" ]]; then

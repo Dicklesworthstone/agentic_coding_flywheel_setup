@@ -190,7 +190,7 @@ enforce_https() {
 
     if ! is_https "$url"; then
         echo -e "${RED}Security Error:${NC} URL for '$name' is not HTTPS" >&2
-        echo -e "  URL: $url" >&2
+        printf "  URL: %s\n" "$url" >&2
         echo -e "  All installer URLs must use HTTPS." >&2
         return 1
     fi
@@ -280,9 +280,9 @@ verify_checksum() {
 
     if [[ "$actual_sha256" != "$expected_sha256" ]]; then
         echo -e "${RED}Security Error:${NC} Checksum mismatch for $name" >&2
-        echo -e "  Expected: $expected_sha256" >&2
-        echo -e "  Actual:   $actual_sha256" >&2
-        echo -e "  URL: $url" >&2
+        printf "  Expected: %s\n" "$expected_sha256" >&2
+        printf "  Actual:   %s\n" "$actual_sha256" >&2
+        printf "  URL: %s\n" "$url" >&2
         echo -e "  Refusing to execute unverified installer script." >&2
         echo -e "  Fix:" >&2
         echo -e "    - End users: update ACFS to refresh checksums.yaml (re-run install.sh / update scripts)" >&2
@@ -310,7 +310,7 @@ fetch_and_run() {
 
     if [[ -z "$expected_sha256" ]]; then
         echo -e "${RED}Security Error:${NC} Missing checksum for $name" >&2
-        echo -e "  URL: $url" >&2
+        printf "  URL: %s\n" "$url" >&2
         echo -e "  Refusing to execute unverified installer script." >&2
         echo -e "  Fix:" >&2
         echo -e "    - End users: update ACFS to refresh checksums.yaml (re-run install.sh / update scripts)" >&2
@@ -365,7 +365,7 @@ fetch_and_run_with_recovery() {
 
     if [[ -z "$expected_sha256" ]]; then
         echo -e "${RED}Security Error:${NC} Missing checksum for $name" >&2
-        echo -e "  URL: $url" >&2
+        printf "  URL: %s\n" "$url" >&2
         echo -e "  Refusing to execute unverified installer script." >&2
         return 1
     fi
@@ -633,10 +633,10 @@ handle_all_checksum_mismatches() {
         echo "" >&2
         for entry in "${CHECKSUM_MISMATCHES[@]}"; do
             IFS="|" read -r tool url expected actual <<< "$entry"
-            echo -e "  ${RED}[mismatch]${NC} $tool" >&2
-            echo -e "      Expected: ${expected:0:16}..." >&2
-            echo -e "      Actual:   ${actual:0:16}..." >&2
-            echo -e "      URL: $url" >&2
+            printf "  ${RED}[mismatch]${NC} %s\n" "$tool" >&2
+            printf "      Expected: %.16s...\n" "$expected" >&2
+            printf "      Actual:   %.16s...\n" "$actual" >&2
+            printf "      URL: %s\n" "$url" >&2
             echo "" >&2
         done
         return 1
@@ -688,9 +688,9 @@ handle_all_checksum_mismatches() {
         fi
 
         echo -e "  $classification_label $tool:" >&2
-        echo "      Expected: ${expected:0:16}..." >&2
-        echo "      Actual:   ${actual:0:16}..." >&2
-        echo "      URL: $url" >&2
+        printf "      Expected: %.16s...\n" "$expected" >&2
+        printf "      Actual:   %.16s...\n" "$actual" >&2
+        printf "      URL: %s\n" "$url" >&2
         echo "" >&2
     done
 
@@ -769,11 +769,11 @@ _handle_mismatches_noninteractive() {
         fi
 
         if [[ "$is_crit" == "true" ]]; then
-            echo -e "  ${RED}[CRITICAL]${NC} $tool - checksum mismatch" >&2
+            printf "  ${RED}[CRITICAL]${NC} %s - checksum mismatch\n" "$tool" >&2
             has_critical=true
             critical_names+=("$tool")
         else
-            echo -e "  ${YELLOW}[skipping]${NC} $tool - checksum mismatch" >&2
+            printf "  ${YELLOW}[skipping]${NC} %s - checksum mismatch\n" "$tool" >&2
             if declare -f record_skipped_tool &>/dev/null; then
                 record_skipped_tool "$tool" "Checksum mismatch (auto-skipped in non-interactive mode)" "$url"
             else
@@ -827,9 +827,9 @@ handle_checksum_mismatch() {
 
     if [[ "${ACFS_STRICT_MODE:-false}" == "true" ]]; then
         echo -e "${RED}Security Error:${NC} Checksum mismatch for $tool (strict mode)" >&2
-        echo -e "  Expected: $expected" >&2
-        echo -e "  Actual:   $actual" >&2
-        echo -e "  URL: $url" >&2
+        printf "  Expected: %s\n" "$expected" >&2
+        printf "  Actual:   %s\n" "$actual" >&2
+        printf "  URL: %s\n" "$url" >&2
         return 1
     fi
 
@@ -880,9 +880,9 @@ handle_checksum_mismatch() {
     fi
 
     echo -e "  Tool: $classification_label $tool" >&2
-    echo "  Expected: ${expected:0:16}..." >&2
-    echo "  Actual:   ${actual:0:16}..." >&2
-    echo "  URL: $url" >&2
+    printf "  Expected: %.16s...\n" "$expected" >&2
+    printf "  Actual:   %.16s...\n" "$actual" >&2
+    printf "  URL: %s\n" "$url" >&2
     echo "" >&2
     echo "This usually means the upstream script was updated." >&2
     echo "" >&2
@@ -1054,6 +1054,8 @@ verify_all_installers_json() {
         str="${str//$'\t'/\\t}"
         str="${str//$'\r'/\\r}"
         str="${str//$'\n'/\\n}"
+        str="${str//$'\b'/\\b}"
+        str="${str//$'\f'/\\f}"
         echo -n "$str"
     }
 
@@ -1067,9 +1069,28 @@ verify_all_installers_json() {
             continue
         fi
 
-        local actual
+        local actual=""
         local fetch_error=""
-        actual=$(fetch_checksum "$url" 2>&1) || fetch_error="$actual"
+        local tmp_err=""
+
+        # Create temp file for stderr capture
+        if command -v mktemp &>/dev/null; then
+            tmp_err=$(mktemp 2>/dev/null) || tmp_err="/tmp/acfs-err-$RANDOM"
+        else
+            tmp_err="/tmp/acfs-err-$RANDOM"
+        fi
+
+        # Capture stdout to variable, stderr to file
+        if actual=$(fetch_checksum "$url" 2>"$tmp_err"); then
+            # Success: actual contains the hash
+            :
+        else
+            # Failure: read error from stderr capture
+            fetch_error=$(cat "$tmp_err")
+            # Fallback if empty
+            [[ -z "$fetch_error" ]] && fetch_error="Unknown error fetching checksum"
+        fi
+        rm -f "$tmp_err"
 
         if [[ -n "$fetch_error" ]]; then
             local escaped_error
