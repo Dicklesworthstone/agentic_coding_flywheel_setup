@@ -147,7 +147,7 @@ export const sendServerEvent = async (
   if (!GA_MEASUREMENT_ID) return;
 
   try {
-    await fetch('/api/track', {
+    const response = await fetch('/api/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -155,8 +155,15 @@ export const sendServerEvent = async (
         events: [{ name: eventName, params }],
       }),
     });
-  } catch {
-    // Silently fail - don't disrupt user experience
+    // Log non-ok responses in development for visibility
+    if (!response.ok && process.env.NODE_ENV === 'development') {
+      console.warn(`[Analytics] Server event failed: ${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    // Log errors in development, silently fail in production
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[Analytics] Server event error:', error);
+    }
   }
 };
 

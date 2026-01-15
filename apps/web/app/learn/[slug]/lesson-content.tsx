@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { renderLessonComponent } from "@/components/lessons";
 import {
   ArrowLeft,
@@ -292,10 +292,11 @@ export function LessonContent({ lesson }: Props) {
   const [completedLessons, markComplete] = useCompletedLessons();
   const [completedSteps] = useCompletedSteps();
   const readingProgress = useReadingProgress();
-  const isCompleted = completedLessons.includes(lesson.id);
-  const prevLesson = getPreviousLesson(lesson.id);
-  const nextLesson = getNextLesson(lesson.id);
-  const isWizardComplete = completedSteps.length === TOTAL_WIZARD_STEPS;
+  // Memoize derived values to prevent unnecessary recalculations
+  const isCompleted = useMemo(() => completedLessons.includes(lesson.id), [completedLessons, lesson.id]);
+  const prevLesson = useMemo(() => getPreviousLesson(lesson.id), [lesson.id]);
+  const nextLesson = useMemo(() => getNextLesson(lesson.id), [lesson.id]);
+  const isWizardComplete = useMemo(() => completedSteps.length === TOTAL_WIZARD_STEPS, [completedSteps.length]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [showFinalCelebration, setShowFinalCelebration] = useState(false);
