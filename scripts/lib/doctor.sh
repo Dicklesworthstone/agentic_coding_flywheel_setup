@@ -268,7 +268,6 @@ section() {
                 --border-foreground "$ACFS_MUTED" \
                 --border normal \
                 --padding "0 2" \
-                --margin "0 0 1 0" \
                 "󰋊 $1"
         else
             echo ""
@@ -307,17 +306,6 @@ run_with_timeout() {
     local timeout_secs="$1"
     local description="$2"
     shift 2
-
-    # Check for timeout command
-    if ! command -v timeout &>/dev/null; then
-        if [[ "$JSON_MODE" != "true" ]]; then
-             # Only warn once or just run without timeout
-             :
-        fi
-        # Fallback: run without timeout
-        "$@" 2>&1
-        return $?
-    fi
 
     local result
     local status
@@ -654,9 +642,9 @@ check_shell() {
     fi
 
     if [[ -d "$plugins_dir/zsh-syntax-highlighting" ]]; then
-        check "shell.plugins.zsh_syntax_highlightinging" "zsh-syntax-highlighting" "pass"
+        check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "pass"
     else
-        check "shell.plugins.zsh_syntax_highlightinginging" "zsh-syntax-highlighting" "warn" "not installed" \
+        check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "warn" "not installed" \
             "git clone https://github.com/zsh-users/zsh-syntax-highlighting \${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting"
     fi
 
@@ -821,7 +809,7 @@ check_cloud() {
         if command -v jq &>/dev/null; then
             ts_status=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // "unknown"' 2>/dev/null || echo "unknown")
         else
-            ts_status=$(tailscale status --json 2>/dev/null | sed -n 's/.*"BackendState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+            ts_status=$(tailscale status --json 2>/dev/null | sed -n 's/.*"BackendState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
             ts_status="${ts_status:-unknown}"
         fi
         case "$ts_status" in
@@ -1537,6 +1525,75 @@ check_wrangler_auth() {
     if ((status == 124)); then
         check_with_timeout_status "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "timeout" "check timed out" "Check network, then: wrangler login"
     elif ((status == 0)); then
+        cache_result "wrangler_auth" "authenticated"
+        check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "pass" "authenticated"
+    else
+        # Check for CLOUDFLARE_API_TOKEN as alternative
+        if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            cache_result "wrangler_auth" "CLOUDFLARE_API_TOKEN"
+            check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "pass" "CLOUDFLARE_API_TOKEN set"
+        else
+            check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "warn" "not authenticated" "wrangler login (or set CLOUDFLARE_API_TOKEN for headless)"
+        fi
+    fi
+}
+
+# check_supabase_auth - Supabase CLI authentication check
+# Related: bead azw
+check_supabase_auth() {
+    if ! command -v supabase &>/dev/null; then
+        check "deep.cloud.supabase" "Supabase CLI" "warn" "not installed" "acfs update --cloud-only --force"
+        return
+    fi
+
+    # Check if binary works
+    if ! timeout 5 supabase --version &>/dev/null; then
+        check "deep.cloud.supabase" "Supabase CLI" "fail" "binary error" "Reinstall: acfs update --cloud-only --force"
+        return
+    fi
+
+    # Check for access token in config directory
+    local access_token_file="$HOME/.supabase/access-token"
+    local alt_access_token_file="$HOME/.config/supabase/access-token"
+
+    if [[ -f "$access_token_file" || -f "$alt_access_token_file" ]]; then
+        # Check if token is not empty
+        if [[ -s "$access_token_file" || -s "$alt_access_token_file" ]]; then
+            check "deep.cloud.supabase" "Supabase CLI auth" "pass" "access token exists"
+        else
+            check "deep.cloud.supabase" "Supabase CLI auth" "warn" "empty access token" "supabase login (or set SUPABASE_ACCESS_TOKEN for headless)"
+        fi
+    elif [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+        check "deep.cloud.supabase" "Supabase CLI auth" "pass" "SUPABASE_ACCESS_TOKEN set"
+    else
+        check "deep.cloud.supabase" "Supabase CLI auth" "warn" "not authenticated" "supabase login (or set SUPABASE_ACCESS_TOKEN for headless)"
+    fi
+}
+
+# check_vercel_auth - Vercel CLI authentication check
+# Related: bead azw
+# Enhanced: Caching and timeout support (bead lz1)
+check_vercel_auth() {
+    if ! command -v vercel &>/dev/null; then
+        check "deep.cloud.vercel_auth" "Vercel CLI" "warn" "not installed" "bun install -g --trust vercel@latest"
+        return
+    fi
+
+    # Try cache first (bead lz1)
+    local cached_result
+    if cached_result=$(get_cached_result "vercel_auth"); then
+        check "deep.cloud.vercel_auth" "Vercel auth" "pass" "$cached_result (cached)"
+        return
+    fi
+
+    # Run with timeout
+    local result
+    result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "Vercel auth" vercel whoami 2>&1)
+    local status=$?
+
+    if ((status == 124)); then
+        check_with_timeout_status "deep.cloud.vercel_auth" "Vercel auth" "timeout" "check timed out" "Check network, then: vercel login"
+    elif ((status == 0)); then
         # Get the authenticated user/team for more detail
         local vercel_user
         vercel_user=$(timeout 5 vercel whoami 2>/dev/null) || vercel_user="authenticated"
@@ -1570,7 +1627,7 @@ print_summary() {
         if [[ "$HAS_GUM" == "true" ]]; then
             gum style --foreground "$ACFS_MUTED" "  Legend: $(gum style --foreground "$ACFS_SUCCESS" "✓") installed  $(gum style --foreground "$ACFS_MUTED" "○") skipped  $(gum style --foreground "$ACFS_ERROR" "✖") missing  $(gum style --foreground "$ACFS_WARNING" "⚠") warning  $(gum style --foreground "$ACFS_WARNING" "?") timeout"
         else
-            echo -e "  ${CYAN}Legend:${NC} ${GREEN}✓${NC} installed  ${CYAN}○${NC} skipped  ${RED}✖${NC} missing  ${YELLOW}⚠${NC} warning  ${YELLOW}?${NC} timeout"
+            echo -e "  Legend: ${GREEN}✓${NC} installed  ${CYAN}○${NC} skipped  ${RED}✖${NC} missing  ${YELLOW}⚠${NC} warning  ${YELLOW}?${NC} timeout"
         fi
     fi
 

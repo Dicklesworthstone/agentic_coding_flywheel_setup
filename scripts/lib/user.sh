@@ -55,7 +55,7 @@ _generate_random_password() {
     # Fallback to /dev/urandom (standard on Linux)
     if [[ -r /dev/urandom ]]; then
         # Take first 32 alphanumeric chars
-        LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
+        tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32
         return 0
     fi
 
@@ -177,29 +177,6 @@ migrate_ssh_keys() {
     fi
 
     log_detail "Migrating SSH keys from $source_keys"
-
-    # Security: Verify source key file permissions are not world-writable
-    # This prevents privilege escalation from a malicious local user modifying the source keys
-    if [[ -L "$source_keys" ]]; then
-        log_error "Refusing to copy keys from symlink: $source_keys"
-        return 1
-    fi
-    
-    # Check if file is world-writable (perm & 0002)
-    if [[ "$(stat -c %a "$source_keys")" =~ [2367]$ ]]; then
-        log_error "Security Check Failed: Source keys file is world-writable: $source_keys"
-        log_error "Refusing to migrate potentially compromised keys."
-        return 1
-    fi
-
-    # Check ownership (must be owned by root or invoking user)
-    local source_owner
-    source_owner=$(stat -c %U "$source_keys")
-    if [[ "$source_owner" != "root" && "$source_owner" != "$current_user" ]]; then
-        log_error "Security Check Failed: Source keys owned by unexpected user: $source_owner"
-        log_error "Refusing to migrate keys."
-        return 1
-    fi
 
     local ssh_dir="$ACFS_TARGET_HOME/.ssh"
 

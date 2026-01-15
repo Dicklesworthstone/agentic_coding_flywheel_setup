@@ -431,9 +431,8 @@ ubs .                                   # Whole project
 AGENTS_EOF
 
     # Replace placeholder with actual project name
-    # Use portable sed pattern: write to temp file then move
-    # This avoids BSD vs GNU sed -i incompatibility issues
-    sed "s/PROJECT_NAME_PLACEHOLDER/$project_name/g" AGENTS.md > AGENTS.md.tmp && mv AGENTS.md.tmp AGENTS.md
+    # Use portable sed syntax that works on both GNU (Linux) and BSD (macOS)
+    sed -i.bak "s/PROJECT_NAME_PLACEHOLDER/$project_name/g" AGENTS.md && rm -f AGENTS.md.bak
 }
 
 # ============================================================

@@ -190,14 +190,7 @@ check_memory() {
     fi
 
     local mem_kb
-    # Prefer MemAvailable (accurate estimate of usable memory)
-    if grep -q "MemAvailable" /proc/meminfo; then
-        mem_kb=$(awk '/MemAvailable/ {print $2}' /proc/meminfo)
-    else
-        # Fallback: MemTotal (optimistic)
-        mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-    fi
-
+    mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
     local mem_gb=$((mem_kb / 1024 / 1024))
 
     if (( mem_gb >= 8 )); then
@@ -223,19 +216,6 @@ check_disk() {
     fi
 
     # Handle non-numeric or empty values
-    if [[ -z "$free_kb" ]] || ! [[ "$free_kb" =~ ^[0-9]+$ ]]; then
-        # Fallback: try stat -f (filesystem status) if df failed parsing
-        if command -v stat &>/dev/null; then
-             # stat -f -c "%a * %s" . (blocks available * block size)
-             # This is linux-specific syntax
-             if [[ "$(uname)" == "Linux" ]]; then
-                 local bytes
-                 bytes=$(stat -f -c "%a*%s" / 2>/dev/null | bc 2>/dev/null || echo 0)
-                 free_kb=$((bytes / 1024))
-             fi
-        fi
-    fi
-
     if [[ -z "$free_kb" ]] || ! [[ "$free_kb" =~ ^[0-9]+$ ]]; then
         warn "Cannot determine disk space" "df command returned unexpected output"
         return

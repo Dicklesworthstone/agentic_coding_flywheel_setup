@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback } from "react";
 import { Copy, Check } from "lucide-react";
 import { motion, useReducedMotion, useInView } from "framer-motion";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -81,27 +81,12 @@ const INSTALL_COMMAND = `curl -fsSL https://raw.githubusercontent.com/Dickleswor
 
 function FooterCTA({ id }: { id?: string }) {
   const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const handleCopy = useCallback(async () => {
-    // Clear any existing timeout
-    if (copyTimeoutRef.current) {
-      clearTimeout(copyTimeoutRef.current);
-    }
-
     try {
       await navigator.clipboard.writeText(INSTALL_COMMAND);
       setCopied(true);
-      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Silently fail - clipboard API may not be available
     }

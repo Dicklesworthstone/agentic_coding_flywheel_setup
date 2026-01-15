@@ -16,8 +16,7 @@ function isValidGtmId(value: unknown): value is string {
 }
 
 function isValidClarityProjectId(value: unknown): value is string {
-  // Clarity project IDs are typically 10-12 alphanumeric characters
-  return typeof value === 'string' && value.length >= 6 && value.length <= 20 && /^[a-zA-Z0-9]+$/.test(value);
+  return typeof value === 'string' && /^[a-zA-Z0-9]+$/.test(value);
 }
 
 const GTM_ID = isValidGtmId(GTM_ID_RAW) ? GTM_ID_RAW : undefined;

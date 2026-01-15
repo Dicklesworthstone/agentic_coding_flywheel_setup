@@ -17,23 +17,6 @@ fi
 # Helper Functions
 # ============================================================
 
-# Wrapper for curl to handle flags safely
-# Mimics security.sh behavior if not available
-_tailscale_curl() {
-    # If ACFS_CURL_BASE_ARGS is already defined (e.g. by security.sh), use it
-    if declare -p ACFS_CURL_BASE_ARGS &>/dev/null; then
-        curl "${ACFS_CURL_BASE_ARGS[@]}" "$@"
-        return $?
-    fi
-
-    # Fallback detection
-    local args=(-fsSL)
-    if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
-        args=(--proto '=https' --proto-redir '=https' -fsSL)
-    fi
-    curl "${args[@]}" "$@"
-}
-
 # Get sudo command (empty if already root)
 _tailscale_get_sudo() {
     if [[ $EUID -eq 0 ]]; then
@@ -51,8 +34,7 @@ _tailscale_has_systemd() {
 # Get Tailscale backend state (jq optional)
 _tailscale_backend_state() {
     local output
-    # Use timeout to prevent hanging if daemon is unresponsive
-    output=$(timeout 2 tailscale status --json 2>/dev/null || echo "")
+    output=$(tailscale status --json 2>/dev/null || echo "")
     if [[ -z "$output" ]]; then
         echo "unknown"
         return 0
@@ -127,7 +109,7 @@ install_tailscale() {
     log_detail "  Adding Tailscale repository..."
     if ! (
         set -o pipefail
-        _tailscale_curl "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
+        curl --proto '=https' --proto-redir '=https' -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
             | $sudo_cmd tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null 2>&1
     ); then
         log_warn "Failed to add Tailscale signing key"
@@ -135,7 +117,7 @@ install_tailscale() {
         # Fallback: try without codename-specific key
         if ! (
             set -o pipefail
-            _tailscale_curl "https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg" \
+            curl --proto '=https' --proto-redir '=https' -fsSL "https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg" \
                 | $sudo_cmd tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null 2>&1
         ); then
             log_error "Failed to add Tailscale repository key"
@@ -261,13 +243,12 @@ get_tailscale_info() {
         return 1
     fi
 
-    # Check status with timeout
     if check_tailscale_auth; then
         local ip hostname status_json
-        ip=$(timeout 2 tailscale ip -4 2>/dev/null || echo "unknown")
+        ip=$(tailscale ip -4 2>/dev/null || echo "unknown")
         hostname="unknown"
 
-        status_json=$(timeout 2 tailscale status --json 2>/dev/null || echo "")
+        status_json=$(tailscale status --json 2>/dev/null || echo "")
         if [[ -n "$status_json" ]]; then
             if command -v jq &>/dev/null; then
                 hostname=$(printf '%s' "$status_json" | jq -r '.Self.HostName // "unknown"' 2>/dev/null || echo "unknown")

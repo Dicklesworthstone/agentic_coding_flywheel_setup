@@ -77,18 +77,8 @@ export function AgentHeroCard({
   const [copiedAlias, setCopiedAlias] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const personality = agentPersonalities[agent.id];
   const prefersReducedMotion = useReducedMotion();
-
-  // Cleanup copy timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
 
   // Handle keyboard number navigation
   useEffect(() => {
@@ -117,14 +107,10 @@ export function AgentHeroCard({
 
   const handleCopy = async (text: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    // Clear any existing timeout
-    if (copyTimeoutRef.current) {
-      clearTimeout(copyTimeoutRef.current);
-    }
     try {
       await navigator.clipboard.writeText(text);
       setCopiedAlias(text);
-      copyTimeoutRef.current = setTimeout(() => setCopiedAlias(null), 2000);
+      setTimeout(() => setCopiedAlias(null), 2000);
     } catch {
       const textarea = document.createElement("textarea");
       textarea.value = text;
@@ -135,7 +121,7 @@ export function AgentHeroCard({
       document.execCommand("copy");
       document.body.removeChild(textarea);
       setCopiedAlias(text);
-      copyTimeoutRef.current = setTimeout(() => setCopiedAlias(null), 2000);
+      setTimeout(() => setCopiedAlias(null), 2000);
     }
   };
 

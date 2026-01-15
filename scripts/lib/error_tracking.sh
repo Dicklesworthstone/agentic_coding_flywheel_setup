@@ -607,26 +607,25 @@ retry_with_backoff() {
                 stderr_content="${stderr_content:0:$ERROR_OUTPUT_MAX_LENGTH}"
             fi
         else
-            # Fallback: execute without capture if temp files unavailable
-            # We cannot safely buffer output in memory as it might cause OOM.
-            # We output directly to stdout/stderr so the user can see what's happening.
-            if "$@"; then
-                exit_code=0
-            else
-                exit_code=$?
-            fi
-            
-            # We don't have captured stderr for retry analysis, so we assume non-retryable
-            # unless the exit code specifically indicates a transient error we can detect purely by code.
-            # This degrades gracefully to "fail fast" if we can't inspect stderr.
-            if [[ $exit_code -ne 0 ]]; then
-                 if is_retryable_error "$exit_code" ""; then
-                     : # Allow retry based on exit code alone
-                 else
-                     # Force non-retryable if we can't inspect stderr and code is ambiguous
-                     # But is_retryable_error handles empty stderr by checking codes.
-                     :
-                 fi
+            # Fallback: capture combined output in-memory.
+            #
+            # This is only used if mktemp fails; we avoid predictable /tmp paths.
+            # Output is only emitted on success to preserve the usual quiet-on-failure behavior.
+            local combined_output=""
+            exit_code=0
+            combined_output="$("$@" 2>&1)" || exit_code=$?
+            stderr_content="$combined_output"
+
+            if [[ $exit_code -eq 0 ]]; then
+                if ((attempt > 0)); then
+                    if type -t log_info &>/dev/null; then
+                        log_info "$description succeeded on retry $attempt"
+                    else
+                        echo "  [retry] $description succeeded on retry $attempt" >&2
+                    fi
+                fi
+                printf '%s' "$combined_output"
+                return 0
             fi
         fi
 

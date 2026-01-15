@@ -29,7 +29,6 @@
 #   --only-phase <phase>  Only run modules in a specific phase (repeatable)
 #   --skip <module>       Skip a specific module (repeatable)
 #   --no-deps             Disable automatic dependency closure (expert/debug)
-#   --checksums-ref <ref> Fetch checksums.yaml from this ref (default: main for pinned tags/SHAs)
 # ============================================================
 
 set -euo pipefail
@@ -49,21 +48,7 @@ ACFS_VERSION="0.5.0"
 ACFS_REPO_OWNER="${ACFS_REPO_OWNER:-Dicklesworthstone}"
 ACFS_REPO_NAME="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
 ACFS_REF="${ACFS_REF:-main}"
-# Preserve original ref input before it is resolved to a commit SHA.
-ACFS_REF_INPUT="$ACFS_REF"
-# Checksums ref defaults to ACFS_REF_INPUT, but pinned tags/SHAs fall back to main
-# to avoid stale checksums for fast-moving upstream installers.
-ACFS_CHECKSUMS_REF="${ACFS_CHECKSUMS_REF:-}"
-if [[ -z "$ACFS_CHECKSUMS_REF" ]]; then
-    if [[ "$ACFS_REF_INPUT" =~ ^v[0-9]+(\.[0-9]+){1,2}([.-][A-Za-z0-9]+)*$ ]] || [[ "$ACFS_REF_INPUT" =~ ^[0-9a-f]{7,40}$ ]]; then
-        ACFS_CHECKSUMS_REF="main"
-    else
-        ACFS_CHECKSUMS_REF="$ACFS_REF_INPUT"
-    fi
-fi
 ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
-ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
-export ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW
 export ACFS_RAW ACFS_VERSION
 ACFS_COMMIT_SHA=""       # Short SHA for display (12 chars)
 ACFS_COMMIT_SHA_FULL=""  # Full SHA for pinning resume scripts (40 chars)
@@ -629,20 +614,6 @@ parse_args() {
             --skip-preflight)
                 SKIP_PREFLIGHT=true
                 shift
-                ;;
-            --checksums-ref|--checksums-ref=*)
-                if [[ "$1" == "--checksums-ref" ]]; then
-                    if [[ -z "${2:-}" ]]; then
-                        log_fatal "--checksums-ref requires a ref (e.g., --checksums-ref main)"
-                    fi
-                    ACFS_CHECKSUMS_REF="$2"
-                    shift 2
-                else
-                    ACFS_CHECKSUMS_REF="${1#*=}"
-                    shift
-                fi
-                ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
-                export ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW
                 ;;
             --skip-ubuntu-upgrade)
                 # Skip automatic Ubuntu version upgrade (nb4)
@@ -1527,10 +1498,9 @@ acfs_fetch_url_content() {
 
 # Fetch checksums.yaml directly via GitHub API (bypasses CDN caching entirely).
 # This is used as a fallback when cached checksums don't match upstream.
-# Uses ACFS_CHECKSUMS_REF to avoid stale checksums when ACFS_REF is pinned.
 # Uses the raw content header to get the file directly without base64 encoding.
 acfs_fetch_fresh_checksums_via_api() {
-    local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/contents/checksums.yaml?ref=${ACFS_CHECKSUMS_REF}"
+    local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/contents/checksums.yaml?ref=${ACFS_REF}"
 
     # Use application/vnd.github.raw to get raw file content directly (no base64)
     local content
@@ -1562,8 +1532,6 @@ acfs_parse_checksums_content() {
     local content="$1"
     local in_installers=false
     local current_tool=""
-    local indent_len=0
-    local tool_indent=-1
 
     # Clear existing entries for fresh parse
     ACFS_UPSTREAM_URLS=()
@@ -1573,50 +1541,27 @@ acfs_parse_checksums_content() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         [[ -z "${line// }" ]] && continue
 
-        # Detect indentation of current line
-        local indent="${line%%[^ ]*}"
-        indent_len="${#indent}"
-
         if [[ "$line" =~ ^installers: ]]; then
             in_installers=true
-            tool_indent=-1 # Reset tool indent detection
             continue
         fi
         if [[ "$in_installers" != "true" ]]; then
             continue
         fi
 
-        # Detect tool name (key under installers:)
-        # Matches: "  toolname:"
-        if [[ "$line" =~ ^[[:space:]]*([a-z0-9_.-]+):[[:space:]]*$ ]]; then
-            # If we haven't established tool indentation yet, set it now
-            if [[ "$tool_indent" -eq -1 ]]; then
-                tool_indent="$indent_len"
-            fi
-
-            # Only treat as a tool definition if it matches the tool indentation level
-            if [[ "$indent_len" -eq "$tool_indent" ]]; then
-                current_tool="${BASH_REMATCH[1]}"
-                continue
-            fi
-        fi
-
-        # Stop parsing tools if we dedent back to or below installers level (0)
-        # (Simple heuristic: installers: is usually at 0)
-        if [[ "$indent_len" -eq 0 ]] && [[ "$in_installers" == "true" ]]; then
-             # If we hit a top-level key like "other:", stop
-             in_installers=false
-             continue
+        if [[ "$line" =~ ^[[:space:]]{2}([a-z_]+):[[:space:]]*$ ]]; then
+            current_tool="${BASH_REMATCH[1]}"
+            continue
         fi
 
         [[ -n "$current_tool" ]] || continue
 
-        if [[ "$line" =~ url:[[:space:]]*[\"\']?([^\"\']+)[\"\']? ]]; then
+        if [[ "$line" =~ url:[[:space:]]*\"([^\"]+)\" ]]; then
             ACFS_UPSTREAM_URLS["$current_tool"]="${BASH_REMATCH[1]}"
             continue
         fi
 
-        if [[ "$line" =~ sha256:[[:space:]]*[\"\']?([a-f0-9]{64})[\"\']? ]]; then
+        if [[ "$line" =~ sha256:[[:space:]]*\"([a-f0-9]{64})\" ]]; then
             ACFS_UPSTREAM_SHA256["$current_tool"]="${BASH_REMATCH[1]}"
             continue
         fi
@@ -1651,7 +1596,7 @@ acfs_load_upstream_checksums() {
             # Fallback to raw.githubusercontent.com with cache-bust
             local cb
             cb="$(date +%s)"
-            content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml?cb=${cb}")" || {
+            content="$(acfs_fetch_url_content "$ACFS_RAW/checksums.yaml?cb=${cb}")" || {
                 log_error "Failed to fetch checksums.yaml from any source"
                 return 1
             }
@@ -3543,7 +3488,7 @@ NTM_CONFIG_EOF
         log_detail "Installing MCP Agent Mail (in tmux session)"
         # Create or use acfs-services tmux session, run installer in first pane.
         # The installer will start the server, which runs persistently in tmux.
-        local tmux_session="acfs-install-stack-mcp-agent-mail"
+        local tmux_session="acfs-services"
         local tool="mcp_agent_mail"
         local target_dir="$TARGET_HOME/mcp_agent_mail"
 

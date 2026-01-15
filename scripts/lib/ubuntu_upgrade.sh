@@ -611,28 +611,17 @@ ubuntu_do_upgrade() {
     # Validate detected version is reasonable
     if [[ -n "$expected_next_version" ]] && [[ "$next_version" != "$expected_next_version" ]]; then
         # Convert versions to comparable numbers (24.10 -> 2410)
-        local expected_num detected_num current_num
+        local expected_num detected_num
         expected_num="${expected_next_version//./}"
         detected_num="${next_version//./}"
-        
-        # Get current version number for comparison
-        current_num=$(ubuntu_get_version_number) || current_num="0"
 
         if [[ "$detected_num" -gt "$expected_num" ]]; then
             # Skipping an EOL release (e.g., 24.10 EOL, jumping to 25.04) - OK
             log_warn "Skipping EOL release: expected $expected_next_version, upgrading to $next_version"
         elif [[ "$detected_num" -lt "$expected_num" ]]; then
-            # Detected version is lower than expected
-            if [[ "$detected_num" -gt "$current_num" ]]; then
-                # But it IS an upgrade (e.g. 24.04 -> 24.10 when we expected -> 25.04)
-                # This happens if intermediate releases are still available/required.
-                log_warn "Upgrade target is intermediate version: $next_version (expected $expected_next_version)"
-                log_warn "Proceeding with available upgrade path."
-            else
-                # Going backwards or staying same - not OK
-                log_error "Unexpected downgrade/same target: $next_version (current: $(ubuntu_get_version_string), expected: $expected_next_version)"
-                return 1
-            fi
+            # Going backwards - not OK
+            log_error "Unexpected downgrade target: $next_version (expected $expected_next_version)"
+            return 1
         fi
     fi
 
@@ -876,6 +865,12 @@ MOTD_STATUS
 echo -e "${C}║${N}                                                              ${C}║${N}"
 echo -e "${C}║${N}  The upgrade runs ${G}automatically${N} in the background.           ${C}║${N}"
 echo -e "${C}║${N}  System will reboot after each step. ${Y}Do NOT interrupt.${N}       ${C}║${N}"
+echo -e "${C}║${N}                                                              ${C}║${N}"
+echo -e "${C}╠══════════════════════════════════════════════════════════════╣${N}"
+echo -e "${C}║${N}  ${B}MONITOR PROGRESS:${N}                                           ${C}║${N}"
+echo -e "${C}║${N}                                                              ${C}║${N}"
+echo -e "${C}║${N}    ${G}/var/lib/acfs/check_status.sh${N}          (status summary)   ${C}║${N}"
+echo -e "${C}║${N}    ${D}tail -f /var/log/acfs/upgrade_resume.log${N}      (live log)  ${C}║${N}"
 echo -e "${C}║${N}                                                              ${C}║${N}"
 echo -e "${C}╚══════════════════════════════════════════════════════════════╝${N}"
 echo ""

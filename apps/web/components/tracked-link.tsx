@@ -24,19 +24,14 @@ export const TrackedLink = forwardRef<HTMLAnchorElement, TrackedLinkProps>(
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
       const linkText = typeof children === 'string' ? children : trackingId || href;
 
-      // Wrap analytics in try-catch to ensure link navigation always works
-      try {
-        if (isExternalLink) {
-          trackOutboundLink(href, linkText);
-        } else {
-          sendEvent('internal_link_click', {
-            link_href: href,
-            link_text: linkText,
-            tracking_id: trackingId,
-          });
-        }
-      } catch {
-        // Analytics failure should never break navigation
+      if (isExternalLink) {
+        trackOutboundLink(href, linkText);
+      } else {
+        sendEvent('internal_link_click', {
+          link_href: href,
+          link_text: linkText,
+          tracking_id: trackingId,
+        });
       }
 
       onClick?.(e);

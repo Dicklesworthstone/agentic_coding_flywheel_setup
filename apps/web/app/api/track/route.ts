@@ -270,9 +270,9 @@ function sanitizeUserProperties(
     if (count >= MAX_USER_PROPERTIES) break;
     if (!key || key.length > MAX_USER_PROPERTY_KEY_LENGTH) continue;
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) continue;
-    if (!isPlainObject(value) || !('value' in value)) continue;
+    if (!isPlainObject(value)) continue;
 
-    const rawValue = (value as Record<string, unknown>).value;
+    const rawValue = value.value;
     if (typeof rawValue === 'string') {
       sanitized[key] = { value: rawValue.slice(0, MAX_USER_PROPERTY_STRING_LENGTH) };
       count++;

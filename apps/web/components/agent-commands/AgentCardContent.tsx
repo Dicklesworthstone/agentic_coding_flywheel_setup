@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { Copy, Check, Terminal, Sparkles, Code2 } from "lucide-react";
 import { motion, AnimatePresence, springs } from "@/components/motion";
 import { CommandCard } from "@/components/command-card";
@@ -30,28 +30,13 @@ interface AgentCardContentProps {
 export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
   const [activeTab, setActiveTab] = useState<TabId>("examples");
   const [copiedAlias, setCopiedAlias] = useState<string | null>(null);
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const personality = agentPersonalities[agent.id];
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const handleCopy = async (text: string) => {
-    // Clear any existing timeout
-    if (copyTimeoutRef.current) {
-      clearTimeout(copyTimeoutRef.current);
-    }
-
     try {
       await navigator.clipboard.writeText(text);
       setCopiedAlias(text);
-      copyTimeoutRef.current = setTimeout(() => setCopiedAlias(null), 2000);
+      setTimeout(() => setCopiedAlias(null), 2000);
     } catch {
       const textarea = document.createElement("textarea");
       textarea.value = text;
@@ -62,7 +47,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
       document.execCommand("copy");
       document.body.removeChild(textarea);
       setCopiedAlias(text);
-      copyTimeoutRef.current = setTimeout(() => setCopiedAlias(null), 2000);
+      setTimeout(() => setCopiedAlias(null), 2000);
     }
   };
 

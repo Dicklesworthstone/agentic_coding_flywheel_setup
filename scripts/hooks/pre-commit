@@ -1,20 +1,14 @@
 #!/usr/bin/env bash
-# ACFS Pre-commit Hook: Auto-regenerate manifest outputs + chain to beads
+# ACFS Pre-commit Hook: Auto-regenerate manifest outputs
 #
-# This hook does TWO things:
-# 1. When acfs.manifest.yaml or packages/manifest/** change,
-#    regenerates scripts/generated/** and stages the changes.
-# 2. Chains to beads pre-commit hook if bd is installed.
+# When acfs.manifest.yaml or packages/manifest/** change,
+# this hook regenerates scripts/generated/** and stages the changes.
 #
 # Install: ./scripts/hooks/install.sh
 # Bypass: git commit --no-verify
 # CI enforces: bun run generate --diff (blocks merge on drift)
 
 set -euo pipefail
-
-# ============================================================
-# ACFS Manifest Regeneration
-# ============================================================
 
 # Check if manifest-related files are staged
 if git diff --cached --name-only | grep -qE '^(acfs\.manifest\.yaml|packages/manifest/)'; then
@@ -24,31 +18,16 @@ if git diff --cached --name-only | grep -qE '^(acfs\.manifest\.yaml|packages/man
     if ! command -v bun &>/dev/null; then
         echo "⚠️  bun not found. Skipping auto-regeneration."
         echo "   Run manually: cd packages/manifest && bun run generate"
-        # Don't exit - let the commit proceed, CI will catch drift
-    else
-        # Regenerate
-        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-
-        if (cd "$REPO_ROOT/packages/manifest" && bun install --silent && bun run generate); then
-            # Stage regenerated files
-            git add "$REPO_ROOT/scripts/generated/"
-            echo "✅ Regenerated and staged scripts/generated/"
-        else
-            echo "❌ Generator failed. Fix issues before committing."
-            exit 1
-        fi
+        exit 0
     fi
+
+    # Regenerate
+    (cd packages/manifest && bun install --silent && bun run generate) || {
+        echo "❌ Generator failed. Fix issues before committing."
+        exit 1
+    }
+
+    # Stage regenerated files
+    git add scripts/generated/
+    echo "✅ Regenerated and staged scripts/generated/"
 fi
-
-# ============================================================
-# Chain to beads (bd) pre-commit hook if available
-# ============================================================
-
-if command -v bd >/dev/null 2>&1; then
-    # bd hooks run will execute beads-specific pre-commit logic
-    exec bd hooks run pre-commit "$@"
-fi
-
-# No beads, and ACFS checks passed - allow commit
-exit 0

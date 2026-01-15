@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import confetti from "canvas-confetti";
 import { PartyPopper, Sparkles, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -151,27 +151,15 @@ export function FinalCelebrationModal({
   onGoToDashboard,
 }: FinalCelebrationModalProps) {
   const prefersReducedMotion = useReducedMotion();
-  const primaryButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      // Lock body scroll when modal is open
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-
-      // Focus the primary button for accessibility
-      primaryButtonRef.current?.focus();
-
       // Escape key closes modal
       const handleEscape = (e: KeyboardEvent) => {
         if (e.key === "Escape") onClose();
       };
       window.addEventListener("keydown", handleEscape);
-
-      return () => {
-        document.body.style.overflow = originalOverflow;
-        window.removeEventListener("keydown", handleEscape);
-      };
+      return () => window.removeEventListener("keydown", handleEscape);
     }
   }, [isOpen, onClose]);
 
@@ -215,7 +203,6 @@ export function FinalCelebrationModal({
 
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button
-            ref={primaryButtonRef}
             onClick={onGoToDashboard}
             className="bg-primary text-primary-foreground"
           >
