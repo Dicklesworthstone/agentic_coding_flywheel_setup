@@ -17,12 +17,14 @@ fi
 # Detect OS and version
 # Sets: OS_ID, OS_VERSION, OS_VERSION_MAJOR, OS_CODENAME
 detect_os() {
-    if [[ ! -f /etc/os-release ]]; then
-        log_fatal "Cannot detect OS. /etc/os-release not found."
+    local os_release_file="${ACFS_OS_RELEASE_PATH:-/etc/os-release}"
+
+    if [[ ! -f "$os_release_file" ]]; then
+        log_fatal "Cannot detect OS. $os_release_file not found."
     fi
 
-    # shellcheck disable=SC1091
-    source /etc/os-release
+    # shellcheck disable=SC1090
+    source "$os_release_file"
 
     export OS_ID="$ID"
     export OS_VERSION="$VERSION_ID"
@@ -114,7 +116,8 @@ get_arch() {
 
 # Check if running in WSL
 is_wsl() {
-    if grep -qi microsoft /proc/version 2>/dev/null; then
+    local version_file="${ACFS_PROC_VERSION:-/proc/version}"
+    if grep -qi microsoft "$version_file" 2>/dev/null; then
         return 0
     fi
     return 1
@@ -122,10 +125,13 @@ is_wsl() {
 
 # Check if running in Docker
 is_docker() {
-    if [[ -f /.dockerenv ]]; then
+    local dockerenv="${ACFS_DOCKERENV:-/.dockerenv}"
+    local cgroup="${ACFS_CGROUP:-/proc/1/cgroup}"
+
+    if [[ -f "$dockerenv" ]]; then
         return 0
     fi
-    if grep -q docker /proc/1/cgroup 2>/dev/null; then
+    if grep -q docker "$cgroup" 2>/dev/null; then
         return 0
     fi
     return 1
