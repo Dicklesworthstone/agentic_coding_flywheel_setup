@@ -35,8 +35,8 @@ else
 fi
 
 # Target user for ACFS installations
-ACFS_TARGET_USER="${ACFS_TARGET_USER:-ubuntu}"
-ACFS_TARGET_HOME="/home/$ACFS_TARGET_USER"
+TARGET_USER="${TARGET_USER:-ubuntu}"
+TARGET_HOME="/home/$TARGET_USER"
 
 # Generate a random password robustly
 _generate_random_password() {
@@ -66,7 +66,7 @@ _generate_random_password() {
 # Ensure target user exists
 # Creates user if missing, adds to required groups
 ensure_user() {
-    local target="$ACFS_TARGET_USER"
+    local target="$TARGET_USER"
 
     if ! id "$target" &>/dev/null; then
         log_detail "Creating user: $target"
@@ -78,6 +78,17 @@ ensure_user() {
         
         if [[ -n "$passwd" ]]; then
             echo "$target:$passwd" | $SUDO chpasswd
+            
+            # Print password so user isn't locked out of sudo in safe mode
+            echo "" >&2
+            if declare -f log_warn >/dev/null; then
+                log_warn "Generated password for '$target': $passwd"
+                log_warn "Save this password! You may need it for sudo access."
+            else
+                echo "WARN: Generated password for '$target': $passwd" >&2
+                echo "WARN: Save this password! You may need it for sudo access." >&2
+            fi
+            echo "" >&2
         else
             log_warn "Could not generate password for $target (openssl/python/urandom missing)"
         fi
@@ -97,7 +108,7 @@ ensure_user() {
 # Enable passwordless sudo for target user
 # This is the "vibe mode" default
 enable_passwordless_sudo() {
-    local target="$ACFS_TARGET_USER"
+    local target="$TARGET_USER"
     local sudoers_file="/etc/sudoers.d/90-ubuntu-acfs"
 
     log_detail "Enabling passwordless sudo for $target"
@@ -120,7 +131,7 @@ enable_passwordless_sudo() {
 migrate_ssh_keys() {
     local current_user
     current_user=$(whoami)
-    local target="$ACFS_TARGET_USER"
+    local target="$TARGET_USER"
 
     # Nothing to do if we're already the target user
     if [[ "$current_user" == "$target" ]]; then
@@ -160,13 +171,13 @@ migrate_ssh_keys() {
             echo ""
             echo "  Or manually: SSH in as root and run these commands:"
             echo ""
-            echo "    mkdir -p ${ACFS_TARGET_HOME}/.ssh"
-            echo "    cat >> ${ACFS_TARGET_HOME}/.ssh/authorized_keys << 'EOF'"
+            echo "    mkdir -p ${TARGET_HOME}/.ssh"
+            echo "    cat >> ${TARGET_HOME}/.ssh/authorized_keys << 'EOF'"
             echo "    YOUR_PUBLIC_KEY_HERE"
             echo "    EOF"
-            echo "    chown -R ${target}:${target} ${ACFS_TARGET_HOME}/.ssh"
-            echo "    chmod 700 ${ACFS_TARGET_HOME}/.ssh"
-            echo "    chmod 600 ${ACFS_TARGET_HOME}/.ssh/authorized_keys"
+            echo "    chown -R ${target}:${target} ${TARGET_HOME}/.ssh"
+            echo "    chmod 700 ${TARGET_HOME}/.ssh"
+            echo "    chmod 600 ${TARGET_HOME}/.ssh/authorized_keys"
             echo ""
             echo "════════════════════════════════════════════════════════════"
             echo ""
@@ -178,7 +189,7 @@ migrate_ssh_keys() {
 
     log_detail "Migrating SSH keys from $source_keys"
 
-    local ssh_dir="$ACFS_TARGET_HOME/.ssh"
+    local ssh_dir="$TARGET_HOME/.ssh"
 
     # Basic hardening: refuse to follow symlinks when writing keys.
     if [[ -e "$ssh_dir" ]] && [[ -L "$ssh_dir" ]]; then
@@ -219,8 +230,8 @@ migrate_ssh_keys() {
     done < "$source_keys"
 
     # Fix permissions
-    $SUDO chown -hR "$target:$target" "$ACFS_TARGET_HOME/.ssh"
-    $SUDO chmod 700 "$ACFS_TARGET_HOME/.ssh"
+    $SUDO chown -hR "$target:$target" "$TARGET_HOME/.ssh"
+    $SUDO chmod 700 "$TARGET_HOME/.ssh"
     $SUDO chmod 600 "$target_keys"
 
     log_success "SSH keys migrated to $target"
@@ -229,7 +240,7 @@ migrate_ssh_keys() {
 # Set default shell for target user
 set_default_shell() {
     local shell="$1"
-    local target="$ACFS_TARGET_USER"
+    local target="$TARGET_USER"
 
     if [[ -z "$shell" ]]; then
         shell=$(command -v zsh)

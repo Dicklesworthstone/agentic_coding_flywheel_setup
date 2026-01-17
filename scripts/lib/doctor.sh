@@ -66,20 +66,20 @@ if [[ -z "${ACFS_MODE:-}" ]] && [[ -f "$HOME/.acfs/state.json" ]]; then
 fi
 
 # Prefer the installed state file for target user (for installs where the target user is not ubuntu).
-ACFS_TARGET_USER="${ACFS_TARGET_USER:-}"
-if [[ -z "${ACFS_TARGET_USER:-}" ]] && [[ -f "$HOME/.acfs/state.json" ]]; then
+TARGET_USER="${TARGET_USER:-}"
+if [[ -z "${TARGET_USER:-}" ]] && [[ -f "$HOME/.acfs/state.json" ]]; then
     if command -v jq &>/dev/null; then
-        ACFS_TARGET_USER="$(jq -r '.target_user // empty' "$HOME/.acfs/state.json" 2>/dev/null || true)"
+        TARGET_USER="$(jq -r '.target_user // empty' "$HOME/.acfs/state.json" 2>/dev/null || true)"
     fi
-    if [[ -z "${ACFS_TARGET_USER:-}" ]]; then
-        ACFS_TARGET_USER="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.acfs/state.json" | head -n 1)"
+    if [[ -z "${TARGET_USER:-}" ]]; then
+        TARGET_USER="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.acfs/state.json" | head -n 1)"
     fi
 fi
-ACFS_TARGET_USER="${ACFS_TARGET_USER:-ubuntu}"
-if [[ ! "$ACFS_TARGET_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
-    ACFS_TARGET_USER="ubuntu"
+TARGET_USER="${TARGET_USER:-ubuntu}"
+if [[ ! "$TARGET_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+    TARGET_USER="ubuntu"
 fi
-export ACFS_TARGET_USER
+export TARGET_USER
 
 if [[ -f "$SCRIPT_DIR/gum_ui.sh" ]]; then
     source "$SCRIPT_DIR/gum_ui.sh"
@@ -576,10 +576,10 @@ check_identity() {
     # Check user
     local user
     user=$(whoami)
-    if [[ "$user" == "$ACFS_TARGET_USER" ]]; then
-        check "identity.user_is_ubuntu" "Logged in as $ACFS_TARGET_USER" "pass" "whoami=$user"
+    if [[ "$user" == "$TARGET_USER" ]]; then
+        check "identity.user_is_ubuntu" "Logged in as $TARGET_USER" "pass" "whoami=$user"
     else
-        check "identity.user_is_ubuntu" "Logged in as $ACFS_TARGET_USER (currently: $user)" "warn" "whoami=$user" "ssh ${ACFS_TARGET_USER}@YOUR_SERVER"
+        check "identity.user_is_ubuntu" "Logged in as $TARGET_USER (currently: $user)" "warn" "whoami=$user" "ssh ${TARGET_USER}@YOUR_SERVER"
     fi
 
     # Check sudo configuration (passwordless only required in vibe mode)
@@ -593,7 +593,7 @@ check_identity() {
         if command -v sudo &>/dev/null && id -nG 2>/dev/null | grep -qw sudo; then
             check "identity.sudo" "Sudo available (safe mode)" "pass"
         else
-            check "identity.sudo" "Sudo available (safe mode)" "fail" "sudo unavailable" "Ensure ${ACFS_TARGET_USER} is in the sudo group and sudo is installed"
+            check "identity.sudo" "Sudo available (safe mode)" "fail" "sudo unavailable" "Ensure ${TARGET_USER} is in the sudo group and sudo is installed"
         fi
     fi
 
@@ -607,7 +607,7 @@ check_workspace() {
     if [[ -d "/data/projects" ]] && [[ -w "/data/projects" ]]; then
         check "workspace.data_projects" "/data/projects exists and writable" "pass"
     else
-        check "workspace.data_projects" "/data/projects" "fail" "missing or not writable" "sudo mkdir -p /data/projects && sudo chown ${ACFS_TARGET_USER}:${ACFS_TARGET_USER} /data/projects"
+        check "workspace.data_projects" "/data/projects" "fail" "missing or not writable" "sudo mkdir -p /data/projects && sudo chown ${TARGET_USER}:${TARGET_USER} /data/projects"
     fi
 
     blank_line
@@ -1319,9 +1319,9 @@ check_postgres_role() {
 
     # Validate target user - PostgreSQL identifiers must match this pattern
     # SECURITY: Prevents SQL injection by validating input before use
-    local target_user="${ACFS_TARGET_USER:-}"
+    local target_user="${TARGET_USER:-}"
     if [[ -z "$target_user" ]]; then
-        check "deep.db.postgres_role" "PostgreSQL role check" "warn" "ACFS_TARGET_USER not set"
+        check "deep.db.postgres_role" "PostgreSQL role check" "warn" "TARGET_USER not set"
         return
     fi
     if [[ ! "$target_user" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
