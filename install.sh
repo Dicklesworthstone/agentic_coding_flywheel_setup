@@ -305,17 +305,31 @@ install_gum_early() {
         return 0
     fi
 
-    # Only attempt early gum install on supported Ubuntu systems.
-    # Preflight/ensure_ubuntu will stop execution later, but this prevents
+    # Only attempt early gum install on supported systems (Ubuntu/Debian).
+    # Preflight/ensure_supported_os will stop execution later, but this prevents
     # partial modifications (apt repo/key) on unsupported OS versions.
     if [[ -f /etc/os-release ]]; then
         # shellcheck disable=SC1091
         source /etc/os-release
         local version_id="${VERSION_ID:-}"
         local version_major="${version_id%%.*}"
-        if [[ "${ID:-}" != "ubuntu" ]] || [[ -z "$version_id" ]] || [[ "$version_major" -lt 22 ]]; then
-            return 0
-        fi
+        # Early check for supported OS versions - skip gum install on unsupported systems
+        local os_id="${ID:-}"
+        case "$os_id" in
+            ubuntu)
+                if [[ -z "$version_id" ]] || [[ "$version_major" -lt 22 ]]; then
+                    return 0
+                fi
+                ;;
+            debian)
+                if [[ -z "$version_id" ]] || [[ "$version_major" -lt 11 ]]; then
+                    return 0
+                fi
+                ;;
+            *)
+                return 0
+                ;;
+        esac
     else
         return 0
     fi
@@ -1866,33 +1880,54 @@ validate_target_user() {
     fi
 }
 
-ensure_ubuntu() {
+ensure_supported_os() {
     if [[ ! -f /etc/os-release ]]; then
-        log_fatal "Cannot detect OS. ACFS supports Ubuntu 22.04+ only."
+        log_fatal "Cannot detect OS. ACFS supports Ubuntu 22.04+ and Debian 11+ only."
     fi
 
     # shellcheck disable=SC1091
     source /etc/os-release
 
-    if [[ "${ID:-}" != "ubuntu" ]]; then
-        log_fatal "Unsupported OS: ${PRETTY_NAME:-${ID:-unknown}}. ACFS supports Ubuntu 22.04+ only."
-    fi
-
+    local os_id="${ID:-}"
     local version_id="${VERSION_ID:-}"
-    if [[ -z "$version_id" ]]; then
-        log_fatal "Cannot detect Ubuntu version (VERSION_ID missing)"
-    fi
 
-    VERSION_MAJOR="${version_id%%.*}"
-    if [[ "$VERSION_MAJOR" -lt 22 ]]; then
-        log_fatal "Unsupported Ubuntu version: ${version_id}. ACFS supports Ubuntu 22.04+ only."
-    fi
+    case "$os_id" in
+        ubuntu)
+            if [[ -z "$version_id" ]]; then
+                log_fatal "Cannot detect Ubuntu version (VERSION_ID missing)"
+            fi
 
-    if [[ "$VERSION_MAJOR" -lt 24 ]]; then
-        log_warn "Ubuntu $version_id detected. Recommended: Ubuntu 24.04+ or 25.x"
-    fi
+            VERSION_MAJOR="${version_id%%.*}"
+            if [[ "$VERSION_MAJOR" -lt 22 ]]; then
+                log_fatal "Unsupported Ubuntu version: ${version_id}. ACFS supports Ubuntu 22.04+ only."
+            fi
 
-    log_detail "OS: Ubuntu $version_id"
+            if [[ "$VERSION_MAJOR" -lt 24 ]]; then
+                log_warn "Ubuntu $version_id detected. Recommended: Ubuntu 24.04+ or 25.x"
+            fi
+
+            log_detail "OS: Ubuntu $version_id"
+            ;;
+        debian)
+            if [[ -z "$version_id" ]]; then
+                log_fatal "Cannot detect Debian version (VERSION_ID missing)"
+            fi
+
+            VERSION_MAJOR="${version_id%%.*}"
+            if [[ "$VERSION_MAJOR" -lt 11 ]]; then
+                log_fatal "Unsupported Debian version: ${version_id}. ACFS supports Debian 11+ only."
+            fi
+
+            if [[ "$VERSION_MAJOR" -lt 12 ]]; then
+                log_warn "Debian $version_id detected. Recommended: Debian 12+"
+            fi
+
+            log_detail "OS: Debian $version_id"
+            ;;
+        *)
+            log_fatal "Unsupported OS: ${PRETTY_NAME:-${os_id:-unknown}}. ACFS supports Ubuntu 22.04+ and Debian 11+ only."
+            ;;
+    esac
 }
 
 # ============================================================
@@ -4243,7 +4278,7 @@ main() {
     ensure_root
     validate_target_user
     init_target_paths
-    ensure_ubuntu
+    ensure_supported_os
 
     # Ensure base dependencies (like jq) are installed before upgrade logic
     # This is safe to run on old Ubuntu versions and ensures jq is available
