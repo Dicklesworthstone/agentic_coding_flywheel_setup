@@ -18,6 +18,7 @@ ACFS_WARNING="#f9e2af"    # Yellow
 ACFS_ERROR="#f38ba8"      # Red
 ACFS_MUTED="#6c7086"      # Gray
 ACFS_ACCENT="#cba6f7"     # Purple
+ACFS_TEAL="#94e2d5"       # Teal
 ACFS_PINK="#f5c2e7"       # Pink
 
 # ASCII Art Banner for ACFS
