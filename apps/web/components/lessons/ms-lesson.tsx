@@ -3,10 +3,8 @@
 import {
   GraduationCap,
   Terminal,
-  Zap,
   Package,
   Search,
-  CheckCircle,
   Play,
   Settings,
   Download,

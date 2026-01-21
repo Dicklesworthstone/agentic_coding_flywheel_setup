@@ -1,11 +1,9 @@
 'use client';
 
 import {
-  Wrench,
   Terminal,
   Activity,
   Search,
-  Zap,
   Shield,
   Play,
   AlertTriangle,

@@ -1,12 +1,10 @@
 'use client';
 
 import {
-  Wrench,
   Terminal,
   RefreshCw,
   FileText,
   Brain,
-  CheckCircle,
   Play,
   Zap,
 } from 'lucide-react';

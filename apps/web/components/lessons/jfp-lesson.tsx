@@ -8,7 +8,6 @@ import {
   Download,
   Copy,
   Play,
-  Zap,
 } from 'lucide-react';
 import {
   Section,

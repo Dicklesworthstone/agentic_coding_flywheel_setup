@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  Search,
   Terminal,
   Zap,
   Database,
