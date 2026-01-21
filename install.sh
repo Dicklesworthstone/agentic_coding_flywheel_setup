@@ -3006,11 +3006,41 @@ install_languages_legacy_tools() {
 
     # Install additional cargo tools (dust, lsd, etc.)
     # These are better than apt versions and always up-to-date
-    _cargo_install "du-dust" "dust"      # Better du replacement
-    _cargo_install "lsd"                  # Better ls replacement
-    _cargo_install "bat" "bat"            # Better cat replacement (may already be from apt)
-    _cargo_install "fd-find" "fd"         # Better find replacement (may already be from apt)
-    _cargo_install "ripgrep" "rg"         # Better grep (may already be from apt, but cargo is newer)
+    # Optimization: batch install all needed tools in one cargo command
+    # This downloads the index once and allows parallel compilation
+    local cargo_tools_needed=()
+    local -A cargo_bin_map=(
+        ["du-dust"]="dust"
+        ["lsd"]="lsd"
+        ["bat"]="bat"
+        ["fd-find"]="fd"
+        ["ripgrep"]="rg"
+    )
+
+    # Collect tools that need to be installed
+    for tool in du-dust lsd bat fd-find ripgrep; do
+        local bin_name="${cargo_bin_map[$tool]}"
+        if [[ ! -x "$TARGET_HOME/.cargo/bin/$bin_name" ]]; then
+            cargo_tools_needed+=("$tool")
+        fi
+    done
+
+    # Batch install if there are tools to install
+    if [[ ${#cargo_tools_needed[@]} -gt 0 ]] && [[ -x "$cargo_bin" ]]; then
+        log_detail "Batch installing ${#cargo_tools_needed[@]} cargo tools: ${cargo_tools_needed[*]}"
+        if try_step "Batch installing cargo tools" run_as_target "$cargo_bin" install "${cargo_tools_needed[@]}" --locked 2>/dev/null || \
+           try_step "Batch installing cargo tools (no --locked)" run_as_target "$cargo_bin" install "${cargo_tools_needed[@]}"; then
+            log_success "Cargo tools batch installed: ${cargo_tools_needed[*]}"
+        else
+            # Fallback: install individually if batch fails
+            log_warn "Batch install failed, falling back to individual installs"
+            _cargo_install "du-dust" "dust"
+            _cargo_install "lsd"
+            _cargo_install "bat" "bat"
+            _cargo_install "fd-find" "fd"
+            _cargo_install "ripgrep" "rg"
+        fi
+    fi
 
     # Atuin (install as target user)
     # Check both the data directory and the binary location
