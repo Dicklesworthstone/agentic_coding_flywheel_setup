@@ -19,7 +19,12 @@ fi
 
 # NPM package names for each agent
 CLAUDE_PACKAGE="@anthropic-ai/claude-code@stable"
-CODEX_PACKAGE="@openai/codex@latest"
+CODEX_PACKAGE="${CODEX_PACKAGE:-@openai/codex@latest}"
+CODEX_FALLBACK_VERSION="${CODEX_FALLBACK_VERSION:-0.87.0}"
+CODEX_FALLBACK_PACKAGE=""
+if [[ -n "$CODEX_FALLBACK_VERSION" ]]; then
+    CODEX_FALLBACK_PACKAGE="@openai/codex@${CODEX_FALLBACK_VERSION}"
+fi
 GEMINI_PACKAGE="@google/gemini-cli@latest"
 
 # Binary names after installation
@@ -218,15 +223,19 @@ install_codex_cli() {
 
     log_detail "Installing Codex CLI for $target_user..."
 
-    # Install via bun global
-    if _agent_run_as_user "\"$bun_bin\" install -g --trust $CODEX_PACKAGE"; then
-        if [[ -x "$codex_bin" ]]; then
-            # Create wrapper script that uses bun as runtime (avoids node PATH issues)
-            _agent_create_bun_wrapper "$target_home" "codex"
-            log_success "Codex CLI installed"
-            log_detail "Note: Run 'codex login' to authenticate with your ChatGPT Pro account"
-            return 0
-        fi
+    # Install via bun global (fallback to a pinned version if latest is broken)
+    _agent_run_as_user "\"$bun_bin\" install -g --trust $CODEX_PACKAGE" || true
+    if [[ ! -x "$codex_bin" ]] && [[ -n "$CODEX_FALLBACK_PACKAGE" ]]; then
+        log_warn "Codex CLI latest install failed; retrying pinned fallback $CODEX_FALLBACK_VERSION"
+        _agent_run_as_user "\"$bun_bin\" install -g --trust $CODEX_FALLBACK_PACKAGE" || true
+    fi
+
+    if [[ -x "$codex_bin" ]]; then
+        # Create wrapper script that uses bun as runtime (avoids node PATH issues)
+        _agent_create_bun_wrapper "$target_home" "codex"
+        log_success "Codex CLI installed"
+        log_detail "Note: Run 'codex login' to authenticate with your ChatGPT Pro account"
+        return 0
     fi
 
     log_warn "Codex CLI installation may have failed"
@@ -247,10 +256,18 @@ upgrade_codex_cli() {
     if _agent_run_as_user "\"$bun_bin\" install -g --trust $CODEX_PACKAGE"; then
         log_success "Codex CLI upgraded"
         return 0
-    else
-        log_warn "Codex CLI upgrade failed"
-        return 1
     fi
+
+    if [[ -n "$CODEX_FALLBACK_PACKAGE" ]]; then
+        log_warn "Codex CLI latest upgrade failed; retrying pinned fallback $CODEX_FALLBACK_VERSION"
+        if _agent_run_as_user "\"$bun_bin\" install -g --trust $CODEX_FALLBACK_PACKAGE"; then
+            log_success "Codex CLI upgraded (fallback)"
+            return 0
+        fi
+    fi
+
+    log_warn "Codex CLI upgrade failed"
+    return 1
 }
 
 # ============================================================
