@@ -387,6 +387,7 @@ refresh_checksums() {
         # Validate it looks like a checksums file
         if grep -q "^installers:" "$tmp_checksums" 2>/dev/null; then
             mv "$tmp_checksums" "$CHECKSUMS_LOCAL"
+            chmod 644 "$CHECKSUMS_LOCAL" 2>/dev/null || true  # Ensure readable permissions
             if [[ "$quiet" != "true" ]]; then
                 log_item "ok" "checksums refresh" "synced from GitHub"
             fi
