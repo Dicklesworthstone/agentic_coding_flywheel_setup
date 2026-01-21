@@ -861,6 +861,43 @@ export const flywheelTools: FlywheelTool[] = [
     language: "Rust",
   },
   {
+    id: "jfp",
+    name: "JeffreysPrompts",
+    shortName: "JFP",
+    href: "https://jeffreysprompts.com",
+    icon: "BookOpen",
+    color: "from-amber-400 to-yellow-500",
+    tagline: "Curated prompt library + skill installer",
+    description:
+      "Browse a curated library of battle-tested prompts and install them directly as Claude Code skills. Works via CLI or web UI.",
+    deepDescription:
+      "JFP (JeffreysPrompts.com CLI) is the fastest way to discover prompts that actually work in production agent workflows. It mirrors the website library in a CLI: search, preview, and install prompts as Claude Code skills in seconds. Prompts are organized into workflows and bundles so teams can standardize how agents are directed across projects.",
+    connectsTo: ["ms", "apr", "cm"],
+    connectionDescriptions: {
+      ms: "Use JFP to discover prompts, then manage/curate them locally with MS",
+      apr: "Feed high-quality prompts into APR to refine and harden specifications",
+      cm: "Prompts that work become reusable memory artifacts",
+    },
+    stars: 50,
+    features: [
+      "Curated prompt library with workflow bundles",
+      "Install prompts as Claude Code skills",
+      "Fast search with tags and categories",
+      "CLI + web UI access to the same library",
+      "JSON mode for automation and agent workflows",
+      "Built-in doctor commands for health checks",
+    ],
+    cliCommands: [
+      "jfp list",
+      "jfp search \"code review\"",
+      "jfp show idea-wizard",
+      "jfp install idea-wizard",
+      "jfp installed",
+    ],
+    installCommand: "curl -fsSL https://jeffreysprompts.com/install-cli.sh | bash",
+    language: "TypeScript (Bun)",
+  },
+  {
     id: "srps",
     name: "System Resource Protection Script",
     shortName: "SRPS",
@@ -1041,6 +1078,49 @@ Key capabilities:
     installCommand: "cargo install --git https://github.com/Dicklesworthstone/process_triage",
     language: "Rust",
   },
+  {
+    id: "xf",
+    name: "X Archive Search",
+    shortName: "XF",
+    href: "https://github.com/Dicklesworthstone/xf",
+    icon: "Archive",
+    color: "from-blue-500 to-indigo-600",
+    tagline: "Ultra-fast search over your X/Twitter archive",
+    description:
+      "Hybrid BM25 + semantic search over X/Twitter data exports. Zero-dependency local processing with Reciprocal Rank Fusion.",
+    deepDescription: `Your X/Twitter archive is a goldmine of bookmarks, threads, and ideas - but Twitter's
+search is notoriously terrible. XF makes your entire archive instantly searchable with both
+keyword (BM25) and semantic matching, fused together using Reciprocal Rank Fusion.
+
+The hybrid approach means you can search by exact terms ("that thread about async/await")
+or by concept ("discussions about concurrent programming patterns"). Results are ranked by
+combining both signals.
+
+Key capabilities:
+- Rust implementation for maximum performance (sub-second searches)
+- Hybrid BM25 + semantic search with RRF fusion
+- Zero-dependency hash embedder (no Python/API calls needed)
+- Fully local, privacy-preserving processing
+- Parses all X archive formats (tweets, DMs, bookmarks, likes)`,
+    connectsTo: ["cass", "cm"],
+    connectionDescriptions: {
+      cass: "Similar search architecture - hybrid retrieval patterns",
+      cm: "Found tweets can become memories for agent context",
+    },
+    stars: 156,
+    features: [
+      "Sub-second search over large archives",
+      "Hybrid BM25 + semantic search",
+      "Reciprocal Rank Fusion scoring",
+      "Zero external API dependencies",
+      "Privacy-preserving local processing",
+      "Parses tweets, DMs, bookmarks, likes",
+    ],
+    cliCommands: ["xf search 'query'", "xf index /path/to/archive", "xf --help"],
+    installCommand:
+      "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh | bash",
+    language: "Rust",
+  },
 ];
 
 // ============================================================
@@ -1049,7 +1129,7 @@ Key capabilities:
 
 export const flywheelDescription = {
   title: "The Agentic Coding Flywheel",
-  subtitle: "Eleven tools plus utilities that create unheard-of velocity",
+  subtitle: "Fourteen tools plus utilities that create unheard-of velocity",
   description:
     "A self-reinforcing system that enables multiple AI agents to work in parallel across 10+ projects, reviewing each other's work, creating and executing tasks, and making incredible autonomous progress while you're away.",
   philosophy: [
@@ -1076,7 +1156,7 @@ export const flywheelDescription = {
   ],
   metrics: {
     totalStars: "2K+",
-    toolCount: 11,
+    toolCount: 14,
     languages: ["Go", "Rust", "TypeScript", "Python", "Bash"],
     avgInstallTime: "< 30s each",
     projectsSimultaneous: "8+",
