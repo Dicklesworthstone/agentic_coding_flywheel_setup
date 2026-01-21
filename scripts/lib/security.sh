@@ -557,7 +557,7 @@ load_checksums() {
         fi
 
         # Match tool name (a mapping key line like "  bun:")
-        if [[ "$line" =~ ^[[:space:]]*([A-Za-z0-9_-]+):[[:space:]]*$ ]]; then
+        if [[ "$line" =~ ^[[:space:]]*([[:alnum:]_-]+):[[:space:]]*$ ]]; then
             if [[ -z "$tool_indent" ]]; then
                 tool_indent="$indent_len"
             fi
