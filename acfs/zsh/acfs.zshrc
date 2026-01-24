@@ -346,12 +346,13 @@ acfs() {
         echo "ACFS version unknown"
       fi
       ;;
-    help|-h|--help|*)
+    help|-h|--help)
       echo "ACFS - Agentic Coding Flywheel Setup"
       echo ""
       echo "Usage: acfs <command>"
       echo ""
       echo "Commands:"
+      echo "  newproj         Create new project with git, bd, claude settings"
       echo "  info            Quick system overview (hostname, IP, uptime, progress)"
       echo "  cheatsheet      Command reference (aliases, shortcuts)"
       echo "  dashboard, dash <generate|serve> - Static HTML dashboard"
@@ -367,6 +368,16 @@ acfs() {
       echo "  --json          JSON output for scripting"
       echo "  --html          Self-contained HTML dashboard (info only)"
       echo "  --minimal       Just the essentials (info only)"
+      ;;
+    *)
+      # Pass unknown commands to the binary (supports newproj and future commands)
+      if [[ -x "$acfs_bin" ]]; then
+        "$acfs_bin" "$cmd" "$@"
+      else
+        echo "Error: Unknown command '$cmd' and acfs binary not found at $acfs_bin"
+        echo "Try 'acfs help' for available commands."
+        return 1
+      fi
       ;;
   esac
 }

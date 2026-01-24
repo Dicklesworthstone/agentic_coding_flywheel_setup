@@ -3828,6 +3828,10 @@ finalize() {
         try_step "Linking tmux.conf" run_as_target ln -sf "$ACFS_HOME/tmux/tmux.conf" "$TARGET_HOME/.tmux.conf" || return 1
     fi
 
+    # Reload tmux config if server is running (fixes #66: prefix key works immediately)
+    # This handles the case where tmux started in an earlier phase before config was deployed
+    run_as_target tmux source-file ~/.tmux.conf 2>/dev/null || true
+
     # Install onboard lessons + command
     log_detail "Installing onboard lessons"
     try_step "Creating onboard lessons directory" $SUDO mkdir -p "$ACFS_HOME/onboard/lessons" || return 1

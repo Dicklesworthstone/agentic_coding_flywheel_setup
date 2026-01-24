@@ -341,7 +341,7 @@ bd init
 # can cause worktree conflicts. Once you have a \`main\` branch and a remote, run:
 git branch beads-sync main
 git push -u origin beads-sync
-bd config set sync.branch beads-sync
+bd config set sync.branch=beads-sync
 
 # 4. Spawn your agents
 ntm spawn my-first-project --cc=2 --cod=1 --gmi=1
