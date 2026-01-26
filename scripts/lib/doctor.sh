@@ -94,6 +94,79 @@ elif [[ -f "$HOME/.acfs/scripts/lib/gum_ui.sh" ]]; then
 fi
 
 # ============================================================
+# Fix Suggestion Builder (bd-31ps.5.2)
+# ============================================================
+# Builds copy-pasteable fix suggestions that respect the current
+# install mode (vibe/safe) and pinned ref when known.
+# ============================================================
+
+# Build a fix suggestion command for a given module
+# Usage: build_fix_suggestion <module_id> [--phase <phase_num>]
+# Returns: A copy-pasteable install command
+build_fix_suggestion() {
+    local module_id="$1"
+    shift
+    local phase_flag=""
+
+    # Parse optional --phase argument
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --phase)
+                phase_flag="--only-phase $2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    # Base URL
+    local base_url="https://agent-flywheel.com/install"
+
+    # Build flags based on current state
+    local flags="--yes"
+
+    # Add mode flag (vibe is default, but explicit is clearer)
+    local mode="${ACFS_MODE:-vibe}"
+    flags="$flags --mode $mode"
+
+    # Add module/phase selector
+    if [[ -n "$phase_flag" ]]; then
+        flags="$flags $phase_flag"
+    elif [[ -n "$module_id" ]]; then
+        flags="$flags --only $module_id"
+    fi
+
+    # Build the command
+    # Check if we have a pinned ref from state.json
+    local ref_env=""
+    local state_file="$HOME/.acfs/state.json"
+    if [[ -f "$state_file" ]]; then
+        local pinned_ref=""
+        if command -v jq &>/dev/null; then
+            pinned_ref=$(jq -r '.pinned_ref // empty' "$state_file" 2>/dev/null) || true
+        fi
+        if [[ -n "$pinned_ref" && "$pinned_ref" != "main" ]]; then
+            ref_env="ACFS_REF=\"$pinned_ref\" "
+        fi
+    fi
+
+    echo "curl -fsSL $base_url | ${ref_env}bash -s -- $flags"
+}
+
+# Shorthand for common fix patterns
+fix_for_module() {
+    local module_id="$1"
+    build_fix_suggestion "$module_id"
+}
+
+fix_for_phase() {
+    local phase_num="$1"
+    build_fix_suggestion "" --phase "$phase_num"
+}
+
+# ============================================================
 # Manifest-Derived Checks (bd-31ps.5.1)
 # ============================================================
 # Source generated doctor_checks.sh to get MANIFEST_CHECKS array.
@@ -679,7 +752,7 @@ check_shell() {
     if [[ -d "$HOME/.oh-my-zsh" ]]; then
         check "shell.ohmyzsh" "Oh My Zsh" "pass"
     else
-        check "shell.ohmyzsh" "Oh My Zsh" "fail" "not installed" "Re-run: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only-phase 3"
+        check "shell.ohmyzsh" "Oh My Zsh" "fail" "not installed" "$(fix_for_module "shell.omz")"
     fi
 
     local p10k_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
@@ -714,7 +787,7 @@ check_shell() {
         check "shell.lsd_or_eza" "lsd/eza" "warn" "neither installed" "sudo apt install lsd"
     fi
 
-    check_command "shell.atuin" "Atuin" "atuin" "Re-run: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only-phase 5"
+    check_command "shell.atuin" "Atuin" "atuin" "$(fix_for_module "tools.atuin")"
     check_command "shell.fzf" "fzf" "fzf" "sudo apt install fzf"
     check_command "shell.zoxide" "zoxide" "zoxide" \
         "Re-run: curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
@@ -727,9 +800,9 @@ check_shell() {
 check_core_tools() {
     section "Core tools"
 
-    check_command "tool.bun" "Bun" "bun" "Re-run: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only-phase 5"
-    check_command "tool.uv" "uv" "uv" "Re-run: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only-phase 5"
-    check_command "tool.cargo" "Cargo (Rust)" "cargo" "Re-run: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only-phase 5"
+    check_command "tool.bun" "Bun" "bun" "$(fix_for_module "lang.bun")"
+    check_command "tool.uv" "uv" "uv" "$(fix_for_module "lang.uv")"
+    check_command "tool.cargo" "Cargo (Rust)" "cargo" "$(fix_for_module "lang.rust")"
     check_command "tool.go" "Go" "go" "sudo apt install golang-go"
     check_command "tool.tmux" "tmux" "tmux" "sudo apt install tmux"
     check_command "tool.rg" "ripgrep" "rg" "sudo apt install ripgrep"
@@ -749,28 +822,29 @@ check_core_tools() {
 check_agents() {
     section "Agents"
 
-    check_command "agent.claude" "Claude Code" "claude" \
-        "Re-run: curl -fsSL https://claude.ai/install.sh | bash"
-    check_command "agent.codex" "Codex CLI" "codex" "bun install -g --trust @openai/codex@latest"
-    check_command "agent.gemini" "Gemini CLI" "gemini" "bun install -g --trust @google/gemini-cli@latest"
+    check_command "agent.claude" "Claude Code" "claude" "$(fix_for_module "agents.claude")"
+    check_command "agent.codex" "Codex CLI" "codex" "$(fix_for_module "agents.codex")"
+    check_command "agent.gemini" "Gemini CLI" "gemini" "$(fix_for_module "agents.gemini")"
 
     # Check aliases are defined in the zshrc
+    local alias_fix
+    alias_fix="$(fix_for_module "shell.omz")"
     if grep -q "^alias cc=" ~/.acfs/zsh/acfs.zshrc 2>/dev/null; then
         check "agent.alias.cc" "cc alias" "pass"
     else
-        check "agent.alias.cc" "cc alias" "warn" "not in zshrc"
+        check "agent.alias.cc" "cc alias" "warn" "not in zshrc" "$alias_fix"
     fi
 
     if grep -q "^alias cod=" ~/.acfs/zsh/acfs.zshrc 2>/dev/null; then
         check "agent.alias.cod" "cod alias" "pass"
     else
-        check "agent.alias.cod" "cod alias" "warn" "not in zshrc"
+        check "agent.alias.cod" "cod alias" "warn" "not in zshrc" "$alias_fix"
     fi
 
     if grep -q "^alias gmi=" ~/.acfs/zsh/acfs.zshrc 2>/dev/null; then
         check "agent.alias.gmi" "gmi alias" "pass"
     else
-        check "agent.alias.gmi" "gmi alias" "warn" "not in zshrc"
+        check "agent.alias.gmi" "gmi alias" "warn" "not in zshrc" "$alias_fix"
     fi
 
     # Check for PATH conflicts (bead hi7)
@@ -928,7 +1002,7 @@ check_cloud() {
         if [[ "$doctor_ci" == "true" ]]; then
             check "network.ssh_keepalive" "SSH keepalive (not configured)" "pass" "ok in CI"
         else
-            check "network.ssh_keepalive" "SSH keepalive" "warn" "not configured (optional)" "Install: curl --proto '=https' --proto-redir '=https' -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only network.ssh_keepalive"
+            check "network.ssh_keepalive" "SSH keepalive" "warn" "not configured (optional)" "$(fix_for_module "network.ssh_keepalive")"
         fi
     fi
 
@@ -1180,13 +1254,16 @@ check_manifest_supplemental() {
         # Build per-module fix suggestion for failed/warn checks (bd-31ps.5.2)
         local module_id
         module_id=$(_manifest_module_id "$id")
-        local fix="Install: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only $module_id"
+        local fix
+        fix="$(fix_for_module "$module_id")"
 
         # Execute the check command in a subshell
         if bash -o pipefail -c "$cmd" &>/dev/null; then
             check "$id" "$tool_name" "pass" "$desc"
         elif [[ "$req_flag" == "optional" ]]; then
-            check "$id" "$tool_name" "skip" "$desc (optional)"
+            # Optional tools use "warn" status (not critical failures)
+            # Still provide fix suggestion so users know how to install if desired
+            check "$id" "$tool_name" "warn" "$desc (optional)" "$fix"
         else
             check "$id" "$tool_name" "fail" "$desc" "$fix"
         fi
