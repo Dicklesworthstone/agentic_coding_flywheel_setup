@@ -123,6 +123,24 @@ INSTALL_BASE_FILESYSTEM
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: install: # Install AGENTS.md template to workspace root for agent guidance (root)"
+    else
+        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
+# Install AGENTS.md template to workspace root for agent guidance
+ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main}"
+CURL_ARGS=(-fsSL)
+if curl --help all 2>/dev/null | grep -q -- '--proto'; then
+  CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+fi
+curl "${CURL_ARGS[@]}" -o /data/projects/AGENTS.md "${ACFS_RAW}/acfs/AGENTS.md" || true
+chown "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" /data/projects/AGENTS.md 2>/dev/null || true
+INSTALL_BASE_FILESYSTEM
+        then
+            log_error "base.filesystem: install command failed: # Install AGENTS.md template to workspace root for agent guidance"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: target_home=\"\${TARGET_HOME:-/home/ubuntu}\" (root)"
     else
         if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
@@ -154,6 +172,17 @@ test -d /data/projects
 INSTALL_BASE_FILESYSTEM
         then
             log_error "base.filesystem: verify failed: test -d /data/projects"
+            return 1
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: test -f /data/projects/AGENTS.md (root)"
+    else
+        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
+test -f /data/projects/AGENTS.md
+INSTALL_BASE_FILESYSTEM
+        then
+            log_error "base.filesystem: verify failed: test -f /data/projects/AGENTS.md"
             return 1
         fi
     fi
