@@ -10,6 +10,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
 import { safeGetJSON, safeSetJSON } from "./utils";
+import { getUserOS, getVPSIP, detectOS, setUserOS } from "./userPreferences";
+
+export interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+  /** CSS selector to scroll-to and focus on failure */
+  focusSelector?: string;
+}
 
 export interface WizardStep {
   /** Step number (1..TOTAL_STEPS) */
@@ -20,6 +28,35 @@ export interface WizardStep {
   description: string;
   /** URL slug for this step (e.g., "os-selection") */
   slug: string;
+  /** Optional validation; called before forward navigation from this step */
+  validate?: () => ValidationResult;
+}
+
+// --- Step validation functions ---
+
+function validateOSSelection(): ValidationResult {
+  // Try auto-detection as a last resort before failing
+  if (!getUserOS()) {
+    const detected = detectOS();
+    if (detected) setUserOS(detected);
+  }
+  return getUserOS()
+    ? { valid: true, errors: [] }
+    : {
+        valid: false,
+        errors: ["Select your operating system to continue"],
+        focusSelector: "[data-os-selection]",
+      };
+}
+
+function validateVPSCreation(): ValidationResult {
+  return getVPSIP()
+    ? { valid: true, errors: [] }
+    : {
+        valid: false,
+        errors: ["Enter your VPS IP address to continue"],
+        focusSelector: "[data-vps-ip-input]",
+      };
 }
 
 export const WIZARD_STEPS: WizardStep[] = [
@@ -28,6 +65,7 @@ export const WIZARD_STEPS: WizardStep[] = [
     title: "Choose Your OS",
     description: "Select whether you're using Mac, Windows, or Linux",
     slug: "os-selection",
+    validate: validateOSSelection,
   },
   {
     id: 2,
@@ -52,6 +90,7 @@ export const WIZARD_STEPS: WizardStep[] = [
     title: "Create VPS Instance",
     description: "Launch your VPS with password authentication",
     slug: "create-vps",
+    validate: validateVPSCreation,
   },
   {
     id: 6,
