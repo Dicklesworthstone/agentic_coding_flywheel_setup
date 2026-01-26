@@ -32,6 +32,7 @@ VERBOSE=false
 REDACT=true
 OUTPUT_BASE="${ACFS_HOME}/support"
 REDACTION_COUNT=0
+DOCTOR_TIMEOUT="${SUPPORT_BUNDLE_DOCTOR_TIMEOUT:-120}"
 
 # ============================================================
 # Parse arguments
@@ -116,7 +117,7 @@ capture_doctor_json() {
 
     if [[ -n "$doctor_script" ]]; then
         log_detail "Running acfs doctor --json ..."
-        if timeout 120 bash "$doctor_script" doctor --json > "$bundle_dir/doctor.json" 2>/dev/null; then
+        if timeout "$DOCTOR_TIMEOUT" bash "$doctor_script" doctor --json > "$bundle_dir/doctor.json" 2>/dev/null; then
             BUNDLE_FILES+=("doctor.json")
             return 0
         else
@@ -313,7 +314,8 @@ redact_file() {
     local file="$1"
 
     # Skip binary files (check first 512 bytes for null bytes)
-    if head -c 512 "$file" 2>/dev/null | grep -qP '\x00'; then
+    # -a forces grep to treat input as text (otherwise it silently skips binary data)
+    if head -c 512 "$file" 2>/dev/null | grep -qaP '\x00'; then
         return 0
     fi
 
@@ -346,7 +348,7 @@ redact_file() {
     local after_hash
     after_hash=$(md5sum "$file" 2>/dev/null | awk '{print $1}') || return 0
     if [[ "$before_hash" != "$after_hash" ]]; then
-        ((REDACTION_COUNT++))
+        REDACTION_COUNT=$((REDACTION_COUNT + 1))
     fi
 }
 
@@ -365,7 +367,7 @@ redact_bundle() {
     local file_count=0
     while IFS= read -r file; do
         redact_file "$file"
-        ((file_count++))
+        file_count=$((file_count + 1))
     done < <(find "$bundle_dir" -type f \( \
         -name '*.json' -o -name '*.log' -o -name '*.txt' \
         -o -name '*.yaml' -o -name '*.yml' -o -name '*.sh' \
@@ -373,7 +375,9 @@ redact_bundle() {
         -o -name 'os-release' -o -name 'VERSION' \
         \) 2>/dev/null)
 
-    [[ "$VERBOSE" == "true" ]] && log_detail "Scanned $file_count files, redacted $REDACTION_COUNT"
+    if [[ "$VERBOSE" == "true" ]]; then
+        log_detail "Scanned $file_count files, redacted $REDACTION_COUNT"
+    fi
 }
 
 # ============================================================
@@ -400,9 +404,9 @@ main() {
 
     # --- Collect ACFS state files ---
     log_detail "Collecting ACFS state files..."
-    collect_file "$ACFS_HOME/state.json" "$bundle_dir" "state.json"
-    collect_file "$ACFS_HOME/VERSION" "$bundle_dir" "VERSION"
-    collect_file "$ACFS_HOME/checksums.yaml" "$bundle_dir" "checksums.yaml"
+    collect_file "$ACFS_HOME/state.json" "$bundle_dir" "state.json" || true
+    collect_file "$ACFS_HOME/VERSION" "$bundle_dir" "VERSION" || true
+    collect_file "$ACFS_HOME/checksums.yaml" "$bundle_dir" "checksums.yaml" || true
 
     # --- Collect install logs ---
     log_detail "Collecting install logs..."
@@ -414,7 +418,7 @@ main() {
         while IFS= read -r logfile; do
             cp "$logfile" "$bundle_dir/logs/" 2>/dev/null && {
                 BUNDLE_FILES+=("logs/$(basename "$logfile")")
-                ((log_count++))
+                log_count=$((log_count + 1))
             }
         done < <(find "$logs_dir" -name 'install-*.log' -o -name 'install_summary_*.json' 2>/dev/null | sort -r | head -10)
         [[ "$VERBOSE" == "true" ]] && log_detail "Collected $log_count log files"
@@ -431,15 +435,15 @@ main() {
 
     # --- Capture doctor JSON ---
     log_detail "Running health checks..."
-    capture_doctor_json "$bundle_dir"
+    capture_doctor_json "$bundle_dir" || true
 
     # --- Capture versions ---
     log_detail "Collecting tool versions..."
-    capture_versions "$bundle_dir"
+    capture_versions "$bundle_dir" || true
 
     # --- Capture environment ---
     log_detail "Collecting environment info..."
-    capture_env_summary "$bundle_dir"
+    capture_env_summary "$bundle_dir" || true
 
     # --- Collect system info ---
     log_detail "Collecting system info..."
@@ -456,10 +460,8 @@ main() {
 
     # --- Collect configuration ---
     log_detail "Collecting configuration..."
-    collect_file "$HOME/.zshrc" "$bundle_dir/config" ".zshrc"
-    if [[ -f "$ACFS_HOME/acfs.manifest.yaml" ]]; then
-        collect_file "$ACFS_HOME/acfs.manifest.yaml" "$bundle_dir/config" "acfs.manifest.yaml"
-    fi
+    collect_file "$HOME/.zshrc" "$bundle_dir/config" ".zshrc" || true
+    collect_file "$ACFS_HOME/acfs.manifest.yaml" "$bundle_dir/config" "acfs.manifest.yaml" || true
 
     # --- Redact sensitive data ---
     redact_bundle "$bundle_dir"
