@@ -1,0 +1,156 @@
+#compdef acfs
+# Zsh completion for ACFS (Agentic Coding Flywheel Setup)
+# Install: Copy to a directory in $fpath (e.g., ~/.zsh/completions/)
+#          Then run: autoload -Uz compinit && compinit
+#
+# Related: bead bd-zhdi
+
+_acfs() {
+    local context state state_descr line
+    typeset -A opt_args
+
+    _arguments -C \
+        '1: :_acfs_commands' \
+        '*::arg:->args'
+
+    case $state in
+        args)
+            case $line[1] in
+                newproj|new)
+                    _arguments \
+                        '-i[Launch TUI wizard for guided project setup]' \
+                        '--interactive[Launch TUI wizard for guided project setup]' \
+                        '--no-bd[Skip beads (bd) initialization]' \
+                        '--no-claude[Skip Claude settings creation]' \
+                        '--no-agents[Skip AGENTS.md template creation]' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
+                doctor|check)
+                    _arguments \
+                        '--json[Output results as JSON]' \
+                        '--deep[Run functional tests (auth, connections)]' \
+                        '--no-cache[Skip cache, run all checks fresh]' \
+                        '--fix[Automatically apply safe fixes for failed checks]' \
+                        '--dry-run[Preview fixes without applying (use with --fix)]' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
+                info|i)
+                    _arguments \
+                        '--json[JSON output for scripting]' \
+                        '--html[Self-contained HTML dashboard]' \
+                        '--minimal[Just the essentials]'
+                    ;;
+                cheatsheet|cs)
+                    _arguments \
+                        '--json[JSON output for scripting]'
+                    ;;
+                session|sessions)
+                    _arguments -C \
+                        '1: :_acfs_session_commands' \
+                        '*::arg:->session_args'
+
+                    case $state in
+                        session_args)
+                            case $line[1] in
+                                list)
+                                    _arguments \
+                                        '--json[JSON output]' \
+                                        '--days[Filter by number of days]:days:' \
+                                        '--agent[Filter by agent name]:agent:' \
+                                        '--limit[Limit number of results]:limit:'
+                                    ;;
+                                export)
+                                    _arguments \
+                                        '1:session path:_files' \
+                                        '--format[Output format]:format:(json markdown)' \
+                                        '--no-sanitize[Do not sanitize output]' \
+                                        '--output[Output file]:file:_files'
+                                    ;;
+                                recent)
+                                    _arguments \
+                                        '--workspace[Workspace path]:path:_files -/' \
+                                        '--format[Output format]:format:(json markdown)'
+                                    ;;
+                                import)
+                                    _arguments \
+                                        '1:json file:_files -g "*.json"' \
+                                        '--dry-run[Preview import without executing]'
+                                    ;;
+                                show)
+                                    _arguments \
+                                        '1:session id:' \
+                                        '--format[Output format]:format:(json markdown summary)'
+                                    ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+                dashboard|dash)
+                    _arguments -C \
+                        '1: :_acfs_dashboard_commands' \
+                        '*::arg:->dashboard_args'
+                    ;;
+                update|status|continue|progress|services-setup|services|setup|support-bundle|bundle)
+                    _arguments \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+_acfs_commands() {
+    local commands
+    commands=(
+        'newproj:Create new project (git, bd, AGENTS.md, Claude settings)'
+        'new:Create new project (alias for newproj)'
+        'services-setup:Configure AI agents and cloud services'
+        'services:Configure services (alias for services-setup)'
+        'setup:Configure services (alias for services-setup)'
+        'doctor:Check system health and tool status'
+        'check:Check system health (alias for doctor)'
+        'session:List/export/import agent sessions (cass)'
+        'sessions:Agent sessions (alias for session)'
+        'update:Update ACFS tools to latest versions'
+        'status:Quick one-line health summary (fast, no network)'
+        'continue:View installation progress (after Ubuntu upgrade)'
+        'progress:View progress (alias for continue)'
+        'info:Quick system overview (hostname, IP, uptime, progress)'
+        'i:System overview (alias for info)'
+        'cheatsheet:Command reference (aliases, shortcuts)'
+        'cs:Command reference (alias for cheatsheet)'
+        'dashboard:Static HTML dashboard'
+        'dash:Dashboard (alias for dashboard)'
+        'support-bundle:Collect diagnostic data for troubleshooting'
+        'bundle:Support bundle (alias for support-bundle)'
+        'version:Show ACFS version'
+        'help:Show help message'
+    )
+    _describe -t commands 'acfs command' commands
+}
+
+_acfs_session_commands() {
+    local commands
+    commands=(
+        'list:List sessions'
+        'export:Export a session'
+        'recent:Show recent sessions'
+        'import:Import a session'
+        'show:Show session details'
+    )
+    _describe -t commands 'session command' commands
+}
+
+_acfs_dashboard_commands() {
+    local commands
+    commands=(
+        'generate:Generate static HTML dashboard'
+        'serve:Serve dashboard locally'
+    )
+    _describe -t commands 'dashboard command' commands
+}
+
+_acfs "$@"
