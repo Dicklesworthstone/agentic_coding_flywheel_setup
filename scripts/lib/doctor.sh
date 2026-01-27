@@ -1419,6 +1419,9 @@ run_deep_checks() {
     # tmux responsiveness checks (GitHub issue #20: NTM timeouts / slow tmux)
     deep_check_tmux_performance
 
+    # Network health checks (bead bd-31ps.7.2)
+    deep_check_network
+
     # Calculate deep check specific counts
     DEEP_PASS_COUNT=$((PASS_COUNT - pre_pass))
     DEEP_WARN_COUNT=$((WARN_COUNT - pre_warn))
@@ -1791,6 +1794,133 @@ deep_check_tmux_performance() {
 
     _deep_check_tmux_cmd "deep.tmux.list_sessions" "tmux list-sessions responsiveness" bash -lc "tmux list-sessions >/dev/null"
     _deep_check_tmux_cmd "deep.tmux.list_panes" "tmux list-panes -a responsiveness" bash -lc "tmux list-panes -a -F '#{pane_id}' >/dev/null"
+}
+
+# Deep check: Network health
+# Related: bead bd-31ps.7.2
+# Exposes preflight-style network checks via doctor --deep for ongoing verification.
+# Results are WARN (non-fatal) since network issues may be transient.
+deep_check_network() {
+    check_network_dns
+    check_network_github
+    check_network_apt_mirror
+}
+
+# check_network_dns - DNS resolution check for critical hosts
+# Related: bead bd-31ps.7.2
+# Tests DNS resolution for hosts required by the installer
+check_network_dns() {
+    local hosts=(
+        "github.com"
+        "raw.githubusercontent.com"
+    )
+    local dns_failures=()
+    local dns_ok=true
+
+    for host in "${hosts[@]}"; do
+        # Try multiple resolution methods (dig, host, getent)
+        local resolved=false
+        if command -v dig &>/dev/null; then
+            if dig +short +time=5 +tries=1 "$host" 2>/dev/null | grep -qE '^[0-9]'; then
+                resolved=true
+            fi
+        fi
+        if [[ "$resolved" == "false" ]] && command -v host &>/dev/null; then
+            if timeout 5 host "$host" &>/dev/null; then
+                resolved=true
+            fi
+        fi
+        if [[ "$resolved" == "false" ]] && command -v getent &>/dev/null; then
+            if timeout 5 getent hosts "$host" &>/dev/null; then
+                resolved=true
+            fi
+        fi
+
+        if [[ "$resolved" == "false" ]]; then
+            dns_failures+=("$host")
+            dns_ok=false
+        fi
+    done
+
+    if [[ "$dns_ok" == "true" ]]; then
+        check "deep.network.dns" "DNS resolution" "pass" "all hosts resolved"
+    else
+        local failed_list
+        failed_list=$(IFS=", "; echo "${dns_failures[*]}")
+        check "deep.network.dns" "DNS resolution" "warn" "failed: $failed_list" "Check /etc/resolv.conf or network settings"
+    fi
+}
+
+# check_network_github - GitHub connectivity check
+# Related: bead bd-31ps.7.2
+# Tests HTTP(S) connectivity to GitHub (critical for installer downloads)
+check_network_github() {
+    if ! command -v curl &>/dev/null; then
+        check "deep.network.github" "GitHub connectivity" "warn" "curl not installed"
+        return
+    fi
+
+    # Test basic HTTPS connectivity to GitHub
+    local http_status
+    http_status=$(curl -sL --max-time 10 --connect-timeout 5 -o /dev/null -w "%{http_code}" "https://github.com" 2>/dev/null) || http_status="000"
+
+    if [[ "$http_status" == "200" ]] || [[ "$http_status" == "301" ]] || [[ "$http_status" == "302" ]]; then
+        check "deep.network.github" "GitHub connectivity" "pass" "github.com reachable (HTTP $http_status)"
+    elif [[ "$http_status" == "000" ]]; then
+        check "deep.network.github" "GitHub connectivity" "warn" "connection failed" "Check network/firewall settings"
+    else
+        check "deep.network.github" "GitHub connectivity" "warn" "HTTP $http_status" "Unexpected response; check proxy settings"
+    fi
+
+    # Also test raw.githubusercontent.com (used for script downloads)
+    http_status=$(curl -sL --max-time 10 --connect-timeout 5 -o /dev/null -w "%{http_code}" "https://raw.githubusercontent.com" 2>/dev/null) || http_status="000"
+
+    if [[ "$http_status" == "200" ]] || [[ "$http_status" == "301" ]] || [[ "$http_status" == "400" ]]; then
+        # Note: raw.githubusercontent.com returns 400 on bare request, which is expected
+        check "deep.network.github_raw" "GitHub raw content" "pass" "raw.githubusercontent.com reachable"
+    elif [[ "$http_status" == "000" ]]; then
+        check "deep.network.github_raw" "GitHub raw content" "warn" "connection failed" "Check network/firewall settings"
+    else
+        check "deep.network.github_raw" "GitHub raw content" "warn" "HTTP $http_status" "Unexpected response"
+    fi
+}
+
+# check_network_apt_mirror - APT mirror reachability check
+# Related: bead bd-31ps.7.2
+# Tests connectivity to the configured APT mirror
+check_network_apt_mirror() {
+    if ! command -v curl &>/dev/null; then
+        return  # Already warned in github check
+    fi
+
+    # Detect the primary APT mirror from sources.list
+    local mirror_url=""
+    if [[ -f /etc/apt/sources.list ]]; then
+        mirror_url=$(grep -m1 "^deb http" /etc/apt/sources.list 2>/dev/null | awk '{print $2}' | sed 's|/ubuntu.*||') || true
+    fi
+    if [[ -z "$mirror_url" ]] && [[ -d /etc/apt/sources.list.d ]]; then
+        mirror_url=$(grep -rh "^deb http" /etc/apt/sources.list.d/ 2>/dev/null | head -1 | awk '{print $2}' | sed 's|/ubuntu.*||') || true
+    fi
+
+    if [[ -z "$mirror_url" ]]; then
+        check "deep.network.apt_mirror" "APT mirror" "warn" "could not detect mirror URL"
+        return
+    fi
+
+    # Test mirror reachability
+    local http_status
+    http_status=$(curl -sL --max-time 10 --connect-timeout 5 -o /dev/null -w "%{http_code}" "${mirror_url}/dists/" 2>/dev/null) || http_status="000"
+
+    local mirror_host="${mirror_url#http*://}"
+    mirror_host="${mirror_host%%/*}"
+
+    if [[ "$http_status" == "200" ]] || [[ "$http_status" == "301" ]]; then
+        check "deep.network.apt_mirror" "APT mirror" "pass" "$mirror_host reachable"
+    elif [[ "$http_status" == "000" ]]; then
+        check "deep.network.apt_mirror" "APT mirror" "warn" "$mirror_host unreachable" "Check /etc/apt/sources.list or network"
+    else
+        check "deep.network.apt_mirror" "APT mirror" "warn" "HTTP $http_status from $mirror_host" "May need to switch mirrors"
+    fi
 }
 
 # check_vault_configured - Check if Vault is configured and reachable
