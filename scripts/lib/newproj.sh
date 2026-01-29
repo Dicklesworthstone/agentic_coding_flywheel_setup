@@ -739,18 +739,18 @@ EOF
         echo -e "${CYAN}Git already initialized, skipping${NC}"
     fi
 
-    # Initialize beads (bd) if available and not skipped
+    # Initialize beads (br) if available and not skipped
     if [[ "$skip_bd" == "false" ]]; then
-        if command -v bd &>/dev/null; then
+        if command -v br &>/dev/null; then
             if [[ ! -d .beads ]]; then
-                echo -e "${GREEN}Initializing beads (bd)...${NC}"
-                bd init
+                echo -e "${GREEN}Initializing beads (br)...${NC}"
+                br init
                 CREATED_ITEMS+=("Beads tracking (.beads/)")
             else
                 echo -e "${CYAN}Beads already initialized, skipping${NC}"
             fi
         else
-            echo -e "${YELLOW}Warning: bd not found, skipping beads initialization${NC}"
+            echo -e "${YELLOW}Warning: br not found, skipping beads initialization${NC}"
             echo -e "${YELLOW}Install with: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only stack.beads_viewer${NC}"
         fi
     fi
@@ -805,9 +805,9 @@ EOF
     if [[ "$skip_agents" == "false" ]] && [[ -f AGENTS.md ]]; then
         echo "  # Edit AGENTS.md to customize for your project"
     fi
-    if [[ "$skip_bd" == "false" ]] && command -v bd &>/dev/null; then
-        echo "  bd ready                    # Check for work"
-        echo "  bd create --title=\"...\"    # Create tasks"
+    if [[ "$skip_bd" == "false" ]] && command -v br &>/dev/null; then
+        echo "  br ready                    # Check for work"
+        echo "  br create --title=\"...\"    # Create tasks"
     fi
     echo "  cc                          # Start Claude Code"
 }

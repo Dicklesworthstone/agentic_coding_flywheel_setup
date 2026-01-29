@@ -310,8 +310,8 @@ venv/
                 update_step "$step" "success"
                 return 0
             else
-                # bd init is optional - don't fail
-                log_warn "bd init skipped (not installed or failed)"
+                # br init is optional - don't fail
+                log_warn "br init skipped (not installed or failed)"
                 update_step "$step" "success"
                 return 0
             fi
