@@ -44,6 +44,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --output|-o)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                log_error "--output requires a directory path"
+                exit 1
+            fi
             OUTPUT_BASE="$2"
             shift 2
             ;;

@@ -487,14 +487,26 @@ list_sessions() {
                 shift
                 ;;
             --days)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--days requires a numeric value"
+                    return 1
+                fi
                 days="$2"
                 shift 2
                 ;;
             --agent)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--agent requires a value"
+                    return 1
+                fi
                 agent="$2"
                 shift 2
                 ;;
             --limit)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--limit requires a numeric value"
+                    return 1
+                fi
                 limit="$2"
                 shift 2
                 ;;
@@ -600,6 +612,10 @@ export_session() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --format)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--format requires a value (json or markdown)"
+                    return 1
+                fi
                 format="$2"
                 shift 2
                 ;;
@@ -608,6 +624,10 @@ export_session() {
                 shift
                 ;;
             --output|-o)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--output requires a file path"
+                    return 1
+                fi
                 output_file="$2"
                 shift 2
                 ;;
@@ -1089,7 +1109,14 @@ show_session() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --format) format="$2"; shift 2 ;;
+            --format)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--format requires a value (json, markdown, or summary)"
+                    return 1
+                fi
+                format="$2"
+                shift 2
+                ;;
             -*) shift ;;
             *) session_id="$1"; shift ;;
         esac
