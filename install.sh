@@ -870,10 +870,12 @@ cleanup() {
         fi
         log_error ""
         log_error "To debug:"
-        if [[ -n "${ACFS_LOG_FILE:-}" ]]; then
+        if [[ -n "${ACFS_LOG_FILE:-}" ]] && [[ -f "${ACFS_LOG_FILE}" ]]; then
             log_error "  1. Check the log: cat $ACFS_LOG_FILE"
-        else
+        elif [[ -d "$ACFS_LOG_DIR" ]]; then
             log_error "  1. Check the log: cat $ACFS_LOG_DIR/install.log"
+        else
+            log_error "  1. Re-run with increased verbosity for details"
         fi
         log_error "  2. If installed, run: acfs doctor (try as $TARGET_USER)"
         log_error "     (If you ran the installer as root: sudo -u $TARGET_USER -i bash -lc 'acfs doctor')"
@@ -1498,11 +1500,21 @@ handle_autofix() {
             log_info "[AUTO-FIX] Fixing: $description"
             if type "$fix_func" &>/dev/null; then
                 "$fix_func" fix
+            else
+                log_warn "[AUTO-FIX] Fix function not available: $fix_func"
             fi
             ;;
         "prompt")
             log_warn "[PRE-FLIGHT] $description"
-            if confirm "Would you like ACFS to fix this automatically?"; then
+            # In --yes mode, auto-accept the fix without prompting
+            if [[ "${YES_MODE:-false}" == "true" ]]; then
+                log_info "[AUTO-FIX] Fixing (--yes mode): $description"
+                if type "$fix_func" &>/dev/null; then
+                    "$fix_func" fix
+                else
+                    log_warn "[AUTO-FIX] Fix function not available: $fix_func"
+                fi
+            elif confirm "Would you like ACFS to fix this automatically?"; then
                 log_info "[AUTO-FIX] Fixing: $description"
                 if type "$fix_func" &>/dev/null; then
                     "$fix_func" fix

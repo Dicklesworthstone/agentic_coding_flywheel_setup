@@ -17,9 +17,9 @@ fi
 _ACFS_AUTOFIX_VERSION_MANAGERS_SH_LOADED=1
 
 # Source the autofix base library
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_AUTOFIX_VERSION_MANAGERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/autofix.sh"
+source "$_AUTOFIX_VERSION_MANAGERS_DIR/autofix.sh"
 
 # ============================================================
 # NVM Detection and Fix

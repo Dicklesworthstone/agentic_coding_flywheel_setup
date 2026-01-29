@@ -8,9 +8,9 @@
 _ACFS_AUTOFIX_UNATTENDED_SOURCED=1
 
 # Source the core autofix module
-SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+_AUTOFIX_UNATTENDED_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=autofix.sh
-source "${SCRIPT_DIR}/autofix.sh"
+source "${_AUTOFIX_UNATTENDED_DIR}/autofix.sh"
 
 # =============================================================================
 # Constants

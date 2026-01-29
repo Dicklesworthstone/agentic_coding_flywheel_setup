@@ -41,7 +41,7 @@ _autofix_log() {
         ERROR) echo "[$timestamp] ERROR: $message" >&2 ;;
         WARN)  echo "[$timestamp] WARN:  $message" >&2 ;;
         INFO)  echo "[$timestamp] INFO:  $message" >&2 ;;
-        DEBUG) [[ "${ACFS_DEBUG:-}" == "true" ]] && echo "[$timestamp] DEBUG: $message" ;;
+        DEBUG) [[ "${ACFS_DEBUG:-}" == "true" ]] && echo "[$timestamp] DEBUG: $message" || true ;;
     esac
 }
 
@@ -503,6 +503,11 @@ record_change() {
     local backups_json="${7:-[]}"  # JSON array from create_backup
     local depends_on="${8:-[]}"  # JSON array of dependency change IDs
 
+    # Ensure state is initialized
+    if [[ "$ACFS_AUTOFIX_INITIALIZED" != "true" ]]; then
+        init_autofix_state || return 1
+    fi
+
     # Generate unique ID
     local seq_num=0
     if [[ -f "$ACFS_CHANGES_FILE" ]]; then
@@ -548,9 +553,17 @@ record_change() {
     record_checksum=$(compute_record_checksum "$record")
     record=$(echo "$record" | jq -c --arg sum "$record_checksum" '. + {record_checksum: $sum}')
 
-    # Store in memory
+    # Store in memory (temporarily disable nounset for associative array access)
+    local nounset_was_set=false
+    case "$-" in
+        *u*) nounset_was_set=true ;;
+    esac
+    set +u
     ACFS_CHANGE_RECORDS["$change_id"]="$record"
     ACFS_CHANGE_ORDER+=("$change_id")
+    if [[ "$nounset_was_set" == "true" ]]; then
+        set -u
+    fi
 
     # Persist atomically with fsync
     append_atomic "$ACFS_CHANGES_FILE" "$record"

@@ -8,9 +8,9 @@
 _ACFS_AUTOFIX_EXISTING_SOURCED=1
 
 # Source the core autofix module
-SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+_AUTOFIX_EXISTING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=autofix.sh
-source "${SCRIPT_DIR}/autofix.sh"
+source "${_AUTOFIX_EXISTING_DIR}/autofix.sh"
 
 # =============================================================================
 # Constants
@@ -162,6 +162,27 @@ autofix_existing_acfs_needs_handling() {
     markers=$(detect_existing_acfs 2>/dev/null) || true
 
     [[ -n "$markers" ]]
+}
+
+# Fix function for handle_autofix pattern
+# In --yes mode, defaults to upgrade; in interactive/dry-run, shows what would happen
+autofix_existing_fix() {
+    local mode="${1:-fix}"
+    
+    if [[ "$mode" == "dry-run" ]]; then
+        log_info "[DRY-RUN] Would handle existing ACFS installation"
+        log_info "  - Check installed version"
+        log_info "  - Offer upgrade or clean reinstall option"
+        return 0
+    fi
+    
+    # In fix mode: use upgrade strategy for non-interactive --yes mode
+    if handle_existing_installation "${ACFS_VERSION:-unknown}" "upgrade"; then
+        return 0
+    else
+        log_error "Failed to handle existing installation"
+        return 1
+    fi
 }
 
 # =============================================================================
