@@ -4350,26 +4350,23 @@ NTM_CONFIG_EOF
 
         # Install NTM command palette (bd-2od5.2.2)
         # Provides useful prompts for ntm palette command
-        local ntm_palette_src="$SCRIPT_DIR/acfs/onboard/docs/ntm/command_palette.md"
         local ntm_palette_dst="$ntm_config_dir/command_palette.md"
-        if [[ -f "$ntm_palette_src" ]]; then
-            if [[ ! -f "$ntm_palette_dst" ]]; then
-                log_detail "Installing NTM command palette"
-                run_as_target mkdir -p "$ntm_config_dir" || true
-                if cp "$ntm_palette_src" "$ntm_palette_dst" 2>/dev/null; then
-                    # Fix ownership for target user
-                    if [[ -n "${TARGET_USER:-}" ]] && [[ "$(id -u)" -eq 0 ]]; then
-                        chown "${TARGET_USER}:${TARGET_USER}" "$ntm_palette_dst" 2>/dev/null || true
-                    fi
-                    log_success "NTM command palette installed"
-                else
-                    log_warn "Failed to install NTM command palette"
+        if [[ ! -f "$ntm_palette_dst" ]]; then
+            log_detail "Installing NTM command palette"
+            # Ensure config dir exists (install_asset doesn't create parent dirs)
+            run_as_target mkdir -p "$ntm_config_dir" 2>/dev/null || true
+            # Use install_asset for consistency with other assets (works with curl|bash bootstrap)
+            if install_asset "acfs/onboard/docs/ntm/command_palette.md" "$ntm_palette_dst"; then
+                # Fix ownership for target user
+                if [[ -n "${TARGET_USER:-}" ]] && [[ "$(id -u)" -eq 0 ]]; then
+                    chown "${TARGET_USER}:${TARGET_USER}" "$ntm_palette_dst" 2>/dev/null || true
                 fi
+                log_success "NTM command palette installed"
             else
-                log_detail "NTM command palette already exists, skipping"
+                log_warn "Failed to install NTM command palette (asset not found)"
             fi
         else
-            log_detail "NTM command palette source not found, skipping"
+            log_detail "NTM command palette already exists, skipping"
         fi
     fi
 
