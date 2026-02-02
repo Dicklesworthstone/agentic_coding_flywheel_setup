@@ -62,7 +62,7 @@ EOF
         echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} AGENTS.md for AI assistants"
     fi
 
-    if [[ "$(state_get "enable_bd")" == "true" ]]; then
+    if [[ "$(state_get "enable_br")" == "true" ]]; then
         echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Beads issue tracking (.beads/)"
     fi
 
@@ -89,9 +89,9 @@ EOF
     echo -e "     ${TUI_CYAN}claude${TUI_NC}"
     echo ""
 
-    if [[ "$(state_get "enable_bd")" == "true" ]]; then
+    if [[ "$(state_get "enable_br")" == "true" ]]; then
         echo "  3. Create your first task:"
-        echo -e "     ${TUI_CYAN}bd create \"First feature\" -t feature${TUI_NC}"
+        echo -e "     ${TUI_CYAN}br create \"First feature\" -t feature${TUI_NC}"
         echo ""
     fi
 

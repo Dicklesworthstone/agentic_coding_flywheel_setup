@@ -106,7 +106,7 @@ declare -A WIZARD_STATE=(
     [project_name]=""
     [project_dir]=""
     [tech_stack]=""           # Space-separated: "nodejs typescript docker"
-    [enable_bd]="true"
+    [enable_br]="true"
     [enable_claude]="true"
     [enable_agents]="true"
     [enable_ubsignore]="true"
@@ -239,7 +239,7 @@ select_features() {
         gum choose --no-limit \
             --cursor.foreground "$ACFS_ACCENT" \
             --selected.foreground "$ACFS_SUCCESS" \
-            "Beads issue tracking (bd)" \
+            "Beads issue tracking (br)" \
             "Claude Code settings" \
             "AGENTS.md template" \
             "UBS ignore patterns"

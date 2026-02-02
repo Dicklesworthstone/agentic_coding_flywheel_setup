@@ -23,7 +23,7 @@ SCREEN_FEATURES_PREV="tech_stack"
 
 # Available features with descriptions
 declare -ga FEATURE_OPTIONS=(
-    "bd:Beads issue tracking (bd):Track work with dependencies and smart prioritization"
+    "br:Beads issue tracking (br):Track work with dependencies and smart prioritization"
     "claude:Claude Code settings:Project-specific Claude Code configuration"
     "agents:AGENTS.md template:Instructions for AI coding assistants"
     "ubsignore:UBS ignore patterns:Configure Ultimate Bug Scanner exclusions"

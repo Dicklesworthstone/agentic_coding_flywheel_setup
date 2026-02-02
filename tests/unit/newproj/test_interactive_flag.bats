@@ -288,12 +288,12 @@ teardown() {
 # Combined Flag Tests
 # ============================================================
 
-@test "main allows --interactive with --no-bd" {
+@test "main allows --interactive with --no-br" {
     export CI=true
 
     run bash -c '
         source '"$ACFS_LIB_DIR"'/newproj.sh
-        main --interactive --no-bd 2>&1
+        main --interactive --no-br 2>&1
     '
 
     # Should reach interactive mode (and fail on CI check)

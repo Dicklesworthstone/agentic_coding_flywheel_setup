@@ -179,7 +179,7 @@ teardown() {
     local project_name="multi-flag-test"
     local project_dir="$E2E_TEST_DIR/$project_name"
 
-    run bash "$ACFS_LIB_DIR/newproj.sh" "$project_name" "$project_dir" --no-bd --no-agents
+    run bash "$ACFS_LIB_DIR/newproj.sh" "$project_name" "$project_dir" --no-br --no-agents
 
     assert_success
     [[ -d "$project_dir" ]]

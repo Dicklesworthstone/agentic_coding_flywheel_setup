@@ -297,7 +297,7 @@ test_log_dump_state() {
     declare -A TEST_STATE=(
         [project_name]="my-project"
         [tech_stack]="nodejs typescript"
-        [enable_bd]="true"
+        [enable_br]="true"
     )
 
     log_dump_state TEST_STATE

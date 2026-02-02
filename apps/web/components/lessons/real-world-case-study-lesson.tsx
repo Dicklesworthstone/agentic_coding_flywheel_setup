@@ -379,13 +379,13 @@ Write it to PLAN_FOR_CASS_MEMORY_SYSTEM.md"`}
         <div className="mt-6">
           <CodeBlock
             code={`# Initialize beads in the project
-bd init
+br init
 
 # Have an agent transform the plan into beads
 cc "Read PLAN_FOR_CASS_MEMORY_SYSTEM.md carefully.
 
 Transform each section, feature, and implementation detail
-into individual beads using the bd CLI.
+into individual beads using the br CLI.
 
 Create epics for major phases, then break them into tasks.
 Set up dependencies so blockers are clear.
@@ -437,13 +437,13 @@ ntm spawn cass-memory --cc=6 --cod=3 --gmi=2
 bv --robot-triage
 
 # 2. Claim a task
-bd update <id> --status in_progress
+br update <id> --status in_progress
 
 # 3. Implement
 # (agent does the work)
 
 # 4. Close when done
-bd close <id>
+br close <id>
 
 # 5. Repeat`}
             showLineNumbers
@@ -675,9 +675,9 @@ Create a hybrid plan taking the best of each.
 Write to PLAN.md"
 
 # 3. Transform plan into beads
-bd init
+br init
 cc "Read PLAN.md. Transform into 100+ beads with
-dependencies and priorities. Use bd CLI."
+dependencies and priorities. Use br CLI."
 
 # 4. Launch the swarm
 ntm spawn myproject --cc=3 --cod=2 --gmi=1

@@ -303,7 +303,7 @@ preflight_check() {
     done
 
     # Check optional commands
-    local optional_cmds=(bd gum glow)
+    local optional_cmds=(br gum glow)
     for cmd in "${optional_cmds[@]}"; do
         if ! command -v "$cmd" &>/dev/null; then
             warnings+=("Optional command not found: $cmd (some features may be limited)")
@@ -420,14 +420,14 @@ try_git_init() {
     return 0
 }
 
-# Try to initialize beads (bd)
-# Usage: try_bd_init "/path/to/dir"
-try_bd_init() {
+# Try to initialize beads (br)
+# Usage: try_br_init "/path/to/dir"
+try_br_init() {
     local dir="$1"
 
     log_debug "Initializing br in: $dir" 2>/dev/null || true
 
-    # Check if br is available (br is the binary, bd is the alias)
+    # Check if br is available
     if ! command -v br &>/dev/null; then
         log_warn "br not found - skipping beads initialization" 2>/dev/null || true
         echo -e "${NEWPROJ_YELLOW}Note: br not installed. Skipping beads setup.${NEWPROJ_NC}"

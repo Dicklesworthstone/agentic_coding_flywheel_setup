@@ -366,13 +366,10 @@ shellcheck install.sh scripts/lib/*.sh
 
 All issue tracking goes through **Beads**. No other TODO systems.
 
-**Note:** `bd` is a backward-compatibility alias (installed by `acfs/zsh/acfs.zshrc`) for the beads_rust CLI: `br`.
-The primary command is `br`. The old `bd` (golang beads) is deprecated but aliased for compatibility.
-
 Key invariants:
 
 - `.beads/` is authoritative state and **must always be committed** with code changes.
-- Do not edit `.beads/*.jsonl` directly; only via `br` / `bd`.
+- Do not edit `.beads/*.jsonl` directly; only via `br`.
 
 ### Basics
 
@@ -425,7 +422,7 @@ Agent workflow:
 
 Sync:
 
-- Run `br sync --flush-only` (or `bd sync --flush-only`) to export to `.beads/issues.jsonl` without git operations.
+- Run `br sync --flush-only` to export to `.beads/issues.jsonl` without git operations.
 - Then run `git add .beads/ && git commit -m "Update beads"` to commit changes.
 
 Never:

@@ -14,32 +14,32 @@ Beads is issue tracking that lives in your repo, making it perfect for AI coding
 
 ```bash
 # Create new issues
-bd create "Add user authentication"
+br create "Add user authentication"
 
 # View all issues
-bd list
+br list
 
 # View issue details
-bd show <issue-id>
+br show <issue-id>
 
 # Update issue status
-bd update <issue-id> --status in_progress
-bd update <issue-id> --status done
+br update <issue-id> --status in_progress
+br update <issue-id> --status done
 
 # Sync with git remote
-bd sync
+br sync
 ```
 
 ## Daemon (Optional)
 
-Beads has an optional background daemon (`bd daemon`) that auto-syncs issues with git.
+Beads has an optional background daemon (`br daemon`) that auto-syncs issues with git.
 
 In this repo, the sync branch is configured as `main`. Running the daemon while you are on a different branch can cause `.beads/issues.jsonl` to be rewritten from `main`, leaving your working tree dirty and blocking `git pull --rebase`.
 
 Recommended workflow:
-- Prefer manual sync: `bd sync` (default).
-- If you use the daemon, run it only while you are on `main`, or run it in local-only mode: `bd daemon --start --local`.
-- If `.beads/issues.jsonl` is changing unexpectedly, check/stop the daemon: `bd daemon --status` / `bd daemon --stop`.
+- Prefer manual sync: `br sync` (default).
+- If you use the daemon, run it only while you are on `main`, or run it in local-only mode: `br daemon --start --local`.
+- If `.beads/issues.jsonl` is changing unexpectedly, check/stop the daemon: `br daemon --status` / `br daemon --stop`.
 
 ### Working with Issues
 
@@ -75,16 +75,16 @@ Try Beads in your own projects:
 curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
 
 # Initialize in your repo
-bd init
+br init
 
 # Create your first issue
-bd create "Try out Beads"
+br create "Try out Beads"
 ```
 
 ## Learn More
 
 - **Documentation**: [github.com/steveyegge/beads/docs](https://github.com/steveyegge/beads/tree/main/docs)
-- **Quick Start Guide**: Run `bd quickstart`
+- **Quick Start Guide**: Run `br quickstart`
 - **Examples**: [github.com/steveyegge/beads/examples](https://github.com/steveyegge/beads/tree/main/examples)
 
 ---

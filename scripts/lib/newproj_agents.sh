@@ -467,12 +467,9 @@ _section_issue_tracking() {
 
 All issue tracking goes through **Beads**. No other TODO systems.
 
-**Note:** `br` is a convenience alias (installed by `acfs/zsh/acfs.zshrc`) for the real Beads CLI: `bd`.
-If `br` is unavailable (CI / non-interactive shells), use `bd` directly.
-
 Key invariants:
 - `.beads/` is authoritative state and **must always be committed** with code changes.
-- Do not edit `.beads/*.jsonl` directly; only via `br` / `bd`.
+- Do not edit `.beads/*.jsonl` directly; only via `br`.
 
 ### Basics
 
@@ -626,14 +623,14 @@ get_sections_for_tech_stack() {
 # Generate AGENTS.md content
 # Usage: content=$(generate_agents_md "project_name" [tech_stack...])
 # Options via environment:
-#   AGENTS_ENABLE_BD=true|false - Include bd issue tracking section
+#   AGENTS_ENABLE_BR=true|false - Include br issue tracking section
 #   AGENTS_ENABLE_CONSOLE=true|false - Include console output section
 generate_agents_md() {
     local project_name="${1:-my-project}"
     shift
     local tech_stack=("$@")
 
-    local enable_bd="${AGENTS_ENABLE_BD:-false}"
+    local enable_br="${AGENTS_ENABLE_BR:-false}"
     local enable_console="${AGENTS_ENABLE_CONSOLE:-false}"
     local generated_at
     local tech_stack_list="none"
@@ -656,7 +653,7 @@ generate_agents_md() {
     read -ra section_array <<< "$sections"
 
     # Add optional sections based on flags
-    if [[ "$enable_bd" == "true" ]]; then
+    if [[ "$enable_br" == "true" ]]; then
         section_array+=("issue_tracking")
     fi
     if [[ "$enable_console" == "true" ]]; then
@@ -851,10 +848,10 @@ preview_agents_md() {
     sections=$(get_sections_for_tech_stack "${tech_stack[@]}")
     read -ra section_array <<< "$sections"
 
-    local enable_bd="${AGENTS_ENABLE_BD:-false}"
+    local enable_br="${AGENTS_ENABLE_BR:-false}"
     local enable_console="${AGENTS_ENABLE_CONSOLE:-false}"
 
-    if [[ "$enable_bd" == "true" ]]; then
+    if [[ "$enable_br" == "true" ]]; then
         section_array+=("issue_tracking")
     fi
     if [[ "$enable_console" == "true" ]]; then

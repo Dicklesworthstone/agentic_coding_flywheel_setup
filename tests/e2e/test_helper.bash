@@ -202,7 +202,7 @@ verify_feature_enabled() {
         agents|AGENTS.md)
             [[ -f "$project_dir/AGENTS.md" ]]
             ;;
-        beads|bd)
+        beads|br)
             [[ -d "$project_dir/.beads" ]] && [[ -f "$project_dir/.beads/beads.db" ]]
             ;;
         claude)

@@ -105,7 +105,7 @@ export const TOOLS: Record<ToolId, ToolCard> = {
     glowColor: "rgba(52,211,153,0.4)",
     docsUrl: "https://github.com/Dicklesworthstone/beads_viewer",
     docsLabel: "GitHub",
-    quickCommand: "bd ready",
+    quickCommand: "br ready",
     relatedTools: ["agent-mail", "ubs"],
   },
   "agent-mail": {

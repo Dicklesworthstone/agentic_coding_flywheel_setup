@@ -159,10 +159,10 @@ const COMMANDS: CommandEntry[] = [
     learnMoreHref: "/learn/ntm-palette",
   },
   {
-    name: "bd",
+    name: "br",
     fullName: "Beads CLI",
     description: "Create/update issues and dependencies",
-    example: "bd ready",
+    example: "br ready",
     category: "stack",
     learnMoreHref: "/learn/tools/beads",
   },

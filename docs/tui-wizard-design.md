@@ -87,7 +87,7 @@ Introduce the wizard and set expectations.
 │                                                                 │
 │    This wizard will help you create a new project with:        │
 │      • Git repository with .gitignore                          │
-│      • Beads issue tracking (bd)                                │
+│      • Beads issue tracking (br)                                │
 │      • Claude Code settings                                     │
 │      • AGENTS.md tailored to your tech stack                   │
 │      • UBS ignore patterns                                      │
@@ -290,7 +290,7 @@ Select which ACFS features to enable.
 
   Which features do you want to enable?
 
-    [✓] Beads issue tracking (bd)
+    [✓] Beads issue tracking (br)
         Track work items with dependencies
 
     [✓] Claude Code settings
@@ -309,7 +309,7 @@ Select which ACFS features to enable.
 ```
 
 ### State Changes
-- Sets `WIZARD_STATE[enable_bd]`
+- Sets `WIZARD_STATE[enable_br]`
 - Sets `WIZARD_STATE[enable_claude]`
 - Sets `WIZARD_STATE[enable_agents]`
 - Sets `WIZARD_STATE[enable_ubsignore]`
@@ -385,7 +385,7 @@ Review all choices before creating the project.
   │  Tech Stack:     Node.js, TypeScript, Docker                │
   │                                                              │
   │  Features:                                                   │
-  │    ✓ Beads (bd)                                             │
+  │    ✓ Beads (br)                                             │
   │    ✓ Claude Code settings                                   │
   │    ✓ AGENTS.md                                              │
   │    ✓ UBS ignore patterns                                    │
@@ -436,7 +436,7 @@ Show creation progress with status indicators.
     ✓ Initializing git repository
     ✓ Creating .gitignore
     ✓ Creating .ubsignore
-    ⠋ Initializing beads (bd)...
+    ⠋ Initializing beads (br)...
     ○ Creating Claude settings
     ○ Generating AGENTS.md
     ○ Creating README.md
@@ -451,8 +451,8 @@ Show creation progress with status indicators.
 ```
     ✓ Creating directory
     ✓ Initializing git repository
-    ✖ Initializing beads (bd)
-      Error: bd command not found
+    ✖ Initializing beads (br)
+      Error: br command not found
 
   ┌─────────────────────────────────────────────────────────────┐
   │  Some steps failed. What would you like to do?              │
@@ -497,7 +497,7 @@ Celebrate completion and show next steps.
   Next steps:
     cd /data/projects/my-awesome-project
     claude .        # Start Claude Code
-    bd ready        # Check available work
+    br ready        # Check available work
 
         ► Open in Claude Code          Exit
 
@@ -525,7 +525,7 @@ Celebrate completion and show next steps.
 │  │ WIZARD_STATE[project_name] = ""                           │ │
 │  │ WIZARD_STATE[project_dir] = ""                            │ │
 │  │ WIZARD_STATE[tech_stack] = ""                             │ │
-│  │ WIZARD_STATE[enable_bd] = "true"                          │ │
+│  │ WIZARD_STATE[enable_br] = "true"                          │ │
 │  │ WIZARD_STATE[enable_claude] = "true"                      │ │
 │  │ WIZARD_STATE[enable_agents] = "true"                      │ │
 │  │ WIZARD_STATE[enable_ubsignore] = "true"                   │ │
@@ -595,13 +595,13 @@ Options:
   - Exit
 ```
 
-### 3. bd init fails
+### 3. br init fails
 ```
-bd init fails
+br init fails
     │
     ▼
 Show warning (not fatal):
-  "bd initialization failed. You can run 'bd init' later."
+  "br initialization failed. You can run 'br init' later."
     │
     ▼
 Continue with remaining steps (graceful degradation)
@@ -688,7 +688,7 @@ WIZARD_STATE=(
     [project_name]="my-awesome-project"
     [project_dir]="/data/projects/my-awesome-project"
     [tech_stack]="nodejs typescript docker"
-    [enable_bd]="true"
+    [enable_br]="true"
     [enable_claude]="true"
     [enable_agents]="true"
     [enable_ubsignore]="true"

@@ -88,9 +88,7 @@ export const manifestTools: ManifestWebTool[] = [
     language: "Rust",
     stars: 128,
     cliName: "br",
-    cliAliases: [
-      "bd",
-    ],
+    cliAliases: [],
     commandExample: "br ready --json",
   },
   {

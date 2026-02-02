@@ -46,7 +46,7 @@ generate_preview_content() {
     done
 
     # Set generation flags from state
-    export AGENTS_ENABLE_BD=$(state_get "enable_bd")
+    export AGENTS_ENABLE_BR=$(state_get "enable_br")
     export AGENTS_ENABLE_CONSOLE="false"
 
     # Generate content using newproj_agents.sh
@@ -78,7 +78,7 @@ get_preview_summary() {
     done
 
     # Set generation flags from state
-    export AGENTS_ENABLE_BD=$(state_get "enable_bd")
+    export AGENTS_ENABLE_BR=$(state_get "enable_br")
     export AGENTS_ENABLE_CONSOLE="false"
 
     preview_agents_md "$project_name" "${tech_array[@]}"

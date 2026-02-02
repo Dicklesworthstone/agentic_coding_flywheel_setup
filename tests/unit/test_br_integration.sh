@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Unit tests for beads_rust (br) integration
-# Tests that br binary works, bd alias is configured, and basic operations succeed
+# Tests that br binary works and basic operations succeed
 
 set -uo pipefail
 # Note: Not using -e to allow tests to continue after failures
@@ -44,26 +44,14 @@ test_br_version() {
     fi
 }
 
-# Test 3: bd alias works (requires sourcing zshrc)
-test_bd_alias() {
-    log "Test 3: bd alias..."
-    # Check if bd is available (either as alias or binary)
-    if command -v bd >/dev/null 2>&1; then
-        local bd_output br_output
-        bd_output=$(bd --version 2>&1 | head -1) || true
-        br_output=$(br --version 2>&1 | head -1) || true
-        if [[ "$bd_output" == "$br_output" ]]; then
-            pass "bd alias correctly maps to br"
-        else
-            fail "bd and br versions differ: bd='$bd_output' br='$br_output'"
-        fi
+# Test 3: br is the primary command (bd alias removed)
+test_br_primary() {
+    log "Test 3: br is the primary beads command..."
+    # Confirm br works as primary command
+    if br --help >/dev/null 2>&1; then
+        pass "br is the primary beads_rust command"
     else
-        # Check if alias is defined in zshrc
-        if grep -q "alias bd=.br" ~/.acfs/zsh/acfs.zshrc 2>/dev/null; then
-            pass "bd alias defined in acfs.zshrc (need to source it)"
-        else
-            fail "bd alias not found"
-        fi
+        fail "br --help failed"
     fi
 }
 
@@ -142,7 +130,7 @@ main() {
 
     test_br_binary
     test_br_version
-    test_bd_alias
+    test_br_primary
     test_br_list
     test_br_ready
     test_bv_binary

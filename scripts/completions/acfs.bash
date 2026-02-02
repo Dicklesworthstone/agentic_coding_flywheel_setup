@@ -11,7 +11,7 @@ _acfs_completions() {
     local commands="newproj new services-setup services setup doctor check session sessions update status continue progress info i cheatsheet cs dashboard dash support-bundle bundle version help"
 
     # Subcommand-specific flags
-    local newproj_flags="-i --interactive --no-bd --no-claude --no-agents -h --help"
+    local newproj_flags="-i --interactive --no-br --no-claude --no-agents -h --help"
     local doctor_flags="--json --deep --no-cache --fix --dry-run -h --help"
     local info_flags="--json --html --minimal"
     local cheatsheet_flags="--json"

@@ -332,15 +332,15 @@ teardown() {
     source_lib "newproj_screens"
     load_screens
 
-    local found_bd=false
+    local found_br=false
     local found_agents=false
 
     for opt in "${FEATURE_OPTIONS[@]}"; do
-        [[ "$opt" == "bd:"* ]] && found_bd=true
+        [[ "$opt" == "br:"* ]] && found_br=true
         [[ "$opt" == "agents:"* ]] && found_agents=true
     done
 
-    [[ "$found_bd" == "true" ]]
+    [[ "$found_br" == "true" ]]
     [[ "$found_agents" == "true" ]]
 }
 
@@ -349,8 +349,8 @@ teardown() {
     load_screens
 
     local key
-    key=$(get_feature_key "bd")
-    [[ "$key" == "enable_bd" ]]
+    key=$(get_feature_key "br")
+    [[ "$key" == "enable_br" ]]
 
     key=$(get_feature_key "agents")
     [[ "$key" == "enable_agents" ]]
@@ -360,12 +360,12 @@ teardown() {
     source_lib "newproj_screens"
     load_screens
 
-    state_set "enable_bd" "true"
-    toggle_feature "bd"
-    [[ "$(state_get "enable_bd")" == "false" ]]
+    state_set "enable_br" "true"
+    toggle_feature "br"
+    [[ "$(state_get "enable_br")" == "false" ]]
 
-    toggle_feature "bd"
-    [[ "$(state_get "enable_bd")" == "true" ]]
+    toggle_feature "br"
+    [[ "$(state_get "enable_br")" == "true" ]]
 }
 
 # ============================================================
@@ -423,7 +423,7 @@ teardown() {
 
     state_set "project_dir" "/tmp/test-project"
     state_set "enable_agents" "true"
-    state_set "enable_bd" "true"
+    state_set "enable_br" "true"
 
     local files
     files=$(get_files_to_create)
@@ -438,7 +438,7 @@ teardown() {
 
     state_set "project_dir" "/tmp/test-project"
     state_set "enable_agents" "false"
-    state_set "enable_bd" "false"
+    state_set "enable_br" "false"
 
     local files
     files=$(get_files_to_create)
@@ -463,7 +463,7 @@ teardown() {
     load_screens
 
     state_set "enable_agents" "true"
-    state_set "enable_bd" "false"
+    state_set "enable_br" "false"
 
     init_creation_steps
 
@@ -471,7 +471,7 @@ teardown() {
     [[ " ${STEP_ORDER[*]} " =~ " create_dir " ]]
     [[ " ${STEP_ORDER[*]} " =~ " init_git " ]]
     [[ " ${STEP_ORDER[*]} " =~ " create_agents " ]]
-    [[ ! " ${STEP_ORDER[*]} " =~ " init_bd " ]]
+    [[ ! " ${STEP_ORDER[*]} " =~ " init_br " ]]
 }
 
 @test "get_step_name returns readable names" {

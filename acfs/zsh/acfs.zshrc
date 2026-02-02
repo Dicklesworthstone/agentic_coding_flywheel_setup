@@ -385,7 +385,7 @@ acfs() {
       echo "Usage: acfs <command>"
       echo ""
       echo "Commands:"
-      echo "  newproj         Create new project (git, bd, AGENTS.md, Claude settings)"
+      echo "  newproj         Create new project (git, br, AGENTS.md, Claude settings)"
       echo "                  Use 'acfs newproj -i' for interactive TUI wizard"
       echo "  info            Quick system overview (hostname, IP, uptime, progress)"
       echo "  cheatsheet      Command reference (aliases, shortcuts)"
@@ -428,8 +428,12 @@ alias bdev='bun run dev'
 alias bl='bun run lint'
 alias bt='bun run type-check'
 
-# Beads shortcuts: alias old bd command to new br (beads_rust)
-alias bd='br'
+# --- br (beads_rust) alias guard ---
+# Older ACFS versions incorrectly aliased br='bun run'. Remove stale alias if br binary exists.
+# whence -p finds the binary path, ignoring aliases/functions (zsh-specific)
+if whence -p br &>/dev/null && alias br &>/dev/null; then
+  unalias br 2>/dev/null
+fi
 
 # MCP Agent Mail helper (installer usually adds `am`, but keep a fallback)
 alias am='cd ~/mcp_agent_mail 2>/dev/null && scripts/run_server_with_token.sh || echo "mcp_agent_mail not found in ~/mcp_agent_mail"'

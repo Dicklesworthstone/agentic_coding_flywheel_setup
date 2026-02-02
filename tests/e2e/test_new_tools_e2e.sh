@@ -4,7 +4,7 @@
 # Tests:
 #   - 7 First-class flywheel tools: br, ms, rch, wa, brenner, dcg, ru
 #   - 9 Utility tools: tru, rust_proxy, rano, xf, mdwb, pt, aadc, s2p, caut
-#   - Integration: acfs doctor, flywheel.ts, bd alias
+#   - Integration: acfs doctor, flywheel.ts, br primary command
 #
 # Related: bead bd-1ega.7
 
@@ -247,24 +247,16 @@ test_integration() {
         skip "doctor_no_git_safety_guard" "acfs command not found"
     fi
 
-    # Test 2: bd alias maps to br
-    log "INFO" "bd_alias" "Testing bd alias..."
-    if command -v bd >/dev/null 2>&1; then
-        local bd_version br_version
-        bd_version=$(bd --version 2>&1 | head -1) || true
-        br_version=$(br --version 2>&1 | head -1) || true
-        if [[ "$bd_version" == "$br_version" ]]; then
-            pass "bd_alias" "bd alias correctly maps to br"
+    # Test 2: br is the primary command (bd alias was removed)
+    log "INFO" "br_primary" "Testing br is the primary beads command..."
+    if command -v br >/dev/null 2>&1; then
+        if br --help >/dev/null 2>&1; then
+            pass "br_primary" "br is the primary beads_rust command"
         else
-            fail "bd_alias" "bd and br version mismatch: bd='$bd_version' br='$br_version'"
+            fail "br_primary" "br --help failed"
         fi
     else
-        # Check zshrc
-        if [[ -f ~/.acfs/zsh/acfs.zshrc ]] && command grep -q "alias bd=" ~/.acfs/zsh/acfs.zshrc 2>/dev/null; then
-            pass "bd_alias" "bd alias defined in acfs.zshrc"
-        else
-            fail "bd_alias" "bd alias not found"
-        fi
+        fail "br_primary" "br binary not found"
     fi
 
     # Test 3: Flywheel.ts contains all new tools
@@ -277,7 +269,7 @@ test_integration() {
     if [[ -f "$flywheel_file" ]]; then
         local missing_tools=()
         for tool in br ms rch wa brenner dcg ru tru rust_proxy rano xf mdwb pt aadc s2p caut; do
-            if ! command grep -qE "id:\s*[\"']$tool[\"']" "$flywheel_file"; then
+            if ! command grep -qE "id:\s*[\"']${tool}[\"']" "$flywheel_file"; then
                 missing_tools+=("$tool")
             fi
         done

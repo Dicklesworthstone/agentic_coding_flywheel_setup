@@ -194,11 +194,11 @@ export const COMMANDS: CommandRef[] = [
     example: "direnv allow",
   },
   {
-    name: "bd",
+    name: "br",
     fullName: "Beads CLI",
     description: "Task graph management.",
     category: "stack",
-    example: "bd ready",
+    example: "br ready",
   },
   {
     name: "bv",

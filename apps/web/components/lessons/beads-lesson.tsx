@@ -50,8 +50,8 @@ export function BeadsLesson() {
           machine-readable outputs for agents.
         </Paragraph>
         <TipBox variant="info">
-          The <code>bd</code> command is an alias for <code>br</code> for backward compatibility.
-          Both commands work identically.
+          <code>br</code> is the CLI for the beads_rust issue tracker.
+          Use <code>br --help</code> for all available commands.
         </TipBox>
 
         <div className="mt-8">

@@ -48,9 +48,9 @@ init_creation_steps() {
         STEP_STATUS["create_agents"]="pending"
     fi
 
-    if [[ "$(state_get "enable_bd")" == "true" ]]; then
-        STEP_ORDER+=("init_bd")
-        STEP_STATUS["init_bd"]="pending"
+    if [[ "$(state_get "enable_br")" == "true" ]]; then
+        STEP_ORDER+=("init_br")
+        STEP_STATUS["init_br"]="pending"
     fi
 
     if [[ "$(state_get "enable_claude")" == "true" ]]; then
@@ -77,7 +77,7 @@ get_step_name() {
         create_readme) echo "Creating README.md" ;;
         create_gitignore) echo "Creating .gitignore" ;;
         create_agents) echo "Generating AGENTS.md" ;;
-        init_bd) echo "Initializing Beads tracking" ;;
+        init_br) echo "Initializing Beads tracking" ;;
         create_claude) echo "Creating Claude Code settings" ;;
         create_ubsignore) echo "Creating .ubsignore" ;;
         finalize) echo "Finalizing project" ;;
@@ -292,7 +292,7 @@ venv/
                     esac
                 done
 
-                export AGENTS_ENABLE_BD=$(state_get "enable_bd")
+                export AGENTS_ENABLE_BR=$(state_get "enable_br")
                 agents_content=$(generate_agents_md "$project_name" "${tech_array[@]}")
             fi
 
@@ -305,8 +305,8 @@ venv/
             fi
             ;;
 
-        init_bd)
-            if try_bd_init "$project_dir"; then
+        init_br)
+            if try_br_init "$project_dir"; then
                 update_step "$step" "success"
                 return 0
             else

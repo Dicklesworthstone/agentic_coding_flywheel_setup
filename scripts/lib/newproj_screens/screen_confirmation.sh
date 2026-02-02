@@ -37,7 +37,7 @@ get_files_to_create() {
         files+=("$project_dir/AGENTS.md")
     fi
 
-    if [[ "$(state_get "enable_bd")" == "true" ]]; then
+    if [[ "$(state_get "enable_br")" == "true" ]]; then
         files+=("$project_dir/.beads/")
         files+=("$project_dir/.beads/beads.db")
     fi
@@ -152,7 +152,7 @@ render_confirmation_screen() {
     echo -e "${TUI_BOLD}Features${TUI_NC}"
     draw_line 50
 
-    local features=("bd:Beads tracking" "claude:Claude Code settings" "agents:AGENTS.md" "ubsignore:UBS ignore")
+    local features=("br:Beads tracking" "claude:Claude Code settings" "agents:AGENTS.md" "ubsignore:UBS ignore")
     for feat in "${features[@]}"; do
         local id="${feat%%:*}"
         local name="${feat#*:}"

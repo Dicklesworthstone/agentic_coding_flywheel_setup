@@ -86,7 +86,7 @@ export interface ModuleWebMetadata {
   stars?: number;
   /** CLI command name (e.g., "br") */
   cli_name?: string;
-  /** CLI command aliases (e.g., ["bd"]) */
+  /** CLI command aliases */
   cli_aliases?: string[];
   /** CLI usage example (e.g., "br ready --json") */
   command_example?: string;

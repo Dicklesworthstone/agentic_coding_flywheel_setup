@@ -20,7 +20,7 @@ function toAnchorId(value: string): string {
 const TOOL_TERMS = new Set([
   "tmux", "zsh", "bash", "bun", "uv", "cargo", "rust", "go", "git", "gh",
   "lazygit", "rg", "ripgrep", "fzf", "direnv", "zoxide", "atuin", "ntm",
-  "bv", "bd", "ubs", "cass", "cm", "caam", "slb", "dcg", "vault", "wrangler",
+  "bv", "br", "ubs", "cass", "cm", "caam", "slb", "dcg", "vault", "wrangler",
   "supabase", "vercel", "postgres",
 ]);
 

@@ -1262,7 +1262,7 @@ modules:
       language: "Rust"
       stars: 128
       cli_name: "br"
-      cli_aliases: ["bd"]
+      cli_aliases: []
       command_example: "br ready --json"
     dependencies:
       - lang.rust

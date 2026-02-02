@@ -20,7 +20,7 @@ _acfs() {
                     _arguments \
                         '-i[Launch TUI wizard for guided project setup]' \
                         '--interactive[Launch TUI wizard for guided project setup]' \
-                        '--no-bd[Skip beads (bd) initialization]' \
+                        '--no-br[Skip beads (br) initialization]' \
                         '--no-claude[Skip Claude settings creation]' \
                         '--no-agents[Skip AGENTS.md template creation]' \
                         '-h[Show help message]' \
@@ -105,7 +105,7 @@ _acfs() {
 _acfs_commands() {
     local commands
     commands=(
-        'newproj:Create new project (git, bd, AGENTS.md, Claude settings)'
+        'newproj:Create new project (git, br, AGENTS.md, Claude settings)'
         'new:Create new project (alias for newproj)'
         'services-setup:Configure AI agents and cloud services'
         'services:Configure services (alias for services-setup)'

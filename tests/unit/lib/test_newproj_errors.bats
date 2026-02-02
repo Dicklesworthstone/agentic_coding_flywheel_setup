@@ -151,35 +151,35 @@ teardown() {
 }
 
 # ============================================================
-# bd Initialization Tests
+# br Initialization Tests
 # ============================================================
 
-@test "try_bd_init gracefully skips if bd not installed" {
-    local project_dir="$TEST_DIR/bd-project"
+@test "try_br_init gracefully skips if br not installed" {
+    local project_dir="$TEST_DIR/br-project"
     mkdir -p "$project_dir"
 
-    # Create a mock function that pretends bd is not installed
+    # Create a mock function that pretends br is not installed
     # by temporarily overriding command
-    bd() {
+    br() {
         return 127  # Command not found
     }
-    export -f bd
+    export -f br
 
-    # Use a subshell to test the case where bd command doesn't exist
+    # Use a subshell to test the case where br command doesn't exist
     run bash -c '
         source '"$ACFS_LIB_DIR"'/newproj_errors.sh
-        # Override command -v to report bd as missing
+        # Override command -v to report br as missing
         command() {
-            if [[ "$2" == "bd" ]]; then
+            if [[ "$2" == "br" ]]; then
                 return 1
             fi
             builtin command "$@"
         }
-        try_bd_init "'"$project_dir"'"
+        try_br_init "'"$project_dir"'"
     '
 
     assert_success  # Should not fail, just skip
-    [[ "$output" == *"bd not installed"* ]]
+    [[ "$output" == *"br not installed"* ]]
 }
 
 # ============================================================

@@ -677,7 +677,7 @@ acfs continue                # View upgrade progress after reboot
 
 ### `acfs newproj` — New Project Wizard
 
-Create a new project directory with ACFS defaults (git init, optional bd, Claude settings, AGENTS.md).
+Create a new project directory with ACFS defaults (git init, optional br/beads, Claude settings, AGENTS.md).
 The interactive wizard is recommended for beginners.
 
 Interactive wizard (recommended):
@@ -690,7 +690,7 @@ acfs newproj -i myapp         # Prefill project name
 The wizard guides you through:
 - Project naming and location
 - Tech stack detection/selection
-- Feature selection (bd, Claude settings, AGENTS.md, UBS ignore)
+- Feature selection (br/beads, Claude settings, AGENTS.md, UBS ignore)
 - AGENTS.md customization preview
 
 <details>
@@ -765,7 +765,7 @@ CLI mode (automation):
 ```bash
 acfs newproj myapp
 acfs newproj myapp /custom/path
-acfs newproj myapp --no-bd
+acfs newproj myapp --no-br
 ```
 
 Notes:

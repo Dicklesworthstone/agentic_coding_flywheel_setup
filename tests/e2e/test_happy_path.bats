@@ -40,7 +40,7 @@ teardown() {
     assert_success
     [[ -f "$project_dir/AGENTS.md" ]]
 
-    # Verify AGENTS.md has some content (bd or newproj creates it)
+    # Verify AGENTS.md has some content (br or newproj creates it)
     [[ -s "$project_dir/AGENTS.md" ]]
 }
 
@@ -51,25 +51,25 @@ teardown() {
     run bash "$ACFS_LIB_DIR/newproj.sh" "$project_name" "$project_dir"
 
     assert_success
-    [[ -d "$project_dir/.beads" ]] || skip "bd not installed"
+    [[ -d "$project_dir/.beads" ]] || skip "br not installed"
 }
 
-@test "CLI mode with --no-bd skips beads" {
-    local project_name="cli-no-bd-test"
+@test "CLI mode with --no-br skips beads" {
+    local project_name="cli-no-br-test"
     local project_dir="$E2E_TEST_DIR/$project_name"
 
-    run bash "$ACFS_LIB_DIR/newproj.sh" "$project_name" "$project_dir" --no-bd
+    run bash "$ACFS_LIB_DIR/newproj.sh" "$project_name" "$project_dir" --no-br
 
     assert_success
     [[ ! -d "$project_dir/.beads" ]]
 }
 
-@test "CLI mode with --no-agents --no-bd skips AGENTS.md completely" {
-    # Note: bd creates its own AGENTS.md, so we need --no-bd too
+@test "CLI mode with --no-agents --no-br skips AGENTS.md completely" {
+    # Note: br creates its own AGENTS.md, so we need --no-br too
     local project_name="cli-no-agents-test"
     local project_dir="$E2E_TEST_DIR/$project_name"
 
-    run bash "$ACFS_LIB_DIR/newproj.sh" "$project_name" "$project_dir" --no-agents --no-bd
+    run bash "$ACFS_LIB_DIR/newproj.sh" "$project_name" "$project_dir" --no-agents --no-br
 
     assert_success
     [[ ! -f "$project_dir/AGENTS.md" ]]
@@ -236,6 +236,6 @@ EOF
     [[ -s "$project_dir/AGENTS.md" ]]
 
     # AGENTS.md should have some meaningful content
-    # bd creates "landing the plane" instructions, newproj creates standard template
+    # br creates "landing the plane" instructions, newproj creates standard template
     grep -qE "(AGENT|Landing|plane|session|git)" "$project_dir/AGENTS.md"
 }

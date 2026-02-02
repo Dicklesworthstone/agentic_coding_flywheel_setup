@@ -188,7 +188,7 @@ a comprehensive and granular set of beads with:
 - Background, reasoning, justification
 - Anything our 'future self' would need to know
 
-Use the bd tool repeatedly to create the actual beads."`}
+Use the br tool repeatedly to create the actual beads."`}
             showLineNumbers
           />
         </div>
@@ -284,9 +284,9 @@ ntm spawn slb --cc=3 --cod=2
 
 # Each agent runs:
 bv --robot-triage        # What's ready?
-bd update <id> --status in_progress
+br update <id> --status in_progress
 # ... implement ...
-bd close <id>
+br close <id>
 
 # Commit agent runs every 15-20 min
 cc "Commit all changes in logical groupings with
@@ -421,7 +421,7 @@ cc "Read the plan and all feedback. Create a
 revised plan incorporating the best suggestions."
 
 cc "Convert the plan into 50-100 beads with
-dependencies. Use bd CLI."
+dependencies. Use br CLI."
 
 # Hour 4+: Implementation
 ntm spawn myproject --cc=2 --cod=1

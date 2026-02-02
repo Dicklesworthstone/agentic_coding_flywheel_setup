@@ -145,7 +145,7 @@ teardown() {
     local content
     content=$(get_section_content "issue_tracking")
 
-    [[ "$content" == *"bd"* ]]
+    [[ "$content" == *"br"* ]]
     [[ "$content" == *"beads"* ]]
 }
 
@@ -285,21 +285,21 @@ teardown() {
     [[ "$content" == *"Docker Workflow"* ]]
 }
 
-@test "generate_agents_md includes bd section when enabled" {
-    export AGENTS_ENABLE_BD=true
+@test "generate_agents_md includes br section when enabled" {
+    export AGENTS_ENABLE_BR=true
     local content
     content=$(generate_agents_md "test-project")
 
-    [[ "$content" == *"Issue Tracking with bd"* ]]
+    [[ "$content" == *"Issue Tracking with br"* ]]
     [[ "$content" == *"beads"* ]]
 }
 
-@test "generate_agents_md excludes bd section when disabled" {
-    export AGENTS_ENABLE_BD=false
+@test "generate_agents_md excludes br section when disabled" {
+    export AGENTS_ENABLE_BR=false
     local content
     content=$(generate_agents_md "test-project")
 
-    [[ "$content" != *"Issue Tracking with bd"* ]]
+    [[ "$content" != *"Issue Tracking with br"* ]]
 }
 
 @test "generate_agents_md includes console section when enabled" {

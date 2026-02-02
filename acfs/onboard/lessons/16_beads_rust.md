@@ -15,7 +15,7 @@ beads_rust (`br`) is a local-first issue tracker designed for AI agents. Issues 
 - JSON output for agent consumption
 - Works offline, syncs on commit
 
-> **Note:** The `bd` alias is available for backward compatibility with the original golang beads.
+> **Note:** `br` is the primary command for beads_rust issue tracking.
 
 ---
 
@@ -115,16 +115,6 @@ bv --robot-insights
 ```
 
 ---
-
-## The bd Alias
-
-For backward compatibility, `bd` is aliased to `br`:
-
-```bash
-# These are equivalent:
-bd list --status open
-br list --status open
-```
 
 ---
 

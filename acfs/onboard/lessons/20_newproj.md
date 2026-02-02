@@ -76,7 +76,7 @@ Creates `~/code/myproject`.
 | Flag | Effect |
 |------|--------|
 | `--interactive` | TUI wizard (recommended for first use) |
-| `--no-bd` | Skip beads initialization |
+| `--no-br` | Skip beads initialization |
 | `--no-claude` | Skip Claude settings |
 | `--no-agents` | Skip AGENTS.md creation |
 

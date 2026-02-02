@@ -22,9 +22,7 @@ export const manifestCommands: ManifestCommand[] = [
   {
     moduleId: "stack.beads_rust",
     cliName: "br",
-    cliAliases: [
-      "bd",
-    ],
+    cliAliases: [],
     description: "beads_rust (br) - Rust issue tracker with graph-aware dependencies",
     commandExample: "br ready --json",
   },

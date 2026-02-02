@@ -272,7 +272,7 @@ print_acfs_help() {
     echo "  cheatsheet          Command reference (aliases, shortcuts)"
     echo "  continue [options]  View installation/upgrade progress"
     echo "  dashboard <command> Generate/view a static HTML dashboard"
-    echo "  newproj <name>      Create new project with git, bd, claude settings"
+    echo "  newproj <name>      Create new project with git, br, claude settings"
     echo "  update [options]    Update ACFS tools to latest versions"
     echo "  services-setup      Configure AI agents and cloud services"
     echo "  session <command>   Export/import/share agent sessions"

@@ -257,7 +257,7 @@ dcg doctor                     # Check status`,
             {...{
               code: `# 1. Plan your work
 bv --robot-triage                # Check tasks
-bd ready                        # See what's ready to work on
+br ready                        # See what's ready to work on
 
 # 2. Start your agents
 ntm spawn myproject --cc=2 --cod=1
@@ -279,7 +279,7 @@ ubs .                           # Check for bugs
 cm reflect                      # Distill learnings
 
 # 8. Close the task
-bd close <task-id>`,
+br close <task-id>`,
               showLineNumbers: true,
             }}
           />
@@ -334,14 +334,14 @@ mkcd /data/projects/my-first-project
 git init
 
 # 3. Initialize beads for task tracking
-bd init
+br init
 
 # (Recommended) Create a dedicated Beads sync branch
 # Beads uses git worktrees for syncing; syncing to your current branch (often \`main\`)
 # can cause worktree conflicts. Once you have a \`main\` branch and a remote, run:
 git branch beads-sync main
 git push -u origin beads-sync
-bd config set sync.branch=beads-sync
+br config set sync.branch=beads-sync
 
 # 4. Spawn your agents
 ntm spawn my-first-project --cc=2 --cod=1 --gmi=1
