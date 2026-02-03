@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Button } from "@/components/ui/button";
 import { manifestTools, type ManifestWebTool } from "@/lib/generated/manifest-web-index";
 
 // =============================================================================
@@ -484,24 +486,21 @@ export default function ToolsPage() {
                 ))}
               </div>
             ) : (
-              <div className="py-16 text-center">
-                <Search className="mx-auto h-12 w-12 text-muted-foreground/50" />
-                <h3 className="mt-4 text-lg font-medium text-white">
-                  No tools found
-                </h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Try adjusting your search or filter criteria.
-                </p>
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setSelectedCategory(null);
-                  }}
-                  className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
-                >
-                  Clear filters
-                </button>
-              </div>
+              <EmptyState
+                icon={Search}
+                title="No tools found"
+                description="Try adjusting your search or filter criteria."
+                action={
+                  <Button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setSelectedCategory(null);
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
             )}
           </div>
         </section>
