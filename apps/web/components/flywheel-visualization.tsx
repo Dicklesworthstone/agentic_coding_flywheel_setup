@@ -447,12 +447,20 @@ function MobileBottomSheet({
   useEffect(() => {
     if (tool) {
       document.body.style.overflow = "hidden";
+
+      // Handle escape key
+      const handleEscape = (e: KeyboardEvent) => {
+        if (e.key === "Escape") onClose();
+      };
+      document.addEventListener("keydown", handleEscape);
+
       return () => {
         document.body.style.overflow = "";
+        document.removeEventListener("keydown", handleEscape);
       };
     }
     return;
-  }, [tool]);
+  }, [tool, onClose]);
 
   if (!tool) return null;
 
@@ -468,7 +476,12 @@ function MobileBottomSheet({
       />
 
       {/* Sheet */}
-      <div className="fixed inset-x-0 bottom-0 z-50 lg:hidden animate-slide-up">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${tool.name} details`}
+        className="fixed inset-x-0 bottom-0 z-50 lg:hidden animate-slide-up"
+      >
         <div className="flex max-h-[70vh] flex-col rounded-t-3xl border-t border-border/50 bg-card/95 backdrop-blur-xl">
           {/* Handle */}
           <div className="flex shrink-0 justify-center pt-3 pb-2">

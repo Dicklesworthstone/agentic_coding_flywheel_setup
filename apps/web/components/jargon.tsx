@@ -164,7 +164,7 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
     setIsOpen(false);
   }, []);
 
-  // Handle click outside for mobile
+  // Handle click outside and escape key for mobile
   useEffect(() => {
     if (!isOpen || !isMobile) return;
 
@@ -180,8 +180,16 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
       }
     };
 
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, [isOpen, isMobile]);
 
   if (!jargonData) {
