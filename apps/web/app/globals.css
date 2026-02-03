@@ -516,18 +516,32 @@
    Component Utilities
    ============================================ */
 
-/* Glass morphism effect */
+/* Glass morphism effect - Stripe-level refinement */
 .glass {
-  background: oklch(0.14 0.02 260 / 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid oklch(0.3 0.02 260 / 0.3);
+  background: oklch(0.14 0.02 260 / 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid oklch(0.35 0.02 260 / 0.4);
+  transition: backdrop-filter 200ms ease, border-color 200ms ease, background 200ms ease;
+}
+
+.glass:hover {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-color: oklch(0.4 0.02 260 / 0.5);
+  background: oklch(0.15 0.02 260 / 0.88);
 }
 
 .glass-subtle {
   background: oklch(0.14 0.02 260 / 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: backdrop-filter 200ms ease;
+}
+
+.glass-subtle:hover {
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 /* Glow effects */

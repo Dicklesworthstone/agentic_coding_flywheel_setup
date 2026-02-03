@@ -32,6 +32,12 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent/20 hover:text-accent-foreground active:bg-accent/30",
         link: "text-primary underline-offset-4 hover:underline",
+        // Premium gradient variant for hero CTAs - Stripe-style
+        gradient:
+          "bg-gradient-to-r from-primary via-[oklch(0.65_0.2_220)] to-[oklch(0.6_0.22_280)] text-white shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 hover:brightness-110 active:brightness-95",
+        // Subtle gradient for secondary emphasis
+        "gradient-subtle":
+          "bg-gradient-to-r from-white/10 to-white/5 border border-white/20 text-white hover:from-white/15 hover:to-white/10 hover:border-white/30 active:from-white/20 active:to-white/15",
       },
       size: {
         default: "h-11 px-5 py-2.5 text-sm",

@@ -440,7 +440,7 @@ export default function LearnDashboard() {
           transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.3 }}
         >
           <h2 className="mb-5 text-xl font-semibold lg:mb-6 lg:text-2xl">All Lessons</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 lg:gap-5">
             {LESSONS.map((lesson, index) => {
               const status = getLessonStatus(lesson.id, completedLessons);
               const accessibleIndex = accessibleLessons.findIndex(

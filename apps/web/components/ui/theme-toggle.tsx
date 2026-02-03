@@ -32,13 +32,18 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       type="button"
       onClick={cycle}
       className={cn(
-        "flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        // 44px touch target for Apple HIG compliance
+        "flex h-11 w-11 items-center justify-center rounded-xl",
+        "text-muted-foreground transition-all duration-200",
+        "hover:bg-muted hover:text-foreground hover:scale-105",
+        "active:scale-95",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className
       )}
       aria-label={label}
       title={label}
     >
-      <Icon className="h-4 w-4" />
+      <Icon className="h-5 w-5" />
     </button>
   );
 }

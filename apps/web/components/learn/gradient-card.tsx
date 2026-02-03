@@ -83,30 +83,40 @@ export function GradientCard({
   return (
     <motion.div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300",
-        hoverable && "hover:border-primary/30 active:scale-[0.98] active:bg-card/70",
+        "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm",
+        // Layered shadows for depth - Stripe-style elevation
+        "shadow-[0_2px_4px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.08)]",
+        // Smooth transition for all hover states
+        "transition-[border-color,background,transform] duration-300 ease-out",
+        hoverable && "hover:border-primary/30 hover:bg-card/70 active:scale-[0.98]",
         onClick && "cursor-pointer",
         className
       )}
       variants={fadeUp}
       whileHover={
         hoverable
-          ? { y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }
+          ? {
+              y: -6,
+              boxShadow: "0 12px 24px -8px oklch(0.75 0.18 195 / 0.2), 0 4px 12px -4px rgba(0,0,0,0.15)"
+            }
           : undefined
       }
       transition={{ ...springs.snappy, delay: staggerDelay(index, 0.08) }}
       onClick={onClick}
     >
-      {/* Gradient glow on hover */}
+      {/* Gradient glow on hover - enhanced with larger spread */}
       <motion.div
         className={cn(
-          "absolute -right-20 -top-20 h-40 w-40 rounded-full blur-3xl",
+          "pointer-events-none absolute -right-24 -top-24 h-48 w-48 rounded-full blur-3xl",
           gradientGlowColors[variant]
         )}
-        initial={{ opacity: 0 }}
-        whileHover={{ opacity: 0.3 }}
+        initial={{ opacity: 0, scale: 0.8 }}
+        whileHover={{ opacity: 0.35, scale: 1 }}
         transition={springs.smooth}
       />
+
+      {/* Subtle inner glow for premium feel */}
+      <div className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent" />
 
       <div className="relative z-10">{children}</div>
     </motion.div>
