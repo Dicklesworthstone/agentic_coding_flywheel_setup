@@ -320,7 +320,7 @@ function VPSComponent({
     >
       <div className="text-white/60 mb-1 group-hover:text-primary group-hover:scale-110 transition-all duration-300">{icon}</div>
       <span className="text-xs font-medium text-white group-hover:text-primary transition-colors">{label}</span>
-      <span className="text-[10px] text-white/40 group-hover:text-white/60 transition-colors">{sublabel}</span>
+      <span className="text-xs text-white/60 group-hover:text-white/80 transition-colors">{sublabel}</span>
     </motion.div>
   );
 }

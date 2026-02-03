@@ -228,7 +228,7 @@ function ToolNode({
 
         {/* Star count badge */}
         {tool.stars && tool.stars >= 100 && (
-          <div className="absolute -right-1 -top-1 flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-400">
+          <div className="absolute -right-1 -top-1 flex items-center gap-0.5 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-400">
             <Star className="h-2.5 w-2.5 fill-current" />
             {tool.stars >= 1000 ? `${(tool.stars / 1000).toFixed(0)}K` : tool.stars}
           </div>

@@ -181,7 +181,7 @@ function Pre({ children, ...props }: MarkdownProps) {
       {/* Copy button */}
       <button
         onClick={handleCopy}
-        className="absolute right-3 top-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-md bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground"
+        className="absolute right-3 top-3 z-10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity p-1.5 rounded-md bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         aria-label="Copy code"
       >
         {copied ? (

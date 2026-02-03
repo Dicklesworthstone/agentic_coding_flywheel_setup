@@ -133,7 +133,7 @@ function LessonSidebar({
                 <span className="block text-lg font-bold tracking-tight bg-gradient-to-r from-white via-white to-white/60 bg-clip-text text-transparent">
                   Learning Hub
                 </span>
-                <span className="text-[11px] text-white/40 uppercase tracking-[0.2em] font-medium">
+                <span className="text-xs text-white/60 uppercase tracking-[0.2em] font-medium">
                   ACFS Academy
                 </span>
               </div>
@@ -249,7 +249,7 @@ function LessonSidebar({
                         }`}>
                           {lesson.title}
                         </span>
-                        <span className="flex items-center gap-1.5 text-[11px] text-white/30 mt-1">
+                        <span className="flex items-center gap-1.5 text-xs text-white/60 mt-1">
                           <Clock className="h-3 w-3" />
                           {lesson.duration}
                         </span>
@@ -257,7 +257,7 @@ function LessonSidebar({
 
                       {/* Active indicator */}
                       {isCurrent && (
-                        <div className="flex items-center gap-1 text-[10px] font-medium text-primary">
+                        <div className="flex items-center gap-1 text-xs font-medium text-primary">
                           <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                           NOW
                         </div>
