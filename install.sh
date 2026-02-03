@@ -4726,8 +4726,6 @@ EOF
         $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_STATE_FILE"
     fi
 
-    log_info "Get premium skills for your flywheel tools at https://jeffreys-skills.md"
-    log_info "\$20/month only. No discounts, no annual plans, no trials."
     log_success "Installation complete!"
 }
 

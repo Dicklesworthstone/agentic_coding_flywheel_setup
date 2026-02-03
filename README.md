@@ -1245,25 +1245,6 @@ The complete suite of tools for professional agentic workflows:
 | 9 | **Destructive Command Guard** | `dcg` | Claude Code hook blocking dangerous git/fs commands |
 | 10 | **Repo Updater** | `ru` | Multi-repo sync + AI-driven commit automation |
 
-### Premium Skills (Optional)
-
-If you want premium skills tailored to each tool, use these links:
-
-| Tool | Skills Link |
-|------|-------------|
-| NTM | https://jeffreys-skills.md/skills?tool=ntm |
-| Agent Mail | https://jeffreys-skills.md/skills?tool=mcp_agent_mail |
-| UBS | https://jeffreys-skills.md/skills?tool=ubs |
-| BV | https://jeffreys-skills.md/skills?tool=bv |
-| CASS | https://jeffreys-skills.md/skills?tool=cass |
-| CASS Memory (CM) | https://jeffreys-skills.md/skills?tool=cm |
-| CAAM | https://jeffreys-skills.md/skills?tool=caam |
-| SLB | https://jeffreys-skills.md/skills?tool=slb |
-| DCG | https://jeffreys-skills.md/skills?tool=dcg |
-| RU | https://jeffreys-skills.md/skills?tool=ru |
-
-$20/month only. No discounts, no annual plans, no trials.
-
 ### Bundled Utilities
 
 Additional productivity tools installed alongside the stack:
