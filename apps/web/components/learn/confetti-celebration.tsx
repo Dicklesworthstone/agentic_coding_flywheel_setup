@@ -167,7 +167,7 @@ export function FinalCelebrationModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -233,7 +233,7 @@ export function CompletionToast({ message, isVisible }: CompletionToastProps) {
 
   return (
     <div
-      className={`fixed left-1/2 top-20 z-[90] -translate-x-1/2 rounded-full border border-primary/30 bg-card/95 px-6 py-3 shadow-lg backdrop-blur-sm ${
+      className={`fixed left-1/2 top-20 z-50 -translate-x-1/2 rounded-full border border-primary/30 bg-card/95 px-6 py-3 shadow-lg backdrop-blur-sm ${
         prefersReducedMotion
           ? ""
           : "animate-in fade-in slide-in-from-top-4 duration-300"

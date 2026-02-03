@@ -249,7 +249,7 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
               }
               transition={prefersReducedMotion ? { duration: 0.12 } : springs.snappy}
               className={cn(
-                "fixed z-[9999] w-80 max-w-[calc(100vw-2rem)]",
+                "fixed z-50 w-80 max-w-[calc(100vw-2rem)]",
                 "rounded-xl border border-border/50 bg-card/95 p-4 shadow-2xl backdrop-blur-xl",
                 // Gradient accent line at top
                 "before:absolute before:inset-x-0 before:h-1 before:rounded-t-xl before:bg-gradient-to-r before:from-primary/50 before:via-[oklch(0.7_0.2_330/0.5)] before:to-primary/50",
@@ -290,7 +290,7 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={prefersReducedMotion ? { duration: 0.12 } : { duration: 0.2 }}
-                className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm"
+                className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
                 onClick={handleClose}
                 aria-hidden="true"
               />
@@ -305,7 +305,7 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
                 animate={prefersReducedMotion ? { opacity: 1 } : { y: 0 }}
                 exit={prefersReducedMotion ? { opacity: 0 } : { y: "100%" }}
                 transition={prefersReducedMotion ? { duration: 0.12 } : springs.smooth}
-                className="fixed inset-x-0 bottom-0 z-[9999] flex max-h-[80vh] flex-col rounded-t-3xl border-t border-border/50 bg-card/98 shadow-2xl backdrop-blur-xl"
+                className="fixed inset-x-0 bottom-0 z-50 flex max-h-[80vh] flex-col rounded-t-3xl border-t border-border/50 bg-card/98 shadow-2xl backdrop-blur-xl"
               >
                 {/* Handle */}
                 <div className="flex shrink-0 justify-center pt-3 pb-1">

@@ -1,6 +1,6 @@
 "use client";
 
-import { m, AnimatePresence, type Variants } from "framer-motion";
+import { m, AnimatePresence, useReducedMotion, type Variants } from "framer-motion";
 
 /**
  * Spring configurations optimized for Stripe/Linear-style subtle, professional feel.
@@ -199,5 +199,5 @@ export const MotionH4 = m.h4;
 
 // Re-export `m` as `motion` for backwards compatibility with LazyMotion strict mode
 // This allows existing code using `motion.div` etc. to work without changes
-export { m as motion, AnimatePresence };
+export { m as motion, AnimatePresence, useReducedMotion };
 export type { Variants };

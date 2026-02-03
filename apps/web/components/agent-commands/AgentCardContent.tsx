@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Copy, Check, Terminal, Sparkles, Code2 } from "lucide-react";
-import { motion, AnimatePresence, springs } from "@/components/motion";
+import { motion, AnimatePresence, springs, useReducedMotion } from "@/components/motion";
 import { CommandCard } from "@/components/command-card";
 import { cn } from "@/lib/utils";
 import type { AgentInfo } from "./AgentHeroCard";
@@ -31,6 +31,8 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
   const [activeTab, setActiveTab] = useState<TabId>("examples");
   const [copiedAlias, setCopiedAlias] = useState<string | null>(null);
   const personality = agentPersonalities[agent.id];
+  const prefersReducedMotion = useReducedMotion();
+  const reducedMotion = prefersReducedMotion ?? false;
 
   const handleCopy = async (text: string) => {
     try {
@@ -55,10 +57,10 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
     <AnimatePresence>
       {isExpanded && (
         <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={springs.smooth}
+          initial={reducedMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+          animate={reducedMotion ? { opacity: 1 } : { opacity: 1, height: "auto" }}
+          exit={reducedMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+          transition={reducedMotion ? { duration: 0 } : springs.smooth}
           className="overflow-hidden"
         >
           <div className="border-t border-white/[0.06] bg-black/20">
@@ -93,18 +95,18 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                 {activeTab === "examples" && (
                   <motion.div
                     key="examples"
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={reducedMotion ? {} : { opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    transition={springs.snappy}
+                    exit={reducedMotion ? {} : { opacity: 0, x: 10 }}
+                    transition={reducedMotion ? { duration: 0 } : springs.snappy}
                     className="space-y-3"
                   >
                     {agent.examples.map((example, i) => (
                       <motion.div
                         key={i}
-                        initial={{ opacity: 0, y: 10 }}
+                        initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ ...springs.smooth, delay: i * 0.05 }}
+                        transition={reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }}
                       >
                         <CommandCard
                           command={example.command}
@@ -118,20 +120,20 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                 {activeTab === "tips" && (
                   <motion.div
                     key="tips"
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={reducedMotion ? {} : { opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    transition={springs.snappy}
+                    exit={reducedMotion ? {} : { opacity: 0, x: 10 }}
+                    transition={reducedMotion ? { duration: 0 } : springs.snappy}
                   >
                     <ul className="space-y-3">
                       {agent.tips.map((tip, i) => (
                         <motion.li
                           key={i}
                           className="group/tip flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
-                          initial={{ opacity: 0, y: 10 }}
+                          initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          whileHover={{ x: 4, scale: 1.01 }}
-                          transition={{ ...springs.smooth, delay: i * 0.05 }}
+                          whileHover={reducedMotion ? {} : { x: 4, scale: 1.01 }}
+                          transition={reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }}
                         >
                           <div
                             className={cn(
@@ -153,10 +155,10 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                 {activeTab === "aliases" && (
                   <motion.div
                     key="aliases"
-                    initial={{ opacity: 0, x: -10 }}
+                    initial={reducedMotion ? {} : { opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    transition={springs.snappy}
+                    exit={reducedMotion ? {} : { opacity: 0, x: 10 }}
+                    transition={reducedMotion ? { duration: 0 } : springs.snappy}
                   >
                     <p className="mb-4 text-sm text-white/50">
                       All these commands launch {agent.name}. Copy and paste into
@@ -175,11 +177,11 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                               ? "border-emerald-500/50 bg-emerald-500/10"
                               : "border-white/[0.06] bg-white/[0.02] hover:border-primary/40 hover:bg-white/[0.04]"
                           )}
-                          initial={{ opacity: 0, y: 10 }}
+                          initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          whileHover={{ x: 4, scale: 1.02 }}
-                          transition={{ ...springs.smooth, delay: i * 0.05 }}
-                          whileTap={{ scale: 0.98 }}
+                          whileHover={reducedMotion ? {} : { x: 4, scale: 1.02 }}
+                          transition={reducedMotion ? { duration: 0 } : { ...springs.smooth, delay: i * 0.05 }}
+                          whileTap={reducedMotion ? {} : { scale: 0.98 }}
                         >
                           <div className="flex items-center gap-3">
                             <Terminal className="h-4 w-4 text-white/60 group-hover/alias:text-primary transition-colors" />
