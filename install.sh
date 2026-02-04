@@ -2875,7 +2875,11 @@ run_ubuntu_upgrade_phase() {
             log_info "Automatically rebooting to clear pending updates..."
 
             # Initialize state file early for tracking
-            mkdir -p "${ACFS_RESUME_DIR:-/var/lib/acfs}"
+            if ! mkdir -p "${ACFS_RESUME_DIR:-/var/lib/acfs}" 2>/dev/null; then
+                if [[ $EUID -ne 0 ]] && command -v sudo &>/dev/null; then
+                    sudo mkdir -p "${ACFS_RESUME_DIR:-/var/lib/acfs}"
+                fi
+            fi
             if type -t state_ensure_valid &>/dev/null; then
                 state_ensure_valid || true
             fi
