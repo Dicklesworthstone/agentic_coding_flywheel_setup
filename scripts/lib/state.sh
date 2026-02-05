@@ -142,7 +142,17 @@ state_init() {
 
     # Ensure directory exists
     if [[ ! -d "$state_dir" ]]; then
-        mkdir -p "$state_dir" || return 1
+        # Try without sudo first (works for user directories like ~/.acfs)
+        # Fall back to sudo for system directories like /var/lib/acfs
+        if ! mkdir -p "$state_dir" 2>/dev/null; then
+            if [[ $EUID -ne 0 ]] && command -v sudo &>/dev/null; then
+                sudo mkdir -p "$state_dir" || return 1
+                # Fix ownership so current user can write to it
+                sudo chown "$(id -u):$(id -g)" "$state_dir" 2>/dev/null || true
+            else
+                return 1
+            fi
+        fi
 
         # If running as root but targeting a non-root user, ensure the directory
         # is owned by the target user so they can access the state file later.
