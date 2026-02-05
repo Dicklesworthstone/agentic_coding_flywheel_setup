@@ -1285,7 +1285,9 @@ detect_environment() {
         ACFS_CHECKSUMS_YAML="$SCRIPT_DIR/checksums.yaml"
         ACFS_MANIFEST_YAML="$SCRIPT_DIR/acfs.manifest.yaml"
     else
-        # Fallback: current directory
+        # Fallback: current directory (only valid for testing from repo root)
+        # This should NOT be reached in curl-pipe mode since bootstrap_repo_archive
+        # sets ACFS_BOOTSTRAP_DIR. If we reach here without SCRIPT_DIR, something is wrong.
         ACFS_LIB_DIR="./scripts/lib"
         ACFS_GENERATED_DIR="./scripts/generated"
         ACFS_ASSETS_DIR="./acfs"
@@ -1294,6 +1296,20 @@ detect_environment() {
     fi
 
     export ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
+
+    # Validate that library directory exists - if not, fail early with a clear message
+    if [[ ! -d "$ACFS_LIB_DIR" ]]; then
+        local abs_lib_dir="$ACFS_LIB_DIR"
+        # Try to show absolute path for better debugging
+        if [[ "$ACFS_LIB_DIR" == ./* ]]; then
+            abs_lib_dir="$(pwd)/${ACFS_LIB_DIR#./}"
+        fi
+        echo "ERROR: Library directory not found: $abs_lib_dir" >&2
+        echo "This typically means bootstrap failed or the script is being run from an unexpected location." >&2
+        echo "For curl|bash installation, ensure network connectivity to GitHub." >&2
+        echo "For local installation, run from the repository root directory." >&2
+        exit 1
+    fi
 
     # Source minimal libs in correct order (logging, then helpers)
     if [[ -f "$ACFS_LIB_DIR/logging.sh" ]]; then
@@ -5145,7 +5161,19 @@ main() {
             ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
             export ACFS_REF ACFS_RAW
         fi
-        bootstrap_repo_archive
+        # Download and extract the repo archive for curl-pipe mode.
+        # This sets ACFS_BOOTSTRAP_DIR and related paths. If it fails, we cannot continue
+        # because the library files (install_helpers.sh, etc.) won't be available.
+        if ! bootstrap_repo_archive; then
+            log_error "Bootstrap failed. Cannot continue without library files."
+            log_error "Try again, or run from a local checkout instead of curl|bash."
+            exit 1
+        fi
+        # Verify bootstrap succeeded - ACFS_BOOTSTRAP_DIR must be set for curl-pipe mode
+        if [[ -z "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
+            log_error "Bootstrap did not set ACFS_BOOTSTRAP_DIR. This is a bug."
+            exit 1
+        fi
     fi
 
     # Detect environment and source manifest index (mjt.5.3)
