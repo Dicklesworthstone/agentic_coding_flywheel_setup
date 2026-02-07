@@ -1,0 +1,271 @@
+# Simplified Development Environment Setup
+# Streamlined version removing ACFS infrastructure, cloud tools, and most agent stack
+# Version: 1.0.0
+
+metadata:
+  name: "Simplified Dev Environment"
+  version: "1.0.0"
+  description: "Clean, focused development setup with essential tools and Claude Code"
+
+# ===========================================
+# PHASE 1: Base System Packages
+# ===========================================
+system_packages:
+  apt:
+    - curl
+    - git
+    - ca-certificates
+    - unzip
+    - tar
+    - xz-utils
+    - jq              # JSON processor (explicitly requested)
+    - build-essential # C/C++ compiler and build tools
+    - gnupg           # GPG cryptography
+    - lsb-release
+    - lsof
+    - dnsutils        # dig, nslookup
+    - netcat-openbsd  # nc
+    - strace
+    - rsync
+
+# ===========================================
+# PHASE 2: Shell Environment
+# ===========================================
+shell:
+  shell_type: zsh
+  framework:
+    name: oh-my-zsh
+    installer_url: "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh"
+
+  theme:
+    name: powerlevel10k
+    repo: "https://github.com/romkatv/powerlevel10k.git"
+    path: "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
+
+  plugins:
+    - name: zsh-autosuggestions
+      repo: "https://github.com/zsh-users/zsh-autosuggestions"
+      path: "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
+
+    - name: zsh-syntax-highlighting
+      repo: "https://github.com/zsh-users/zsh-syntax-highlighting.git"
+      path: "${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting"
+
+# ===========================================
+# PHASE 3: Modern CLI Tools
+# ===========================================
+cli_tools:
+  apt_packages:
+    - ripgrep         # rg - fast search
+    - tmux            # terminal multiplexer
+    - fzf             # fuzzy finder
+    - direnv          # environment variable loader
+    - gh              # GitHub CLI
+    - git-lfs         # Git Large File Storage
+    - fd-find         # better find
+    - bat             # better cat with syntax highlighting
+    - btop            # system monitor
+    - neovim          # modern vim (if available)
+    - docker.io       # Docker container runtime
+    - docker-compose-plugin
+
+  binaries:
+    - name: lazygit
+      version: "0.44.1"
+      url: "https://github.com/jesseduffield/lazygit/releases/download/v0.44.1/lazygit_0.44.1_Linux_x86_64.tar.gz"
+      install_path: "/usr/local/bin"
+      description: "Simple terminal UI for git"
+
+    - name: lazydocker
+      version: "0.23.3"
+      url: "https://github.com/jesseduffield/lazydocker/releases/download/v0.23.3/lazydocker_0.23.3_Linux_x86_64.tar.gz"
+      install_path: "/usr/local/bin"
+      description: "Simple terminal UI for docker"
+
+  optional_tools:
+    - name: dust
+      description: "Better du for disk usage"
+    - name: lsd
+      description: "Modern ls replacement"
+    - name: eza
+      description: "ls replacement in Rust"
+
+# ===========================================
+# PHASE 4: SSH Configuration
+# ===========================================
+ssh_config:
+  keepalive:
+    server_alive_interval: 60
+    server_alive_count_max: 3
+    tcp_keep_alive: "yes"
+
+# ===========================================
+# PHASE 5: Language Runtimes
+# ===========================================
+languages:
+  bun:
+    installer_url: "https://bun.sh/install"
+    description: "Fast JavaScript/TypeScript runtime and package manager"
+
+  uv:
+    installer_url: "https://astral.sh/uv/install.sh"
+    description: "Fast Python package manager and virtualenv creator"
+
+  rust:
+    installer_url: "https://sh.rustup.rs"
+    args: "-y --default-toolchain nightly"
+    description: "Rust programming language with nightly toolchain"
+    components:
+      - cargo
+      - rustup
+
+  go:
+    apt_package: "golang-go"
+    description: "Go programming language"
+
+  node:
+    manager: nvm
+    installer_url: "https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh"
+    version: "lts"
+    description: "Node.js via NVM"
+
+# ===========================================
+# PHASE 6: Enhanced CLI Tools
+# ===========================================
+enhanced_cli:
+  atuin:
+    installer_url: "https://setup.atuin.sh"
+    description: "Shell history search with sync capabilities"
+
+  zoxide:
+    installer_url: "https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
+    description: "Smarter cd command that learns your habits"
+
+  ast-grep:
+    install_method: cargo
+    package: "ast-grep"
+    binary: "sg"
+    description: "Syntax-aware code search and manipulation"
+
+# ===========================================
+# PHASE 7: AI Coding Agent
+# ===========================================
+ai_agents:
+  claude_code:
+    name: "Claude Code"
+    installer_url: "https://s3.amazonaws.com/downloads.anthropic.com/claude/cli/linux/claude_code_install.sh"
+    description: "Anthropic's Claude Code CLI agent"
+
+  opencode:
+    name: "OpenCode"
+    installer_method: "npm"  # or pip/cargo depending on what opencode actually is
+    package: "opencode-cli"  # Adjust based on actual package name
+    description: "OpenAI code assistant CLI"
+    # NOTE: If opencode has a specific installer, update this section
+
+# ===========================================
+# PHASE 8: Additional Utilities (Optional)
+# ===========================================
+additional_utilities:
+  giil:
+    name: "giil"
+    installer_url: "https://install.giil.dev"
+    description: "Download images from cloud share links"
+    optional: true
+
+  csctf:
+    name: "csctf"
+    installer_url: "https://install.csctf.dev"
+    description: "Convert AI chat shares to Markdown/HTML"
+    optional: true
+
+  xf:
+    name: "xf"
+    installer_url: "https://install.xf.dev"
+    description: "X/Twitter archive search with Tantivy"
+    optional: true
+
+  tru:
+    name: "tru (toon_rust)"
+    repo: "https://github.com/dicklesworthstone/toon_rust"
+    install_method: "github_binary"
+    description: "Token-optimized notation for LLMs"
+    optional: true
+
+  rano:
+    name: "rano"
+    repo: "https://github.com/dicklesworthstone/rano"
+    install_method: "github_binary"
+    description: "Network observer for AI CLIs"
+    optional: true
+
+  mdwb:
+    name: "mdwb"
+    repo: "https://github.com/dicklesworthstone/markdown_web_browser"
+    install_method: "github_binary"
+    description: "Markdown Web Browser"
+    optional: true
+
+  s2p:
+    name: "s2p"
+    repo: "https://github.com/dicklesworthstone/source_to_prompt"
+    install_method: "github_binary"
+    description: "Source to Prompt TUI"
+    optional: true
+
+  aadc:
+    name: "aadc"
+    repo: "https://github.com/dicklesworthstone/ascii_art_diagram_corrector"
+    install_method: "cargo_build"
+    description: "ASCII diagram corrector"
+    optional: true
+
+  caut:
+    name: "caut"
+    repo: "https://github.com/dicklesworthstone/coding_agent_usage_tracker"
+    install_method: "cargo_build"
+    description: "Coding Agent Usage Tracker"
+    optional: true
+
+  rust_proxy:
+    name: "rust_proxy"
+    repo: "https://github.com/dicklesworthstone/rust_proxy"
+    install_method: "cargo_build"
+    description: "Transparent proxy for network debugging"
+    optional: true
+
+# ===========================================
+# PHASE 9: Workspace Setup
+# ===========================================
+workspace:
+  directories:
+    - path: "/data/projects"
+      description: "Main project workspace"
+    - path: "/data/cache"
+      description: "Cache directory"
+
+  starter_project:
+    name: "my_first_project"
+    path: "/data/projects/my_first_project"
+    init: true
+
+# ===========================================
+# Configuration Notes
+# ===========================================
+notes: |
+  This is a streamlined development environment focused on:
+  - Essential system tools and modern CLI replacements
+  - Zsh with oh-my-zsh and powerlevel10k theme
+  - Multiple language runtimes (Bun, Python/uv, Rust, Go, Node.js)
+  - Claude Code as the primary AI assistant
+  - OpenCode for OpenAI integration
+  - Optional utilities for specialized tasks
+
+  Removed from original ACFS:
+  - All ACFS infrastructure (nightly updates, onboarding, etc.)
+  - Cloud & Database tools (Vault, PostgreSQL, Wrangler, Supabase, Vercel)
+  - Dicklesworthstone Stack (ntm, am, ms, apr, cass, cm, br, bv, etc.)
+  - Gemini CLI
+  - Codex CLI
+
+  Installation time: ~15-30 minutes depending on network speed
