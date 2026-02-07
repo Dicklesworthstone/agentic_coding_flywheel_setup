@@ -11,6 +11,11 @@ build-essential, gnupg, lsb-release, lsof, dnsutils,
 netcat-openbsd, strace, rsync
 ```
 
+### Package Manager (1 tool)
+```
+Homebrew - The Missing Package Manager for Linux
+```
+
 ### Shell Environment (5 components)
 ```
 1. zsh                      - Modern shell
@@ -67,7 +72,7 @@ netcat-openbsd, strace, rsync
 /data/projects/my_first_project  - Starter project
 ```
 
-**Total Core Tools: ~44 tools**
+**Total Core Tools: ~45 tools**
 
 ---
 
@@ -146,13 +151,14 @@ Install manually - see simplified-setup.yaml for URLs:
 | Category | Count |
 |----------|-------|
 | Base System Packages | 15 |
+| Package Manager | 1 |
 | Shell Components | 5 |
 | Modern CLI Tools | 14 |
 | Language Runtimes | 5 |
 | Enhanced CLI Tools | 3 |
 | AI Agents | 2 |
 | Optional Utilities | 10 |
-| **TOTAL** | **~54** |
+| **TOTAL** | **~55** |
 
 ---
 
@@ -160,9 +166,9 @@ Install manually - see simplified-setup.yaml for URLs:
 
 ```
 ACFS Original:      100+ tools
-Simplified Setup:   ~54 tools
+Simplified Setup:   ~55 tools
 
-Reduction:          ~46% fewer tools
+Reduction:          ~45% fewer tools
 Install Time:       50% faster
 Disk Space:         60% less
 Complexity:         80% simpler
@@ -175,6 +181,9 @@ Complexity:         80% simpler
 After installation, you'll have access to:
 
 ```bash
+# Package Manager
+brew
+
 # Version Control
 git, gh, lazygit, git-lfs
 
@@ -231,17 +240,18 @@ Compare to ACFS original: 5-10 GB
 ## ⏱️ Installation Time Breakdown
 
 ```
-Phase 1: Base packages           2-3 min
-Phase 2: Shell environment       2-3 min
-Phase 3: Modern CLI tools        3-5 min
-Phase 4: SSH config              <1 min
-Phase 5: Language runtimes       5-10 min
-Phase 6: Enhanced CLI            2-3 min
-Phase 7: AI agents               2-3 min
-Phase 8: Optional utilities      Variable
-Phase 9: Workspace setup         <1 min
+Phase 1:  Base packages          2-3 min
+Phase 2:  Homebrew               3-5 min
+Phase 3:  Shell environment      2-3 min
+Phase 4:  Modern CLI tools       3-5 min
+Phase 5:  SSH config             <1 min
+Phase 6:  Language runtimes      5-10 min
+Phase 7:  Enhanced CLI           2-3 min
+Phase 8:  AI agents              2-3 min
+Phase 9:  Optional utilities     Variable
+Phase 10: Workspace setup        <1 min
 
-TOTAL:                           15-30 min
+TOTAL:                           20-35 min
 ```
 
 Compare to ACFS original: 30-60 minutes

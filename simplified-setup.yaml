@@ -29,7 +29,16 @@ system_packages:
     - rsync
 
 # ===========================================
-# PHASE 2: Shell Environment
+# PHASE 2: Package Manager
+# ===========================================
+package_manager:
+  homebrew:
+    installer_url: "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+    description: "The Missing Package Manager for Linux (and macOS)"
+    shell_command: '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+
+# ===========================================
+# PHASE 3: Shell Environment
 # ===========================================
 shell:
   shell_type: zsh
@@ -253,6 +262,7 @@ workspace:
 notes: |
   This is a streamlined development environment focused on:
   - Essential system tools and modern CLI replacements
+  - Homebrew package manager for easy tool installation
   - Zsh with oh-my-zsh and powerlevel10k theme
   - Multiple language runtimes (Bun, Python/uv, Rust, Go, Node.js)
   - Claude Code as the primary AI assistant
@@ -266,4 +276,4 @@ notes: |
   - Gemini CLI
   - Codex CLI
 
-  Installation time: ~15-30 minutes depending on network speed
+  Installation time: ~20-35 minutes depending on network speed

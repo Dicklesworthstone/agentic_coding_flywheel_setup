@@ -112,8 +112,33 @@ phase_1_base_packages() {
     log_success "Base packages installed"
 }
 
-phase_2_shell_environment() {
-    log_info "Phase 2: Setting up Zsh environment..."
+phase_2_homebrew() {
+    log_info "Phase 2: Installing Homebrew package manager..."
+
+    # Check if brew is already installed
+    if command -v brew &>/dev/null; then
+        log_info "Homebrew already installed, skipping..."
+        return
+    fi
+
+    # Install Homebrew as the target user
+    log_info "Installing Homebrew (this may take a few minutes)..."
+    sudo -u "$TARGET_USER" /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || {
+        log_warn "Homebrew installation had issues, but continuing..."
+        return
+    }
+
+    # Add Homebrew to PATH for the current session
+    if [[ -d "/home/linuxbrew/.linuxbrew" ]]; then
+        export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
+        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    fi
+
+    log_success "Homebrew installed"
+}
+
+phase_3_shell_environment() {
+    log_info "Phase 3: Setting up Zsh environment..."
 
     # Install zsh
     apt-get install -y -qq zsh
@@ -152,8 +177,8 @@ phase_2_shell_environment() {
     log_success "Zsh environment configured"
 }
 
-phase_3_modern_cli_tools() {
-    log_info "Phase 3: Installing modern CLI tools..."
+phase_4_modern_cli_tools() {
+    log_info "Phase 4: Installing modern CLI tools..."
 
     # Install from apt
     apt-get install -y -qq \
@@ -194,8 +219,8 @@ phase_3_modern_cli_tools() {
     log_success "Modern CLI tools installed"
 }
 
-phase_4_ssh_config() {
-    log_info "Phase 4: Configuring SSH keepalive..."
+phase_5_ssh_config() {
+    log_info "Phase 5: Configuring SSH keepalive..."
 
     mkdir -p "$TARGET_HOME/.ssh"
 
@@ -215,8 +240,8 @@ EOF
     log_success "SSH configured"
 }
 
-phase_5_language_runtimes() {
-    log_info "Phase 5: Installing language runtimes..."
+phase_6_language_runtimes() {
+    log_info "Phase 6: Installing language runtimes..."
 
     # Install Bun
     if ! command -v bun &>/dev/null; then
@@ -251,8 +276,8 @@ phase_5_language_runtimes() {
     log_success "Language runtimes installed"
 }
 
-phase_6_enhanced_cli() {
-    log_info "Phase 6: Installing enhanced CLI tools..."
+phase_7_enhanced_cli() {
+    log_info "Phase 7: Installing enhanced CLI tools..."
 
     # Ensure cargo is in PATH for this session
     export PATH="$TARGET_HOME/.cargo/bin:$PATH"
@@ -278,8 +303,8 @@ phase_6_enhanced_cli() {
     log_success "Enhanced CLI tools installed"
 }
 
-phase_7_ai_agents() {
-    log_info "Phase 7: Installing AI coding agents..."
+phase_8_ai_agents() {
+    log_info "Phase 8: Installing AI coding agents..."
 
     # Install Claude Code
     if ! command -v claude &>/dev/null; then
@@ -300,13 +325,13 @@ phase_7_ai_agents() {
     log_success "AI agents installed"
 }
 
-phase_8_optional_utilities() {
+phase_9_optional_utilities() {
     if [[ "$SKIP_OPTIONAL" == "true" ]]; then
         log_info "Skipping optional utilities (--skip-optional flag set)"
         return
     fi
 
-    log_info "Phase 8: Installing optional utilities..."
+    log_info "Phase 9: Installing optional utilities..."
 
     # These are placeholder installations - adjust URLs/methods based on actual tools
     declare -A utilities=(
@@ -335,8 +360,8 @@ phase_8_optional_utilities() {
     log_success "Optional utilities section completed"
 }
 
-phase_9_workspace() {
-    log_info "Phase 9: Setting up workspace..."
+phase_10_workspace() {
+    log_info "Phase 10: Setting up workspace..."
 
     # Create workspace directories
     mkdir -p /data/projects
@@ -365,6 +390,11 @@ finalize_installation() {
 export PATH="$HOME/.local/bin:$PATH"
 export PATH="$HOME/.bun/bin:$PATH"
 export PATH="$HOME/.cargo/bin:$PATH"
+
+# Homebrew
+if [ -d "/home/linuxbrew/.linuxbrew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+fi
 
 # NVM
 export NVM_DIR="$HOME/.nvm"
@@ -397,6 +427,7 @@ EOF
     echo ""
     echo -e "${BLUE}Installed components:${NC}"
     echo "  ✓ Base system packages + jq"
+    echo "  ✓ Homebrew package manager"
     echo "  ✓ Zsh with oh-my-zsh + powerlevel10k"
     echo "  ✓ Modern CLI tools (ripgrep, fzf, lazygit, etc.)"
     echo "  ✓ Language runtimes (Bun, Python/uv, Rust, Go, Node.js)"
@@ -439,14 +470,15 @@ main() {
     fi
 
     phase_1_base_packages
-    phase_2_shell_environment
-    phase_3_modern_cli_tools
-    phase_4_ssh_config
-    phase_5_language_runtimes
-    phase_6_enhanced_cli
-    phase_7_ai_agents
-    phase_8_optional_utilities
-    phase_9_workspace
+    phase_2_homebrew
+    phase_3_shell_environment
+    phase_4_modern_cli_tools
+    phase_5_ssh_config
+    phase_6_language_runtimes
+    phase_7_enhanced_cli
+    phase_8_ai_agents
+    phase_9_optional_utilities
+    phase_10_workspace
     finalize_installation
 }
 

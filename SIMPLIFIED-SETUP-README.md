@@ -25,6 +25,9 @@ This setup is based on the ACFS repository but significantly simplified by remov
 - `strace` - System call tracer
 - `rsync` - File synchronization
 
+#### **Package Manager**
+- **Homebrew** - The Missing Package Manager for Linux (and macOS)
+
 #### **Shell Environment**
 - **Zsh** - Modern shell with extensive customization
 - **Oh-My-Zsh** - Framework with plugin system
@@ -92,6 +95,7 @@ These require manual installation or are marked optional in the script:
 ## 📊 Summary Statistics
 
 - **Total System Packages**: 15 (via apt)
+- **Package Manager**: 1 (Homebrew)
 - **Language Runtimes**: 5 (Bun, Python/uv, Rust, Go, Node.js)
 - **Modern CLI Tools**: 20+
 - **AI Coding Agent**: 1 (Claude Code) + 1 (OpenCode)
@@ -133,7 +137,7 @@ sudo ./simplified-install.sh --yes --skip-optional
 
 ## ⏱️ Installation Time
 
-Estimated: **15-30 minutes** depending on:
+Estimated: **20-35 minutes** depending on:
 - Network speed
 - System specifications
 - Whether optional utilities are installed
@@ -164,8 +168,14 @@ gh auth login
 ### 3. Verify Installation
 
 ```bash
-# Check versions
+# Check package manager
+brew --version
+
+# Check AI agents
 claude --version
+opencode --version
+
+# Check language runtimes
 bun --version
 cargo --version
 go version
@@ -253,7 +263,7 @@ This simplified setup **removes** the following from the original repository:
 | **Agent Stack** | 23+ specialized tools | 0 (removed) |
 | **Cloud Tools** | 5 (Vault, PostgreSQL, etc.) | 0 (removed) |
 | **Infrastructure** | ACFS system (updates, onboard) | 0 (removed) |
-| **Install Time** | 30-60 minutes | 15-30 minutes |
+| **Install Time** | 30-60 minutes | 20-35 minutes |
 | **Disk Space** | 5-10 GB | 2-4 GB |
 | **Complexity** | High (multi-agent system) | Low (focused dev env) |
 | **Use Case** | Advanced multi-agent coding | Simple AI-assisted development |
