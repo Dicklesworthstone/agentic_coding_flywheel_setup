@@ -355,8 +355,13 @@ install_acfs_nightly() {
 mkdir -p ~/.acfs/scripts ~/.config/systemd/user
 INSTALL_ACFS_NIGHTLY
         then
-            log_error "acfs.nightly: install command failed: mkdir -p ~/.acfs/scripts ~/.config/systemd/user"
-            return 1
+            log_warn "acfs.nightly: install command failed: mkdir -p ~/.acfs/scripts ~/.config/systemd/user"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "acfs.nightly" "install command failed: mkdir -p ~/.acfs/scripts ~/.config/systemd/user"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "acfs.nightly"
+            fi
+            return 0
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
@@ -379,8 +384,13 @@ fi
 chmod +x ~/.acfs/scripts/nightly-update.sh
 INSTALL_ACFS_NIGHTLY
         then
-            log_error "acfs.nightly: install command failed: # Install nightly update wrapper script"
-            return 1
+            log_warn "acfs.nightly: install command failed: # Install nightly update wrapper script"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "acfs.nightly" "install command failed: # Install nightly update wrapper script"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "acfs.nightly"
+            fi
+            return 0
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
@@ -402,8 +412,13 @@ else
 fi
 INSTALL_ACFS_NIGHTLY
         then
-            log_error "acfs.nightly: install command failed: # Install systemd timer unit"
-            return 1
+            log_warn "acfs.nightly: install command failed: # Install systemd timer unit"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "acfs.nightly" "install command failed: # Install systemd timer unit"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "acfs.nightly"
+            fi
+            return 0
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
@@ -425,8 +440,13 @@ else
 fi
 INSTALL_ACFS_NIGHTLY
         then
-            log_error "acfs.nightly: install command failed: # Install systemd service unit"
-            return 1
+            log_warn "acfs.nightly: install command failed: # Install systemd service unit"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "acfs.nightly" "install command failed: # Install systemd service unit"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "acfs.nightly"
+            fi
+            return 0
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
@@ -438,20 +458,13 @@ systemctl --user daemon-reload
 systemctl --user enable --now acfs-nightly-update.timer
 INSTALL_ACFS_NIGHTLY
         then
-            log_error "acfs.nightly: install command failed: # Reload systemd and enable the timer"
-            return 1
-        fi
-    fi
-
-    # Enable linger so timer fires without active login session
-    if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: loginctl enable-linger (root)"
-    else
-        if ! run_as_root_shell <<'INSTALL_ACFS_NIGHTLY_ROOT'
-loginctl enable-linger "${TARGET_USER:-ubuntu}"
-INSTALL_ACFS_NIGHTLY_ROOT
-        then
-            log_warn "acfs.nightly: loginctl enable-linger failed (timer still works with active sessions)"
+            log_warn "acfs.nightly: install command failed: # Reload systemd and enable the timer"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "acfs.nightly" "install command failed: # Reload systemd and enable the timer"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "acfs.nightly"
+            fi
+            return 0
         fi
     fi
 
@@ -463,8 +476,13 @@ INSTALL_ACFS_NIGHTLY_ROOT
 systemctl --user is-enabled acfs-nightly-update.timer
 INSTALL_ACFS_NIGHTLY
         then
-            log_error "acfs.nightly: verify failed: systemctl --user is-enabled acfs-nightly-update.timer"
-            return 1
+            log_warn "acfs.nightly: verify failed: systemctl --user is-enabled acfs-nightly-update.timer"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "acfs.nightly" "verify failed: systemctl --user is-enabled acfs-nightly-update.timer"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "acfs.nightly"
+            fi
+            return 0
         fi
     fi
 

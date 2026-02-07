@@ -186,6 +186,7 @@ install_all() {
     install_acfs_workspace
     install_acfs_onboard
     install_acfs_update
+    install_acfs_nightly
     install_acfs_doctor
 
     log_success "All modules installed!"
