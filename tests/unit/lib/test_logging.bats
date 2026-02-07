@@ -13,13 +13,6 @@ teardown() {
 }
 
 @test "logging: color variables are exported" {
-    # Color variables should be exported with ANSI escape sequences
-    [[ -v ACFS_RED ]]
-    [[ -v ACFS_GREEN ]]
-    [[ -v ACFS_NC ]]
-    # Verify they contain escape sequences (start with \033)
-    [[ "$ACFS_RED" == *"033"* ]]
-    [[ "$ACFS_GREEN" == *"033"* ]]
     # Color variables should be exported (but may be empty if NO_COLOR or no TTY)
     # Test that the ACFS_COLORS_ENABLED flag is set correctly
     [[ -v ACFS_RED ]]

@@ -70,7 +70,6 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "NTM-spawned agents auto-register with Agent Mail",
       },
     ],
-    techStack: ["Python 3.11+", "FastMCP", "FastAPI", "SQLite"],
     techStack: ["Python 3.14+", "FastMCP", "SQLAlchemy async", "SQLite + FTS5", "LiteLLM"],
     keyFeatures: [
       "Threaded GFM messages with importance levels",
@@ -151,14 +150,6 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 128,
     whatItDoes:
-      "Local-first issue tracking for AI agents. SQLite + JSONL hybrid: fast queries locally, git-friendly export for collaboration. Non-invasive - never auto-commits or touches source code.",
-    whyItsUseful:
-      "Your issues travel with your repo - no external service required. ~20K lines of Rust focused on one thing: tracking issues without getting in your way. br ready shows actionable work; br sync --flush-only exports for git commit.",
-    implementationHighlights: [
-      "SQLite for fast queries, JSONL for git-friendly export",
-      "Non-invasive: never runs git commands automatically",
-      "40 commands, all support --json for agents",
-      "br ready/blocked for dependency-aware work queues",
       "Local-first issue tracking for AI agents. SQLite for fast local queries, JSONL export for git-friendly collaboration. Full dependency graph with blocking/blocked-by relationships, priorities P0-P4.",
     whyItsUseful:
       "Your issues travel with your repo - no external service required. Non-invasive design: never runs git commands automatically. Agents can create, update, and close issues with simple CLI commands. The bd alias provides backward compatibility.",
@@ -186,12 +177,6 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "UBS --beads-jsonl outputs findings as importable beads",
       },
     ],
-    techStack: ["Rust", "SQLite", "JSONL", "Serde"],
-    keyFeatures: [
-      "SQLite + JSONL hybrid architecture",
-      "br ready: unblocked, non-deferred work",
-      "br dep: full dependency graph management",
-      "br stats: lead time and activity metrics",
     techStack: ["Rust", "SQLite", "Serde", "JSONL"],
     keyFeatures: [
       "SQLite + JSONL hybrid: fast queries, git-friendly export",
@@ -533,7 +518,6 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "Bead management via --robot-bead-* commands for issue tracking",
       },
     ],
-    techStack: ["Go 1.22+", "Bubble Tea", "tmux 3.0+"],
     techStack: ["Go 1.25+", "Bubble Tea", "tmux 3.0+", "Catppuccin themes"],
     keyFeatures: [
       "80+ commands: spawn, send, dashboard, checkpoint, health, and more",
@@ -964,14 +948,6 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "supporting",
     stars: 156,
     whatItDoes:
-      "Ultra-fast search over X/Twitter data archives. Indexes tweets, likes, DMs, and Grok chats with hybrid BM25 + semantic search using Reciprocal Rank Fusion.",
-    whyItsUseful:
-      "Your X archive is a goldmine of bookmarks, threads, and ideas. XF makes your archive instantly searchable with three modes: hybrid (default), lexical (BM25), and semantic (vector similarity).",
-    implementationHighlights: [
-      "Tantivy-powered BM25 with phrase queries and boolean operators",
-      "Hash-based embeddings (zero deps) or optional MiniLM semantic",
-      "SIMD-accelerated vector ops with F16 quantization",
-      "Parses window.YTD.* JavaScript format from X exports",
       "Ultra-fast search over X/Twitter data archives with sub-millisecond latency. Uses hybrid BM25 + semantic search with Reciprocal Rank Fusion. Indexes tweets, likes, DMs, and Grok conversations.",
     whyItsUseful:
       "Your X archive is a goldmine of bookmarks, threads, and ideas, but Twitter's search is terrible. XF makes your archive instantly searchable (<10ms) with both keyword and semantic matching. DM context search shows full conversation threads.",
@@ -992,6 +968,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
         description: "Found tweets can become memories",
       },
     ],
+<<<<<<< Updated upstream
     techStack: ["Rust", "Tantivy", "SQLite", "FNV-1a hash embeddings"],
     keyFeatures: [
       "Sub-millisecond lexical, <10ms hybrid search",
@@ -1012,6 +989,17 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     ],
     useCases: [
       "Finding that thread you bookmarked months ago",
+=======
+    techStack: ["Rust", "Tantivy", "SQLite", "SIMD", "F16 quantization"],
+    keyFeatures: [
+      "Sub-millisecond lexical search (<10ms typical)",
+      "Hybrid BM25 + semantic with RRF fusion",
+      "DM context search with full threads",
+      "Indexes tweets, likes, DMs, Grok chats",
+    ],
+    useCases: [
+      "Finding that thread you bookmarked months ago",
+>>>>>>> Stashed changes
       "Searching DM conversations with full context",
       "Researching past discussions on a topic",
     ],
@@ -1493,11 +1481,16 @@ export const tldrPageData = {
     title: "The Agentic Coding Flywheel",
     subtitle: "TL;DR Edition",
     description:
+<<<<<<< Updated upstream
       "15 core tools and 7 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
     stats: [
       { label: "Ecosystem Tools", value: "22" },
       "16 core tools and 13 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
     stats: [
+=======
+      "16 core tools and 13 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
+    stats: [
+>>>>>>> Stashed changes
       { label: "Ecosystem Tools", value: "29" },
       { label: "GitHub Stars", value: "3,600+" },
       { label: "Languages", value: "5" },

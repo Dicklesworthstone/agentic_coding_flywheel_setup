@@ -81,7 +81,7 @@ if bash /repo/tests/vm/resume_checks.sh >> "$VERIFY_LOG" 2>&1; then
     echo "  [ok] resume_checks"
 else
     echo "  [fail] resume_checks"
-    ((failed_checks++))
+    failed_checks=$((failed_checks + 1))
 fi
 
 if [[ $failed_checks -gt 0 ]]; then

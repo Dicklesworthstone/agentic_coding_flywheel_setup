@@ -616,23 +616,6 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-amber-400 to-orange-500",
     tagline: "Rust-powered issue tracking CLI",
     description:
-      "Local-first issue tracking for AI agents. SQLite + JSONL hybrid: fast queries locally, git-friendly export for collaboration. Non-invasive - never auto-commits or touches source code.",
-    deepDescription: `beads_rust (br) is a ~20K-line Rust port of Steve Yegge's beads, frozen at the
-"classic" SQLite + JSONL architecture. Issues live in .beads/ - they travel with your repo.
-
-Key architecture:
-- SQLite for fast local queries (list, ready, blocked, search)
-- JSONL export (br sync --flush-only) for git-friendly commits
-- Non-invasive: never runs git commands or installs hooks automatically
-- Agent-first: every command supports --json for machine consumption
-
-JSONL schema fields: id, title, description, status, priority (0-4), issue_type,
-created_at, created_by, updated_at, close_reason, closed_at, source_repo,
-compaction_level, dependencies, labels, owner
-
-40 commands including: create, list, ready, blocked, dep, label, epic,
-defer/undefer, search, stats, doctor, changelog, orphans, audit, history, graph`,
-    connectsTo: ["bv", "mail", "ntm", "ru"],
       "Local-first issue tracking for AI agents. SQLite primary storage with JSONL export for git. Dependencies, labels, priorities (P0-P4), blocking relationships. Non-invasive: never runs git commands automatically. The bd alias provides backward compatibility.",
     deepDescription:
       "beads_rust (br) is the ~20K line Rust port of the beads issue tracker. SQLite for fast local queries, JSONL for git-friendly collaboration. Full dependency graph, labels, priorities, comments. Agent-first design: all commands support --json. Explicit sync (flush-only/import-only). Works offline. Doctor diagnostics and schema output (--format toon/json).",
@@ -646,19 +629,6 @@ defer/undefer, search, stats, doctor, changelog, orphans, audit, history, graph`
     },
     stars: 128,
     features: [
-      "SQLite + JSONL hybrid: fast queries + git-friendly export",
-      "Non-invasive: never auto-commits or touches source code",
-      "Full dependency graph: blocks/blocked-by with br dep",
-      "br ready: shows unblocked, non-deferred work",
-      "br stats: lead time, activity, status breakdown",
-      "40 commands, all support --json for agents",
-    ],
-    cliCommands: [
-      "br create 'Fix bug' -p 1 --type bug",
-      "br ready --json",
-      "br dep add <child> <parent>",
-      "br sync --flush-only",
-      "br stats",
       "SQLite + JSONL hybrid: fast queries, git-friendly export",
       "Non-invasive: never runs git commands automatically",
       "Full dependency graph: blocks/blocked-by, cycles detection",
@@ -1381,16 +1351,6 @@ lexical (BM25 keyword matching), and semantic (vector similarity via hash embedd
 optional MiniLM with --semantic flag).
 
 Key capabilities:
-- Tantivy-powered BM25 search with phrase queries, boolean operators, and wildcards
-- Reciprocal Rank Fusion combines keyword and semantic results optimally
-- Hash-based embeddings by default (zero dependencies, ~0ms per embedding)
-- Optional MiniLM embeddings for true semantic synonym matching
-- Parses window.YTD.* JavaScript format from X data exports
-- Data types: tweet, like, dm, grok, follower, following, block, mute
-- SQLite storage with FTS5, memory-mapped Tantivy index
-- SIMD-accelerated vector operations, F16 quantization (50% storage reduction)
-- All data stays local - no network calls during search
-- 13 commands: import, index, search, stats, tweet, list, export, config, doctor, shell, benchmark`,
 - Rust + Tantivy for sub-millisecond lexical search (<10ms typical)
 - Hybrid BM25 + semantic search with RRF fusion
 - Zero-dependency hash embedder (default) or optional MiniLM embeddings (--semantic)
@@ -1405,21 +1365,6 @@ Key capabilities:
     },
     stars: 156,
     features: [
-      "Sub-millisecond lexical search (<10ms hybrid)",
-      "Three search modes: hybrid, lexical, semantic",
-      "Reciprocal Rank Fusion scoring",
-      "Zero external API dependencies (hash mode)",
-      "DM context view with full conversation threads",
-      "Parses tweets, likes, DMs, Grok chats",
-      "Interactive REPL shell for exploration",
-    ],
-    cliCommands: [
-      "xf index ~/x-archive",
-      "xf search 'query' --format json",
-      "xf search 'term' --mode semantic",
-      "xf stats",
-      "xf doctor",
-      "xf shell",
       "Sub-millisecond lexical search (<10ms typical)",
       "Hybrid BM25 + semantic search with RRF fusion",
       "Hash embedder (default) or MiniLM (--semantic)",
