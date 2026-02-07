@@ -463,10 +463,14 @@ alias bl='bun run lint'
 alias bt='bun run type-check'
 
 # --- br (beads_rust) alias guard ---
-# Older ACFS versions incorrectly aliased br='bun run'. Remove stale alias if br binary exists.
+# Older ACFS versions incorrectly aliased br='bun run dev'. Remove stale alias if br binary exists.
 # whence -p finds the binary path, ignoring aliases/functions (zsh-specific)
 if whence -p br &>/dev/null && alias br &>/dev/null; then
   unalias br 2>/dev/null
+fi
+# bd is the legacy Go beads binary name; alias it to br (beads_rust)
+if whence -p br &>/dev/null; then
+  alias bd='br'
 fi
 
 # MCP Agent Mail helper (installer usually adds `am`, but keep a fallback)

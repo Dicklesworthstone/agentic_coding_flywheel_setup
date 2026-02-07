@@ -565,6 +565,45 @@ cleanup_legacy_git_safety_guard() {
     fi
 }
 
+# Fix stale aliases in deployed acfs.zshrc
+# Older versions aliased br='bun run dev', which shadows beads_rust (br).
+cleanup_legacy_br_alias() {
+    local deployed="$HOME/.acfs/zsh/acfs.zshrc"
+    [[ -f "$deployed" ]] || return 0
+
+    # Check for the exact problematic alias (uncommented)
+    if grep -q "^alias br='bun run dev'" "$deployed" 2>/dev/null; then
+        # Comment out the old alias (sync_acfs_zshrc will deploy the correct version later;
+        # this sed is a safety net for when the repo isn't available)
+        sed -i "s|^alias br='bun run dev'|# alias br='bun run dev'  # disabled - conflicts with beads_rust (br)|" "$deployed"
+        log_item "ok" "legacy cleanup" "fixed br alias conflict in deployed acfs.zshrc"
+        log_to_file "Commented out alias br='bun run dev' in $deployed"
+    fi
+}
+
+# Re-deploy acfs.zshrc from repo to ~/.acfs/ if repo copy is newer
+sync_acfs_zshrc() {
+    local repo_zshrc="$ACFS_REPO_ROOT/acfs/zsh/acfs.zshrc"
+    local deployed_zshrc="$HOME/.acfs/zsh/acfs.zshrc"
+
+    [[ -f "$repo_zshrc" ]] || return 0
+
+    # Skip if deployed copy is identical
+    if [[ -f "$deployed_zshrc" ]] && cmp -s "$repo_zshrc" "$deployed_zshrc"; then
+        return 0
+    fi
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_item "ok" "acfs.zshrc" "would sync from repo (changed)"
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$deployed_zshrc")"
+    cp "$repo_zshrc" "$deployed_zshrc"
+    log_item "ok" "acfs.zshrc" "synced from repo"
+    log_to_file "Deployed $repo_zshrc -> $deployed_zshrc"
+}
+
 # ============================================================
 # Checksums Refresh (Auto-update from GitHub)
 # ============================================================
@@ -1970,6 +2009,9 @@ update_shell() {
     # Installer-based updates (Atuin, Zoxide)
     update_atuin
     update_zoxide
+
+    # Keep deployed acfs.zshrc in sync with repo
+    sync_acfs_zshrc
 }
 
 # ============================================================
@@ -2325,6 +2367,7 @@ main() {
 
     # Clean up legacy artifacts from previous versions
     cleanup_legacy_git_safety_guard
+    cleanup_legacy_br_alias
 
     # Run updates
     update_apt
