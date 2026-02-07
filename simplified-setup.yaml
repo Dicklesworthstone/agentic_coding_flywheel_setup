@@ -158,10 +158,8 @@ ai_agents:
 
   opencode:
     name: "OpenCode"
-    installer_method: "npm"  # or pip/cargo depending on what opencode actually is
-    package: "opencode-cli"  # Adjust based on actual package name
+    installer_url: "https://opencode.ai/install"
     description: "OpenAI code assistant CLI"
-    # NOTE: If opencode has a specific installer, update this section
 
 # ===========================================
 # PHASE 8: Additional Utilities (Optional)

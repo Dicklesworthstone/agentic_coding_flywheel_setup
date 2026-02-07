@@ -291,16 +291,10 @@ phase_7_ai_agents() {
         sudo -u "$TARGET_USER" bash -c 'curl -fsSL https://s3.amazonaws.com/downloads.anthropic.com/claude/cli/linux/claude_code_install.sh | sh'
     fi
 
-    # Install OpenCode (assuming it's via npm/bun)
-    # NOTE: Adjust this based on actual OpenCode installation method
+    # Install OpenCode
     if ! command -v opencode &>/dev/null; then
         log_info "Installing OpenCode..."
-        # Example: if it's an npm package
-        # sudo -u "$TARGET_USER" bash -c 'source "$HOME/.nvm/nvm.sh" && npm install -g opencode-cli'
-
-        # Or if it's a standalone binary, adjust accordingly
-        log_warn "OpenCode installation method not specified - please install manually"
-        log_warn "Visit: https://github.com/openai/opencode or appropriate source"
+        sudo -u "$TARGET_USER" bash -c 'curl -fsSL https://opencode.ai/install | bash'
     fi
 
     log_success "AI agents installed"

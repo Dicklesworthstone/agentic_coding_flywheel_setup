@@ -65,7 +65,7 @@ This setup is based on the ACFS repository but significantly simplified by remov
 
 #### **AI Coding Agent**
 - **Claude Code** - Anthropic's official CLI agent
-- **OpenCode** - OpenAI code assistant (installation method TBD)
+- **OpenCode** - OpenAI code assistant CLI
 
 #### **Additional Utilities** (Optional, 10 tools)
 
