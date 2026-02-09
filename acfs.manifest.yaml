@@ -649,7 +649,7 @@ modules:
     verify:
       - ~/.local/bin/claude --version || ~/.local/bin/claude --help
     notes:
-      - "Uses native installer with built-in 'claude update' command"
+      - "Uses native installer with built-in 'claude update --channel latest' command"
       - "Binary installed to ~/.local/bin/claude"
 
   - id: agents.codex

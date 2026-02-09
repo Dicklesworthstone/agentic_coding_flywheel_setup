@@ -128,7 +128,7 @@ Try updating directly:
 
 ```bash
 # Claude
-claude update
+claude update --channel latest
 
 # Codex
 bun install -g --trust @openai/codex@latest

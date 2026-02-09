@@ -215,7 +215,7 @@ sudo dpkg --configure -a`}
             title="Agent update failed"
             description="Try updating directly:"
             solution={`# Claude
-claude update
+claude update --channel latest
 
 # Codex
 bun install -g --trust @openai/codex@latest
