@@ -865,19 +865,30 @@ update_acfs_self() {
         return 0
     fi
 
-    # Check for local modifications that would block pull
+    # Stash local modifications so they don't block the pull
+    local stashed=false
     if ! git -C "$ACFS_REPO_ROOT" diff --quiet 2>/dev/null; then
-        log_item "warn" "ACFS self-update" "local modifications detected, skipping"
-        log_to_file "Run 'git -C $ACFS_REPO_ROOT status' to see changes"
-        return 0
+        log_to_file "Local modifications detected, stashing before update..."
+        if git -C "$ACFS_REPO_ROOT" stash --quiet 2>/dev/null; then
+            stashed=true
+        fi
     fi
 
     # Pull updates
     log_to_file "Pulling updates..."
     if ! git -C "$ACFS_REPO_ROOT" pull --ff-only origin main 2>/dev/null; then
-        log_item "warn" "ACFS self-update" "git pull failed"
-        log_to_file "Try: git -C $ACFS_REPO_ROOT pull --ff-only origin main"
-        return 0
+        # ff-only failed (diverged history?), try reset --mixed
+        log_to_file "ff-only pull failed, using reset --mixed"
+        git -C "$ACFS_REPO_ROOT" reset --mixed origin/main 2>/dev/null || {
+            log_item "warn" "ACFS self-update" "git update failed"
+            [[ "$stashed" == "true" ]] && git -C "$ACFS_REPO_ROOT" stash pop --quiet 2>/dev/null || true
+            return 0
+        }
+    fi
+
+    # Restore local modifications
+    if [[ "$stashed" == "true" ]]; then
+        git -C "$ACFS_REPO_ROOT" stash pop --quiet 2>/dev/null || true
     fi
 
     log_item "ok" "ACFS" "updated ($commit_count commits)"
