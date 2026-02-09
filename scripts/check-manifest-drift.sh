@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# check-manifest-drift.sh - Detect and auto-fix ACFS manifest SHA256 drift
+# check-manifest-drift.sh - Detect and auto-fix ACFS manifest/script SHA256 drift
 #
 # This script verifies that scripts/generated/manifest_index.sh has the correct
-# SHA256 hash for acfs.manifest.yaml. If they mismatch, it regenerates all
-# generated scripts, commits, and pushes the fix.
+# SHA256 hash for acfs.manifest.yaml, AND that internal library scripts match
+# their recorded checksums in scripts/generated/internal_checksums.sh.
+# If drift is detected, it can regenerate all generated scripts, commit, and push.
 #
 # Usage:
 #   ./scripts/check-manifest-drift.sh [--fix] [--json] [--quiet]
@@ -90,11 +91,56 @@ if [[ "$SHA_LINE_COUNT" -gt 1 ]]; then
     DRIFT_REASONS+=("Duplicate ACFS_MANIFEST_SHA256 lines: $SHA_LINE_COUNT found")
 fi
 
+# ============================================================
+# Internal script checksum verification (bd-3tpl)
+# ============================================================
+INTERNAL_CHECKSUMS_FILE="$REPO_ROOT/scripts/generated/internal_checksums.sh"
+INTERNAL_DRIFT_COUNT=0
+INTERNAL_DRIFT_FILES=()
+INTERNAL_CHECKED=0
+
+if [[ -f "$INTERNAL_CHECKSUMS_FILE" ]]; then
+    # Source the checksums file to get ACFS_INTERNAL_CHECKSUMS associative array
+    # shellcheck source=generated/internal_checksums.sh
+    source "$INTERNAL_CHECKSUMS_FILE"
+
+    if declare -p ACFS_INTERNAL_CHECKSUMS &>/dev/null; then
+        for rel_path in "${!ACFS_INTERNAL_CHECKSUMS[@]}"; do
+            expected="${ACFS_INTERNAL_CHECKSUMS[$rel_path]}"
+            abs_path="$REPO_ROOT/$rel_path"
+            if [[ -f "$abs_path" ]]; then
+                actual=$(sha256sum "$abs_path" | awk '{print $1}')
+                INTERNAL_CHECKED=$((INTERNAL_CHECKED + 1))
+                if [[ "$actual" != "$expected" ]]; then
+                    INTERNAL_DRIFT_COUNT=$((INTERNAL_DRIFT_COUNT + 1))
+                    INTERNAL_DRIFT_FILES+=("$rel_path")
+                    DRIFT_DETECTED=true
+                    DRIFT_REASONS+=("Internal script checksum mismatch: $rel_path")
+                fi
+            else
+                INTERNAL_DRIFT_COUNT=$((INTERNAL_DRIFT_COUNT + 1))
+                INTERNAL_DRIFT_FILES+=("$rel_path (MISSING)")
+                DRIFT_DETECTED=true
+                DRIFT_REASONS+=("Internal script missing: $rel_path")
+            fi
+        done
+        log "Internal checksums: $INTERNAL_CHECKED checked, $INTERNAL_DRIFT_COUNT drifted"
+    else
+        log "Warning: ACFS_INTERNAL_CHECKSUMS not defined in $INTERNAL_CHECKSUMS_FILE"
+    fi
+else
+    log "Internal checksums file not found (pre-migration), skipping"
+fi
+
 # Output results
 if $JSON_MODE; then
     reasons_json="[]"
     if [[ ${#DRIFT_REASONS[@]} -gt 0 ]]; then
         reasons_json=$(printf '%s\n' "${DRIFT_REASONS[@]}" | jq -R . | jq -s .)
+    fi
+    internal_drift_json="[]"
+    if [[ ${#INTERNAL_DRIFT_FILES[@]} -gt 0 ]]; then
+        internal_drift_json=$(printf '%s\n' "${INTERNAL_DRIFT_FILES[@]}" | jq -R . | jq -s .)
     fi
     jq -nc \
         --argjson drift "$DRIFT_DETECTED" \
@@ -103,14 +149,24 @@ if $JSON_MODE; then
         --argjson sha_lines "$SHA_LINE_COUNT" \
         --argjson manifest_modules "$MANIFEST_MODULE_COUNT" \
         --argjson index_modules "$INDEX_MODULE_COUNT" \
+        --argjson internal_checked "$INTERNAL_CHECKED" \
+        --argjson internal_drifted "$INTERNAL_DRIFT_COUNT" \
+        --argjson internal_drift_files "$internal_drift_json" \
         --argjson reasons "$reasons_json" \
         '{
             drift_detected: $drift,
-            actual_sha256: $actual,
-            recorded_sha256: $recorded,
-            sha256_line_count: $sha_lines,
-            manifest_modules: $manifest_modules,
-            index_modules: $index_modules,
+            manifest: {
+                actual_sha256: $actual,
+                recorded_sha256: $recorded,
+                sha256_line_count: $sha_lines,
+                manifest_modules: $manifest_modules,
+                index_modules: $index_modules
+            },
+            internal_scripts: {
+                checked: $internal_checked,
+                drifted: $internal_drifted,
+                drift_files: $internal_drift_files
+            },
             reasons: $reasons
         }'
 fi
@@ -146,16 +202,40 @@ if ! bun run generate 2>&1; then
     exit 2
 fi
 
-# Verify fix
+# Verify manifest fix
 NEW_RECORDED=$(grep -oP 'ACFS_MANIFEST_SHA256="\K[a-f0-9]+' "$INDEX" | head -1)
 ACTUAL_NOW=$(sha256sum "$MANIFEST" | awk '{print $1}')
 
 if [[ "$NEW_RECORDED" != "$ACTUAL_NOW" ]]; then
-    log_error "Regeneration did not fix the mismatch! recorded=$NEW_RECORDED actual=$ACTUAL_NOW"
+    log_error "Regeneration did not fix manifest mismatch! recorded=$NEW_RECORDED actual=$ACTUAL_NOW"
     exit 2
 fi
 
-log "Regeneration successful. SHA256 now matches: $ACTUAL_NOW"
+log "Manifest SHA256 now matches: $ACTUAL_NOW"
+
+# Verify internal checksums fix (if file was regenerated)
+if [[ -f "$INTERNAL_CHECKSUMS_FILE" ]] && [[ "$INTERNAL_DRIFT_COUNT" -gt 0 ]]; then
+    log "Verifying internal script checksums after regeneration..."
+    unset ACFS_INTERNAL_CHECKSUMS
+    source "$INTERNAL_CHECKSUMS_FILE"
+    post_fix_drift=0
+    for rel_path in "${!ACFS_INTERNAL_CHECKSUMS[@]}"; do
+        expected="${ACFS_INTERNAL_CHECKSUMS[$rel_path]}"
+        abs_path="$REPO_ROOT/$rel_path"
+        if [[ -f "$abs_path" ]]; then
+            actual=$(sha256sum "$abs_path" | awk '{print $1}')
+            if [[ "$actual" != "$expected" ]]; then
+                post_fix_drift=$((post_fix_drift + 1))
+                log_error "Still drifted after fix: $rel_path"
+            fi
+        fi
+    done
+    if [[ "$post_fix_drift" -gt 0 ]]; then
+        log_error "Internal checksum drift persists after regeneration ($post_fix_drift files)"
+        exit 2
+    fi
+    log "Internal script checksums verified clean after regeneration"
+fi
 
 # Commit and push
 cd "$REPO_ROOT"
