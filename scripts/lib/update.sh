@@ -1843,13 +1843,13 @@ update_omz() {
     # Set DISABLE_UPDATE_PROMPT to avoid interactive prompts
     local upgrade_script="$omz_dir/tools/upgrade.sh"
     if [[ -x "$upgrade_script" ]]; then
-        run_cmd "Oh-My-Zsh upgrade" env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" "$upgrade_script"
+        run_cmd "Oh-My-Zsh upgrade" timeout 120 env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" "$upgrade_script"
     elif [[ -f "$upgrade_script" ]]; then
-        run_cmd "Oh-My-Zsh upgrade" env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" bash "$upgrade_script"
+        run_cmd "Oh-My-Zsh upgrade" timeout 120 env DISABLE_UPDATE_PROMPT=true ZSH="$omz_dir" bash "$upgrade_script"
     else
         # Fallback to git pull
         if [[ -d "$omz_dir/.git" ]]; then
-            run_cmd "Oh-My-Zsh (git pull)" git -C "$omz_dir" pull --ff-only
+            run_cmd "Oh-My-Zsh (git pull)" timeout 60 git -C "$omz_dir" pull --ff-only
         else
             log_item "skip" "Oh-My-Zsh" "no upgrade mechanism found"
             return 0
@@ -1881,7 +1881,7 @@ update_p10k() {
     # Use --ff-only to avoid merge conflicts
     local output=""
     local exit_code=0
-    output=$(git -C "$p10k_dir" pull --ff-only 2>&1) || exit_code=$?
+    output=$(timeout 60 git -C "$p10k_dir" pull --ff-only 2>&1) || exit_code=$?
 
     if [[ $exit_code -eq 0 ]]; then
         if capture_version_after "p10k"; then
@@ -1933,7 +1933,7 @@ update_zsh_plugins() {
 
         local output=""
         local exit_code=0
-        output=$(git -C "$plugin_dir" pull --ff-only 2>&1) || exit_code=$?
+        output=$(timeout 60 git -C "$plugin_dir" pull --ff-only 2>&1) || exit_code=$?
 
         if [[ $exit_code -eq 0 ]]; then
             if ! echo "$output" | grep -q "Already up to date"; then
