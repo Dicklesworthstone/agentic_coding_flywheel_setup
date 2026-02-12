@@ -1552,6 +1552,9 @@ run_deep_checks() {
     # Network health checks (bead bd-31ps.7.2)
     deep_check_network
 
+    # Notification (ntfy.sh) connectivity check (GitHub issue #131)
+    deep_check_notifications
+
     # Calculate deep check specific counts
     DEEP_PASS_COUNT=$((PASS_COUNT - pre_pass))
     DEEP_WARN_COUNT=$((WARN_COUNT - pre_warn))
@@ -2050,6 +2053,61 @@ check_network_apt_mirror() {
         check "deep.network.apt_mirror" "APT mirror" "warn" "$mirror_host unreachable" "Check /etc/apt/sources.list or network"
     else
         check "deep.network.apt_mirror" "APT mirror" "warn" "HTTP $http_status from $mirror_host" "May need to switch mirrors"
+    fi
+}
+
+# deep_check_notifications - Verify ntfy.sh notification configuration and connectivity
+# Related: GitHub issue #131
+deep_check_notifications() {
+    local config_file="${HOME}/.config/acfs/config.yaml"
+    local enabled="" topic="" server=""
+
+    # Read config (same logic as notify.sh)
+    if [[ -f "$config_file" ]]; then
+        enabled=$(grep -E '^\s*ntfy_enabled\s*:' "$config_file" 2>/dev/null | head -1 | \
+                  sed -E 's/^\s*ntfy_enabled\s*:\s*//; s/^["'"'"']//; s/["'"'"']$//' | \
+                  sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)
+        topic=$(grep -E '^\s*ntfy_topic\s*:' "$config_file" 2>/dev/null | head -1 | \
+                sed -E 's/^\s*ntfy_topic\s*:\s*//; s/^["'"'"']//; s/["'"'"']$//' | \
+                sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)
+        server=$(grep -E '^\s*ntfy_server\s*:' "$config_file" 2>/dev/null | head -1 | \
+                 sed -E 's/^\s*ntfy_server\s*:\s*//; s/^["'"'"']//; s/["'"'"']$//' | \
+                 sed 's/^[[:space:]]*//; s/[[:space:]]*$//' || true)
+    fi
+
+    # Allow env overrides
+    enabled="${ACFS_NTFY_ENABLED:-$enabled}"
+    topic="${ACFS_NTFY_TOPIC:-$topic}"
+    server="${ACFS_NTFY_SERVER:-$server}"
+    server="${server:-https://ntfy.sh}"
+
+    # Check configuration state
+    if [[ "$enabled" != "true" ]]; then
+        check "deep.notifications.ntfy" "ntfy.sh notifications" "warn" "not enabled" "acfs notifications enable"
+        return
+    fi
+
+    if [[ -z "$topic" ]]; then
+        check "deep.notifications.ntfy" "ntfy.sh notifications" "warn" "enabled but no topic set" "acfs notifications enable"
+        return
+    fi
+
+    # Topic and enabled are set -- test server connectivity
+    if ! command -v curl &>/dev/null; then
+        check "deep.notifications.ntfy" "ntfy.sh notifications" "warn" "curl not available" "apt install curl"
+        return
+    fi
+
+    # HEAD request against the server health endpoint (lightweight)
+    local http_code
+    http_code=$(curl -sL --max-time 5 --connect-timeout 3 -o /dev/null -w "%{http_code}" "${server}/v1/health" 2>/dev/null) || http_code="000"
+
+    if [[ "$http_code" =~ ^2 ]]; then
+        check "deep.notifications.ntfy" "ntfy.sh notifications" "pass" "enabled, server reachable (${server})"
+    elif [[ "$http_code" == "000" ]]; then
+        check "deep.notifications.ntfy" "ntfy.sh notifications" "warn" "server unreachable (${server})" "Check network or acfs notifications set-server <url>"
+    else
+        check "deep.notifications.ntfy" "ntfy.sh notifications" "warn" "server returned HTTP ${http_code}" "Check server URL: ${server}"
     fi
 }
 
