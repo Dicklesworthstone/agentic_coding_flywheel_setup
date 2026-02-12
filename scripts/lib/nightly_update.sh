@@ -35,6 +35,21 @@ log "=== ACFS Nightly Update starting ==="
 log "Date: $(date)"
 log "Host: $(hostname)"
 
+# ── Source notification library (best-effort, non-fatal) ─────
+_ACFS_NOTIFY_LIB=""
+for _candidate in \
+    "$HOME/.acfs/scripts/lib/notify.sh" \
+    "/data/projects/agentic_coding_flywheel_setup/scripts/lib/notify.sh"; do
+    if [[ -f "$_candidate" ]]; then
+        _ACFS_NOTIFY_LIB="$_candidate"
+        break
+    fi
+done
+if [[ -n "$_ACFS_NOTIFY_LIB" ]]; then
+    # shellcheck source=scripts/lib/notify.sh
+    source "$_ACFS_NOTIFY_LIB" 2>/dev/null || true
+fi
+
 # ── Pre-flight 1: Load average check ──────────────────────
 NPROC="$(nproc)"
 LOAD_5MIN="$(awk '{print $2}' /proc/loadavg)"
@@ -137,8 +152,14 @@ set -e
 log "---"
 if [[ "$UPDATE_RC" -eq 0 ]]; then
     log "=== Nightly update completed successfully ==="
+    if type -t acfs_notify_update_success &>/dev/null; then
+        acfs_notify_update_success 2>/dev/null || true
+    fi
 else
     log "=== Nightly update finished with exit code $UPDATE_RC ==="
+    if type -t acfs_notify_update_failure &>/dev/null; then
+        acfs_notify_update_failure "exit code $UPDATE_RC" 2>/dev/null || true
+    fi
 fi
 
 exit "$UPDATE_RC"

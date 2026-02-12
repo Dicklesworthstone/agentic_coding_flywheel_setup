@@ -158,7 +158,7 @@ cmd_test() {
 }
 
 cmd_status() {
-    local enabled topic server
+    local enabled topic server priority
 
     if [[ ! -f "$ACFS_CONFIG_FILE" ]]; then
         echo "Notifications: not configured"
@@ -172,10 +172,13 @@ cmd_status() {
     topic=$(_notif_config_read "ntfy_topic")
     server=$(_notif_config_read "ntfy_server")
     server="${server:-$ACFS_NTFY_SERVER_DEFAULT}"
+    priority=$(_notif_config_read "ntfy_priority")
+    priority="${priority:-default}"
 
     echo "Notifications: ${enabled:-not set}"
     echo "Topic:         ${topic:-not set}"
     echo "Server:        ${server}"
+    echo "Priority:      ${priority}"
     echo "Config file:   ${ACFS_CONFIG_FILE}"
 
     if [[ "$enabled" == "true" ]] && [[ -n "$topic" ]]; then
@@ -228,6 +231,106 @@ cmd_set_server() {
     fi
 }
 
+cmd_set_priority() {
+    local new_priority="${1:-}"
+
+    if [[ -z "$new_priority" ]]; then
+        echo "Usage: acfs notifications set-priority <priority>"
+        echo "Options: min, low, default, high, urgent (or 1-5)"
+        return 1
+    fi
+
+    # Validate priority
+    case "$new_priority" in
+        min|low|default|high|urgent|1|2|3|4|5)
+            ;;
+        *)
+            echo "Error: Invalid priority '$new_priority'"
+            echo "Options: min, low, default, high, urgent (or 1-5)"
+            return 1
+            ;;
+    esac
+
+    _notif_config_write "ntfy_priority" "$new_priority"
+    echo "Default notification priority set to: ${new_priority}"
+}
+
+cmd_set_topic() {
+    local new_topic="${1:-}"
+
+    if [[ -z "$new_topic" ]]; then
+        echo "Usage: acfs notifications set-topic <topic>"
+        echo "Example: acfs notifications set-topic acfs-myserver-secret123"
+        return 1
+    fi
+
+    _notif_config_write "ntfy_topic" "$new_topic"
+    echo "ntfy topic set to: ${new_topic}"
+
+    local server
+    server=$(_notif_config_read "ntfy_server")
+    server="${server:-$ACFS_NTFY_SERVER_DEFAULT}"
+    echo "Subscribe URL: ${server}/${new_topic}"
+}
+
+cmd_send() {
+    local title="${1:-}"
+    local body="${2:-}"
+    local priority="${3:-}"
+
+    if [[ -z "$title" ]]; then
+        echo "Usage: acfs notifications send <title> [body] [priority]"
+        echo ""
+        echo "Send an ad-hoc notification via ntfy.sh."
+        echo ""
+        echo "Examples:"
+        echo "  acfs notifications send 'Build done' 'All tests passed'"
+        echo "  acfs notifications send 'Deploy failed' 'See logs' high"
+        return 1
+    fi
+
+    local enabled
+    enabled=$(_notif_config_read "ntfy_enabled")
+    if [[ "$enabled" != "true" ]]; then
+        echo "Notifications are not enabled. Run 'acfs notifications enable' first."
+        return 1
+    fi
+
+    local topic server
+    topic=$(_notif_config_read "ntfy_topic")
+    server=$(_notif_config_read "ntfy_server")
+    server="${server:-$ACFS_NTFY_SERVER_DEFAULT}"
+
+    if [[ -z "$topic" ]]; then
+        echo "Error: No topic configured. Run 'acfs notifications enable' first."
+        return 1
+    fi
+
+    # Resolve priority (arg > config > default)
+    if [[ -z "$priority" ]]; then
+        priority=$(_notif_config_read "ntfy_priority")
+    fi
+    priority="${priority:-default}"
+
+    echo "Sending notification to ${server}/${topic} ..."
+
+    local http_code
+    http_code=$(curl -s -o /dev/null -w '%{http_code}' \
+        --max-time 10 \
+        -H "Title: ${title}" \
+        -H "Priority: ${priority}" \
+        -H "Tags: computer,acfs" \
+        -d "${body:-$title}" \
+        "${server}/${topic}" 2>/dev/null) || http_code="000"
+
+    if [[ "$http_code" =~ ^2 ]]; then
+        echo "Notification sent (HTTP ${http_code})."
+    else
+        echo "Failed to send notification (HTTP ${http_code})."
+        return 1
+    fi
+}
+
 # ============================================================
 # Usage / Help
 # ============================================================
@@ -237,20 +340,45 @@ show_help() {
     echo ""
     echo "Usage: acfs notifications <command>"
     echo ""
-    echo "Commands:"
-    echo "  enable          Enable notifications (generates random topic)"
-    echo "  disable         Disable notifications"
-    echo "  test            Send a test notification"
-    echo "  status          Show current notification config"
-    echo "  topic           Print the subscribe URL"
-    echo "  set-server URL  Use a custom ntfy server"
+    echo "Setup:"
+    echo "  enable              Enable notifications (generates random topic)"
+    echo "  disable             Disable notifications"
+    echo "  status              Show current notification config"
+    echo ""
+    echo "Configuration:"
+    echo "  set-server URL      Use a custom ntfy server"
+    echo "  set-topic TOPIC     Set a custom topic name"
+    echo "  set-priority PRIO   Set default priority (min/low/default/high/urgent)"
+    echo "  topic               Print the subscribe URL"
+    echo ""
+    echo "Actions:"
+    echo "  test                Send a test notification"
+    echo "  send TITLE [BODY] [PRIORITY]   Send a custom notification"
     echo ""
     echo "Config: ${ACFS_CONFIG_FILE}"
     echo ""
     echo "How it works:"
     echo "  1. Run 'acfs notifications enable'"
     echo "  2. Subscribe to the topic URL on your phone (ntfy app) or browser"
-    echo "  3. ACFS will send notifications for install success/failure, etc."
+    echo "  3. ACFS sends notifications for:"
+    echo "     - Install success/failure"
+    echo "     - Agent task completion/failure"
+    echo "     - Human attention needed (urgent)"
+    echo "     - Nightly update results"
+    echo ""
+    echo "Scripting (source scripts/lib/notify.sh):"
+    echo "  acfs_notify <title> [body] [priority] [tags]"
+    echo "  acfs_notify_task_complete <task> [agent] [detail]"
+    echo "  acfs_notify_task_failed <task> [error] [agent]"
+    echo "  acfs_notify_human_needed <reason> [context] [agent]"
+    echo "  acfs_notify_debounced <key> <title> [body] [priority] [tags]"
+    echo ""
+    echo "Environment overrides:"
+    echo "  ACFS_NTFY_ENABLED=true|false"
+    echo "  ACFS_NTFY_TOPIC=<topic>"
+    echo "  ACFS_NTFY_SERVER=<url>"
+    echo "  ACFS_NTFY_PRIORITY=<priority>"
+    echo "  ACFS_NTFY_DEBOUNCE_SECONDS=<seconds>  (default: 30)"
 }
 
 # ============================================================
@@ -279,6 +407,15 @@ main() {
             ;;
         set-server)
             cmd_set_server "$@"
+            ;;
+        set-priority)
+            cmd_set_priority "$@"
+            ;;
+        set-topic)
+            cmd_set_topic "$@"
+            ;;
+        send)
+            cmd_send "$@"
             ;;
         help|-h|--help)
             show_help
