@@ -1694,6 +1694,12 @@ update_stack() {
         return 0
     fi
 
+    # Brenner Bot - MUST run BEFORE individual tool installs (NTM, CASS, CM, etc.)
+    # because Brenner Bot's installer bundles and pins its own copies of these tools
+    # at older versions. By running it first, its pinned deps get laid down, then the
+    # individual tool updates below bring them to the latest versions.
+    run_cmd "Brenner Bot" update_run_verified_installer brenner_bot
+
     # NTM - always install/update (installer is idempotent)
     run_cmd "NTM" update_run_verified_installer ntm
 
@@ -1814,9 +1820,6 @@ update_stack() {
 
     # S2P (Source to Prompt TUI) - always install/update
     run_cmd "S2P" update_run_verified_installer s2p
-
-    # Brenner Bot - always install/update
-    run_cmd "Brenner Bot" update_run_verified_installer brenner_bot
 }
 
 # ============================================================

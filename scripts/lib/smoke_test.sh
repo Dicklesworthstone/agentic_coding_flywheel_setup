@@ -24,7 +24,13 @@ WARNING_COUNT=0
 
 # Target user (from install.sh or default)
 TARGET_USER="${TARGET_USER:-ubuntu}"
-TARGET_HOME="${TARGET_HOME:-/home/$TARGET_USER}"
+if [[ -z "${TARGET_HOME:-}" ]]; then
+    if [[ "${TARGET_USER}" == "root" ]]; then
+        TARGET_HOME="/root"
+    else
+        TARGET_HOME="/home/$TARGET_USER"
+    fi
+fi
 
 # ============================================================
 # Output Helpers
