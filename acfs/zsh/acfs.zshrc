@@ -155,7 +155,7 @@ alias install='sudo apt install'
 alias search='apt search'
 
 # Update agent CLIs
-alias uca='(curl -fsSL https://claude.ai/install.sh | bash -s -- latest) && (bun install -g --trust @openai/codex@latest || bun install -g --trust @openai/codex) && bun install -g --trust @google/gemini-cli@latest'
+alias uca='(curl -fsSL https://claude.ai/install.sh | bash -s -- latest) && ("$HOME/.bun/bin/bun" install -g --trust @openai/codex@latest || "$HOME/.bun/bin/bun" install -g --trust @openai/codex) && "$HOME/.bun/bin/bun" install -g --trust @google/gemini-cli@latest && curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh | bash'
 
 # --- Custom functions ---
 mkcd() { mkdir -p "$1" && cd "$1" || return; }
@@ -467,7 +467,16 @@ fi
 # --- Agent aliases (dangerously enabled by design) ---
 alias cc='NODE_OPTIONS="--max-old-space-size=32768" ~/.local/bin/claude --dangerously-skip-permissions'
 alias cod='codex --dangerously-bypass-approvals-and-sandbox'
-alias gmi='gemini --yolo'
+
+# gmi: update gemini-cli via bun, apply patches, then launch (hardcoded bun path to avoid npm hijacking)
+gmi() {
+  echo "▶ Updating gemini-cli to latest..."
+  "$HOME/.bun/bin/bun" install -g --trust @google/gemini-cli@latest 2>&1 | tail -1
+  echo "▶ Applying patches..."
+  curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh | bash
+  echo "▶ Launching gemini..."
+  "$HOME/.bun/bin/gemini" --yolo "$@"
+}
 
 # bun project helpers (common)
 alias bdev='bun run dev'
