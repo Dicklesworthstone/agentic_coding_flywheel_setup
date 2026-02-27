@@ -37,16 +37,11 @@ function sanitizeGaMeasurementId(value: unknown): string | undefined {
   // that can appear from misconfigured env vars or Vercel CLI pulls.
   cleaned = cleaned.replace(/\\n$/, '').replace(/\s+$/, '');
 
-  // Extract valid GA4 measurement ID (G-XXXXXXXXXX) or legacy UA format.
+  // Extract valid GA4 measurement ID (G-XXXXXXXXXX).
   // Use extraction rather than strict matching to handle any remaining edge cases.
   const ga4Match = cleaned.match(/^(G-[A-Z0-9]+)/i);
   if (ga4Match) {
     return ga4Match[1];
-  }
-
-  const uaMatch = cleaned.match(/^(UA-\d+-\d+)/i);
-  if (uaMatch) {
-    return uaMatch[1];
   }
 
   return undefined;
@@ -457,13 +452,18 @@ export const trackPagePerformance = (): void => {
 
   if (!timing) return;
 
+  const safeTimingMetric = (value: number): number => {
+    if (!Number.isFinite(value) || value < 0) return 0;
+    return Math.round(value);
+  };
+
   sendEvent('page_performance', {
-    dns_lookup_ms: Math.round(timing.domainLookupEnd - timing.domainLookupStart),
-    tcp_connect_ms: Math.round(timing.connectEnd - timing.connectStart),
-    ttfb_ms: Math.round(timing.responseStart - timing.requestStart),
-    dom_interactive_ms: Math.round(timing.domInteractive - timing.startTime),
-    dom_complete_ms: Math.round(timing.domComplete - timing.startTime),
-    load_complete_ms: Math.round(timing.loadEventEnd - timing.startTime),
+    dns_lookup_ms: safeTimingMetric(timing.domainLookupEnd - timing.domainLookupStart),
+    tcp_connect_ms: safeTimingMetric(timing.connectEnd - timing.connectStart),
+    ttfb_ms: safeTimingMetric(timing.responseStart - timing.requestStart),
+    dom_interactive_ms: safeTimingMetric(timing.domInteractive - timing.startTime),
+    dom_complete_ms: safeTimingMetric(timing.domComplete - timing.startTime),
+    load_complete_ms: safeTimingMetric(timing.loadEventEnd - timing.startTime),
   });
 };
 
@@ -781,6 +781,14 @@ interface FunnelData {
   campaign: string;
 }
 
+function getElapsedSecondsSince(timestampIso: string | undefined): number | undefined {
+  if (!timestampIso) return undefined;
+  const start = new Date(timestampIso).getTime();
+  if (!Number.isFinite(start)) return undefined;
+  const elapsedSeconds = Math.round((Date.now() - start) / 1000);
+  return elapsedSeconds >= 0 ? elapsedSeconds : 0;
+}
+
 /**
  * Get or initialize funnel tracking data
  */
@@ -873,9 +881,10 @@ export const trackFunnelStepEnter = (
 
   // Calculate time from previous step
   let timeFromPreviousStep: number | undefined;
-  if (previousStep > 0 && funnelData.stepTimestamps[previousStep]?.entered) {
-    const prevTime = new Date(funnelData.stepTimestamps[previousStep].entered).getTime();
-    timeFromPreviousStep = Math.round((Date.now() - prevTime) / 1000);
+  if (previousStep > 0) {
+    timeFromPreviousStep = getElapsedSecondsSince(
+      funnelData.stepTimestamps[previousStep]?.entered
+    );
   }
 
   // Track the funnel step entry
@@ -889,7 +898,7 @@ export const trackFunnelStepEnter = (
     max_step_reached: funnelData.maxStepReached,
     time_from_previous_step_seconds: timeFromPreviousStep,
     total_steps: TOTAL_STEPS,
-    progress_percentage: Math.round((stepNumber / TOTAL_STEPS) * 100),
+    progress_percentage: TOTAL_STEPS > 0 ? Math.round((stepNumber / TOTAL_STEPS) * 100) : 0,
     is_returning: !isNewMaxStep && stepNumber <= funnelData.maxStepReached,
   });
 
@@ -933,11 +942,7 @@ export const trackFunnelStepComplete = (
   const now = new Date().toISOString();
 
   // Calculate time spent on step
-  let timeOnStep: number | undefined;
-  if (funnelData.stepTimestamps[stepNumber]?.entered) {
-    const enterTime = new Date(funnelData.stepTimestamps[stepNumber].entered).getTime();
-    timeOnStep = Math.round((Date.now() - enterTime) / 1000);
-  }
+  const timeOnStep = getElapsedSecondsSince(funnelData.stepTimestamps[stepNumber]?.entered);
 
   // Update funnel data
   if (!funnelData.completedSteps.includes(stepNumber)) {
@@ -959,7 +964,8 @@ export const trackFunnelStepComplete = (
     time_on_step_seconds: timeOnStep,
     completed_steps_count: funnelData.completedSteps.length,
     total_steps: TOTAL_STEPS,
-    completion_percentage: Math.round((funnelData.completedSteps.length / TOTAL_STEPS) * 100),
+    completion_percentage:
+      TOTAL_STEPS > 0 ? Math.round((funnelData.completedSteps.length / TOTAL_STEPS) * 100) : 0,
     ...additionalData,
   });
 
@@ -982,8 +988,7 @@ export const trackFunnelComplete = (): void => {
   const funnelData = getFunnelData();
   if (!funnelData) return;
 
-  const startTime = new Date(funnelData.startedAt).getTime();
-  const totalTimeSeconds = Math.round((Date.now() - startTime) / 1000);
+  const totalTimeSeconds = getElapsedSecondsSince(funnelData.startedAt) ?? 0;
   const totalTimeMinutes = Math.round(totalTimeSeconds / 60);
 
   sendEvent('funnel_complete', {
@@ -1016,15 +1021,12 @@ export const trackFunnelDropoff = (reason?: string): void => {
   const funnelData = getFunnelData();
   if (!funnelData || funnelData.completedSteps.includes(TOTAL_STEPS)) return;
 
-  const startTime = new Date(funnelData.startedAt).getTime();
-  const totalTimeSeconds = Math.round((Date.now() - startTime) / 1000);
+  const totalTimeSeconds = getElapsedSecondsSince(funnelData.startedAt) ?? 0;
 
   // Calculate time on current step
-  let timeOnCurrentStep: number | undefined;
-  if (funnelData.stepTimestamps[funnelData.currentStep]?.entered) {
-    const enterTime = new Date(funnelData.stepTimestamps[funnelData.currentStep].entered).getTime();
-    timeOnCurrentStep = Math.round((Date.now() - enterTime) / 1000);
-  }
+  const timeOnCurrentStep = getElapsedSecondsSince(
+    funnelData.stepTimestamps[funnelData.currentStep]?.entered
+  );
 
   sendEvent('funnel_dropoff', {
     funnel_id: funnelData.sessionId,
@@ -1052,9 +1054,9 @@ export const trackLandingCTA = (
     page_scroll_depth: typeof window !== 'undefined'
       ? (() => {
           const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
-          return scrollableHeight > 0
-            ? Math.round((window.scrollY / scrollableHeight) * 100)
-            : 0;
+          if (scrollableHeight <= 0) return 0;
+          const depth = Math.round((window.scrollY / scrollableHeight) * 100);
+          return Math.max(0, Math.min(100, depth));
         })()
       : 0,
   });

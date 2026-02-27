@@ -31,8 +31,18 @@ function sanitizeGaMeasurementId(value: unknown): string | undefined {
 
 function sanitizeGaApiSecret(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  // Remove trailing escaped newlines from Vercel CLI pulls
-  const cleaned = value.trim().replace(/\\n$/, '');
+  let cleaned = value.trim();
+  if (!cleaned) return undefined;
+
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+
+  // Remove trailing escaped newlines from Vercel CLI pulls.
+  cleaned = cleaned.replace(/\\n$/, '').replace(/\s+$/, '');
   if (!cleaned || cleaned.length > 200) return undefined;
   return cleaned;
 }
@@ -61,10 +71,30 @@ class PayloadTooLargeError extends Error {
 }
 
 async function readJsonBodyWithLimit(request: NextRequest): Promise<unknown> {
+  const declaredLengthRaw = request.headers.get('content-length');
+  if (declaredLengthRaw) {
+    const declaredLength = Number(declaredLengthRaw);
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+      throw new PayloadTooLargeError();
+    }
+  }
+
   const reader = request.body?.getReader();
   if (!reader) {
-    // Fall back to the built-in helper when the body stream isn't available.
-    return request.json();
+    // Fall back to reading text when the body stream isn't available.
+    // Keep the hard cap enforcement in this path as well.
+    const text = await request.text();
+    const bodySizeBytes = new TextEncoder().encode(text).byteLength;
+    if (bodySizeBytes > MAX_REQUEST_BODY_BYTES) {
+      throw new PayloadTooLargeError();
+    }
+
+    try {
+      return JSON.parse(text) as unknown;
+    } catch (error) {
+      // Normalize error handling at the call site (e.g., SyntaxError -> 400).
+      throw error;
+    }
   }
 
   const decoder = new TextDecoder();
@@ -159,21 +189,44 @@ function normalizeIP(raw: string): string {
   return 'unknown';
 }
 
-function getClientIP(request: NextRequest): string {
+function getClientRateLimitKey(request: NextRequest): string {
   const requestIP = (request as unknown as { ip?: string }).ip;
   const forwardedFor =
     request.headers.get('x-vercel-forwarded-for') ||
     request.headers.get('x-forwarded-for');
-
-  return (
-    normalizeIP(
-      requestIP ||
-        forwardedFor?.split(',')[0]?.trim() ||
-        request.headers.get('cf-connecting-ip') ||
-        request.headers.get('x-real-ip') ||
-        ''
-    ) || 'unknown'
+  const normalizedIP = normalizeIP(
+    requestIP ||
+      forwardedFor?.split(',')[0]?.trim() ||
+      request.headers.get('cf-connecting-ip') ||
+      request.headers.get('x-real-ip') ||
+      ''
   );
+
+  if (normalizedIP !== 'unknown') return normalizedIP;
+
+  // Avoid globally shared "unknown" bucket throttling unrelated users.
+  // Use coarse request fingerprinting when no trusted IP is available.
+  const ipHint = (
+    requestIP ||
+    forwardedFor ||
+    request.headers.get('cf-connecting-ip') ||
+    request.headers.get('x-real-ip') ||
+    ''
+  )
+    .trim()
+    .slice(0, 120);
+  const userAgent = (request.headers.get('user-agent') || '').slice(0, 240);
+  const acceptLanguage = (request.headers.get('accept-language') || '').slice(0, 80);
+  const fallbackInput = `${ipHint}|${userAgent}|${acceptLanguage}`;
+  if (!fallbackInput.trim()) return 'unknown';
+
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < fallbackInput.length; i++) {
+    hash ^= fallbackInput.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+
+  return `unknown-${(hash >>> 0).toString(16)}`;
 }
 
 function isRateLimited(ip: string): boolean {
@@ -315,8 +368,8 @@ export async function POST(request: NextRequest) {
   }
 
   // Rate limiting
-  const clientIP = getClientIP(request);
-  if (isRateLimited(clientIP)) {
+  const rateLimitKey = getClientRateLimitKey(request);
+  if (isRateLimited(rateLimitKey)) {
     return NextResponse.json(
       { error: 'Rate limit exceeded' },
       {

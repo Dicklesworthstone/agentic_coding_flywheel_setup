@@ -147,6 +147,24 @@ export default function GlossaryPage() {
 
   // If the user lands on /glossary#some-key, scroll to it and open the entry.
   useEffect(() => {
+    const openByKey = (key: string): boolean => {
+      const target = document.getElementById(key);
+      if (!target) return false;
+
+      // Open the <details> element if the id is set on the wrapper.
+      if (target instanceof HTMLDetailsElement) {
+        target.open = true;
+      } else {
+        const details = target.closest("details");
+        if (details instanceof HTMLDetailsElement) {
+          details.open = true;
+        }
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      return true;
+    };
+
     const openFromHash = () => {
       const raw = window.location.hash.replace(/^#/, "");
       if (!raw) return;
@@ -157,24 +175,30 @@ export default function GlossaryPage() {
       } catch {
         return;
       }
-      const target = document.getElementById(key);
-      if (!target) return;
 
-      // Open the <details> element if the id is set on the wrapper.
-      if (target instanceof HTMLDetailsElement) {
-        target.open = true;
-      } else {
-        const details = target.closest("details");
-        if (details) details.open = true;
-      }
+      if (openByKey(key)) return;
 
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      const keyExists = entries.some((entry) => entry.key === key);
+      if (!keyExists) return;
+
+      const needsFilterReset = query.length > 0 || category !== "all";
+      if (!needsFilterReset) return;
+
+      setQuery("");
+      setCategory("all");
+
+      // Wait for filtered results to render, then retry opening target.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          openByKey(key);
+        });
+      });
     };
 
     openFromHash();
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
-  }, []);
+  }, [entries, query, category]);
 
   return (
     <div className="relative min-h-screen bg-background">
