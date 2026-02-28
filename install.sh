@@ -4302,6 +4302,23 @@ install_cloud_db_legacy_cloud() {
                 if try_step "Installing $cli via bun" run_as_target "$bun_bin" install -g --trust "${cli}@latest"; then
                     if [[ -x "$TARGET_HOME/.bun/bin/$cli" ]]; then
                         log_success "$cli installed"
+                        # Create a bun-based shim in ~/.local/bin for wrangler (issue #152).
+                        # wrangler installed via bun may fail at runtime if node is missing.
+                        # The shim uses `bun x` to run wrangler, avoiding the node dependency.
+                        if [[ "$cli" == "wrangler" ]] && ! command -v node &>/dev/null; then
+                            local shim_dir="$TARGET_HOME/.local/bin"
+                            mkdir -p "$shim_dir" 2>/dev/null || true
+                            if [[ ! -f "$shim_dir/wrangler" ]] || grep -q 'bun x wrangler' "$shim_dir/wrangler" 2>/dev/null; then
+                                cat > "$shim_dir/wrangler" <<'WRANGLER_SHIM'
+#!/usr/bin/env bash
+# Wrangler shim: uses bun to run wrangler when node is not available.
+# Created by ACFS installer (issue #152).
+exec "${HOME}/.bun/bin/bun" x wrangler@latest "$@"
+WRANGLER_SHIM
+                                chmod +x "$shim_dir/wrangler"
+                                log_detail "Created bun-based wrangler shim at $shim_dir/wrangler (node not found)"
+                            fi
+                        fi
                     else
                         log_warn "$cli: install finished but binary not found"
                     fi
@@ -5432,6 +5449,22 @@ main() {
     fi
 
     ensure_root
+
+    # Early dependency bootstrap (issue #152): on a truly fresh Ubuntu, jq and
+    # curl may be missing. Install them before anything else so that later phases
+    # (state management, JSON parsing, gum install) don't fail.
+    if [[ $EUID -eq 0 ]] || [[ -n "${SUDO:-}" ]]; then
+        local _need_early_apt=false
+        command -v curl &>/dev/null || _need_early_apt=true
+        command -v jq &>/dev/null   || _need_early_apt=true
+        command -v git &>/dev/null   || _need_early_apt=true
+        if [[ "$_need_early_apt" == "true" ]]; then
+            echo -e "${YELLOW}Installing minimal bootstrap dependencies (curl, jq, git)...${NC}" >&2
+            ${SUDO:-} apt-get update -qq 2>/dev/null || true
+            ${SUDO:-} apt-get install -y -qq curl jq git 2>/dev/null || true
+        fi
+    fi
+
     disable_needrestart_apt_hook  # Prevent apt hangs on Ubuntu 22.04+ (issue #70)
     validate_target_user
     init_target_paths

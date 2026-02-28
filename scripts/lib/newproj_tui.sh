@@ -425,12 +425,15 @@ read_text_input() {
                 --prompt.foreground "#89b4fa" \
                 --cursor.foreground "#cba6f7" 2>/dev/null) || true
         else
-            # Fallback to read
+            # Fallback to read from /dev/tty to avoid stdin conflicts
+            # from signal handlers or subshell capture (issue #153)
             if [[ -n "$default" ]]; then
-                read -r -p "$prompt [$default]: " input
+                echo -n "$prompt [$default]: "
+                read -r input < /dev/tty || true
                 [[ -z "$input" ]] && input="$default"
             else
-                read -r -p "$prompt: " input
+                echo -n "$prompt: "
+                read -r input < /dev/tty || true
             fi
         fi
 

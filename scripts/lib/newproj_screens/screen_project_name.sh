@@ -93,7 +93,9 @@ handle_project_name_input() {
             }
         else
             echo -n "Project name [$current_name]: "
-            read -r name
+            # Read from /dev/tty explicitly to avoid stdin conflicts
+            # from signal handlers or subshell capture (issue #153)
+            read -r name < /dev/tty || true
             [[ -z "$name" ]] && name="$current_name"
         fi
 

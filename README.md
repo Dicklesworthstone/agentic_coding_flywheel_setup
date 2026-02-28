@@ -636,7 +636,7 @@ acfs-update --yes --quiet    # Automated/CI mode with minimal output
 --cloud-only     Only update cloud CLIs
 --shell-only     Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
 --runtime-only   Only update runtimes (bun, rust, uv, go)
---stack          Include Dicklesworthstone stack (disabled by default)
+--stack          Include Dicklesworthstone stack (enabled by default)
 ```
 
 **Skip Categories:**
@@ -675,7 +675,7 @@ The installer transforms a fresh VPS. The update command maintains an existing i
 - **Focused updates**: Update just agents without touching system packages
 - **Dry-run previews**: See what would change before committing
 - **Skip flags**: Temporarily exclude categories that are working fine
-- **Stack control**: The full stack reinstallation is opt-in (it's slow)
+- **Stack control**: Stack updates are included by default; skip with `--no-stack`
 - **Automated updates**: Run via cron with `--yes --quiet`
 
 ---
@@ -1268,7 +1268,7 @@ The complete suite of tools for professional agentic workflows:
 | # | Tool | Command | Description |
 |---|------|---------|-------------|
 | 1 | **Named Tmux Manager** | `ntm` | Agent cockpit—spawn, orchestrate, monitor tmux sessions |
-| 2 | **MCP Agent Mail** | - | Agent coordination via mail-like messaging |
+| 2 | **MCP Agent Mail** | `am` | Agent coordination via mail-like messaging (Rust binary) |
 | 3 | **Ultimate Bug Scanner** | `ubs` | Bug scanning with guardrails |
 | 4 | **Beads Viewer** | `bv` | Task management TUI with graph analysis |
 | 5 | **Coding Agent Session Search** | `cass` | Unified agent history search |

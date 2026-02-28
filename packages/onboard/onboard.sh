@@ -840,15 +840,18 @@ show_menu_gum() {
     items+=("👋 [q] Quit")
 
     # Show menu with gum using Catppuccin colors
-    local choice
+    local choice=""
     choice=$(printf '%s\n' "${items[@]}" | gum choose \
         --cursor.foreground "$ACFS_ACCENT" \
         --selected.foreground "$ACFS_SUCCESS" \
         --header.foreground "$ACFS_PRIMARY" \
-        --header "Select a lesson:")
+        --header "Select a lesson:" 2>/dev/null) || true
 
     # Parse choice (handles single and double digit lesson numbers)
-    if [[ "$choice" =~ \[([0-9]+)\] ]]; then
+    # Empty choice (Esc or gum failure) is treated as "invalid" to redraw menu
+    if [[ -z "$choice" ]]; then
+        echo "invalid"
+    elif [[ "$choice" =~ \[([0-9]+)\] ]]; then
         echo "${BASH_REMATCH[1]}"
     elif [[ "$choice" =~ \[a\] ]]; then
         echo "a"
@@ -892,15 +895,19 @@ show_menu_basic() {
     [[ "$all_complete" == "true" ]] && prompt_opts="1-${NUM_LESSONS}, a, r, s, t, q"
     read -rp "$(echo -e "${CYAN}Choose [$prompt_opts]:${NC} ")" choice
 
-    case "$choice" in
-        [1-9]|1[01]) echo "$choice" ;;
-        a|A) echo "a" ;;
-        r|R) echo "r" ;;
-        s|S) echo "s" ;;
-        t|T) echo "t" ;;
-        q|Q|"") echo "q" ;;
-        *) echo "invalid" ;;
-    esac
+    # Validate numeric choices against actual lesson count
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le "$NUM_LESSONS" ]]; then
+        echo "$choice"
+    else
+        case "$choice" in
+            a|A) echo "a" ;;
+            r|R) echo "r" ;;
+            s|S) echo "s" ;;
+            t|T) echo "t" ;;
+            q|Q|"") echo "q" ;;
+            *) echo "invalid" ;;
+        esac
+    fi
 }
 
 # Render markdown content
@@ -1075,7 +1082,7 @@ show_lesson() {
     if has_gum; then
         # Build progress dots
         local dots=""
-        for ((i = 0; i < 11; i++)); do
+        for ((i = 0; i < NUM_LESSONS; i++)); do
             if is_completed "$i"; then
                 dots+="$(gum style --foreground "$ACFS_SUCCESS" "●") "
             elif [[ $i -eq $idx ]]; then
@@ -1105,6 +1112,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
     echo ""
 
     # Navigation with gum
+    local last_idx=$((NUM_LESSONS - 1))
     if has_gum; then
         gum style --foreground "$ACFS_MUTED" "─────────────────────────────────────────"
 
@@ -1112,14 +1120,19 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
         local -a nav_items=()
         nav_items+=("📋 [m] Menu")
         [[ $idx -gt 0 ]] && nav_items+=("⬅️  [p] Previous")
-        [[ $idx -lt 10 ]] && nav_items+=("➡️  [n] Next")
+        [[ $idx -lt $last_idx ]] && nav_items+=("➡️  [n] Next")
         nav_items+=("✅ [c] Mark complete")
         nav_items+=("👋 [q] Quit")
 
-        local action
+        local action=""
         action=$(printf '%s\n' "${nav_items[@]}" | gum choose \
             --cursor.foreground "$ACFS_ACCENT" \
-            --selected.foreground "$ACFS_SUCCESS")
+            --selected.foreground "$ACFS_SUCCESS" 2>/dev/null) || true
+
+        # Handle empty action (Esc pressed or gum failed) -> return to menu
+        if [[ -z "$action" ]]; then
+            return 0
+        fi
 
         case "$action" in
             *"[m]"*) return 0 ;;
@@ -1131,7 +1144,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                 fi
                 ;;
             *"[n]"*)
-                if [[ $idx -lt 10 ]]; then
+                if [[ $idx -lt $last_idx ]]; then
                     set_current $((idx + 1))
                     show_lesson $((idx + 1))
                     return $?
@@ -1140,7 +1153,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
             *"[c]"*)
                 mark_completed "$idx"
                 show_celebration "$idx"
-                if [[ $idx -lt 10 ]]; then
+                if [[ $idx -lt $last_idx ]]; then
                     show_lesson $((idx + 1))
                     return $?
                 else
@@ -1149,6 +1162,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                 fi
                 ;;
             *"[q]"*) exit 0 ;;
+            *) return 0 ;;  # Unknown action -> back to menu
         esac
     else
         echo -e "${DIM}─────────────────────────────────────────${NC}"
@@ -1158,7 +1172,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
         if [[ $idx -gt 0 ]]; then
             nav_options+="  [p] Previous"
         fi
-        if [[ $idx -lt 10 ]]; then
+        if [[ $idx -lt $last_idx ]]; then
             nav_options+="  [n] Next"
         fi
         nav_options+="  [c] Mark complete  [q] Quit"
@@ -1178,7 +1192,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                     fi
                     ;;
                 n|N)
-                    if [[ $idx -lt 10 ]]; then
+                    if [[ $idx -lt $last_idx ]]; then
                         set_current $((idx + 1))
                         show_lesson $((idx + 1))
                         return $?
@@ -1187,7 +1201,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                 c|C)
                     mark_completed "$idx"
                     show_celebration "$idx"
-                    if [[ $idx -lt 10 ]]; then
+                    if [[ $idx -lt $last_idx ]]; then
                         show_lesson $((idx + 1))
                         return $?
                     else
@@ -1316,10 +1330,13 @@ main_menu() {
         fi
 
         case "$choice" in
-            [1-9]|1[01])
-                local idx=$((choice - 1))
-                set_current "$idx"
-                show_lesson "$idx"
+            [0-9]|[0-9][0-9])
+                # Validate the lesson number is within range
+                if [[ "$choice" -ge 1 ]] && [[ "$choice" -le "$NUM_LESSONS" ]]; then
+                    local idx=$((choice - 1))
+                    set_current "$idx"
+                    show_lesson "$idx"
+                fi
                 ;;
             a)
                 show_auth_flow
@@ -1422,10 +1439,15 @@ EOF
         init_progress
         main_menu
         ;;
-    [1-9]|1[01])
-        init_progress
-        idx=$(( $1 - 1 ))
-        show_lesson "$idx"
+    [0-9]|[0-9][0-9])
+        if [[ "$1" -ge 1 ]] && [[ "$1" -le "$NUM_LESSONS" ]]; then
+            init_progress
+            idx=$(( $1 - 1 ))
+            show_lesson "$idx"
+        else
+            echo "Lesson $1 out of range (1-$NUM_LESSONS)"
+            exit 1
+        fi
         ;;
     *)
         echo "Unknown command: $1"
