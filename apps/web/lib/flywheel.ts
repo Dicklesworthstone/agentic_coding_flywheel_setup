@@ -889,12 +889,11 @@ conflict type (dirty tree, diverged branches, auth failures).
 - Meaningful exit codes: 0=ok, 1=partial, 2=conflicts, 3=system, 4=bad args, 5=interrupted
 - Bulk import from GitHub/GitLab/Bitbucket/Gitea (ru import)
 - Orphan repo cleanup with ru prune`,
-    connectsTo: ["ntm", "mail", "bv", "gh"],
+    connectsTo: ["ntm", "mail", "bv"],
     connectionDescriptions: {
       ntm: "Uses ntm robot mode for AI-assisted reviews and agent sweep",
       mail: "Can coordinate repo claims across agents",
       bv: "Integrates with beads for multi-repo task tracking",
-      gh: "GraphQL API for batched issue/PR discovery",
     },
     stars: 78,
     features: [
@@ -1838,7 +1837,7 @@ export const flywheelDescription = {
   ],
   metrics: {
     totalStars: "2K+",
-    toolCount: 20,
+    toolCount: flywheelTools.length,
     languages: ["Go", "Rust", "TypeScript", "Python", "Bash"],
     avgInstallTime: "< 30s each",
     projectsSimultaneous: "8+",

@@ -63,6 +63,9 @@ describe('flywheelTools array', () => {
     const toolIds = new Set(flywheelTools.map((t) => t.id));
     for (const tool of flywheelTools) {
       for (const connectedId of tool.connectsTo) {
+        if (!toolIds.has(connectedId)) {
+          console.error(`Tool "${tool.id}" connects to invalid ID: "${connectedId}"`);
+        }
         expect(toolIds.has(connectedId)).toBe(true);
       }
     }
