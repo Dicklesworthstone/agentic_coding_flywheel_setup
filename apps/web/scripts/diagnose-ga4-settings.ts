@@ -50,7 +50,11 @@ async function checkPropertySettings(): Promise<void> {
     let createTimeStr = 'Unknown';
     if (createTime) {
       // Handle protobuf Timestamp object with seconds/nanos (seconds can be string or number)
-      if ('seconds' in createTime && createTime.seconds != null) {
+      if (
+        'seconds' in createTime &&
+        createTime.seconds !== null &&
+        createTime.seconds !== undefined
+      ) {
         const rawSeconds = createTime.seconds;
         const seconds: number = typeof rawSeconds === 'string'
           ? parseInt(rawSeconds, 10)

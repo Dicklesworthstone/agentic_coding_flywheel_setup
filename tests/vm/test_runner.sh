@@ -89,6 +89,27 @@ if [[ $failed_checks -gt 0 ]]; then
     fail "Verification phase failed"
 fi
 
+# PHASE 2.4: Optional Real Cross-Agent Resume E2E
+# Requires authenticated codex/claude/gemini accounts in the test environment.
+if [[ "${ACFS_RUN_REAL_AGENT_RESUME_E2E:-false}" == "true" ]]; then
+    log "PHASE 2.4: Real Cross-Agent Resume E2E"
+    REAL_RESUME_LOG="${ARTIFACTS_DIR}/cross_agent_resume.log"
+    if su - ubuntu -c "zsh -ic 'cd /repo && bash tests/e2e/test_cross_agent_resume_e2e.sh'" > "$REAL_RESUME_LOG" 2>&1; then
+        log "Real cross-agent resume E2E passed"
+    else
+        log "Real cross-agent resume E2E failed! See $REAL_RESUME_LOG"
+        cat "$REAL_RESUME_LOG"
+        fail "Real cross-agent resume E2E failed"
+    fi
+
+    for f in /repo/tests/e2e/logs/cross_agent_resume_*; do
+        [[ -e "$f" ]] || continue
+        cp "$f" "$ARTIFACTS_DIR/" 2>/dev/null || true
+    done
+else
+    log "Skipping real cross-agent resume E2E (set ACFS_RUN_REAL_AGENT_RESUME_E2E=true)"
+fi
+
 # PHASE 2.5: Install Artifacts (bd-31ps.3.3)
 log "PHASE 2.5: Install Artifacts Validation"
 ARTIFACTS_LOG="${ARTIFACTS_DIR}/artifacts_test.log"

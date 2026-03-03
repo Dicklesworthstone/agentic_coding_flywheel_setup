@@ -78,6 +78,7 @@ bats tests/e2e/test_happy_path.bats
 | `test_happy_path.bats` | Normal successful workflow |
 | `test_terminal_compat.bats` | Different TERM types, unicode, colors |
 | `test_navigation.bats` | Back/forward, edit mode, error recovery |
+| `test_cross_agent_resume_e2e.sh` | Real non-mock cross-agent resume matrix (`codex`/`claude`/`gemini`), defaulting to cross-CLI checks; self-resume baseline is optional |
 
 #### Installing Expect
 
@@ -94,7 +95,16 @@ brew install expect
 ```bash
 # Run Docker-based installer test
 ./tests/vm/test_install_ubuntu.sh
+
+# Run real cross-agent resume matrix (requires authenticated CLI sessions)
+bash ./tests/e2e/test_cross_agent_resume_e2e.sh
+
+# Optional: include self-resume baseline diagnostics
+ACFS_INCLUDE_SELF_RESUME_BASELINE=true bash ./tests/e2e/test_cross_agent_resume_e2e.sh
 ```
+
+The cross-agent resume matrix writes detailed artifacts to `tests/e2e/logs/`.
+By default it treats cross-CLI session isolation as expected behavior; strict mode exits non-zero when foreign session-id continuity checks fail.
 
 ## Writing Tests
 
