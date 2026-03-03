@@ -114,7 +114,13 @@ get_section_content() {
             _section_issue_tracking
             ;;
         *)
-            echo ""
+            # Try to call custom section function
+            local custom_fn="_custom_section_${section_id}"
+            if declare -f "$custom_fn" >/dev/null; then
+                "$custom_fn" "$project_name"
+            else
+                echo ""
+            fi
             ;;
     esac
 }
@@ -803,17 +809,39 @@ validate_agents_md_file() {
 # ============================================================
 
 # Add a custom section to the registry
-# Usage: register_custom_section "section_id" "title" "content_function"
+# Usage: register_custom_section "section_id" "title" "content_function_name"
 register_custom_section() {
     local section_id="$1"
     local title="$2"
     local content_fn="$3"
 
+    # Validate section_id is safe for bash function names
+    if [[ ! "$section_id" =~ ^[a-zA-Z0-9_]+$ ]]; then
+        echo "ERROR: section_id must be alphanumeric and underscores only" >&2
+        return 1
+    fi
+
+    # Prevent duplicate section registration (including built-ins).
+    if [[ -n "${AGENTS_SECTION_META[$section_id]:-}" ]]; then
+        echo "ERROR: section_id '$section_id' is already registered" >&2
+        return 1
+    fi
+
+    # content_fn must be a valid bash function identifier and must exist.
+    if [[ ! "$content_fn" =~ ^[a-zA-Z_][a-zA-Z0-9_]*$ ]]; then
+        echo "ERROR: content_function_name must be a valid bash function name" >&2
+        return 1
+    fi
+    if ! declare -f "$content_fn" >/dev/null; then
+        echo "ERROR: content function '$content_fn' is not defined" >&2
+        return 1
+    fi
+
     AGENTS_SECTION_META["$section_id"]="$title|false|"
     AGENTS_SECTION_ORDER+=("$section_id")
 
-    # Store function name for later invocation
-    eval "_custom_section_${section_id}() { $content_fn; }"
+    # Map the custom section name to the user's provided function
+    eval "_custom_section_${section_id}() { \"$content_fn\" \"\$@\"; }"
 }
 
 # Get list of available sections

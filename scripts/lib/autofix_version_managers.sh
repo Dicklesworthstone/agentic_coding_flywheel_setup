@@ -114,6 +114,12 @@ autofix_nvm_fix() {
     local nvm_dir nvm_version
     nvm_dir=$(echo "$check_result" | jq -r '.nvm_dir')
     nvm_version=$(echo "$check_result" | jq -r '.version')
+
+    # SECURITY: Prevent accidental deletion of critical directories
+    if [[ -z "$nvm_dir" || "$nvm_dir" == "/" || "$nvm_dir" == "$HOME" || "$nvm_dir" == "/usr" || "$nvm_dir" == "/usr/local" ]]; then
+        log_error "[AUTO-FIX:nvm] Unsafe nvm_dir detected: '$nvm_dir'. Aborting fix."
+        return 2
+    fi
     local config_count
     config_count=$(echo "$check_result" | jq -r '.shell_configs | length')
 
@@ -325,6 +331,12 @@ autofix_pyenv_fix() {
     local pyenv_root pyenv_version
     pyenv_root=$(echo "$check_result" | jq -r '.pyenv_root')
     pyenv_version=$(echo "$check_result" | jq -r '.version')
+
+    # SECURITY: Prevent accidental deletion of critical directories
+    if [[ -z "$pyenv_root" || "$pyenv_root" == "/" || "$pyenv_root" == "$HOME" || "$pyenv_root" == "/usr" || "$pyenv_root" == "/usr/local" ]]; then
+        log_error "[AUTO-FIX:pyenv] Unsafe pyenv_root detected: '$pyenv_root'. Aborting fix."
+        return 2
+    fi
     local config_count
     config_count=$(echo "$check_result" | jq -r '.shell_configs | length')
 

@@ -446,7 +446,25 @@ check_apt_lock() {
 
     # Check for dpkg lock
     if [[ -f /var/lib/dpkg/lock-frontend ]]; then
-        if fuser /var/lib/dpkg/lock-frontend &>/dev/null 2>&1; then
+        local lock_held=false
+
+        if command -v fuser &>/dev/null; then
+            if fuser /var/lib/dpkg/lock-frontend &>/dev/null; then
+                lock_held=true
+            elif command -v sudo &>/dev/null && sudo -n fuser /var/lib/dpkg/lock-frontend &>/dev/null; then
+                lock_held=true
+            fi
+        fi
+
+        if [[ "$lock_held" != "true" ]] && command -v lsof &>/dev/null; then
+            if lsof /var/lib/dpkg/lock-frontend &>/dev/null; then
+                lock_held=true
+            elif command -v sudo &>/dev/null && sudo -n lsof /var/lib/dpkg/lock-frontend &>/dev/null; then
+                lock_held=true
+            fi
+        fi
+
+        if [[ "$lock_held" == "true" ]]; then
             fail "APT is locked by another process" "Wait for other apt operations or run: sudo killall apt apt-get"
             return
         fi
