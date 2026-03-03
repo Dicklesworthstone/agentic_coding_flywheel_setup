@@ -450,6 +450,50 @@ Short content.
 }
 
 # ============================================================
+# Custom Section Registration Tests
+# ============================================================
+
+@test "register_custom_section registers callable custom content function" {
+    custom_section_renderer() {
+        local project_name="$1"
+        echo "Custom section for ${project_name}"
+    }
+
+    register_custom_section "custom_demo" "Custom Demo" "custom_section_renderer"
+    [[ "$?" -eq 0 ]]
+
+    local content
+    content=$(get_section_content "custom_demo" "demo-project")
+    [[ "$content" == *"Custom section for demo-project"* ]]
+}
+
+@test "register_custom_section rejects invalid section ids" {
+    custom_section_renderer2() {
+        echo "unused"
+    }
+
+    run register_custom_section "bad-id" "Bad ID" "custom_section_renderer2"
+    assert_failure
+    [[ "$output" == *"section_id must be alphanumeric and underscores only"* ]]
+}
+
+@test "register_custom_section rejects unknown content functions" {
+    run register_custom_section "custom_unknown_fn" "Unknown Fn" "definitely_not_defined_fn_123"
+    assert_failure
+    [[ "$output" == *"is not defined"* ]]
+}
+
+@test "register_custom_section rejects duplicate section ids" {
+    custom_section_renderer3() {
+        echo "unused"
+    }
+
+    run register_custom_section "header" "Duplicate Header" "custom_section_renderer3"
+    assert_failure
+    [[ "$output" == *"already registered"* ]]
+}
+
+# ============================================================
 # Edge Cases
 # ============================================================
 
