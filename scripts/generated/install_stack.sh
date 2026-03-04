@@ -1394,7 +1394,7 @@ install_stack_brenner_bot() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--skip-cass'; then
                             install_success=true
                         else
                             log_error "stack.brenner_bot: verify_checksum or installer execution failed"

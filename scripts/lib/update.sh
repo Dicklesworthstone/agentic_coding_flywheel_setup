@@ -1793,7 +1793,7 @@ update_stack() {
     # because Brenner Bot's installer bundles and pins its own copies of these tools
     # at older versions. By running it first, its pinned deps get laid down, then the
     # individual tool updates below bring them to the latest versions.
-    run_cmd "Brenner Bot" update_run_verified_installer brenner_bot
+    run_cmd "Brenner Bot" update_run_verified_installer brenner_bot --skip-cass
 
     # NTM - always install/update (installer is idempotent)
     run_cmd "NTM" update_run_verified_installer ntm

@@ -1672,6 +1672,7 @@ modules:
       tool: brenner_bot
       runner: bash
       url: "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh"
+      args: ["--", "--skip-cass"]
     install: []
     verify:
       - brenner --version || brenner --help

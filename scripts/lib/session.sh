@@ -57,7 +57,7 @@
 # CASS is the backend for session discovery and export. See bead eli for research.
 #
 # Version Info:
-#   API Version: 1, Contract Version: 1, Crate: 0.1.35+
+#   API Version: 1, Contract Version: 1, Crate: 0.2.0+
 #
 # Supported Connectors (agents):
 #   claude_code, codex, gemini, cursor, amp, cline, aider, opencode, chatgpt, pi_agent
