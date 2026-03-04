@@ -2536,7 +2536,8 @@ main() {
         echo -e "${YELLOW}Warning: Running as root but HOME is $HOME.${NC}"
         echo "ACFS update should typically be run as the target user (e.g. ubuntu)."
         if [[ "$YES_MODE" != "true" ]]; then
-            read -r -p "Continue anyway? [y/N] " response
+            echo -n "Continue anyway? [y/N] "
+            read -r response < /dev/tty || true
             if [[ ! "$response" =~ ^[Yy] ]]; then
                 exit 1
             fi

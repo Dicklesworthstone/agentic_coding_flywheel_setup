@@ -46,7 +46,8 @@ export function safeSetItem(key: string, value: string): boolean {
 export function withCurrentSearch(path: string): string {
   if (typeof window === "undefined") return path;
   const search = window.location.search;
-  return search ? `${path}${search}` : path;
+  if (!search) return path;
+  return path.includes("?") ? `${path}&${search.slice(1)}` : `${path}${search}`;
 }
 
 /**

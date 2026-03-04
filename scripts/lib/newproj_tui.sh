@@ -478,7 +478,8 @@ read_yes_no() {
             hint="[y/N]"
         fi
 
-        read -r -p "$prompt $hint " response
+        echo -n "$prompt $hint "
+        read -r response < /dev/tty || true
         response="${response:-$default}"
 
         if [[ "$response" =~ ^[Yy]$ ]]; then
@@ -515,7 +516,8 @@ read_selection() {
             ((i++))
         done
 
-        read -r -p "Enter number [1-${#options[@]}]: " num
+        echo -n "Enter number [1-${#options[@]}]: "
+        read -r num < /dev/tty || true
         if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#options[@]} ]]; then
             selected="${options[$((num - 1))]}"
         fi
@@ -547,7 +549,8 @@ read_checkbox() {
             ((i++))
         done
 
-        read -r -p "Select: " input
+        echo -n "Select: "
+        read -r input < /dev/tty || true
 
         if [[ "$input" == "all" ]]; then
             selected="${options[*]}"

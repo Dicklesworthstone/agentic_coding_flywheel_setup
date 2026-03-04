@@ -87,7 +87,7 @@ installers:
     sha256: "ce0b7c94aa04d8c7a8137e45fe5c4744e3947871f785fd58117c480c1bf49352"
 
   pt:
-    url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/master/install.sh"
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
     sha256: "927cb2470a99ef3a0e4bc61ca879f37ae7e9ca9f77535df61e484dd3d5b6ff92"
 
   rano:
@@ -95,7 +95,7 @@ installers:
     sha256: "ebeadeb8975bbf821d8c4b34584274a409648ce90d50c0898e5739b99697e6f1"
 
   rch:
-    url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/master/install.sh"
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh"
     sha256: "5775f749efe48ee9ad037ee37bec90d0d91155e54f49408490d6d14b45899356"
 
   ru:
@@ -119,11 +119,11 @@ installers:
     sha256: "82b97151d9aa7254ddf3515f11b9f5c8918028fff0ee53c27a15e840e9fac68f"
 
   tru:
-    url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/master/install.sh"
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
     sha256: "19b9e7d1de4509e54c4ba1646fc0d18c5e39e6b2e1c8b6775dbdda6d268dc316"
 
   ubs:
-    url: "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh"
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh"
     sha256: "c0a4647b9d4e07816c3d47955d875fe5137c3e3098f2cb59c45f6bd8277cf40f"
 
   uv:

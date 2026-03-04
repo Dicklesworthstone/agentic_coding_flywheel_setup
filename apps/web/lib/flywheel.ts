@@ -562,7 +562,7 @@ const _flywheelTools: FlywheelTool[] = [
       "ubs --beads-jsonl findings.jsonl .",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh" | bash -s -- --easy-mode',
+      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh" | bash -s -- --easy-mode',
     language: "Shell",
   },
   {
@@ -1022,7 +1022,7 @@ as a native tool, not string-parsing.`,
       "rch agents                  # Detect running AI agents",
     ],
     installCommand:
-      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/master/install.sh" | bash',
+      'curl --proto \'=https\' --proto-redir \'=https\' -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh" | bash',
     language: "Rust",
   },
   {
@@ -1331,7 +1331,7 @@ Tech stack: Rust pt-core inference engine + Bash wrapper + gum TUI. Session bund
       "pt history",
     ],
     installCommand:
-      "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/process_triage/master/install.sh | bash",
+      "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh | bash",
     language: "Rust/Bash",
   },
   {
@@ -1521,7 +1521,7 @@ Key capabilities:
     ],
     cliCommands: ["tru compress file.json", "tru expand file.toon", "tru --help"],
     installCommand:
-      "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/master/install.sh | bash",
+      "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh | bash",
     language: "Rust",
   },
   {

@@ -1064,7 +1064,7 @@ check_stack() {
         check "stack.ubs" "UBS ($version)" "pass" "installed"
     else
         check "stack.ubs" "UBS" "fail" "not found" \
-            "Re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/master/install.sh | bash"
+            "Re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh | bash"
     fi
 
     # Beads Viewer - custom check to detect gcloud 'bv' shadowing
@@ -1192,10 +1192,10 @@ check_stack() {
         # Also check if RCH config exists (indicates partial/previous install)
         if [[ -f "$HOME/.config/rch/config.toml" ]] || [[ -d "$HOME/remote_compilation_helper" ]]; then
             check "stack.rch" "rch (Remote Compilation Helper)" "warn" "config exists but binary not in PATH" \
-                "Add rch to PATH or re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/master/install.sh | bash"
+                "Add rch to PATH or re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh | bash"
         else
             check "stack.rch" "rch (Remote Compilation Helper)" "warn" "not installed" \
-                "Re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/master/install.sh | bash"
+                "Re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh | bash"
         fi
     fi
 

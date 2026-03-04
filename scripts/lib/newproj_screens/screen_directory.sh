@@ -201,7 +201,9 @@ handle_directory_input() {
             }
         else
             echo -n "Directory [$current_dir]: "
-            read -r dir
+            # Read from /dev/tty explicitly to avoid stdin conflicts
+            # from signal handlers or subshell capture (issue #153)
+            read -r dir < /dev/tty || true
             [[ -z "$dir" ]] && dir="$current_dir"
         fi
 

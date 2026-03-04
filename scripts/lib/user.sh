@@ -356,7 +356,8 @@ prompt_ssh_key() {
     # 4. Read the key (handle pipe vs tty)
     local pubkey=""
     if [[ -t 0 ]]; then
-        read -r -p "Paste your public key: " pubkey
+        echo -n "Paste your public key: "
+        read -r pubkey < /dev/tty || true
     else
         # When running via curl | bash, stdin is the script content.
         # We must read from /dev/tty to get user input.

@@ -946,12 +946,9 @@ acfs_undo_command() {
             undone_ids=$(jq -r '.undone // empty' "$ACFS_UNDOS_FILE" 2>/dev/null | sort -u | tr '\n' '|' | sed 's/|$//')
         fi
         # Display changes with correct undo status by cross-referencing with undos file
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            local change_id category desc status
-            change_id=$(echo "$line" | jq -r '.id')
-            category=$(echo "$line" | jq -r '.category')
-            desc=$(echo "$line" | jq -r '.description')
+        jq -r '[.id, .category, .description] | join("\u001f")' "$ACFS_CHANGES_FILE" | while IFS=$'\x1f' read -r change_id category desc; do
+            [[ -z "$change_id" ]] && continue
+            local status
             # Check if this change_id is in the undone list
             if [[ -n "$undone_ids" ]] && echo "$change_id" | grep -qE "^($undone_ids)$"; then
                 status="undone"
@@ -959,7 +956,7 @@ acfs_undo_command() {
                 status="active"
             fi
             printf "%s\t%s\t%s\t%s\n" "$change_id" "$category" "$desc" "$status"
-        done < "$ACFS_CHANGES_FILE" | column -t -s $'\t'
+        done | column -t -s $'\t'
         return 0
     fi
 

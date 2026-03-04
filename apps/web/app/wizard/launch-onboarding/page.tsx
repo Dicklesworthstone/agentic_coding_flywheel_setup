@@ -365,7 +365,7 @@ export default function LaunchOnboardingPage() {
 
           <div className="space-y-2">
             <h3 className="font-medium">2. Create and navigate to a project folder</h3>
-            <CommandCard command="mkdir ~/projects/my-awesome-app && cd ~/projects/my-awesome-app" runLocation="vps" />
+            <CommandCard command="mkdir /data/projects/my-awesome-app && cd /data/projects/my-awesome-app" runLocation="vps" />
           </div>
 
           <div className="space-y-2">
@@ -414,7 +414,7 @@ export default function LaunchOnboardingPage() {
             <p className="font-medium">Navigate into a folder</p>
             <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
               <div className="flex-1">
-                <CommandCard command="cd projects" description="Enter a folder" runLocation="vps" />
+                <CommandCard command="cd /data/projects" description="Enter a folder" runLocation="vps" />
               </div>
               <div className="flex-1">
                 <CommandCard command="cd .." description="Go back up" runLocation="vps" />
@@ -460,7 +460,7 @@ export default function LaunchOnboardingPage() {
             </div>
             <div className="space-y-2">
               <h3 className="font-medium">Create a project folder</h3>
-              <CommandCard command="mkdir ~/my-first-project && cd ~/my-first-project" runLocation="vps" />
+              <CommandCard command="mkdir -p /data/projects/my_first_project && cd /data/projects/my_first_project" runLocation="vps" />
             </div>
           </div>
 

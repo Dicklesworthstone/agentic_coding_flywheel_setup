@@ -251,7 +251,8 @@ handle_tech_stack_input() {
         else
             # Fallback to text input
             echo ""
-            read -r -p "Toggle options (or Enter to continue): " input
+            echo -n "Toggle options (or Enter to continue): "
+            read -r input < /dev/tty || true
 
             case "$input" in
                 '')

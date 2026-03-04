@@ -128,7 +128,7 @@ autofix_nvm_fix() {
 
     if [[ "$mode" == "dry-run" ]]; then
         log_info "[DRY-RUN] Would backup $nvm_dir"
-        echo "$check_result" | jq -r '.shell_configs[]' | while read -r config; do
+        echo "$check_result" | jq -r '.shell_configs[]' | while IFS= read -r config; do
             log_info "[DRY-RUN] Would backup and clean nvm references from $config"
         done
         return 0
@@ -345,7 +345,7 @@ autofix_pyenv_fix() {
 
     if [[ "$mode" == "dry-run" ]]; then
         log_info "[DRY-RUN] Would backup $pyenv_root"
-        echo "$check_result" | jq -r '.shell_configs[]' | while read -r config; do
+        echo "$check_result" | jq -r '.shell_configs[]' | while IFS= read -r config; do
             log_info "[DRY-RUN] Would backup and clean pyenv references from $config"
         done
         return 0

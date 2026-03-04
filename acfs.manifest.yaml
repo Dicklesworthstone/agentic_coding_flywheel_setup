@@ -1711,7 +1711,7 @@ modules:
     verified_installer:
       tool: rch
       runner: bash
-      url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/master/install.sh"
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh"
     install: []
     verify:
       - rch --version || rch --help
@@ -1929,7 +1929,7 @@ modules:
     verified_installer:
       tool: tru
       runner: bash
-      url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/master/install.sh"
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
     install: []
     verify:
       - tru --help || tru --version
