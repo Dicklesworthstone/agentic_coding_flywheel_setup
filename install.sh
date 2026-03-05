@@ -132,8 +132,14 @@ TARGET_UBUNTU_VERSION="25.10"
 # Default: detect the current user (or SUDO_USER if running under sudo).
 # Override with env var: TARGET_USER=myuser
 # Note: Previously defaulted to "ubuntu" which broke non-ubuntu VPS installs.
-_ACFS_DETECTED_USER="${SUDO_USER:-$(whoami)}"
-TARGET_USER="${TARGET_USER:-$_ACFS_DETECTED_USER}"
+if [[ -z "${TARGET_USER:-}" ]]; then
+    if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
+        _ACFS_DETECTED_USER="ubuntu"
+    else
+        _ACFS_DETECTED_USER="${SUDO_USER:-$(whoami)}"
+    fi
+    TARGET_USER="$_ACFS_DETECTED_USER"
+fi
 unset _ACFS_DETECTED_USER
 # Leave TARGET_HOME unset by default; init_target_paths will derive it from:
 # - $HOME when running as TARGET_USER
@@ -4771,8 +4777,11 @@ finalize() {
     
     # Install script libraries
     try_step "Installing logging.sh" install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh" || return 1
+    try_step "Installing output.sh" install_asset "scripts/lib/output.sh" "$ACFS_HOME/scripts/lib/output.sh" || return 1
     try_step "Installing gum_ui.sh" install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh" || return 1
     try_step "Installing security.sh" install_asset "scripts/lib/security.sh" "$ACFS_HOME/scripts/lib/security.sh" || return 1
+    try_step "Installing autofix.sh" install_asset "scripts/lib/autofix.sh" "$ACFS_HOME/scripts/lib/autofix.sh" || return 1
+    try_step "Installing doctor_fix.sh" install_asset "scripts/lib/doctor_fix.sh" "$ACFS_HOME/scripts/lib/doctor_fix.sh" || return 1
     try_step "Installing doctor.sh" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh" || return 1
     try_step "Installing update.sh" install_asset "scripts/lib/update.sh" "$ACFS_HOME/scripts/lib/update.sh" || return 1
     try_step "Installing session.sh" install_asset "scripts/lib/session.sh" "$ACFS_HOME/scripts/lib/session.sh" || return 1
@@ -4791,8 +4800,7 @@ finalize() {
     try_step "Linking acfs-update command" run_as_target ln -sf "$ACFS_HOME/bin/acfs-update" "$TARGET_HOME/.local/bin/acfs-update" || return 1
 
     # Install root AGENTS.md generator (if available) and generate /AGENTS.md once
-    if [[ -n "${SCRIPT_DIR:-}" ]] && [[ -f "$SCRIPT_DIR/scripts/generate-root-agents-md.sh" ]]; then
-        try_step "Installing flywheel-update-agents-md" install_asset "scripts/generate-root-agents-md.sh" "$ACFS_HOME/bin/flywheel-update-agents-md" || return 1
+    if try_step "Installing flywheel-update-agents-md" install_asset "scripts/generate-root-agents-md.sh" "$ACFS_HOME/bin/flywheel-update-agents-md"; then
         try_step "Setting flywheel-update-agents-md permissions" $SUDO chmod 755 "$ACFS_HOME/bin/flywheel-update-agents-md" || return 1
         try_step "Setting flywheel-update-agents-md ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/flywheel-update-agents-md" || return 1
         try_step "Linking flywheel-update-agents-md command" $SUDO ln -sf "$ACFS_HOME/bin/flywheel-update-agents-md" "/usr/local/bin/flywheel-update-agents-md" || return 1

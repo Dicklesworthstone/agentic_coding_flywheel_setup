@@ -865,11 +865,15 @@ update_acfs_self() {
     fi
 
     # Get current branch
-    local current_branch
-    current_branch=$(git -C "$ACFS_REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null) || {
+    local current_branch=""
+    current_branch=$(git -C "$ACFS_REPO_ROOT" branch --show-current 2>/dev/null) || true
+    if [[ -z "$current_branch" ]]; then
+        current_branch=$(git -C "$ACFS_REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null) || true
+    fi
+    if [[ -z "$current_branch" ]] || [[ "$current_branch" == "HEAD" ]]; then
         log_item "warn" "ACFS self-update" "failed to get current branch"
         return 0
-    }
+    fi
 
     # Only auto-update on main branch
     if [[ "$current_branch" != "main" ]]; then
@@ -919,9 +923,9 @@ update_acfs_self() {
 
     # Never mutate a dirty working tree during self-update.
     # Auto-stash/reapply can create conflicts and unexpectedly rewrite local work.
-    if ! git -C "$ACFS_REPO_ROOT" diff --quiet 2>/dev/null || ! git -C "$ACFS_REPO_ROOT" diff --cached --quiet 2>/dev/null; then
-        log_item "warn" "ACFS self-update" "local changes detected; skipping self-update"
-        log_to_file "Self-update skipped: working tree has local modifications"
+    if [[ -n "$(git -C "$ACFS_REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null)" ]]; then
+        log_item "warn" "ACFS self-update" "local or untracked files detected; skipping self-update"
+        log_to_file "Self-update skipped: working tree has tracked or untracked modifications"
         return 0
     fi
 
@@ -1980,8 +1984,16 @@ update_root_agents_md() {
     log_section "Root AGENTS.md"
 
     if ! cmd_exists flywheel-update-agents-md; then
-        log_item "skip" "Root AGENTS.md" "flywheel-update-agents-md not installed"
-        return 0
+        local generator="${ACFS_REPO_ROOT:-$HOME/.acfs}/scripts/generate-root-agents-md.sh"
+        if [[ -f "$generator" ]]; then
+            if ! run_cmd_sudo "Install flywheel-update-agents-md" ln -sf "$generator" /usr/local/bin/flywheel-update-agents-md; then
+                log_item "skip" "Root AGENTS.md" "flywheel-update-agents-md not installed"
+                return 0
+            fi
+        else
+            log_item "skip" "Root AGENTS.md" "flywheel-update-agents-md not installed"
+            return 0
+        fi
     fi
 
     run_cmd_sudo "Root AGENTS.md" flywheel-update-agents-md

@@ -45,21 +45,31 @@ fi
 # Source gum_ui library if available
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+_acfs_doctor_source_first() {
+    local rel_path="$1"
+    local candidate
+    for candidate in \
+        "$SCRIPT_DIR/$rel_path" \
+        "$SCRIPT_DIR/../scripts/lib/$rel_path" \
+        "$HOME/.acfs/scripts/lib/$rel_path"; do
+        if [[ -f "$candidate" ]]; then
+            # shellcheck source=/dev/null
+            source "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Source output formatting library (for TOON support)
-if [[ -f "$SCRIPT_DIR/output.sh" ]]; then
-    # shellcheck source=output.sh
-    source "$SCRIPT_DIR/output.sh"
-fi
+_acfs_doctor_source_first "output.sh" || true
 
 # Global format options (set by argument parsing)
 _DOCTOR_OUTPUT_FORMAT=""
 _DOCTOR_SHOW_STATS=false
 
 # Source doctor_fix library for --fix functionality
-if [[ -f "$SCRIPT_DIR/doctor_fix.sh" ]]; then
-    # shellcheck source=doctor_fix.sh
-    source "$SCRIPT_DIR/doctor_fix.sh"
-fi
+_acfs_doctor_source_first "doctor_fix.sh" || true
 
 # Prefer the installed VERSION file when available.
 if [[ -f "$HOME/.acfs/VERSION" ]]; then
@@ -82,14 +92,36 @@ if [[ -z "${ACFS_MODE:-}" ]] && [[ -f "$HOME/.acfs/state.json" ]]; then
 fi
 
 # Prefer the installed state file for target user (for installs where the target user is not ubuntu).
+_acfs_doctor_state_files=()
+if [[ -n "${ACFS_STATE_FILE:-}" ]]; then
+    _acfs_doctor_state_files+=("$ACFS_STATE_FILE")
+fi
+if [[ -n "${ACFS_HOME:-}" ]]; then
+    _acfs_doctor_state_files+=("$ACFS_HOME/state.json")
+fi
+_acfs_doctor_state_files+=("$HOME/.acfs/state.json")
+
 TARGET_USER="${TARGET_USER:-}"
-if [[ -z "${TARGET_USER:-}" ]] && [[ -f "$HOME/.acfs/state.json" ]]; then
-    if command -v jq &>/dev/null; then
-        TARGET_USER="$(jq -r '.target_user // empty' "$HOME/.acfs/state.json" 2>/dev/null || true)"
+if [[ -z "${TARGET_USER:-}" ]]; then
+    for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
+        [[ -f "$_acfs_doctor_state_file" ]] || continue
+        if command -v jq &>/dev/null; then
+            TARGET_USER="$(jq -r '.target_user // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
+        fi
+        if [[ -z "${TARGET_USER:-}" ]]; then
+            TARGET_USER="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
+        fi
+        [[ -n "${TARGET_USER:-}" ]] && break
+    done
+fi
+unset _acfs_doctor_state_files
+unset _acfs_doctor_state_file
+if [[ -z "${TARGET_USER:-}" ]]; then
+    _acfs_current_user="$(id -un 2>/dev/null || whoami 2>/dev/null || true)"
+    if [[ -n "$_acfs_current_user" ]] && [[ "$_acfs_current_user" != "root" ]]; then
+        TARGET_USER="$_acfs_current_user"
     fi
-    if [[ -z "${TARGET_USER:-}" ]]; then
-        TARGET_USER="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.acfs/state.json" | head -n 1)"
-    fi
+    unset _acfs_current_user
 fi
 TARGET_USER="${TARGET_USER:-ubuntu}"
 if [[ ! "$TARGET_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
