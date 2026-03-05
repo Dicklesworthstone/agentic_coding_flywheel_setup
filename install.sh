@@ -3619,7 +3619,7 @@ install_cli_tools() {
     fi
 
     log_detail "Installing required apt packages"
-    try_step "Installing required apt packages" $SUDO apt-get install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync || return 1
+    try_step "Installing required apt packages" $SUDO apt-get install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd cosign || return 1
 
     # GitHub CLI (gh)
     if command_exists gh; then

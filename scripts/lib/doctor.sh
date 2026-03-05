@@ -859,6 +859,8 @@ check_core_tools() {
     check_command "tool.rsync" "rsync" "rsync" "sudo apt-get install -y rsync"
     check_command "tool.strace" "strace" "strace" "sudo apt-get install -y strace"
     check_command "tool.lsof" "lsof" "lsof" "sudo apt-get install -y lsof"
+    check_command "tool.zstd" "zstd" "zstd" "sudo apt-get install -y zstd"
+    check_command "tool.cosign" "cosign" "cosign" "sudo apt-get install -y cosign"
     check_command "tool.dig" "dig (dnsutils)" "dig" "sudo apt-get install -y dnsutils"
     check_command "tool.nc" "nc (netcat-openbsd)" "nc" "sudo apt-get install -y netcat-openbsd"
     check_command "tool.sg" "ast-grep" "sg" "cargo install ast-grep --locked"

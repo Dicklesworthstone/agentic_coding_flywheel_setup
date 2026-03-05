@@ -102,13 +102,13 @@ install_cli_modern() {
     log_step "Installing cli.modern"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync (root)"
+        log_info "dry-run: install: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync zstd cosign (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
+apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync zstd cosign
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync"
+            log_error "cli.modern: install command failed: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync zstd cosign"
             return 1
         fi
     fi
