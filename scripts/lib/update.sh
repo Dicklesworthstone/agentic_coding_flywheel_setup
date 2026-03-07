@@ -814,12 +814,11 @@ update_acfs_self() {
     # Recovery for orphaned git init (issue #200)
     if [[ -d "$ACFS_REPO_ROOT/.git" ]] && ! git -C "$ACFS_REPO_ROOT" rev-parse HEAD &>/dev/null; then
         log_info "Detected incomplete git bootstrap — attempting recovery..."
-        local expected_origin="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git"
         local actual_origin
         actual_origin=$(git -C "$ACFS_REPO_ROOT" remote get-url origin 2>/dev/null || true)
         if [[ "$actual_origin" == *"agentic_coding_flywheel_setup"* ]]; then
             git -C "$ACFS_REPO_ROOT" fetch origin main 2>/dev/null || true
-            if git -C "$ACFS_REPO_ROOT" checkout --force -B main --track origin/main 2>/dev/null; then
+            if git -C "$ACFS_REPO_ROOT" checkout --force -B main --track origin/main; then
                 log_info "Git bootstrap recovery succeeded"
             else
                 log_warn "Git bootstrap recovery failed — removing .git for fresh init"
