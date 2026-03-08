@@ -2360,6 +2360,7 @@ CATEGORY OPTIONS (select what to update):
   --cloud-only       Only update cloud CLIs (Wrangler, Supabase, Vercel, gh, gcloud)
   --shell-only       Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
   --runtime-only     Only update runtimes (Bun, Rust, uv, Go)
+  --stack-only       Only update Dicklesworthstone stack tools
   --stack            Include Dicklesworthstone stack tools (enabled by default)
 
 SKIP OPTIONS (exclude categories from update):
@@ -2393,6 +2394,9 @@ EXAMPLES:
 
   # Only update runtimes
   acfs-update --runtime-only
+
+  # Only update Dicklesworthstone stack tools
+  acfs-update --stack-only
 
   # Update everything except apt (faster)
   acfs-update --no-apt
@@ -2516,6 +2520,15 @@ main() {
                 UPDATE_CLOUD=false
                 UPDATE_RUNTIME=true
                 UPDATE_STACK=false
+                UPDATE_SHELL=false
+                shift
+                ;;
+            --stack-only)
+                UPDATE_APT=false
+                UPDATE_AGENTS=false
+                UPDATE_CLOUD=false
+                UPDATE_RUNTIME=false
+                UPDATE_STACK=true
                 UPDATE_SHELL=false
                 shift
                 ;;
