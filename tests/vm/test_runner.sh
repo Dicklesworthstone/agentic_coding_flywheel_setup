@@ -140,6 +140,21 @@ else
     fail "git_safety_guard removal verification failed"
 fi
 
+# PHASE 2.7: Expanded New Tools E2E coverage
+log "PHASE 2.7: Expanded New Tools E2E"
+NEW_TOOLS_LOG="${ARTIFACTS_DIR}/new_tools_e2e.log"
+if su - ubuntu -c "zsh -ic 'cd /repo && bash tests/e2e/test_new_tools_e2e.sh'" > "$NEW_TOOLS_LOG" 2>&1; then
+    log "Expanded new tools E2E passed"
+    cp /tmp/acfs_e2e_tools_*.log "$ARTIFACTS_DIR/" 2>/dev/null || true
+    cp /tmp/acfs_e2e_results_*.json "$ARTIFACTS_DIR/" 2>/dev/null || true
+else
+    log "Expanded new tools E2E failed! See $NEW_TOOLS_LOG"
+    cat "$NEW_TOOLS_LOG"
+    cp /tmp/acfs_e2e_tools_*.log "$ARTIFACTS_DIR/" 2>/dev/null || true
+    cp /tmp/acfs_e2e_results_*.json "$ARTIFACTS_DIR/" 2>/dev/null || true
+    fail "Expanded new tools E2E failed"
+fi
+
 # PHASE 3: Idempotency
 log "PHASE 3: Idempotency Check"
 if bash install.sh --yes --skip-ubuntu-upgrade --mode "${ACFS_TEST_MODE}" ${STRICT_FLAG} > "${ARTIFACTS_DIR}/idempotency.log" 2>&1; then

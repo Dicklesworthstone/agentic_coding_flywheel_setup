@@ -213,6 +213,11 @@ declare -gA KNOWN_INSTALLERS=(
     [mdwb]="https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
     [s2p]="https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh"
     [gemini_patch]="https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh"
+    [fsfs]="https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/main/install.sh"
+    [sbh]="https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
+    [casr]="https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh"
+    [asb]="https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
+    [pcr]="https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
 )
 
 # ============================================================

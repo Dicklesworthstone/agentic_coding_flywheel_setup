@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# E2E Test: Verify all 16+ new tools install and pass acfs doctor
+# E2E Test: Verify expanded new-tool install surface and doctor integration
 #
 # Tests:
 #   - 7 First-class flywheel tools: br, ms, rch, wa, brenner, dcg, ru
+#   - 4 Newly integrated stack tools: fsfs, sbh, casr, dsr
 #   - 9 Utility tools: tru, rust_proxy, rano, xf, mdwb, pt, aadc, s2p, caut
 #   - Integration: acfs doctor, flywheel.ts, br primary command
 #
-# Related: bead bd-1ega.7
+# Related: bd-g5d5s, bd-c4qox, bd-edpee, bd-xmvz0, bd-iy874, bd-q9auy, bd-abul4
 
 set -uo pipefail
 # Note: Not using -e to allow tests to continue after failures
@@ -108,6 +109,52 @@ test_tool_basic() {
     return 0
 }
 
+# Run one or more probe commands for a tool.
+# Optional probes degrade to skip when the command exists but needs extra setup.
+test_tool_probe() {
+    local test_name="$1"
+    local binary="$2"
+    local description="$3"
+    local required="${4:-false}"
+    local probe_timeout="${ACFS_E2E_PROBE_TIMEOUT:-20}"
+    shift 4
+
+    if ! command -v "$binary" >/dev/null 2>&1; then
+        if [[ "$required" == "true" ]]; then
+            fail "$test_name" "$binary probe skipped because the binary is missing"
+        else
+            skip "$test_name" "$binary probe skipped because the binary is missing"
+        fi
+        return 1
+    fi
+
+    local cmd=""
+    local output=""
+    for cmd in "$@"; do
+        if command -v timeout >/dev/null 2>&1; then
+            output=$(timeout "$probe_timeout" bash -lc "$cmd" 2>&1)
+        else
+            output=$(bash -lc "$cmd" 2>&1)
+        fi
+
+        if [[ $? -eq 0 ]]; then
+            if [[ -n "$output" ]]; then
+                pass "$test_name" "$description via '$cmd': ${output:0:100}"
+            else
+                pass "$test_name" "$description via '$cmd'"
+            fi
+            return 0
+        fi
+    done
+
+    if [[ "$required" == "true" ]]; then
+        fail "$test_name" "$description failed for all probes"
+    else
+        skip "$test_name" "$description unavailable or not configured yet"
+    fi
+    return 1
+}
+
 # ============================================================
 # First-Class Flywheel Tools (7)
 # ============================================================
@@ -134,7 +181,12 @@ test_flywheel_tools() {
 
     # remote_compilation_helper (rch)
     log "INFO" "rch" "Testing remote_compilation_helper (rch)..."
-    test_tool_basic "remote_compilation_helper" "rch" "false"
+    if test_tool_basic "remote_compilation_helper" "rch" "false"; then
+        test_tool_probe "rch_probe" "rch" "rch health/status probe" "false" \
+            "rch doctor" \
+            "rch status" \
+            "rch --help"
+    fi
 
     # wezterm_automata (wa)
     log "INFO" "wa" "Testing wezterm_automata (wa)..."
@@ -157,7 +209,57 @@ test_flywheel_tools() {
 
     # ru (Repo Updater) - REQUIRED
     log "INFO" "ru" "Testing Repo Updater (ru)..."
-    test_tool_basic "repo_updater" "ru" "true"
+    if test_tool_basic "repo_updater" "ru" "true"; then
+        test_tool_probe "ru_probe" "ru" "ru operational probe" "true" \
+            "ru doctor" \
+            "ru status --help" \
+            "ru sync --dry-run --help"
+    fi
+}
+
+# ============================================================
+# Additional Stack Tools (4)
+# ============================================================
+
+test_additional_stack_tools() {
+    log "INFO" "SECTION" "========================================"
+    log "INFO" "SECTION" "ADDITIONAL STACK TOOLS (4)"
+    log "INFO" "SECTION" "========================================"
+
+    # frankensearch (fsfs)
+    log "INFO" "fsfs" "Testing frankensearch (fsfs)..."
+    if test_tool_basic "frankensearch" "fsfs" "false"; then
+        test_tool_probe "fsfs_probe" "fsfs" "fsfs operational probe" "false" \
+            "fsfs status" \
+            "fsfs version" \
+            "fsfs --help"
+    fi
+
+    # storage_ballast_helper (sbh)
+    log "INFO" "sbh" "Testing storage_ballast_helper (sbh)..."
+    if test_tool_basic "storage_ballast_helper" "sbh" "false"; then
+        test_tool_probe "sbh_probe" "sbh" "sbh operational probe" "false" \
+            "sbh check" \
+            "sbh status" \
+            "sbh --help"
+    fi
+
+    # cross_agent_session_resumer (casr)
+    log "INFO" "casr" "Testing cross_agent_session_resumer (casr)..."
+    if test_tool_basic "cross_agent_session_resumer" "casr" "false"; then
+        test_tool_probe "casr_probe" "casr" "casr provider listing" "false" \
+            "casr providers" \
+            "casr --help"
+    fi
+
+    # doodlestein_self_releaser (dsr)
+    log "INFO" "dsr" "Testing doodlestein_self_releaser (dsr)..."
+    if test_tool_basic "doodlestein_self_releaser" "dsr" "false"; then
+        test_tool_probe "dsr_probe" "dsr" "dsr operational probe" "false" \
+            "dsr doctor" \
+            "dsr version" \
+            "dsr --help"
+    fi
 }
 
 # ============================================================
@@ -191,7 +293,12 @@ test_utility_tools() {
 
     # pt
     log "INFO" "pt" "Testing process_triage (pt)..."
-    test_tool_basic "process_triage" "pt" "false"
+    if test_tool_basic "process_triage" "pt" "false"; then
+        test_tool_probe "pt_probe" "pt" "pt health probe" "false" \
+            "pt check" \
+            "pt doctor" \
+            "pt --help"
+    fi
 
     # aadc
     log "INFO" "aadc" "Testing aadc..."
@@ -218,9 +325,16 @@ test_integration() {
     # Test 1: acfs doctor runs without errors
     log "INFO" "doctor" "Testing acfs doctor..."
     if command -v acfs >/dev/null 2>&1; then
-        local doctor_output
-        doctor_output=$(ACFS_DOCTOR_CI=true acfs doctor 2>&1) || true
-        local doctor_exit=$?
+        local doctor_output=""
+        local doctor_exit=0
+
+        if command -v timeout >/dev/null 2>&1; then
+            doctor_output=$(timeout "${ACFS_E2E_DOCTOR_TIMEOUT:-30}" env ACFS_DOCTOR_CI=true acfs doctor 2>&1)
+            doctor_exit=$?
+        else
+            doctor_output=$(ACFS_DOCTOR_CI=true acfs doctor 2>&1)
+            doctor_exit=$?
+        fi
 
         if [[ $doctor_exit -eq 0 ]] || echo "$doctor_output" | command grep -qi "all checks passed\|healthy\|ok"; then
             pass "doctor_runs" "acfs doctor completed without fatal errors"
@@ -334,6 +448,7 @@ write_json_results() {
   },
   "categories": {
     "flywheel_tools": 7,
+    "additional_stack_tools": 4,
     "utility_tools": 9,
     "integration_tests": 5
   },
@@ -383,6 +498,7 @@ main() {
 
     # Run all test sections
     test_flywheel_tools
+    test_additional_stack_tools
     test_utility_tools
     test_integration
 

@@ -14,6 +14,12 @@ export interface ManifestCommand {
 
 export const manifestCommands: ManifestCommand[] = [
   {
+    moduleId: "stack.agent_settings_backup",
+    cliName: "asb",
+    cliAliases: [],
+    description: "Smart backup tool for AI coding agent configuration folders (asb)",
+  },
+  {
     moduleId: "stack.automated_plan_reviser",
     cliName: "apr",
     cliAliases: [],
@@ -61,11 +67,29 @@ export const manifestCommands: ManifestCommand[] = [
     commandExample: "cm context \"task\" --json",
   },
   {
+    moduleId: "stack.cross_agent_session_resumer",
+    cliName: "casr",
+    cliAliases: [],
+    description: "Cross-provider AI coding session resumption — convert and resume sessions across providers (casr)",
+  },
+  {
     moduleId: "stack.dcg",
     cliName: "dcg",
     cliAliases: [],
     description: "Destructive Command Guard - Claude Code hook blocking dangerous git/fs commands",
     commandExample: "dcg doctor",
+  },
+  {
+    moduleId: "stack.doodlestein_self_releaser",
+    cliName: "dsr",
+    cliAliases: [],
+    description: "Fallback release infrastructure — local builds via act when GitHub Actions is throttled (dsr)",
+  },
+  {
+    moduleId: "stack.frankensearch",
+    cliName: "fsfs",
+    cliAliases: [],
+    description: "Two-tier hybrid local search — lexical (BM25) + semantic retrieval with progressive delivery (fsfs)",
   },
   {
     moduleId: "stack.jeffreysprompts",
@@ -90,6 +114,12 @@ export const manifestCommands: ManifestCommand[] = [
     cliName: "ntm",
     cliAliases: [],
     description: "Named tmux manager (agent cockpit)",
+  },
+  {
+    moduleId: "stack.pcr",
+    cliName: "pcr",
+    cliAliases: [],
+    description: "Post-compaction reminder hook for Claude Code that forces an AGENTS.md re-read",
   },
   {
     moduleId: "stack.process_triage",
@@ -121,6 +151,12 @@ export const manifestCommands: ManifestCommand[] = [
     cliName: "sysmoni",
     cliAliases: [],
     description: "System Resource Protection Script - ananicy-cpp rules + TUI monitor for responsive dev workstations",
+  },
+  {
+    moduleId: "stack.storage_ballast_helper",
+    cliName: "sbh",
+    cliAliases: [],
+    description: "Cross-platform disk-pressure defense for AI coding workloads (sbh)",
   },
   {
     moduleId: "stack.ultimate_bug_scanner",

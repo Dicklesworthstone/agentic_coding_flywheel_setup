@@ -1,16 +1,23 @@
 import type { ReactNode } from "react";
 import {
+  BellRing,
   Bot,
+  Cpu,
   GitBranch,
   GitMerge,
   GraduationCap,
+  HardDrive,
   KeyRound,
   LayoutGrid,
+  Package,
+  Repeat,
+  Save,
   Search,
   Shield,
   ShieldAlert,
   ShieldCheck,
   Wrench,
+  Zap,
 } from "lucide-react";
 
 export type ToolId =
@@ -32,7 +39,14 @@ export type ToolId =
   | "jfp"
   | "pt"
   | "srps"
-  | "xf";
+  | "xf"
+  | "rch"
+  | "fsfs"
+  | "sbh"
+  | "casr"
+  | "dsr"
+  | "asb"
+  | "pcr";
 
 export type ToolCard = {
   id: ToolId;
@@ -272,6 +286,89 @@ export const TOOLS: Record<ToolId, ToolCard> = {
     docsLabel: "GitHub",
     quickCommand: "xf search 'keyword'",
     relatedTools: ["cass", "cm"],
+  },
+  rch: {
+    id: "rch",
+    title: "Remote Compilation Helper",
+    tagline: "Offload cargo builds to remote workers - keep your machine responsive",
+    icon: <Cpu className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-blue-500/20 via-cyan-500/20 to-blue-500/20",
+    glowColor: "rgba(59,130,246,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/remote_compilation_helper",
+    docsLabel: "GitHub",
+    quickCommand: "rch exec -- cargo build --release",
+    relatedTools: ["ntm", "pt", "sbh"],
+  },
+  fsfs: {
+    id: "fsfs",
+    title: "Frankensearch",
+    tagline: "Hybrid search engine combining BM25, semantic, and structural search",
+    icon: <Zap className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-purple-500/20 via-fuchsia-500/20 to-purple-500/20",
+    glowColor: "rgba(168,85,247,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/frankensearch",
+    docsLabel: "GitHub",
+    quickCommand: "fsfs search 'query'",
+    relatedTools: ["cass", "cm", "xf"],
+  },
+  sbh: {
+    id: "sbh",
+    title: "Storage Ballast Helper",
+    tagline: "Predictive disk-pressure defense for AI coding workloads",
+    icon: <HardDrive className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-green-500/20 via-emerald-500/20 to-green-500/20",
+    glowColor: "rgba(16,185,129,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/storage_ballast_helper",
+    docsLabel: "GitHub",
+    quickCommand: "sbh status",
+    relatedTools: ["pt", "rch", "ntm"],
+  },
+  casr: {
+    id: "casr",
+    title: "Cross-Agent Session Resumer",
+    tagline: "Resume coding sessions across AI providers seamlessly",
+    icon: <Repeat className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-fuchsia-500/20 via-pink-500/20 to-fuchsia-500/20",
+    glowColor: "rgba(217,70,239,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/cross_agent_session_resumer",
+    docsLabel: "GitHub",
+    quickCommand: "casr providers",
+    relatedTools: ["cass", "cm", "caam"],
+  },
+  dsr: {
+    id: "dsr",
+    title: "Doodlestein Self-Releaser",
+    tagline: "Fallback release infrastructure when GitHub Actions is throttled",
+    icon: <Package className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-orange-500/20 via-red-500/20 to-orange-500/20",
+    glowColor: "rgba(249,115,22,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/doodlestein_self_releaser",
+    docsLabel: "GitHub",
+    quickCommand: "dsr check --all",
+    relatedTools: ["ru", "ntm", "slb"],
+  },
+  asb: {
+    id: "asb",
+    title: "Agent Settings Backup",
+    tagline: "Git-versioned backups for all your AI agent configurations",
+    icon: <Save className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-amber-500/20 via-yellow-500/20 to-amber-500/20",
+    glowColor: "rgba(245,158,11,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/agent_settings_backup_script",
+    docsLabel: "GitHub",
+    quickCommand: "asb backup --all",
+    relatedTools: ["caam", "claude-code", "codex-cli"],
+  },
+  pcr: {
+    id: "pcr",
+    title: "Post-Compact Reminder",
+    tagline: "Stop Claude from forgetting project rules after context compaction",
+    icon: <BellRing className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-red-500/20 via-orange-500/20 to-red-500/20",
+    glowColor: "rgba(220,38,38,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/post_compact_reminder",
+    docsLabel: "GitHub",
+    relatedTools: ["dcg", "claude-code", "slb"],
   },
 };
 

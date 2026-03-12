@@ -205,7 +205,7 @@ get_version() {
         vercel)
             version=$(vercel --version 2>/dev/null || echo "unknown")
             ;;
-        ntm|ubs|bv|cass|cm|caam|slb|ru|dcg|apr|pt|xf|jfp|ms|br|rch|giil|csctf|srps|tru|rano|mdwb|s2p|brenner)
+        ntm|ubs|bv|cass|cm|caam|slb|ru|dcg|apr|pt|xf|jfp|ms|br|rch|giil|csctf|srps|tru|rano|mdwb|s2p|brenner|fsfs|sbh|casr|dsr|asb|pcr)
             version=$("$tool" --version 2>/dev/null | head -1 || echo "unknown")
             ;;
         sg|lsd|dust|tldr)
@@ -2025,6 +2025,21 @@ update_stack() {
 
     # S2P (Source to Prompt TUI) - always install/update
     run_cmd "S2P" update_run_verified_installer s2p
+
+    # FrankenSearch (fsfs) - always install/update
+    run_cmd "FrankenSearch" update_run_verified_installer fsfs --easy-mode
+
+    # Storage Ballast Helper (sbh) - always install/update
+    run_cmd "SBH" update_run_verified_installer sbh
+
+    # Cross-Agent Session Resumer (casr) - always install/update
+    run_cmd "CASR" update_run_verified_installer casr
+
+    # Agent Settings Backup (asb) - always install/update
+    run_cmd "ASB" update_run_verified_installer asb
+
+    # Post-Compact Reminder (pcr) - always install/update
+    run_cmd "PCR" update_run_verified_installer pcr --update
 }
 
 # ============================================================

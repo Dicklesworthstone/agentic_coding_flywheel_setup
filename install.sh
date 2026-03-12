@@ -4679,6 +4679,101 @@ NTM_CONFIG_EOF
         try_step "Installing RU" acfs_run_verified_upstream_script_as_target "ru" "bash" || log_warn "RU installation may have failed"
     fi
 
+    # RCH (Remote Compilation Helper)
+    if binary_installed "rch"; then
+        log_detail "RCH already installed"
+    else
+        log_detail "Installing RCH"
+        try_step "Installing RCH" acfs_run_verified_upstream_script_as_target "rch" "bash" || log_warn "RCH installation may have failed"
+    fi
+
+    # FrankenSearch (fsfs)
+    if binary_installed "fsfs"; then
+        log_detail "FrankenSearch already installed"
+    else
+        log_detail "Installing FrankenSearch"
+        try_step "Installing FrankenSearch" acfs_run_verified_upstream_script_as_target "fsfs" "bash" --easy-mode || log_warn "FrankenSearch installation may have failed"
+    fi
+
+    # Process Triage (pt)
+    if binary_installed "pt"; then
+        log_detail "Process Triage already installed"
+    else
+        log_detail "Installing Process Triage"
+        try_step "Installing Process Triage" acfs_run_verified_upstream_script_as_target "pt" "bash" || log_warn "Process Triage installation may have failed"
+    fi
+
+    # Storage Ballast Helper (sbh)
+    if binary_installed "sbh"; then
+        log_detail "Storage Ballast Helper already installed"
+    else
+        log_detail "Installing Storage Ballast Helper"
+        try_step "Installing SBH" acfs_run_verified_upstream_script_as_target "sbh" "bash" || log_warn "SBH installation may have failed"
+    fi
+
+    # Cross-Agent Session Resumer (casr)
+    if binary_installed "casr"; then
+        log_detail "CASR already installed"
+    else
+        log_detail "Installing CASR"
+        try_step "Installing CASR" acfs_run_verified_upstream_script_as_target "casr" "bash" || log_warn "CASR installation may have failed"
+    fi
+
+    # Doodlestein Self-Releaser (dsr) — standalone bash script, no upstream installer
+    if binary_installed "dsr"; then
+        log_detail "DSR already installed"
+    else
+        log_detail "Installing DSR"
+        local dsr_tmp
+        dsr_tmp="$(mktemp -d "${TMPDIR:-/tmp}/acfs-dsr.XXXXXX" 2>/dev/null)" || dsr_tmp=""
+        if [[ -n "$dsr_tmp" ]] && [[ -d "$dsr_tmp" ]]; then
+            if run_as_target git clone --depth 1 https://github.com/Dicklesworthstone/doodlestein_self_releaser.git "$dsr_tmp/dsr" 2>/dev/null; then
+                if [[ -x "$dsr_tmp/dsr/dsr" ]]; then
+                    run_as_target cp "$dsr_tmp/dsr/dsr" "$ACFS_BIN_DIR/dsr" 2>/dev/null || \
+                        run_as_target cp "$dsr_tmp/dsr/dsr" "$TARGET_HOME/.local/bin/dsr" 2>/dev/null
+                    run_as_target chmod 755 "$ACFS_BIN_DIR/dsr" 2>/dev/null || \
+                        run_as_target chmod 755 "$TARGET_HOME/.local/bin/dsr" 2>/dev/null
+                    log_success "DSR installed"
+                else
+                    log_warn "DSR: binary not found in cloned repo"
+                fi
+            else
+                log_warn "DSR: git clone failed"
+            fi
+            rm -rf "$dsr_tmp"
+        else
+            log_warn "DSR: failed to create temp directory"
+        fi
+    fi
+
+    # Agent Settings Backup (asb)
+    if binary_installed "asb"; then
+        log_detail "ASB already installed"
+    else
+        log_detail "Installing ASB"
+        try_step "Installing ASB" acfs_run_verified_upstream_script_as_target "asb" "bash" || log_warn "ASB installation may have failed"
+    fi
+
+    # Post-Compact Reminder (pcr hook)
+    local pcr_installed=false
+    local pcr_hook_script="$TARGET_HOME/.local/bin/claude-post-compact-reminder"
+    local settings_file="$TARGET_HOME/.claude/settings.json"
+    local alt_settings_file="$TARGET_HOME/.config/claude/settings.json"
+    if [[ -x "$pcr_hook_script" ]]; then
+        if [[ -f "$settings_file" ]] && grep -q "claude-post-compact-reminder" "$settings_file" 2>/dev/null; then
+            pcr_installed=true
+        elif [[ -f "$alt_settings_file" ]] && grep -q "claude-post-compact-reminder" "$alt_settings_file" 2>/dev/null; then
+            pcr_installed=true
+        fi
+    fi
+
+    if [[ "$pcr_installed" == "true" ]]; then
+        log_detail "Post-Compact Reminder already installed"
+    else
+        log_detail "Installing Post-Compact Reminder"
+        try_step "Installing PCR" acfs_run_verified_upstream_script_as_target "pcr" "bash" --yes || log_warn "PCR installation may have failed"
+    fi
+
     # DCG (Destructive Command Guard)
     if binary_installed "dcg"; then
         log_detail "DCG already installed"

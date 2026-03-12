@@ -1811,6 +1811,284 @@ modules:
       - "Provides sysmoni TUI for live resource monitoring"
       - "Auto-deprioritizes heavy workloads to keep system responsive"
 
+  - id: stack.frankensearch
+    description: Two-tier hybrid local search — lexical (BM25) + semantic retrieval with progressive delivery (fsfs)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, search]
+    web:
+      display_name: "FrankenSearch"
+      short_name: "FSFS"
+      tagline: "Two-tier hybrid search with progressive delivery"
+      icon: "search"
+      color: "#7C3AED"
+      href: "https://github.com/Dicklesworthstone/frankensearch"
+      features:
+        - "BM25 lexical + semantic retrieval"
+        - "Progressive delivery (fast initial + quality refinement)"
+        - "Embedded ML models"
+        - "JSON API for agent integration"
+      tech_stack: ["Rust", "Tantivy", "ONNX", "BM25"]
+      use_cases:
+        - "Local code and document search"
+        - "AI agent knowledge retrieval"
+        - "Hybrid search across project artifacts"
+      language: "Rust"
+      stars: 30
+      cli_name: "fsfs"
+    dependencies:
+      - lang.rust
+    installed_check:
+      run_as: target_user
+      command: "command -v fsfs"
+    verified_installer:
+      tool: fsfs
+      runner: bash
+      args: ["--easy-mode"]
+    install: []
+    verify:
+      - fsfs version || fsfs --help
+
+  - id: stack.storage_ballast_helper
+    description: Cross-platform disk-pressure defense for AI coding workloads (sbh)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, system-tools]
+    web:
+      display_name: "Storage Ballast Helper"
+      short_name: "SBH"
+      tagline: "Predictive disk-pressure defense for AI workloads"
+      icon: "hard-drive"
+      color: "#059669"
+      href: "https://github.com/Dicklesworthstone/storage_ballast_helper"
+      features:
+        - "Predictive disk space monitoring"
+        - "Safe cleanup policies"
+        - "Ballast file release"
+        - "Explainable policy decisions"
+      tech_stack: ["Rust", "SQLite", "procfs"]
+      use_cases:
+        - "Preventing disk-full failures during builds"
+        - "Automated cleanup of build artifacts"
+        - "Monitoring disk usage across projects"
+      language: "Rust"
+      stars: 20
+      cli_name: "sbh"
+    dependencies:
+      - lang.rust
+    installed_check:
+      run_as: target_user
+      command: "command -v sbh"
+    verified_installer:
+      tool: sbh
+      runner: bash
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
+    install: []
+    verify:
+      - sbh status || sbh --help
+
+  - id: stack.cross_agent_session_resumer
+    description: Cross-provider AI coding session resumption — convert and resume sessions across providers (casr)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, agent-tools]
+    web:
+      display_name: "Cross-Agent Session Resumer"
+      short_name: "CASR"
+      tagline: "Resume coding sessions across AI providers"
+      icon: "repeat"
+      color: "#D946EF"
+      href: "https://github.com/Dicklesworthstone/cross_agent_session_resumer"
+      features:
+        - "Cross-provider session conversion"
+        - "Canonical session model"
+        - "14+ provider support"
+        - "Session diff and merge"
+      tech_stack: ["Rust", "SQLite", "JSONL"]
+      use_cases:
+        - "Resuming a Claude session in Codex"
+        - "Migrating session history between providers"
+        - "Building unified session archives"
+      language: "Rust"
+      stars: 25
+      cli_name: "casr"
+    dependencies:
+      - lang.rust
+    installed_check:
+      run_as: target_user
+      command: "command -v casr"
+    verified_installer:
+      tool: casr
+      runner: bash
+    install: []
+    verify:
+      - casr providers || casr --help
+
+  - id: stack.doodlestein_self_releaser
+    description: Fallback release infrastructure — local builds via act when GitHub Actions is throttled (dsr)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, release]
+    web:
+      display_name: "Doodlestein Self-Releaser"
+      short_name: "DSR"
+      tagline: "Fallback release infra when CI is throttled"
+      icon: "package"
+      color: "#F97316"
+      href: "https://github.com/Dicklesworthstone/doodlestein_self_releaser"
+      features:
+        - "Reuses existing GitHub Actions YAML"
+        - "Local builds via nektos/act"
+        - "Multi-platform support"
+        - "Artifact signing with minisign"
+      tech_stack: ["Bash", "Docker", "act", "GitHub CLI"]
+      use_cases:
+        - "Releasing when GitHub Actions quota is exhausted"
+        - "Local release testing before push"
+        - "Cross-platform builds from single machine"
+      language: "Bash"
+      stars: 15
+      cli_name: "dsr"
+    dependencies:
+      - cli.modern   # for gh, docker
+    installed_check:
+      run_as: target_user
+      command: "command -v dsr"
+    install:
+      # DSR is a standalone bash script — clone repo and copy binary
+      - |
+        DSR_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dsr_install.XXXXXX")"
+        cd "$DSR_TMP"
+        git clone --depth 1 https://github.com/Dicklesworthstone/doodlestein_self_releaser.git .
+        cp dsr ~/.local/bin/dsr
+        chmod 755 ~/.local/bin/dsr
+        cd ..
+        rm -rf "$DSR_TMP"
+    verify:
+      - dsr doctor || dsr --help
+
+  - id: stack.agent_settings_backup
+    description: Smart backup tool for AI coding agent configuration folders (asb)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, backup]
+    web:
+      display_name: "Agent Settings Backup"
+      short_name: "ASB"
+      tagline: "Git-versioned backups for AI agent configs"
+      icon: "save"
+      color: "#0EA5E9"
+      href: "https://github.com/Dicklesworthstone/agent_settings_backup_script"
+      features:
+        - "Per-agent git repositories"
+        - "Full version history"
+        - "Easy restoration"
+        - "13+ agent type support"
+      tech_stack: ["Bash", "Git", "rsync"]
+      use_cases:
+        - "Backing up Claude Code settings before experiments"
+        - "Restoring agent configs after reinstall"
+        - "Tracking config changes over time"
+      language: "Bash"
+      stars: 10
+      cli_name: "asb"
+    dependencies:
+      - base.system
+    installed_check:
+      run_as: target_user
+      command: "command -v asb"
+    verified_installer:
+      tool: asb
+      runner: bash
+    install: []
+    verify:
+      - asb version || asb help
+
+  - id: stack.pcr
+    description: Post-compaction reminder hook for Claude Code that forces an AGENTS.md re-read
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, safety, hooks]
+    web:
+      display_name: "Post-Compact Reminder"
+      short_name: "pcr"
+      tagline: "Stop Claude from forgetting project rules after compaction"
+      icon: "shield-alert"
+      color: "#DC2626"
+      href: "https://github.com/Dicklesworthstone/post_compact_reminder"
+      features:
+        - "Auto-detects compaction events"
+        - "Injects AGENTS.md re-read reminder"
+        - "Zero overhead when not compacting"
+        - "Configurable reminder text"
+      tech_stack: ["Bash", "jq", "Claude Code hooks"]
+      use_cases:
+        - "Preventing rule amnesia after compaction"
+        - "Ensuring agents follow project conventions"
+        - "Maintaining consistency across long sessions"
+      language: "Bash"
+      stars: 40
+      cli_name: "pcr"
+    dependencies:
+      - agents.claude
+    installed_check:
+      run_as: target_user
+      command: |
+        target_home="${TARGET_HOME:-$HOME}"
+        hook_script="$target_home/.local/bin/claude-post-compact-reminder"
+        settings="$target_home/.claude/settings.json"
+        alt_settings="$target_home/.config/claude/settings.json"
+
+        test -x "$hook_script" || exit 1
+
+        if [[ -f "$settings" ]]; then
+          grep -q "claude-post-compact-reminder" "$settings"
+        elif [[ -f "$alt_settings" ]]; then
+          grep -q "claude-post-compact-reminder" "$alt_settings"
+        else
+          exit 1
+        fi
+    verified_installer:
+      tool: pcr
+      runner: bash
+      args: ["--yes"]
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
+    install: []
+    verify:
+      - |
+        target_home="${TARGET_HOME:-$HOME}"
+        hook_script="$target_home/.local/bin/claude-post-compact-reminder"
+        settings="$target_home/.claude/settings.json"
+        alt_settings="$target_home/.config/claude/settings.json"
+
+        test -x "$hook_script" || exit 1
+
+        if [[ -f "$settings" ]]; then
+          grep -q "claude-post-compact-reminder" "$settings"
+        elif [[ -f "$alt_settings" ]]; then
+          grep -q "claude-post-compact-reminder" "$alt_settings"
+        else
+          exit 1
+        fi
+
   # ============================================================
   # PHASE 9B: Utilities (giil, csctf)
   # ============================================================

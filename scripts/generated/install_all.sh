@@ -172,6 +172,12 @@ install_all() {
     install_stack_rch
     install_stack_wezterm_automata
     install_stack_srps
+    install_stack_frankensearch
+    install_stack_storage_ballast_helper
+    install_stack_cross_agent_session_resumer
+    install_stack_doodlestein_self_releaser
+    install_stack_agent_settings_backup
+    install_stack_pcr
     log_section "Category: tools"
     install_utils_giil
     install_utils_csctf

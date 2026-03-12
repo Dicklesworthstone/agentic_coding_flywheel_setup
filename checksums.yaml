@@ -6,6 +6,10 @@ installers:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/automated_plan_reviser_pro/main/install.sh"
     sha256: "eb4626ccca58be2a9278c893618b13655c6f0805b7ee98f6a3127cf5f64a6eba"
 
+  asb:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
+    sha256: "0623f96861437cdbf0dd6e153ed2d545050802801476c2affac985f2f149fbd2"
+
   atuin:
     url: "https://setup.atuin.sh"
     sha256: "fd833d98a0380f3e9b8a1c670169ff4f6e8bf3745dd8d76803b3034d799fb7ba"
@@ -30,6 +34,10 @@ installers:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh"
     sha256: "831b8a3d9273601d6a71124c54450ac72e480fddc4e5e87f39192f187bd4624f"
 
+  casr:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh"
+    sha256: "85076fde0f8770ea86518e666776fa92ca6a99ff20acd8c4969c7dcccc1dc107"
+
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
     sha256: "0f22e2db8ddc928614a0c28ced39cfd019355e752fdf5000c0cc6bceedeb8f7b"
@@ -53,6 +61,10 @@ installers:
   gemini_patch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh"
     sha256: "990255cee059032dea551605cceec042bf25aa5648aa62c4166ca7ec3e14b120"
+
+  fsfs:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/main/install.sh"
+    sha256: "a4499e4e58be7e4f10f9bab0468195cda30e97e280e90f01cba1cb979d5f125c"
 
   giil:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/giil/main/install.sh"
@@ -86,6 +98,10 @@ installers:
     url: "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh"
     sha256: "ce0b7c94aa04d8c7a8137e45fe5c4744e3947871f785fd58117c480c1bf49352"
 
+  pcr:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
+    sha256: "8eb1aa36a76ef4bf21fd3d53c7f908488132f0b1db81268d699070404a2caf89"
+
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
     sha256: "927cb2470a99ef3a0e4bc61ca879f37ae7e9ca9f77535df61e484dd3d5b6ff92"
@@ -105,6 +121,10 @@ installers:
   rust:
     url: "https://sh.rustup.rs"
     sha256: "17247e4bcacf6027ec2e11c79a72c494c9af69ac8d1abcc1b271fa4375a106c2"
+
+  sbh:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
+    sha256: "dca19c4841d8a4bf1f08fa641e8f9d4c55b3b4c1df5154b95813c8ba65f9f557"
 
   s2p:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh"

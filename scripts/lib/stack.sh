@@ -2,7 +2,7 @@
 # shellcheck disable=SC1091
 # ============================================================
 # ACFS Installer - Dicklesworthstone Stack Library
-# Installs all 10 Dicklesworthstone tools
+# Installs all 18 Dicklesworthstone tools + utilities
 # ============================================================
 
 STACK_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,6 +29,14 @@ declare -gA STACK_COMMANDS=(
     [slb]="slb"
     [ru]="ru"
     [dcg]="dcg"
+    [rch]="rch"
+    [pt]="pt"
+    [fsfs]="fsfs"
+    [sbh]="sbh"
+    [casr]="casr"
+    [dsr]="dsr"
+    [asb]="asb"
+    [pcr]="claude-post-compact-reminder"
 )
 
 # Tool display names
@@ -43,6 +51,14 @@ declare -gA STACK_NAMES=(
     [slb]="SLB (Simultaneous Launch Button)"
     [ru]="RU (Repo Updater)"
     [dcg]="DCG (Destructive Command Guard)"
+    [rch]="RCH (Remote Compilation Helper)"
+    [pt]="PT (Process Triage)"
+    [fsfs]="Frankensearch"
+    [sbh]="SBH (Storage Ballast Helper)"
+    [casr]="CASR (Cross-Agent Session Resumer)"
+    [dsr]="DSR (Doodlestein Self-Releaser)"
+    [asb]="ASB (Agent Settings Backup)"
+    [pcr]="PCR (Post-Compact Reminder)"
 )
 
 # ============================================================
@@ -461,6 +477,214 @@ install_dcg() {
     return 1
 }
 
+# Install RCH (Remote Compilation Helper)
+# Build offloading daemon
+install_rch() {
+    local tool="rch"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_installer "$tool"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install PT (Process Triage)
+# Bayesian process cleanup
+install_pt() {
+    local tool="pt"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_installer "$tool"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install Frankensearch (fsfs)
+# Hybrid search engine
+install_fsfs() {
+    local tool="fsfs"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_installer "$tool"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install SBH (Storage Ballast Helper)
+# Disk pressure defense daemon
+install_sbh() {
+    local tool="sbh"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_installer "$tool"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install CASR (Cross-Agent Session Resumer)
+# Cross-provider session handoff
+install_casr() {
+    local tool="casr"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_installer "$tool"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install DSR (Doodlestein Self-Releaser)
+# Fallback release infrastructure
+install_dsr() {
+    local tool="dsr"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    # DSR uses git clone instead of a curl|bash installer
+    local target_user="${TARGET_USER:-ubuntu}"
+    local target_home="${TARGET_HOME:-/home/$target_user}"
+    local install_cmd='
+        DSR_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dsr_install.XXXXXX")"
+        cd "$DSR_TMP"
+        git clone --depth 1 https://github.com/Dicklesworthstone/doodlestein_self_releaser.git .
+        mkdir -p "$HOME/.local/bin"
+        cp dsr "$HOME/.local/bin/dsr"
+        chmod 755 "$HOME/.local/bin/dsr"
+        cd ..
+        rm -rf "$DSR_TMP"
+    '
+
+    if _stack_run_as_user "$install_cmd"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install ASB (Agent Settings Backup)
+# Agent config backup tool
+install_asb() {
+    local tool="asb"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_installer "$tool"; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install PCR (Post-Compact Reminder)
+# Claude Code hook for AGENTS.md re-read after compaction
+install_pcr() {
+    local tool="pcr"
+    local target_home="${TARGET_HOME:-/home/${TARGET_USER:-ubuntu}}"
+    local hook_script="$target_home/.local/bin/claude-post-compact-reminder"
+
+    # PCR is only complete once both the hook script and Claude settings entry exist.
+    local settings_file="$target_home/.claude/settings.json"
+    local alt_settings_file="$target_home/.config/claude/settings.json"
+    if [[ -x "$hook_script" ]]; then
+        if [[ -f "$settings_file" ]] && grep -q "claude-post-compact-reminder" "$settings_file" 2>/dev/null; then
+            log_detail "${STACK_NAMES[$tool]} already installed"
+            return 0
+        elif [[ -f "$alt_settings_file" ]] && grep -q "claude-post-compact-reminder" "$alt_settings_file" 2>/dev/null; then
+            log_detail "${STACK_NAMES[$tool]} already installed"
+            return 0
+        fi
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_installer "$tool" --yes; then
+        if [[ -x "$hook_script" ]]; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
 # ============================================================
 # Verification Functions
 # ============================================================
@@ -473,7 +697,7 @@ verify_stack() {
 
     log_detail "Verifying Dicklesworthstone stack..."
 
-    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg; do
+    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr; do
         local cmd="${STACK_COMMANDS[$tool]}"
         local name="${STACK_NAMES[$tool]}"
 
@@ -501,7 +725,7 @@ verify_stack_help() {
 
     log_detail "Testing stack tools --help..."
 
-    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg; do
+    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr; do
         local cmd="${STACK_COMMANDS[$tool]}"
 
         if _stack_is_installed "$tool"; then
@@ -524,7 +748,7 @@ verify_stack_help() {
 get_stack_versions() {
     echo "Dicklesworthstone Stack Versions:"
 
-    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg; do
+    for tool in ntm mcp_agent_mail ubs bv cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr; do
         local cmd="${STACK_COMMANDS[$tool]}"
         local name="${STACK_NAMES[$tool]}"
 
@@ -544,7 +768,7 @@ get_stack_versions() {
 install_all_stack() {
     log_step "7/8" "Installing Dicklesworthstone stack..."
 
-    # Install in recommended order
+    # Install in recommended order (original 10 tools)
     install_ntm
     install_mcp_agent_mail
     install_ubs
@@ -555,6 +779,16 @@ install_all_stack() {
     install_slb
     install_ru
     install_dcg
+
+    # Additional tools (9 new integrations)
+    install_rch
+    install_pt
+    install_fsfs
+    install_sbh
+    install_casr
+    install_dsr
+    install_asb
+    install_pcr
 
     # Verify installation
     verify_stack
