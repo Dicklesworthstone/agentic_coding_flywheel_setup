@@ -170,7 +170,9 @@ update_step() {
     local status="$2"
 
     STEP_STATUS[$step]="$status"
-    render_progress_screen
+    # Redirect to /dev/tty so progress is visible when running
+    # inside a $() capture (issue #214)
+    render_progress_screen > /dev/tty
 }
 
 # Execute a creation step
@@ -390,7 +392,9 @@ Created with ACFS newproj wizard.
 # Run all creation steps
 run_creation() {
     init_creation_steps
-    render_progress_screen
+    # Redirect to /dev/tty so progress is visible when running
+    # inside a $() capture (issue #214)
+    render_progress_screen > /dev/tty
 
     # Begin transaction
     local project_dir
@@ -410,14 +414,14 @@ run_creation() {
     done
 
     if [[ "$failed" == "true" ]]; then
-        # Rollback
-        echo ""
-        echo -e "${TUI_ERROR}${BOX_CROSS} Failed at: $(get_step_name "$failed_step")${TUI_NC}"
-        echo ""
+        # Rollback — display to /dev/tty (issue #214)
+        echo "" > /dev/tty
+        echo -e "${TUI_ERROR}${BOX_CROSS} Failed at: $(get_step_name "$failed_step")${TUI_NC}" > /dev/tty
+        echo "" > /dev/tty
 
         if read_yes_no "Rollback changes?" "y"; then
             rollback_project_creation
-            echo -e "${TUI_WARNING}Changes rolled back${TUI_NC}"
+            echo -e "${TUI_WARNING}Changes rolled back${TUI_NC}" > /dev/tty
         fi
 
         return 1
@@ -434,15 +438,15 @@ handle_progress_input() {
         echo "$SCREEN_PROGRESS_NEXT"
         return 0
     else
-        # Failed - offer retry or exit
-        echo ""
-        echo "Options:"
-        echo "  [r] Retry"
-        echo "  [b] Go back to edit"
-        echo "  [q] Quit"
+        # Failed - offer retry or exit (display to /dev/tty, issue #214)
+        echo "" > /dev/tty
+        echo "Options:" > /dev/tty
+        echo "  [r] Retry" > /dev/tty
+        echo "  [b] Go back to edit" > /dev/tty
+        echo "  [q] Quit" > /dev/tty
 
         while true; do
-            read -rsn1 key
+            read -rsn1 key < /dev/tty
             case "$key" in
                 'r'|'R')
                     return 0  # Will re-run when screen is called again

@@ -96,7 +96,9 @@ toggle_feature() {
 # Handle input for features screen
 handle_features_input() {
     while true; do
-        render_features_screen
+        # Redirect render output to /dev/tty so it displays even when
+        # this function runs inside a $() capture (issue #214)
+        render_features_screen > /dev/tty
 
         local input=""
 
@@ -155,9 +157,9 @@ handle_features_input() {
             echo "$SCREEN_FEATURES_NEXT"
             return 0
         else
-            # Fallback to text input
-            echo ""
-            echo -n "Toggle options (or Enter to continue): "
+            # Fallback to text input — prompts go to /dev/tty (issue #214)
+            echo "" > /dev/tty
+            echo -n "Toggle options (or Enter to continue): " > /dev/tty
             read -r input < /dev/tty || true
 
             case "$input" in

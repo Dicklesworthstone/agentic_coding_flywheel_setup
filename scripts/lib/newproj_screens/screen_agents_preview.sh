@@ -186,10 +186,12 @@ edit_content() {
 # Handle input for agents preview screen
 handle_agents_preview_input() {
     while true; do
-        render_agents_preview_screen
+        # Redirect render output to /dev/tty so it displays even when
+        # this function runs inside a $() capture (issue #214)
+        render_agents_preview_screen > /dev/tty
 
         local key
-        read -rsn1 key
+        read -rsn1 key < /dev/tty
 
         case "$key" in
             '')
@@ -207,7 +209,7 @@ handle_agents_preview_input() {
                 # Edit content
                 log_input "agents_preview" "edit"
                 if edit_content; then
-                    echo -e "${TUI_SUCCESS}Content saved${TUI_NC}"
+                    echo -e "${TUI_SUCCESS}Content saved${TUI_NC}" > /dev/tty
                     sleep 1
                 fi
                 ;;
@@ -218,7 +220,7 @@ handle_agents_preview_input() {
                 ;;
             $'\e')
                 # Escape - check for escape sequence
-                read -rsn2 -t 0.1 escape_seq || true
+                read -rsn2 -t 0.1 escape_seq < /dev/tty || true
                 if [[ -z "$escape_seq" ]]; then
                     # Plain escape - go back
                     log_input "agents_preview" "escape_back"

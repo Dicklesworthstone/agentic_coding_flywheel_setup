@@ -202,7 +202,9 @@ handle_tech_stack_input() {
     fi
 
     while true; do
-        render_tech_stack_screen "$selected"
+        # Redirect render output to /dev/tty so it displays even when
+        # this function runs inside a $() capture (issue #214)
+        render_tech_stack_screen "$selected" > /dev/tty
 
         local input=""
         if [[ "$GUM_AVAILABLE" == "true" && "$TERM_HAS_COLOR" == "true" ]]; then
@@ -249,9 +251,9 @@ handle_tech_stack_input() {
             echo "$SCREEN_TECH_STACK_NEXT"
             return 0
         else
-            # Fallback to text input
-            echo ""
-            echo -n "Toggle options (or Enter to continue): "
+            # Fallback to text input — prompts go to /dev/tty (issue #214)
+            echo "" > /dev/tty
+            echo -n "Toggle options (or Enter to continue): " > /dev/tty
             read -r input < /dev/tty || true
 
             case "$input" in

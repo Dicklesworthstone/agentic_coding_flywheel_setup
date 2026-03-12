@@ -187,10 +187,12 @@ render_confirmation_screen() {
 # Handle input for confirmation screen
 handle_confirmation_input() {
     while true; do
-        render_confirmation_screen
+        # Redirect render output to /dev/tty so it displays even when
+        # this function runs inside a $() capture (issue #214)
+        render_confirmation_screen > /dev/tty
 
         local key
-        read -rsn1 key
+        read -rsn1 key < /dev/tty
 
         case "$key" in
             ''|'c'|'C'|'y'|'Y')
@@ -216,7 +218,7 @@ handle_confirmation_input() {
                 ;;
             $'\e')
                 # Escape
-                read -rsn2 -t 0.1 escape_seq || true
+                read -rsn2 -t 0.1 escape_seq < /dev/tty || true
                 if [[ -z "$escape_seq" ]]; then
                     log_input "confirmation" "cancel"
                     echo ""
