@@ -173,6 +173,16 @@ export const ModuleSchema = z
             'Tool name must be lowercase alphanumeric with underscores (e.g., "bun", "claude", "mcp_agent_mail")'
           ),
         runner: VerifiedInstallerRunnerSchema,
+        env: z
+          .array(
+            z
+              .string()
+              .regex(
+                /^[A-Za-z_][A-Za-z0-9_]*=.*$/,
+                'Verified installer env entries must be KEY=value assignments'
+              )
+          )
+          .default([]),
         args: z.array(z.string()).default([]),
         // Run installer in detached tmux session (prevents blocking for long-running services)
         run_in_tmux: z.boolean().default(false),

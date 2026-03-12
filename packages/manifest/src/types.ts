@@ -34,6 +34,8 @@ export interface VerifiedInstaller {
   tool: string;
   /** Executable runner (must be bash or sh) */
   runner: VerifiedInstallerRunner;
+  /** Optional environment variable assignments (KEY=value) for the runner */
+  env?: string[];
   /** Optional additional args for runner */
   args?: string[];
   /** If true, run installer in detached tmux session (prevents blocking) */

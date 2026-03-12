@@ -300,6 +300,41 @@ describe('ModuleSchema', () => {
     }
   });
 
+  test('validates verified_installer env assignments', () => {
+    const result = ModuleSchema.safeParse({
+      id: 'stack.ru',
+      description: 'Repo Updater',
+      install: [],
+      verify: ['ru --version'],
+      verified_installer: {
+        tool: 'ru',
+        runner: 'bash',
+        env: ['RU_NON_INTERACTIVE=1'],
+        args: [],
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.verified_installer?.env).toEqual(['RU_NON_INTERACTIVE=1']);
+    }
+  });
+
+  test('rejects invalid verified_installer env entries', () => {
+    const result = ModuleSchema.safeParse({
+      id: 'stack.ru',
+      description: 'Repo Updater',
+      install: [],
+      verify: ['ru --version'],
+      verified_installer: {
+        tool: 'ru',
+        runner: 'bash',
+        env: ['not-an-assignment'],
+        args: [],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
   test('rejects verified_installer with python runner (security)', () => {
     const result = ModuleSchema.safeParse({
       id: 'lang.python',

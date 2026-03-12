@@ -213,6 +213,7 @@ modules:
     verified_installer:
       tool: bun
       runner: bash
+      env: ["BUN_INSTALL=1"]
       args: []
     verify:
       - bun --version
@@ -222,6 +223,7 @@ modules:
     expect(result.data?.modules[0].verified_installer).toBeDefined();
     expect(result.data?.modules[0].verified_installer?.tool).toBe('bun');
     expect(result.data?.modules[0].verified_installer?.runner).toBe('bash');
+    expect(result.data?.modules[0].verified_installer?.env).toEqual(['BUN_INSTALL=1']);
   });
 
   test('rejects invalid verified_installer runner', () => {

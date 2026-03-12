@@ -271,8 +271,17 @@ function buildVerifiedInstallerPipe(module: Module): string {
     );
   }
 
-  const parts: string[] = [vi.runner];
+  const parts: string[] = [];
+  const envVars = vi.env ?? [];
   const args = vi.args ?? [];
+
+  if (envVars.length > 0) {
+    parts.push('env');
+    for (const envVar of envVars) {
+      parts.push(shellQuoteVerifiedInstallerArg(envVar));
+    }
+  }
+  parts.push(vi.runner);
 
   // No args: `echo ... | bash` / `echo ... | sh` already reads from stdin.
   if (args.length === 0) {
@@ -560,6 +569,9 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
   const vi = module.verified_installer!;
   const tool = vi.tool;
   const runInTmux = vi.run_in_tmux === true;
+  const envStr = vi.env && vi.env.length > 0
+    ? vi.env.map(a => shellQuoteVerifiedInstallerArg(a)).join(' ')
+    : '';
 
   // Build the args string for the installer runner invocation.
   const argsStr = vi.args && vi.args.length > 0
@@ -622,6 +634,7 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
       '',
       '# Create new detached tmux session and run the installer',
       'if run_as_target tmux new-session -d -s "$tmux_session" ' +
+        (envStr ? `env ${envStr} ` : '') +
         `${shellQuote(vi.runner)} "$tmp_install"` +
         (argsStr ? ` ${argsStr}` : '') +
         '; then',
@@ -642,7 +655,16 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     // Use run_as_target_runner to switch user while preserving stdin
     // When runner is bash/sh, we ALWAYS need -s to read from stdin (piped content)
     // When there are args, we also need -- to separate bash flags from script args
-    const parts = ['run_as_target_runner', shellQuote(vi.runner)];
+    const parts = ['run_as_target_runner'];
+
+    if (vi.env && vi.env.length > 0) {
+      parts.push(shellQuote('env'));
+      for (const envVar of vi.env) {
+        parts.push(shellQuoteVerifiedInstallerArg(envVar));
+      }
+    }
+
+    parts.push(shellQuote(vi.runner));
 
     // Add -s for bash/sh since we're piping script content to stdin
     // Without -s, bash expects a filename argument, not stdin input
@@ -791,6 +813,20 @@ function classifyNonCommandInstallEntry(
   return null;
 }
 
+function summarizeShellBlock(blockLines: string[], fallback: string): string {
+  const trimmed = blockLines.map((line) => line.trim()).filter(Boolean);
+  if (trimmed.length === 0) return fallback;
+
+  const nonComment = trimmed.filter((line) => !line.startsWith('#'));
+  if (nonComment.length === 0) return fallback;
+
+  const commandLike = nonComment.find(
+    (line) => !/^(?:local\s+)?[A-Za-z_][A-Za-z0-9_]*=(?!=)/.test(line)
+  );
+
+  return commandLike ?? nonComment[0] ?? fallback;
+}
+
 /**
  * Generate the install commands for a module
  * Uses run_as_*_shell heredocs for proper user context execution
@@ -817,7 +853,7 @@ function generateInstallCommands(module: Module): string[] {
       // Multi-line command (from YAML literal block)
       const cleanCmd = cmd.replace(/^\|?\n?/, '').trim();
       const blockLines = cleanCmd.split('\n');
-      const summary = blockLines[0]?.trim() || 'install command';
+      const summary = summarizeShellBlock(blockLines, 'install command');
       lines.push(
         ...wrapInstallHeredoc(
           module,
@@ -858,7 +894,7 @@ function generateVerifyCommands(module: Module): string[] {
     const blockLines = cleanCmd.includes('\n') || cleanCmd.startsWith('|')
       ? cleanCmd.replace(/^\|?\n?/, '').trim().split('\n')
       : [cleanCmd];
-    const summary = blockLines[0]?.trim() || 'verify command';
+    const summary = summarizeShellBlock(blockLines, 'verify command');
 
     if (isOptional) {
       lines.push(...wrapOptionalVerifyHeredoc(module, summary, blockLines));

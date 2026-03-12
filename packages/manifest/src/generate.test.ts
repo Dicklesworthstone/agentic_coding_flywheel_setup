@@ -212,16 +212,45 @@ describe('Generated verified installer args', () => {
     expect(stackContent).toContain('"${TARGET_HOME:-/home/ubuntu}"');
   });
 
-  test('stack.mcp_agent_mail uses managed service startup instead of tmux', () => {
+  test('stack.mcp_agent_mail writes an explicit managed no-auth service instead of tmux', () => {
     const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
     expect(existsSync(stackPath)).toBe(true);
     const stackContent = readFileSync(stackPath, 'utf-8');
 
     expect(stackContent).toContain('--no-start');
-    expect(stackContent).toContain('am service install >/dev/null');
+    expect(stackContent).toContain('cat > "$unit_file" <<UNIT_EOF');
+    expect(stackContent).toContain('Environment=STORAGE_ROOT=$storage_root');
+    expect(stackContent).toContain('Environment=DATABASE_URL=$db_url');
+    expect(stackContent).toContain(
+      'ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui'
+    );
     expect(stackContent).toContain('systemctl --user enable --now agent-mail.service');
     expect(stackContent).toContain('curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null');
+    expect(stackContent).not.toContain('am service install >/dev/null');
     expect(stackContent).not.toContain('tmux new-session -d -s "$tmux_session"');
+  });
+
+  test('stack.ru passes RU_NON_INTERACTIVE via env in generated installer', () => {
+    const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
+    expect(existsSync(stackPath)).toBe(true);
+    const stackContent = readFileSync(stackPath, 'utf-8');
+
+    expect(stackContent).toContain(
+      "run_as_target_runner 'env' 'RU_NON_INTERACTIVE=1' 'bash' '-s'"
+    );
+  });
+
+  test('multi-line install summaries skip comment-only lines', () => {
+    const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
+    expect(existsSync(stackPath)).toBe(true);
+    const stackContent = readFileSync(stackPath, 'utf-8');
+
+    expect(stackContent).not.toContain(
+      'install command failed: # Wait for the managed Agent Mail service to become healthy.'
+    );
+    expect(stackContent).toContain(
+      'install command failed: until curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do'
+    );
   });
 });
 
