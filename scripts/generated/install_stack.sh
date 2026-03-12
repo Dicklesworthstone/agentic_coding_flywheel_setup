@@ -15,7 +15,15 @@ ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # contract validation passes and local assets are discoverable.
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
     # Match install.sh defaults
-    TARGET_USER="${TARGET_USER:-ubuntu}"
+    if [[ -z "${TARGET_USER:-}" ]]; then
+        if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
+            _ACFS_DETECTED_USER="ubuntu"
+        else
+            _ACFS_DETECTED_USER="${SUDO_USER:-$(whoami)}"
+        fi
+        TARGET_USER="$_ACFS_DETECTED_USER"
+    fi
+    unset _ACFS_DETECTED_USER
     MODE="${MODE:-vibe}"
 
     if [[ -z "${TARGET_HOME:-}" ]]; then
@@ -280,6 +288,26 @@ fi
 fallback_pid_file="$storage_root/agent-mail.pid"
 fallback_log_file="$storage_root/agent-mail.log"
 
+stop_agent_mail_fallback() {
+  if [[ -f "$fallback_pid_file" ]]; then
+    existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+    if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
+       ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+      kill "$existing_pid" >/dev/null 2>&1 || true
+      for _ in {1..10}; do
+        if ! kill -0 "$existing_pid" 2>/dev/null; then
+          break
+        fi
+        sleep 1
+      done
+      if kill -0 "$existing_pid" 2>/dev/null; then
+        kill -9 "$existing_pid" >/dev/null 2>&1 || true
+      fi
+    fi
+    rm -f "$fallback_pid_file"
+  fi
+}
+
 launch_agent_mail_fallback() {
   if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
     return 0
@@ -305,10 +333,21 @@ launch_agent_mail_fallback() {
 }
 
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  stop_agent_mail_fallback
   systemctl --user daemon-reload >/dev/null 2>&1 || true
   if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
     systemctl --user restart agent-mail.service >/dev/null 2>&1
   fi
+  active_waited=0
+  active_max_wait=10
+  until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do
+    if [[ "$active_waited" -ge "$active_max_wait" ]]; then
+      break
+    fi
+    sleep 1
+    active_waited=$((active_waited + 1))
+  done
+  systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
 else
   echo "Agent Mail: systemctl --user unavailable, using background fallback" >&2
   launch_agent_mail_fallback
@@ -354,13 +393,23 @@ INSTALL_STACK_MCP_AGENT_MAIL
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null (target_user)"
+        log_info "dry-run: verify: if [[ -d \"\$runtime_dir\" ]]; then (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_MCP_AGENT_MAIL'
+runtime_dir="/run/user/$(id -u)"
+if [[ -d "$runtime_dir" ]]; then
+  export XDG_RUNTIME_DIR="$runtime_dir"
+  if [[ -S "$runtime_dir/bus" ]]; then
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+  fi
+fi
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || exit 1
+fi
 curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null
 INSTALL_STACK_MCP_AGENT_MAIL
         then
-            log_error "stack.mcp_agent_mail: verify failed: curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null"
+            log_error "stack.mcp_agent_mail: verify failed: if [[ -d \"\$runtime_dir\" ]]; then"
             return 1
         fi
     fi
@@ -2226,6 +2275,59 @@ install_stack_agent_settings_backup() {
             return 0
         fi
     fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: install: if [[ -d \"\$backup_root\" ]]; then (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_STACK_AGENT_SETTINGS_BACKUP'
+backup_root="${ASB_BACKUP_ROOT:-$HOME/.agent_settings_backups}"
+existing_backup_repo=""
+
+if [[ -d "$backup_root" ]]; then
+  existing_backup_repo="$(find "$backup_root" -mindepth 2 -maxdepth 2 -name .git -print -quit 2>/dev/null || true)"
+fi
+
+if [[ -n "$existing_backup_repo" ]]; then
+  echo "ASB backup history already exists at $backup_root" >&2
+else
+  if asb backup; then
+    echo "ASB initial backup created at $backup_root" >&2
+  else
+    echo "WARN: ASB initial backup failed; continuing without a seeded backup repo" >&2
+  fi
+fi
+
+cron_status="$(asb schedule --status --cron 2>&1 || true)"
+systemd_status="$(asb schedule --status --systemd 2>&1 || true)"
+cron_missing=false
+systemd_missing=false
+
+if printf '%s' "$cron_status" | grep -q "No cron schedule found"; then
+  cron_missing=true
+fi
+if printf '%s' "$systemd_status" | grep -q "Systemd timer is not enabled"; then
+  systemd_missing=true
+fi
+
+if [[ "$cron_missing" == "true" && "$systemd_missing" == "true" ]]; then
+  if asb schedule --cron --interval daily >/dev/null 2>&1; then
+    echo "ASB scheduled backups enabled via cron (daily)." >&2
+  else
+    echo "WARN: ASB scheduled backup setup failed; continuing without automation" >&2
+  fi
+fi
+
+echo "ASB backup root: $backup_root" >&2
+INSTALL_STACK_AGENT_SETTINGS_BACKUP
+        then
+            log_warn "stack.agent_settings_backup: install command failed: if [[ -d \"\$backup_root\" ]]; then"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.agent_settings_backup" "install command failed: if [[ -d \"\$backup_root\" ]]; then"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.agent_settings_backup"
+            fi
+            return 0
+        fi
+    fi
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
@@ -2254,6 +2356,22 @@ install_stack_pcr() {
     acfs_require_contract "module:${module_id}" || return 1
     log_step "Installing stack.pcr"
 
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: pre-install check: command -v claude >/dev/null 2>&1 (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_STACK_PCR_PRE_INSTALL_CHECK'
+command -v claude >/dev/null 2>&1
+INSTALL_STACK_PCR_PRE_INSTALL_CHECK
+        then
+            log_warn "stack.pcr: Skipping PCR - Claude Code not found"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.pcr" "Skipping PCR - Claude Code not found"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.pcr"
+            fi
+            return 0
+        fi
+    fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: verified installer: stack.pcr"
     else
@@ -2308,6 +2426,56 @@ install_stack_pcr() {
             log_warn "stack.pcr: verified installer failed"
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.pcr" "verified installer failed"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.pcr"
+            fi
+            return 0
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: install: test -x \"\$hook_script\" || { (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_STACK_PCR'
+target_home="${TARGET_HOME:-$HOME}"
+hook_script="$target_home/.local/bin/claude-post-compact-reminder"
+settings="$target_home/.claude/settings.json"
+alt_settings="$target_home/.config/claude/settings.json"
+active_settings=""
+backup_file=""
+
+test -x "$hook_script" || {
+  echo "PCR hook script missing after install" >&2
+  exit 1
+}
+
+if [[ -f "$settings" ]]; then
+  active_settings="$settings"
+  backup_file="${settings}.bak"
+elif [[ -f "$alt_settings" ]]; then
+  active_settings="$alt_settings"
+  backup_file="${alt_settings}.bak"
+else
+  echo "PCR did not create a Claude settings.json file" >&2
+  exit 1
+fi
+
+if ! grep -q "compact" "$active_settings"; then
+  echo "PCR settings entry does not contain compact hook registration" >&2
+  exit 1
+fi
+
+if [[ -f "$backup_file" ]]; then
+  echo "PCR settings backup preserved at $backup_file" >&2
+else
+  echo "PCR configured $active_settings without creating a .bak backup (likely a fresh settings file)" >&2
+fi
+
+echo "PCR installed - Claude will be reminded to re-read AGENTS.md after compaction" >&2
+INSTALL_STACK_PCR
+        then
+            log_warn "stack.pcr: install command failed: test -x \"\$hook_script\" || {"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.pcr" "install command failed: test -x \"\$hook_script\" || {"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "stack.pcr"
             fi

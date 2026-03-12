@@ -15,7 +15,15 @@ ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # contract validation passes and local assets are discoverable.
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
     # Match install.sh defaults
-    TARGET_USER="${TARGET_USER:-ubuntu}"
+    if [[ -z "${TARGET_USER:-}" ]]; then
+        if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
+            _ACFS_DETECTED_USER="ubuntu"
+        else
+            _ACFS_DETECTED_USER="${SUDO_USER:-$(whoami)}"
+        fi
+        TARGET_USER="$_ACFS_DETECTED_USER"
+    fi
+    unset _ACFS_DETECTED_USER
     MODE="${MODE:-vibe}"
 
     if [[ -z "${TARGET_HOME:-}" ]]; then

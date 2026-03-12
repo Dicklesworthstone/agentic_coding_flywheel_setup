@@ -15,7 +15,15 @@ ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # contract validation passes and local assets are discoverable.
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
     # Match install.sh defaults
-    TARGET_USER="${TARGET_USER:-ubuntu}"
+    if [[ -z "${TARGET_USER:-}" ]]; then
+        if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
+            _ACFS_DETECTED_USER="ubuntu"
+        else
+            _ACFS_DETECTED_USER="${SUDO_USER:-$(whoami)}"
+        fi
+        TARGET_USER="$_ACFS_DETECTED_USER"
+    fi
+    unset _ACFS_DETECTED_USER
     MODE="${MODE:-vibe}"
 
     if [[ -z "${TARGET_HOME:-}" ]]; then
@@ -153,6 +161,12 @@ INSTALL_NETWORK_TAILSCALE
         fi
     fi
 
+    # Post-install message
+    log_info "Tailscale installed! To connect your VPS to your Tailscale network:"
+    log_info "  sudo tailscale up"
+    log_info "Then log in with your Google account at the URL shown."
+    log_info "Once connected, you can access your VPS via its Tailscale IP or hostname."
+
     log_success "network.tailscale installed"
 }
 
@@ -232,6 +246,11 @@ INSTALL_NETWORK_SSH_KEEPALIVE
             return 0
         fi
     fi
+
+    # Post-install message
+    log_info "SSH keepalive configured! Your connections will now survive VPN/NAT timeouts."
+    log_info "Settings: ClientAliveInterval 60, ClientAliveCountMax 3"
+    log_info "Original config backed up to /etc/ssh/sshd_config.acfs.bak"
 
     log_success "network.ssh_keepalive installed"
 }

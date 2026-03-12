@@ -9,20 +9,20 @@
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/security.sh]="cf544e74f048575c130d246167c8293ad2d03287fd562b8823fdb0fc293b8d38"
-  [scripts/lib/agents.sh]="929ed97be7f102b90dac608b75dffc99bc377a7b414ee33989b54e7636053efe"
-  [scripts/lib/update.sh]="0ba8f52d2cd35863d32318dac3570a36d11d3840a60bf139bc1b26d76fbfe4e8"
-  [scripts/lib/doctor.sh]="cebcd86a71efe0a089cd7de2690831ae878e45f768b63530acb9b1d6863f16c7"
-  [scripts/lib/install_helpers.sh]="8722c1b1d2b10e192062bb61c1cef60c36f90ac77c51b5fae009e0c92288953d"
+  [scripts/lib/agents.sh]="0049036fe41e28d65ff4e23224459773b6bdf4ed6c0ca8db1172da7c5d7250b1"
+  [scripts/lib/update.sh]="d6a57e223ac6033967d7a5f41b7a77fa1be67de66ec68235d4272304ff97c8b7"
+  [scripts/lib/doctor.sh]="e8416bf3f4dd7daf1787f9e62f967bff6e8c6b8b7ba8e99f13bc82ff5997f7b3"
+  [scripts/lib/install_helpers.sh]="1a3f814f20b1472c248f0cdaea469570fa1e3551979b399b34bb90e0b743780f"
   [scripts/lib/logging.sh]="2c59b18646afd9b5413ac2b7956f6dea2299fe2f108913c2d998bdd8c5abcb97"
-  [scripts/lib/state.sh]="b7fc65151795d12af63c8b2e904e577dc570f58835ddc39f337eab471258bc10"
-  [scripts/lib/session.sh]="7bcb9c0524bdc8bab2888db9144f36e362f0aac2e48795adfc5450ec5534ce26"
+  [scripts/lib/state.sh]="45d2839851ed2a78cd9ca9790a670b671f20f01dd7c70772c3f5d475b5820dc9"
+  [scripts/lib/session.sh]="9d75014d6544baf2beecaa18bbc9bb0c19040efd2ad5353efdb52f4580c0ed19"
   [scripts/lib/os_detect.sh]="841c65c20ac86d45c59c852a537c3fc17a7a6923914ba07e5cddf57a45ae4223"
   [scripts/lib/errors.sh]="66b949934dd903b7b89e1641ac8002cbb53dfb2aee10d0948ceec4131e9deec7"
   [scripts/lib/user.sh]="105b4c4bca00dbe14a3f53b554fb87790ead9c7955015b837592bbc45b899fd0"
   [scripts/lib/tools.sh]="325f8ad08a07fec4c489092a925ac9d6009ab88d3d71cff4ccf5d41acaaf94e9"
-  [scripts/lib/export-config.sh]="731732f60e13169554488f154e81225d1a73f3521ce28cae0ebc00e78f69f85f"
-  [scripts/acfs-global]="ac2d5dc4f19e4ebfa9b354c7c22f96ec9b82e1975abe89249d07b0610197931b"
-  [scripts/acfs-update]="0e978db2d482b37c3d14264d2771fdb37d289a85d1df07d91758413e177055e7"
+  [scripts/lib/export-config.sh]="399c55205d3fcd877df2631ae29988a02b520553b35048cfb902eab4e64d5f3a"
+  [scripts/acfs-global]="b87d92bc0fec02c98137c013788872e390bd167cfbcea177628e34afebecfecd"
+  [scripts/acfs-update]="d48357f244099051ccbda885fb91597d0b41742bfbb292b16bf1ddaecca91c65"
 )
 
 ACFS_INTERNAL_CHECKSUMS_COUNT=15

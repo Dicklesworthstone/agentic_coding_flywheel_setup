@@ -15,7 +15,15 @@ ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # contract validation passes and local assets are discoverable.
 if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
     # Match install.sh defaults
-    TARGET_USER="${TARGET_USER:-ubuntu}"
+    if [[ -z "${TARGET_USER:-}" ]]; then
+        if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
+            _ACFS_DETECTED_USER="ubuntu"
+        else
+            _ACFS_DETECTED_USER="${SUDO_USER:-$(whoami)}"
+        fi
+        TARGET_USER="$_ACFS_DETECTED_USER"
+    fi
+    unset _ACFS_DETECTED_USER
     MODE="${MODE:-vibe}"
 
     if [[ -z "${TARGET_HOME:-}" ]]; then
@@ -149,7 +157,7 @@ declare -a MANIFEST_CHECKS=(
     "cloud.vercel	Vercel CLI	vercel --version	optional"
     "stack.ntm	Named tmux manager (agent cockpit)	ntm --help	required"
     "stack.mcp_agent_mail.1	Like gmail for coding agents; MCP HTTP server + token; installs beads tools	command -v am	required"
-    "stack.mcp_agent_mail.2	Like gmail for coding agents; MCP HTTP server + token; installs beads tools	curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null	required"
+    "stack.mcp_agent_mail.2	Like gmail for coding agents; MCP HTTP server + token; installs beads tools	runtime_dir=\"/run/user/\$(id -u)\"\\nif [[ -d \"\$runtime_dir\" ]]; then\\n  export XDG_RUNTIME_DIR=\"\$runtime_dir\"\\n  if [[ -S \"\$runtime_dir/bus\" ]]; then\\n    export DBUS_SESSION_BUS_ADDRESS=\"unix:path=\$runtime_dir/bus\"\\n  fi\\nfi\\nif command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then\\n  systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || exit 1\\nfi\\ncurl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null	required"
     "stack.meta_skill.1	Local-first knowledge management with hybrid semantic search (ms)	ms --version	required"
     "stack.meta_skill.2	Local-first knowledge management with hybrid semantic search (ms)	ms doctor --json	optional"
     "stack.automated_plan_reviser.1	Automated iterative spec refinement with extended AI reasoning (apr)	apr --help	optional"
