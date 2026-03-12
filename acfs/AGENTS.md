@@ -462,6 +462,42 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 | `ru sync` | Sync all managed repos |
 | `caam` | Switch between AI provider accounts |
 
+### High-Impact Stack Tools
+
+| Command | Description |
+|---------|-------------|
+| `rch exec -- cargo build` | Offload `cargo build`/`test`/`clippy` to remote RCH workers instead of compiling locally |
+| `fsfs search <query>` | Hybrid lexical + semantic repo search when `rg` is too narrow |
+| `sbh status` | Inspect Storage Ballast Helper protection before disk pressure turns into outages |
+| `pt scan` | Find abandoned or zombie processes before killing things manually |
+| `casr providers` | Check which agent/provider handoffs CASR can resume |
+| `dsr check --all` | Validate fallback release readiness when GitHub Actions is throttled |
+| `ru sync` | Pull all managed repos forward before starting a swarm or maintenance pass |
+| `asb backup --all` | Back up agent settings before risky hook/config experiments |
+| `claude-post-compact-reminder` | PCR hook script that reminds Claude Code to re-read `AGENTS.md` after compaction |
+
+### When To Reach For Them
+
+- `rch`: Any `cargo build`, `cargo test`, `cargo clippy`, or other heavy Rust compilation. Prefer `rch exec -- <command>` so one agent does not starve the whole machine.
+- `fsfs`: Cross-repo or concept search where `rg` only finds exact strings and misses semantic matches.
+- `sbh`: Disk pressure, full-volume risk, or ballast-pool diagnostics. It is protection infrastructure, not clutter.
+- `pt`: Suspected zombie processes, stuck dev servers, port conflicts, or mysterious CPU burners.
+- `casr`: Provider handoffs when a session needs to move between Claude, Codex, Gemini, or another supported agent.
+- `dsr`: Release fallback when GitHub Actions is unavailable, quota-throttled, or too slow to trust.
+- `ru`: Before broad repo sweeps, after multi-agent sessions, or when a machine has many stale `/data/projects/*` clones.
+- `asb`: Before editing agent config folders, hook settings, auth files, or shell integrations you may need to restore.
+- `pcr`: When Claude Code keeps forgetting project rules after compaction; PCR is the hook that forces the reminder.
+
+### Common Gotchas
+
+- RCH: Codex does not get the automatic Claude hook, so use `rch exec -- <cargo command>` manually.
+- SBH: Do not disable or remove ballast files casually; that defeats the whole point of the safety margin.
+- PT: Treat its output as triage, not blind authorization. Verify before killing unfamiliar processes.
+- CASR: Session handoff quality depends on what was captured; inspect the generated resume context before trusting it.
+- DSR: It assumes the repo already has sane release automation inputs; DSR is the fallback runner, not magic release design.
+- ASB: Backups may contain sensitive tokens or local auth state. Handle the backup repo like secrets-adjacent material.
+- PCR: It is a Claude Code hook, not a normal interactive CLI. Verify the hook script and Claude settings entry, not just `command -v`.
+
 ---
 
 ## Tmux Navigation
