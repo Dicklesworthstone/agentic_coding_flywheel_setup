@@ -1192,9 +1192,8 @@ export const trackLessonEnter = (
 
   // Calculate time from previous lesson (only if visiting a different lesson)
   let timeFromPreviousLesson: number | undefined;
-  if (previousLesson >= 0 && previousLesson !== lessonId && funnelData.lessonTimestamps[previousLesson]?.entered) {
-    const prevTime = new Date(funnelData.lessonTimestamps[previousLesson].entered!).getTime();
-    timeFromPreviousLesson = Math.round((Date.now() - prevTime) / 1000);
+  if (previousLesson >= 0 && previousLesson !== lessonId) {
+    timeFromPreviousLesson = getElapsedSecondsSince(funnelData.lessonTimestamps[previousLesson]?.entered);
   }
 
   // Track the lesson entry
@@ -1252,11 +1251,7 @@ export const trackLessonComplete = (
   const now = new Date().toISOString();
 
   // Calculate time spent on lesson
-  let timeOnLesson: number | undefined;
-  if (funnelData.lessonTimestamps[lessonId]?.entered) {
-    const enterTime = new Date(funnelData.lessonTimestamps[lessonId].entered!).getTime();
-    timeOnLesson = Math.round((Date.now() - enterTime) / 1000);
-  }
+  const timeOnLesson = getElapsedSecondsSince(funnelData.lessonTimestamps[lessonId]?.entered);
 
   // Update funnel data
   if (!funnelData.completedLessons.includes(lessonId)) {

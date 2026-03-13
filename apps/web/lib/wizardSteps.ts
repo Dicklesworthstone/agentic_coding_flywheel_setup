@@ -331,12 +331,13 @@ export function useCompletedSteps(): [number[], (stepId: number) => void] {
 
   const mutation = useMutation({
     mutationFn: async (stepId: number) => {
-      // Use query cache as source of truth to avoid race conditions when
-      // markComplete is called rapidly multiple times. Falls back to
-      // localStorage for initial hydration.
-      const currentSteps =
-        queryClient.getQueryData<number[]>(wizardStepsKeys.completedSteps) ??
-        getCompletedSteps();
+      // Always read from localStorage so the write is never skipped.
+      // The onMutate optimistic update gives instant UI feedback, but
+      // reading the cache here would see the step already added and
+      // short-circuit without persisting to localStorage. On the
+      // subsequent onSettled invalidation the cache would then revert
+      // to the stale localStorage value, silently losing the step.
+      const currentSteps = getCompletedSteps();
       const newSteps = addCompletedStep(currentSteps, stepId);
       if (newSteps === currentSteps) {
         return currentSteps;

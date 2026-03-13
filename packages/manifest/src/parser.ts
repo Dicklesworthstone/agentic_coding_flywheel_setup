@@ -21,7 +21,15 @@ function isEntirelyWrappedInMatchingQuotes(value: string): boolean {
   if (trimmed.length < 2) return false;
 
   const quote = trimmed[0];
-  return (quote === '"' || quote === "'") && trimmed.endsWith(quote);
+  if (quote !== '"' && quote !== "'") return false;
+  if (!trimmed.endsWith(quote)) return false;
+
+  for (let i = 1; i < trimmed.length - 1; i++) {
+    if (trimmed[i] === quote && trimmed[i - 1] !== '\\') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function unwrapOptionalQuotes(value: string): string {

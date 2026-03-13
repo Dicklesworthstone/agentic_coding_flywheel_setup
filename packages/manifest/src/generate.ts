@@ -817,7 +817,15 @@ function isEntirelyWrappedInMatchingQuotes(value: string): boolean {
   if (value.length < 2) return false;
 
   const quote = value[0];
-  return (quote === '"' || quote === "'") && value.endsWith(quote);
+  if (quote !== '"' && quote !== "'") return false;
+  if (!value.endsWith(quote)) return false;
+
+  for (let i = 1; i < value.length - 1; i++) {
+    if (value[i] === quote && value[i - 1] !== '\\') {
+      return false;
+    }
+  }
+  return true;
 }
 
 function unwrapOptionalQuotes(value: string): string {
