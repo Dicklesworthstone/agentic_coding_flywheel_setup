@@ -538,7 +538,7 @@ test_sudo_user_defaults_to_target_acfs_home() {
     local root_home="$MOCK_HOME/root-home"
     local target_home="$MOCK_HOME/target-home"
     local target_acfs="$target_home/.acfs"
-    mkdir -p "$root_home" "$target_home"
+    mkdir -p "$root_home" "$target_home" "$target_acfs"
 
     cp -R "$MOCK_ACFS/." "$target_acfs/"
     echo "# root zshrc" > "$root_home/.zshrc"
