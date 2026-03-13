@@ -143,7 +143,7 @@ function Hero() {
           </h1>
 
           <p className="mx-auto mt-8 max-w-2xl text-lg text-white/60 sm:text-xl leading-relaxed font-light">
-            The definitive system for operating AI agent swarms. Master the methodology to transition from human intent to flawless execution.
+            The definitive system for operating <Jargon term="ai-agents">AI agent</Jargon> swarms. Master the methodology to transition from human intent to flawless execution.
           </p>
         </motion.div>
         
@@ -246,7 +246,7 @@ export default function CompleteGuidePage() {
           The <Hl>markdown plan</Hl> is where the big thinking happens.
         </>,
         <>
-          The <Hl>beads</Hl> are how that thinking gets packaged for execution
+          The <Hl><Jargon term="beads">beads</Jargon></Hl> are how that thinking gets packaged for execution
           by many agents.
         </>,
         <>
@@ -368,7 +368,7 @@ export default function CompleteGuidePage() {
         </>,
         <>
           <Hl>The swarm launches.</Hl> Agents read <IC>AGENTS.md</IC>, register
-          with Agent Mail, claim beads, and use <IC>bv</IC>.
+          with <Jargon term="agent-mail">Agent Mail</Jargon>, claim beads, and use <IC>bv</IC>.
         </>,
         <>
           <Hl>The human tends flow,</Hl> not code details.
@@ -725,7 +725,7 @@ export default function CompleteGuidePage() {
     <P>
       Once you have a functioning v1, adding new features follows the same
       process: create a detailed markdown plan, turn it into beads, and
-      implement. The flywheel just spins again.
+      implement. The <Jargon term="flywheel">flywheel</Jargon> just spins again.
     </P>
     <TipBox variant="tip">
       Debates about architecture and approach belong in the planning stage so
@@ -745,7 +745,7 @@ export default function CompleteGuidePage() {
   icon={<Terminal className="h-5 w-5" />}
 >
   <P>
-    ACFS is a &ldquo;Rails installer&rdquo; for agentic engineering. A beginner
+    ACFS is a &ldquo;Rails installer&rdquo; for <Jargon term="agentic">agentic</Jargon> engineering. A beginner
     with a credit card and a laptop can paste one{" "}
     <IC>curl | bash</IC> command and start vibe coding within minutes.
   </P>
@@ -839,7 +839,7 @@ alias gmi='gemini --yolo'`}
       items={[
         <>
           <Hl>Web apps:</Hl> TypeScript, Next.js 16, React 19, Tailwind,
-          Supabase, Rust/WASM for performance-critical parts
+          <Jargon term="supabase">Supabase</Jargon>, Rust/WASM for performance-critical parts
         </>,
         <>
           <Hl>CLI tools:</Hl> Golang or Rust
@@ -1304,7 +1304,7 @@ br sync --flush-only                                     # Export to JSONL`}
 
   <SubSection title="Final Cross-Model Check">
     <P>
-      After Claude Code polishing rounds are complete, run one final round using Codex with
+      After <Jargon term="claude-code">Claude Code</Jargon> polishing rounds are complete, run one final round using <Jargon term="codex">Codex</Jargon> with
       GPT (high reasoning effort) using the same polishing prompt. Different models have
       different blind spots. This final pass consistently catches things Claude missed.
     </P>
@@ -1867,7 +1867,7 @@ ntm palette`} />
                   </SubSection>
 
                   <SubSection title="3. DCG (Destructive Command Guard)">
-                    <P>DCG mechanically blocks dangerous commands:</P>
+                    <P><Jargon term="dcg">DCG</Jargon> mechanically blocks dangerous commands:</P>
                     <DataTable
                       headers={["Blocked Command", "Safe Alternative", "Why"]}
                       rows={[

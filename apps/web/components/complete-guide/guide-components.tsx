@@ -527,24 +527,25 @@ export function PrincipleCard({
 
   return (
     <div
-      className={`group relative rounded-2xl border border-white/[0.08] bg-[#0a0a0c] overflow-hidden transition-all duration-300 hover:border-white/20 shadow-lg hover:shadow-2xl`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-[#0a0a0c] overflow-hidden transition-all duration-300 hover:border-white/20 shadow-lg hover:shadow-[0_15px_30px_-15px_rgba(255,255,255,0.05)]`}
     >
       <div className={`absolute inset-0 opacity-0 group-hover:opacity-[0.03] bg-gradient-to-br ${gradient || "from-white to-transparent"} transition-opacity duration-500 pointer-events-none`} />
       
       <button
         onClick={() => hasContent && setOpen(!open)}
-        className="w-full relative z-10 flex items-start gap-4 p-5 sm:p-6 text-left"
+        className={`w-full relative z-10 flex items-start gap-4 p-5 sm:p-6 text-left ${hasContent ? "cursor-pointer" : "cursor-default"}`}
         aria-expanded={open}
+        disabled={!hasContent}
       >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-primary/30 to-primary/10 border border-primary/30 font-mono text-sm font-bold text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-primary/20 to-primary/5 border border-primary/20 font-mono text-sm font-bold text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)] group-hover:scale-105 group-hover:border-primary/40 transition-all duration-300">
           {number}
         </div>
         <div className="flex-1 min-w-0 flex items-center h-10">
-          <h4 className="font-semibold text-white/90 text-base sm:text-lg leading-snug tracking-tight">{title}</h4>
+          <h4 className="font-semibold text-white/90 text-base sm:text-lg leading-snug tracking-tight group-hover:text-white transition-colors duration-300">{title}</h4>
         </div>
         {hasContent && (
           <div className="flex h-10 items-center">
-            <ChevronDown className={`h-5 w-5 text-white/30 shrink-0 transition-transform duration-300 ${open ? "rotate-180" : ""}`} />
+            <ChevronDown className={`h-5 w-5 text-white/30 shrink-0 transition-transform duration-300 group-hover:text-white/50 ${open ? "rotate-180" : ""}`} />
           </div>
         )}
       </button>
@@ -744,7 +745,8 @@ export function TableOfContents({ items }: { items: TocItem[] }) {
           }
         }
       },
-      { rootMargin: "-20% 0% -70% 0%", threshold: 0 },
+      // Narrower intersection margin to make the active section more accurate
+      { rootMargin: "-15% 0% -80% 0%", threshold: 0 },
     );
 
     for (const item of items) {
@@ -756,7 +758,7 @@ export function TableOfContents({ items }: { items: TocItem[] }) {
 
   // Progress calculation
   const activeIndex = items.findIndex(i => i.id === activeId);
-  const progress = items.length > 0 ? ((activeIndex + 1) / items.length) * 100 : 0;
+  const progress = items.length > 0 ? (Math.max(0, activeIndex) / (items.length - 1)) * 100 : 0;
 
   const tocContent = (
     <nav className="relative space-y-1" aria-label="Table of contents">
