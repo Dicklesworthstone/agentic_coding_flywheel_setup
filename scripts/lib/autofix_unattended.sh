@@ -360,11 +360,15 @@ autofix_unattended_upgrades_restore() {
     fi
 
     local session_changes
-    session_changes=$(grep '"category":"unattended"' "$ACFS_CHANGES_FILE" 2>/dev/null | \
-                      grep -v '"auto_restored"' || true)
+    session_changes=$(grep '"category":"unattended"' "$ACFS_CHANGES_FILE" 2>/dev/null || true)
 
     if [[ -z "$session_changes" ]]; then
         log_debug "[POST-INSTALL] No unattended-upgrades changes to restore"
+        return 0
+    fi
+
+    if [[ -f "$ACFS_UNDOS_FILE" ]] && grep -q '"auto_restored": "unattended-upgrades"' "$ACFS_UNDOS_FILE" 2>/dev/null; then
+        log_debug "[POST-INSTALL] Unattended-upgrades already auto-restored"
         return 0
     fi
 

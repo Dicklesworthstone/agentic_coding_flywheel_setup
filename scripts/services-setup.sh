@@ -198,12 +198,6 @@ select_dcg_packs() {
         fi
     else
         echo "Select additional DCG packs (enter numbers separated by spaces, or 'all')"
-        local i=1
-        for opt in "${options[@]}"; do
-            echo "  $i) $opt"
-            ((i++))
-        done
-
         local input=""
         if [[ -t 0 ]]; then
             read -r -p "Select: " input
@@ -219,9 +213,16 @@ select_dcg_packs() {
                 selected_lines+="${opt}"$'\n'
             done
         else
+            local user_input=""
             for num in $input; do
-                if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#options[@]} ]]; then
-                    selected_lines+="${options[$((10#num - 1))]}"$'\n'
+                if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le "${#options[@]}" ]]; then
+                    user_input+="$num"
+                fi
+            done
+            local selected_lines=""
+            for num in $user_input; do
+                if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le "${#options[@]}" ]]; then
+                    selected_lines+="${options[$((10#$num - 1))]}"$'\n'
                 fi
             done
         fi

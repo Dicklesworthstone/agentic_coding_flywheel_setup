@@ -2992,7 +2992,7 @@ run_ubuntu_upgrade_phase() {
     local target_major target_minor
     target_major="${TARGET_UBUNTU_VERSION%%.*}"
     target_minor="${TARGET_UBUNTU_VERSION#*.}"
-    target_version_num=$(printf "%d%02d" "$target_major" "$target_minor")
+    target_version_num=$(printf "%d%02d" "$((10#$target_major))" "$((10#$target_minor))")
 
     # Ensure ubuntu_upgrade.sh uses the requested target (not just its defaults).
     export UBUNTU_TARGET_VERSION="$TARGET_UBUNTU_VERSION"

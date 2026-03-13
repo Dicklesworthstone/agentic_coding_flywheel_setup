@@ -287,19 +287,14 @@ get_last_update_date() {
 
 # Parse duration string (e.g., "7d", "2w", "1m") to days
 parse_duration() {
-    local duration="$1"
-    if [[ ! "$duration" =~ ^[0-9]+([dDwWmM])?$ ]]; then
-        return 1
-    fi
+    local num="${1:-1}"
+    local duration="${2:-days}"
 
-    local num="${duration%[dwmDWM]}"
-    local unit="${duration: -1}"
-
-    case "$unit" in
-        d|D) echo "$((10#num))" ;;
-        w|W) echo "$((10#num * 7))" ;;
-        m|M) echo "$((10#num * 30))" ;;
-        *) echo "$((10#duration))" ;;  # Assume days if no unit
+    case "${duration,,}" in
+        d|D) echo "$((10#$num))" ;;
+        w|W) echo "$((10#$num * 7))" ;;
+        m|M) echo "$((10#$num * 30))" ;;
+        *) echo "$((10#$duration))" ;;  # Assume days if no unit
     esac
 }
 

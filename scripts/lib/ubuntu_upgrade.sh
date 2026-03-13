@@ -11,7 +11,7 @@
 # UBUNTU_TARGET_VERSION (and optionally UBUNTU_TARGET_VERSION_NUM) before sourcing.
 export UBUNTU_TARGET_VERSION="${UBUNTU_TARGET_VERSION:-25.10}"
 if [[ -z "${UBUNTU_TARGET_VERSION_NUM:-}" ]]; then
-    UBUNTU_TARGET_VERSION_NUM="$(printf "%d%02d" "${UBUNTU_TARGET_VERSION%%.*}" "${UBUNTU_TARGET_VERSION#*.}")"
+    UBUNTU_TARGET_VERSION_NUM="$(printf "%d%02d" "$((10#${UBUNTU_TARGET_VERSION%%.*}))" "$((10#${UBUNTU_TARGET_VERSION#*.}))")"
 fi
 export UBUNTU_TARGET_VERSION_NUM
 
@@ -42,24 +42,12 @@ declare -f log_info &>/dev/null || log_info() { log_detail "$1"; }
 # e.g., 24.04 -> 2404, 25.10 -> 2510, 24.04.1 -> 2404
 # Returns: version number on stdout, or empty if not Ubuntu
 ubuntu_get_version_number() {
-    local version_str
-    version_str=$(ubuntu_get_version_string)
-
-    if [[ -z "$version_str" ]]; then
-        return 1
-    fi
-
-    # Handle "24.04", "24.04.1", "25.10"
-    local major minor
-    major="${version_str%%.*}"
-    # Remove everything after the second dot (if any) to get minor version
-    # "04.1" -> "04"
-    local remainder="${version_str#*.}"
-    minor="${remainder%%.*}"
-
-    # Pad minor to 2 digits (e.g. 4 -> 04, 10 -> 10)
+    local version major minor
+    version=$(ubuntu_get_version_string)
+    major="${version%%.*}"
+    minor="${version#*.}"
     # Using 10# to force base 10 and avoid octal interpretation of leading zeros
-    printf "%d%02d" "10#${major}" "10#${minor}"
+    printf "%d%02d" "$((10#${major}))" "$((10#${minor}))"
 }
 
 # Get current Ubuntu version string
@@ -127,7 +115,7 @@ ubuntu_is_lts() {
     # LTS versions are even years + .04
     # 22.04, 24.04, 26.04, etc. (not 23.04, 25.04)
     # Use 10# to force base 10 for year to handle potential leading zeros (e.g. 08.04)
-    [[ "$version" =~ ^[0-9]+\.04$ ]] && [[ $((10#year % 2)) -eq 0 ]]
+    [[ "$version" =~ ^[0-9]+\.04$ ]] && [[ $((10#$year % 2)) -eq 0 ]]
 }
 
 # Get the next LTS version after the given version
@@ -139,11 +127,11 @@ ubuntu_get_next_lts() {
     if [[ "$current" =~ \.04$ ]]; then
         # Already on LTS, next LTS is current_year + 2
         # Use 10# to handle potential leading zeros safely
-        echo "$((10#major + 2)).04"
+        echo "$((10#$major + 2)).04"
     else
         # On non-LTS, find next LTS
         # 24.10 -> 26.04, 25.04 -> 26.04, etc.
-        local next_lts_year=$(( (10#major / 2 + 1) * 2 ))
+        local next_lts_year=$(( (10#$major / 2 + 1) * 2 ))
         echo "${next_lts_year}.04"
     fi
 }
@@ -269,7 +257,7 @@ ubuntu_calculate_upgrade_path() {
         # Convert to number for comparison
         local major="${next%%.*}"
         local minor="${next#*.}"
-        check_version=$(printf "%d%02d" "$major" "$minor")
+        check_version=$(printf "%d%02d" "$((10#$major))" "$((10#$minor))")
     done
 
     printf '%s\n' "${path[@]}"
@@ -927,12 +915,6 @@ MOTD_STATUS
 echo -e "${C}║${N}                                                              ${C}║${N}"
 echo -e "${C}║${N}  The upgrade runs ${G}automatically${N} in the background.           ${C}║${N}"
 echo -e "${C}║${N}  System will reboot after each step. ${Y}Do NOT interrupt.${N}       ${C}║${N}"
-echo -e "${C}║${N}                                                              ${C}║${N}"
-echo -e "${C}╠══════════════════════════════════════════════════════════════╣${N}"
-echo -e "${C}║${N}  ${B}MONITOR PROGRESS:${N}                                           ${C}║${N}"
-echo -e "${C}║${N}                                                              ${C}║${N}"
-echo -e "${C}║${N}    ${G}/var/lib/acfs/check_status.sh${N}          (status summary)   ${C}║${N}"
-echo -e "${C}║${N}    ${D}tail -f /var/log/acfs/upgrade_resume.log${N}      (live log)  ${C}║${N}"
 echo -e "${C}║${N}                                                              ${C}║${N}"
 echo -e "${C}╚══════════════════════════════════════════════════════════════╝${N}"
 echo ""
