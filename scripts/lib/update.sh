@@ -1968,7 +1968,7 @@ update_stack() {
                 chmod +x "$tmp_install"
                 log_item "run" "MCP Agent Mail"
 
-                if bash "$tmp_install" --dir "$HOME/mcp_agent_mail" --yes --no-start; then
+                if bash "$tmp_install" --yes --migrate; then
                     local uid
                     local runtime_dir
                     local user_bus

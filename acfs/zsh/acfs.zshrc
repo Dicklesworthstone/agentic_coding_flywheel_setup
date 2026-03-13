@@ -496,18 +496,12 @@ fi
 
 # MCP Agent Mail helper (leave the real `am` CLI available for service/macros)
 amserve() {
-  local storage_root="$HOME/.mcp_agent_mail_git_mailbox_repo"
-
   if ! command -v am &>/dev/null; then
-    echo "am CLI not found"
+    echo "am CLI not found — install with: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/main/install.sh | bash"
     return 1
   fi
 
-  mkdir -p "$storage_root"
-  STORAGE_ROOT="$storage_root" \
-  DATABASE_URL="sqlite+aiosqlite:///${storage_root}/storage.sqlite3" \
-  HTTP_PATH=/mcp/ \
-  am serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui
+  am serve-http --host 127.0.0.1 --port 8765 --no-tui
 }
 
 # --- ACFS tool aliases (new tools) ---
