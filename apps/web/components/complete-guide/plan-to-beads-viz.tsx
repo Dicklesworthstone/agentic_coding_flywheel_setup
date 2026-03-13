@@ -75,6 +75,30 @@ const PLAN_TO_BEAD_CONCEPTS: {
     mapsTo: ["br-105"],
     color: "#FFFFFF",
   },
+  {
+    id: "search",
+    label: "Semantic Indexing",
+    planLine: "- Implement semantic search using the PGVector embeddings we just generated.",
+    insight: "Depends on PGVector being fully configured and populated. Cannot be started parallel to auth.",
+    mapsTo: ["br-101", "br-102"],
+    color: "#FF5500",
+  },
+  {
+    id: "admin",
+    label: "Admin Dashboard",
+    planLine: "- Build a dashboard to view the indexing status of all documents.",
+    insight: "Needs authentication to be finished and the indexing service to expose a status API.",
+    mapsTo: ["br-103", "br-104"],
+    color: "#FFBD2E",
+  },
+  {
+    id: "tests",
+    label: "E2E Tests",
+    planLine: "- Add E2E tests for the whole flow.",
+    insight: "Must run absolutely last, after the UI and the backend are completely stable.",
+    mapsTo: ["br-105"],
+    color: "#A1A1AA",
+  },
 ] as const;
 
 const TRANSLATED_BEADS: readonly TranslationBead[] = [

@@ -428,76 +428,51 @@ export default function CompleteGuidePage() {
       The easiest way to stay oriented is to know what artifact is &ldquo;in
       charge&rdquo; at each moment and what question that stage is answering.
     </P>
-    <DataTable
-      headers={[
-        "Stage",
-        "Primary Artifact",
-        "Source of Truth",
-        "Main Question",
-        "Exit Signal",
-        "What Comes Next",
-      ]}
-      rows={[
-        [
-          "Intent shaping",
-          "Human notes / prompts",
-          "Human&rsquo;s goals",
-          "What are we building?",
-          "Workflows explicit",
-          "Markdown planning",
-        ],
-        [
-          "Planning",
-          "Markdown plan",
-          "Plan document",
-          "What should the system be?",
-          "Plan comprehensive enough to translate",
-          "Plan-to-beads",
-        ],
-        [
-          "Translation",
-          "Beads under construction",
-          "Emerging bead graph",
-          "How to convert design into work packets?",
-          "Every plan element in beads",
-          "Bead polishing",
-        ],
-        [
-          "Execution prep",
-          <>
-            Polished bead graph + <IC>AGENTS.md</IC>
-          </>,
-          "Beads, dependencies, rules",
-          "Can a fresh swarm execute without guessing?",
-          "Beads self-contained and launch-ready",
-          "Swarm launch",
-        ],
-        [
-          "Swarm implementation",
-          "Code + bead state + Agent Mail",
-          "Current codebase + bead/thread state",
-          "Is implementation progressing coherently?",
-          "Reviews stop finding major issues",
-          "Deep review and shipping",
-        ],
-        [
-          "Hardening / shipping",
-          "Tests, UBS results, commits",
-          "Verified code + issue status",
-          "Is it ready to land?",
-          "Quality gates pass",
-          "Memory / next cycle",
-        ],
-        [
-          "Memory / improvement",
-          "CASS sessions, CM rules",
-          "Distilled lessons",
-          "What should the next swarm inherit?",
-          "Reusable artifacts updated",
-          "Better next project",
-        ],
-      ]}
-    />
+    
+    <div className="mt-8 flex flex-col gap-4">
+      {[
+        { phase: "Intent shaping", primary: "Human notes / prompts", truth: "Human's goals", question: "What are we building?", exit: "Workflows explicit", next: "Markdown planning", color: "#A1A1AA" },
+        { phase: "Planning", primary: "Markdown plan", truth: "Plan document", question: "What should the system be?", exit: "Plan comprehensive enough to translate", next: "Plan-to-beads", color: "#FF5500" },
+        { phase: "Translation", primary: "Beads under construction", truth: "Emerging bead graph", question: "How to convert design into work packets?", exit: "Every plan element in beads", next: "Bead polishing", color: "#FFBD2E" },
+        { phase: "Execution prep", primary: "Polished bead graph + AGENTS.md", truth: "Beads, dependencies, rules", question: "Can a fresh swarm execute without guessing?", exit: "Beads self-contained and launch-ready", next: "Swarm launch", color: "#71717A" },
+        { phase: "Swarm implementation", primary: "Code + bead state + Agent Mail", truth: "Current codebase + bead/thread state", question: "Is implementation progressing coherently?", exit: "Reviews stop finding major issues", next: "Deep review and shipping", color: "#52525B" },
+        { phase: "Hardening / shipping", primary: "Tests, UBS results, commits", truth: "Verified code + issue status", question: "Is it ready to land?", exit: "Quality gates pass", next: "Memory / next cycle", color: "#3F3F46" },
+        { phase: "Memory / improvement", primary: "CASS sessions, CM rules", truth: "Distilled lessons", question: "What should the next swarm inherit?", exit: "Reusable artifacts updated", next: "Better next project", color: "#FFFFFF" },
+      ].map((step, i) => (
+        <div key={i} className="rounded-2xl border border-white/[0.05] bg-[#0A0D14] p-5 shadow-lg relative overflow-hidden group">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.02),transparent_50%)] pointer-events-none" />
+          <div className="relative z-10 flex flex-col xl:flex-row xl:items-center gap-6">
+            <div className="shrink-0 xl:w-48">
+              <div className="text-[0.65rem] font-bold uppercase tracking-widest text-white/40 mb-1">Stage {i + 1}</div>
+              <div className="text-lg font-black text-white group-hover:text-[#FF5500] transition-colors">{step.phase}</div>
+            </div>
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-6">
+              <div className="lg:col-span-1">
+                <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30 mb-1">Primary Artifact</div>
+                <div className="text-sm font-medium text-white/90">{step.primary}</div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30 mb-1">Source of Truth</div>
+                <div className="text-sm text-zinc-300 font-light">{step.truth}</div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30 mb-1">Main Question</div>
+                <div className="text-sm text-zinc-300 font-light italic">{step.question}</div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30 mb-1">Exit Signal</div>
+                <div className="text-sm text-zinc-300 font-light">{step.exit}</div>
+              </div>
+              <div className="lg:col-span-1">
+                <div className="text-[0.6rem] font-bold uppercase tracking-widest text-white/30 mb-1">What Comes Next</div>
+                <div className="text-sm font-bold text-[#FF5500]">{step.next}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+
   </SubSection>
 
   <SubSection title="Where the Rest of the Guide Zooms In">
@@ -2629,161 +2604,45 @@ even better for you in the future!`} />
 
               <Divider />
 
-              {/* ==================== SECTION 21: Operationalizing the Method ==================== */}
-              <GuideSection id="operationalizing" number="21" title="Operators & Validation Gates" icon={<Cog className="h-5 w-5" />}>
-                <P highlight>
-                  This is the layer that turns CASS-mined rituals into skills, skills into <IC>AGENTS.md</IC> blurbs,
-                  and those blurbs into more deterministic swarm behavior.
-                </P>
-
-                <SubSection title="The First-Pass Kernel">
-                  <P>Nine axioms that anchor the entire method:</P>
-                  <NumberedList items={[
-                    <>Global reasoning belongs in plan space.</>,
-                    <>The markdown plan must be comprehensive before coding starts.</>,
-                    <>Plan-to-beads is a distinct translation problem.</>,
-                    <>Beads are the execution substrate.</>,
-                    <>Convergence matters more than first drafts.</>,
-                    <>Swarm agents are fungible.</>,
-                    <>Coordination must survive crashes and compaction.</>,
-                    <>Session history is part of the system.</>,
-                    <>Implementation is not the finish line.</>,
-                  ]} />
-                </SubSection>
-
-                <SubSection title="Operator Library">
+                            {/* ==================== SECTION 21: The Knuth Post & Recursive Improvement ==================== */}
+              <GuideSection id="operationalizing" number="21" title="The Knuth Post & Recursive Self-Improvement">
+                <SubSection title="Skills Improving Skills">
                   <P>
-                    The recurring moves below show up throughout real Flywheel sessions. These operators matter more than
-                    any single prompt because they say <Hl>when</Hl> to apply a move, what <Hl>failure</Hl> looks like,
-                    and what output is expected.
+                    I&apos;m living this every day, and let me tell you, things are accelerating very rapidly indeed.
                   </P>
-
-                  <OperatorCard
-                    number="1"
-                    name="Plan-First Expansion"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Project fits in plan but would explode once implemented; multiple architectural paths; fuzzy user workflow"
-                    failureMode="Skeleton-first coding, local code exploration as substitute for product reasoning"
-                  >
-                    Expand the full system design at the plan level before writing any code. Reason about architecture,
-                    data flow, and user workflows entirely in the markdown plan where the full picture fits in context.
-                  </OperatorCard>
-
-                  <OperatorCard
-                    number="2"
-                    name="Competing-Plan Triangulation"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Project important enough that one model&rsquo;s biases are dangerous; want broader search"
-                    failureMode="Picking first decent plan; combining every idea indiscriminately"
-                  >
-                    Ask 3+ competing LLMs to produce independent plans, then synthesize the best elements into a superior
-                    hybrid version through careful analysis.
-                  </OperatorCard>
-
-                  <OperatorCard
-                    number="3"
-                    name="Overshoot Mismatch Hunt"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Review output too short; model stopped after &ldquo;reasonable&rdquo; number of problems"
-                    failureMode="Asking for &ldquo;all problems&rdquo; and getting shallow pass"
-                  >
-                    Deliberately overshoot expectations. Tell the model you&rsquo;re &ldquo;positive it missed at least 80
-                    elements&rdquo; to break conservative output ceilings and force exhaustive review.
-                  </OperatorCard>
-
-                  <OperatorCard
-                    number="4"
-                    name="Plan-to-Beads Transfer Audit"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Large plan being turned into tasks; agents creating beads quickly"
-                    failureMode="Assuming beautiful plan implies good beads; creating terse beads"
-                  >
-                    Systematically verify every plan element maps to a bead and every bead traces back to the plan.
-                    Check both directions to prevent features from disappearing during conversion.
-                  </OperatorCard>
-
-                  <OperatorCard
-                    number="5"
-                    name="Convergence Polish Loop"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Plan or bead graph has visible rough edges; first polishing found real issues"
-                    failureMode="Treating first revision as final; endless polishing after returns go flat"
-                  >
-                    Iterate 4&ndash;6 polishing passes on beads, checking for correctness, completeness, and
-                    self-containedness. Stop when passes stop finding substantive issues.
-                  </OperatorCard>
-
-                  <OperatorCard
-                    number="6"
-                    name="Fresh-Eyes Reset"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Agent has done several long review rounds; suggestions repetitive"
-                    failureMode="Trusting tired context window; mistaking exhaustion for convergence"
-                  >
-                    Start a completely new session with a fresh agent. Have it read <IC>AGENTS.md</IC> and
-                    <IC>README.md</IC> from scratch, then review the work with no prior context.
-                  </OperatorCard>
-
-                  <OperatorCard
-                    number="7"
-                    name="Fungible Swarm Launch"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Beads polished enough; multiple agents in same repo"
-                    failureMode="Launching before beads self-contained; role specialization becoming load-bearing"
-                  >
-                    Launch agents with identical init prompts, staggered 30&ndash;60 seconds apart. Ensure Agent Mail,
-                    <IC>bv</IC>, and <IC>AGENTS.md</IC> are ready before starting.
-                  </OperatorCard>
-
-                  <OperatorCard
-                    number="8"
-                    name="Feedback-to-Infrastructure Closure"
-                    definition="Recurring cognitive move in the Flywheel methodology"
-                    trigger="Same confusion appears repeatedly in CASS; project finishes with clear lessons"
-                    failureMode="Treating lessons as anecdotes; improving code but never improving the method"
-                  >
-                    Mine CASS for repeated patterns, distill them into skills or <IC>AGENTS.md</IC> updates, and close
-                    the loop so the next project starts with those improvements baked in.
-                  </OperatorCard>
+                  <P>
+                    Using skills to improve skills, skills to improve tool use, and then feeding the actual experience in the form of session logs (surfaced and searched by my cass tool and /cass skill) back into the design skill for improving the tool interface to make it more natural and intuitive and powerful for the agents. Then taking that revised tool and improving the skill for using that tool, then rinse and repeat.
+                  </P>
                 </SubSection>
 
-                <SubSection title="Validation Gates">
-                  <DataTable
-                    headers={["Gate", "Must Be True", "Failure If Skipped"]}
-                    rows={[
-                      ["Foundation", "Goals, workflows, stack, AGENTS.md exist and coherent", "Plan absorbs ambiguity \u2192 confused agents"],
-                      ["Plan", "Plan covers workflows, architecture, testing, failure paths", "Agents improvise architecture"],
-                      ["Translation", "Every plan element maps to beads, checked both directions", "Features disappear during conversion"],
-                      ["Bead", "Beads self-contained, dependency-correct, rich context", "Swarm depends on reopening plan"],
-                      ["Launch", "Agent Mail, bv, AGENTS.md, staggered startup ready", "Agents collide and duplicate work"],
-                      ["Ship", "Reviews, tests, UBS, feedback capture complete", "Code ships but method doesn\u2019t improve"],
-                    ]}
-                  />
+                <SubSection title="Extreme Optimization & Alien Artifacts">
+                  <P>
+                    And finding any way I can to squeeze out more token density and agent intuitiveness and ergonomics wherever I can, like porting toon to Rust and seeing how I can add it as an optional output format to every tool&apos;s robot mode.
+                  </P>
+                  <P>
+                    Meanwhile, I&apos;m going over each tool with my extreme optimization skill and applying insane algorithmic lore that Knuth himself probably forgot about already to make things as fast as the metal can go in memory-safe Rust.
+                  </P>
+                  <P highlight>
+                    Now I&apos;m applying this to much bigger and richer targets, not just making small tools for use by agents, but now complex, rich protocols like my Flywheel Connector Protocol, which is practically an alien artifact (same for my process_triage or pt tool, which could cover a dozen PhD theses worth of applied probability), in that it weaves together so many innovative and clever ideas.
+                  </P>
                 </SubSection>
 
-                <SubSection title="Anti-Patterns">
-                  <BulletList items={[
-                    <><Hl>Verbosity mistaken for completeness</Hl> &mdash; long output does not mean thorough output</>,
-                    <><Hl>First-draft beads treated as ready</Hl> &mdash; beads always need 4&ndash;6 polishing passes</>,
-                    <><Hl>Hidden rationale</Hl> &mdash; design decisions only in plan, not carried to beads</>,
-                    <><Hl>Cargo-cult prompts</Hl> &mdash; copying prompts without understanding trigger and failure mode</>,
-                    <><Hl>Load-bearing agents</Hl> &mdash; any agent whose loss would stall the project</>,
-                    <><Hl>Phase skipping</Hl> &mdash; jumping to implementation before plan and beads are solid</>,
-                    <><Hl>No closure loop</Hl> &mdash; finishing the project without feeding lessons back into the method</>,
-                  ]} />
-                </SubSection>
-
-                <SubSection title="How CASS, Skills, AGENTS.md, and Validators Fit Together">
-                  <BulletList items={[
-                    <><Hl>CASS</Hl> discovers repeated prompts, recurring breakdowns, successful recoveries</>,
-                    <><Hl>Skills</Hl> package operators and anti-patterns into reusable workflows</>,
-                    <><Hl>AGENTS.md</Hl> carries the compressed operating subset every agent must keep after compaction</>,
-                    <><Hl>Validators</Hl> turn gates into scripts, checklists, or CI-enforced contracts</>,
-                  ]} />
-                  <TipBox variant="info">
-                    That is the real progression: repeated behavior becomes ritual, ritual becomes skill, skill becomes
-                    infrastructure, infrastructure changes what the next swarm can do.
-                  </TipBox>
+                <SubSection title="Building the Core Infrastructure">
+                  <P>
+                    And now I&apos;m even starting to build up my own core infrastructure for Rust. Just because certain libraries and ecosystems like Tokio have all the mindshare, doesn&apos;t mean they&apos;re the best, or even particularly good.
+                  </P>
+                  <BlockQuote>
+                    Design by committee over 10+ years while the language evolves is not a recipe for excellence.
+                  </BlockQuote>
+                  <P>
+                    But people are content to defer to the experts and then they end up with flawed structured concurrency primitives that forgo all the correctness by design that the academics already solved.
+                  </P>
+                  <P>
+                    For instance, check out my asupersync library, which I&apos;m already using to replace all the networking in my other rust tools, for a glimpse at this new clean-room, alien-artifact library future based on all that CS academic research that only a dozen people in the world ever read about.
+                  </P>
+                  <P highlight>
+                    The knowledge is just sitting there and the models have it. But you need to know how to coax it out of them.
+                  </P>
                 </SubSection>
               </GuideSection>
 
@@ -3117,7 +2976,7 @@ even better for you in the future!`} />
 
                   <PromptBlock
                     title="UI/UX: Platform-Specific Deep Polish"
-                    prompt={`I still think there are strong opportunities to enhance the UI/UX look and feel and to make everything work better and be more intuitive, user-friendly, visually appealing, polished, slick, and world class in terms of following UI/UX best practices like those used by Stripe, don't you agree? And I want you to carefully consider desktop UI/UX and mobile UI/UX separately while doing this and hyper-optimize for both separately to play to the specifics of each modality. I'm looking for true world-class visual appeal, polish, slickness, etc. that makes people gasp at how stunning and perfect it is in every way.`}
+                    prompt={`I still think there are strong opportunities to enhance the UI/UX look and feel and to make everything work better and be more intuitive, user-friendly, visually appealing, polished, slick, and world class in terms of following UI/UX best practices like those used by Stripe, don't you agree? And I want you to carefully consider desktop UI/UX and mobile UI/UX separately while doing this and hyper-optimize for both separately to play to the specifics of each modality. I&apos;m looking for true world-class visual appeal, polish, slickness, etc. that makes people gasp at how stunning and perfect it is in every way.`}
                     where="After initial UI/UX polish pass"
                   />
                 </SubSection>

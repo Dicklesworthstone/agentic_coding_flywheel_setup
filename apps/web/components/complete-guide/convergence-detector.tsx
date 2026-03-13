@@ -48,7 +48,9 @@ function getConvergenceVerdict(score: number) {
 const CONVERGENCE_SIGNALS = [
   { label: "Output Size Shrinking", weight: 0.35, weightLabel: "35%", color: "#38bdf8" },
   { label: "Change Velocity Slowing", weight: 0.35, weightLabel: "35%", color: "#a78bfa" },
-  { label: "Content Similarity Rising", weight: 0.3, weightLabel: "30%", color: "#34d399" },
+  { label: "Content Similarity Rising", weight: 0.3, weightLabel: "30%", color: "#FFBD2E" },
+  { label: "Length Delta Approaching Zero", weight: 0.2, weightLabel: "20%", color: "#FF5500" },
+  { label: "Semantic Density Plateau", weight: 0.25, weightLabel: "25%", color: "#FFFFFF" },
 ] as const;
 
 const PRESETS = [
@@ -80,8 +82,8 @@ export function ConvergenceDetector() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="flex flex-col gap-4 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-emerald-300/70">
-            Interactive Exhibit
+          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-[#FFBD2E]/70">
+            Interactive Simulator
           </div>
           <h4 className="mt-2 text-xl font-black tracking-[-0.03em] text-white sm:text-2xl">
             Convergence is measurable, not a vibe
@@ -206,19 +208,17 @@ export function ConvergenceDetector() {
           </div>
 
           <div className="mt-6">
-            <div className="h-3 overflow-hidden rounded-full border border-white/10 bg-white/[0.04]">
+            <div className="mt-4 h-[3px] w-full overflow-hidden rounded-full bg-slate-900/50 shadow-inner">
               <motion.div
-                className="h-full bg-[linear-gradient(90deg,#ef4444_0%,#f59e0b_35%,#22d3ee_70%,#34d399_100%)]"
-                initial={reducedMotion ? false : { width: 0 }}
+                className="h-full bg-[linear-gradient(90deg,rgba(161,161,170,1)_0%,rgba(255,85,0,1)_50%,rgba(255,189,46,1)_100%)]"
                 animate={{ width: `${score * 100}%` }}
-                transition={{ duration: 0.45 }}
+                transition={{ duration: 0.5, type: "spring", bounce: 0 }}
               />
             </div>
-            <div className="mt-2 flex justify-between px-1 text-[10px] uppercase tracking-[0.16em] text-white/30">
-              <span>Major fixes</span>
-              <span>Architecture</span>
-              <span>Refinement</span>
-              <span>Polishing</span>
+
+            <div className="mt-5 flex items-center justify-between">
+              <div className="text-sm font-semibold text-white">{phase.label}</div>
+              <div className="text-xs text-white/50">{getConvergenceVerdict(score)}</div>
             </div>
           </div>
         </motion.div>

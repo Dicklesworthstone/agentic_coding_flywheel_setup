@@ -318,33 +318,33 @@ function ScenarioPanel({
           >
             {scenario.badge}
           </div>
-          <div className="mt-2 text-xl font-black tracking-[-0.03em] text-white">
+          <div className="mt-1 text-lg sm:text-xl font-black tracking-[-0.03em] text-white">
             {scenario.title}
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-white/62">{scenario.summary}</p>
+          <p className="mt-1.5 text-xs sm:text-sm leading-relaxed text-white/62 pr-4">{scenario.summary}</p>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">conflicts</div>
-            <div className="mt-1 text-lg font-black text-white">{frame.metrics.conflicts}</div>
+        <div className="flex gap-2 sm:shrink-0 sm:self-start">
+          <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[70px] flex flex-col items-center justify-center">
+            <div className="text-[9px] uppercase tracking-[0.15em] text-white/40">conflicts</div>
+            <div className="mt-0.5 text-base font-black text-white leading-none">{frame.metrics.conflicts}</div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">idle burn</div>
-            <div className="mt-1 text-lg font-black text-white">{frame.metrics.idleBurn}</div>
+          <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[70px] flex flex-col items-center justify-center">
+            <div className="text-[9px] uppercase tracking-[0.15em] text-white/40">idle burn</div>
+            <div className="mt-0.5 text-base font-black text-white leading-none">{frame.metrics.idleBurn}</div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-white/35">completed</div>
-            <div className="mt-1 text-lg font-black text-white">{frame.metrics.completed}</div>
+          <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[70px] flex flex-col items-center justify-center">
+            <div className="text-[9px] uppercase tracking-[0.15em] text-white/40">completed</div>
+            <div className="mt-0.5 text-base font-black text-white leading-none">{frame.metrics.completed}</div>
           </div>
         </div>
       </div>
 
-      <p className="mt-4 rounded-2xl border border-white/8 bg-slate-950/50 px-4 py-3 text-sm leading-relaxed text-white/72">
+      <p className="mt-4 rounded-xl border border-white/8 bg-slate-950/50 px-4 py-2.5 text-xs sm:text-sm leading-relaxed text-white/72">
         {frame.caption}
       </p>
 
-      <div className="mt-5 space-y-3">
+      <div className="mt-4 space-y-2">
         {AGENTS.map((agent, index) => {
           const agentFrame = frame.agents[index];
           return (
@@ -354,7 +354,7 @@ function ScenarioPanel({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
               className={cn(
-                "relative overflow-hidden rounded-[22px] border p-3",
+                "relative overflow-hidden rounded-[16px] border p-2.5",
                 getAgentToneClasses(agentFrame.tone),
               )}
             >
@@ -363,21 +363,21 @@ function ScenarioPanel({
                 style={{ width: `${agentFrame.progress}%` }}
               />
               <div className="relative z-10 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/70 text-xs font-black text-white">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-slate-950/70 text-[10px] font-black text-white">
                   {agent.id}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-white">{agent.role}</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-semibold text-white">{agent.role}</span>
                     {agentFrame.target && (
-                      <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/70">
+                      <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/70 whitespace-nowrap">
                         {agentFrame.target}
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 text-xs text-white/75">{agentFrame.status}</div>
+                  <div className="mt-0.5 text-[10px] sm:text-[11px] text-white/75 truncate">{agentFrame.status}</div>
                 </div>
-                <div className="text-sm font-black tabular-nums text-white">
+                <div className="text-xs font-black tabular-nums text-white shrink-0">
                   {agentFrame.progress}%
                 </div>
               </div>
@@ -386,34 +386,34 @@ function ScenarioPanel({
         })}
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-2 gap-2">
         {frame.beads.map((bead) => (
           <div
             key={`${scenarioId}-${bead.id}-${phaseIndex}`}
             className={cn(
-              "rounded-[22px] border p-3",
+              "rounded-[16px] border p-2.5",
               getBeadToneClasses(bead.tone),
             )}
           >
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-mono text-xs text-white/72">{bead.id}</span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-[10px] sm:text-xs text-white/72">{bead.id}</span>
               {bead.tone === "contested" ? (
-                <AlertTriangle className="h-4 w-4 text-[#FF5500]" />
+                <AlertTriangle className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-[#FF5500]" />
               ) : bead.tone === "done" ? (
-                <CheckCircle2 className="h-4 w-4 text-zinc-400" />
+                <CheckCircle2 className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-zinc-400" />
               ) : (
-                <div className="h-2 w-2 rounded-full bg-white/35" />
+                <div className="h-1.5 w-1.5 rounded-full bg-white/35" />
               )}
             </div>
-            <div className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/35">
+            <div className="mt-2 text-[9px] sm:text-[10px] uppercase tracking-[0.18em] text-white/35 truncate">
               {bead.owner ? `owner ${bead.owner}` : "frontier"}
             </div>
-            <div className="mt-1 text-sm text-white/72">{bead.note}</div>
+            <div className="mt-0.5 text-xs text-white/72 truncate">{bead.note}</div>
           </div>
         ))}
       </div>
 
-      <div className="mt-5 rounded-[22px] border border-white/10 bg-black/25 px-4 py-3 text-sm leading-relaxed text-white/75">
+      <div className="mt-4 rounded-[16px] border border-white/10 bg-black/25 px-4 py-2.5 text-xs sm:text-sm leading-relaxed text-white/75">
         {frame.verdict}
       </div>
     </div>

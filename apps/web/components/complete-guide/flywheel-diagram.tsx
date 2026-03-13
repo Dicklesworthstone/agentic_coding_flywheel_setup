@@ -144,9 +144,9 @@ export function FlywheelDiagram() {
             />
             <defs>
               <linearGradient id="orbitGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#22d3ee" stopOpacity="1" />
-                <stop offset="50%" stopColor="#a78bfa" stopOpacity="1" />
-                <stop offset="100%" stopColor="#f472b6" stopOpacity="1" />
+                <stop offset="0%" stopColor="#FF5500" stopOpacity="1" />
+                <stop offset="50%" stopColor="#FFBD2E" stopOpacity="1" />
+                <stop offset="100%" stopColor="#FFFFFF" stopOpacity="1" />
               </linearGradient>
               <filter id="nodeGlow">
                 <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
