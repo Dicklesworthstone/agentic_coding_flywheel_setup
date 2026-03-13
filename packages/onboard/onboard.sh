@@ -64,7 +64,7 @@ discover_lessons() {
 
         # Extract title from first "# " line
         local title
-        title=$(grep -m1 "^# " "$file" 2>/dev/null | sed 's/^# //' || echo "$basename")
+        title=$(grep -m1 "^# " "$file" 2>/dev/null | sed 's/^# //' | head -n 1)
         # Fallback to filename if no title found
         if [[ -z "$title" ]]; then
             title="${basename%.md}"
@@ -795,7 +795,7 @@ check_auth_status() {
             if command -v jq &>/dev/null; then
                 status=$(tailscale status --json 2>/dev/null | jq -r '.BackendState // "unknown"' 2>/dev/null || echo "unknown")
             else
-                if tailscale status --json 2>/dev/null | grep -q '"BackendState"[[:space:]]*:[[:space:]]*"Running"'; then
+                if tailscale status --json 2>/dev/null | grep -q '"BackendState"[[:space:]]*:[[:space:]]*"[[:space:]]*Running"'; then
                     status="Running"
                 fi
             fi
@@ -819,7 +819,7 @@ check_auth_status() {
             ;;
         codex)
             if ! command -v codex &>/dev/null; then
-                return 2
+                return 1
             fi
             # Codex stores auth in ~/.codex/auth.json (or $CODEX_HOME/auth.json).
             # File existence alone isn't enough; check for an access token field.
@@ -1104,7 +1104,7 @@ show_auth_flow() {
             read -rp "$(echo -e "${CYAN}Choose:${NC} ")" choice
 
             if [[ "$choice" =~ ^[0-9]+$ ]]; then
-                local idx=$((choice - 1))
+                local idx=$((10#choice - 1))
                 if [[ $idx -ge 0 ]] && [[ $idx -lt ${#auth_menu_services[@]} ]]; then
                     show_auth_service "${auth_menu_services[$idx]}"
                     # Loop continues to refresh
@@ -1392,7 +1392,8 @@ show_menu_basic() {
     read -rp "$(echo -e "${CYAN}Choose [$prompt_opts]:${NC} ")" choice
 
     # Validate numeric choices against actual lesson count
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ "$choice" -ge 1 ]] && [[ "$choice" -le "$NUM_LESSONS" ]]; then
+    # Use 10# to force decimal interpretation (avoids octal error for '08', '09')
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $((10#choice)) -ge 1 ]] && [[ $((10#choice)) -le "$NUM_LESSONS" ]]; then
         echo "$choice"
     else
         case "$choice" in
@@ -1798,7 +1799,8 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
         # Lesson list with styled status
         echo ""
         for (( i = 0; i < NUM_LESSONS; i++ )); do
-            local status_icon status_color
+            local status_icon
+            local status_color
             if is_completed "$i"; then
                 status_icon="✓"
                 status_color="$ACFS_SUCCESS"
@@ -1890,7 +1892,7 @@ main_menu() {
             # Support dynamically discovered lesson counts instead of assuming
             # the menu will never exceed two digits.
             if [[ "$choice" -ge 1 ]] && [[ "$choice" -le "$NUM_LESSONS" ]]; then
-                local idx=$((choice - 1))
+                local idx=$((10#choice - 1))
                 if ! set_current "$idx"; then
                     continue
                 fi
@@ -1940,9 +1942,9 @@ main_menu() {
 arg="${1:-}"
 
 if [[ "$arg" =~ ^[0-9]+$ ]]; then
-    if [[ "$arg" -ge 1 ]] && [[ "$arg" -le "$NUM_LESSONS" ]]; then
+    idx=$((10#arg - 1))
+    if [[ $idx -ge 0 && $idx -lt NUM_LESSONS ]]; then
         init_progress
-        idx=$((arg - 1))
         if ! set_current "$idx"; then
             exit 1
         fi
@@ -1997,7 +1999,7 @@ ACFS Onboarding Tutorial
 
 Usage:
   onboard           Launch interactive menu
-  onboard N         Jump to lesson N$(if (( NUM_LESSONS > 0 )); then printf ' (1-%s)' "$NUM_LESSONS"; else printf ' (no lessons discovered)'; fi)
+  onboard N         Jump to lesson N (1-based)
   onboard status    Show completion status
   onboard list      Alias for 'status'
   onboard --status  Alias for 'status'
@@ -2032,4 +2034,4 @@ EOF
         echo "Run 'onboard --help' for usage."
         exit 1
         ;;
-esac
+ esac

@@ -6065,7 +6065,7 @@ main() {
 
             # Show progress header before running phase
             if type -t show_progress_header &>/dev/null; then
-                show_progress_header "$phase_num" 9 "$phase_name" "$installation_start_time"
+                show_progress_header "$phase_num" 9 "$phase_name" "$installation_start_time" "$phase_id"
             fi
 
             if type -t run_phase &>/dev/null; then

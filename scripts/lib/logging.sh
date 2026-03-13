@@ -272,13 +272,14 @@ declare -gA ACFS_TIMERS=()
 # ============================================================
 
 # Show installation progress header with visual progress bar
-# Usage: show_progress_header $current_phase $total_phases $phase_name $start_time
+# Usage: show_progress_header $current_phase $total_phases $phase_name $start_time [$phase_id]
 if ! declare -f show_progress_header >/dev/null; then
     show_progress_header() {
         local current="$1"
         local total="$2"
         local name="$3"
         local start_time="${4:-0}"
+        local phase_id="${5:-}"
 
         # Calculate percentage
         local percent=$((current * 100 / total))
@@ -327,10 +328,34 @@ if ! declare -f show_progress_header >/dev/null; then
             padding=$(printf "%${pad_len}s" "")
         fi
 
-        echo -e "║  Progress: [${bar}]${prog_detail}${padding} ║" >&2
-        printf "║  Current:  %-50s ║\n" "$display_name" >&2
-        printf "║  Elapsed:  %3dm %02ds                                           ║\n" \
-               "$elapsed_min" "$elapsed_sec" >&2
+        # Final progress line
+        local prog_detail=" ${percent}%"
+        padding=""
+        # Adjust padding based on visible length
+        local visible_len=$((13 + 20 + ${#prog_detail}))
+        if [[ $visible_len -lt 62 ]]; then
+            padding=$(printf '%*s' $((62 - visible_len)) "")
+        fi
+        printf "║  Progress: [%s]%s%s ║\n" "${bar}" "${prog_detail}" "${padding}" >&2
+
+        # Completed phases line
+        local counts="${current}/${total}"
+        padding=""
+        visible_len=$((21 + ${#counts}))
+        if [[ $visible_len -lt 62 ]]; then
+            padding=$(printf '%*s' $((62 - visible_len)) "")
+        fi
+        printf "║  Phases completed: %s%s║\n" "${counts}" "${padding}" >&2
+
+        # Optional reconnection hint if we just finished a reboot-heavy phase
+        if [[ "$name" == *"User Setup"* ]] || [[ "$name" == *"Reboot"* ]]; then
+            local reconnect_line="  Tip: if SSH disconnected, just re-run install.sh"
+            padding=""
+            if [[ ${#reconnect_line} -lt 60 ]]; then
+                padding=$(printf '%*s' $((60 - ${#reconnect_line})) "")
+            fi
+            printf "║%s%s║\n" "${reconnect_line}" "${padding}" >&2
+        fi
         echo "╚═══════════════════════════════════════════════════════════════╝" >&2
         echo "" >&2
     }
