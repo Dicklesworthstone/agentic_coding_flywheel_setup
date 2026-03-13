@@ -242,15 +242,23 @@ export function getCompletedSteps(): number[] {
 }
 
 /** Save completed steps to localStorage */
-export function setCompletedSteps(steps: number[]): void {
+export function setCompletedSteps(steps: number[]): boolean {
   const normalized = normalizeCompletedSteps(steps);
-  safeSetJSON(COMPLETED_STEPS_KEY, normalized);
-  emitCompletedStepsChanged(normalized);
+  const didPersist = safeSetJSON(COMPLETED_STEPS_KEY, normalized);
+  if (didPersist) {
+    emitCompletedStepsChanged(normalized);
+  }
+  return didPersist;
 }
 
 /** Mark a step as completed (pure function, returns new array) */
 export function addCompletedStep(currentSteps: number[], stepId: number): number[] {
-  if (currentSteps.includes(stepId)) {
+  if (
+    !Number.isInteger(stepId) ||
+    stepId < 1 ||
+    stepId > TOTAL_STEPS ||
+    currentSteps.includes(stepId)
+  ) {
     return currentSteps;
   }
   const newSteps = [...currentSteps, stepId];
@@ -316,7 +324,12 @@ export function useCompletedSteps(): [number[], (stepId: number) => void] {
         queryClient.getQueryData<number[]>(wizardStepsKeys.completedSteps) ??
         getCompletedSteps();
       const newSteps = addCompletedStep(currentSteps, stepId);
-      setCompletedSteps(newSteps);
+      if (newSteps === currentSteps) {
+        return currentSteps;
+      }
+      if (!setCompletedSteps(newSteps)) {
+        throw new Error("Unable to persist completed steps.");
+      }
       return newSteps;
     },
     onMutate: async (stepId) => {
@@ -381,7 +394,9 @@ export function markStepComplete(stepId: number): number[] {
   const completed = getCompletedSteps();
   const newSteps = addCompletedStep(completed, stepId);
   if (newSteps !== completed) {
-    setCompletedSteps(newSteps);
+    if (!setCompletedSteps(newSteps)) {
+      return getCompletedSteps();
+    }
   }
   return newSteps;
 }

@@ -532,6 +532,57 @@ test_verbose_flag() {
     cleanup_mock_env
 }
 
+test_sudo_user_defaults_to_target_acfs_home() {
+    setup_mock_env
+
+    local root_home="$MOCK_HOME/root-home"
+    local target_home="$MOCK_HOME/target-home"
+    local target_acfs="$target_home/.acfs"
+    mkdir -p "$root_home" "$target_home"
+
+    cp -R "$MOCK_ACFS/." "$target_acfs/"
+    echo "# root zshrc" > "$root_home/.zshrc"
+    echo "# target zshrc" > "$target_home/.zshrc"
+
+    local archive_path=""
+    archive_path=$(TARGET_TEST_HOME="$target_home" HOME="$root_home" SUDO_USER="acfstarget" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
+        bash -c '
+            getent() {
+                if [[ "$1" == "passwd" && "$2" == "acfstarget" ]]; then
+                    printf "acfstarget:x:1000:1000::%s:/bin/bash\n" "$TARGET_TEST_HOME"
+                    return 0
+                fi
+                return 2
+            }
+            export -f getent
+            bash "'"$SUPPORT_SH"'"
+        ' 2>/dev/null) || true
+
+    if [[ "$archive_path" == "$target_acfs"/support/* ]] && [[ -f "$archive_path" ]]; then
+        harness_pass "SUDO_USER support bundle defaults to target ACFS home"
+    else
+        harness_fail "SUDO_USER support bundle defaults to target ACFS home" "Got: $archive_path"
+        cleanup_mock_env
+        return
+    fi
+
+    local extract_dir
+    extract_dir=$(mktemp -d)
+    tar xzf "$archive_path" -C "$extract_dir" 2>/dev/null
+
+    local zshrc_path
+    zshrc_path=$(find "$extract_dir" -path '*/config/.zshrc' -type f 2>/dev/null | head -1)
+
+    if [[ -n "$zshrc_path" ]] && grep -q '# target zshrc' "$zshrc_path"; then
+        harness_pass "SUDO_USER support bundle collects target user .zshrc"
+    else
+        harness_fail "SUDO_USER support bundle collects target user .zshrc"
+    fi
+
+    rm -rf "$extract_dir"
+    cleanup_mock_env
+}
+
 test_tar_failure_returns_bundle_dir() {
     setup_mock_env
     local output_dir="$MOCK_HOME/test-output"
@@ -587,6 +638,7 @@ main() {
     harness_section "Bundle Collection Tests"
     test_bundle_creates_archive || true
     test_bundle_contains_expected_files || true
+    test_sudo_user_defaults_to_target_acfs_home || true
     test_bundle_names_stay_unique_when_timestamps_collide || true
     test_tar_failure_returns_bundle_dir || true
 

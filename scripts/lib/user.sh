@@ -313,8 +313,19 @@ prompt_ssh_key() {
         fi
     fi
 
-    # 2. Check if we can prompt the user (handle curl | bash pipe)
-    if [[ ! -t 0 ]] && [[ ! -r /dev/tty ]]; then
+    # 2. Check if we can prompt the user (handle curl | bash pipe safely).
+    # /dev/tty can exist but still be unattached in batch SSH sessions, so
+    # probe it by opening a file descriptor instead of checking readability.
+    local prompt_fd="stdin"
+    if [[ ! -t 0 ]]; then
+        if exec 3<>/dev/tty 2>/dev/null; then
+            prompt_fd="tty"
+        else
+            prompt_fd=""
+        fi
+    fi
+
+    if [[ -z "$prompt_fd" ]]; then
         if [[ "$has_existing_key" == "true" ]]; then
             log_detail "SSH key already present (non-interactive mode)"
             return 0
@@ -355,16 +366,15 @@ prompt_ssh_key() {
 
     # 4. Read the key (handle pipe vs tty)
     local pubkey=""
-    if [[ -t 0 ]]; then
+    if [[ "$prompt_fd" == "stdin" ]]; then
         echo -n "Paste your public key: "
-        read -r pubkey < /dev/tty || true
+        read -r pubkey || true
     else
         # When running via curl | bash, stdin is the script content.
-        # We must read from /dev/tty to get user input.
-        # Note: read -p writes prompt to stderr, which is visible.
-        # We manually print prompt to stderr to be explicit/consistent.
+        # We opened FD 3 above so we can safely read from the controlling TTY.
         echo -n "Paste your public key: " >&2
-        read -r pubkey < /dev/tty
+        read -r pubkey <&3 || true
+        exec 3>&- 3<&-
     fi
 
     # 5. Handle skip (empty input)

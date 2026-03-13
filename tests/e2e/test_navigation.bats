@@ -113,17 +113,15 @@ teardown() {
     assert_failure
 }
 
-@test "CLI warns about existing directory but continues" {
-    # newproj shows a warning but continues (idempotent behavior)
+@test "CLI rejects an existing non-empty directory" {
     local existing_dir="$E2E_TEST_DIR/existing-cli-project"
     mkdir -p "$existing_dir"
+    echo "existing" > "$existing_dir/README.md"
 
     run bash "$ACFS_LIB_DIR/newproj.sh" "existing-cli-project" "$existing_dir"
 
-    # Should succeed with warning, not fail
-    assert_success
-    # Should show warning message
-    [[ "$output" == *"exist"* ]] || [[ "$output" == *"already"* ]] || [[ "$output" == *"Warning"* ]]
+    assert_failure
+    [[ "$output" == *"not empty"* ]]
 }
 
 @test "CLI handles special characters in project name" {

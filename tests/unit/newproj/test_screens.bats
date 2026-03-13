@@ -114,6 +114,31 @@ teardown() {
     [[ -z "$next" ]]
 }
 
+@test "run_wizard executes success screen before exiting" {
+    source_lib "newproj_screens"
+
+    tui_init() { return 0; }
+    tui_cleanup() { :; }
+    load_screens() { return 0; }
+    run_screen() {
+        case "$1" in
+            welcome)
+                CURRENT_SCREEN="success"
+                return 0
+                ;;
+            success)
+                echo "success-screen-ran"
+                return 0
+                ;;
+        esac
+        return 1
+    }
+
+    run run_wizard
+    assert_success
+    [[ "$output" == *"success-screen-ran"* ]]
+}
+
 # ============================================================
 # Welcome Screen Tests
 # ============================================================

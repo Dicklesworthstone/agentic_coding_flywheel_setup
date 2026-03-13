@@ -205,6 +205,18 @@ teardown() {
     [[ "$output" != *"Too many arguments"* ]]
 }
 
+@test "main rejects test framework style names before interactive launch" {
+    export CI=true
+
+    run bash -c '
+        source '"$ACFS_LIB_DIR"'/newproj.sh
+        main --interactive test_project 2>&1
+    '
+
+    assert_failure
+    [[ "$output" == *"starting with 'test_'"* ]]
+}
+
 # ============================================================
 # Interactive Mode Pre-flight Tests
 # ============================================================
@@ -273,6 +285,20 @@ teardown() {
 
     # Should create project in CLI mode
     [[ -d "$test_project" ]] || [[ "$output" == *"Creating project"* ]]
+}
+
+@test "main CLI rejects an existing non-empty directory" {
+    local project_dir="$TEST_DIR/cli-existing-project"
+    mkdir -p "$project_dir"
+    echo "existing" > "$project_dir/README.md"
+
+    run bash -c '
+        source '"$ACFS_LIB_DIR"'/newproj.sh
+        main myproj "'"$project_dir"'" 2>&1
+    '
+
+    assert_failure
+    [[ "$output" == *"not empty"* ]]
 }
 
 @test "main CLI creates local Claude settings and gitignores them" {

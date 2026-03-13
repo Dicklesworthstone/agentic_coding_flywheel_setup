@@ -445,7 +445,7 @@ try_git_init() {
         return 0
     fi
 
-    git -C "$dir" init 2>/dev/null
+    git -C "$dir" init -b main 2>/dev/null
     local errno=$?
     if [[ $errno -ne 0 ]]; then
         log_error "git init failed in $dir (errno: $errno)" 2>/dev/null || true
@@ -746,6 +746,11 @@ validate_project_name() {
         error_msg="Project name must be at least 2 characters"
     elif [[ ${#name} -gt 100 ]]; then
         error_msg="Project name must be less than 100 characters"
+    # Reject common test-framework leakage before generic validation.
+    elif [[ "$name" =~ ^test_ ]]; then
+        error_msg="Project names starting with 'test_' are not allowed"
+    elif [[ "$name" =~ %[0-9a-fA-F]{2} ]]; then
+        error_msg="Project name contains URL-encoded characters (e.g., %2d, %5f)"
     # Check for valid characters (alphanumeric, dash, underscore)
     elif [[ ! "$name" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
         error_msg="Project name must start with a letter and contain only letters, numbers, dashes, and underscores"

@@ -89,6 +89,10 @@ teardown() {
     local commit_count
     commit_count=$(git rev-list --count HEAD 2>/dev/null || echo 0)
     [[ "$commit_count" -ge 1 ]]
+
+    local branch_name
+    branch_name=$(git -C "$project_dir" branch --show-current)
+    [[ "$branch_name" == "main" ]]
 }
 
 # ============================================================

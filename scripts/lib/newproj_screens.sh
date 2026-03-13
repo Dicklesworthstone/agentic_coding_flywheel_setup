@@ -213,6 +213,7 @@ run_wizard() {
     # Main loop
     while true; do
         log_debug "Current screen: $CURRENT_SCREEN"
+        local screen_before_run="$CURRENT_SCREEN"
 
         if ! run_screen "$CURRENT_SCREEN"; then
             # Screen indicated exit or error
@@ -221,8 +222,9 @@ run_wizard() {
             break
         fi
 
-        # Check if we've completed the flow
-        if [[ "$CURRENT_SCREEN" == "success" ]]; then
+        # The progress screen navigates to "success"; let that screen execute once
+        # before considering the wizard complete.
+        if [[ "$screen_before_run" == "success" ]]; then
             log_info "Wizard completed successfully"
             exit_code=0
             break

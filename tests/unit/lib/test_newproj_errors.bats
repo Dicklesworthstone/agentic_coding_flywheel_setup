@@ -158,6 +158,7 @@ teardown() {
     assert_success
 
     [[ -d "$project_dir/.git" ]]
+    [[ "$(git -C "$project_dir" branch --show-current)" == "main" ]]
 }
 
 @test "try_git_init succeeds if already a git repo" {

@@ -92,7 +92,12 @@ export function addCompletedLesson(
   currentLessons: number[],
   lessonId: number
 ): number[] {
-  if (currentLessons.includes(lessonId)) {
+  if (
+    !Number.isInteger(lessonId) ||
+    lessonId < 0 ||
+    lessonId >= TOTAL_LESSONS ||
+    currentLessons.includes(lessonId)
+  ) {
     return currentLessons;
   }
   const newLessons = [...currentLessons, lessonId];

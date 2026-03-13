@@ -597,25 +597,6 @@ main() {
         exit 1
     }
 
-    # SAFEGUARD: Reject test-like project names that may leak from test frameworks
-    # This prevents BATS tests from accidentally creating projects in /data/projects
-    if [[ "$project_name" =~ ^test_ ]]; then
-        echo -e "${RED}Error: Project names starting with 'test_' are not allowed${NC}" >&2
-        echo -e "${YELLOW}This safeguard prevents test framework pollution of /data/projects${NC}" >&2
-        echo -e "${YELLOW}If this is intentional, use a different naming convention${NC}" >&2
-        exit 1
-    fi
-
-    # SAFEGUARD: Reject names with URL-encoded characters (e.g., %2d, %5f, %3d)
-    # These patterns indicate test framework name encoding that leaked into production
-    # Note: Uses % prefix (standard URL encoding), not - prefix which causes false positives
-    # on valid names like "code-review", "node-app", "test-flywheel-demo"
-    if [[ "$project_name" =~ %[0-9a-fA-F]{2} ]]; then
-        echo -e "${RED}Error: Project name contains URL-encoded characters (e.g., %2d, %5f)${NC}" >&2
-        echo -e "${YELLOW}This pattern suggests a test framework encoding leak${NC}" >&2
-        exit 1
-    fi
-
     # Set default directory
     # SAFEGUARD: When running in test environment, ALWAYS use /tmp to prevent pollution
     if [[ -n "${BATS_TEST_NAME:-}" || -n "${ACFS_TEST_MODE:-}" ]]; then
@@ -627,12 +608,20 @@ main() {
         project_dir="/data/projects/$project_name"
     fi
 
-    # Check if directory already exists
-    if [[ -d "$project_dir" ]]; then
-        echo -e "${YELLOW}Warning: Directory $project_dir already exists${NC}"
-        if [[ -d "$project_dir/.git" ]]; then
-            echo -e "${CYAN}Git repository already initialized${NC}"
+    # Match the wizard flow: allow only a brand-new path or an existing empty directory.
+    if [[ -e "$project_dir" ]]; then
+        if [[ ! -d "$project_dir" ]]; then
+            echo -e "${RED}Error: Path exists but is not a directory: $project_dir${NC}" >&2
+            exit 1
         fi
+
+        if [[ -n "$(ls -A "$project_dir" 2>/dev/null)" ]]; then
+            echo -e "${RED}Error: Directory already exists and is not empty: $project_dir${NC}" >&2
+            echo -e "${YELLOW}Choose a new directory or move the existing contents first${NC}" >&2
+            exit 1
+        fi
+
+        echo -e "${YELLOW}Warning: Directory $project_dir already exists but is empty${NC}"
     fi
 
     echo -e "${CYAN}Creating project: $project_name${NC}"
@@ -649,7 +638,7 @@ main() {
     # Initialize git if not already
     if [[ ! -d .git ]]; then
         echo -e "${GREEN}Initializing git repository...${NC}"
-        git init
+        git init -b main
         CREATED_ITEMS+=("Git repository")
 
         # Create README
