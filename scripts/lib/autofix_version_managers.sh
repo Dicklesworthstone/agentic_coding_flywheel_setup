@@ -29,13 +29,13 @@ source "$SCRIPT_DIR/autofix.sh"
 # Returns JSON with status, nvm_dir, version, shell_configs
 autofix_nvm_check() {
     local status="none"
-    local nvm_dir=""
+    local -a found_nvm_dirs=()
     local nvm_version=""
     local shell_configs=()
 
     # Check for NVM_DIR environment variable
     if [[ -n "${NVM_DIR:-}" ]]; then
-        nvm_dir="$NVM_DIR"
+        found_nvm_dirs+=("$NVM_DIR")
         status="env_set"
     fi
 
@@ -47,14 +47,20 @@ autofix_nvm_check() {
 
     for loc in "${nvm_locations[@]}"; do
         if [[ -d "$loc" ]]; then
-            nvm_dir="$loc"
-            status="installed"
+            # Avoid duplicates if NVM_DIR was already added
+            local already_found=false
+            for found in "${found_nvm_dirs[@]}"; do
+                [[ "$found" == "$loc" ]] && already_found=true && break
+            done
+            if [[ "$already_found" == "false" ]]; then
+                found_nvm_dirs+=("$loc")
+                status="installed"
+            fi
 
-            # Get installed version
-            if [[ -f "$loc/nvm.sh" ]]; then
+            # Get installed version (from the first one we find)
+            if [[ -z "$nvm_version" && -f "$loc/nvm.sh" ]]; then
                 nvm_version=$(grep "NVM_VERSION=" "$loc/nvm.sh" 2>/dev/null | head -1 | cut -d'"' -f2 || echo "unknown")
             fi
-            break
         fi
     done
 
@@ -74,6 +80,11 @@ autofix_nvm_check() {
     done
 
     # Build JSON output
+    local found_nvm_dirs_json="[]"
+    if [[ ${#found_nvm_dirs[@]} -gt 0 ]]; then
+        found_nvm_dirs_json=$(printf '%s\n' "${found_nvm_dirs[@]}" | jq -R . | jq -s .)
+    fi
+
     local shell_configs_json="[]"
     if [[ ${#shell_configs[@]} -gt 0 ]]; then
         shell_configs_json=$(printf '%s\n' "${shell_configs[@]}" | jq -R . | jq -s .)
@@ -81,12 +92,12 @@ autofix_nvm_check() {
 
     jq -n \
         --arg status "$status" \
-        --arg nvm_dir "$nvm_dir" \
+        --argjson nvm_dirs "$found_nvm_dirs_json" \
         --arg nvm_version "$nvm_version" \
         --argjson shell_configs "$shell_configs_json" \
         '{
             status: $status,
-            nvm_dir: $nvm_dir,
+            nvm_dirs: $nvm_dirs,
             version: $nvm_version,
             shell_configs: $shell_configs
         }'
@@ -111,23 +122,19 @@ autofix_nvm_fix() {
         return 0
     fi
 
-    local nvm_dir nvm_version
-    nvm_dir=$(echo "$check_result" | jq -r '.nvm_dir')
+    local nvm_version
     nvm_version=$(echo "$check_result" | jq -r '.version')
 
-    # SECURITY: Prevent accidental deletion of critical directories
-    if [[ -z "$nvm_dir" || "$nvm_dir" == "/" || "$nvm_dir" == "$HOME" || "$nvm_dir" == "/usr" || "$nvm_dir" == "/usr/local" ]]; then
-        log_error "[AUTO-FIX:nvm] Unsafe nvm_dir detected: '$nvm_dir'. Aborting fix."
-        return 2
-    fi
     local config_count
     config_count=$(echo "$check_result" | jq -r '.shell_configs | length')
 
-    log_info "[AUTO-FIX:nvm] Found nvm $nvm_version at $nvm_dir"
+    log_info "[AUTO-FIX:nvm] Found nvm $nvm_version"
     log_info "[AUTO-FIX:nvm] Shell configs affected: $config_count files"
 
     if [[ "$mode" == "dry-run" ]]; then
-        log_info "[DRY-RUN] Would backup $nvm_dir"
+        echo "$check_result" | jq -r '.nvm_dirs[]' | while IFS= read -r dir; do
+            log_info "[DRY-RUN] Would backup $dir"
+        done
         echo "$check_result" | jq -r '.shell_configs[]' | while IFS= read -r config; do
             log_info "[DRY-RUN] Would backup and clean nvm references from $config"
         done
@@ -136,40 +143,52 @@ autofix_nvm_fix() {
 
     local partial_failure=0
 
-    # STEP 1: Create verified backup of nvm directory
-    if [[ -d "$nvm_dir" ]]; then
-        local backup_info
-        backup_info=$(create_backup "$nvm_dir" "nvm-directory")
-
-        if [[ -z "$backup_info" ]]; then
-            log_error "[AUTO-FIX:nvm] Failed to create backup of $nvm_dir"
-            return 2
-        fi
-
-        local backup_path backup_checksum
-        backup_path=$(echo "$backup_info" | jq -r '.backup')
-        backup_checksum=$(echo "$backup_info" | jq -r '.checksum')
-
-        log_info "[AUTO-FIX:nvm] Created backup: $backup_path (checksum: ${backup_checksum:0:16}...)"
-
-        record_change \
-            "nvm" \
-            "Backed up and moved nvm directory: $nvm_dir" \
-            "mv \"$backup_path\" \"$nvm_dir\"" \
-            false \
-            "warning" \
-            "[\"$nvm_dir\"]" \
-            "[$backup_info]" \
-            '[]'
-
-        # Move the directory to backup location (create_backup already copied it)
-        if ! rm -rf "$nvm_dir"; then
-            log_error "[AUTO-FIX:nvm] Failed to remove original nvm directory"
+    # STEP 1: Create verified backup of nvm directories
+    while IFS= read -r nvm_dir; do
+        [[ -z "$nvm_dir" ]] && continue
+        
+        # SECURITY: Prevent accidental deletion of critical directories
+        if [[ "$nvm_dir" == "/" || "$nvm_dir" == "$HOME" || "$nvm_dir" == "/usr" || "$nvm_dir" == "/usr/local" ]]; then
+            log_error "[AUTO-FIX:nvm] Unsafe nvm_dir detected: '$nvm_dir'. Skipping this directory."
             partial_failure=1
-        else
-            log_info "[AUTO-FIX:nvm] Removed original nvm directory"
+            continue
         fi
-    fi
+
+        if [[ -d "$nvm_dir" ]]; then
+            local backup_info
+            backup_info=$(create_backup "$nvm_dir" "nvm-directory")
+
+            if [[ -z "$backup_info" ]]; then
+                log_error "[AUTO-FIX:nvm] Failed to create backup of $nvm_dir"
+                partial_failure=1
+                continue
+            fi
+
+            local backup_path backup_checksum
+            backup_path=$(echo "$backup_info" | jq -r '.backup')
+            backup_checksum=$(echo "$backup_info" | jq -r '.checksum')
+
+            log_info "[AUTO-FIX:nvm] Created backup: $backup_path (checksum: ${backup_checksum:0:16}...)"
+
+            record_change \
+                "nvm" \
+                "Backed up and moved nvm directory: $nvm_dir" \
+                "mv \"$backup_path\" \"$nvm_dir\"" \
+                false \
+                "warning" \
+                "[\"$nvm_dir\"]" \
+                "[$backup_info]" \
+                '[]'
+
+            # Move the directory to backup location (create_backup already copied it)
+            if ! rm -rf "$nvm_dir"; then
+                log_error "[AUTO-FIX:nvm] Failed to remove original nvm directory: $nvm_dir"
+                partial_failure=1
+            else
+                log_info "[AUTO-FIX:nvm] Removed original nvm directory: $nvm_dir"
+            fi
+        fi
+    done < <(echo "$check_result" | jq -r '.nvm_dirs[]')
 
     # STEP 2: Clean shell configuration files
     while IFS= read -r config; do
@@ -246,13 +265,13 @@ autofix_nvm_fix() {
 # Returns JSON with status, pyenv_root, version, shell_configs
 autofix_pyenv_check() {
     local status="none"
-    local pyenv_root=""
+    local -a found_pyenv_roots=()
     local pyenv_version=""
     local shell_configs=()
 
     # Check for PYENV_ROOT environment variable
     if [[ -n "${PYENV_ROOT:-}" ]]; then
-        pyenv_root="$PYENV_ROOT"
+        found_pyenv_roots+=("$PYENV_ROOT")
         status="env_set"
     fi
 
@@ -264,14 +283,20 @@ autofix_pyenv_check() {
 
     for loc in "${pyenv_locations[@]}"; do
         if [[ -d "$loc" ]]; then
-            pyenv_root="$loc"
-            status="installed"
+            # Avoid duplicates if PYENV_ROOT was already added
+            local already_found=false
+            for found in "${found_pyenv_roots[@]}"; do
+                [[ "$found" == "$loc" ]] && already_found=true && break
+            done
+            if [[ "$already_found" == "false" ]]; then
+                found_pyenv_roots+=("$loc")
+                status="installed"
+            fi
 
-            # Get installed version
-            if [[ -x "$loc/bin/pyenv" ]]; then
+            # Get installed version (from the first one we find)
+            if [[ -z "$pyenv_version" && -x "$loc/bin/pyenv" ]]; then
                 pyenv_version=$("$loc/bin/pyenv" --version 2>/dev/null | head -1 || echo "unknown")
             fi
-            break
         fi
     done
 
@@ -291,6 +316,11 @@ autofix_pyenv_check() {
     done
 
     # Build JSON output
+    local found_pyenv_roots_json="[]"
+    if [[ ${#found_pyenv_roots[@]} -gt 0 ]]; then
+        found_pyenv_roots_json=$(printf '%s\n' "${found_pyenv_roots[@]}" | jq -R . | jq -s .)
+    fi
+
     local shell_configs_json="[]"
     if [[ ${#shell_configs[@]} -gt 0 ]]; then
         shell_configs_json=$(printf '%s\n' "${shell_configs[@]}" | jq -R . | jq -s .)
@@ -298,12 +328,12 @@ autofix_pyenv_check() {
 
     jq -n \
         --arg status "$status" \
-        --arg pyenv_root "$pyenv_root" \
+        --argjson pyenv_roots "$found_pyenv_roots_json" \
         --arg pyenv_version "$pyenv_version" \
         --argjson shell_configs "$shell_configs_json" \
         '{
             status: $status,
-            pyenv_root: $pyenv_root,
+            pyenv_roots: $pyenv_roots,
             version: $pyenv_version,
             shell_configs: $shell_configs
         }'
@@ -328,23 +358,19 @@ autofix_pyenv_fix() {
         return 0
     fi
 
-    local pyenv_root pyenv_version
-    pyenv_root=$(echo "$check_result" | jq -r '.pyenv_root')
+    local pyenv_version
     pyenv_version=$(echo "$check_result" | jq -r '.version')
 
-    # SECURITY: Prevent accidental deletion of critical directories
-    if [[ -z "$pyenv_root" || "$pyenv_root" == "/" || "$pyenv_root" == "$HOME" || "$pyenv_root" == "/usr" || "$pyenv_root" == "/usr/local" ]]; then
-        log_error "[AUTO-FIX:pyenv] Unsafe pyenv_root detected: '$pyenv_root'. Aborting fix."
-        return 2
-    fi
     local config_count
     config_count=$(echo "$check_result" | jq -r '.shell_configs | length')
 
-    log_info "[AUTO-FIX:pyenv] Found pyenv $pyenv_version at $pyenv_root"
+    log_info "[AUTO-FIX:pyenv] Found pyenv $pyenv_version"
     log_info "[AUTO-FIX:pyenv] Shell configs affected: $config_count files"
 
     if [[ "$mode" == "dry-run" ]]; then
-        log_info "[DRY-RUN] Would backup $pyenv_root"
+        echo "$check_result" | jq -r '.pyenv_roots[]' | while IFS= read -r dir; do
+            log_info "[DRY-RUN] Would backup $dir"
+        done
         echo "$check_result" | jq -r '.shell_configs[]' | while IFS= read -r config; do
             log_info "[DRY-RUN] Would backup and clean pyenv references from $config"
         done
@@ -353,39 +379,51 @@ autofix_pyenv_fix() {
 
     local partial_failure=0
 
-    # STEP 1: Create verified backup of pyenv directory
-    if [[ -d "$pyenv_root" ]]; then
-        local backup_info
-        backup_info=$(create_backup "$pyenv_root" "pyenv-directory")
+    # STEP 1: Create verified backup of pyenv directories
+    while IFS= read -r pyenv_root; do
+        [[ -z "$pyenv_root" ]] && continue
 
-        if [[ -z "$backup_info" ]]; then
-            log_error "[AUTO-FIX:pyenv] Failed to create backup of $pyenv_root"
-            return 2
-        fi
-
-        local backup_path backup_checksum
-        backup_path=$(echo "$backup_info" | jq -r '.backup')
-        backup_checksum=$(echo "$backup_info" | jq -r '.checksum')
-
-        log_info "[AUTO-FIX:pyenv] Created backup: $backup_path (checksum: ${backup_checksum:0:16}...)"
-
-        record_change \
-            "pyenv" \
-            "Backed up and moved pyenv directory: $pyenv_root" \
-            "mv \"$backup_path\" \"$pyenv_root\"" \
-            false \
-            "warning" \
-            "[\"$pyenv_root\"]" \
-            "[$backup_info]" \
-            '[]'
-
-        if ! rm -rf "$pyenv_root"; then
-            log_error "[AUTO-FIX:pyenv] Failed to remove original pyenv directory"
+        # SECURITY: Prevent accidental deletion of critical directories
+        if [[ "$pyenv_root" == "/" || "$pyenv_root" == "$HOME" || "$pyenv_root" == "/usr" || "$pyenv_root" == "/usr/local" ]]; then
+            log_error "[AUTO-FIX:pyenv] Unsafe pyenv_root detected: '$pyenv_root'. Skipping this directory."
             partial_failure=1
-        else
-            log_info "[AUTO-FIX:pyenv] Removed original pyenv directory"
+            continue
         fi
-    fi
+
+        if [[ -d "$pyenv_root" ]]; then
+            local backup_info
+            backup_info=$(create_backup "$pyenv_root" "pyenv-directory")
+
+            if [[ -z "$backup_info" ]]; then
+                log_error "[AUTO-FIX:pyenv] Failed to create backup of $pyenv_root"
+                partial_failure=1
+                continue
+            fi
+
+            local backup_path backup_checksum
+            backup_path=$(echo "$backup_info" | jq -r '.backup')
+            backup_checksum=$(echo "$backup_info" | jq -r '.checksum')
+
+            log_info "[AUTO-FIX:pyenv] Created backup: $backup_path (checksum: ${backup_checksum:0:16}...)"
+
+            record_change \
+                "pyenv" \
+                "Backed up and moved pyenv directory: $pyenv_root" \
+                "mv \"$backup_path\" \"$pyenv_root\"" \
+                false \
+                "warning" \
+                "[\"$pyenv_root\"]" \
+                "[$backup_info]" \
+                '[]'
+
+            if ! rm -rf "$pyenv_root"; then
+                log_error "[AUTO-FIX:pyenv] Failed to remove original pyenv directory: $pyenv_root"
+                partial_failure=1
+            else
+                log_info "[AUTO-FIX:pyenv] Removed original pyenv directory: $pyenv_root"
+            fi
+        fi
+    done < <(echo "$check_result" | jq -r '.pyenv_roots[]')
 
     # STEP 2: Clean shell configuration files
     while IFS= read -r config; do

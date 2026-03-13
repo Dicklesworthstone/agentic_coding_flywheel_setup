@@ -208,14 +208,14 @@ _autofix_stop_unattended_service() {
 _autofix_wait_for_apt_processes() {
     local waited=0
 
-    while pgrep -x "apt\|apt-get\|dpkg" &>/dev/null && [[ $waited -lt $AUTOFIX_UNATTENDED_TIMEOUT ]]; do
+    while pgrep -x "apt|apt-get|dpkg" &>/dev/null && [[ $waited -lt $AUTOFIX_UNATTENDED_TIMEOUT ]]; do
         log_info "[AUTO-FIX:unattended] Waiting for apt/dpkg to finish... (${waited}s/${AUTOFIX_UNATTENDED_TIMEOUT}s)"
         sleep "$AUTOFIX_UNATTENDED_POLL_INTERVAL"
         ((waited += AUTOFIX_UNATTENDED_POLL_INTERVAL))
     done
 
     # Return 0 if processes finished, 1 if still running (need to kill)
-    if pgrep -x "apt\|apt-get\|dpkg" &>/dev/null; then
+    if pgrep -x "apt|apt-get|dpkg" &>/dev/null; then
         log_warn "[AUTO-FIX:unattended] Timeout reached, processes still running"
         return 1
     fi
@@ -227,7 +227,7 @@ _autofix_wait_for_apt_processes() {
 # Kill stuck apt/dpkg processes
 _autofix_kill_stuck_processes() {
     local stuck_pids
-    stuck_pids=$(pgrep -x "apt\|apt-get\|dpkg" 2>/dev/null | tr '\n' ' ' | xargs)
+    stuck_pids=$(pgrep -x "apt|apt-get|dpkg" 2>/dev/null | tr '\n' ' ' | xargs)
 
     if [[ -z "$stuck_pids" ]]; then
         return 0
@@ -255,7 +255,7 @@ _autofix_kill_stuck_processes() {
     sleep 2
 
     # Verify processes are gone
-    if pgrep -x "apt\|apt-get\|dpkg" &>/dev/null; then
+    if pgrep -x "apt|apt-get|dpkg" &>/dev/null; then
         log_error "[AUTO-FIX:unattended] Some processes still running after kill"
         return 1
     fi
