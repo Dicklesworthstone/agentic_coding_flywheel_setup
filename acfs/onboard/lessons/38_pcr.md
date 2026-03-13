@@ -11,7 +11,7 @@ skills:
 
 Ever noticed Claude "forgetting" project rules after a long conversation? PCR fixes that.
 
-**PCR (Post-Compact Reminder)** is a Claude Code hook that fires after context compaction. When Claude's conversation grows too long and the system compresses earlier messages, PCR automatically re-injects critical project context so Claude doesn't lose track of important rules and conventions.
+**PCR (Post-Compact Reminder)** is a Claude Code hook that fires after context compaction. When Claude's conversation grows too long and the system compresses earlier messages, PCR injects a reminder telling Claude to re-read `AGENTS.md` before continuing.
 
 ---
 
@@ -20,24 +20,33 @@ Ever noticed Claude "forgetting" project rules after a long conversation? PCR fi
 PCR installs as a Claude Code hook. Check if it's active:
 
 ```bash
-pcr --help
+test -x "$HOME/.local/bin/claude-post-compact-reminder"
+grep -q "claude-post-compact-reminder" ~/.claude/settings.json \
+  || grep -q "claude-post-compact-reminder" ~/.config/claude/settings.json
+
+# Optional: simulate the exact compact event payload
+echo '{"session_id":"demo","source":"compact"}' | ~/.local/bin/claude-post-compact-reminder
 ```
 
-Or check your Claude Code settings for the hook entry.
+If you still have a local copy of the installer script around, these are the richer health checks:
+
+```bash
+./install-post-compact-reminder.sh --status
+./install-post-compact-reminder.sh --doctor
+```
+
+After installing or repairing PCR, restart Claude Code so the updated hook config is loaded.
 
 ---
 
 # How It Works
 
-PCR operates as a `Stop` hook in Claude Code:
+PCR operates as a `SessionStart` hook in Claude Code with matcher `compact`:
 
 1. Claude's context window fills up and compaction occurs
 2. PCR detects the compaction event
-3. PCR injects a reminder with key project context:
-   - AGENTS.md rules
-   - Active beads and priorities
-   - File modification restrictions
-   - Critical conventions
+3. PCR prints a reminder message into Claude's fresh context
+4. Claude re-reads `AGENTS.md` before continuing work
 
 ---
 
@@ -54,7 +63,24 @@ Without PCR, agents lose awareness of:
 
 # Configuration
 
-PCR reads from your project's AGENTS.md and CLAUDE.md to build the reminder. No manual configuration needed beyond installation.
+PCR does **not** read `AGENTS.md` or `CLAUDE.md` itself. It emits a reminder telling Claude to re-read the project instructions after compaction.
+
+If you want to customize that reminder, re-run the installer with a template or custom message:
+
+```bash
+./install-post-compact-reminder.sh --template minimal
+./install-post-compact-reminder.sh --template detailed
+./install-post-compact-reminder.sh --template checklist
+./install-post-compact-reminder.sh --template default
+./install-post-compact-reminder.sh --update-reminder-message "Context compacted. Read AGENTS.md now."
+```
+
+The built-in templates are:
+
+- `minimal`: shortest mandatory reminder
+- `detailed`: step-by-step instructions after compaction
+- `checklist`: checkbox-style reminder for strict workflows
+- `default`: the standard balanced reminder installed by default
 
 ---
 
@@ -71,7 +97,7 @@ PCR runs automatically. You don't invoke it directly. It activates when:
 # Summary
 
 You've learned:
-1. PCR is a Claude Code hook, not a manual command
-2. It fires after context compaction to restore key context
-3. It reads AGENTS.md and CLAUDE.md for project rules
-4. It prevents agents from "forgetting" critical constraints
+1. PCR is a Claude Code hook, not a daily interactive CLI
+2. It fires from a `SessionStart` hook only when the event source is `compact`
+3. It reminds Claude to re-read `AGENTS.md`; it does not parse project files itself
+4. It prevents agents from drifting after compaction

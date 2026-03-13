@@ -6,10 +6,12 @@
 # Uses gum for TUI elements with fallback to basic bash menus.
 #
 # Usage:
-#   onboard           # Launch interactive menu
-#   onboard N         # Jump to lesson N (1-based)
-#   onboard reset     # Reset progress
-#   onboard status    # Show completion status
+#   onboard                 # Launch interactive menu
+#   onboard N               # Jump to lesson N (1-based)
+#   onboard status|list|--status|--list   # Show completion status
+#   onboard reset|--reset                  # Reset progress
+#   onboard help|--help                    # Show help
+#   onboard version|--version              # Show version
 #
 
 set -euo pipefail
@@ -18,10 +20,12 @@ set -euo pipefail
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
 
-LESSONS_DIR="${ACFS_LESSONS_DIR:-$HOME/.acfs/onboard/lessons}"
-PROGRESS_FILE="${ACFS_PROGRESS_FILE:-$HOME/.acfs/onboard_progress.json}"
+ACFS_HOME="${ACFS_HOME:-$HOME/.acfs}"
+LESSONS_DIR="${ACFS_LESSONS_DIR:-$ACFS_HOME/onboard/lessons}"
+PROGRESS_FILE="${ACFS_PROGRESS_FILE:-$ACFS_HOME/onboard_progress.json}"
 PROGRESS_LOCK_FILE="${PROGRESS_FILE}.lock"
 VERSION="0.1.0"
+MENU_SEPARATOR="─────────────────────────────────"
 
 # Source gum_ui library if available for consistent theming
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -128,13 +132,59 @@ declare -gA AUTH_SERVICE_DESCRIPTIONS=(
 declare -gA AUTH_SERVICE_COMMANDS=(
     [tailscale]="sudo tailscale up"
     [claude]="claude"
-    [codex]="codex login"
-    [gemini]="gemini"
+    [codex]="codex login --device-auth"
+    [gemini]="export GEMINI_API_KEY=\"your-gemini-api-key\""
     [github]="gh auth login"
     [vercel]="vercel login"
-    [supabase]="supabase login"
-    [cloudflare]="wrangler login"
+    [supabase]="supabase login --token YOUR_SUPABASE_ACCESS_TOKEN"
+    [cloudflare]="export CLOUDFLARE_API_TOKEN=\"your-token-here\""
 )
+
+auth_service_guidance() {
+    local service=$1
+
+    case "$service" in
+        codex)
+            cat <<'EOF'
+Use device auth on a headless VPS. If your account does not offer device auth yet,
+use the SSH tunnel fallback from the website wizard so the localhost callback works.
+EOF
+            ;;
+        gemini)
+            cat <<'EOF'
+For a headless VPS, prefer environment-based auth. Add GEMINI_API_KEY to your
+shell config or ~/.gemini/.env, then run `gemini`. If you use Vertex AI instead,
+set GOOGLE_GENAI_USE_VERTEXAI=true plus the required Google Cloud variables.
+EOF
+            ;;
+        vercel)
+            cat <<'EOF'
+Vercel CLI now supports a headless-safe device login flow, so `vercel login`
+works directly on a VPS. If you need non-interactive auth for automation, export
+VERCEL_TOKEN in your shell config instead.
+EOF
+            ;;
+        supabase)
+            cat <<'EOF'
+Create a Supabase access token in your browser first, then pass it with --token
+or export SUPABASE_ACCESS_TOKEN in your shell config for later commands.
+EOF
+            ;;
+        cloudflare)
+            cat <<'EOF'
+Use API tokens on a headless VPS instead of wrangler login. Add
+CLOUDFLARE_API_TOKEN to your shell config, and set CLOUDFLARE_ACCOUNT_ID too if
+the commands you plan to run require it.
+EOF
+            ;;
+        *)
+            cat <<'EOF'
+This will open a browser or print an auth URL/code flow.
+Follow the prompts to complete authentication.
+EOF
+            ;;
+    esac
+}
 
 # Colors (works in most terminals) - fallback if gum_ui not loaded
 RED='\033[0;31m'
@@ -166,9 +216,259 @@ has_gum() {
     command -v gum &>/dev/null
 }
 
+has_interactive_tty() {
+    [[ -t 0 && -t 1 ]]
+}
+
+has_gum_ui() {
+    has_gum && has_interactive_tty
+}
+
 # Check if glow is available (for markdown rendering)
 has_glow() {
     command -v glow &>/dev/null
+}
+
+has_nonblank_value() {
+    local value="${1-}"
+    [[ -n "${value//[[:space:]]/}" ]]
+}
+
+normalize_config_value() {
+    local value="${1-}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    if [[ ${#value} -ge 2 ]]; then
+        local first_char="${value:0:1}"
+        local last_char="${value: -1}"
+        if [[ ( "$first_char" == '"' && "$last_char" == '"' ) || ( "$first_char" == "'" && "$last_char" == "'" ) ]]; then
+            value="${value:1:${#value}-2}"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+        fi
+    fi
+
+    printf '%s\n' "$value"
+}
+
+is_placeholder_secret() {
+    local normalized
+    normalized="$(normalize_config_value "${1-}")"
+    normalized="${normalized,,}"
+
+    case "$normalized" in
+        your-token-here|your-token|your_api_key|your-api-key|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+has_usable_secret() {
+    local normalized
+    normalized="$(normalize_config_value "${1-}")"
+    has_nonblank_value "$normalized" && ! is_placeholder_secret "$normalized"
+}
+
+file_has_nonblank_content() {
+    local file=$1
+    [[ -f "$file" ]] || return 1
+    grep -q '[^[:space:]]' "$file" 2>/dev/null
+}
+
+read_configured_var_from_file() {
+    local var_name=$1
+    local file_path=$2
+    [[ -f "$file_path" ]] || return 1
+
+    local line=""
+    local regex="^[[:space:]]*(export[[:space:]]+)?${var_name}[[:space:]]*=(.*)$"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        if [[ "$line" =~ $regex ]]; then
+            local value="${BASH_REMATCH[2]}"
+            local first_char="${value:0:1}"
+            if [[ "$first_char" != '"' && "$first_char" != "'" ]]; then
+                value="${value%%#*}"
+            fi
+            value="$(normalize_config_value "$value")"
+            if has_nonblank_value "$value"; then
+                printf '%s\n' "$value"
+                return 0
+            fi
+        fi
+    done < "$file_path"
+
+    return 1
+}
+
+get_configured_value() {
+    local var_name=$1
+    shift
+    local env_value="${!var_name-}"
+    if has_nonblank_value "$env_value" && ! is_placeholder_secret "$env_value"; then
+        normalize_config_value "$env_value"
+        return 0
+    fi
+
+    local file_path=""
+    local configured_value=""
+    for file_path in "$@"; do
+        configured_value="$(read_configured_var_from_file "$var_name" "$file_path" || true)"
+        if has_nonblank_value "$configured_value" && ! is_placeholder_secret "$configured_value"; then
+            printf '%s\n' "$configured_value"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+get_configured_secret() {
+    local var_name=$1
+    shift
+    local env_value="${!var_name-}"
+    if has_usable_secret "$env_value"; then
+        normalize_config_value "$env_value"
+        return 0
+    fi
+
+    local file_path=""
+    local configured_value=""
+    for file_path in "$@"; do
+        configured_value="$(read_configured_var_from_file "$var_name" "$file_path" || true)"
+        if has_usable_secret "$configured_value"; then
+            printf '%s\n' "$configured_value"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+configured_truthy_value() {
+    local var_name=$1
+    shift
+    local configured_value=""
+    configured_value="$(get_configured_value "$var_name" "$@" || true)"
+    case "${configured_value,,}" in
+        1|true|yes|on)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+compact_progress_json() {
+    [[ -f "$PROGRESS_FILE" ]] || return 1
+    tr -d '[:space:]' < "$PROGRESS_FILE" 2>/dev/null
+}
+
+get_progress_started_at() {
+    local compact
+    local started_at
+
+    compact="$(compact_progress_json || true)"
+    if [[ -n "$compact" ]]; then
+        started_at=$(printf '%s' "$compact" | sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p')
+        if [[ -n "$started_at" ]]; then
+            printf '%s\n' "$started_at"
+            return 0
+        fi
+    fi
+
+    date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+build_completed_csv() {
+    local new_lesson="${1-}"
+    local existing_csv
+    local entry
+    local i
+    local -a ordered=()
+    declare -A seen=()
+
+    existing_csv=$(get_completed | tr -d '[:space:]')
+    if [[ -n "$existing_csv" ]]; then
+        IFS=',' read -r -a ordered <<< "$existing_csv"
+        for entry in "${ordered[@]}"; do
+            [[ "$entry" =~ ^[0-9]+$ ]] || continue
+            seen["$entry"]=1
+        done
+    fi
+
+    if [[ -n "$new_lesson" ]] && [[ "$new_lesson" =~ ^[0-9]+$ ]]; then
+        seen["$new_lesson"]=1
+    fi
+
+    ordered=()
+    for (( i = 0; i < NUM_LESSONS; i++ )); do
+        if [[ -n "${seen[$i]+x}" ]]; then
+            ordered+=("$i")
+        fi
+    done
+
+    (
+        IFS=','
+        printf '%s' "${ordered[*]}"
+    )
+}
+
+get_next_incomplete_from_csv() {
+    local completed_csv
+    completed_csv=$(printf '%s' "$1" | tr -d '[:space:]')
+
+    if (( NUM_LESSONS == 0 )); then
+        echo "0"
+        return 0
+    fi
+
+    local i
+    for (( i = 0; i < NUM_LESSONS; i++ )); do
+        if [[ ",$completed_csv," != *",$i,"* ]]; then
+            echo "$i"
+            return 0
+        fi
+    done
+
+    echo "$((NUM_LESSONS - 1))"
+}
+
+write_progress_without_jq() {
+    local completed_csv=$1
+    local current_lesson=$2
+    local progress_dir
+    local tmp
+    local now
+    local started_at
+
+    progress_dir="$(dirname "$PROGRESS_FILE")"
+    mkdir -p "$progress_dir" 2>/dev/null || true
+
+    tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
+        echo -e "${RED}Error: could not save progress (mktemp failed).${NC}" >&2
+        return 1
+    }
+
+    now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    started_at="$(get_progress_started_at)"
+
+    if printf '{"completed":[%s],"current":%s,"started_at":"%s","last_accessed":"%s"}\n' \
+        "$completed_csv" "$current_lesson" "$started_at" "$now" > "$tmp"; then
+        mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
+            rm -f -- "$tmp" 2>/dev/null || true
+            echo -e "${RED}Error: could not save progress (mv failed).${NC}" >&2
+            return 1
+        }
+    else
+        rm -f -- "$tmp" 2>/dev/null || true
+        echo -e "${RED}Error: could not save progress.${NC}" >&2
+        return 1
+    fi
+
+    return 0
 }
 
 # Initialize progress file if it doesn't exist
@@ -196,8 +496,10 @@ get_completed() {
         if command -v jq &>/dev/null; then
             jq -r '.completed | @csv' "$PROGRESS_FILE" 2>/dev/null | tr -d '"' || echo ""
         else
-            # POSIX-compatible: extract array contents with sed
-            sed -n 's/.*"completed":[[:space:]]*\[\([^]]*\)\].*/\1/p' "$PROGRESS_FILE" 2>/dev/null || echo ""
+            # Handle both pretty-printed jq output and compact JSON.
+            local compact
+            compact="$(compact_progress_json || true)"
+            printf '%s\n' "$compact" | sed -n 's/.*"completed":\[\([^]]*\)\].*/\1/p'
         fi
     else
         echo ""
@@ -217,15 +519,22 @@ get_current() {
     if [[ -f "$PROGRESS_FILE" ]] && command -v jq &>/dev/null; then
         jq -r '.current // 0' "$PROGRESS_FILE" 2>/dev/null || echo "0"
     else
-        # POSIX-compatible: extract current value with sed
+        # Handle both pretty-printed jq output and compact JSON.
         local result
-        result=$(sed -n 's/.*"current":[[:space:]]*\([0-9]*\).*/\1/p' "$PROGRESS_FILE" 2>/dev/null | head -1)
+        local compact
+        compact="$(compact_progress_json || true)"
+        result=$(printf '%s\n' "$compact" | sed -n 's/.*"current":\([0-9]*\).*/\1/p' | head -1)
         echo "${result:-0}"
     fi
 }
 
 # Get the next recommended lesson index (first incomplete, 0 to NUM_LESSONS-1).
 get_next_incomplete() {
+    if (( NUM_LESSONS == 0 )); then
+        echo "0"
+        return 0
+    fi
+
     local i
     # Use C-style for loop since brace expansion {0..N} is evaluated at parse time
     for (( i = 0; i < NUM_LESSONS; i++ )); do
@@ -236,6 +545,21 @@ get_next_incomplete() {
     done
     # All lessons complete - return the last lesson index
     echo "$((NUM_LESSONS - 1))"
+}
+
+all_lessons_complete() {
+    if (( NUM_LESSONS == 0 )); then
+        return 1
+    fi
+
+    local i
+    for (( i = 0; i < NUM_LESSONS; i++ )); do
+        if ! is_completed "$i"; then
+            return 1
+        fi
+    done
+
+    return 0
 }
 
 # Mark a lesson as completed
@@ -253,44 +577,66 @@ mark_completed() {
         # Acquire exclusive lock (wait up to 5 seconds)
         exec {lock_fd}>"$PROGRESS_LOCK_FILE"
         if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
-            echo -e "${YELLOW}Warning: could not acquire progress lock.${NC}"
+            echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
             exec {lock_fd}>&- 2>/dev/null || true
-            return 0
+            return 1
         fi
 
         tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
-            echo -e "${YELLOW}Warning: could not save progress (mktemp failed).${NC}"
+            echo -e "${RED}Error: could not save progress (mktemp failed).${NC}" >&2
             exec {lock_fd}>&- 2>/dev/null || true
-            return 0
+            return 1
         }
 
         if jq --argjson lesson "$lesson" --argjson num_lessons "$NUM_LESSONS" '
             .completed = (.completed + [$lesson] | unique | sort) |
             . as $o |
             .current = (
-                [range(0;$num_lessons) as $i | select(($o.completed | index($i)) == null) | $i] | first // ($num_lessons - 1)
+                [range(0;$num_lessons) as $i | select(($o.completed | index($i)) == null) | $i] | first // (if $num_lessons > 0 then ($num_lessons - 1) else 0 end)
             ) |
             .last_accessed = (now | todateiso8601)
         ' "$PROGRESS_FILE" > "$tmp"; then
             mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
                 rm -f -- "$tmp" 2>/dev/null || true
-                echo -e "${YELLOW}Warning: could not save progress (mv failed).${NC}"
+                echo -e "${RED}Error: could not save progress (mv failed).${NC}" >&2
                 exec {lock_fd}>&- 2>/dev/null || true
-                return 0
+                return 1
             }
         else
             rm -f -- "$tmp" 2>/dev/null || true
+            echo -e "${RED}Error: could not save progress.${NC}" >&2
             exec {lock_fd}>&- 2>/dev/null || true
-            return 0
+            return 1
         fi
 
         # Release lock
         exec {lock_fd}>&- 2>/dev/null || true
-    else
-        # Fallback: warn user that progress is not saved
-        echo -e "${YELLOW}Warning: 'jq' not found. Progress will NOT be saved.${NC}"
-        echo "Please install jq to enable progress tracking."
+        return 0
     fi
+
+    local progress_dir
+    local lock_fd
+    local completed_csv
+    local next_current
+    progress_dir="$(dirname "$PROGRESS_FILE")"
+    mkdir -p "$progress_dir" 2>/dev/null || true
+
+    exec {lock_fd}>"$PROGRESS_LOCK_FILE"
+    if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
+        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
+        exec {lock_fd}>&- 2>/dev/null || true
+        return 1
+    fi
+
+    completed_csv="$(build_completed_csv "$lesson")"
+    next_current="$(get_next_incomplete_from_csv "$completed_csv")"
+    if ! write_progress_without_jq "$completed_csv" "$next_current"; then
+        exec {lock_fd}>&- 2>/dev/null || true
+        return 1
+    fi
+
+    exec {lock_fd}>&- 2>/dev/null || true
+    return 0
 }
 
 # Update current lesson without marking complete
@@ -308,15 +654,15 @@ set_current() {
         # Acquire exclusive lock (wait up to 5 seconds)
         exec {lock_fd}>"$PROGRESS_LOCK_FILE"
         if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
-            echo -e "${YELLOW}Warning: could not acquire progress lock.${NC}"
+            echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
             exec {lock_fd}>&- 2>/dev/null || true
-            return 0
+            return 1
         fi
 
         tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
-            echo -e "${YELLOW}Warning: could not update progress (mktemp failed).${NC}"
+            echo -e "${RED}Error: could not update progress (mktemp failed).${NC}" >&2
             exec {lock_fd}>&- 2>/dev/null || true
-            return 0
+            return 1
         }
 
         if jq --argjson lesson "$lesson" '
@@ -325,19 +671,43 @@ set_current() {
         ' "$PROGRESS_FILE" > "$tmp"; then
             mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
                 rm -f -- "$tmp" 2>/dev/null || true
-                echo -e "${YELLOW}Warning: could not update progress (mv failed).${NC}"
+                echo -e "${RED}Error: could not update progress (mv failed).${NC}" >&2
                 exec {lock_fd}>&- 2>/dev/null || true
-                return 0
+                return 1
             }
         else
             rm -f -- "$tmp" 2>/dev/null || true
+            echo -e "${RED}Error: could not update progress.${NC}" >&2
             exec {lock_fd}>&- 2>/dev/null || true
-            return 0
+            return 1
         fi
 
         # Release lock
         exec {lock_fd}>&- 2>/dev/null || true
+        return 0
     fi
+
+    local progress_dir
+    local lock_fd
+    local completed_csv
+    progress_dir="$(dirname "$PROGRESS_FILE")"
+    mkdir -p "$progress_dir" 2>/dev/null || true
+
+    exec {lock_fd}>"$PROGRESS_LOCK_FILE"
+    if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
+        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
+        exec {lock_fd}>&- 2>/dev/null || true
+        return 1
+    fi
+
+    completed_csv="$(build_completed_csv)"
+    if ! write_progress_without_jq "$completed_csv" "$lesson"; then
+        exec {lock_fd}>&- 2>/dev/null || true
+        return 1
+    fi
+
+    exec {lock_fd}>&- 2>/dev/null || true
+    return 0
 }
 
 # Reset progress
@@ -351,9 +721,9 @@ reset_progress() {
     # Acquire exclusive lock (wait up to 5 seconds)
     exec {lock_fd}>"$PROGRESS_LOCK_FILE"
     if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
-        echo -e "${YELLOW}Warning: could not acquire progress lock.${NC}"
+        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
         exec {lock_fd}>&- 2>/dev/null || true
-        return 0
+        return 1
     fi
 
     if [[ -f "$PROGRESS_FILE" ]]; then
@@ -369,9 +739,9 @@ reset_progress() {
     now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     local tmp
     tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
-        echo -e "${YELLOW}Warning: could not reset progress (mktemp failed).${NC}"
+        echo -e "${RED}Error: could not reset progress (mktemp failed).${NC}" >&2
         exec {lock_fd}>&- 2>/dev/null || true
-        return 0
+        return 1
     }
     if cat > "$tmp" <<EOF
 {
@@ -384,20 +754,21 @@ EOF
     then
         mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
             rm -f -- "$tmp" 2>/dev/null || true
-            echo -e "${YELLOW}Warning: could not reset progress (mv failed).${NC}"
+            echo -e "${RED}Error: could not reset progress (mv failed).${NC}" >&2
             exec {lock_fd}>&- 2>/dev/null || true
-            return 0
+            return 1
         }
     else
         rm -f -- "$tmp" 2>/dev/null || true
-        echo -e "${YELLOW}Warning: could not reset progress (write failed).${NC}"
+        echo -e "${RED}Error: could not reset progress (write failed).${NC}" >&2
         exec {lock_fd}>&- 2>/dev/null || true
-        return 0
+        return 1
     fi
 
     # Release lock
     exec {lock_fd}>&- 2>/dev/null || true
     echo -e "${GREEN}Progress reset!${NC}"
+    return 0
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -408,6 +779,12 @@ EOF
 # Returns: 0 = authenticated, 1 = not authenticated, 2 = not installed
 check_auth_status() {
     local service=$1
+    local shell_config_files=(
+        "$HOME/.zshrc.local"
+        "$HOME/.zshrc"
+        "$HOME/.bashrc"
+        "$HOME/.profile"
+    )
 
     case "$service" in
         tailscale)
@@ -428,11 +805,17 @@ check_auth_status() {
             if ! command -v claude &>/dev/null; then
                 return 2
             fi
-            # Directory existence is not enough; require a real config file.
-            if [[ -s "$HOME/.claude/config.json" || -s "$HOME/.config/claude/config.json" ]]; then
-                return 0
+            # Claude Code stores OAuth credentials in ~/.claude/.credentials.json.
+            local creds_file="$HOME/.claude/.credentials.json"
+            [[ -s "$creds_file" ]] || return 1
+
+            if command -v jq &>/dev/null; then
+                local claude_token=""
+                claude_token="$(jq -r '.claudeAiOauth.accessToken // empty' "$creds_file" 2>/dev/null || true)"
+                has_nonblank_value "$claude_token" && return 0 || return 1
             fi
-            return 1
+
+            grep -Eq '"accessToken"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$creds_file" && return 0 || return 1
             ;;
         codex)
             if ! command -v codex &>/dev/null; then
@@ -446,25 +829,74 @@ check_auth_status() {
 
             if command -v jq &>/dev/null; then
                 local token=""
-                token="$(jq -r '.access_token // .accessToken // empty' "$auth_file" 2>/dev/null || true)"
-                [[ -n "$token" ]] && return 0 || return 1
+                token="$(jq -r '.tokens.access_token // .access_token // .accessToken // .OPENAI_API_KEY // empty' "$auth_file" 2>/dev/null || true)"
+                has_nonblank_value "$token" && return 0 || return 1
             fi
 
             # Basic grep fallback if jq is unavailable.
-            grep -Eq '"access(_token|Token)"[[:space:]]*:[[:space:]]*"[^"]+"' "$auth_file" && return 0 || return 1
+            grep -Eq '"(access(_token|Token)|OPENAI_API_KEY)"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$auth_file" && return 0 || return 1
             ;;
         gemini)
             if ! command -v gemini &>/dev/null; then
                 return 2
             fi
-            # Gemini CLI uses OAuth web login (like Claude Code and Codex CLI)
-            # Users authenticate via `gemini` command which opens browser login
-            # Directory existence is not enough - require actual credential files.
-            if [[ -s "$HOME/.config/gemini/credentials.json" ]]; then
+            local gemini_home="${GEMINI_CLI_HOME:-$HOME}"
+            local gemini_config_files=(
+                "$gemini_home/.gemini/.env"
+                "${shell_config_files[@]}"
+            )
+            if get_configured_secret "GEMINI_API_KEY" "${gemini_config_files[@]}" >/dev/null; then
                 return 0
             fi
-            if [[ -s "$HOME/.gemini/config" ]]; then
-                return 0
+            if configured_truthy_value "GOOGLE_GENAI_USE_VERTEXAI" "${gemini_config_files[@]}"; then
+                if get_configured_secret "GOOGLE_API_KEY" "${gemini_config_files[@]}" >/dev/null; then
+                    return 0
+                fi
+
+                local vertex_project=""
+                local vertex_location=""
+                local service_account_path=""
+                vertex_project="$(get_configured_value "GOOGLE_CLOUD_PROJECT" "${gemini_config_files[@]}" || get_configured_value "GOOGLE_CLOUD_PROJECT_ID" "${gemini_config_files[@]}" || true)"
+                vertex_location="$(get_configured_value "GOOGLE_CLOUD_LOCATION" "${gemini_config_files[@]}" || true)"
+                service_account_path="$(get_configured_value "GOOGLE_APPLICATION_CREDENTIALS" "${gemini_config_files[@]}" || true)"
+
+                if has_nonblank_value "$vertex_project" && has_nonblank_value "$vertex_location"; then
+                    if has_nonblank_value "$service_account_path" && [[ -f "$service_account_path" ]]; then
+                        return 0
+                    fi
+                    if command -v gcloud &>/dev/null && timeout 5 gcloud auth application-default print-access-token >/dev/null 2>&1; then
+                        return 0
+                    fi
+                fi
+            fi
+
+            # Gemini CLI also stores browser-login state under ~/.gemini/.
+            local google_accounts_file="$gemini_home/.gemini/google_accounts.json"
+            local oauth_creds_file="$gemini_home/.gemini/oauth_creds.json"
+
+            if command -v jq &>/dev/null; then
+                local gemini_active=""
+                local gemini_access_token=""
+                local gemini_refresh_token=""
+
+                if [[ -f "$google_accounts_file" ]]; then
+                    gemini_active="$(jq -r '.active // empty' "$google_accounts_file" 2>/dev/null || true)"
+                fi
+                if [[ -f "$oauth_creds_file" ]]; then
+                    gemini_access_token="$(jq -r '.access_token // empty' "$oauth_creds_file" 2>/dev/null || true)"
+                    gemini_refresh_token="$(jq -r '.refresh_token // empty' "$oauth_creds_file" 2>/dev/null || true)"
+                fi
+
+                if has_nonblank_value "$gemini_active" || has_nonblank_value "$gemini_access_token" || has_nonblank_value "$gemini_refresh_token"; then
+                    return 0
+                fi
+            else
+                if [[ -f "$google_accounts_file" ]] && grep -Eq '"active"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$google_accounts_file"; then
+                    return 0
+                fi
+                if [[ -f "$oauth_creds_file" ]] && grep -Eq '"(access_token|refresh_token)"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$oauth_creds_file"; then
+                    return 0
+                fi
             fi
             return 1
             ;;
@@ -472,25 +904,46 @@ check_auth_status() {
             if ! command -v gh &>/dev/null; then
                 return 2
             fi
-            gh auth status &>/dev/null && return 0 || return 1
+            gh auth status -h github.com &>/dev/null && return 0 || return 1
             ;;
         vercel)
             if ! command -v vercel &>/dev/null; then
                 return 2
             fi
-            if [[ -s "$HOME/.config/vercel/auth.json" || -s "$HOME/.vercel/auth.json" ]]; then
+            if get_configured_secret "VERCEL_TOKEN" "${shell_config_files[@]}" >/dev/null; then
                 return 0
             fi
+            local vercel_output=""
+            vercel_output="$(vercel whoami 2>/dev/null || true)"
+            if [[ -n "$vercel_output" ]] && [[ "${vercel_output,,}" != *"not logged"* ]]; then
+                return 0
+            fi
+
+            local auth_file=""
+            for auth_file in "$HOME/.config/vercel/auth.json" "$HOME/.vercel/auth.json"; do
+                [[ -s "$auth_file" ]] || continue
+                if command -v jq &>/dev/null; then
+                    local vercel_token=""
+                    local vercel_email=""
+                    vercel_email="$(jq -r '.user.email // empty' "$auth_file" 2>/dev/null || true)"
+                    vercel_token="$(jq -r '.token // empty' "$auth_file" 2>/dev/null || true)"
+                    if has_nonblank_value "$vercel_email" || has_nonblank_value "$vercel_token"; then
+                        return 0
+                    fi
+                elif grep -Eq '"(token|email)"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$auth_file"; then
+                    return 0
+                fi
+            done
             return 1
             ;;
         supabase)
             if ! command -v supabase &>/dev/null; then
                 return 2
             fi
-            if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+            if get_configured_secret "SUPABASE_ACCESS_TOKEN" "${shell_config_files[@]}" >/dev/null; then
                 return 0
             fi
-            if [[ -s "$HOME/.supabase/access-token" || -s "$HOME/.config/supabase/access-token" ]]; then
+            if file_has_nonblank_content "$HOME/.supabase/access-token" || file_has_nonblank_content "$HOME/.config/supabase/access-token"; then
                 return 0
             fi
             return 1
@@ -499,7 +952,7 @@ check_auth_status() {
             if ! command -v wrangler &>/dev/null; then
                 return 2
             fi
-            if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            if get_configured_secret "CLOUDFLARE_API_TOKEN" "${shell_config_files[@]}" >/dev/null; then
                 return 0
             fi
             # Prefer the CLI check when available (more reliable than config file presence).
@@ -604,7 +1057,7 @@ show_auth_flow() {
                     items+=("🔑 Authenticate ${AUTH_SERVICE_NAMES[$service]}")
                 fi
             done
-            items+=("─────────────────────────────────")
+            items+=("$MENU_SEPARATOR")
             items+=("📋 [m] Back to menu")
             items+=("🔄 [r] Refresh status")
 
@@ -629,33 +1082,39 @@ show_auth_flow() {
             esac
         else
             echo "Options:"
-            echo "  [1-8] Authenticate a service"
+            echo "  [number] Authenticate a listed service"
             echo "  [m]   Back to menu"
             echo "  [r]   Refresh status"
             echo ""
 
-            local idx=1
+            local -a auth_menu_services=()
             for service in "${AUTH_SERVICES[@]}"; do
                 local status
                 status=$(get_auth_status_code "$service")
                 if [[ $status -eq 1 ]]; then
-                    echo "  [$idx] ${AUTH_SERVICE_NAMES[$service]}"
+                    auth_menu_services+=("$service")
+                    echo "  [${#auth_menu_services[@]}] ${AUTH_SERVICE_NAMES[$service]}"
                 fi
-                idx=$((idx + 1))
             done
 
+            if [[ ${#auth_menu_services[@]} -eq 0 ]]; then
+                echo "  No installed services currently need authentication."
+            fi
+
             read -rp "$(echo -e "${CYAN}Choose:${NC} ")" choice
+
+            if [[ "$choice" =~ ^[0-9]+$ ]]; then
+                local idx=$((choice - 1))
+                if [[ $idx -ge 0 ]] && [[ $idx -lt ${#auth_menu_services[@]} ]]; then
+                    show_auth_service "${auth_menu_services[$idx]}"
+                    # Loop continues to refresh
+                fi
+                continue
+            fi
 
             case "$choice" in
                 m|M) return 0 ;;
                 r|R) continue ;;
-                [1-8])
-                    local idx=$((choice - 1))
-                    if [[ $idx -lt ${#AUTH_SERVICES[@]} ]]; then
-                        show_auth_service "${AUTH_SERVICES[$idx]}"
-                        # Loop continues to refresh
-                    fi
-                    ;;
             esac
         fi
     done
@@ -681,8 +1140,7 @@ show_auth_service() {
         echo ""
         gum style --foreground "$ACFS_TEAL" --bold "  $cmd"
         echo ""
-        echo "This will open a browser or show an auth URL."
-        echo "Follow the prompts to complete authentication."
+        auth_service_guidance "$service"
         echo ""
 
         gum confirm --affirmative "I've authenticated" --negative "Skip for now" || true
@@ -694,7 +1152,7 @@ show_auth_service() {
         echo ""
         echo -e "  ${GREEN}$cmd${NC}"
         echo ""
-        echo "Follow the prompts to complete authentication."
+        auth_service_guidance "$service"
         echo ""
         read -rp "Press Enter when done (or 's' to skip)... " _
     fi
@@ -715,6 +1173,10 @@ calc_progress_stats() {
         fi
     done
     local total="$NUM_LESSONS"
+    if (( total == 0 )); then
+        echo "0|0|0|0"
+        return 0
+    fi
     local percent=$((completed_count * 100 / total))
     local remaining=$((total - completed_count))
     local est_minutes=$((remaining * 5))  # ~5 min per lesson average
@@ -733,6 +1195,27 @@ render_progress_bar() {
     echo "$bar"
 }
 
+show_no_lessons_notice() {
+    local message="No lesson markdown files were found in ${LESSONS_DIR}."
+    local hint="Re-run the installer or set ACFS_LESSONS_DIR to a directory with onboarding lessons."
+
+    echo ""
+    if has_gum; then
+        gum style \
+            --border rounded \
+            --border-foreground "$ACFS_WARNING" \
+            --padding "1 2" \
+            --margin "0 0 1 0" \
+            "$(gum style --foreground "$ACFS_WARNING" --bold '⚠️  No lessons available')" \
+            "$(gum style --foreground "$ACFS_MUTED" "$message")" \
+            "$(gum style --foreground "$ACFS_MUTED" "$hint")"
+    else
+        echo -e "${YELLOW}${BOLD}No lessons available.${NC}"
+        echo -e "${DIM}${message}${NC}"
+        echo -e "${DIM}${hint}${NC}"
+    fi
+}
+
 # Print header with progress bar
 print_header() {
     clear 2>/dev/null || true
@@ -747,7 +1230,9 @@ print_header() {
     if has_gum; then
         # Build time remaining text
         local time_text=""
-        if [[ "$completed" -lt "$total" ]]; then
+        if [[ "$total" -eq 0 ]]; then
+            time_text="No lessons found in ${LESSONS_DIR}"
+        elif [[ "$completed" -lt "$total" ]]; then
             if [[ "$est_minutes" -ge 60 ]]; then
                 time_text="Est. remaining: ~$((est_minutes / 60))h $((est_minutes % 60))m"
             elif [[ "$est_minutes" -gt 0 ]]; then
@@ -768,7 +1253,9 @@ print_header() {
     else
         # Plain text fallback
         local time_text=""
-        if [[ "$completed" -lt "$total" ]]; then
+        if [[ "$total" -eq 0 ]]; then
+            time_text="No lessons found in ${LESSONS_DIR}"
+        elif [[ "$completed" -lt "$total" ]]; then
             if [[ "$est_minutes" -ge 60 ]]; then
                 time_text="Est. remaining: ~$((est_minutes / 60))h $((est_minutes % 60))m"
             elif [[ "$est_minutes" -gt 0 ]]; then
@@ -825,16 +1312,14 @@ show_menu_gum() {
         fi
         items+=("${status} [$((i + 1))] ${LESSON_TITLES[$i]}")
     done
-    items+=("─────────────────────────────────")
+    if (( NUM_LESSONS > 0 )); then
+            items+=("$MENU_SEPARATOR")
+    fi
     items+=("🔐 [a] Authenticate Services")
     items+=("↺ [r] Restart from beginning")
     items+=("📊 [s] Show status")
     # Show certificate option only when all lessons complete
-    local all_complete=true
-    for (( i = 0; i < NUM_LESSONS; i++ )); do
-        is_completed "$i" || { all_complete=false; break; }
-    done
-    if [[ "$all_complete" == "true" ]]; then
+    if all_lessons_complete; then
         items+=("🏆 [t] View Certificate")
     fi
     items+=("👋 [q] Quit")
@@ -853,6 +1338,8 @@ show_menu_gum() {
         echo "invalid"
     elif [[ "$choice" =~ \[([0-9]+)\] ]]; then
         echo "${BASH_REMATCH[1]}"
+    elif [[ "$choice" == "$MENU_SEPARATOR" ]]; then
+        echo "invalid"
     elif [[ "$choice" =~ \[a\] ]]; then
         echo "a"
     elif [[ "$choice" =~ \[r\] ]]; then
@@ -869,6 +1356,10 @@ show_menu_gum() {
 # Show lesson menu with basic bash
 show_menu_basic() {
     local i
+    if (( NUM_LESSONS == 0 )); then
+        show_no_lessons_notice
+    fi
+
     echo -e "${BOLD}Choose a lesson:${NC}"
     echo ""
 
@@ -881,18 +1372,23 @@ show_menu_basic() {
     echo -e "  ${DIM}[r] Restart from beginning${NC}"
     echo -e "  ${DIM}[s] Show status${NC}"
     # Show certificate option only when all lessons complete
-    local all_complete=true
-    for (( i = 0; i < NUM_LESSONS; i++ )); do
-        is_completed "$i" || { all_complete=false; break; }
-    done
-    if [[ "$all_complete" == "true" ]]; then
+    if all_lessons_complete; then
         echo -e "  ${GREEN}[t] View Certificate${NC}"
     fi
     echo -e "  ${DIM}[q] Quit${NC}"
     echo ""
 
-    local prompt_opts="1-${NUM_LESSONS}, a, r, s, q"
-    [[ "$all_complete" == "true" ]] && prompt_opts="1-${NUM_LESSONS}, a, r, s, t, q"
+    local prompt_opts="a, r, s, q"
+    if (( NUM_LESSONS > 0 )); then
+        prompt_opts="1-${NUM_LESSONS}, a, r, s, q"
+    fi
+    if all_lessons_complete; then
+        if (( NUM_LESSONS > 0 )); then
+            prompt_opts="1-${NUM_LESSONS}, a, r, s, t, q"
+        else
+            prompt_opts="a, r, s, t, q"
+        fi
+    fi
     read -rp "$(echo -e "${CYAN}Choose [$prompt_opts]:${NC} ")" choice
 
     # Validate numeric choices against actual lesson count
@@ -940,6 +1436,25 @@ show_celebration() {
     local idx=$1
     local title="${LESSON_TITLES[$idx]}"
     local summaries="${LESSON_SUMMARIES[$idx]:-}"
+    local stats completed_count total
+    local next_idx=""
+    stats=$(calc_progress_stats)
+    IFS='|' read -r completed_count total _ _ <<< "$stats"
+    if [[ -z "$summaries" ]]; then
+        if all_lessons_complete; then
+            summaries="Key concepts from ${title}|You have completed the full onboarding curriculum"
+        else
+            next_idx=$(get_current)
+            if [[ ! "$next_idx" =~ ^[0-9]+$ ]] || (( next_idx < 0 || next_idx >= NUM_LESSONS )); then
+                next_idx=$(get_next_incomplete)
+            fi
+            if [[ "$next_idx" =~ ^[0-9]+$ ]] && (( next_idx >= 0 && next_idx < NUM_LESSONS )); then
+                summaries="Key concepts from ${title}|Next recommended lesson: onboard $((next_idx + 1))"
+            else
+                summaries="Key concepts from ${title}|Continue anytime with onboard status"
+            fi
+        fi
+    fi
 
     clear 2>/dev/null || true
 
@@ -966,7 +1481,7 @@ show_celebration() {
             "$(gum style --foreground "$ACFS_MUTED" 'You learned:')" \
             "$summary_text" \
             "" \
-            "$(gum style --foreground "$ACFS_ACCENT" "Progress: $((idx + 1))/$NUM_LESSONS lessons")"
+            "$(gum style --foreground "$ACFS_ACCENT" "Progress: ${completed_count}/${total} lessons")"
 
         sleep 2
     else
@@ -987,7 +1502,7 @@ show_celebration() {
         fi
 
         echo ""
-        echo -e "${CYAN}Progress: $((idx + 1))/$NUM_LESSONS lessons${NC}"
+        echo -e "${CYAN}Progress: ${completed_count}/${total} lessons${NC}"
         echo ""
         sleep 2
     fi
@@ -1016,15 +1531,11 @@ show_completion_certificate() {
             "$(gum style --foreground "$ACFS_PINK" "You have successfully completed all $NUM_LESSONS lessons")" \
             "$(gum style --foreground "$ACFS_PINK" "of the Agentic Coding Flywheel Setup tutorial.")" \
             "" \
-            "$(gum style --foreground "$ACFS_TEAL" "Skills Mastered:")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • Linux Navigation & File Management")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • SSH & Remote Session Management")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • tmux Session Persistence")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • AI Coding Agents (Claude, Codex, Gemini)")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • NTM Dashboard & Prompt Palette")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • The Agentic Development Flywheel")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • Multi-Repo Sync with RU")" \
-            "$(gum style --foreground "$ACFS_MUTED" "  • Destructive Command Guard (DCG)")" \
+            "$(gum style --foreground "$ACFS_TEAL" "Curriculum Highlights:")" \
+            "$(gum style --foreground "$ACFS_MUTED" "  • Linux, SSH, tmux, and shell workflow")" \
+            "$(gum style --foreground "$ACFS_MUTED" "  • AI agents, prompts, and local skills")" \
+            "$(gum style --foreground "$ACFS_MUTED" "  • Coordination, safety, triage, and memory systems")" \
+            "$(gum style --foreground "$ACFS_MUTED" "  • Search, debugging, maintenance, and release tooling")" \
             "" \
             "$(gum style --foreground "$ACFS_PRIMARY" "Completed: $completed_at")" \
             "" \
@@ -1043,15 +1554,11 @@ show_completion_certificate() {
         echo -e "  You have successfully completed all $NUM_LESSONS lessons"
         echo -e "  of the Agentic Coding Flywheel Setup tutorial."
         echo ""
-        echo -e "${CYAN}${BOLD}  Skills Mastered:${NC}"
-        echo -e "    • Linux Navigation & File Management"
-        echo -e "    • SSH & Remote Session Management"
-        echo -e "    • tmux Session Persistence"
-        echo -e "    • AI Coding Agents (Claude, Codex, Gemini)"
-        echo -e "    • NTM Dashboard & Prompt Palette"
-        echo -e "    • The Agentic Development Flywheel"
-        echo -e "    • Multi-Repo Sync with RU"
-        echo -e "    • Destructive Command Guard (DCG)"
+        echo -e "${CYAN}${BOLD}  Curriculum Highlights:${NC}"
+        echo -e "    • Linux, SSH, tmux, and shell workflow"
+        echo -e "    • AI agents, prompts, and local skills"
+        echo -e "    • Coordination, safety, triage, and memory systems"
+        echo -e "    • Search, debugging, maintenance, and release tooling"
         echo ""
         echo -e "${DIM}  Completed: $completed_at${NC}"
         echo ""
@@ -1113,7 +1620,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
 
     # Navigation with gum
     local last_idx=$((NUM_LESSONS - 1))
-    if has_gum; then
+    if has_gum_ui; then
         gum style --foreground "$ACFS_MUTED" "─────────────────────────────────────────"
 
         # Build navigation options
@@ -1138,33 +1645,50 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
             *"[m]"*) return 0 ;;
             *"[p]"*)
                 if [[ $idx -gt 0 ]]; then
-                    set_current $((idx - 1))
+                    if ! set_current $((idx - 1)); then
+                        return 0
+                    fi
                     show_lesson $((idx - 1))
                     return $?
                 fi
                 ;;
             *"[n]"*)
                 if [[ $idx -lt $last_idx ]]; then
-                    set_current $((idx + 1))
+                    if ! set_current $((idx + 1)); then
+                        return 0
+                    fi
                     show_lesson $((idx + 1))
                     return $?
                 fi
                 ;;
             *"[c]"*)
-                mark_completed "$idx"
+                local next_idx
+                if ! mark_completed "$idx"; then
+                    return 0
+                fi
                 show_celebration "$idx"
-                if [[ $idx -lt $last_idx ]]; then
-                    show_lesson $((idx + 1))
-                    return $?
-                else
+                if all_lessons_complete; then
                     show_completion_certificate
                     return 0
                 fi
+                next_idx=$(get_current)
+                if [[ ! "$next_idx" =~ ^[0-9]+$ ]] || (( next_idx < 0 || next_idx >= NUM_LESSONS )); then
+                    next_idx=$(get_next_incomplete)
+                fi
+                if [[ "$next_idx" =~ ^[0-9]+$ ]] && (( next_idx != idx )); then
+                    show_lesson "$next_idx"
+                    return $?
+                fi
+                return 0
                 ;;
             *"[q]"*) exit 0 ;;
             *) return 0 ;;  # Unknown action -> back to menu
         esac
     else
+        if ! has_interactive_tty; then
+            return 0
+        fi
+
         echo -e "${DIM}─────────────────────────────────────────${NC}"
 
         # Navigation
@@ -1186,28 +1710,41 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                 m|M) return 0 ;;
                 p|P)
                     if [[ $idx -gt 0 ]]; then
-                        set_current $((idx - 1))
+                        if ! set_current $((idx - 1)); then
+                            return 0
+                        fi
                         show_lesson $((idx - 1))
                         return $?
                     fi
                     ;;
                 n|N)
                     if [[ $idx -lt $last_idx ]]; then
-                        set_current $((idx + 1))
+                        if ! set_current $((idx + 1)); then
+                            return 0
+                        fi
                         show_lesson $((idx + 1))
                         return $?
                     fi
                     ;;
                 c|C)
-                    mark_completed "$idx"
+                    local next_idx
+                    if ! mark_completed "$idx"; then
+                        return 0
+                    fi
                     show_celebration "$idx"
-                    if [[ $idx -lt $last_idx ]]; then
-                        show_lesson $((idx + 1))
-                        return $?
-                    else
+                    if all_lessons_complete; then
                         show_completion_certificate
                         return 0
                     fi
+                    next_idx=$(get_current)
+                    if [[ ! "$next_idx" =~ ^[0-9]+$ ]] || (( next_idx < 0 || next_idx >= NUM_LESSONS )); then
+                        next_idx=$(get_next_incomplete)
+                    fi
+                    if [[ "$next_idx" =~ ^[0-9]+$ ]] && (( next_idx != idx )); then
+                        show_lesson "$next_idx"
+                        return $?
+                    fi
+                    return 0
                     ;;
                 q|Q) exit 0 ;;
                 "") ;;
@@ -1227,6 +1764,17 @@ show_status() {
             ((completed_count += 1))
         fi
     done
+
+    if (( NUM_LESSONS == 0 )); then
+        show_no_lessons_notice
+        echo ""
+        if has_gum && has_interactive_tty; then
+            gum confirm --affirmative "Continue" --negative "" "Return to menu?" || true
+        elif has_interactive_tty; then
+            read -rp "Press Enter to continue..."
+        fi
+        return 0
+    fi
 
     if has_gum; then
         # Styled progress display with gum
@@ -1266,7 +1814,7 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
 
         echo ""
 
-        if [[ $completed_count -eq $NUM_LESSONS ]]; then
+        if all_lessons_complete; then
             gum style \
                 --foreground "$ACFS_SUCCESS" \
                 --bold \
@@ -1278,7 +1826,9 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
         fi
 
         echo ""
-        gum confirm --affirmative "Continue" --negative "" "Ready to continue?" || true
+        if has_interactive_tty; then
+            gum confirm --affirmative "Continue" --negative "" "Ready to continue?" || true
+        fi
     else
         echo -e "${BOLD}Progress: $completed_count/$NUM_LESSONS lessons completed${NC}"
         echo ""
@@ -1301,7 +1851,7 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
 
         echo ""
 
-        if [[ $completed_count -eq $NUM_LESSONS ]]; then
+        if all_lessons_complete; then
             echo -e "${GREEN}${BOLD}All lessons complete! You're ready to fly!${NC}"
         else
             local next_idx
@@ -1310,7 +1860,9 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
         fi
 
         echo ""
-        read -rp "Press Enter to continue..."
+        if has_interactive_tty; then
+            read -rp "Press Enter to continue..."
+        fi
     fi
 }
 
@@ -1319,37 +1871,50 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
 # ─────────────────────────────────────────────────────────────────────────────
 
 main_menu() {
+    if ! has_interactive_tty; then
+        echo "Interactive menu requires a TTY. Run 'onboard N', 'onboard status', or 'onboard --help'." >&2
+        return 1
+    fi
+
     while true; do
         print_header
 
         local choice
-        if has_gum; then
+        if has_gum_ui; then
             choice=$(show_menu_gum)
         else
             choice=$(show_menu_basic)
         fi
 
-        case "$choice" in
-            [0-9]|[0-9][0-9])
-                # Validate the lesson number is within range
-                if [[ "$choice" -ge 1 ]] && [[ "$choice" -le "$NUM_LESSONS" ]]; then
-                    local idx=$((choice - 1))
-                    set_current "$idx"
-                    show_lesson "$idx"
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+            # Support dynamically discovered lesson counts instead of assuming
+            # the menu will never exceed two digits.
+            if [[ "$choice" -ge 1 ]] && [[ "$choice" -le "$NUM_LESSONS" ]]; then
+                local idx=$((choice - 1))
+                if ! set_current "$idx"; then
+                    continue
                 fi
-                ;;
+                show_lesson "$idx"
+            else
+                echo -e "${YELLOW}Invalid lesson number. Please try again.${NC}"
+                sleep 1
+            fi
+            continue
+        fi
+
+        case "$choice" in
             a)
                 show_auth_flow
                 ;;
             r)
                 if has_gum; then
                     if gum confirm "Reset all progress?"; then
-                        reset_progress
+                        reset_progress || continue
                     fi
                 else
                     read -rp "Reset all progress? [y/N] " confirm
                     if [[ "$confirm" =~ ^[Yy]$ ]]; then
-                        reset_progress
+                        reset_progress || continue
                     fi
                 fi
                 ;;
@@ -1372,7 +1937,28 @@ main_menu() {
 }
 
 # Handle command line arguments
-case "${1:-}" in
+arg="${1:-}"
+
+if [[ "$arg" =~ ^[0-9]+$ ]]; then
+    if [[ "$arg" -ge 1 ]] && [[ "$arg" -le "$NUM_LESSONS" ]]; then
+        init_progress
+        idx=$((arg - 1))
+        if ! set_current "$idx"; then
+            exit 1
+        fi
+        show_lesson "$idx"
+        exit 0
+    fi
+
+    if (( NUM_LESSONS == 0 )); then
+        echo "No lessons are available in $LESSONS_DIR"
+    else
+        echo "Lesson $arg out of range (1-$NUM_LESSONS)"
+    fi
+    exit 1
+fi
+
+case "$arg" in
     --cheatsheet|cheatsheet)
         shift || true
         cheatsheet_script=""
@@ -1394,63 +1980,55 @@ case "${1:-}" in
 
         exec bash "$cheatsheet_script" "$@"
         ;;
-    reset)
+    reset|--reset)
         init_progress
         reset_progress
         ;;
-    status)
+    status|list|--status|--list)
         init_progress
         show_status
         ;;
-    --version|-v)
+    version|--version|-v)
         echo "onboard v$VERSION"
         ;;
-    --help|-h)
+    help|--help|-h)
         cat <<EOF
 ACFS Onboarding Tutorial
 
 Usage:
   onboard           Launch interactive menu
-  onboard N         Jump to lesson N (1-$NUM_LESSONS)
-  onboard reset     Reset all progress
+  onboard N         Jump to lesson N$(if (( NUM_LESSONS > 0 )); then printf ' (1-%s)' "$NUM_LESSONS"; else printf ' (no lessons discovered)'; fi)
   onboard status    Show completion status
+  onboard list      Alias for 'status'
+  onboard --status  Alias for 'status'
+  onboard --list    Alias for 'status'
+  onboard reset     Reset all progress
+  onboard --reset   Alias for 'reset'
+  onboard help      Alias for '--help'
   onboard --cheatsheet [query]  Show ACFS command cheatsheet
+  onboard version   Show version
   onboard --help    Show this help
 
 Lessons:
-  1 - Welcome & Overview
-  2 - Linux Navigation
-  3 - SSH & Persistence
-  4 - tmux Basics
-  5 - Agent Commands (cc, cod, gmi)
-  6 - NTM Command Center
-  7 - NTM Prompt Palette
-  8 - The Flywheel Loop
-  9 - Keeping Updated
-  10 - RU: Multi-Repo Mastery
-  11 - DCG: Destructive Command Guard
+$(if (( NUM_LESSONS == 0 )); then
+    printf '  No lessons discovered in %s\n' "$LESSONS_DIR"
+else
+    for (( i = 0; i < NUM_LESSONS; i++ )); do
+        printf '  %d - %s\n' "$((i + 1))" "${LESSON_TITLES[$i]}"
+    done
+fi)
 
 Environment:
-  ACFS_LESSONS_DIR   Path to lesson files (default: ~/.acfs/onboard/lessons)
-  ACFS_PROGRESS_FILE Path to progress file (default: ~/.acfs/onboard_progress.json)
+  ACFS_LESSONS_DIR   Path to lesson files (default: $LESSONS_DIR)
+  ACFS_PROGRESS_FILE Path to progress file (default: $PROGRESS_FILE)
 EOF
         ;;
     "")
         init_progress
         main_menu
         ;;
-    [0-9]|[0-9][0-9])
-        if [[ "$1" -ge 1 ]] && [[ "$1" -le "$NUM_LESSONS" ]]; then
-            init_progress
-            idx=$(( $1 - 1 ))
-            show_lesson "$idx"
-        else
-            echo "Lesson $1 out of range (1-$NUM_LESSONS)"
-            exit 1
-        fi
-        ;;
     *)
-        echo "Unknown command: $1"
+        echo "Unknown command: $arg"
         echo "Run 'onboard --help' for usage."
         exit 1
         ;;

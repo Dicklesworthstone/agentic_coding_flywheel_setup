@@ -1098,32 +1098,22 @@ Each lesson includes:
 
 ## Interactive Onboarding (TUI)
 
-After installation, users can learn the ACFS workflow through an interactive terminal-based tutorial. The onboarding TUI guides users through 11 lessons covering Linux basics through full agentic workflows.
+After installation, users can learn the ACFS workflow through an interactive terminal-based tutorial. The onboarding TUI discovers lesson markdown files dynamically from `acfs/onboard/lessons`, so the curriculum can grow as new tools and workflows are added without changing the launcher.
 
 ### Running Onboarding
 
 ```bash
 onboard                # Launch interactive menu
-onboard --list         # List lessons with completion status
+onboard status         # Show completion status
+onboard --list         # Alias for status
 onboard 3              # Jump to lesson 3
-onboard --reset        # Reset progress and start fresh
+onboard reset          # Reset progress and start fresh
+onboard --reset        # Alias for reset
 ```
 
 ### Lessons
 
-| # | Title | Duration | Topics |
-|---|-------|----------|--------|
-| 0 | Welcome & Overview | 2 min | What's installed, system overview |
-| 1 | Linux Navigation | 5 min | Filesystem, basic commands |
-| 2 | SSH & Persistence | 4 min | Keys, config, tunnels, screen/tmux |
-| 3 | tmux Basics | 6 min | Sessions, windows, panes, navigation |
-| 4 | Agent Commands | 5 min | `cc`, `cod`, `gmi` aliases |
-| 5 | NTM Core | 7 min | Named Tmux Manager basics |
-| 6 | NTM Prompt Palette | 5 min | Command palette features |
-| 7 | Flywheel Loop | 8 min | Complete agentic workflow |
-| 8 | Keeping Updated | 4 min | Using `acfs-update`, troubleshooting |
-| 9 | RU: Multi-Repo Mastery | 6 min | Multi-repo sync, agent-sweep, parallel workflows |
-| 10 | DCG: Destructive Command Guard | 5 min | Command safety, protection packs, allow-once workflow |
+Run `onboard --help` to see the currently discovered lesson list. The curriculum currently spans Linux basics, SSH, tmux, agent login, NTM, the flywheel workflow, updating, Beads, RCH, and other ACFS tools. Because lessons are discovered by filename, adding a new `NN_name.md` file automatically extends the tutorial.
 
 ### Progress Tracking
 

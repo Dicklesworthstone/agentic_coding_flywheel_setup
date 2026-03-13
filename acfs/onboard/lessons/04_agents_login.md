@@ -84,7 +84,7 @@ Follow the browser prompts to authenticate with your **ChatGPT Pro/Plus/Team acc
 >
 > | Account Type | For | Auth Method | How to Get |
 > |--------------|-----|-------------|------------|
-> | **ChatGPT** (Pro/Plus/Team) | Codex CLI, ChatGPT web | OAuth via `codex login` | [chat.openai.com](https://chat.openai.com) subscription |
+> | **ChatGPT** (Pro/Plus/Team) | Codex CLI, ChatGPT web | OAuth via `codex login --device-auth` (recommended on VPS) | [chat.openai.com](https://chat.openai.com) subscription |
 > | **API** (pay-as-you-go) | OpenAI API, libraries | `OPENAI_API_KEY` env var | [platform.openai.com](https://platform.openai.com) billing |
 >
 > Codex CLI uses **ChatGPT OAuth**, not API keys. If you have an `OPENAI_API_KEY`, that's for the API—different system!

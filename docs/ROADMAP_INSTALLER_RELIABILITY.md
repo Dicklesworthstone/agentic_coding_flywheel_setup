@@ -969,16 +969,19 @@ check_codex_auth() {
         return 2
     fi
 
-    # Check for API key
-    if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-        # Check .zshrc.local or .bashrc
-        if ! grep -q "OPENAI_API_KEY" "$HOME/.zshrc.local" 2>/dev/null && \
-           ! grep -q "OPENAI_API_KEY" "$HOME/.bashrc" 2>/dev/null; then
-            return 1  # No API key configured
-        fi
+    local auth_file="${CODEX_HOME:-$HOME/.codex}/auth.json"
+    if [[ ! -f "$auth_file" ]]; then
+        return 1  # No auth.json found
     fi
 
-    return 0
+    if command -v jq &>/dev/null; then
+        jq -e '((.tokens.access_token // .access_token // .accessToken // .OPENAI_API_KEY // "") | strings | length) > 0' \
+            "$auth_file" >/dev/null 2>&1 && return 0
+    elif grep -Eq '"(access(_token|Token)|OPENAI_API_KEY)"[[:space:]]*:[[:space:]]*"[^"]+"' "$auth_file" 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
 }
 
 check_gemini_auth() {
@@ -1090,7 +1093,7 @@ run_deep_checks() {
         "Run: claude auth login"
 
     check_with_status "Codex CLI auth" check_codex_auth \
-        "Set OPENAI_API_KEY in ~/.zshrc.local"
+        "Run: codex login --device-auth (or codex login --with-api-key)"
 
     check_with_status "Gemini CLI auth" check_gemini_auth \
         "Run: gemini auth login"
@@ -1107,13 +1110,13 @@ run_deep_checks() {
         "Set VAULT_ADDR if using Vault server"
 
     check_with_status "Wrangler auth" check_wrangler_auth \
-        "Run: wrangler login"
+        "Set CLOUDFLARE_API_TOKEN (and CLOUDFLARE_ACCOUNT_ID if needed)"
 
     check_with_status "Supabase auth" check_supabase_auth \
-        "Run: supabase login"
+        "Run: supabase login --token <token> (or set SUPABASE_ACCESS_TOKEN)"
 
     check_with_status "Vercel auth" check_vercel_auth \
-        "Run: vercel login"
+        "Run: vercel login --token <token> (or set VERCEL_TOKEN)"
 }
 
 check_with_status() {
@@ -1150,14 +1153,14 @@ check_with_status() {
 ╠══════════════════════════════════════════════════════════════╣
 ║ Functional Tests (--deep)                                     ║
 ║   ✔ Claude Code auth: OK                                      ║
-║   ✖ Codex CLI auth: OPENAI_API_KEY not set                    ║
-║     → Fix: Set OPENAI_API_KEY in ~/.zshrc.local              ║
+║   ✖ Codex CLI auth: auth.json missing                         ║
+║     → Fix: Run: codex login --device-auth                    ║
 ║   ✔ Gemini CLI auth: OK                                       ║
 ║   ✔ PostgreSQL connection: OK                                 ║
 ║   ✔ PostgreSQL role: ubuntu exists                            ║
 ║   ℹ Vault configured: Not configured (optional)               ║
-║   ✖ Wrangler auth: Not logged in                              ║
-║     → Fix: Run: wrangler login                               ║
+║   ✖ Wrangler auth: Not authenticated                         ║
+║     → Fix: Set CLOUDFLARE_API_TOKEN                          ║
 ║   ⚠ Supabase auth: Token expires in 3 days                    ║
 ║   ✔ Vercel auth: OK                                           ║
 ╠══════════════════════════════════════════════════════════════╣

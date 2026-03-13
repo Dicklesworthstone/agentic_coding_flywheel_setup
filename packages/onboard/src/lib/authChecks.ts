@@ -28,8 +28,8 @@ function isExecutable(filePath: string): boolean {
   }
 }
 
-function defaultCommandExists(command: string): boolean {
-  const pathValue = process.env.PATH ?? '';
+function defaultCommandExists(env: NodeJS.ProcessEnv, command: string): boolean {
+  const pathValue = env.PATH ?? '';
   if (!pathValue) {
     return false;
   }
@@ -59,7 +59,7 @@ const defaultDeps: AuthCheckDeps = {
   readFileSync: fs.readFileSync,
   homedir: os.homedir,
   env: process.env,
-  commandExists: defaultCommandExists,
+  commandExists: (command) => defaultCommandExists(process.env, command),
 };
 
 function safeReadJson<T>(readFileSync: typeof fs.readFileSync, filePath: string): T | null {
@@ -71,9 +71,120 @@ function safeReadJson<T>(readFileSync: typeof fs.readFileSync, filePath: string)
   }
 }
 
+function hasNonBlankString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function normalizeConfigValue(value: string): string {
+  const trimmed = value.trim();
+  if (
+    trimmed.length >= 2 &&
+    ((trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'")))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+const PLACEHOLDER_SECRETS = new Set([
+  'your-token-here',
+  'your-token',
+  'your_api_key',
+  'your-api-key',
+  'your_vercel_token',
+  'your_supabase_access_token',
+  'your_cloudflare_api_token',
+  'your_gemini_api_key',
+  'your_google_api_key',
+  'your_project_id',
+  'your_project_location',
+  'replace-me',
+  'change-me',
+  'changeme',
+  '<token>',
+  '<api-key>',
+  '<secret>',
+]);
+
+function isPlaceholderSecret(value: unknown): boolean {
+  if (!hasNonBlankString(value)) {
+    return false;
+  }
+  return PLACEHOLDER_SECRETS.has(normalizeConfigValue(value).toLowerCase());
+}
+
+function hasUsableSecret(value: unknown): value is string {
+  return hasNonBlankString(value) && !isPlaceholderSecret(value);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function readConfiguredValueFromFile(
+  readFileSync: typeof fs.readFileSync,
+  filePath: string,
+  variableName: string,
+): string | null {
+  try {
+    const contents = readFileSync(filePath, 'utf-8');
+    const match = contents.match(
+      new RegExp(
+        `^\\s*(?:export\\s+)?${escapeRegex(variableName)}\\s*=\\s*(.+?)\\s*$`,
+        'm',
+      ),
+    );
+    if (!match?.[1]) {
+      return null;
+    }
+    let value = match[1].trim();
+    if (!value.startsWith('"') && !value.startsWith("'")) {
+      value = value.replace(/\s+#.*$/, '').trim();
+    }
+    const normalized = normalizeConfigValue(value);
+    return normalized || null;
+  } catch {
+    return null;
+  }
+}
+
+function extractYamlTopLevelBlock(contents: string, topLevelKey: string): string | null {
+  const escapedKey = topLevelKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = contents.match(new RegExp(`(?:^|\\n)${escapedKey}:\\s*\\n((?:[ \\t]+.*(?:\\n|$))+)`, 'm'));
+  return match?.[1] ?? null;
+}
+
+function parseGitHubHostsEntry(contents: string): AuthStatus | null {
+  const block = extractYamlTopLevelBlock(contents, 'github.com');
+  if (!block) {
+    return null;
+  }
+
+  const tokenMatch = block.match(/^[ \t]+oauth_token:\s*(["']?)([^"'\n#]+)\1\s*$/m);
+  if (!tokenMatch?.[2]?.trim()) {
+    return null;
+  }
+
+  const userMatch = block.match(/^[ \t]+user:\s*(["']?)([^"'\n#]+)\1\s*$/m);
+  const username = userMatch?.[2]?.trim();
+  return username ? { authenticated: true, details: username } : { authenticated: true };
+}
+
 export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   const deps: AuthCheckDeps = { ...defaultDeps, ...overrides };
+  if (!overrides.commandExists) {
+    deps.commandExists = (command: string) => defaultCommandExists(deps.env, command);
+  }
   const homedir = deps.homedir();
+  const shellConfigPaths = [
+    path.join(homedir, '.zshrc.local'),
+    path.join(homedir, '.zshrc'),
+    path.join(homedir, '.bashrc'),
+    path.join(homedir, '.profile'),
+  ];
+  const geminiHome = deps.env.GEMINI_CLI_HOME ?? homedir;
+  const geminiConfigPaths = [path.join(geminiHome, '.gemini', '.env'), ...shellConfigPaths];
 
   const runCommand = (
     command: string,
@@ -107,6 +218,48 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     }
   };
 
+  const getConfiguredValue = (variableName: string, filePaths: string[] = []): string | null => {
+    const envValue = deps.env[variableName];
+    if (hasNonBlankString(envValue) && !isPlaceholderSecret(envValue)) {
+      return normalizeConfigValue(envValue);
+    }
+    for (const filePath of filePaths) {
+      if (!deps.existsSync(filePath)) {
+        continue;
+      }
+      const configuredValue = readConfiguredValueFromFile(deps.readFileSync, filePath, variableName);
+      if (hasNonBlankString(configuredValue) && !isPlaceholderSecret(configuredValue)) {
+        return configuredValue;
+      }
+    }
+    return null;
+  };
+
+  const getConfiguredSecret = (variableName: string, filePaths: string[] = []): string | null => {
+    const envValue = deps.env[variableName];
+    if (hasUsableSecret(envValue)) {
+      return normalizeConfigValue(envValue);
+    }
+    for (const filePath of filePaths) {
+      if (!deps.existsSync(filePath)) {
+        continue;
+      }
+      const configuredValue = readConfiguredValueFromFile(deps.readFileSync, filePath, variableName);
+      if (hasUsableSecret(configuredValue)) {
+        return configuredValue;
+      }
+    }
+    return null;
+  };
+
+  const hasTruthyConfiguredValue = (variableName: string, filePaths: string[] = []): boolean => {
+    const configuredValue = getConfiguredValue(variableName, filePaths);
+    if (!hasNonBlankString(configuredValue)) {
+      return false;
+    }
+    return ['1', 'true', 'yes', 'on'].includes(configuredValue.toLowerCase());
+  };
+
   const checkTailscale = (): AuthStatus => {
     if (!deps.commandExists('tailscale')) {
       return { authenticated: false };
@@ -128,6 +281,19 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkClaude = (): AuthStatus => {
+    if (!deps.commandExists('claude')) {
+      return { authenticated: false };
+    }
+
+    const credentialsPath = path.join(homedir, '.claude', '.credentials.json');
+    const credentials = safeReadJson<{ claudeAiOauth?: { accessToken?: string } }>(
+      deps.readFileSync,
+      credentialsPath,
+    );
+    if (!hasNonBlankString(credentials?.claudeAiOauth?.accessToken)) {
+      return { authenticated: false };
+    }
+
     const configPaths = [
       path.join(homedir, '.claude', 'config.json'),
       path.join(homedir, '.config', 'claude', 'config.json'),
@@ -136,41 +302,106 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     for (const configPath of configPaths) {
       if (deps.existsSync(configPath)) {
         const config = safeReadJson<{ user?: { email?: string } }>(deps.readFileSync, configPath);
-        if (config?.user?.email) {
-          return { authenticated: true, details: config.user.email };
+        if (hasNonBlankString(config?.user?.email)) {
+          return { authenticated: true, details: config.user.email.trim() };
         }
-        return { authenticated: true };
       }
     }
-    return { authenticated: false };
+    return { authenticated: true };
   };
 
   const checkCodex = (): AuthStatus => {
+    if (!deps.commandExists('codex')) {
+      return { authenticated: false };
+    }
+
     const codexHome = deps.env.CODEX_HOME ?? path.join(homedir, '.codex');
     const authPath = path.join(codexHome, 'auth.json');
     if (!deps.existsSync(authPath)) {
       return { authenticated: false };
     }
-    const auth = safeReadJson<{ access_token?: string; accessToken?: string }>(deps.readFileSync, authPath);
-    if (auth?.access_token || auth?.accessToken) {
+    const auth = safeReadJson<{
+      tokens?: { access_token?: string };
+      access_token?: string;
+      accessToken?: string;
+      OPENAI_API_KEY?: string | null;
+    }>(deps.readFileSync, authPath);
+    if (
+      [
+        auth?.tokens?.access_token,
+        auth?.access_token,
+        auth?.accessToken,
+        auth?.OPENAI_API_KEY,
+      ].some(hasNonBlankString)
+    ) {
       return { authenticated: true };
     }
     return { authenticated: false };
   };
 
   const checkGemini = (): AuthStatus => {
-    // Gemini CLI uses OAuth web login (like Claude Code and Codex CLI)
-    // Users authenticate via `gemini` command which opens browser login
-    // Credentials are stored in config files, NOT via API keys
-    const credPath = path.join(homedir, '.config', 'gemini', 'credentials.json');
-    if (deps.existsSync(credPath)) {
+    if (!deps.commandExists('gemini')) {
+      return { authenticated: false };
+    }
+
+    const geminiApiKey = getConfiguredSecret('GEMINI_API_KEY', geminiConfigPaths);
+    if (geminiApiKey) {
+      return { authenticated: true, details: 'via GEMINI_API_KEY' };
+    }
+
+    const vertexModeEnabled = hasTruthyConfiguredValue('GOOGLE_GENAI_USE_VERTEXAI', geminiConfigPaths);
+    if (vertexModeEnabled) {
+      const googleApiKey = getConfiguredSecret('GOOGLE_API_KEY', geminiConfigPaths);
+      if (googleApiKey) {
+        return { authenticated: true, details: 'via GOOGLE_API_KEY (Vertex AI)' };
+      }
+
+      const vertexProject =
+        getConfiguredValue('GOOGLE_CLOUD_PROJECT', geminiConfigPaths) ??
+        getConfiguredValue('GOOGLE_CLOUD_PROJECT_ID', geminiConfigPaths);
+      const vertexLocation = getConfiguredValue('GOOGLE_CLOUD_LOCATION', geminiConfigPaths);
+      const serviceAccountPath = getConfiguredValue('GOOGLE_APPLICATION_CREDENTIALS', geminiConfigPaths);
+
+      if (
+        hasNonBlankString(vertexProject) &&
+        hasNonBlankString(vertexLocation) &&
+        hasNonBlankString(serviceAccountPath) &&
+        deps.existsSync(serviceAccountPath)
+      ) {
+        return { authenticated: true, details: 'via GOOGLE_APPLICATION_CREDENTIALS (Vertex AI)' };
+      }
+
+      if (
+        hasNonBlankString(vertexProject) &&
+        hasNonBlankString(vertexLocation) &&
+        deps.commandExists('gcloud') &&
+        runCommand('gcloud auth application-default print-access-token')
+      ) {
+        return { authenticated: true, details: 'via gcloud ADC (Vertex AI)' };
+      }
+    }
+
+    const googleAccountsPath = path.join(geminiHome, '.gemini', 'google_accounts.json');
+    const googleAccounts = safeReadJson<{ active?: string | null }>(
+      deps.readFileSync,
+      googleAccountsPath,
+    );
+    if (hasNonBlankString(googleAccounts?.active)) {
+      return { authenticated: true, details: googleAccounts.active.trim() };
+    }
+
+    const oauthCredsPath = path.join(geminiHome, '.gemini', 'oauth_creds.json');
+    const oauthCreds = safeReadJson<{ access_token?: string; refresh_token?: string }>(
+      deps.readFileSync,
+      oauthCredsPath,
+    );
+    if (
+      hasNonBlankString(oauthCreds?.access_token) ||
+      hasNonBlankString(oauthCreds?.refresh_token)
+    ) {
       return { authenticated: true };
     }
-    const legacyConfigPath = path.join(homedir, '.gemini', 'config');
-    if (deps.existsSync(legacyConfigPath)) {
-      return { authenticated: true };
-    }
-    // Note: Just having the config directory is not enough - we need actual credential files
+
     return { authenticated: false };
   };
 
@@ -187,10 +418,9 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
     if (deps.existsSync(hostsPath)) {
       try {
         const contents = deps.readFileSync(hostsPath, 'utf-8');
-        const match = contents.match(/^\s*user:\s*([^\s]+)/m);
-        return { authenticated: true, details: match?.[1] };
+        return parseGitHubHostsEntry(contents) ?? { authenticated: false };
       } catch {
-        return { authenticated: true };
+        return { authenticated: false };
       }
     }
     return { authenticated: false };
@@ -198,6 +428,10 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
 
   const checkVercel = (): AuthStatus => {
     if (deps.commandExists('vercel')) {
+      if (getConfiguredSecret('VERCEL_TOKEN', shellConfigPaths)) {
+        return { authenticated: true, details: 'via VERCEL_TOKEN' };
+      }
+
       const output = runCommand('vercel whoami');
       if (output && !output.toLowerCase().includes('not logged')) {
         return { authenticated: true, details: output };
@@ -213,10 +447,10 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
         continue;
       }
       const auth = safeReadJson<{ token?: string; user?: { email?: string } }>(deps.readFileSync, authPath);
-      if (auth?.user?.email) {
-        return { authenticated: true, details: auth.user.email };
+      if (hasNonBlankString(auth?.user?.email)) {
+        return { authenticated: true, details: auth.user.email.trim() };
       }
-      if (auth?.token) {
+      if (hasNonBlankString(auth?.token)) {
         return { authenticated: true };
       }
       // File exists but contains no valid token or user - not authenticated
@@ -225,7 +459,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkSupabase = (): AuthStatus => {
-    if (deps.env.SUPABASE_ACCESS_TOKEN) {
+    if (getConfiguredSecret('SUPABASE_ACCESS_TOKEN', shellConfigPaths)) {
       return { authenticated: true, details: 'via SUPABASE_ACCESS_TOKEN' };
     }
 
@@ -251,7 +485,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
   };
 
   const checkWrangler = (): AuthStatus => {
-    if (deps.env.CLOUDFLARE_API_TOKEN) {
+    if (getConfiguredSecret('CLOUDFLARE_API_TOKEN', shellConfigPaths)) {
       return { authenticated: true, details: 'via CLOUDFLARE_API_TOKEN' };
     }
     if (deps.commandExists('wrangler')) {

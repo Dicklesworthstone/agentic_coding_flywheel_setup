@@ -287,12 +287,12 @@ acfs() {
       fi
       ;;
     session|sessions)
-      if [[ -f "$acfs_home/scripts/lib/session.sh" ]]; then
-        bash "$acfs_home/scripts/lib/session.sh" "$@"
+      if [[ -f "$acfs_home/scripts/lib/doctor.sh" ]]; then
+        bash "$acfs_home/scripts/lib/doctor.sh" session "$@"
       elif [[ -x "$acfs_bin" ]]; then
         "$acfs_bin" session "$@"
       else
-        echo "Error: session.sh not found"
+        echo "Error: doctor.sh not found"
         echo "Re-run the ACFS installer to get the latest scripts"
         return 1
       fi
@@ -460,7 +460,7 @@ acfs() {
 # Load acfs completions if the function is available
 if [[ -f "$HOME/.acfs/completions/_acfs" ]]; then
   # Add to fpath before compinit, or load directly if compinit already ran
-  fpath=("$HOME/.acfs/completions" $fpath)
+  fpath=("$HOME/.acfs/completions" "${fpath[@]}")
   autoload -Uz _acfs 2>/dev/null
 fi
 

@@ -6,7 +6,7 @@
 
 ## Summary
 
-OpenAI's Codex CLI uses **OAuth 2.0 PKCE** for authentication with ChatGPT accounts, NOT API keys. This document describes the token storage location and format for use in doctor.sh checks.
+OpenAI's Codex CLI is **OAuth-first** for ChatGPT accounts, with optional API-key login for pay-as-you-go usage. On a headless VPS, `codex login --device-auth` is the preferred path. This document describes the token storage location and format for use in doctor.sh checks.
 
 ## Token Storage Location
 
@@ -63,7 +63,7 @@ check_codex_auth() {
     # Check if auth file exists
     if [[ ! -f "$auth_file" ]]; then
         echo "FAIL: No auth.json found at $auth_file"
-        echo "Suggestion: Run 'codex login' to authenticate"
+        echo "Suggestion: Run 'codex login --device-auth' to authenticate"
         return 1
     fi
 
@@ -80,7 +80,7 @@ check_codex_auth() {
     fi
 
     echo "FAIL: auth.json exists but no valid tokens found"
-    echo "Suggestion: Run 'codex login' to re-authenticate"
+    echo "Suggestion: Run 'codex login --device-auth' to re-authenticate"
     return 1
 }
 ```
@@ -89,11 +89,17 @@ check_codex_auth() {
 
 ### 1. ChatGPT OAuth (Primary)
 ```bash
-codex login
-# Opens browser for OAuth flow
+codex login --device-auth
+# Recommended on headless VPS hosts
 ```
 
-### 2. API Key (Legacy/Pay-as-you-go)
+### 2. Browser / Localhost OAuth
+```bash
+codex login
+# Opens browser for localhost callback flow
+```
+
+### 3. API Key (Optional / Pay-as-you-go)
 ```bash
 # Safe method (doesn't expose key in shell history)
 printenv OPENAI_API_KEY | codex login --with-api-key
@@ -102,8 +108,8 @@ printenv OPENAI_API_KEY | codex login --with-api-key
 codex login --with-api-key < my_key.txt
 ```
 
-### 3. Headless/Remote Machines
-Copy `auth.json` from an authenticated machine, or use SSH port forwarding:
+### 4. SSH Tunnel Fallback for Headless/Remote Machines
+If device auth is unavailable on your account, use SSH port forwarding:
 ```bash
 ssh -L 1455:localhost:1455 remote-host
 # Then run 'codex login' on remote
@@ -113,10 +119,10 @@ ssh -L 1455:localhost:1455 remote-host
 
 | Aspect | Previous (Wrong) | Correct |
 |--------|-----------------|---------|
-| Auth method | `OPENAI_API_KEY` env var | OAuth via browser or API key login |
+| Auth method | `OPENAI_API_KEY` env var | OAuth via device auth/browser, or API key login |
 | Account type | API account (billing) | ChatGPT Pro/Plus consumer account |
 | Detection | Check for env var | Check auth.json for tokens |
-| Setup command | Export env var | Run `codex login` |
+| Setup command | Export env var | Run `codex login --device-auth` on a VPS |
 
 ## Sources
 
