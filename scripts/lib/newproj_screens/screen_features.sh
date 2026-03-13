@@ -209,7 +209,7 @@ handle_features_input() {
                     # Toggle by numbers
                     for num in $input; do
                         if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#FEATURE_OPTIONS[@]} ]]; then
-                            local opt="${FEATURE_OPTIONS[$((num - 1))]}"
+                            local opt="${FEATURE_OPTIONS[$((10#num - 1))]}"
                             local id="${opt%%:*}"
                             toggle_feature "$id"
                         fi

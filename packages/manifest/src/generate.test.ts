@@ -231,7 +231,7 @@ describe('Generated verified installer args', () => {
     expect(stackContent).toContain('Environment=STORAGE_ROOT=$storage_root');
     expect(stackContent).toContain('Environment=DATABASE_URL=$db_url');
     expect(stackContent).toContain(
-      'ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui'
+      'ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp/'
     );
     expect(stackContent).toContain('systemctl --user enable --now agent-mail.service');
     expect(stackContent).toContain('curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null');

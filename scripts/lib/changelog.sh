@@ -296,10 +296,10 @@ parse_duration() {
     local unit="${duration: -1}"
 
     case "$unit" in
-        d|D) echo "$num" ;;
-        w|W) echo "$((num * 7))" ;;
-        m|M) echo "$((num * 30))" ;;
-        *) echo "$duration" ;;  # Assume days if no unit
+        d|D) echo "$((10#num))" ;;
+        w|W) echo "$((10#num * 7))" ;;
+        m|M) echo "$((10#num * 30))" ;;
+        *) echo "$((10#duration))" ;;  # Assume days if no unit
     esac
 }
 
@@ -308,28 +308,28 @@ format_change_type() {
     local type="$1"
     case "$type" in
         Added|added)
-            echo -e "${C_GREEN}+"
+            printf "%b\n" "${C_GREEN}+"
             ;;
         Changed|changed)
-            echo -e "${C_YELLOW}~"
+            printf "%b\n" "${C_YELLOW}~"
             ;;
         Deprecated|deprecated)
-            echo -e "${C_MAGENTA}!"
+            printf "%b\n" "${C_MAGENTA}!"
             ;;
         Removed|removed)
-            echo -e "${C_RED}-"
+            printf "%b\n" "${C_RED}-"
             ;;
         Fixed|fixed)
-            echo -e "${C_CYAN}*"
+            printf "%b\n" "${C_CYAN}*"
             ;;
         Security|security)
-            echo -e "${C_RED}!"
+            printf "%b\n" "${C_RED}!"
             ;;
         Migration|migration)
-            echo -e "${C_YELLOW}>"
+            printf "%b\n" "${C_YELLOW}>"
             ;;
         *)
-            echo -e "${C_GRAY}*"
+            printf "%b\n" "${C_GRAY}*"
             ;;
     esac
 }
@@ -457,7 +457,7 @@ format_terminal() {
             if [[ "$count" -gt 0 ]]; then
                 echo ""  # Space between versions
             fi
-            echo -e "${C_BOLD}${C_CYAN}## ${version}${C_RESET}${C_GRAY} - ${date}${C_RESET}"
+            printf "%b\n" "${C_BOLD}${C_CYAN}## ${version}${C_RESET}${C_GRAY} - ${date}${C_RESET}"
             last_version="$version"
             last_date="$date"
             last_type=""
@@ -465,23 +465,23 @@ format_terminal() {
 
         # New type header
         if [[ "$type" != "$last_type" ]] && [[ -n "$type" ]]; then
-            echo -e "${C_DIM}### ${type}${C_RESET}"
+            printf "%b\n" "${C_DIM}### ${type}${C_RESET}"
             last_type="$type"
         fi
 
         # Entry with icon
         local icon
         icon=$(format_change_type "$type")
-        echo -e "  ${icon} ${entry}${C_RESET}"
+        printf "%b\n" "  ${icon} ${entry}${C_RESET}"
 
         ((++count))
     done
 
     if [[ "$count" -eq 0 ]]; then
-        echo -e "${C_GREEN}You're up to date! No new changes since your last update.${C_RESET}"
+        printf "%b\n" "${C_GREEN}You're up to date! No new changes since your last update.${C_RESET}"
     else
         echo ""
-        echo -e "${C_DIM}${count} change(s) shown${C_RESET}"
+        printf "%b\n" "${C_DIM}${count} change(s) shown${C_RESET}"
     fi
 }
 
@@ -610,11 +610,11 @@ main() {
 
     # Header for terminal output
     if [[ "$json_output" != "true" ]]; then
-        echo -e "${C_BOLD}ACFS Changelog${C_RESET}"
+        printf "%b\n" "${C_BOLD}ACFS Changelog${C_RESET}"
         if [[ "$show_all" == "true" ]]; then
-            echo -e "${C_DIM}Showing all changes${C_RESET}"
+            printf "%b\n" "${C_DIM}Showing all changes${C_RESET}"
         else
-            echo -e "${C_DIM}Changes since: ${since_date}${C_RESET}"
+            printf "%b\n" "${C_DIM}Changes since: ${since_date}${C_RESET}"
         fi
         echo ""
     fi

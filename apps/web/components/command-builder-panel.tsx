@@ -25,6 +25,8 @@ import {
 } from "@/lib/userPreferences";
 import { buildCommands, buildShareURL } from "@/lib/commandBuilder";
 
+const SSH_USERNAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_-]*$/;
+
 function LocationBadge({ location }: { location: "local" | "vps" }) {
   return (
     <span
@@ -177,6 +179,8 @@ export function CommandBuilderPanel() {
   const shareResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localIP, setLocalIP] = useState("");
   const [ipError, setIpError] = useState<string | null>(null);
+  const [usernameDraft, setUsernameDraft] = useState(username);
+  const [refDraft, setRefDraft] = useState(ref ?? "");
 
   useEffect(() => {
     return () => {
@@ -186,34 +190,64 @@ export function CommandBuilderPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    setUsernameDraft(username);
+  }, [username]);
+
+  useEffect(() => {
+    setRefDraft(ref ?? "");
+  }, [ref]);
+
   const effectiveIP = vpsIP || (isValidIP(localIP) ? localIP : "");
   const effectiveOS = os || "mac";
+  const usernameError = useMemo(() => {
+    const trimmed = usernameDraft.trim();
+    if (!trimmed) return "Enter a Linux username such as ubuntu or devuser.";
+    if (SSH_USERNAME_PATTERN.test(trimmed)) return null;
+    return "Use letters, numbers, underscores, or hyphens, and start with a letter or underscore.";
+  }, [usernameDraft]);
+  const effectiveUsername = useMemo(() => {
+    const trimmed = usernameDraft.trim();
+    if (!trimmed || usernameError) {
+      return username;
+    }
+    return trimmed;
+  }, [username, usernameDraft, usernameError]);
+  const normalizedRefDraft = useMemo(() => {
+    const trimmed = refDraft.trim();
+    if (!trimmed) return null;
+    return normalizeGitRef(trimmed);
+  }, [refDraft]);
+  const effectiveRef = useMemo(() => {
+    const trimmed = refDraft.trim();
+    if (!trimmed) return null;
+    return normalizedRefDraft ?? ref;
+  }, [normalizedRefDraft, ref, refDraft]);
 
   const commands = useMemo(() => {
     if (!effectiveIP) return null;
     return buildCommands({
       ip: effectiveIP,
       os: effectiveOS,
-      username,
+      username: effectiveUsername,
       mode,
-      ref,
+      ref: effectiveRef,
     });
-  }, [effectiveIP, effectiveOS, username, mode, ref]);
+  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef]);
   const refError = useMemo(() => {
-    const value = (ref ?? "").trim();
-    if (!value) return null;
-    if (normalizeGitRef(value)) return null;
+    const value = refDraft.trim();
+    if (!value || normalizedRefDraft) return null;
     return "Invalid git ref format. Command generation falls back to main.";
-  }, [ref]);
+  }, [normalizedRefDraft, refDraft]);
 
   const handleShare = useCallback(async () => {
     if (!effectiveIP) return;
     const url = buildShareURL({
       ip: effectiveIP,
       os: effectiveOS,
-      username,
+      username: effectiveUsername,
       mode,
-      ref,
+      ref: effectiveRef,
     });
     let copied = false;
     try {
@@ -245,7 +279,7 @@ export function CommandBuilderPanel() {
       setShareCopied(false);
       shareResetTimerRef.current = null;
     }, 2000);
-  }, [effectiveIP, effectiveOS, username, mode, ref]);
+  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef]);
 
   const handleIPChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,6 +293,53 @@ export function CommandBuilderPanel() {
     },
     [],
   );
+
+  const handleUsernameChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setUsernameDraft(e.target.value);
+    },
+    [],
+  );
+
+  const commitUsernameDraft = useCallback(() => {
+    const trimmed = usernameDraft.trim();
+    if (!trimmed || !SSH_USERNAME_PATTERN.test(trimmed)) {
+      setUsernameDraft(username);
+      return;
+    }
+
+    setUsernameDraft(trimmed);
+    if (trimmed !== username) {
+      setUsername(trimmed);
+    }
+  }, [username, usernameDraft, setUsername]);
+
+  const handleRefChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setRefDraft(e.target.value);
+    },
+    [],
+  );
+
+  const commitRefDraft = useCallback(() => {
+    const trimmed = refDraft.trim();
+    if (!trimmed) {
+      setRefDraft("");
+      if (ref !== null) {
+        setRef(null);
+      }
+      return;
+    }
+
+    if (!normalizedRefDraft) {
+      return;
+    }
+
+    setRefDraft(normalizedRefDraft);
+    if (normalizedRefDraft !== ref) {
+      setRef(normalizedRefDraft);
+    }
+  }, [normalizedRefDraft, ref, refDraft, setRef]);
 
   return (
     <div className="space-y-4 rounded-xl border border-border/50 bg-card/30 p-5">
@@ -347,11 +428,24 @@ export function CommandBuilderPanel() {
             <input
               id="cb-user"
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={usernameDraft}
+              onChange={handleUsernameChange}
+              onBlur={commitUsernameDraft}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
               placeholder="ubuntu"
-              className="mt-1 w-full rounded-md border border-border/50 bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              aria-invalid={usernameError ? "true" : "false"}
+              className={cn(
+                "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40",
+                usernameError ? "border-destructive" : "border-border/50",
+              )}
             />
+            {usernameError && (
+              <p className="mt-1 text-xs text-destructive">{usernameError}</p>
+            )}
           </div>
           <div>
             <label className="text-xs text-muted-foreground" htmlFor="cb-ref">
@@ -361,10 +455,20 @@ export function CommandBuilderPanel() {
             <input
               id="cb-ref"
               type="text"
-              value={ref ?? ""}
-              onChange={(e) => setRef(e.target.value || null)}
+              value={refDraft}
+              onChange={handleRefChange}
+              onBlur={commitRefDraft}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
               placeholder="main"
-              className="mt-1 w-full rounded-md border border-border/50 bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+              aria-invalid={refError ? "true" : "false"}
+              className={cn(
+                "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40",
+                refError ? "border-destructive" : "border-border/50",
+              )}
             />
             {refError && (
               <p className="mt-1 text-xs text-destructive">{refError}</p>

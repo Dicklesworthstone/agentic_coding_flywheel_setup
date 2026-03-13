@@ -29,13 +29,13 @@ render_project_name_screen() {
 
     echo "Enter a name for your new project."
     echo ""
-    echo -e "${TUI_GRAY}Requirements:${TUI_NC}"
+    printf "%b\n" "${TUI_GRAY}Requirements:${TUI_NC}"
 
     if [[ "$TERM_HAS_UNICODE" == "true" ]]; then
-        echo -e "  ${BOX_BULLET} Must start with a letter"
-        echo -e "  ${BOX_BULLET} Only letters, numbers, hyphens, and underscores"
-        echo -e "  ${BOX_BULLET} At least 2 characters"
-        echo -e "  ${BOX_BULLET} Cannot be a reserved name (node_modules, .git, etc.)"
+        printf "%b\n" "  ${BOX_BULLET} Must start with a letter"
+        printf "%b\n" "  ${BOX_BULLET} Only letters, numbers, hyphens, and underscores"
+        printf "%b\n" "  ${BOX_BULLET} At least 2 characters"
+        printf "%b\n" "  ${BOX_BULLET} Cannot be a reserved name (node_modules, .git, etc.)"
     else
         echo "  * Must start with a letter"
         echo "  * Only letters, numbers, hyphens, and underscores"
@@ -47,7 +47,7 @@ render_project_name_screen() {
 
     # Show current value if editing
     if [[ -n "$current_value" ]]; then
-        echo -e "Current: ${TUI_PRIMARY}$current_value${TUI_NC}"
+        printf "%b\n" "Current: ${TUI_PRIMARY}$current_value${TUI_NC}"
         echo ""
     fi
 }

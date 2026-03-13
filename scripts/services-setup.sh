@@ -221,7 +221,7 @@ select_dcg_packs() {
         else
             for num in $input; do
                 if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#options[@]} ]]; then
-                    selected_lines+="${options[$((num - 1))]}"$'\n'
+                    selected_lines+="${options[$((10#num - 1))]}"$'\n'
                 fi
             done
         fi
@@ -573,7 +573,7 @@ print_status_table() {
         esac
         table_data+="$dcg_icon DCG (Destructive Command Guard),Safety,$dcg_status,$dcg_action\n"
 
-        echo -e "$table_data" | gum table \
+        printf "%b\n" "$table_data" | gum table \
             --border.foreground "$ACFS_MUTED" \
             --header.foreground "$ACFS_PRIMARY"
     else
@@ -586,9 +586,9 @@ print_status_table() {
             icon=$(get_status_icon "$status")
 
             case "$status" in
-                configured) echo -e "\033[32m  $icon $label: $status\033[0m" ;;
-                running|installed) echo -e "\033[33m  $icon $label: $status\033[0m" ;;
-                *) echo -e "\033[31m  $icon $label: $status\033[0m" ;;
+                configured) printf "%b\n" "\033[32m  $icon $label: $status\033[0m" ;;
+                running|installed) printf "%b\n" "\033[33m  $icon $label: $status\033[0m" ;;
+                *) printf "%b\n" "\033[31m  $icon $label: $status\033[0m" ;;
             esac
         done
 
@@ -596,9 +596,9 @@ print_status_table() {
         local dcg_icon
         dcg_icon=$(get_status_icon "$dcg_status")
         case "$dcg_status" in
-            configured) echo -e "\033[32m  $dcg_icon DCG (Destructive Command Guard): $dcg_status\033[0m" ;;
-            running|installed) echo -e "\033[33m  $dcg_icon DCG (Destructive Command Guard): $dcg_status\033[0m" ;;
-            *) echo -e "\033[31m  $dcg_icon DCG (Destructive Command Guard): $dcg_status\033[0m" ;;
+            configured) printf "%b\n" "\033[32m  $dcg_icon DCG (Destructive Command Guard): $dcg_status\033[0m" ;;
+            running|installed) printf "%b\n" "\033[33m  $dcg_icon DCG (Destructive Command Guard): $dcg_status\033[0m" ;;
+            *) printf "%b\n" "\033[31m  $dcg_icon DCG (Destructive Command Guard): $dcg_status\033[0m" ;;
         esac
     fi
     echo ""
@@ -1180,6 +1180,7 @@ setup_all_unconfigured() {
                     --border rounded \
                     --border-foreground "$ACFS_PRIMARY" \
                     --padding "0 2" \
+                    --margin "0 0 1 0" \
                     "$(gum style --foreground "$ACFS_ACCENT" "Service $current of $needs_setup") $dots
 $(gum style --foreground "$ACFS_PINK" --bold "Setting up $label...")"
             else
@@ -1209,6 +1210,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "Setting up $label...")"
             --border double \
             --border-foreground "$ACFS_SUCCESS" \
             --padding "1 2" \
+            --margin "1 0" \
             --align center \
             "$(gum style --foreground "$ACFS_SUCCESS" --bold '✓ Setup Complete!')
 $(gum style --foreground "$ACFS_TEAL" "All available services have been configured")"

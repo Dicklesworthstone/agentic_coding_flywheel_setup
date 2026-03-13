@@ -223,6 +223,20 @@ function normalizeCompletedSteps(steps: unknown[]): number[] {
   return Array.from(new Set(validSteps)).sort((a, b) => a - b);
 }
 
+export function getHighestContiguousCompletedStep(steps: number[]): number {
+  const normalized = normalizeCompletedSteps(steps);
+  let highestContiguous = 0;
+
+  for (const step of normalized) {
+    if (step !== highestContiguous + 1) {
+      break;
+    }
+    highestContiguous = step;
+  }
+
+  return highestContiguous;
+}
+
 function emitCompletedStepsChanged(steps: number[]): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(

@@ -305,7 +305,7 @@ handle_tech_stack_input() {
                     # Toggle by numbers
                     for num in $input; do
                         if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#TECH_STACK_OPTIONS[@]} ]]; then
-                            local opt="${TECH_STACK_OPTIONS[$((num - 1))]}"
+                            local opt="${TECH_STACK_OPTIONS[$((10#num - 1))]}"
                             local key="${opt%%:*}"
                             selected=$(toggle_option "$key" "$selected")
                         fi

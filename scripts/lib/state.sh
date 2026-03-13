@@ -198,9 +198,6 @@ state_init() {
     local now
     now="$(date -Iseconds)"
 
-    # Initialize state directory and file
-    mkdir -p "$(dirname "$target")"
-
     # Normalize boolean values for JSON
     local skip_pg="false"; [[ "${SKIP_POSTGRES:-false}" == "true" ]] && skip_pg="true"
     local skip_v="false"; [[ "${SKIP_VAULT:-false}" == "true" ]] && skip_v="true"
@@ -209,19 +206,22 @@ state_init() {
     local initial_state
     if command -v jq &>/dev/null; then
         initial_state=$(jq -n \
+            --argjson schema_version "$ACFS_STATE_SCHEMA_VERSION" \
             --arg ver "$ACFS_VERSION" \
             --arg user "$TARGET_USER" \
             --arg home "$TARGET_HOME" \
-            --arg ts "$(date -Iseconds)" \
-            --arg mode "${ACFS_MODE:-vibe}" \
+            --arg ts "$now" \
+            --arg mode "${MODE:-${ACFS_MODE:-vibe}}" \
             --argjson skip_pg "$skip_pg" \
             --argjson skip_v "$skip_v" \
             --argjson skip_c "$skip_c" \
             '{
-                acfs_version: $ver,
+                schema_version: $schema_version,
+                version: $ver,
                 target_user: $user,
                 target_home: $home,
                 started_at: $ts,
+                last_updated: $ts,
                 mode: $mode,
                 completed_phases: [],
                 failed_phase: null,
@@ -240,11 +240,13 @@ state_init() {
         # Fallback to heredoc if jq is not yet installed
         initial_state=$(cat <<EOF
 {
-  "acfs_version": "$ACFS_VERSION",
+  "schema_version": $ACFS_STATE_SCHEMA_VERSION,
+  "version": "$ACFS_VERSION",
   "target_user": "$TARGET_USER",
   "target_home": "$TARGET_HOME",
-  "started_at": "$(date -Iseconds)",
-  "mode": "${ACFS_MODE:-vibe}",
+  "started_at": "$now",
+  "last_updated": "$now",
+  "mode": "${MODE:-${ACFS_MODE:-vibe}}",
   "completed_phases": [],
   "failed_phase": null,
   "failed_step": null,
@@ -262,13 +264,13 @@ EOF
 )
     fi
 
-    if ! state_write_atomic "$target" "$initial_state"; then
+    if ! state_write_atomic "$state_file" "$initial_state"; then
         return 1
     fi
 
     # Optional: sync the directory entry to ensure the rename is durable
     if command -v sync &>/dev/null; then
-        sync "$target_dir" 2>/dev/null || true
+        sync "$state_dir" 2>/dev/null || true
     fi
 
     return 0

@@ -39,7 +39,7 @@ render_success_screen() {
 
     # Success banner
     if [[ "$TERM_HAS_UNICODE" == "true" ]]; then
-        echo -e "${TUI_SUCCESS}"
+        printf "%b\n" "${TUI_SUCCESS}"
         cat << 'EOF'
     ╔══════════════════════════════════════════════════════╗
     ║                                                      ║
@@ -47,71 +47,71 @@ render_success_screen() {
     ║                                                      ║
     ╚══════════════════════════════════════════════════════╝
 EOF
-        echo -e "${TUI_NC}"
+        printf "%b\n" "${TUI_NC}"
     else
         echo ""
-        echo -e "${TUI_SUCCESS}=== PROJECT CREATED SUCCESSFULLY ===${TUI_NC}"
+        printf "%b\n" "${TUI_SUCCESS}=== PROJECT CREATED SUCCESSFULLY ===${TUI_NC}"
         echo ""
     fi
 
     echo ""
-    echo -e "Your new project ${TUI_PRIMARY}$project_name${TUI_NC} is ready!"
+    printf "%b\n" "Your new project ${TUI_PRIMARY}$project_name${TUI_NC} is ready!"
     echo ""
 
     # What was created
-    echo -e "${TUI_BOLD}What was created:${TUI_NC}"
+    printf "%b\n" "${TUI_BOLD}What was created:${TUI_NC}"
     draw_line 50
 
-    echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Project directory: $project_dir"
-    echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Git repository initialized"
-    echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} README.md"
-    echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} .gitignore"
+    printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Project directory: $project_dir"
+    printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Git repository initialized"
+    printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} README.md"
+    printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} .gitignore"
 
     if [[ "$(state_get "enable_agents")" == "true" ]]; then
-        echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} AGENTS.md for AI assistants"
+        printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} AGENTS.md for AI assistants"
     fi
 
     if [[ "$(state_get "enable_br")" == "true" && "$beads_initialized" == "true" ]]; then
-        echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Beads issue tracking (.beads/)"
+        printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Beads issue tracking (.beads/)"
     elif [[ "$(state_get "enable_br")" == "true" ]]; then
-        echo -e "  ${TUI_WARNING}!${TUI_NC} Beads issue tracking requested but not initialized"
+        printf "%b\n" "  ${TUI_WARNING}!${TUI_NC} Beads issue tracking requested but not initialized"
     fi
 
     if [[ "$(state_get "enable_claude")" == "true" ]]; then
-        echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Claude Code settings (.claude/)"
+        printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Claude Code settings (.claude/)"
     fi
 
     if [[ "$(state_get "enable_ubsignore")" == "true" ]]; then
-        echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} UBS ignore patterns (.ubsignore)"
+        printf "%b\n" "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} UBS ignore patterns (.ubsignore)"
     fi
 
     echo ""
 
     # Next steps
-    echo -e "${TUI_BOLD}Next steps:${TUI_NC}"
+    printf "%b\n" "${TUI_BOLD}Next steps:${TUI_NC}"
     draw_line 50
     echo ""
 
     echo "  1. Navigate to your project:"
-    echo -e "     ${TUI_CYAN}cd $project_dir${TUI_NC}"
+    printf "%b\n" "     ${TUI_CYAN}cd $project_dir${TUI_NC}"
     echo ""
 
     echo "  2. Start coding with Claude Code:"
-    echo -e "     ${TUI_CYAN}claude${TUI_NC}"
+    printf "%b\n" "     ${TUI_CYAN}claude${TUI_NC}"
     echo ""
 
     if [[ "$(state_get "enable_br")" == "true" && "$beads_initialized" == "true" ]]; then
         echo "  3. Create your first task:"
-        echo -e "     ${TUI_CYAN}br create \"First feature\" -t feature${TUI_NC}"
+        printf "%b\n" "     ${TUI_CYAN}br create \"First feature\" -t feature${TUI_NC}"
         echo ""
     elif [[ "$(state_get "enable_br")" == "true" ]]; then
         echo "  3. Finish enabling Beads (optional):"
-        echo -e "     ${TUI_CYAN}br init${TUI_NC}"
+        printf "%b\n" "     ${TUI_CYAN}br init${TUI_NC}"
         echo ""
     fi
 
     echo "  For help, run:"
-    echo -e "     ${TUI_CYAN}acfs help${TUI_NC}"
+    printf "%b\n" "     ${TUI_CYAN}acfs help${TUI_NC}"
     echo ""
 
     draw_line 50
@@ -129,7 +129,7 @@ open_in_shell() {
 
     if [[ ! -d "$project_dir" ]]; then
         echo ""
-        echo -e "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
+        printf "%b\n" "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
         return 1
     fi
 
@@ -139,12 +139,12 @@ open_in_shell() {
     fi
     if [[ -z "$shell_bin" ]]; then
         echo ""
-        echo -e "${TUI_WARNING}No interactive shell found in PATH${TUI_NC}"
+        printf "%b\n" "${TUI_WARNING}No interactive shell found in PATH${TUI_NC}"
         return 1
     fi
 
     echo ""
-    echo -e "${TUI_PRIMARY}Opening project shell...${TUI_NC}"
+    printf "%b\n" "${TUI_PRIMARY}Opening project shell...${TUI_NC}"
     echo ""
     prepare_success_exec
     cd "$project_dir" || return 1
@@ -158,20 +158,20 @@ open_in_claude() {
 
     if [[ ! -d "$project_dir" ]]; then
         echo ""
-        echo -e "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
+        printf "%b\n" "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
         return 1
     fi
 
     if ! command -v claude &>/dev/null; then
         echo ""
-        echo -e "${TUI_WARNING}Claude Code not found in PATH${TUI_NC}"
+        printf "%b\n" "${TUI_WARNING}Claude Code not found in PATH${TUI_NC}"
         echo "Run manually:"
-        echo -e "  ${TUI_CYAN}cd $project_dir && claude${TUI_NC}"
+        printf "%b\n" "  ${TUI_CYAN}cd $project_dir && claude${TUI_NC}"
         return 1
     fi
 
     echo ""
-    echo -e "${TUI_PRIMARY}Opening in Claude Code...${TUI_NC}"
+    printf "%b\n" "${TUI_PRIMARY}Opening in Claude Code...${TUI_NC}"
     prepare_success_exec
     cd "$project_dir" || return 1
     exec claude

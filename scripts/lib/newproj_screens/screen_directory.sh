@@ -136,17 +136,17 @@ render_directory_screen() {
     # Show current project name for context
     local project_name
     project_name=$(state_get "project_name")
-    echo -e "Project: ${TUI_PRIMARY}$project_name${TUI_NC}"
+    printf "%b\n" "Project: ${TUI_PRIMARY}$project_name${TUI_NC}"
     echo ""
 
     # Show default suggestion
     local default_dir
     default_dir=$(get_default_directory)
-    echo -e "${TUI_GRAY}Default location: $default_dir${TUI_NC}"
+    printf "%b\n" "${TUI_GRAY}Default location: $default_dir${TUI_NC}"
     echo ""
 
     if [[ -n "$current_value" ]]; then
-        echo -e "Current: ${TUI_PRIMARY}$current_value${TUI_NC}"
+        printf "%b\n" "Current: ${TUI_PRIMARY}$current_value${TUI_NC}"
 
         # Check and show status
         local status
@@ -157,20 +157,20 @@ render_directory_screen() {
             0)
                 local resolved="${status#OK:}"
                 if [[ "$resolved" != "$current_value" ]]; then
-                    echo -e "${TUI_SUCCESS}${BOX_ARROW} Resolved: $resolved${TUI_NC}"
+                    printf "%b\n" "${TUI_SUCCESS}${BOX_ARROW} Resolved: $resolved${TUI_NC}"
                 fi
                 ;;
             1)
-                echo -e "${TUI_WARNING}${BOX_BULLET} ${status#WARNING:}${TUI_NC}"
+                printf "%b\n" "${TUI_WARNING}${BOX_BULLET} ${status#WARNING:}${TUI_NC}"
                 ;;
             2)
-                echo -e "${TUI_ERROR}${BOX_CROSS} ${status#ERROR:}${TUI_NC}"
+                printf "%b\n" "${TUI_ERROR}${BOX_CROSS} ${status#ERROR:}${TUI_NC}"
                 ;;
         esac
         echo ""
     fi
 
-    echo -e "${TUI_GRAY}Tip: You can use ~ for home directory${TUI_NC}"
+    printf "%b\n" "${TUI_GRAY}Tip: You can use ~ for home directory${TUI_NC}"
 }
 
 # Handle input for directory screen

@@ -1,8 +1,6 @@
 import { createSocialImage } from "@/lib/social-image";
 import { getStaticRouteSocialData } from "@/lib/social-image-routes";
 
-export const runtime = "edge";
-
 export const alt = "Agent Flywheel";
 export const size = {
   width: 1200,

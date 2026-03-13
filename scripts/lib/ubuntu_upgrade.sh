@@ -58,7 +58,8 @@ ubuntu_get_version_number() {
     minor="${remainder%%.*}"
 
     # Pad minor to 2 digits (e.g. 4 -> 04, 10 -> 10)
-    printf "%d%02d" "$major" "$minor"
+    # Using 10# to force base 10 and avoid octal interpretation of leading zeros
+    printf "%d%02d" "10#${major}" "10#${minor}"
 }
 
 # Get current Ubuntu version string
@@ -125,7 +126,8 @@ ubuntu_is_lts() {
 
     # LTS versions are even years + .04
     # 22.04, 24.04, 26.04, etc. (not 23.04, 25.04)
-    [[ "$version" =~ ^[0-9]+\.04$ ]] && [[ $((year % 2)) -eq 0 ]]
+    # Use 10# to force base 10 for year to handle potential leading zeros (e.g. 08.04)
+    [[ "$version" =~ ^[0-9]+\.04$ ]] && [[ $((10#year % 2)) -eq 0 ]]
 }
 
 # Get the next LTS version after the given version
@@ -136,11 +138,12 @@ ubuntu_get_next_lts() {
     # LTS releases are every 2 years: 22.04, 24.04, 26.04, etc.
     if [[ "$current" =~ \.04$ ]]; then
         # Already on LTS, next LTS is current_year + 2
-        echo "$((major + 2)).04"
+        # Use 10# to handle potential leading zeros safely
+        echo "$((10#major + 2)).04"
     else
         # On non-LTS, find next LTS
         # 24.10 -> 26.04, 25.04 -> 26.04, etc.
-        local next_lts_year=$(( (major / 2 + 1) * 2 ))
+        local next_lts_year=$(( (10#major / 2 + 1) * 2 ))
         echo "${next_lts_year}.04"
     fi
 }
@@ -337,7 +340,7 @@ ubuntu_preflight_checks() {
         ((failed += 1))
     fi
 
-    # Check for recent boot (warning only, no failure)
+    # Check for recent boot (system stability)
     ubuntu_check_recent_boot || true
 
     if [[ $failed -gt 0 ]]; then
@@ -851,9 +854,9 @@ ubuntu_upgrade_status() {
 # Print pre-upgrade warning message
 ubuntu_print_upgrade_warning() {
     echo ""
-    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "╔══════════════════════════════════════════════════════════════╗"
     echo "║                    UBUNTU UPGRADE REQUIRED                     ║"
-    echo "╠════════════════════════════════════════════════════════════════╣"
+    echo "╠══════════════════════════════════════════════════════════════╣"
     echo "║  Your Ubuntu version needs to be upgraded before installing   ║"
     echo "║  ACFS. This process is fully automatic but takes 30-60 min   ║"
     echo "║  per version and requires reboots.                            ║"
@@ -862,7 +865,7 @@ ubuntu_print_upgrade_warning() {
     echo "║  • Create a VM snapshot/backup before proceeding              ║"
     echo "║  • SSH connections will drop during reboot                    ║"
     echo "║  • Reconnect after reboot - installation will auto-resume    ║"
-    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
     ubuntu_upgrade_status
     echo ""

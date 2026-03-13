@@ -1,0 +1,7 @@
+core.*
+.next_trash_2
+.next_backup
+playwright-report
+storage.sqlite3
+*.sqlite3
+e2e

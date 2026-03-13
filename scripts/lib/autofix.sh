@@ -153,18 +153,39 @@ append_atomic() {
     local target_dir
     target_dir=$(dirname "$target_file")
     local temp_file
-    temp_file=$(mktemp -p "$target_dir" ".tmp.XXXXXX")
+    temp_file=$(mktemp -p "$target_dir" ".tmp.XXXXXX" 2>/dev/null) || {
+        log_error "Failed to create temp file for atomic append: $target_file"
+        return 1
+    }
 
     # Copy existing content + new line to temp
     if [[ -f "$target_file" ]]; then
-        cat "$target_file" > "$temp_file" || { rm -f "$temp_file"; return 1; }
+        cat "$target_file" > "$temp_file" || { 
+            log_error "Failed to copy existing content to temp file: $temp_file"
+            rm -f "$temp_file"
+            return 1
+        }
     fi
-    printf '%s\n' "$content" >> "$temp_file" || { rm -f "$temp_file"; return 1; }
+    if ! printf '%s\n' "$content" >> "$temp_file"; then
+        log_error "Failed to append content to temp file: $temp_file"
+        rm -f "$temp_file"
+        return 1
+    fi
 
     # Sync and rename
-    fsync_file "$temp_file"
-    mv "$temp_file" "$target_file"
-    fsync_directory "$target_dir"
+    if ! fsync_file "$temp_file"; then
+        log_warn "Failed to fsync temp file: $temp_file"
+    fi
+
+    if ! mv "$temp_file" "$target_file"; then
+        log_error "Failed to move temp file into place: $target_file"
+        rm -f "$temp_file"
+        return 1
+    fi
+
+    if ! fsync_directory "$target_dir"; then
+        log_warn "Failed to fsync directory: $target_dir"
+    fi
 
     return 0
 }
@@ -274,7 +295,10 @@ repair_state_files() {
     # Repair changes file - keep only valid JSON lines with valid record checksums
     if [[ -f "$ACFS_CHANGES_FILE" ]]; then
         local temp_file
-        temp_file=$(mktemp)
+        temp_file=$(mktemp -p "$(dirname "$ACFS_CHANGES_FILE")" ".tmp.XXXXXX" 2>/dev/null) || {
+            log_error "Failed to create temp file for changes repair"
+            return 1
+        }
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
             if echo "$line" | jq -e . >/dev/null 2>&1; then
@@ -288,7 +312,7 @@ repair_state_files() {
                         continue
                     fi
                 fi
-                echo "$line" >> "$temp_file"
+                printf '%s\n' "$line" >> "$temp_file"
             else
                 log_warn "[REPAIR] Discarding invalid line: ${line:0:50}..."
                 ((++repaired))
@@ -307,11 +331,14 @@ repair_state_files() {
     # Same for undos file
     if [[ -f "$ACFS_UNDOS_FILE" ]]; then
         local temp_file repaired_undos=0
-        temp_file=$(mktemp)
+        temp_file=$(mktemp -p "$(dirname "$ACFS_UNDOS_FILE")" ".tmp.XXXXXX" 2>/dev/null) || {
+            log_error "Failed to create temp file for undos repair"
+            return 1
+        }
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
             if echo "$line" | jq -e . >/dev/null 2>&1; then
-                echo "$line" >> "$temp_file"
+                printf '%s\n' "$line" >> "$temp_file"
             else
                 log_warn "[REPAIR] Discarding invalid undo line: ${line:0:50}..."
                 ((++repaired_undos))
@@ -728,7 +755,8 @@ undo_change() {
     # Check dependencies (things that depend on this must be undone first)
     if [[ "$skip_deps" != "true" ]]; then
         local dependents
-        dependents=$(grep -e "\"depends_on\".*$change_id" "$ACFS_CHANGES_FILE" 2>/dev/null | jq -r '.id' 2>/dev/null || true)
+        # Use more precise grep to avoid partial matches (e.g. chg_0001 matching chg_00010)
+        dependents=$(grep -E "\"depends_on\":\[([^]]*)?\"$change_id\"" "$ACFS_CHANGES_FILE" 2>/dev/null | jq -r '.id' 2>/dev/null || true)
         for dep in $dependents; do
             if ! is_change_undone "$dep"; then
                 log_error "Cannot undo $change_id: $dep depends on it and hasn't been undone"

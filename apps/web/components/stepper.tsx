@@ -6,6 +6,7 @@ import { useDrag } from "@use-gesture/react";
 import { cn } from "@/lib/utils";
 import {
   WIZARD_STEPS,
+  getHighestContiguousCompletedStep,
   useCompletedSteps,
   type WizardStep,
 } from "@/lib/wizardSteps";
@@ -26,6 +27,7 @@ interface StepItemProps {
   isActive: boolean;
   isCompleted: boolean;
   isClickable: boolean;
+  showConnector: boolean;
   onClick?: () => void;
 }
 
@@ -34,6 +36,7 @@ function StepItem({
   isActive,
   isCompleted,
   isClickable,
+  showConnector,
   onClick,
 }: StepItemProps) {
   const showCompletedState = isCompleted && !isActive;
@@ -52,7 +55,9 @@ function StepItem({
       aria-current={isActive ? "step" : undefined}
     >
       {/* Connection line to next step */}
-      <div className="absolute left-[22px] top-[42px] h-[calc(100%-16px)] w-px bg-gradient-to-b from-border/50 to-transparent" />
+      {showConnector && (
+        <div className="absolute left-[22px] top-[42px] h-[calc(100%-16px)] w-px bg-gradient-to-b from-border/50 to-transparent" />
+      )}
 
       {/* Step indicator */}
       <div
@@ -111,6 +116,7 @@ function StepItem({
  */
 export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
   const [completedSteps] = useCompletedSteps();
+  const highestCompleted = getHighestContiguousCompletedStep(completedSteps);
 
   const handleStepClick = useCallback(
     (stepId: number) => {
@@ -129,8 +135,8 @@ export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
       {WIZARD_STEPS.map((step, index) => {
         const isActive = step.id === currentStep;
         const isCompleted = completedSteps.includes(step.id);
-        // Can click if step is completed or if it's the next step after last completed
-        const highestCompleted = Math.max(0, ...completedSteps);
+        // Can click if step is completed or if it's the next step after the
+        // highest contiguous completion point.
         const isClickable = isCompleted || step.id <= highestCompleted + 1;
         const isLastStep = index === WIZARD_STEPS.length - 1;
 
@@ -141,6 +147,7 @@ export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
               isActive={isActive}
               isCompleted={isCompleted}
               isClickable={isClickable}
+              showConnector={!isLastStep}
               onClick={() => handleStepClick(step.id)}
             />
           </div>
@@ -165,7 +172,7 @@ export function StepperMobile({
 
   const currentStepData = WIZARD_STEPS.find((s) => s.id === currentStep);
   const progress = (currentStep / WIZARD_STEPS.length) * 100;
-  const highestCompleted = Math.max(0, ...completedSteps);
+  const highestCompleted = getHighestContiguousCompletedStep(completedSteps);
 
   // Swipe gesture handler
   const bind = useDrag(

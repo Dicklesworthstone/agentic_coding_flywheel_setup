@@ -43,12 +43,10 @@ function sshKeyPathWindows(): string {
 
 export function formatSshHost(host: string): string {
   const normalized = host.trim();
-  if (
-    normalized.includes(":") &&
-    !normalized.startsWith("[") &&
-    !normalized.endsWith("]")
-  ) {
-    return `[${normalized}]`;
+  if (normalized.includes(":")) {
+    // IPv6 address — strip any existing mismatched brackets and wrap cleanly
+    const bare = normalized.replace(/^\[|\]$/g, "");
+    return `[${bare}]`;
   }
   return normalized;
 }
@@ -62,6 +60,10 @@ function normalizeInstallUsername(username: string | null | undefined): string |
   if (!trimmed || trimmed === "ubuntu") return null;
   if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(trimmed)) return null;
   return trimmed;
+}
+
+function normalizeSshUsername(username: string | null | undefined): string {
+  return normalizeInstallUsername(username) ?? "ubuntu";
 }
 
 export function buildInstallCommand(
@@ -87,8 +89,9 @@ export function buildCommands(inputs: CommandBuilderInputs): GeneratedCommand[] 
   const keyPath = sshKeyPath(os);
   const keyPathWin = sshKeyPathWindows();
   const safeRef = normalizeGitRef(ref);
+  const safeUsername = normalizeSshUsername(username);
   const rootTarget = formatSshTarget("root", ip);
-  const userTarget = formatSshTarget(username, ip);
+  const userTarget = formatSshTarget(safeUsername, ip);
 
   const commands: GeneratedCommand[] = [];
 
@@ -106,14 +109,14 @@ export function buildCommands(inputs: CommandBuilderInputs): GeneratedCommand[] 
     id: "installer",
     label: "Run installer",
     description: `Install ACFS in ${mode} mode${safeRef ? ` pinned to ${safeRef}` : ""}`,
-    command: buildInstallCommand(mode, ref, username),
+    command: buildInstallCommand(mode, ref, safeUsername),
     runLocation: "vps",
   });
 
   // 3. SSH as configured user (post-install, key-based)
   commands.push({
     id: "ssh-user",
-    label: `SSH as ${username}`,
+    label: `SSH as ${safeUsername}`,
     description: "Key-based login after installer completes",
     command: `ssh -i ${keyPath} ${userTarget}`,
     windowsCommand: `ssh -i ${keyPathWin} ${userTarget}`,
@@ -146,11 +149,12 @@ export function buildCommands(inputs: CommandBuilderInputs): GeneratedCommand[] 
  */
 export function buildShareURL(inputs: CommandBuilderInputs): string {
   if (typeof window === "undefined") return "";
-  const url = new URL(window.location.href);
+  const url = new URL(window.location.pathname, window.location.origin);
+  const safeUsername = normalizeSshUsername(inputs.username);
   url.searchParams.set("ip", inputs.ip);
   url.searchParams.set("os", inputs.os);
-  if (inputs.username !== "ubuntu") {
-    url.searchParams.set("user", inputs.username);
+  if (safeUsername !== "ubuntu") {
+    url.searchParams.set("user", safeUsername);
   } else {
     url.searchParams.delete("user");
   }

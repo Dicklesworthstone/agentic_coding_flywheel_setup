@@ -557,7 +557,7 @@ read_selection() {
         newproj_tty_printf "%s" "Enter number [1-${#options[@]}]: "
         read -r num < /dev/tty || true
         if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#options[@]} ]]; then
-            selected="${options[$((num - 1))]}"
+            selected="${options[$((10#num - 1))]}"
         fi
     fi
 
@@ -596,7 +596,7 @@ read_checkbox() {
         else
             for num in $input; do
                 if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#options[@]} ]]; then
-                    selected+="${options[$((num - 1))]} "
+                    selected+="${options[$((10#num - 1))]} "
                 fi
             done
         fi
