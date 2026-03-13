@@ -47,6 +47,7 @@ autofix_nvm_check() {
 
     for loc in "${nvm_locations[@]}"; do
         if [[ -d "$loc" ]]; then
+            status="installed"
             # Avoid duplicates if NVM_DIR was already added
             local already_found=false
             for found in "${found_nvm_dirs[@]}"; do
@@ -54,7 +55,6 @@ autofix_nvm_check() {
             done
             if [[ "$already_found" == "false" ]]; then
                 found_nvm_dirs+=("$loc")
-                status="installed"
             fi
 
             # Get installed version (from the first one we find)
@@ -283,6 +283,7 @@ autofix_pyenv_check() {
 
     for loc in "${pyenv_locations[@]}"; do
         if [[ -d "$loc" ]]; then
+            status="installed"
             # Avoid duplicates if PYENV_ROOT was already added
             local already_found=false
             for found in "${found_pyenv_roots[@]}"; do
@@ -290,7 +291,6 @@ autofix_pyenv_check() {
             done
             if [[ "$already_found" == "false" ]]; then
                 found_pyenv_roots+=("$loc")
-                status="installed"
             fi
 
             # Get installed version (from the first one we find)

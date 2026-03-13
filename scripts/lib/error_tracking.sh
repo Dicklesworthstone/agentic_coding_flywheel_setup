@@ -915,24 +915,40 @@ get_failed_tools_json() {
         return 0
     fi
 
-    local json="["
-    local first=true
-    for tool in "${ACFS_FAILED_TOOLS[@]}"; do
-        local error="${ACFS_FAILED_TOOL_ERRORS[$tool]:-Unknown error}"
-        # Escape JSON
-        error="${error//\\/\\\\}"
-        error="${error//\"/\\\"}"
-        error="${error//$'\n'/\\n}"
+    if ! command -v jq &>/dev/null; then
+        # Fallback JSON generation
+        local json="["
+        local first=true
+        for tool in "${ACFS_FAILED_TOOLS[@]}"; do
+            local error="${ACFS_FAILED_TOOL_ERRORS[$tool]:-Unknown error}"
+            # Escape JSON
+            error="${error//\\/\\\\}"
+            error="${error//\"/\\\"}"
+            error="${error//$'\n'/\\n}"
 
-        if [[ "$first" == "true" ]]; then
-            first=false
-        else
-            json+=","
-        fi
-        json+="{\"tool\":\"$tool\",\"error\":\"$error\"}"
+            if [[ "$first" == "true" ]]; then
+                first=false
+            else
+                json+=","
+            fi
+            json+="{\"tool\":\"$tool\",\"error\":\"$error\"}"
+        done
+        json+="]"
+        echo "$json"
+        return 0
+    fi
+
+    local -a items=()
+    for tool in "${ACFS_FAILED_TOOLS[@]}"; do
+        items+=("$tool" "${ACFS_FAILED_TOOL_ERRORS[$tool]:-Unknown error}")
     done
-    json+="]"
-    echo "$json"
+
+    # We use NUL delimiter to safely pass arbitrary strings (including newlines)
+    # into jq, which splits on NUL and constructs the JSON objects pairwise.
+    printf '%s\0' "${items[@]}" | jq -Rs '
+        split("\u0000")[:-1] | 
+        [ range(0; length; 2) as $i | { "tool": .[$i], "error": .[$i+1] } ]
+    '
 }
 
 # Clear all installation tracking state

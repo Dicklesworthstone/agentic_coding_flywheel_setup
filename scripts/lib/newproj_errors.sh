@@ -48,7 +48,7 @@ newproj_tty_printf() {
     local format="$1"
     shift
 
-    if [[ -w /dev/tty ]] && { printf "$format" "$@" > /dev/tty; } 2>/dev/null; then
+    if [[ -z "${BATS_TEST_NAME:-}" && -z "${ACFS_TEST_MODE:-}" ]] && [[ -w /dev/tty ]] && { printf "$format" "$@" > /dev/tty; } 2>/dev/null; then
         return 0
     fi
 

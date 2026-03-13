@@ -38,7 +38,7 @@ modules:
   # PHASE 2: User normalization (ORCHESTRATION-ONLY)
   # ============================================================
   - id: users.ubuntu
-    description: Ensure ubuntu user + passwordless sudo + ssh keys
+    description: Ensure target user + passwordless sudo + ssh keys
     category: users
     phase: 2
     run_as: root
@@ -47,13 +47,13 @@ modules:
     generated: false
     tags: [orchestration, critical]
     notes:
-      - "Ensure user ubuntu exists with home /home/ubuntu"
-      - "Write /etc/sudoers.d/90-ubuntu-acfs: ubuntu ALL=(ALL) NOPASSWD:ALL"
-      - "Copy authorized_keys from invoking user to /home/ubuntu/.ssh/"
+      - "Ensure TARGET_USER exists with the expected home directory"
+      - "Write /etc/sudoers.d/90-ubuntu-acfs with passwordless sudo for TARGET_USER in vibe mode"
+      - "Copy authorized_keys from invoking user to TARGET_HOME/.ssh/"
     install: []
     verify:
-      - id ubuntu
-      - "[[ \"${MODE:-vibe}\" != \"vibe\" ]] || sudo -n true"
+      - "id \"${TARGET_USER:-ubuntu}\""
+      - "[[ \"${MODE:-vibe}\" != \"vibe\" ]] || runuser -u \"${TARGET_USER:-ubuntu}\" -- sudo -n true"
 
   # ============================================================
   # PHASE 3: Filesystem setup

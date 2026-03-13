@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="f0394ac15f3c3b0f3a94a389dddda3ce5713a65cbd5036697036a1c437594267"
+ACFS_MANIFEST_SHA256="813648ac620ab1f09d1ddda8c14ce9498b968551cc3a97370510a36f22b59410"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -500,7 +500,7 @@ declare -gA ACFS_MODULE_DEFAULT=(
 
 declare -gA ACFS_MODULE_DESC=(
   ['base.system']="Base packages + sane defaults"
-  ['users.ubuntu']="Ensure ubuntu user + passwordless sudo + ssh keys"
+  ['users.ubuntu']="Ensure target user + passwordless sudo + ssh keys"
   ['base.filesystem']="Create workspace and ACFS directories"
   ['shell.zsh']="Zsh shell package"
   ['shell.omz']="Oh My Zsh + Powerlevel10k + plugins + ACFS config"

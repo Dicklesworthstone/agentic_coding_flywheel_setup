@@ -103,7 +103,7 @@ acfs_security_init() {
 # Category: users
 # Modules: 1
 
-# Ensure ubuntu user + passwordless sudo + ssh keys
+# Ensure target user + passwordless sudo + ssh keys
 install_users_ubuntu() {
     local module_id="users.ubuntu"
     acfs_require_contract "module:${module_id}" || return 1
@@ -112,24 +112,24 @@ install_users_ubuntu() {
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: id ubuntu (root)"
+        log_info "dry-run: verify: id \"\${TARGET_USER:-ubuntu}\" (root)"
     else
         if ! run_as_root_shell <<'INSTALL_USERS_UBUNTU'
-id ubuntu
+id "${TARGET_USER:-ubuntu}"
 INSTALL_USERS_UBUNTU
         then
-            log_error "users.ubuntu: verify failed: id ubuntu"
+            log_error "users.ubuntu: verify failed: id \"\${TARGET_USER:-ubuntu}\""
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: [[ \"\${MODE:-vibe}\" != \"vibe\" ]] || sudo -n true (root)"
+        log_info "dry-run: verify: [[ \"\${MODE:-vibe}\" != \"vibe\" ]] || runuser -u \"\${TARGET_USER:-ubuntu}\" -- sudo -n true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_USERS_UBUNTU'
-[[ "${MODE:-vibe}" != "vibe" ]] || sudo -n true
+[[ "${MODE:-vibe}" != "vibe" ]] || runuser -u "${TARGET_USER:-ubuntu}" -- sudo -n true
 INSTALL_USERS_UBUNTU
         then
-            log_error "users.ubuntu: verify failed: [[ \"\${MODE:-vibe}\" != \"vibe\" ]] || sudo -n true"
+            log_error "users.ubuntu: verify failed: [[ \"\${MODE:-vibe}\" != \"vibe\" ]] || runuser -u \"\${TARGET_USER:-ubuntu}\" -- sudo -n true"
             return 1
         fi
     fi

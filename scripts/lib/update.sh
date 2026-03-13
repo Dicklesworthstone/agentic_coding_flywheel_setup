@@ -1975,7 +1975,16 @@ update_stack() {
                 log_item "run" "MCP Agent Mail"
 
                 # Use --no-start and exact dir just like the manifest
-                if bash "$tmp_install" --dir "${TARGET_HOME:-/home/ubuntu}/mcp_agent_mail" --yes --no-start; then
+                local target_home="${TARGET_HOME:-${HOME:-}}"
+                if [[ -z "$target_home" ]]; then
+                    if [[ "${TARGET_USER:-ubuntu}" == "root" ]]; then
+                        target_home="/root"
+                    else
+                        target_home="/home/${TARGET_USER:-ubuntu}"
+                    fi
+                fi
+
+                if bash "$tmp_install" --dir "$target_home/mcp_agent_mail" --yes --no-start; then
                     local uid
                     local runtime_dir
                     local user_bus

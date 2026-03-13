@@ -36,10 +36,12 @@ fi
 
 # Target user for ACFS installations
 TARGET_USER="${TARGET_USER:-ubuntu}"
-if [[ "${TARGET_USER}" == "root" ]]; then
-    TARGET_HOME="/root"
-else
-    TARGET_HOME="/home/$TARGET_USER"
+if [[ -z "${TARGET_HOME:-}" ]]; then
+    if [[ "${TARGET_USER}" == "root" ]]; then
+        TARGET_HOME="/root"
+    else
+        TARGET_HOME="/home/$TARGET_USER"
+    fi
 fi
 
 # Generate a random password robustly
