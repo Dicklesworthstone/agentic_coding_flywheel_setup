@@ -151,9 +151,9 @@ try_step() {
                 exit_code=$?
                 set -e
                 
-                # Close FIFO and wait for tee to finish
-                exec {fd}> "$fifo"
-                exec {fd}>&-
+                # Wait for tee to drain and exit, then clean up the FIFO.
+                # The command's exit already closed the write end of the FIFO,
+                # so tee will receive EOF and exit on its own.
                 wait "$tee_pid" 2>/dev/null || true
                 rm -f "$fifo"
             else

@@ -41,12 +41,14 @@ const resolvedWorkers = (() => {
 })();
 
 const webServerCommand = (() => {
+  const isolatedScope = `playwright-${port}`;
+
   // Default to production server for stability (matches CI behavior).
   // Override locally with PW_USE_DEV_SERVER=1 if needed.
   if (!isCI && process.env.PW_USE_DEV_SERVER === "1") {
     return `bun run dev -- -H 127.0.0.1 --port ${port}`;
   }
-  return `bun run build && bun run start -- -H 127.0.0.1 -p ${port}`;
+  return `ACFS_NEXT_DIST_SCOPE=${isolatedScope} bun run build:isolated && ACFS_NEXT_DIST_SCOPE=${isolatedScope} bun run start:isolated -- -H 127.0.0.1 -p ${port}`;
 })();
 
 export default defineConfig({
