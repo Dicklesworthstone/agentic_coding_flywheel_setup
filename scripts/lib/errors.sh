@@ -119,7 +119,7 @@ get_error_pattern() {
     local sorted_patterns=()
     while IFS=$'\t' read -r _ pat; do
         sorted_patterns+=("$pat")
-    done < <(for p in "${!ERROR_PATTERNS[@]}"; do echo -e "${#p}\t$p"; done | sort -rn)
+    done < <(for p in "${!ERROR_PATTERNS[@]}"; do printf "%d\t%s\n" "${#p}" "$p"; done | sort -rn)
 
     for pattern in "${sorted_patterns[@]}"; do
         if [[ "$error_text" == *"$pattern"* ]]; then

@@ -221,16 +221,34 @@ handle_tech_stack_input() {
                 fi
             done
 
+            local selected_arg=""
+            if [[ ${#preselected[@]} -gt 0 ]]; then
+                selected_arg=$(IFS=,; echo "${preselected[*]}")
+            fi
+
             local gum_selected
-            gum_selected=$(gum choose --no-limit \
-                --cursor.foreground "#cba6f7" \
-                --selected.foreground "#a6e3a1" \
-                --header "Select technologies (Space to toggle, Enter to confirm)" \
-                "${options[@]}" < /dev/tty 2>/dev/null) || {
-                # User cancelled
-                echo ""
-                return 1
-            }
+            if [[ -n "$selected_arg" ]]; then
+                gum_selected=$(gum choose --no-limit \
+                    --cursor.foreground "#cba6f7" \
+                    --selected.foreground "#a6e3a1" \
+                    --header "Select technologies (Space to toggle, Enter to confirm)" \
+                    --selected="$selected_arg" \
+                    "${options[@]}" < /dev/tty 2>/dev/null) || {
+                    # User cancelled
+                    echo ""
+                    return 1
+                }
+            else
+                gum_selected=$(gum choose --no-limit \
+                    --cursor.foreground "#cba6f7" \
+                    --selected.foreground "#a6e3a1" \
+                    --header "Select technologies (Space to toggle, Enter to confirm)" \
+                    "${options[@]}" < /dev/tty 2>/dev/null) || {
+                    # User cancelled
+                    echo ""
+                    return 1
+                }
+            fi
 
             # Map back to keys
             selected=""
