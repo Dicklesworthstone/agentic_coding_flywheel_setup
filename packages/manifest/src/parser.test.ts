@@ -376,7 +376,7 @@ modules:
 
     const validationResult = validateManifest(parseResult.data);
     expect(validationResult.valid).toBe(false);
-    expect(validationResult.errors.some((e) => e.message.includes('Unknown dependency'))).toBe(
+    expect(validationResult.errors.some((e) => e.message.includes('which does not exist'))).toBe(
       true
     );
   });

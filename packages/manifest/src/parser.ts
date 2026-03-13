@@ -7,7 +7,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { ZodError } from 'zod';
 import { ManifestSchema } from './schema.js';
-import { detectDependencyCycles as detectDependencyCyclesValidate } from './validate.js';
+import { 
+  detectDependencyCycles as detectDependencyCyclesValidate,
+  validatePhaseOrdering as validatePhaseOrderingAdvanced,
+  validateDependencyExistence as validateDependencyExistenceAdvanced
+} from './validate.js';
 import type {
   Manifest,
   ParseResult,
@@ -211,19 +215,12 @@ export function validateManifestData(data: Manifest): ValidationResult {
   }
 
   // Check for missing dependencies
-  const moduleIds = new Set(data.modules.map((m) => m.id));
-  for (const module of data.modules) {
-    if (module.dependencies) {
-      for (const dep of module.dependencies) {
-        if (!moduleIds.has(dep)) {
-          errors.push({
-            path: `modules.${module.id}.dependencies`,
-            message: `Unknown dependency: ${dep}`,
-            value: dep,
-          });
-        }
-      }
-    }
+  const missingDeps = validateDependencyExistenceAdvanced(data);
+  for (const e of missingDeps) {
+    errors.push({
+      path: `modules.${e.moduleId}.dependencies`,
+      message: e.message,
+    });
   }
 
   // Check for dependency cycles (using consolidated implementation from validate.ts)
@@ -237,8 +234,13 @@ export function validateManifestData(data: Manifest): ValidationResult {
 
   // Check for phase ordering violations (deps must be same or earlier phase)
   // Related: bead mjt.3.2
-  const phaseErrors = validatePhaseOrdering(data.modules);
-  errors.push(...phaseErrors);
+  const phaseResults = validatePhaseOrderingAdvanced(data);
+  for (const e of phaseResults) {
+    errors.push({
+      path: `modules.${e.moduleId}.dependencies`,
+      message: e.message,
+    });
+  }
 
   // Warnings for web-visible modules missing recommended web metadata fields
   const recommendedWebFields = [
@@ -301,38 +303,6 @@ export function validateManifest(manifest: unknown): ValidationResult {
   }
 
   return validateManifestData(schemaResult.data as Manifest);
-}
-
-/**
- * Validate phase ordering: dependencies must be in same or earlier phase
- * Related: bead mjt.3.2
- */
-function validatePhaseOrdering(modules: Manifest['modules']): ValidationError[] {
-  const errors: ValidationError[] = [];
-  const moduleMap = new Map(modules.map((m) => [m.id, m]));
-
-  for (const module of modules) {
-    if (!module.dependencies) continue;
-
-    const modulePhase = module.phase ?? 1;
-
-    for (const depId of module.dependencies) {
-      const dep = moduleMap.get(depId);
-      if (!dep) continue; // Missing dependency is caught by existence check
-
-      const depPhase = dep.phase ?? 1;
-
-      if (depPhase > modulePhase) {
-        errors.push({
-          path: `modules.${module.id}.dependencies`,
-          message: `Phase violation: "${module.id}" (phase ${modulePhase}) depends on "${depId}" (phase ${depPhase}). Dependencies must be in same or earlier phase.`,
-          value: depId,
-        });
-      }
-    }
-  }
-
-  return errors;
 }
 
 /**

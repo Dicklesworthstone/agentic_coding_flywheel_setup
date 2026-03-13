@@ -221,7 +221,14 @@ export function sortModulesByInstallOrder(manifest: Manifest): Module[] {
     sorted.push(module);
   }
 
-  for (const module of manifest.modules) {
+  // Pre-sort modules by phase to ensure unconnected components are ordered correctly
+  const modulesToVisit = [...manifest.modules].sort((a, b) => {
+    const phaseA = a.phase ?? 1;
+    const phaseB = b.phase ?? 1;
+    return phaseA - phaseB;
+  });
+
+  for (const module of modulesToVisit) {
     visit(module.id);
   }
 
