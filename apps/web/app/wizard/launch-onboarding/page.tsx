@@ -89,11 +89,11 @@ function ConfettiParticle({ delay, left, color, size, rotation, duration, isRoun
   );
 }
 
-export default function LaunchOnboardingPage() {
+export default function LaunchOnboardingStep() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const hasStatusCheckHandoff = searchParams.get("handoff") === "status-check";
+  const hasStatusCheckHandoff = searchParams?.get("handoff") === "status-check";
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -827,7 +827,7 @@ export default function LaunchOnboardingPage() {
               <strong>NTM</strong> (Named Tmux Manager) makes tmux easier. Instead of cryptic commands,
               you get simple ones:
             </p>
-            <ul className="mt-2 list-disc list-inside space-y-1">
+            <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-muted-foreground">
               <li><code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm new myproject</code> — Start a new session</li>
               <li><code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm attach myproject</code> — Resume a session</li>
               <li><code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">ntm list</code> — See all your sessions</li>

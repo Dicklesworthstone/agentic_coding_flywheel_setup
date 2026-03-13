@@ -762,21 +762,21 @@ interface LaunchScenario {
 
 const RISK_CONFIG: Record<RiskLevel, { color: string; bgColor: string; borderColor: string; glowColor: string; gaugePercent: number }> = {
   CRITICAL: {
-    color: "text-red-400",
+    color: "text-red-500",
     bgColor: "bg-red-500/10",
     borderColor: "border-red-500/30",
     glowColor: "shadow-red-500/30",
     gaugePercent: 95,
   },
   DANGEROUS: {
-    color: "text-orange-400",
+    color: "text-orange-500",
     bgColor: "bg-orange-500/10",
     borderColor: "border-orange-500/30",
     glowColor: "shadow-orange-500/30",
     gaugePercent: 70,
   },
   CAUTION: {
-    color: "text-yellow-400",
+    color: "text-yellow-500",
     bgColor: "bg-yellow-500/10",
     borderColor: "border-yellow-500/30",
     glowColor: "shadow-yellow-500/30",
@@ -879,7 +879,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     ],
     terminalOutput: [
       "$ slb request --cmd 'git push --force origin main'",
-      "SLB: Risk level DANGEROUS detected (force push)",
+      "SLB: Risk level DANGEROUS detected",
       "SLB: WARNING: Protected branch 'main' targeted",
       "SLB: Awaiting peer review from claude-cc-3...",
       "SLB: Review DENIED",
@@ -914,7 +914,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     ],
     terminalOutput: [
       "$ slb request --cmd 'terraform destroy -auto-approve -target=module.staging'",
-      "SLB: Risk level CRITICAL detected (terraform destroy)",
+      "SLB: Risk level CRITICAL detected",
       "SLB: Pre-flight: 7 resources targeted for destruction",
       "SLB: Awaiting peer review from claude-cc-3...",
       "SLB: Review APPROVED",
@@ -950,7 +950,7 @@ const LAUNCH_SCENARIOS: LaunchScenario[] = [
     ],
     terminalOutput: [
       "$ slb request --cmd 'vault write -f sys/rotate && vault write auth/token/tidy'",
-      "SLB: Risk level DANGEROUS detected (secret management)",
+      "SLB: Risk level DANGEROUS detected",
       "SLB: Pre-flight: vault status: sealed=false",
       "SLB: Awaiting peer review from claude-cc-1...",
       "SLB: Review APPROVED",
@@ -1007,28 +1007,24 @@ function InteractiveBuildTimeline() {
   const [keyBRotation, setKeyBRotation] = useState(0);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const auditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
+  const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const scenario = LAUNCH_SCENARIOS[selectedScenario];
-  const riskConfig = RISK_CONFIG[scenario.risk];
 
   // Cleanup timers
   useEffect(() => {
+    const pRef = phaseTimerRef;
+    const aRef = auditTimerRef;
+    const sRef = simTimersRef;
     return () => {
-      if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
-      if (auditTimerRef.current) clearTimeout(auditTimerRef.current);
-      for (const t of simTimersRef.current) clearTimeout(t);
+      if (pRef.current) clearTimeout(pRef.current);
+      if (aRef.current) clearTimeout(aRef.current);
+      for (const t of sRef.current) clearTimeout(t);
     };
   }, []);
 
   // Audit trail auto-advance
   useEffect(() => {
-    if (phase === "idle") {
-      setTimeout(() => {
-        setAuditIndex(0);
-        setTerminalIndex(0);
-      }, 0);
-      return;
-    }
+    if (phase === "idle" || phase === "initiating") return;
     if (auditIndex < scenario.auditEntries.length) {
       auditTimerRef.current = setTimeout(() => {
         setAuditIndex((prev) => prev + 1);
@@ -1072,13 +1068,13 @@ function InteractiveBuildTimeline() {
     setKeyBRotation(0);
   }, []);
 
-  const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
   const startSimulation = useCallback(() => {
     resetSimulation();
     // Clear previous simulation timers
-    for (const t of simTimersRef.current) clearTimeout(t);
-    simTimersRef.current = [];
+    while (simTimersRef.current.length > 0) {
+      const t = simTimersRef.current.pop();
+      if (t) clearTimeout(t);
+    }
 
     // Use setTimeout to avoid synchronous setState in sequence
     const t0 = setTimeout(() => {
@@ -1115,7 +1111,7 @@ function InteractiveBuildTimeline() {
       }
     }, 100);
     simTimersRef.current.push(t2);
-  }, [resetSimulation, scenario.outcome, scenario.id]);
+  }, [resetSimulation, scenario]);
 
   const handleScenarioChange = useCallback(
     (index: number) => {
@@ -1126,6 +1122,7 @@ function InteractiveBuildTimeline() {
   );
 
   const phaseLabel = getPhaseLabel(phase);
+  const riskConfig = RISK_CONFIG[scenario.risk];
 
   return (
     <motion.div

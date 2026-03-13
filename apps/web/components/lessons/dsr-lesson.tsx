@@ -140,7 +140,7 @@ dsr release`} />
 // Types & Constants
 // ---------------------------------------------------------------------------
 
-type PipelinePhase = 'idle' | 'building' | 'verifying' | 'signing' | 'uploading' | 'publishing' | 'done';
+type PipelinePhase = 'idle' | 'building' | 'verifying' | 'signing' | 'checksums' | 'uploading' | 'publishing' | 'done';
 
 interface ToolScenario {
   id: string;
@@ -267,17 +267,20 @@ function InteractiveReleasePipeline() {
 
   // Cleanup on unmount
   useEffect(() => {
+    const timers = timersRef.current;
+    const intervals = intervalsRef.current;
+
     return () => {
-      timersRef.current.forEach(clearTimeout);
-      intervalsRef.current.forEach(clearInterval);
+      timers.forEach(clearTimeout);
+      intervals.forEach(clearInterval);
     };
   }, []);
 
   const clearAllTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout);
     intervalsRef.current.forEach(clearInterval);
-    timersRef.current = [];
-    intervalsRef.current = [];
+    timersRef.current.length = 0;
+    intervalsRef.current.length = 0;
   }, []);
 
   // Auto-scroll terminal
@@ -362,73 +365,62 @@ function InteractiveReleasePipeline() {
                 next[0] = 100;
                 return next;
               });
-              // Move to verify phase
-              const tVerify = setTimeout(() => {
-                setPhase('verifying');
+              
+              const t1 = setTimeout(() => {
+                setPhase('signing');
+                addTerminalLine(`[sign] Generating Ed25519 signatures...`, 'command');
                 addTerminalLine('', 'output');
-                addTerminalLine('[verify] Running checksum verification...', 'info');
-                setChecksumRevealed(true);
 
-                // Animate verify progress
-                animateStageProgress(1, 1200, () => {
-                  addTerminalLine('[verify] All checksums match', 'success');
-
-                  // Sign phase
-                  const tSign = setTimeout(() => {
-                    setPhase('signing');
+                // Animate signing progress
+                animateStageProgress(1, 1000, () => {
+                  addTerminalLine('[sign] Artifacts signed successfully', 'success');
+                  const t2 = setTimeout(() => {
+                    setPhase('checksums');
+                    addTerminalLine(`[checksum] Calculating SHA256 hashes...`, 'command');
                     addTerminalLine('', 'output');
-                    addTerminalLine('[sign] Signing artifacts with GPG key...', 'info');
 
-                    animateStageProgress(2, 1000, () => {
-                      addTerminalLine('[sign] Artifacts signed successfully', 'success');
-
-                      // Upload phase
-                      const tUpload = setTimeout(() => {
+                    animateStageProgress(2, 600, () => {
+                      setChecksumRevealed(true);
+                      addTerminalLine('[checksum] checksums.yaml updated', 'success');
+                      const t3 = setTimeout(() => {
                         setPhase('uploading');
+                        addTerminalLine(`[upload] Uploading to GitHub release...`, 'command');
                         addTerminalLine('', 'output');
-                        addTerminalLine('[upload] Uploading to GitHub release...', 'info');
 
-                        animateStageProgress(3, 1400, () => {
-                          addTerminalLine('[upload] All artifacts uploaded', 'success');
+                        // Upload phase
+                        const t4 = setTimeout(() => {
+                          setPhase('publishing');
+                          addTerminalLine(`[release] Uploading to GitHub Releases...`, 'command');
+                          addTerminalLine('', 'output');
 
                           // Publish phase
-                          const tPublish = setTimeout(() => {
-                            setPhase('publishing');
-                            addTerminalLine('', 'output');
+                          const t5 = setTimeout(() => {
+                            setPhase('done');
                             addTerminalLine(
-                              isDraft
-                                ? '[publish] Creating draft release...'
-                                : '[publish] Publishing final release...',
+                              `[publish] ${scenario.toolName} ${scenario.version} ${isDraft ? 'draft' : 'release'} created!`,
+                              'success',
+                            );
+                            addTerminalLine(
+                              `[dsr] https://github.com/acfs/${scenario.toolName}/releases/tag/${scenario.version}`,
                               'info',
                             );
-
-                            animateStageProgress(4, 800, () => {
-                              addTerminalLine(
-                                `[publish] ${scenario.toolName} ${scenario.version} ${isDraft ? 'draft' : 'release'} created!`,
-                                'success',
-                              );
-                              addTerminalLine(
-                                `[dsr] https://github.com/acfs/${scenario.toolName}/releases/tag/${scenario.version}`,
-                                'info',
-                              );
-                              setPhase('done');
-                              setShowConfetti(true);
-                              const tConfettiEnd = setTimeout(() => {
-                                setShowConfetti(false);
-                              }, 3000);
-                              timersRef.current.push(tConfettiEnd);
-                            });
-                          }, 300);
-                          timersRef.current.push(tPublish);
-                        });
-                      }, 300);
-                      timersRef.current.push(tUpload);
+                            setShowConfetti(true);
+                            const tConfettiEnd = setTimeout(() => {
+                              setShowConfetti(false);
+                            }, 3000);
+                            timersRef.current.push(tConfettiEnd);
+                          }, 400);
+                          timersRef.current.push(t5);
+                        }, 400);
+                        timersRef.current.push(t4);
+                      }, 400);
+                      timersRef.current.push(t3);
                     });
-                  }, 300);
-                  timersRef.current.push(tSign);
+                  }, 400);
+                  timersRef.current.push(t2);
                 });
               }, 400);
-              timersRef.current.push(tVerify);
+              timersRef.current.push(t1);
             }
           }
         }, stepDuration);
@@ -791,9 +783,10 @@ function ArtifactFlowDiagram({
     building: 0,
     verifying: 1,
     signing: 2,
+    checksums: 2,
     uploading: 3,
     publishing: 4,
-    done: 5,
+    done: 4,
   };
   const activeStageIdx = phaseToStageIndex[phase];
 
@@ -962,6 +955,7 @@ function ArtifactFlowDiagram({
           {phase === 'idle' && 'Ready to release'}
           {phase === 'building' && 'Building artifacts...'}
           {phase === 'verifying' && 'Verifying checksums...'}
+          {phase === 'checksums' && 'Calculating checksums...'}
           {phase === 'signing' && 'Signing with GPG...'}
           {phase === 'uploading' && 'Uploading to GitHub...'}
           {phase === 'publishing' && 'Creating release...'}
@@ -1007,35 +1001,33 @@ function PlatformBuildGrid({
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ ...SPRING, delay: idx * 0.05 }}
-              className="space-y-1"
+              className="group"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TargetIcon className={`h-3 w-3 ${isComplete ? 'text-emerald-400' : isBuilding ? 'text-blue-400' : 'text-white/30'}`} />
-                  <span className="text-[10px] font-mono text-white/60">{target.label}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-mono text-white/30">
-                    {isComplete ? `${target.sizeKb}KB` : isBuilding ? `${Math.round(pct)}%` : '--'}
-                  </span>
-                  {isComplete && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={SPRING}
-                    >
-                      <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                    </motion.div>
-                  )}
-                  {isBuilding && (
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    >
-                      <Loader2 className="h-3 w-3 text-blue-400" />
-                    </motion.div>
-                  )}
-                </div>
+              <div className="flex items-center gap-2">
+                <TargetIcon className={`h-3 w-3 ${isComplete ? 'text-emerald-400' : isBuilding ? 'text-blue-400' : 'text-white/30'}`} />
+                <span className="text-[10px] font-mono text-white/60">{target.label}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-white/30">
+                  {isComplete ? `${target.sizeKb}KB` : isBuilding ? `${Math.round(pct)}%` : '--'}
+                </span>
+                {isComplete && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={SPRING}
+                  >
+                    <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                  </motion.div>
+                )}
+                {isBuilding && (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  >
+                    <Loader2 className="h-3 w-3 text-blue-400" />
+                  </motion.div>
+                )}
               </div>
 
               {/* Progress bar */}

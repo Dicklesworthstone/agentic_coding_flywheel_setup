@@ -10,12 +10,11 @@ import { TOTAL_STEPS } from './wizardSteps';
 // Types for GA4 events
 declare global {
   interface Window {
-    gtag: (
+    gtag?: (
       command: 'js' | 'config' | 'event' | 'set' | 'consent',
       targetId: string | Date,
       config?: Record<string, unknown>
     ) => void;
-    dataLayer: unknown[];
   }
 }
 
@@ -164,25 +163,26 @@ export const sendServerEvent = async (
  */
 export const sendEvent = (
   eventName: string,
-  parameters?: Record<string, unknown>
+  parameters: Record<string, unknown> = {}
 ): void => {
   if (!isAnalyticsEnabled()) return;
 
-  window.gtag('event', eventName, {
+  window.gtag?.('event', eventName, {
     ...parameters,
     timestamp: new Date().toISOString(),
   });
 };
 
 /**
- * Set user properties for segmentation
+ * Sets persistent user properties in GA4.
+ * Useful for user state that doesn't change often (e.g. user tier, preferences).
  */
-export const setUserProperties = (
-  properties: Record<string, string | number | boolean>
-): void => {
+export const setUserProperties = (properties: Record<string, string | number | boolean>) => {
   if (!isAnalyticsEnabled()) return;
 
-  window.gtag('set', 'user_properties', properties);
+  if (window.gtag) {
+    window.gtag('set', 'user_properties', properties);
+  }
 };
 
 // ============================================================

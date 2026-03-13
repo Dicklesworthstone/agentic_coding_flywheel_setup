@@ -19,6 +19,12 @@ interface AnalyticsProviderProps {
   children: ReactNode;
 }
 
+type DataLayerEntry = Record<string, unknown> | readonly unknown[];
+type AnalyticsWindow = Window & {
+  dataLayer?: DataLayerEntry[];
+  gtag?: NonNullable<Window['gtag']>;
+};
+
 /**
  * Inner component that uses useSearchParams - isolated in its own Suspense boundary
  * to prevent SSR bailout for the entire app
@@ -26,41 +32,57 @@ interface AnalyticsProviderProps {
 function AnalyticsTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const pagePath =
+    pathname ?? (typeof window !== 'undefined' ? window.location.pathname : null);
+  const searchQuery =
+    searchParams?.toString() ??
+    (typeof window !== 'undefined' ? window.location.search.slice(1) : '');
   const gaId = GA_MEASUREMENT_ID?.trim();
   const scrollDepthsReached = useRef<Set<number>>(new Set());
   const pageStartTime = useRef<number>(0);
   const timeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasInitializedGa = useRef<boolean>(false);
 
-  // Initialize GA stub early (no inline script injection)
+  // Initialize GA state once
   useEffect(() => {
     if (!gaId) return;
 
-    window.dataLayer = window.dataLayer || [];
-    if (!window.gtag) {
-      window.gtag = ((...args: unknown[]) => {
-        window.dataLayer.push(args);
-      }) as unknown as Window['gtag'];
+    const analyticsWindow = window as AnalyticsWindow;
+    const dataLayer = analyticsWindow.dataLayer ?? [];
+    analyticsWindow.dataLayer = dataLayer;
+
+    const gtag: NonNullable<Window['gtag']> = (command, targetId, config) => {
+      if (typeof config === 'undefined') {
+        dataLayer.push([command, targetId]);
+        return;
+      }
+
+      dataLayer.push([command, targetId, config]);
+    };
+
+    if (!analyticsWindow.gtag) {
+      analyticsWindow.gtag = gtag;
     }
 
-    if (!hasInitializedGa.current) {
-      window.gtag('js', new Date());
+    if (!hasInitializedGa.current && analyticsWindow.gtag) {
+      analyticsWindow.gtag('js', new Date());
       hasInitializedGa.current = true;
     }
   }, [gaId]);
 
   // Track page views on route change
   useEffect(() => {
-    if (!gaId) return;
+    if (!gaId || pagePath === null) return;
 
-    const url = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '');
+    const url = searchQuery ? `${pagePath}?${searchQuery}` : pagePath;
+    const analyticsWindow = window as AnalyticsWindow;
 
     // Reset tracking for new page
     scrollDepthsReached.current.clear();
     pageStartTime.current = Date.now();
 
     // Track pageview
-    window.gtag?.('config', gaId, {
+    analyticsWindow.gtag?.('config', gaId, {
       page_path: url,
       page_title: document.title,
       cookie_flags: 'SameSite=None;Secure',
@@ -86,7 +108,7 @@ function AnalyticsTracker() {
     return () => {
       window.removeEventListener('load', trackPagePerformance);
     };
-  }, [pathname, searchParams, gaId]);
+  }, [pagePath, searchQuery, gaId]);
 
   // Initialize session tracking on mount
   useEffect(() => {
@@ -121,7 +143,7 @@ function AnalyticsTracker() {
 
   // Scroll depth tracking
   const handleScroll = useCallback(() => {
-    if (!gaId) return;
+    if (!gaId || pagePath === null) return;
 
     const scrollTop = window.scrollY;
     const docHeight = document.documentElement.scrollHeight - window.innerHeight;
@@ -132,10 +154,10 @@ function AnalyticsTracker() {
     for (const milestone of milestones) {
       if (scrollPercent >= milestone && !scrollDepthsReached.current.has(milestone)) {
         scrollDepthsReached.current.add(milestone);
-        trackScrollDepth(milestone, pathname);
+        trackScrollDepth(milestone, pagePath);
       }
     }
-  }, [pathname, gaId]);
+  }, [pagePath, gaId]);
 
   // Set up scroll tracking
   useEffect(() => {
@@ -147,7 +169,7 @@ function AnalyticsTracker() {
 
   // Time on page tracking
   useEffect(() => {
-    if (!gaId) return;
+    if (!gaId || pagePath === null) return;
 
     const timeCheckpoints = [30, 60, 120, 300, 600]; // seconds
     let lastCheckpoint = 0;
@@ -155,9 +177,10 @@ function AnalyticsTracker() {
     timeIntervalRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - pageStartTime.current) / 1000);
 
+      // Check time checkpoints
       for (const checkpoint of timeCheckpoints) {
         if (elapsed >= checkpoint && lastCheckpoint < checkpoint) {
-          trackTimeOnPage(checkpoint, pathname);
+          trackTimeOnPage(checkpoint, pagePath);
           lastCheckpoint = checkpoint;
         }
       }
@@ -168,33 +191,33 @@ function AnalyticsTracker() {
         clearInterval(timeIntervalRef.current);
       }
     };
-  }, [pathname, gaId]);
+  }, [pagePath, gaId]);
 
   // Track visibility changes (tab switching)
   useEffect(() => {
-    if (!gaId) return;
+    if (!gaId || pagePath === null) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
         const timeSpent = Math.floor((Date.now() - pageStartTime.current) / 1000);
         sendEvent('page_hidden', {
-          page_path: pathname,
+          page_path: pagePath,
           time_spent_seconds: timeSpent,
         });
       } else {
         sendEvent('page_visible', {
-          page_path: pathname,
+          page_path: pagePath,
         });
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [pathname, gaId]);
+  }, [pagePath, gaId]);
 
   // Track page exit
   useEffect(() => {
-    if (!gaId) return;
+    if (!gaId || pagePath === null) return;
 
     const handleBeforeUnload = () => {
       const timeSpent = Math.floor((Date.now() - pageStartTime.current) / 1000);
@@ -202,7 +225,7 @@ function AnalyticsTracker() {
       // Use GA4 gtag with beacon transport (Measurement Protocol api_secret cannot
       // be safely used client-side).
       sendEvent('page_exit', {
-        page_path: pathname,
+        page_path: pagePath,
         time_spent_seconds: timeSpent,
         scroll_depths_reached: Array.from(scrollDepthsReached.current),
         transport_type: 'beacon',
@@ -211,7 +234,7 @@ function AnalyticsTracker() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [pathname, gaId]);
+  }, [pagePath, gaId]);
 
   return null; // This component only tracks, doesn't render anything
 }

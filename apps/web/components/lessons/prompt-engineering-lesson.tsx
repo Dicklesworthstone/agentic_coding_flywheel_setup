@@ -916,7 +916,8 @@ function InteractivePromptLab() {
   const [isAnimatingTerminal, setIsAnimatingTerminal] = useState(false);
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
-  const terminalIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const terminalIntervalRef = useRef<number | null>(null);
+  const pendingTimersRef = useRef<number[]>([]);
 
   const technique = TECHNIQUES.find((t) => t.id === activeTechnique)!;
 
@@ -952,9 +953,35 @@ function InteractivePromptLab() {
     setBuilderStep(0);
   }, []);
 
+  const clearPendingTerminalWork = useCallback(() => {
+    if (terminalIntervalRef.current !== null) {
+      clearInterval(terminalIntervalRef.current);
+      terminalIntervalRef.current = null;
+    }
+
+    for (const timer of pendingTimersRef.current) {
+      clearTimeout(timer);
+    }
+    pendingTimersRef.current.length = 0;
+  }, []);
+
+  const queuePendingTimer = useCallback((callback: () => void, delay = 0) => {
+    const timer = window.setTimeout(() => {
+      pendingTimersRef.current = pendingTimersRef.current.filter(
+        (pendingTimer) => pendingTimer !== timer,
+      );
+      callback();
+    }, delay);
+
+    pendingTimersRef.current.push(timer);
+    return timer;
+  }, []);
+
   // Terminal simulation
   const runTerminal = useCallback(() => {
     if (isAnimatingTerminal) return;
+
+    clearPendingTerminalWork();
     setIsAnimatingTerminal(true);
     setTerminalLines([]);
 
@@ -999,9 +1026,7 @@ function InteractivePromptLab() {
     });
 
     let i = 0;
-    // Clear any previous interval
-    if (terminalIntervalRef.current) clearInterval(terminalIntervalRef.current);
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       if (i < lines.length) {
         const line = lines[i];
         setTerminalLines((prev) => [...prev, line]);
@@ -1010,36 +1035,34 @@ function InteractivePromptLab() {
         clearInterval(interval);
         terminalIntervalRef.current = null;
         // Wrap in setTimeout to avoid setState during render
-        setTimeout(() => {
+        queuePendingTimer(() => {
           setIsAnimatingTerminal(false);
-        }, 0);
+        });
       }
     }, 300);
     terminalIntervalRef.current = interval;
   }, [
     isAnimatingTerminal,
-    enabledList,
-    avgEffectiveness,
-    technique.agentOutputAfter,
-    totalTokens,
+      enabledList,
+      avgEffectiveness,
+      technique.agentOutputAfter,
+      totalTokens,
+      clearPendingTerminalWork,
+      queuePendingTimer,
   ]);
 
   // Auto-scroll terminal
   useEffect(() => {
     if (terminalRef.current) {
       const el = terminalRef.current;
-      setTimeout(() => {
+      queuePendingTimer(() => {
         el.scrollTop = el.scrollHeight;
-      }, 0);
+      });
     }
-  }, [terminalLines]);
+  }, [terminalLines, queuePendingTimer]);
 
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (terminalIntervalRef.current) clearInterval(terminalIntervalRef.current);
-    };
-  }, []);
+  // Cleanup interval and timers on unmount
+  useEffect(() => clearPendingTerminalWork, [clearPendingTerminalWork]);
 
   const tabs = [
     { id: "builder" as const, label: "Prompt Builder", icon: <Layers className="h-3.5 w-3.5" /> },

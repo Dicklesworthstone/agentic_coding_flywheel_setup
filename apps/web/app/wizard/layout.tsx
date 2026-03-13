@@ -8,7 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Stepper, StepperMobile } from "@/components/stepper";
 import { HelpPanel } from "@/components/wizard/HelpPanel";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { WIZARD_STEPS, getStepBySlug } from "@/lib/wizardSteps";
+import {
+  WIZARD_STEPS,
+  getHighestContiguousCompletedStep,
+  getStepBySlug,
+  useCompletedSteps,
+} from "@/lib/wizardSteps";
 import { useStepValidation } from "@/lib/hooks/useStepValidation";
 import { withCurrentSearch } from "@/lib/utils";
 
@@ -19,7 +24,7 @@ export default function WizardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const currentSlug = pathname.split("/").pop() || "";
+  const currentSlug = pathname?.split("/").pop() || "";
   const isBonusRoute = currentSlug === "windows-terminal-setup";
 
   // Extract current step from URL path
@@ -30,6 +35,11 @@ export default function WizardLayout({
 
   const prevStep = WIZARD_STEPS.find((s) => s.id === currentStep - 1);
   const nextStep = WIZARD_STEPS.find((s) => s.id === currentStep + 1);
+  const [completedSteps] = useCompletedSteps();
+  const highestCompleted = useMemo(
+    () => getHighestContiguousCompletedStep(completedSteps),
+    [completedSteps],
+  );
 
   const { validate, validationErrors, clearErrors } = useStepValidation();
 
@@ -41,6 +51,8 @@ export default function WizardLayout({
     (stepId: number) => {
       const step = WIZARD_STEPS.find((s) => s.id === stepId);
       if (!step) return;
+      const isStepReachable = completedSteps.includes(stepId) || stepId <= highestCompleted + 1;
+      if (!isStepReachable) return;
 
       // Validate the current step before allowing forward navigation.
       // Backward navigation is always allowed (don't block exploration).
@@ -52,7 +64,7 @@ export default function WizardLayout({
       clearErrors();
       router.push(withCurrentSearch(`/wizard/${step.slug}`));
     },
-    [router, currentStep, validate, clearErrors]
+    [router, currentStep, validate, clearErrors, completedSteps, highestCompleted]
   );
 
   const progress = (currentStep / WIZARD_STEPS.length) * 100;

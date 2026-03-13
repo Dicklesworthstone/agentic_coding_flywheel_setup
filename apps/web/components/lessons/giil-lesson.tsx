@@ -84,7 +84,7 @@ export function GiilLesson() {
             <FeatureCard
               icon={<Share2 className="h-5 w-5" />}
               title="Album Support"
-              description="Download all photos with --all"
+              description="Download all images with --all"
               gradient="from-amber-500/20 to-orange-500/20"
             />
           </FeatureGrid>
@@ -742,6 +742,14 @@ function InteractiveCloudDownload() {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
+      }
+      if (pipelineTimerRef.current) {
+        clearInterval(pipelineTimerRef.current);
+        pipelineTimerRef.current = null;
+      }
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
   }, [phase, activeProvider]);

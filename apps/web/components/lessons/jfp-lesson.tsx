@@ -1081,7 +1081,7 @@ function AgentTerminalTab() {
   // Stop running when all lines shown
   useEffect(() => {
     if (isRunning && visibleLines >= TERMINAL_LINES.length) {
-      setIsRunning(false);
+      setTimeout(() => setIsRunning(false), 0);
     }
   }, [isRunning, visibleLines]);
 

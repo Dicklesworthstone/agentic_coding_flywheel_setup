@@ -2,7 +2,7 @@
 
 import Script from 'next/script';
 import { useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
@@ -26,6 +26,11 @@ const ENABLE_VERCEL_ANALYTICS = process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS 
 // Only enable Speed Insights when explicitly configured (requires Vercel Pro)
 const ENABLE_SPEED_INSIGHTS = process.env.NEXT_PUBLIC_ENABLE_SPEED_INSIGHTS === 'true';
 
+type DataLayerEntry = Record<string, unknown> | readonly unknown[];
+type TagManagerWindow = Window & {
+  dataLayer?: DataLayerEntry[];
+};
+
 /**
  * Third-party scripts manager (non-GA4)
  * Handles: GTM, Microsoft Clarity, Vercel Analytics
@@ -33,18 +38,34 @@ const ENABLE_SPEED_INSIGHTS = process.env.NEXT_PUBLIC_ENABLE_SPEED_INSIGHTS === 
  */
 export function ThirdPartyScripts() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const pagePath =
+    pathname ?? (typeof window !== 'undefined' ? window.location.pathname : null);
+  const searchQuery =
+    searchParams?.toString() ??
+    (typeof window !== 'undefined' ? window.location.search.slice(1) : '');
 
   // Track virtual pageviews for GTM on SPA navigation
   useEffect(() => {
-    if (!GTM_ID) return;
+    if (!GTM_ID || pagePath === null) return;
 
-    window.dataLayer = window.dataLayer || [];
-    window.dataLayer.push({
+    const tagManagerWindow = window as TagManagerWindow;
+    const dataLayer = tagManagerWindow.dataLayer ?? [];
+    tagManagerWindow.dataLayer = dataLayer;
+    dataLayer.push({
       event: 'virtual_pageview',
-      page_path: pathname,
-      page_title: document.title,
+      page_path: pagePath,
+      page_search: searchQuery || undefined,
     });
-  }, [pathname]);
+  }, [pagePath, searchQuery]);
+
+  const shouldRenderAnyScripts =
+    Boolean(GTM_ID) ||
+    Boolean(CLARITY_PROJECT_ID) ||
+    ENABLE_VERCEL_ANALYTICS ||
+    ENABLE_SPEED_INSIGHTS;
+
+  if (!shouldRenderAnyScripts) return null;
 
   return (
     <>

@@ -739,7 +739,8 @@ function InteractiveBugScanner() {
   const [selectedFinding, setSelectedFinding] = useState<number | null>(null);
   const [fixStep, setFixStep] = useState(0);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
-  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scanIntervalRef = useRef<number | null>(null);
+  const fixTimersRef = useRef<number[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
 
   const scenario = SCENARIOS[scenarioIdx];
@@ -751,20 +752,39 @@ function InteractiveBugScanner() {
     }
   }, [terminalLines]);
 
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-      for (const t of fixTimersRef.current) clearTimeout(t);
-    };
-  }, []);
-
   const addTerminalLine = useCallback((line: string) => {
     setTerminalLines((prev) => [...prev, line]);
   }, []);
 
+  const clearAsyncWork = useCallback(() => {
+    if (scanIntervalRef.current !== null) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    for (const timer of fixTimersRef.current) {
+      clearTimeout(timer);
+    }
+    fixTimersRef.current.length = 0;
+  }, []);
+
+  const queueUiTimer = useCallback((callback: () => void, delay = 0) => {
+    const timer = window.setTimeout(() => {
+      fixTimersRef.current = fixTimersRef.current.filter(
+        (pendingTimer) => pendingTimer !== timer,
+      );
+      callback();
+    }, delay);
+
+    fixTimersRef.current.push(timer);
+    return timer;
+  }, []);
+
+  // Cleanup timers on unmount
+  useEffect(() => clearAsyncWork, [clearAsyncWork]);
+
   const resetState = useCallback(() => {
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+    clearAsyncWork();
     setPhase("idle");
     setFileProgress([]);
     setCurrentFileIdx(0);
@@ -772,7 +792,7 @@ function InteractiveBugScanner() {
     setSelectedFinding(null);
     setFixStep(0);
     setTerminalLines([]);
-  }, []);
+  }, [clearAsyncWork]);
 
   const selectScenario = useCallback(
     (idx: number) => {
@@ -783,6 +803,8 @@ function InteractiveBugScanner() {
   );
 
   const startScan = useCallback(() => {
+    clearAsyncWork();
+
     const sc = SCENARIOS[scenarioIdx];
     setPhase("scanning");
     setFileProgress(sc.files.map(() => 0));
@@ -795,7 +817,7 @@ function InteractiveBugScanner() {
     let fileIdx = 0;
     let progress = 0;
 
-    scanIntervalRef.current = setInterval(() => {
+    scanIntervalRef.current = window.setInterval(() => {
       progress += 4;
       if (progress > 100) progress = 100;
 
@@ -813,28 +835,31 @@ function InteractiveBugScanner() {
             ? `  [!] ${fileName} - ${fileFindings.length} issue${fileFindings.length > 1 ? "s" : ""} found`
             : `  [ok] ${fileName} - clean`;
 
-        setTimeout(() => {
+        queueUiTimer(() => {
           addTerminalLine(scanLine);
-        }, 0);
+        });
 
         fileIdx++;
         progress = 0;
         setCurrentFileIdx(fileIdx);
 
         if (fileIdx >= sc.files.length) {
-          if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+          if (scanIntervalRef.current !== null) {
+            clearInterval(scanIntervalRef.current);
+            scanIntervalRef.current = null;
+          }
 
           const exitLine =
             sc.findings.length > 0
               ? `\nExit code: ${sc.exitCode} (${sc.findings.length} finding${sc.findings.length !== 1 ? "s" : ""})`
               : "\nExit code: 0 - All clear!";
 
-          setTimeout(() => {
+          queueUiTimer(() => {
             addTerminalLine(exitLine);
             setPhase(sc.findings.length > 0 ? "results" : "done");
             // Reveal findings one at a time
             sc.findings.forEach((_, i) => {
-              setTimeout(() => {
+              queueUiTimer(() => {
                 setVisibleFindings((prev) => [...prev, i]);
               }, (i + 1) * 300);
             });
@@ -842,7 +867,7 @@ function InteractiveBugScanner() {
         }
       }
     }, 35);
-  }, [scenarioIdx, addTerminalLine]);
+  }, [scenarioIdx, addTerminalLine, clearAsyncWork, queueUiTimer]);
 
   const inspectFinding = useCallback(
     (findingIdx: number) => {
@@ -854,12 +879,9 @@ function InteractiveBugScanner() {
     [phase]
   );
 
-  const fixTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
   const startFixWorkflow = useCallback(() => {
     // Clear any previous fix timers
-    for (const t of fixTimersRef.current) clearTimeout(t);
-    fixTimersRef.current = [];
+    clearAsyncWork();
 
     setPhase("fixing");
     setFixStep(0);
@@ -869,46 +891,40 @@ function InteractiveBugScanner() {
     let cumulativeDelay = 0;
     stepTimings.forEach((delay, i) => {
       cumulativeDelay += delay;
-      const t = setTimeout(() => {
+      queueUiTimer(() => {
         setFixStep(i + 1);
         if (i === 0) {
-          const t2 = setTimeout(() => {
+          queueUiTimer(() => {
             addTerminalLine("\n$ # Reading finding details...");
-          }, 0);
-          fixTimersRef.current.push(t2);
+          });
         }
         if (i === 1) {
-          const t2 = setTimeout(() => {
+          queueUiTimer(() => {
             addTerminalLine(
               `$ vim ${scenario.findings[0]?.file ?? "file.ts"}:${scenario.findings[0]?.line ?? 1}`
             );
-          }, 0);
-          fixTimersRef.current.push(t2);
+          });
         }
         if (i === 2) {
-          const t2 = setTimeout(() => {
+          queueUiTimer(() => {
             addTerminalLine("$ # Applying fix...");
-          }, 0);
-          fixTimersRef.current.push(t2);
+          });
         }
         if (i === 3) {
-          const t2 = setTimeout(() => {
+          queueUiTimer(() => {
             addTerminalLine(`$ ${scenario.command}`);
             addTerminalLine("  [ok] All files clean");
-          }, 0);
-          fixTimersRef.current.push(t2);
+          });
         }
         if (i === 4) {
-          const t2 = setTimeout(() => {
+          queueUiTimer(() => {
             addTerminalLine("\nExit code: 0 - All clear!");
             setPhase("done");
-          }, 0);
-          fixTimersRef.current.push(t2);
+          });
         }
       }, cumulativeDelay);
-      fixTimersRef.current.push(t);
     });
-  }, [scenario, addTerminalLine]);
+  }, [scenario, addTerminalLine, clearAsyncWork, queueUiTimer]);
 
   // --- Severity heatmap data ---
   const heatmapData = scenario.files.map((file) => {

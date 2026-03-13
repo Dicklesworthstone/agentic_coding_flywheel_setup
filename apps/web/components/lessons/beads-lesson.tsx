@@ -913,7 +913,7 @@ function InteractiveDependencyGraph() {
 
   const clearAutoPlayTimers = useCallback(() => {
     for (const t of autoPlayTimersRef.current) clearTimeout(t);
-    autoPlayTimersRef.current = [];
+    autoPlayTimersRef.current.length = 0;
     if (autoPlayRef.current) {
       clearTimeout(autoPlayRef.current);
       autoPlayRef.current = null;
@@ -1001,9 +1001,10 @@ function InteractiveDependencyGraph() {
       addTerminalLine("$ br sync");
       addTerminalLine("  Synced 9 issues to .beads/issues.jsonl");
       addTerminalLine("  Committed to git.");
-      setTimeout(() => {
+      const tEnd = setTimeout(() => {
         setIsAutoPlaying(false);
       }, 0);
+      autoPlayTimersRef.current.push(tEnd);
     }, 12500);
     autoPlayTimersRef.current.push(step5);
     autoPlayRef.current = step5;

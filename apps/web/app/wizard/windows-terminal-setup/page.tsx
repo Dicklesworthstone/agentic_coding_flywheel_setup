@@ -59,21 +59,41 @@ export default function WindowsTerminalSetupPage() {
     };
   }, []);
 
+  const buildFallbackHref = useCallback((path: string) => {
+    if (typeof window === "undefined") return path;
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete("from");
+
+    const search = params.toString();
+    return search ? `${path}?${search}` : path;
+  }, []);
+
   const handleBack = useCallback(() => {
-    const fallbackPath =
-      searchParams.get("from") === "launch-onboarding"
-        ? "/wizard/launch-onboarding"
-        : "/wizard/verify-key-connection";
-    if (
-      typeof window !== "undefined" &&
-      searchParams.has("from") &&
-      window.history.length > 1
-    ) {
+    const fromParam = searchParams?.get("from") ?? null;
+    const hasUsableHistory = typeof window !== "undefined" && window.history.length > 1;
+
+    let sameOriginReferrer = false;
+    if (typeof window !== "undefined" && document.referrer) {
+      try {
+        sameOriginReferrer = new URL(document.referrer).origin === window.location.origin;
+      } catch {
+        sameOriginReferrer = false;
+      }
+    }
+
+    // If they came from another page in our app, go back
+    if (fromParam !== null && hasUsableHistory && sameOriginReferrer) {
       router.back();
       return;
     }
-    router.push(withCurrentSearch(fallbackPath));
-  }, [router, searchParams]);
+
+    const fallbackPath =
+      fromParam === "launch-onboarding"
+        ? "/wizard/launch-onboarding"
+        : "/wizard/verify-key-connection";
+    router.push(buildFallbackHref(fallbackPath));
+  }, [buildFallbackHref, router, searchParams]);
 
   const displayIP = vpsIP || "YOUR_VPS_IP";
   const effectiveUsername = sshUsername.trim() || "ubuntu";
