@@ -808,6 +808,45 @@ test_onboard_cli_aliases_work_in_zero_lessons_mode() {
     cleanup_mock_env
 }
 
+test_onboard_repairs_malformed_progress_before_showing_lesson() {
+    setup_mock_env
+
+    local progress_file="$TEST_HOME/bad-progress.json"
+    printf '{not valid json\n' > "$progress_file"
+
+    local output=""
+    local exit_code=0
+    output=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" ACFS_LESSONS_DIR="$REPO_ROOT/acfs/onboard/lessons" ACFS_PROGRESS_FILE="$progress_file" \
+        bash "$ONBOARD_SH" 0 2>&1) || exit_code=$?
+
+    if [[ "$exit_code" -eq 0 ]] && [[ "$output" == *"Welcome to ACFS"* ]]; then
+        harness_pass "onboard repairs malformed progress before lesson launch"
+    else
+        harness_fail "onboard repairs malformed progress before lesson launch" "exit=$exit_code output=$output"
+    fi
+
+    cleanup_mock_env
+}
+
+test_onboard_accepts_sparse_lesson_numbers() {
+    setup_mock_env
+
+    local progress_file="$TEST_HOME/progress.json"
+
+    local output=""
+    local exit_code=0
+    output=$(HOME="$TEST_HOME" ACFS_HOME="$TEST_ACFS" ACFS_LESSONS_DIR="$REPO_ROOT/acfs/onboard/lessons" ACFS_PROGRESS_FILE="$progress_file" \
+        bash "$ONBOARD_SH" 33 2>&1) || exit_code=$?
+
+    if [[ "$exit_code" -eq 0 ]] && [[ "$output" == *"Lesson 33: Hybrid Search with FSFS"* ]]; then
+        harness_pass "onboard accepts sparse lesson numbers"
+    else
+        harness_fail "onboard accepts sparse lesson numbers" "exit=$exit_code output=$output"
+    fi
+
+    cleanup_mock_env
+}
+
 main() {
     harness_init "ACFS Changelog/Export/Status Tests"
 
@@ -853,6 +892,8 @@ main() {
     test_info_zero_lessons_hides_onboard_prompt_and_explains_state || true
     test_info_reads_skipped_tools_without_jq || true
     test_onboard_cli_aliases_work_in_zero_lessons_mode || true
+    test_onboard_repairs_malformed_progress_before_showing_lesson || true
+    test_onboard_accepts_sparse_lesson_numbers || true
 
     harness_section "Entrypoint Dispatch"
     test_doctor_entrypoint_dispatches_helper_commands || true

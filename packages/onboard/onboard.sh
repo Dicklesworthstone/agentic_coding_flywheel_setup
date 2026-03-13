@@ -7,7 +7,7 @@
 #
 # Usage:
 #   onboard                 # Launch interactive menu
-#   onboard N               # Jump to lesson N (1-based)
+#   onboard N               # Jump to lesson number N from the lesson filenames
 #   onboard status|list|--status|--list   # Show completion status
 #   onboard reset|--reset                  # Reset progress
 #   onboard help|--help                    # Show help
@@ -45,10 +45,47 @@ done
 # Extracts titles from the first "# Title" line in each file
 declare -a LESSON_TITLES=()
 declare -a LESSON_FILES=()
+declare -a LESSON_NUMBERS=()
+declare -gA LESSON_INDEX_BY_NUMBER=()
+
+extract_lesson_number() {
+    local basename=$1
+
+    if [[ "$basename" =~ ^([0-9]+)(_|$) ]]; then
+        printf '%d\n' "$((10#${BASH_REMATCH[1]}))"
+        return 0
+    fi
+
+    return 1
+}
+
+get_lesson_number() {
+    local idx=$1
+
+    if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx >= 0 && idx < ${#LESSON_NUMBERS[@]} )); then
+        printf '%s\n' "${LESSON_NUMBERS[$idx]}"
+        return 0
+    fi
+
+    return 1
+}
+
+get_lesson_index_by_number() {
+    local lesson_number=$1
+
+    if [[ -n "${LESSON_INDEX_BY_NUMBER[$lesson_number]+x}" ]]; then
+        printf '%s\n' "${LESSON_INDEX_BY_NUMBER[$lesson_number]}"
+        return 0
+    fi
+
+    return 1
+}
 
 discover_lessons() {
     LESSON_TITLES=()
     LESSON_FILES=()
+    LESSON_NUMBERS=()
+    LESSON_INDEX_BY_NUMBER=()
 
     if [[ ! -d "$LESSONS_DIR" ]]; then
         return
@@ -59,8 +96,18 @@ discover_lessons() {
     # Lesson files named 00_xxx, 01_xxx sort correctly with alphanumeric sort
     while IFS= read -r -d '' file; do
         local basename
+        local lesson_number
+        local lesson_index
         basename=$(basename "$file")
         LESSON_FILES+=("$basename")
+
+        lesson_number="$(extract_lesson_number "$basename" || true)"
+        if [[ -z "$lesson_number" ]]; then
+            lesson_number="$(( ${#LESSON_FILES[@]} ))"
+        fi
+        LESSON_NUMBERS+=("$lesson_number")
+        lesson_index=$(( ${#LESSON_FILES[@]} - 1 ))
+        LESSON_INDEX_BY_NUMBER["$lesson_number"]="$lesson_index"
 
         # Extract title from first "# " line
         local title
@@ -366,6 +413,63 @@ compact_progress_json() {
     tr -d '[:space:]' < "$PROGRESS_FILE" 2>/dev/null
 }
 
+progress_file_is_valid() {
+    [[ -f "$PROGRESS_FILE" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        jq -e '
+            (.completed? | type == "array") and
+            ((.current? | type == "number") or (.current? == null))
+        ' "$PROGRESS_FILE" >/dev/null 2>&1
+        return $?
+    fi
+
+    local compact
+    compact="$(compact_progress_json || true)"
+    [[ -n "$compact" ]] || return 1
+    [[ "$compact" == *'"completed":['* ]] || return 1
+    [[ "$compact" =~ \"current\":[0-9]+ ]] || return 1
+
+    return 0
+}
+
+write_default_progress_file() {
+    local started_at="$1"
+    local last_accessed="$2"
+    local progress_dir
+    local tmp
+
+    progress_dir="$(dirname "$PROGRESS_FILE")"
+    mkdir -p "$progress_dir" 2>/dev/null || true
+
+    tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
+        echo -e "${RED}Error: could not initialize progress (mktemp failed).${NC}" >&2
+        return 1
+    }
+
+    if cat > "$tmp" <<EOF
+{
+  "completed": [],
+  "current": 0,
+  "started_at": "$started_at",
+  "last_accessed": "$last_accessed"
+}
+EOF
+    then
+        mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
+            rm -f -- "$tmp" 2>/dev/null || true
+            echo -e "${RED}Error: could not initialize progress (mv failed).${NC}" >&2
+            return 1
+        }
+    else
+        rm -f -- "$tmp" 2>/dev/null || true
+        echo -e "${RED}Error: could not initialize progress.${NC}" >&2
+        return 1
+    fi
+
+    return 0
+}
+
 get_progress_started_at() {
     local compact
     local started_at
@@ -474,19 +578,39 @@ write_progress_without_jq() {
 # Initialize progress file if it doesn't exist
 init_progress() {
     local dir
+    local lock_fd
+    local now
     dir=$(dirname "$PROGRESS_FILE")
     mkdir -p "$dir"
 
-    if [[ ! -f "$PROGRESS_FILE" ]]; then
-        cat > "$PROGRESS_FILE" <<EOF
-{
-  "completed": [],
-  "current": 0,
-  "started_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-  "last_accessed": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-}
-EOF
+    exec {lock_fd}>"$PROGRESS_LOCK_FILE"
+    if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
+        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
+        exec {lock_fd}>&- 2>/dev/null || true
+        return 1
     fi
+
+    if ! progress_file_is_valid; then
+        if [[ -f "$PROGRESS_FILE" ]]; then
+            local backup
+            backup="${PROGRESS_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+            if mv "$PROGRESS_FILE" "$backup" 2>/dev/null; then
+                echo -e "${YELLOW}Warning: repaired malformed progress file (backup: $backup).${NC}" >&2
+            else
+                echo -e "${RED}Error: could not back up malformed progress file.${NC}" >&2
+                exec {lock_fd}>&- 2>/dev/null || true
+                return 1
+            fi
+        fi
+
+        now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+        if ! write_default_progress_file "$now" "$now"; then
+            exec {lock_fd}>&- 2>/dev/null || true
+            return 1
+        fi
+    fi
+
+    exec {lock_fd}>&- 2>/dev/null || true
 }
 
 # Get list of completed lessons
@@ -819,7 +943,7 @@ check_auth_status() {
             ;;
         codex)
             if ! command -v codex &>/dev/null; then
-                return 1
+                return 2
             fi
             # Codex stores auth in ~/.codex/auth.json (or $CODEX_HOME/auth.json).
             # File existence alone isn't enough; check for an access token field.
@@ -1104,7 +1228,7 @@ show_auth_flow() {
             read -rp "$(echo -e "${CYAN}Choose:${NC} ")" choice
 
             if [[ "$choice" =~ ^[0-9]+$ ]]; then
-                local idx=$((10#choice - 1))
+                local idx=$((10#$choice - 1))
                 if [[ $idx -ge 0 ]] && [[ $idx -lt ${#auth_menu_services[@]} ]]; then
                     show_auth_service "${auth_menu_services[$idx]}"
                     # Loop continues to refresh
@@ -1291,7 +1415,10 @@ format_lesson() {
         status="${DIM}○${NC}"
     fi
 
-    printf "%s [%d] %s" "$status" "$((idx + 1))" "$title"
+    local lesson_number
+    lesson_number="$(get_lesson_number "$idx" || printf '%d' "$((idx + 1))")"
+
+    printf "%s [%s] %s" "$status" "$lesson_number" "$title"
 }
 
 # Show lesson menu with gum
@@ -1310,7 +1437,9 @@ show_menu_gum() {
         else
             status="○"
         fi
-        items+=("${status} [$((i + 1))] ${LESSON_TITLES[$i]}")
+        local lesson_number
+        lesson_number="$(get_lesson_number "$i" || printf '%d' "$((i + 1))")"
+        items+=("${status} [${lesson_number}] ${LESSON_TITLES[$i]}")
     done
     if (( NUM_LESSONS > 0 )); then
             items+=("$MENU_SEPARATOR")
@@ -1380,11 +1509,11 @@ show_menu_basic() {
 
     local prompt_opts="a, r, s, q"
     if (( NUM_LESSONS > 0 )); then
-        prompt_opts="1-${NUM_LESSONS}, a, r, s, q"
+        prompt_opts="lesson number, a, r, s, q"
     fi
     if all_lessons_complete; then
         if (( NUM_LESSONS > 0 )); then
-            prompt_opts="1-${NUM_LESSONS}, a, r, s, t, q"
+            prompt_opts="lesson number, a, r, s, t, q"
         else
             prompt_opts="a, r, s, t, q"
         fi
@@ -1393,8 +1522,8 @@ show_menu_basic() {
 
     # Validate numeric choices against actual lesson count
     # Use 10# to force decimal interpretation (avoids octal error for '08', '09')
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $((10#choice)) -ge 1 ]] && [[ $((10#choice)) -le "$NUM_LESSONS" ]]; then
-        echo "$choice"
+    if [[ "$choice" =~ ^[0-9]+$ ]] && get_lesson_index_by_number "$((10#$choice))" >/dev/null 2>&1; then
+        echo "$((10#$choice))"
     else
         case "$choice" in
             a|A) echo "a" ;;
@@ -1439,6 +1568,8 @@ show_celebration() {
     local summaries="${LESSON_SUMMARIES[$idx]:-}"
     local stats completed_count total
     local next_idx=""
+    local lesson_number=""
+    lesson_number="$(get_lesson_number "$idx" || printf '%d' "$((idx + 1))")"
     stats=$(calc_progress_stats)
     IFS='|' read -r completed_count total _ _ <<< "$stats"
     if [[ -z "$summaries" ]]; then
@@ -1450,7 +1581,9 @@ show_celebration() {
                 next_idx=$(get_next_incomplete)
             fi
             if [[ "$next_idx" =~ ^[0-9]+$ ]] && (( next_idx >= 0 && next_idx < NUM_LESSONS )); then
-                summaries="Key concepts from ${title}|Next recommended lesson: onboard $((next_idx + 1))"
+                local next_lesson_number
+                next_lesson_number="$(get_lesson_number "$next_idx" || printf '%d' "$((next_idx + 1))")"
+                summaries="Key concepts from ${title}|Next recommended lesson: onboard ${next_lesson_number}"
             else
                 summaries="Key concepts from ${title}|Continue anytime with onboard status"
             fi
@@ -1477,7 +1610,7 @@ show_celebration() {
             --align center \
             "$(gum style --foreground "$ACFS_SUCCESS" --bold '🎉 Lesson Complete!')" \
             "" \
-            "$(gum style --foreground "$ACFS_PINK" --bold "Lesson $((idx + 1)): $title")" \
+            "$(gum style --foreground "$ACFS_PINK" --bold "Lesson ${lesson_number}: $title")" \
             "" \
             "$(gum style --foreground "$ACFS_MUTED" 'You learned:')" \
             "$summary_text" \
@@ -1491,7 +1624,7 @@ show_celebration() {
         echo -e "${GREEN}${BOLD}║            🎉 Lesson Complete!                     ║${NC}"
         echo -e "${GREEN}${BOLD}╚═══════════════════════════════════════════════════╝${NC}"
         echo ""
-        echo -e "${MAGENTA}${BOLD}Lesson $((idx + 1)): $title${NC}"
+        echo -e "${MAGENTA}${BOLD}Lesson ${lesson_number}: $title${NC}"
         echo ""
         echo -e "${DIM}You learned:${NC}"
 
@@ -1573,6 +1706,8 @@ show_completion_certificate() {
 show_lesson() {
     local idx=$1
     local file="${LESSONS_DIR}/${LESSON_FILES[$idx]}"
+    local lesson_number=""
+    lesson_number="$(get_lesson_number "$idx" || printf '%d' "$((idx + 1))")"
 
     if [[ ! -f "$file" ]]; then
         if has_gum; then
@@ -1605,11 +1740,11 @@ show_lesson() {
             --border-foreground "$ACFS_PRIMARY" \
             --padding "1 2" \
             --margin "0 0 1 0" \
-            "$(gum style --foreground "$ACFS_ACCENT" "Lesson $((idx + 1)) of $NUM_LESSONS")
+            "$(gum style --foreground "$ACFS_ACCENT" "Lesson ${lesson_number} ($((idx + 1))/$NUM_LESSONS)")
 $dots
 $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
     else
-        echo -e "${BOLD}${MAGENTA}Lesson $((idx + 1)): ${LESSON_TITLES[$idx]}${NC}"
+        echo -e "${BOLD}${MAGENTA}Lesson ${lesson_number}: ${LESSON_TITLES[$idx]}${NC}"
         echo -e "${DIM}─────────────────────────────────────────${NC}"
         echo ""
     fi
@@ -1811,7 +1946,9 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
                 status_icon="○"
                 status_color="$ACFS_MUTED"
             fi
-            echo "  $(gum style --foreground "$status_color" "$status_icon") $(gum style --foreground "$ACFS_TEAL" "[$((i + 1))]") ${LESSON_TITLES[$i]}"
+            local lesson_number
+            lesson_number="$(get_lesson_number "$i" || printf '%d' "$((i + 1))")"
+            echo "  $(gum style --foreground "$status_color" "$status_icon") $(gum style --foreground "$ACFS_TEAL" "[${lesson_number}]") ${LESSON_TITLES[$i]}"
         done
 
         echo ""
@@ -1824,7 +1961,9 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
         else
             local next_idx
             next_idx=$(get_next_incomplete)
-            echo "$(gum style --foreground "$ACFS_MUTED" "Next up:") $(gum style --foreground "$ACFS_PRIMARY" "Lesson $((next_idx + 1)) - ${LESSON_TITLES[$next_idx]}")"
+            local next_lesson_number
+            next_lesson_number="$(get_lesson_number "$next_idx" || printf '%d' "$((next_idx + 1))")"
+            echo "$(gum style --foreground "$ACFS_MUTED" "Next up:") $(gum style --foreground "$ACFS_PRIMARY" "Lesson ${next_lesson_number} - ${LESSON_TITLES[$next_idx]}")"
         fi
 
         echo ""
@@ -1858,7 +1997,9 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
         else
             local next_idx
             next_idx=$(get_next_incomplete)
-            echo -e "${CYAN}Next up: Lesson $((next_idx + 1)) - ${LESSON_TITLES[$next_idx]}${NC}"
+            local next_lesson_number
+            next_lesson_number="$(get_lesson_number "$next_idx" || printf '%d' "$((next_idx + 1))")"
+            echo -e "${CYAN}Next up: Lesson ${next_lesson_number} - ${LESSON_TITLES[$next_idx]}${NC}"
         fi
 
         echo ""
@@ -1874,7 +2015,7 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
 
 main_menu() {
     if ! has_interactive_tty; then
-        echo "Interactive menu requires a TTY. Run 'onboard N', 'onboard status', or 'onboard --help'." >&2
+        echo "Interactive menu requires a TTY. Run 'onboard <lesson-number>', 'onboard status', or 'onboard --help'." >&2
         return 1
     fi
 
@@ -1891,8 +2032,9 @@ main_menu() {
         if [[ "$choice" =~ ^[0-9]+$ ]]; then
             # Support dynamically discovered lesson counts instead of assuming
             # the menu will never exceed two digits.
-            if [[ "$choice" -ge 1 ]] && [[ "$choice" -le "$NUM_LESSONS" ]]; then
-                local idx=$((10#choice - 1))
+            local idx=""
+            idx="$(get_lesson_index_by_number "$((10#$choice))" || true)"
+            if [[ -n "$idx" ]]; then
                 if ! set_current "$idx"; then
                     continue
                 fi
@@ -1942,8 +2084,8 @@ main_menu() {
 arg="${1:-}"
 
 if [[ "$arg" =~ ^[0-9]+$ ]]; then
-    idx=$((10#arg - 1))
-    if [[ $idx -ge 0 && $idx -lt NUM_LESSONS ]]; then
+    idx="$(get_lesson_index_by_number "$((10#$arg))" || true)"
+    if [[ -n "$idx" ]]; then
         init_progress
         if ! set_current "$idx"; then
             exit 1
@@ -1955,7 +2097,7 @@ if [[ "$arg" =~ ^[0-9]+$ ]]; then
     if (( NUM_LESSONS == 0 )); then
         echo "No lessons are available in $LESSONS_DIR"
     else
-        echo "Lesson $arg out of range (1-$NUM_LESSONS)"
+        echo "Lesson $arg was not found. Run 'onboard status' to see the available lesson numbers."
     fi
     exit 1
 fi
@@ -1999,7 +2141,7 @@ ACFS Onboarding Tutorial
 
 Usage:
   onboard           Launch interactive menu
-  onboard N         Jump to lesson N (1-based)
+  onboard N         Jump to lesson number N from the lesson filenames
   onboard status    Show completion status
   onboard list      Alias for 'status'
   onboard --status  Alias for 'status'
@@ -2016,7 +2158,7 @@ $(if (( NUM_LESSONS == 0 )); then
     printf '  No lessons discovered in %s\n' "$LESSONS_DIR"
 else
     for (( i = 0; i < NUM_LESSONS; i++ )); do
-        printf '  %d - %s\n' "$((i + 1))" "${LESSON_TITLES[$i]}"
+        printf '  %s - %s\n' "$(get_lesson_number "$i" || printf '%d' "$((i + 1))")" "${LESSON_TITLES[$i]}"
     done
 fi)
 
