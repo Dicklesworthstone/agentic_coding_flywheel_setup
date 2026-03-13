@@ -27,6 +27,7 @@ ACFS_RESUME_DIR="/var/lib/acfs"
 ACFS_LIB_DIR="${ACFS_RESUME_DIR}/lib"
 ACFS_LOG="/var/log/acfs/upgrade_resume.log"
 ACFS_STATE_FILE="${ACFS_RESUME_DIR}/state.json"
+ACFS_CONTINUE_CONTEXT_FILE="${ACFS_RESUME_DIR}/continue_context.env"
 # Default target for ACFS. May be overridden by the state file (target_version)
 # or by exporting UBUNTU_TARGET_VERSION before executing this script.
 UBUNTU_TARGET_VERSION="${UBUNTU_TARGET_VERSION:-25.10}"
@@ -113,6 +114,14 @@ log_error() {
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[$timestamp] ERROR: $*" | tee -a "$ACFS_LOG" >&2 || true
+}
+
+load_continue_context() {
+    [[ -f "$ACFS_CONTINUE_CONTEXT_FILE" ]] || return 1
+
+    # shellcheck source=/dev/null
+    source "$ACFS_CONTINUE_CONTEXT_FILE"
+    return 0
 }
 
 # Clean up the resume infrastructure on success.
@@ -246,6 +255,7 @@ mark_state_complete() {
 # nohup+background is unreliable when parent service exits
 launch_continue_script() {
     local script="${ACFS_RESUME_DIR}/continue_install.sh"
+    load_continue_context || true
 
     if [[ ! -f "$script" ]]; then
         log "No continue_install.sh found - manual installation needed"
@@ -253,16 +263,69 @@ launch_continue_script() {
         if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
             curl_cmd="curl --proto '=https' --proto-redir '=https' -fsSL"
         fi
-        log "Run: ${curl_cmd} https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --yes --mode vibe"
+
+        local install_url="${CONTINUE_INSTALL_URL:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh}"
+        local continue_ref="${CONTINUE_ACFS_REF:-main}"
+        local continue_home="${CONTINUE_HOME:-/root}"
+        local -a continue_args=()
+        local rendered_args=""
+        local arg=""
+        local env_prefix=""
+
+        if declare -p CONTINUE_INSTALL_ARGS >/dev/null 2>&1; then
+            continue_args=("${CONTINUE_INSTALL_ARGS[@]}")
+        else
+            continue_args=(--yes --mode vibe)
+        fi
+
+        for arg in "${continue_args[@]}"; do
+            rendered_args+=" $(printf '%q' "$arg")"
+        done
+        rendered_args="${rendered_args# }"
+
+        [[ -n "${CONTINUE_TARGET_USER:-}" ]] && env_prefix+="TARGET_USER=$(printf '%q' "$CONTINUE_TARGET_USER") "
+        [[ -n "${CONTINUE_TARGET_HOME:-}" ]] && env_prefix+="TARGET_HOME=$(printf '%q' "$CONTINUE_TARGET_HOME") "
+        [[ -n "${CONTINUE_ACFS_HOME:-}" ]] && env_prefix+="ACFS_HOME=$(printf '%q' "$CONTINUE_ACFS_HOME") "
+        [[ -n "${CONTINUE_ACFS_STATE_FILE:-}" ]] && env_prefix+="ACFS_STATE_FILE=$(printf '%q' "$CONTINUE_ACFS_STATE_FILE") "
+        env_prefix+="HOME=$(printf '%q' "$continue_home") "
+        if [[ -n "$continue_ref" ]] && [[ "$continue_ref" != "main" ]]; then
+            env_prefix+="ACFS_REF=$(printf '%q' "$continue_ref") "
+        fi
+
+        log "Run: ${env_prefix}${curl_cmd} $(printf '%q' "$install_url") | bash -s -- ${rendered_args}"
         return 1
     fi
 
     log "Launching continue_install.sh to resume ACFS installation"
+    local continue_home="${CONTINUE_HOME:-/root}"
+    local -a continue_env_args=("--setenv=HOME=${continue_home}")
+    local -a continue_nohup_env=("HOME=${continue_home}")
+
+    if [[ -n "${CONTINUE_TARGET_USER:-}" ]]; then
+        continue_env_args+=("--setenv=TARGET_USER=${CONTINUE_TARGET_USER}")
+        continue_nohup_env+=("TARGET_USER=${CONTINUE_TARGET_USER}")
+    fi
+    if [[ -n "${CONTINUE_TARGET_HOME:-}" ]]; then
+        continue_env_args+=("--setenv=TARGET_HOME=${CONTINUE_TARGET_HOME}")
+        continue_nohup_env+=("TARGET_HOME=${CONTINUE_TARGET_HOME}")
+    fi
+    if [[ -n "${CONTINUE_ACFS_HOME:-}" ]]; then
+        continue_env_args+=("--setenv=ACFS_HOME=${CONTINUE_ACFS_HOME}")
+        continue_nohup_env+=("ACFS_HOME=${CONTINUE_ACFS_HOME}")
+    fi
+    if [[ -n "${CONTINUE_ACFS_STATE_FILE:-}" ]]; then
+        continue_env_args+=("--setenv=ACFS_STATE_FILE=${CONTINUE_ACFS_STATE_FILE}")
+        continue_nohup_env+=("ACFS_STATE_FILE=${CONTINUE_ACFS_STATE_FILE}")
+    fi
+    if [[ -n "${CONTINUE_ACFS_REF:-}" ]]; then
+        continue_env_args+=("--setenv=ACFS_REF=${CONTINUE_ACFS_REF}")
+        continue_nohup_env+=("ACFS_REF=${CONTINUE_ACFS_REF}")
+    fi
 
     # Use systemd-run to spawn a proper transient service that survives this script's exit
     # --collect: auto-cleanup unit after it finishes (avoids "unit already exists" errors)
     # --no-block: don't wait for service to complete (we want to exit immediately)
-    # --setenv: ensure HOME is set (required by preflight checks and installer)
+    # --setenv: restore the original target-user context before install.sh resumes
     # Service output goes to journal (check with: journalctl -u acfs-continue-install)
     if command -v systemd-run &>/dev/null; then
         # Remove any stale unit from previous failed attempts
@@ -275,7 +338,7 @@ launch_continue_script() {
                 --description="ACFS Installation Continuation" \
                 --property=Type=oneshot \
                 --property=TimeoutStartSec=7200 \
-                --setenv=HOME=/root \
+                "${continue_env_args[@]}" \
                 /bin/bash "$script" 2>&1 | tee -a "$ACFS_LOG"
             exit "${PIPESTATUS[0]:-1}"
         ); then
@@ -283,12 +346,12 @@ launch_continue_script() {
             log "Monitor with: journalctl -u acfs-continue-install -f"
         else
             log "systemd-run failed, falling back to nohup"
-            nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
+            env "${continue_nohup_env[@]}" nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
             log "ACFS continuation launched via nohup (PID: $!)"
         fi
     else
         # Fallback to nohup if systemd-run unavailable (shouldn't happen on Ubuntu)
-        nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
+        env "${continue_nohup_env[@]}" nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
         log "ACFS continuation launched via nohup (PID: $!)"
     fi
 

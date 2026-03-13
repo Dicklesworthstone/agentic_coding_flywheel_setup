@@ -1128,10 +1128,16 @@ upgrade_setup_infrastructure() {
     repo_name="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
     repo_ref="${ACFS_COMMIT_SHA_FULL:-${ACFS_REF:-main}}"
     local source_dir_q repo_ref_q install_url install_url_q
+    local target_user_q target_home_q acfs_home_q acfs_state_file_q continue_home_q
     source_dir_q=$(printf '%q' "$source_dir")
     repo_ref_q=$(printf '%q' "$repo_ref")
     install_url="https://raw.githubusercontent.com/${repo_owner}/${repo_name}/${repo_ref}/install.sh"
     install_url_q=$(printf '%q' "$install_url")
+    target_user_q=$(printf '%q' "${TARGET_USER:-ubuntu}")
+    target_home_q=$(printf '%q' "${TARGET_HOME:-/home/${TARGET_USER:-ubuntu}}")
+    acfs_home_q=$(printf '%q' "${ACFS_HOME:-${TARGET_HOME:-/home/${TARGET_USER:-ubuntu}}/.acfs}")
+    acfs_state_file_q=$(printf '%q' "${ACFS_STATE_FILE:-${ACFS_HOME:-${TARGET_HOME:-/home/${TARGET_USER:-ubuntu}}/.acfs}/state.json}")
+    continue_home_q=$(printf '%q' "${TARGET_HOME:-/root}")
 
     local -a continue_args=("${install_args[@]}")
     if [[ "$append_skip_upgrade" == "true" ]]; then
@@ -1144,13 +1150,28 @@ upgrade_setup_infrastructure() {
     done
     rendered_args="${rendered_args# }"
 
+    cat > "${ACFS_RESUME_DIR}/continue_context.env" << CONTINUE_CONTEXT
+CONTINUE_TARGET_USER=${target_user_q}
+CONTINUE_TARGET_HOME=${target_home_q}
+CONTINUE_ACFS_HOME=${acfs_home_q}
+CONTINUE_ACFS_STATE_FILE=${acfs_state_file_q}
+CONTINUE_ACFS_REF=${repo_ref_q}
+CONTINUE_INSTALL_URL=${install_url_q}
+CONTINUE_HOME=${continue_home_q}
+CONTINUE_INSTALL_ARGS=(${rendered_args})
+CONTINUE_CONTEXT
+
     cat > "${ACFS_RESUME_DIR}/continue_install.sh" << CONTINUE_SCRIPT
 #!/usr/bin/env bash
 # Auto-generated script to continue ACFS installation after Ubuntu upgrades
 set -euo pipefail
 
-# Ensure HOME is set (required when running via systemd)
-export HOME="\${HOME:-/root}"
+# Restore the original ACFS target context before resuming.
+export TARGET_USER=${target_user_q}
+export TARGET_HOME=${target_home_q}
+export ACFS_HOME=${acfs_home_q}
+export ACFS_STATE_FILE=${acfs_state_file_q}
+export HOME=${continue_home_q}
 
 echo "Ubuntu upgrade complete. Resuming ACFS installation..."
 
@@ -1239,11 +1260,13 @@ upgrade_teardown_infrastructure() {
     local lib_dir="${ACFS_RESUME_DIR}/lib"
     local resume_script="${ACFS_RESUME_DIR}/upgrade_resume.sh"
     local continue_script="${ACFS_RESUME_DIR}/continue_install.sh"
+    local continue_context_file="${ACFS_RESUME_DIR}/continue_context.env"
     local state_file="${ACFS_RESUME_DIR}/state.json"
 
     rm -rf -- "$lib_dir"
     rm -f -- "$resume_script"
     rm -f -- "$continue_script"
+    rm -f -- "$continue_context_file"
     rm -f -- "$state_file"
 
     # Keep the directory for logs reference

@@ -9,7 +9,11 @@ set -euo pipefail
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ACFS_HOME="${ACFS_HOME:-$HOME/.acfs}"
+_EXPORT_EXPLICIT_ACFS_HOME="${ACFS_HOME:-}"
+_EXPORT_DEFAULT_ACFS_HOME="$HOME/.acfs"
+ACFS_HOME="${_EXPORT_EXPLICIT_ACFS_HOME:-$_EXPORT_DEFAULT_ACFS_HOME}"
+_EXPORT_SYSTEM_STATE_FILE="${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}"
+_EXPORT_RESOLVED_ACFS_HOME=""
 
 # Source logging if available
 if [[ -f "$SCRIPT_DIR/logging.sh" ]]; then
@@ -23,8 +27,10 @@ fi
 # Configuration
 # ============================================================
 OUTPUT_FORMAT="yaml"  # yaml, json, or minimal
-STATE_FILE="$ACFS_HOME/state.json"
-VERSION_FILE="$ACFS_HOME/VERSION"
+STATE_FILE=""
+VERSION_FILE=""
+INSTALL_HELPERS_FILE="${ACFS_INSTALL_HELPERS_SH:-$SCRIPT_DIR/install_helpers.sh}"
+MANIFEST_INDEX_FILE="${ACFS_MANIFEST_INDEX_SH:-$SCRIPT_DIR/../generated/manifest_index.sh}"
 
 # ============================================================
 # Parse Arguments
@@ -91,6 +97,246 @@ done
 # ============================================================
 # Utility Functions
 # ============================================================
+
+json_escape() {
+    local value="$1"
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf '%s' "$value"
+}
+
+yaml_escape() {
+    local value="$1"
+    value=${value//\'/\'\'}
+    printf '%s' "$value"
+}
+
+read_state_string_from_file() {
+    local state_file="$1"
+    local key="$2"
+    local value=""
+
+    [[ -f "$state_file" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        value=$(jq -r --arg key "$key" '.[$key] // empty' "$state_file" 2>/dev/null || true)
+    elif command -v python3 &>/dev/null; then
+        value=$(python3 - "$state_file" "$key" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    value = data.get(sys.argv[2], "")
+    if isinstance(value, str):
+        print(value)
+except Exception:
+    pass
+PY
+        )
+    else
+        value=$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | head -1 || true)
+    fi
+
+    [[ -n "$value" ]] || return 1
+    printf '%s\n' "$value"
+}
+
+get_state_string() {
+    local key="$1"
+    read_state_string_from_file "$STATE_FILE" "$key"
+}
+
+read_target_user_from_state() {
+    local state_file="$1"
+    read_state_string_from_file "$state_file" "target_user"
+}
+
+script_acfs_home() {
+    local candidate=""
+    candidate=$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd) || return 1
+    [[ "$(basename "$candidate")" == ".acfs" ]] || return 1
+    printf '%s\n' "$candidate"
+}
+
+resolve_acfs_home() {
+    if [[ -n "$_EXPORT_RESOLVED_ACFS_HOME" ]]; then
+        printf '%s\n' "$_EXPORT_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    local candidate=""
+    local detected_home=""
+    local detected_user=""
+
+    if [[ -n "$_EXPORT_EXPLICIT_ACFS_HOME" ]]; then
+        _EXPORT_RESOLVED_ACFS_HOME="$_EXPORT_EXPLICIT_ACFS_HOME"
+        printf '%s\n' "$_EXPORT_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    candidate=$(script_acfs_home 2>/dev/null || true)
+    if [[ -n "$candidate" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -d "$candidate/onboard" ]]; then
+        _EXPORT_RESOLVED_ACFS_HOME="$candidate"
+        printf '%s\n' "$_EXPORT_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    if [[ -f "$ACFS_HOME/state.json" || -f "$ACFS_HOME/VERSION" || -d "$ACFS_HOME/onboard" ]]; then
+        _EXPORT_RESOLVED_ACFS_HOME="$ACFS_HOME"
+        printf '%s\n' "$_EXPORT_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        detected_home=$(home_for_user "$SUDO_USER" 2>/dev/null || true)
+        candidate="${detected_home}/.acfs"
+        if [[ -n "$detected_home" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -d "$candidate/onboard" ]]; then
+            _EXPORT_RESOLVED_ACFS_HOME="$candidate"
+            printf '%s\n' "$_EXPORT_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    detected_user=$(read_target_user_from_state "$_EXPORT_SYSTEM_STATE_FILE" 2>/dev/null || true)
+    if [[ -n "$detected_user" ]]; then
+        detected_home=$(home_for_user "$detected_user" 2>/dev/null || true)
+        candidate="${detected_home}/.acfs"
+        if [[ -n "$detected_home" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -d "$candidate/onboard" ]]; then
+            _EXPORT_RESOLVED_ACFS_HOME="$candidate"
+            printf '%s\n' "$_EXPORT_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    _EXPORT_RESOLVED_ACFS_HOME="$ACFS_HOME"
+    printf '%s\n' "$_EXPORT_RESOLVED_ACFS_HOME"
+}
+
+resolve_state_file() {
+    local candidate="${ACFS_HOME}/state.json"
+
+    if [[ -f "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    if [[ -f "$_EXPORT_SYSTEM_STATE_FILE" ]]; then
+        printf '%s\n' "$_EXPORT_SYSTEM_STATE_FILE"
+        return 0
+    fi
+
+    printf '%s\n' "$candidate"
+}
+
+refresh_acfs_paths() {
+    ACFS_HOME="$(resolve_acfs_home)"
+    export ACFS_HOME
+    STATE_FILE="$(resolve_state_file)"
+    VERSION_FILE="$ACFS_HOME/VERSION"
+}
+
+get_target_user() {
+    if [[ -n "${TARGET_USER:-}" ]]; then
+        printf '%s\n' "$TARGET_USER"
+        return 0
+    fi
+
+    read_target_user_from_state "$STATE_FILE" 2>/dev/null || \
+        read_target_user_from_state "$_EXPORT_SYSTEM_STATE_FILE" 2>/dev/null
+}
+
+home_for_user() {
+    local user="$1"
+    local passwd_entry=""
+
+    [[ -n "$user" ]] || return 1
+
+    if command -v getent &>/dev/null; then
+        passwd_entry=$(getent passwd "$user" 2>/dev/null || true)
+        if [[ -n "$passwd_entry" ]]; then
+            printf '%s\n' "$(printf '%s\n' "$passwd_entry" | cut -d: -f6)"
+            return 0
+        fi
+    fi
+
+    if [[ "$user" == "root" ]]; then
+        echo "/root"
+        return 0
+    fi
+
+    if [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        echo "/home/$user"
+        return 0
+    fi
+
+    return 1
+}
+
+prepare_target_context() {
+    local detected_user=""
+    local detected_home=""
+
+    refresh_acfs_paths
+
+    if detected_user=$(get_target_user 2>/dev/null || true); then
+        if [[ -n "$detected_user" ]] && [[ -z "${TARGET_USER:-}" ]]; then
+            export TARGET_USER="$detected_user"
+        fi
+    fi
+
+    if [[ -z "${TARGET_HOME:-}" ]] && [[ -n "${TARGET_USER:-}" ]]; then
+        detected_home=$(home_for_user "$TARGET_USER" 2>/dev/null || true)
+        if [[ -n "$detected_home" ]]; then
+            export TARGET_HOME="$detected_home"
+        fi
+    fi
+}
+
+augment_path_for_target_user() {
+    local dir=""
+    local target_home="${TARGET_HOME:-}"
+
+    [[ -n "$target_home" ]] || return 0
+
+    for dir in \
+        "$target_home/.local/bin" \
+        "$target_home/.bun/bin" \
+        "$target_home/.cargo/bin" \
+        "$target_home/go/bin" \
+        "$target_home/.atuin/bin"; do
+        case ":$PATH:" in
+            *":$dir:"*) ;;
+            *) export PATH="$dir:$PATH" ;;
+        esac
+    done
+}
+
+load_module_detection_support() {
+    if [[ "${_ACFS_EXPORT_MODULE_SUPPORT_LOADED:-false}" == "true" ]]; then
+        return 0
+    fi
+
+    if [[ ! -f "$INSTALL_HELPERS_FILE" ]] || [[ ! -f "$MANIFEST_INDEX_FILE" ]]; then
+        return 1
+    fi
+
+    prepare_target_context
+    augment_path_for_target_user
+
+    # shellcheck source=/dev/null
+    source "$INSTALL_HELPERS_FILE"
+    # shellcheck source=/dev/null
+    source "$MANIFEST_INDEX_FILE"
+    _ACFS_EXPORT_MODULE_SUPPORT_LOADED=true
+}
+
+prepare_target_context
+augment_path_for_target_user
 
 # Get ACFS version
 get_acfs_version() {
@@ -217,6 +463,19 @@ get_mode() {
     if [[ -f "$STATE_FILE" ]]; then
         if command -v jq &>/dev/null; then
             jq -r '.mode // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown"
+        elif command -v python3 &>/dev/null; then
+            python3 - "$STATE_FILE" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    value = data.get("mode", "unknown")
+    print(value if value else "unknown")
+except Exception:
+    print("unknown")
+PY
         else
             # Use sed instead of grep -oP for portability (works on macOS/BSD)
             sed -n 's/.*"mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$STATE_FILE" 2>/dev/null | head -1 || echo "unknown"
@@ -227,12 +486,43 @@ get_mode() {
 }
 
 # Get installed modules from state.json
-get_modules() {
+get_modules_from_state_file() {
     if [[ -f "$STATE_FILE" ]]; then
         if command -v jq &>/dev/null; then
             jq -r '.installed_modules // [] | .[]' "$STATE_FILE" 2>/dev/null || true
+        elif command -v python3 &>/dev/null; then
+            python3 - "$STATE_FILE" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    modules = data.get("installed_modules", [])
+    if isinstance(modules, list):
+        for module in modules:
+            if module is not None:
+                print(module)
+except Exception:
+    pass
+PY
         fi
     fi
+}
+
+get_modules() {
+    local module=""
+
+    if load_module_detection_support; then
+        for module in "${ACFS_MODULES_IN_ORDER[@]}"; do
+            if acfs_module_is_installed "$module"; then
+                printf '%s\n' "$module"
+            fi
+        done
+        return 0
+    fi
+
+    get_modules_from_state_file
 }
 
 # ============================================================
@@ -261,15 +551,15 @@ generate_yaml() {
 # ACFS Version: $acfs_version
 
 settings:
-  mode: $mode
-  shell: ${SHELL##*/}
+  mode: '$(yaml_escape "$mode")'
+  shell: '$(yaml_escape "${SHELL##*/}")'
 
 modules:
 EOF
 
     # List modules
     while IFS= read -r module; do
-        [[ -n "$module" ]] && echo "  - $module"
+        [[ -n "$module" ]] && printf "  - '%s'\n" "$(yaml_escape "$module")"
     done < <(get_modules)
 
     echo ""
@@ -285,8 +575,8 @@ EOF
         local version
         version=$(get_tool_version "$tool")
         if [[ -n "$version" ]]; then
-            echo "  $tool:"
-            echo "    version: \"$version\""
+            printf "  %s:\n" "$tool"
+            printf "    version: '%s'\n" "$(yaml_escape "$version")"
             echo "    installed: true"
         fi
     done
@@ -300,8 +590,8 @@ EOF
         local version
         version=$(get_tool_version "$agent")
         if [[ -n "$version" ]]; then
-            echo "  $agent:"
-            echo "    version: \"$version\""
+            printf "  %s:\n" "$agent"
+            printf "    version: '%s'\n" "$(yaml_escape "$version")"
             echo "    installed: true"
         fi
     done
@@ -315,8 +605,8 @@ EOF
         local version
         version=$(get_tool_version "$tool")
         if [[ -n "$version" ]]; then
-            echo "  $tool:"
-            echo "    version: \"$version\""
+            printf "  %s:\n" "$tool"
+            printf "    version: '%s'\n" "$(yaml_escape "$version")"
             echo "    installed: true"
         fi
     done
@@ -336,13 +626,13 @@ generate_json() {
     cat << EOF
 {
   "metadata": {
-    "generated_at": "$timestamp",
-    "hostname": "$hostname",
-    "acfs_version": "$acfs_version"
+    "generated_at": "$(json_escape "$timestamp")",
+    "hostname": "$(json_escape "$hostname")",
+    "acfs_version": "$(json_escape "$acfs_version")"
   },
   "settings": {
-    "mode": "$mode",
-    "shell": "${SHELL##*/}"
+    "mode": "$(json_escape "$mode")",
+    "shell": "$(json_escape "${SHELL##*/}")"
   },
   "modules": [
 EOF
@@ -357,10 +647,10 @@ EOF
     local first=true
     for module in "${modules[@]}"; do
         if [[ "$first" == "true" ]]; then
-            echo "    \"$module\""
+            printf '    "%s"\n' "$(json_escape "$module")"
             first=false
         else
-            echo "    ,\"$module\""
+            printf '    ,"%s"\n' "$(json_escape "$module")"
         fi
     done
 
@@ -381,7 +671,9 @@ EOF
             else
                 echo ","
             fi
-            printf '    "%s": { "version": "%s", "installed": true }' "$tool" "$version"
+            printf '    "%s": { "version": "%s", "installed": true }' \
+                "$(json_escape "$tool")" \
+                "$(json_escape "$version")"
         fi
     done
 
@@ -403,7 +695,9 @@ EOF
             else
                 echo ","
             fi
-            printf '    "%s": { "version": "%s", "installed": true }' "$agent" "$version"
+            printf '    "%s": { "version": "%s", "installed": true }' \
+                "$(json_escape "$agent")" \
+                "$(json_escape "$version")"
         fi
     done
 
@@ -425,7 +719,9 @@ EOF
             else
                 echo ","
             fi
-            printf '    "%s": { "version": "%s", "installed": true }' "$tool" "$version"
+            printf '    "%s": { "version": "%s", "installed": true }' \
+                "$(json_escape "$tool")" \
+                "$(json_escape "$version")"
         fi
     done
 

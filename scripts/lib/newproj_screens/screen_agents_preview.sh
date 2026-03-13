@@ -125,16 +125,16 @@ view_full_content() {
 
     if [[ "$GUM_AVAILABLE" == "true" && "$GLOW_AVAILABLE" == "true" ]]; then
         # Use gum pager with glow for markdown rendering
-        echo "$content" | glow - | gum pager
+        echo "$content" | glow - | gum pager > /dev/tty
     elif [[ "$GUM_AVAILABLE" == "true" ]]; then
         # Use gum pager
-        echo "$content" | gum pager
+        echo "$content" | gum pager > /dev/tty
     else
         # Use less or fallback
         if command -v less &>/dev/null; then
-            echo "$content" | less
+            echo "$content" | less > /dev/tty
         else
-            echo "$content" | more
+            echo "$content" | more > /dev/tty
         fi
     fi
 }
@@ -177,7 +177,7 @@ edit_content() {
             return 0
         fi
     else
-        echo -e "${TUI_ERROR}Editor '${editor_cmd[0]}' not found${TUI_NC}"
+        newproj_tty_printf "%b\n" "${TUI_ERROR}Editor '${editor_cmd[0]}' not found${TUI_NC}"
         rm -f "$tmpfile"
         return 1
     fi
@@ -235,9 +235,11 @@ handle_agents_preview_input() {
 run_agents_preview_screen() {
     log_screen "ENTER" "agents_preview"
 
-    local next
-    next=$(handle_agents_preview_input)
-    local result=$?
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+    run_screen_handler_capture handle_agents_preview_input
+    local result="$SCREEN_HANDLER_STATUS"
+    local next="$SCREEN_HANDLER_OUTPUT"
 
     if [[ $result -eq 0 ]] && [[ -n "$next" ]]; then
         navigate_forward "$next"

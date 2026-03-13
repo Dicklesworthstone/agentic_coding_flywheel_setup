@@ -19,6 +19,11 @@ SCREEN_SUCCESS_ID="success"
 SCREEN_SUCCESS_TITLE="Success"
 SCREEN_SUCCESS_STEP=9
 
+prepare_success_exec() {
+    tui_cleanup
+    finalize_logging 2>/dev/null || true
+}
+
 # Render the success screen
 render_success_screen() {
     render_screen_header "Project Created!" "$SCREEN_SUCCESS_STEP" 9
@@ -27,6 +32,10 @@ render_success_screen() {
     project_name=$(state_get "project_name")
     local project_dir
     project_dir=$(state_get "project_dir")
+    local beads_initialized=false
+    if [[ -d "$project_dir/.beads" ]]; then
+        beads_initialized=true
+    fi
 
     # Success banner
     if [[ "$TERM_HAS_UNICODE" == "true" ]]; then
@@ -62,8 +71,10 @@ EOF
         echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} AGENTS.md for AI assistants"
     fi
 
-    if [[ "$(state_get "enable_br")" == "true" ]]; then
+    if [[ "$(state_get "enable_br")" == "true" && "$beads_initialized" == "true" ]]; then
         echo -e "  ${TUI_SUCCESS}${BOX_CHECK}${TUI_NC} Beads issue tracking (.beads/)"
+    elif [[ "$(state_get "enable_br")" == "true" ]]; then
+        echo -e "  ${TUI_WARNING}!${TUI_NC} Beads issue tracking requested but not initialized"
     fi
 
     if [[ "$(state_get "enable_claude")" == "true" ]]; then
@@ -89,9 +100,13 @@ EOF
     echo -e "     ${TUI_CYAN}claude${TUI_NC}"
     echo ""
 
-    if [[ "$(state_get "enable_br")" == "true" ]]; then
+    if [[ "$(state_get "enable_br")" == "true" && "$beads_initialized" == "true" ]]; then
         echo "  3. Create your first task:"
         echo -e "     ${TUI_CYAN}br create \"First feature\" -t feature${TUI_NC}"
+        echo ""
+    elif [[ "$(state_get "enable_br")" == "true" ]]; then
+        echo "  3. Finish enabling Beads (optional):"
+        echo -e "     ${TUI_CYAN}br init${TUI_NC}"
         echo ""
     fi
 
@@ -112,15 +127,28 @@ open_in_shell() {
     local project_dir
     project_dir=$(state_get "project_dir")
 
-    echo ""
-    echo -e "${TUI_PRIMARY}Opening project directory...${TUI_NC}"
-    echo ""
-    echo -e "Run: ${TUI_CYAN}cd $project_dir${TUI_NC}"
-    echo ""
+    if [[ ! -d "$project_dir" ]]; then
+        echo ""
+        echo -e "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
+        return 1
+    fi
 
-    # If we're in an interactive shell, we can suggest the cd command
-    # But we can't actually change the parent shell's directory
-    return 0
+    local shell_bin="${SHELL:-}"
+    if [[ -z "$shell_bin" ]] || ! command -v "$shell_bin" &>/dev/null; then
+        shell_bin="$(command -v zsh 2>/dev/null || command -v bash 2>/dev/null || true)"
+    fi
+    if [[ -z "$shell_bin" ]]; then
+        echo ""
+        echo -e "${TUI_WARNING}No interactive shell found in PATH${TUI_NC}"
+        return 1
+    fi
+
+    echo ""
+    echo -e "${TUI_PRIMARY}Opening project shell...${TUI_NC}"
+    echo ""
+    prepare_success_exec
+    cd "$project_dir" || return 1
+    exec "$shell_bin" -i
 }
 
 # Open project in Claude Code
@@ -128,17 +156,25 @@ open_in_claude() {
     local project_dir
     project_dir=$(state_get "project_dir")
 
-    if command -v claude &>/dev/null; then
+    if [[ ! -d "$project_dir" ]]; then
         echo ""
-        echo -e "${TUI_PRIMARY}Opening in Claude Code...${TUI_NC}"
-        cd "$project_dir" && exec claude
-    else
+        echo -e "${TUI_WARNING}Project directory no longer exists: $project_dir${TUI_NC}"
+        return 1
+    fi
+
+    if ! command -v claude &>/dev/null; then
         echo ""
         echo -e "${TUI_WARNING}Claude Code not found in PATH${TUI_NC}"
         echo "Run manually:"
         echo -e "  ${TUI_CYAN}cd $project_dir && claude${TUI_NC}"
         return 1
     fi
+
+    echo ""
+    echo -e "${TUI_PRIMARY}Opening in Claude Code...${TUI_NC}"
+    prepare_success_exec
+    cd "$project_dir" || return 1
+    exec claude
 }
 
 # Handle input for success screen
@@ -153,14 +189,16 @@ handle_success_input() {
             ''|'o'|'O')
                 # Open in shell
                 log_input "success" "open_shell"
-                open_in_shell
-                return 0
+                if open_in_shell; then
+                    return 0
+                fi
                 ;;
             'c'|'C')
                 # Open in Claude Code
                 log_input "success" "open_claude"
-                open_in_claude
-                return 0
+                if open_in_claude; then
+                    return 0
+                fi
                 ;;
             'q'|'Q'|$'\e')
                 # Quit

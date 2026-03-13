@@ -164,15 +164,23 @@ render_progress_screen() {
     echo ""
 }
 
+render_progress_screen_best_effort() {
+    if [[ -w /dev/tty ]]; then
+        render_progress_screen > /dev/tty 2>/dev/null || true
+    else
+        render_progress_screen >/dev/null 2>&1 || true
+    fi
+}
+
 # Update step status and re-render
 update_step() {
     local step="$1"
     local status="$2"
 
     STEP_STATUS[$step]="$status"
-    # Redirect to /dev/tty so progress is visible when running
-    # inside a $() capture (issue #214)
-    render_progress_screen > /dev/tty
+    # Re-render progress for interactive users, but never let redraw
+    # failures break the underlying creation step.
+    render_progress_screen_best_effort
 }
 
 # Execute a creation step
@@ -256,6 +264,9 @@ __pycache__/
 node_modules/
 .venv/
 venv/
+
+# Local AI agent settings
+.claude/settings.local.json
 "
             if try_write_file "$project_dir/.gitignore" "$gitignore_content"; then
                 update_step "$step" "success"
@@ -312,15 +323,23 @@ venv/
                 update_step "$step" "success"
                 return 0
             else
-                # br init is optional - don't fail
-                log_warn "br init skipped (not installed or failed)"
-                update_step "$step" "success"
-                return 0
+                local status=$?
+                if [[ $status -eq 2 ]]; then
+                    log_warn "br init skipped (not installed or failed)"
+                    update_step "$step" "pending"
+                    return 0
+                fi
+                update_step "$step" "error"
+                return 1
             fi
             ;;
 
         create_claude)
-            mkdir -p "$project_dir/.claude" 2>/dev/null
+            if newproj_has_existing_claude_settings "$project_dir"; then
+                log_info "Claude settings already exist in $project_dir; skipping creation"
+                update_step "$step" "success"
+                return 0
+            fi
 
             local claude_settings='{
   "model": "claude-sonnet-4-20250514",
@@ -392,9 +411,7 @@ Created with ACFS newproj wizard.
 # Run all creation steps
 run_creation() {
     init_creation_steps
-    # Redirect to /dev/tty so progress is visible when running
-    # inside a $() capture (issue #214)
-    render_progress_screen > /dev/tty
+    render_progress_screen_best_effort
 
     # Begin transaction
     local project_dir
@@ -422,6 +439,8 @@ run_creation() {
         if read_yes_no "Rollback changes?" "y"; then
             rollback_project_creation
             echo -e "${TUI_WARNING}Changes rolled back${TUI_NC}" > /dev/tty
+        else
+            suspend_project_creation_cleanup
         fi
 
         return 1
@@ -449,6 +468,7 @@ handle_progress_input() {
             read -rsn1 key < /dev/tty
             case "$key" in
                 'r'|'R')
+                    rollback_project_creation >/dev/null 2>&1 || true
                     return 0  # Will re-run when screen is called again
                     ;;
                 'b'|'B')
@@ -466,9 +486,11 @@ handle_progress_input() {
 run_progress_screen() {
     log_screen "ENTER" "progress"
 
-    local next
-    next=$(handle_progress_input)
-    local result=$?
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+    run_screen_handler_capture handle_progress_input
+    local result="$SCREEN_HANDLER_STATUS"
+    local next="$SCREEN_HANDLER_OUTPUT"
 
     case $result in
         0)
@@ -476,6 +498,7 @@ run_progress_screen() {
                 navigate_forward "$next"
                 return 0
             fi
+            return 0
             ;;
         1)
             navigate_back

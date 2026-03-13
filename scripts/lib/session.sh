@@ -129,8 +129,12 @@ validate_session_export() {
         return 1
     fi
 
-    # Check required top-level fields exist
-    if ! jq -e '.schema_version and .session_id and .agent' "$file" >/dev/null 2>&1; then
+    # Check required top-level fields exist and contain usable values
+    if ! jq -e '
+        (.schema_version != null)
+        and (.session_id | type == "string" and test("\\S"))
+        and (.agent | type == "string" and test("\\S"))
+    ' "$file" >/dev/null 2>&1; then
         log_error "Invalid session export: missing required fields (schema_version, session_id, agent)"
         return 1
     fi
@@ -462,6 +466,10 @@ list_sessions() {
                     log_error "--days requires a numeric value"
                     return 1
                 fi
+                if [[ ! "$2" =~ ^[0-9]+$ ]] || [[ "$2" == "0" ]]; then
+                    log_error "--days requires a positive integer"
+                    return 1
+                fi
                 days="$2"
                 shift 2
                 ;;
@@ -476,6 +484,10 @@ list_sessions() {
             --limit)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
                     log_error "--limit requires a numeric value"
+                    return 1
+                fi
+                if [[ ! "$2" =~ ^[0-9]+$ ]] || [[ "$2" == "0" ]]; then
+                    log_error "--limit requires a positive integer"
                     return 1
                 fi
                 limit="$2"
@@ -578,6 +590,7 @@ export_session() {
     local format="json"
     local sanitize=true
     local output_file=""
+    local status=0
 
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -639,28 +652,19 @@ export_session() {
         return 1
     }
 
-    # Ensure cleanup on return
-    trap 'rm -f -- "$tmp_export"' RETURN
-
     # Export via CASS to temp file
     if ! cass export "$session_path" --format "$format" > "$tmp_export" 2>/dev/null; then
         log_error "Failed to export session: $session_path"
-        return 1
-    fi
-
-    # Verify export is not empty
-    if [[ ! -s "$tmp_export" ]]; then
+        status=1
+    elif [[ ! -s "$tmp_export" ]]; then
         log_error "Exported session is empty: $session_path"
-        return 1
-    fi
-
-    # Apply sanitization if requested
-    if [[ "$sanitize" == "true" ]]; then
+        status=1
+    elif [[ "$sanitize" == "true" ]]; then
         if [[ "$format" == "json" ]]; then
             # In-place JSON sanitization
             if ! sanitize_session_export "$tmp_export"; then
                 log_error "Sanitization failed; refusing to output unsanitized export"
-                return 1
+                status=1
             fi
         else
             # Text-based sanitization (stream through sed to new temp file)
@@ -671,28 +675,32 @@ export_session() {
             else
                 rm -f -- "$tmp_sanitized"
                 log_error "Sanitization failed; refusing to output unsanitized export"
-                return 1
+                status=1
             fi
         fi
     fi
 
-    # Output
-    if [[ -n "$output_file" ]]; then
+    if [[ "$status" -eq 0 && -n "$output_file" ]]; then
         # Move or copy to destination
         # Try mv first (atomic if same fs), fall back to cat (streaming)
         if ! mv -- "$tmp_export" "$output_file" 2>/dev/null; then
-            cat "$tmp_export" > "$output_file"
+            if ! cat "$tmp_export" > "$output_file"; then
+                log_error "Failed to write exported session to: $output_file"
+                status=1
+            fi
         fi
-        log_success "Exported to: $output_file"
-        # Since we moved/copied, clear the trap cleanup if we moved it successfully?
-        # Actually, if we moved it, the temp file is gone. If we cat, it remains.
-        # The trap will run rm -f which ignores missing files.
-    else
-        cat "$tmp_export"
-        # Add newline if needed? cat output preserves original.
-        # Usually good to ensure newline at end of output for CLI niceness if missing.
-        # But for JSON/Markdown exact output is preferred.
+        if [[ "$status" -eq 0 ]]; then
+            log_success "Exported to: $output_file"
+        fi
+    elif [[ "$status" -eq 0 ]]; then
+        if ! cat "$tmp_export"; then
+            log_error "Failed to stream exported session output"
+            status=1
+        fi
     fi
+
+    rm -f -- "$tmp_export" 2>/dev/null || true
+    return "$status"
 }
 
 # Find and export the most recent session in a workspace
@@ -1481,18 +1489,34 @@ convert_session_native() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --from)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--from requires a source agent"
+                    return 1
+                fi
                 from_agent="${2:-}"
                 shift 2
                 ;;
             --to)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--to requires a target agent"
+                    return 1
+                fi
                 to_agent="${2:-}"
                 shift 2
                 ;;
             --workspace)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--workspace requires a path"
+                    return 1
+                fi
                 workspace_hint="${2:-}"
                 shift 2
                 ;;
             --session-id)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    log_error "--session-id requires a value"
+                    return 1
+                fi
                 target_session_id="${2:-}"
                 shift 2
                 ;;
@@ -1608,8 +1632,8 @@ convert_session_native() {
                 message_count: $message_count,
                 dry_run: ($dry_run == "true"),
                 resume_command: (
-                    if $target_agent == "claude-code" then ("claude --resume " + $target_session_id)
-                    elif $target_agent == "codex" then ("codex resume " + $target_session_id)
+                    if $target_agent == "claude-code" then ("claude -r " + $target_session_id)
+                    elif $target_agent == "codex" then ("codex exec resume " + $target_session_id)
                     elif $target_agent == "gemini" then ("gemini --resume " + $target_session_id)
                     else ""
                     end
@@ -1756,6 +1780,9 @@ import_session() {
             end
         ' "$file")
     elif [[ "$is_acfs" == "true" ]]; then
+        if ! validate_session_export "$file"; then
+            return 1
+        fi
         session_id=$(jq -r '.session_id // "unknown"' "$file")
         agent=$(jq -r '.agent // "unknown"' "$file")
         turn_count=$(jq '.stats.turns // 0' "$file")

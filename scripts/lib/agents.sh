@@ -261,7 +261,7 @@ install_codex_cli() {
         # Create wrapper script that uses bun as runtime (avoids node PATH issues)
         _agent_create_bun_wrapper "$target_home" "codex"
         log_success "Codex CLI installed"
-        log_detail "Note: Run 'codex login' to authenticate with your ChatGPT Pro account"
+        log_detail "Note: Run 'codex login --device-auth' to authenticate with your ChatGPT Pro account"
         return 0
     fi
 
@@ -527,25 +527,63 @@ check_agent_auth() {
 
     log_detail "Checking agent authentication status..."
 
-    # Claude: Check for config file
-    if [[ -f "$target_home/.claude/config.json" ]] || [[ -f "$target_home/.config/claude/config.json" ]]; then
+    # Claude: require a non-empty OAuth token, not just a config file.
+    local claude_creds_file="$target_home/.claude/.credentials.json"
+    local claude_configured=false
+    if command -v jq &>/dev/null; then
+        if [[ -f "$claude_creds_file" ]] && jq -e '((.claudeAiOauth.accessToken // "") | strings | length) > 0' "$claude_creds_file" >/dev/null 2>&1; then
+            claude_configured=true
+        fi
+    elif [[ -f "$claude_creds_file" ]] && grep -Eq '"accessToken"[[:space:]]*:[[:space:]]*"[^"]+"' "$claude_creds_file" 2>/dev/null; then
+        claude_configured=true
+    fi
+
+    if [[ "$claude_configured" == "true" ]]; then
         log_detail "  Claude: configured"
     else
         log_warn "  Claude: not configured (run 'claude' to login)"
     fi
 
-    # Codex: Check for OAuth auth.json (uses ChatGPT accounts, not API keys)
+    # Codex: require a non-empty OAuth/API token, not just auth.json presence.
     local codex_home="${CODEX_HOME:-$target_home/.codex}"
-    if [[ -f "$codex_home/auth.json" ]]; then
-        log_detail "  Codex: configured"
-    else
-        log_warn "  Codex: not configured (run 'codex login' to authenticate)"
+    local codex_auth_file="$codex_home/auth.json"
+    local codex_configured=false
+    if command -v jq &>/dev/null; then
+        if [[ -f "$codex_auth_file" ]] && \
+           jq -e '((.tokens.access_token // .access_token // .accessToken // .OPENAI_API_KEY // "") | strings | length) > 0' "$codex_auth_file" >/dev/null 2>&1; then
+            codex_configured=true
+        fi
+    elif [[ -f "$codex_auth_file" ]] && grep -Eq '"(access(_token|Token)|OPENAI_API_KEY)"[[:space:]]*:[[:space:]]*"[^"]+"' "$codex_auth_file" 2>/dev/null; then
+        codex_configured=true
     fi
 
-    # Gemini: Check for credentials (OAuth web login, like Claude Code and Codex CLI)
-    if [[ -f "$target_home/.config/gemini/credentials.json" ]] || \
-       [[ -d "$target_home/.config/gemini" && -n "$(ls -A "$target_home/.config/gemini" 2>/dev/null)" ]] || \
-       [[ -f "$target_home/.gemini/config" ]]; then
+    if [[ "$codex_configured" == "true" ]]; then
+        log_detail "  Codex: configured"
+    else
+        log_warn "  Codex: not configured (run 'codex login --device-auth' to authenticate)"
+    fi
+
+    # Gemini: require a non-empty active account or token, not just file presence.
+    local gemini_accounts_file="$target_home/.gemini/google_accounts.json"
+    local gemini_oauth_file="$target_home/.gemini/oauth_creds.json"
+    local gemini_configured=false
+
+    if command -v jq &>/dev/null; then
+        if [[ -f "$gemini_accounts_file" ]] && jq -e '((.active // "") | strings | length) > 0' "$gemini_accounts_file" >/dev/null 2>&1; then
+            gemini_configured=true
+        elif [[ -f "$gemini_oauth_file" ]] && \
+             jq -e '((.access_token // "") | strings | length) > 0 or ((.refresh_token // "") | strings | length) > 0' "$gemini_oauth_file" >/dev/null 2>&1; then
+            gemini_configured=true
+        fi
+    else
+        if [[ -f "$gemini_accounts_file" ]] && grep -Eq '"active"[[:space:]]*:[[:space:]]*"[^"]+"' "$gemini_accounts_file" 2>/dev/null; then
+            gemini_configured=true
+        elif [[ -f "$gemini_oauth_file" ]] && grep -Eq '"(access_token|refresh_token)"[[:space:]]*:[[:space:]]*"[^"]+"' "$gemini_oauth_file" 2>/dev/null; then
+            gemini_configured=true
+        fi
+    fi
+
+    if [[ "$gemini_configured" == "true" ]]; then
         log_detail "  Gemini: configured"
     else
         log_warn "  Gemini: not configured (run 'gemini' to login via browser)"
@@ -635,7 +673,7 @@ install_all_agents() {
     echo ""
     log_detail "Next steps: Login to each agent"
     log_detail "  • Claude: Run 'claude' and follow prompts"
-    log_detail "  • Codex:  Run 'codex login' (uses ChatGPT Pro account, not API key)"
+    log_detail "  • Codex:  Run 'codex login --device-auth' (uses ChatGPT Pro account, not API key)"
     log_detail "  • Gemini: Run 'gemini' and complete Google login"
     echo ""
 

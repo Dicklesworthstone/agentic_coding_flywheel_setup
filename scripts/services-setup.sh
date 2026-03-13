@@ -113,6 +113,20 @@ user_file_exists() {
     [[ -f "$path" ]]
 }
 
+json_file_has_nonempty_value() {
+    local path="$1"
+    local jq_expr="$2"
+    local grep_pattern="$3"
+
+    [[ -s "$path" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        jq -e "$jq_expr" "$path" >/dev/null 2>&1
+    else
+        grep -Eq "$grep_pattern" "$path" 2>/dev/null
+    fi
+}
+
 # Check if a directory exists and is non-empty
 user_dir_has_content() {
     local path="$1"
@@ -340,10 +354,10 @@ check_claude_status() {
         return
     fi
 
-    # Directory existence/content alone is not enough to indicate authentication.
-    # Require an actual config file.
-    if user_file_exists "$TARGET_HOME/.claude/config.json" || \
-       user_file_exists "$TARGET_HOME/.config/claude/config.json"; then
+    if json_file_has_nonempty_value \
+        "$TARGET_HOME/.claude/.credentials.json" \
+        '((.claudeAiOauth.accessToken // "") | strings | length) > 0' \
+        '"accessToken"[[:space:]]*:[[:space:]]*"[^"]+"'; then
         SERVICE_STATUS[claude]="configured"
     else
         SERVICE_STATUS[claude]="installed"
@@ -359,10 +373,10 @@ check_codex_status() {
         return
     fi
 
-    # Check for OAuth auth.json or config files
-    if user_file_exists "$TARGET_HOME/.codex/auth.json" || \
-       user_file_exists "$TARGET_HOME/.codex/config.json" || \
-       user_file_exists "$TARGET_HOME/.config/codex/config.json"; then
+    if json_file_has_nonempty_value \
+        "$TARGET_HOME/.codex/auth.json" \
+        '((.tokens.access_token // .access_token // .accessToken // .OPENAI_API_KEY // "") | strings | length) > 0' \
+        '"(access(_token|Token)|OPENAI_API_KEY)"[[:space:]]*:[[:space:]]*"[^"]+"'; then
         SERVICE_STATUS[codex]="configured"
     else
         SERVICE_STATUS[codex]="installed"
@@ -378,10 +392,15 @@ check_gemini_status() {
         return
     fi
 
-    # Check for credentials (OAuth web login, like Claude Code and Codex CLI)
-    # Directory existence/content alone is not enough - require actual credential files.
-    if user_file_exists "$TARGET_HOME/.config/gemini/credentials.json" || \
-       user_file_exists "$TARGET_HOME/.gemini/config"; then
+    # Check for real Gemini OAuth state, not just a leftover or blank artifact.
+    if json_file_has_nonempty_value \
+        "$TARGET_HOME/.gemini/google_accounts.json" \
+        '((.active // "") | strings | length) > 0' \
+        '"active"[[:space:]]*:[[:space:]]*"[^"]+"' || \
+       json_file_has_nonempty_value \
+        "$TARGET_HOME/.gemini/oauth_creds.json" \
+        '((.access_token // "") | strings | length) > 0 or ((.refresh_token // "") | strings | length) > 0' \
+        '"(access_token|refresh_token)"[[:space:]]*:[[:space:]]*"[^"]+"'; then
         SERVICE_STATUS[gemini]="configured"
     else
         SERVICE_STATUS[gemini]="installed"
@@ -416,9 +435,10 @@ check_supabase_status() {
     fi
 
     # Check for access token
-    if user_file_exists "$TARGET_HOME/.supabase/access-token" || \
-       user_file_exists "$TARGET_HOME/.config/supabase/access-token" || \
-       [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+    if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+        SERVICE_STATUS[supabase]="configured"
+    elif [[ -s "$TARGET_HOME/.supabase/access-token" ]] || \
+         [[ -s "$TARGET_HOME/.config/supabase/access-token" ]]; then
         SERVICE_STATUS[supabase]="configured"
     else
         SERVICE_STATUS[supabase]="installed"
@@ -433,10 +453,9 @@ check_wrangler_status() {
         return
     fi
 
-    # Check for Cloudflare credentials
-    if user_file_exists "$TARGET_HOME/.config/wrangler/config/default.toml" || \
-        user_file_exists "$TARGET_HOME/.wrangler/config/default.toml" || \
-        [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+    if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+        SERVICE_STATUS[wrangler]="configured"
+    elif run_as_user "$wrangler_bin" whoami >/dev/null 2>&1; then
         SERVICE_STATUS[wrangler]="configured"
     else
         SERVICE_STATUS[wrangler]="installed"
@@ -641,11 +660,12 @@ setup_codex() {
         fi
     fi
 
-    gum_box "Codex CLI Setup" "Codex CLI uses OAuth login with your ChatGPT account.
-We'll launch the login flow in your terminal/browser."
+    gum_box "Codex CLI Setup" "Codex works best on a headless VPS with device auth.
+If you have device auth enabled in ChatGPT Settings → Security, we will launch
+that flow now. If not, use the SSH tunnel fallback from the website wizard."
 
-    gum_detail "Launching Codex OAuth login..."
-    run_as_user "$codex_bin" login || true
+    gum_detail "Launching Codex device-auth login..."
+    run_as_user "$codex_bin" login --device-auth || true
 
     check_codex_status
     if [[ "${SERVICE_STATUS[codex]}" == "configured" ]]; then
@@ -872,13 +892,24 @@ setup_vercel() {
         fi
     fi
 
-    gum_box "Vercel Setup" "Vercel CLI uses OAuth to authenticate.
+    if [[ -n "${VERCEL_TOKEN:-}" ]]; then
+        gum_box "Vercel Setup" "Using VERCEL_TOKEN from your environment to configure the CLI."
+    else
+        gum_box "Vercel Setup" "Vercel works best on a headless VPS with an access token.
 
-Press Enter to launch 'vercel login'..."
+If you already created one at https://vercel.com/account/tokens, export
+VERCEL_TOKEN and rerun this step for a non-browser flow.
+
+Press Enter to continue with Vercel login..."
+    fi
 
     read -r
 
-    run_as_user "$vercel_bin" login || true
+    if [[ -n "${VERCEL_TOKEN:-}" ]]; then
+        run_as_user env VERCEL_TOKEN="$VERCEL_TOKEN" "$vercel_bin" login --token "$VERCEL_TOKEN" || true
+    else
+        run_as_user "$vercel_bin" login || true
+    fi
 
     check_vercel_status
     if [[ "${SERVICE_STATUS[vercel]}" == "configured" ]]; then
@@ -901,16 +932,24 @@ setup_supabase() {
         fi
     fi
 
-    gum_box "Supabase Setup" "Supabase CLI uses OAuth to authenticate.
+    if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+        gum_box "Supabase Setup" "Using SUPABASE_ACCESS_TOKEN from your environment to configure the CLI."
+    else
+        gum_box "Supabase Setup" "Supabase CLI can use an access token on a headless VPS.
 
 Note: some Supabase projects expose the direct Postgres host over IPv6-only.
 If your VPS/network is IPv4-only, use the Supabase pooler connection string instead.
 
-Press Enter to launch 'supabase login'..."
+Press Enter to continue with Supabase login..."
+    fi
 
     read -r
 
-    run_as_user "$supabase_bin" login || true
+    if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+        run_as_user env SUPABASE_ACCESS_TOKEN="$SUPABASE_ACCESS_TOKEN" "$supabase_bin" login --token "$SUPABASE_ACCESS_TOKEN" || true
+    else
+        run_as_user "$supabase_bin" login --no-browser || true
+    fi
 
     check_supabase_status
     if [[ "${SERVICE_STATUS[supabase]}" == "configured" ]]; then
@@ -932,13 +971,29 @@ setup_wrangler() {
         fi
     fi
 
-    gum_box "Cloudflare Wrangler Setup" "Wrangler uses OAuth to authenticate with Cloudflare.
+    if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+        gum_box "Cloudflare Wrangler Setup" "Using CLOUDFLARE_API_TOKEN from your environment.
+If your workflows need it, also export CLOUDFLARE_ACCOUNT_ID."
+    else
+        gum_box "Cloudflare Wrangler Setup" "Wrangler browser login is awkward on a headless VPS.
 
-Press Enter to launch 'wrangler login'..."
+Recommended flow:
+1. Create an API token at https://dash.cloudflare.com/profile/api-tokens
+2. Export CLOUDFLARE_API_TOKEN in your shell
+3. Re-run this step (and add CLOUDFLARE_ACCOUNT_ID if your commands need it)
+
+You can still try browser-based login if you have a browser-capable session or SSH tunnel."
+    fi
 
     read -r
 
-    run_as_user "$wrangler_bin" login || true
+    if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+        gum_detail "Using CLOUDFLARE_API_TOKEN from environment"
+    elif gum_confirm "Try browser-based 'wrangler login' anyway?"; then
+        run_as_user "$wrangler_bin" login || true
+    else
+        gum_warn "Skipping Wrangler OAuth. Export CLOUDFLARE_API_TOKEN and rerun this step when ready."
+    fi
 
     check_wrangler_status
     if [[ "${SERVICE_STATUS[wrangler]}" == "configured" ]]; then

@@ -27,18 +27,28 @@ find_info_script() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    if [[ -f "$ACFS_HOME/scripts/lib/info.sh" ]]; then
-        echo "$ACFS_HOME/scripts/lib/info.sh"
-        return 0
-    fi
-
-    # Dev / local checkout fallbacks
+    # Prefer the repo-local helper when running from a checkout so dashboard
+    # generation follows the code under test, not a stale installed copy.
     if [[ -f "$script_dir/info.sh" ]]; then
         echo "$script_dir/info.sh"
         return 0
     fi
 
+    if [[ -f "$ACFS_HOME/scripts/lib/info.sh" ]]; then
+        echo "$ACFS_HOME/scripts/lib/info.sh"
+        return 0
+    fi
+
     return 1
+}
+
+validate_port() {
+    local port="${1:-}"
+    if [[ ! "$port" =~ ^[0-9]+$ ]]; then
+        return 1
+    fi
+
+    (( port >= 1 && port <= 65535 ))
 }
 
 dashboard_generate() {
@@ -91,7 +101,28 @@ dashboard_generate() {
     fi
 
     echo "Generating dashboard..."
-    bash "$info_script" --html > "$html_file"
+    local tmp_file=""
+    tmp_file=$(mktemp "${dashboard_dir}/index.html.tmp.XXXXXX") || {
+        echo "Error: could not create temporary dashboard file" >&2
+        return 1
+    }
+
+    cleanup_tmp_file() {
+        if [[ -n "$tmp_file" && -e "$tmp_file" ]]; then
+            rm -f "$tmp_file"
+        fi
+    }
+
+    trap cleanup_tmp_file RETURN
+
+    if ! bash "$info_script" --html > "$tmp_file"; then
+        echo "Error: dashboard generation failed" >&2
+        return 1
+    fi
+
+    mv "$tmp_file" "$html_file"
+    tmp_file=""
+    trap - RETURN
     date +%s > "$timestamp_file"
 
     echo "Dashboard generated: $html_file"
@@ -107,6 +138,10 @@ dashboard_serve() {
             --port)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
                     echo "Error: --port requires a port number" >&2
+                    return 1
+                fi
+                if ! validate_port "$2"; then
+                    echo "Error: port must be an integer between 1 and 65535" >&2
                     return 1
                 fi
                 port="$2"
@@ -138,6 +173,10 @@ dashboard_serve() {
             *)
                 # Allow port as positional argument
                 if [[ "$1" =~ ^[0-9]+$ ]]; then
+                    if ! validate_port "$1"; then
+                        echo "Error: port must be an integer between 1 and 65535" >&2
+                        return 1
+                    fi
                     port="$1"
                 else
                     echo "Unknown option: $1" >&2
@@ -147,6 +186,11 @@ dashboard_serve() {
         esac
         shift
     done
+
+    if ! validate_port "$port"; then
+        echo "Error: port must be an integer between 1 and 65535" >&2
+        return 1
+    fi
 
     local dashboard_dir="${ACFS_HOME}/dashboard"
     local html_file="${dashboard_dir}/index.html"

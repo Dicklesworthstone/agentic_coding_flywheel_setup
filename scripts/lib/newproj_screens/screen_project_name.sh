@@ -86,13 +86,13 @@ handle_project_name_input() {
                 --placeholder "my-project" \
                 --prompt "Project name: " \
                 --prompt.foreground "#89b4fa" \
-                --cursor.foreground "#cba6f7" 2>/dev/null) || {
+                --cursor.foreground "#cba6f7" < /dev/tty 2>/dev/null) || {
                 # User cancelled (Ctrl+C in gum)
                 echo ""
                 return 1
             }
         else
-            echo -n "Project name [$current_name]: "
+            newproj_tty_printf "%s [%s]: " "Project name" "$current_name"
             # Read from /dev/tty explicitly to avoid stdin conflicts
             # from signal handlers or subshell capture (issue #153)
             read -r name < /dev/tty || true
@@ -115,8 +115,8 @@ handle_project_name_input() {
             state_set "project_name" "$name"
             log_validation "project_name" "$name" "PASS"
         else
-            echo -e "${TUI_ERROR}${BOX_CROSS} $error${TUI_NC}"
-            echo ""
+            newproj_tty_printf "%b\n" "${TUI_ERROR}${BOX_CROSS} $error${TUI_NC}"
+            newproj_tty_printf "%b\n" ""
             log_validation "project_name" "$name" "FAIL" "$error"
             current_name="$name"
         fi
@@ -136,9 +136,11 @@ run_project_name_screen() {
 
     render_project_name_screen "$current_name"
 
-    local next
-    next=$(handle_project_name_input)
-    local result=$?
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+    run_screen_handler_capture handle_project_name_input
+    local result="$SCREEN_HANDLER_STATUS"
+    local next="$SCREEN_HANDLER_OUTPUT"
 
     if [[ $result -eq 0 ]] && [[ -n "$next" ]]; then
         navigate_forward "$next"

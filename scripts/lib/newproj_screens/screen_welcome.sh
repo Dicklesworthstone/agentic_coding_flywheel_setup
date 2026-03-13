@@ -119,9 +119,11 @@ run_welcome_screen() {
 
     render_welcome_screen
 
-    local next
-    next=$(handle_welcome_input)
-    local result=$?
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+    run_screen_handler_capture handle_welcome_input
+    local result="$SCREEN_HANDLER_STATUS"
+    local next="$SCREEN_HANDLER_OUTPUT"
 
     if [[ $result -eq 0 ]] && [[ -n "$next" ]]; then
         navigate_forward "$next"

@@ -88,6 +88,65 @@ dir_in_path() {
     esac
 }
 
+doctor_fix_require_security() {
+    if [[ "${DOCTOR_FIX_SECURITY_READY:-false}" == "true" ]]; then
+        return 0
+    fi
+
+    local security_script="$SCRIPT_DIR/security.sh"
+    if [[ ! -r "$security_script" ]]; then
+        security_script="$HOME/.acfs/scripts/lib/security.sh"
+    fi
+
+    if [[ ! -r "$security_script" ]]; then
+        doctor_fix_log WARN "security.sh not available; cannot verify upstream installer scripts"
+        return 1
+    fi
+
+    # shellcheck source=security.sh
+    source "$security_script" || return 1
+    if ! load_checksums >/dev/null 2>&1; then
+        doctor_fix_log WARN "checksums.yaml not available; refusing to run unverified installer scripts"
+        return 1
+    fi
+
+    DOCTOR_FIX_SECURITY_READY=true
+    return 0
+}
+
+doctor_fix_run_verified_installer() {
+    local tool="$1"
+    shift
+    local ms_arch=""
+    ms_arch="$(uname -m 2>/dev/null || true)"
+
+    if [[ "$tool" == "ms" ]] && [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && [[ "$ms_arch" == "aarch64" || "$ms_arch" == "arm64" ]]; then
+        if ! command -v cargo >/dev/null 2>&1; then
+            doctor_fix_log WARN "meta_skill ARM64 Linux fallback requires cargo in PATH"
+            return 1
+        fi
+
+        doctor_fix_log INFO "meta_skill: Linux ARM64 detected, rebuilding from source via cargo"
+        cargo install --git https://github.com/Dicklesworthstone/meta_skill --force
+        return $?
+    fi
+
+    if ! doctor_fix_require_security; then
+        return 1
+    fi
+
+    local url="${KNOWN_INSTALLERS[$tool]:-}"
+    local expected_sha256=""
+    expected_sha256="$(get_checksum "$tool")"
+
+    if [[ -z "$url" || -z "$expected_sha256" ]]; then
+        doctor_fix_log WARN "Missing verified installer metadata for $tool"
+        return 1
+    fi
+
+    fetch_and_run "$url" "$expected_sha256" "$tool" "$@"
+}
+
 # ============================================================
 # Fixer: PATH Ordering (fix.path.ordering)
 # ============================================================
@@ -202,6 +261,25 @@ fix_config_copy() {
 # Fixer: DCG Hook (fix.dcg.hook)
 # ============================================================
 
+dcg_hook_already_installed() {
+    local doctor_json=""
+
+    doctor_json="$(dcg doctor --format json 2>/dev/null)" || return 1
+    [[ -n "$doctor_json" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        printf '%s' "$doctor_json" | jq -e '
+            (.hook_installed == true) or
+            any(.checks[]?; .id == "hook_wiring" and .status == "ok")
+        ' >/dev/null 2>&1
+        return $?
+    fi
+
+    printf '%s' "$doctor_json" | grep -q '"hook_installed"[[:space:]]*:[[:space:]]*true' && return 0
+    printf '%s' "$doctor_json" | grep -Eq '"id"[[:space:]]*:[[:space:]]*"hook_wiring".*"status"[[:space:]]*:[[:space:]]*"ok"' && return 0
+    return 1
+}
+
 # Install DCG pre-tool-use hook
 fix_dcg_hook() {
     local check_id="$1"
@@ -213,7 +291,7 @@ fix_dcg_hook() {
     fi
 
     # Guard: Check if already installed
-    if dcg doctor --format json 2>/dev/null | jq -e '.hook_installed == true' &>/dev/null; then
+    if dcg_hook_already_installed; then
         doctor_fix_log INFO "DCG hook already installed"
         return 0
     fi
@@ -440,12 +518,10 @@ dispatch_fix() {
 
         # Stack tools (fixes #160 - meta_skill and other stack tools)
         stack.meta_skill*)
-            fix_stack_install "$check_id" "ms" \
-                "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/meta_skill/main/scripts/install.sh | bash -s -- --easy-mode"
+            fix_verified_install "$check_id" "ms" "ms" --easy-mode
             ;;
         stack.mcp_agent_mail*)
-            fix_stack_install "$check_id" "am" \
-                "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh | bash -s -- --dir ~/mcp_agent_mail --yes"
+            fix_mcp_agent_mail "$check_id"
             ;;
 
         # Symlinks
@@ -483,8 +559,7 @@ dispatch_fix() {
 
         # Agent CLI tools (fixes #213)
         agent.claude)
-            fix_stack_install "$check_id" "claude" \
-                "curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only agents.claude"
+            fix_verified_install "$check_id" "claude" "claude"
             ;;
         agent.codex)
             fix_stack_install "$check_id" "codex" \
@@ -551,6 +626,40 @@ fix_stack_install() {
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
+}
+
+fix_verified_install() {
+    local check_id="$1"
+    local binary_name="$2"
+    local tool="$3"
+    shift 3
+    local args=("$@")
+    local args_display="${args[*]:-}"
+
+    if command -v "$binary_name" &>/dev/null; then
+        doctor_fix_log INFO "$binary_name already installed"
+        return 0
+    fi
+
+    if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
+        FIXES_DRY_RUN+=("fix.stack.$binary_name|Install $binary_name via verified installer|~/.local/bin/$binary_name|verified:$tool ${args_display}")
+        doctor_fix_log DRY "Install $binary_name via verified installer"
+        return 0
+    fi
+
+    if doctor_fix_run_verified_installer "$tool" "${args[@]}" >/dev/null 2>&1; then
+        hash -r
+        if command -v "$binary_name" &>/dev/null; then
+            doctor_fix_log INFO "Installed $binary_name via verified installer"
+            FIXES_APPLIED+=("fix.stack.$binary_name|Installed $binary_name via verified installer")
+            FIX_APPLIED=$((FIX_APPLIED + 1))
+            return 0
+        fi
+    fi
+
+    doctor_fix_log ERROR "Failed to install $binary_name via verified installer"
+    FIX_FAILED=$((FIX_FAILED + 1))
+    return 1
 }
 
 # ============================================================
@@ -662,6 +771,280 @@ fix_ssh_keepalive() {
     FIX_APPLIED=$((FIX_APPLIED + 1))
 
     return 0
+}
+
+# ============================================================
+# Fixer: MCP Agent Mail (fix.stack.mcp_agent_mail)
+# ============================================================
+
+agent_mail_fix_doctor_healthy() {
+    local doctor_json=""
+    local -a cmd=(am doctor check --json)
+
+    if [[ $# -gt 0 ]]; then
+        cmd+=("$1")
+    fi
+
+    if command -v timeout &>/dev/null; then
+        doctor_json="$(timeout 15s "${cmd[@]}" 2>/dev/null)" || return 1
+    else
+        doctor_json="$("${cmd[@]}" 2>/dev/null)" || return 1
+    fi
+
+    [[ -n "$doctor_json" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        [[ "$(printf '%s' "$doctor_json" | jq -r '.healthy // false' 2>/dev/null)" == "true" ]]
+        return $?
+    fi
+
+    printf '%s' "$doctor_json" | grep -q '"healthy"[[:space:]]*:[[:space:]]*true'
+}
+
+agent_mail_fix_wait_for_health() {
+    local attempt
+    for attempt in {1..15}; do
+        if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+agent_mail_fix_write_unit() {
+    local storage_root="$HOME/.mcp_agent_mail_git_mailbox_repo"
+    local unit_dir="$HOME/.config/systemd/user"
+    local unit_file="$unit_dir/agent-mail.service"
+    local am_bin=""
+    local db_url=""
+
+    if ! am_bin="$(command -v am 2>/dev/null)"; then
+        return 1
+    fi
+
+    db_url="sqlite+aiosqlite:///${storage_root}/storage.sqlite3"
+
+    mkdir -p "$storage_root" "$unit_dir" || return 1
+    cat > "$unit_file" <<UNIT_EOF
+[Unit]
+Description=MCP Agent Mail Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$storage_root
+Environment=RUST_LOG=info
+Environment=STORAGE_ROOT=$storage_root
+Environment=DATABASE_URL=$db_url
+Environment=HTTP_PATH=/mcp/
+ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT_EOF
+}
+
+agent_mail_fix_launch_fallback() {
+    local storage_root="$HOME/.mcp_agent_mail_git_mailbox_repo"
+    local fallback_pid_file="$storage_root/agent-mail.pid"
+    local fallback_log_file="$storage_root/agent-mail.log"
+    local am_bin=""
+    local db_url=""
+    local existing_pid=""
+
+    if ! am_bin="$(command -v am 2>/dev/null)"; then
+        return 1
+    fi
+
+    db_url="sqlite+aiosqlite:///${storage_root}/storage.sqlite3"
+
+    if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [[ -f "$fallback_pid_file" ]]; then
+        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
+           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+            return 0
+        fi
+        rm -f "$fallback_pid_file"
+    fi
+
+    nohup env \
+        RUST_LOG=info \
+        STORAGE_ROOT="$storage_root" \
+        DATABASE_URL="$db_url" \
+        HTTP_PATH=/mcp/ \
+        "$am_bin" serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui \
+        >>"$fallback_log_file" 2>&1 < /dev/null &
+    echo $! > "$fallback_pid_file"
+}
+
+agent_mail_fix_stop_fallback() {
+    local storage_root="$HOME/.mcp_agent_mail_git_mailbox_repo"
+    local fallback_pid_file="$storage_root/agent-mail.pid"
+    local am_bin=""
+    local existing_pid=""
+
+    if ! am_bin="$(command -v am 2>/dev/null)"; then
+        return 1
+    fi
+
+    if [[ -f "$fallback_pid_file" ]]; then
+        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
+           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+            kill "$existing_pid" >/dev/null 2>&1 || true
+            for _ in {1..10}; do
+                if ! kill -0 "$existing_pid" 2>/dev/null; then
+                    break
+                fi
+                sleep 1
+            done
+            if kill -0 "$existing_pid" 2>/dev/null; then
+                kill -9 "$existing_pid" >/dev/null 2>&1 || true
+            fi
+        fi
+        rm -f "$fallback_pid_file"
+    fi
+}
+
+fix_mcp_agent_mail() {
+    local check_id="$1"
+    local fixed_any=false
+    local service_healthy=false
+    local doctor_healthy=false
+    local project_path=""
+
+    if ! command -v am &>/dev/null; then
+        if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
+            FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail|Install MCP Agent Mail via verified installer, then repair service state|$HOME/.mcp_agent_mail_git_mailbox_repo|verified:mcp_agent_mail --dir $HOME/mcp_agent_mail --yes --no-start")
+            doctor_fix_log DRY "Install MCP Agent Mail via verified installer, then repair service state"
+            return 0
+        fi
+
+        if doctor_fix_run_verified_installer "mcp_agent_mail" --dir "$HOME/mcp_agent_mail" --yes --no-start >/dev/null 2>&1; then
+            hash -r
+            if command -v am &>/dev/null; then
+                doctor_fix_log INFO "Installed MCP Agent Mail CLI via verified installer"
+                FIXES_APPLIED+=("fix.stack.mcp_agent_mail.install|Installed MCP Agent Mail CLI via verified installer")
+                FIX_APPLIED=$((FIX_APPLIED + 1))
+                fixed_any=true
+            else
+                doctor_fix_log ERROR "Verified MCP Agent Mail install completed without providing 'am'"
+                FIX_FAILED=$((FIX_FAILED + 1))
+                return 1
+            fi
+        else
+            doctor_fix_log ERROR "Failed to install MCP Agent Mail via verified installer"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
+    elif [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
+        FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail|Repair MCP Agent Mail and apply upstream doctor fixes|$HOME/.mcp_agent_mail_git_mailbox_repo|am doctor repair --yes && am doctor fix --yes")
+        doctor_fix_log DRY "Repair MCP Agent Mail database, apply upstream doctor fixes, and restart the service"
+        return 0
+    fi
+
+    if am doctor repair --yes >/dev/null 2>&1; then
+        doctor_fix_log INFO "Ran MCP Agent Mail database repair"
+        FIXES_APPLIED+=("fix.stack.mcp_agent_mail.repair|Ran MCP Agent Mail database repair")
+        FIX_APPLIED=$((FIX_APPLIED + 1))
+        fixed_any=true
+    else
+        doctor_fix_log WARN "MCP Agent Mail database repair did not complete cleanly"
+    fi
+
+    if am doctor fix --yes >/dev/null 2>&1; then
+        doctor_fix_log INFO "Applied MCP Agent Mail doctor fixes"
+        FIXES_APPLIED+=("fix.stack.mcp_agent_mail.fix|Applied MCP Agent Mail doctor fixes")
+        FIX_APPLIED=$((FIX_APPLIED + 1))
+        fixed_any=true
+    else
+        doctor_fix_log WARN "MCP Agent Mail doctor fix did not complete cleanly"
+    fi
+
+    if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+        service_healthy=true
+    fi
+
+    if command -v systemctl &>/dev/null; then
+        local uid runtime_dir user_bus
+        local -a service_env=("HOME=$HOME")
+
+        uid="$(id -u)"
+        runtime_dir="/run/user/$uid"
+        user_bus="$runtime_dir/bus"
+        if [[ -d "$runtime_dir" ]]; then
+            service_env+=("XDG_RUNTIME_DIR=$runtime_dir")
+            if [[ -S "$user_bus" ]]; then
+                service_env+=("DBUS_SESSION_BUS_ADDRESS=unix:path=$user_bus")
+            fi
+        fi
+
+        if agent_mail_fix_write_unit; then
+            doctor_fix_log INFO "Rewrote MCP Agent Mail user service unit"
+            FIXES_APPLIED+=("fix.stack.mcp_agent_mail.service|Rewrote MCP Agent Mail user service unit")
+            FIX_APPLIED=$((FIX_APPLIED + 1))
+            fixed_any=true
+
+            if env "${service_env[@]}" systemctl --user show-environment >/dev/null 2>&1; then
+                service_healthy=false
+                agent_mail_fix_stop_fallback
+                env "${service_env[@]}" systemctl --user daemon-reload >/dev/null 2>&1 || true
+                if env "${service_env[@]}" systemctl --user enable --now agent-mail.service >/dev/null 2>&1 || \
+                   env "${service_env[@]}" systemctl --user restart agent-mail.service >/dev/null 2>&1; then
+                    if env "${service_env[@]}" systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 && \
+                       agent_mail_fix_wait_for_health; then
+                        doctor_fix_log INFO "Agent Mail service is healthy after restart"
+                        service_healthy=true
+                    else
+                        doctor_fix_log WARN "Agent Mail user service is still inactive after restart"
+                    fi
+                fi
+            elif [[ "$service_healthy" != "true" ]]; then
+                if agent_mail_fix_launch_fallback && agent_mail_fix_wait_for_health; then
+                    doctor_fix_log INFO "Agent Mail service is healthy after fallback launch"
+                    service_healthy=true
+                fi
+            fi
+        else
+            doctor_fix_log WARN "Failed to rewrite MCP Agent Mail user service unit"
+        fi
+    elif [[ "$service_healthy" != "true" ]]; then
+        if agent_mail_fix_launch_fallback && agent_mail_fix_wait_for_health; then
+            doctor_fix_log INFO "Agent Mail service is healthy after fallback launch"
+            service_healthy=true
+        fi
+    fi
+
+    if [[ "$service_healthy" == "true" ]] && agent_mail_fix_doctor_healthy; then
+        project_path="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+        if [[ -n "$project_path" ]]; then
+            if agent_mail_fix_doctor_healthy "$project_path"; then
+                doctor_healthy=true
+            fi
+        else
+            doctor_healthy=true
+        fi
+    fi
+
+    if [[ "$doctor_healthy" == "true" ]]; then
+        if [[ "$fixed_any" == "true" ]]; then
+            doctor_fix_log INFO "MCP Agent Mail is healthy after repair"
+        else
+            doctor_fix_log INFO "MCP Agent Mail is already healthy"
+        fi
+        return 0
+    fi
+
+    doctor_fix_log ERROR "Failed to repair MCP Agent Mail to a healthy state"
+    FIX_FAILED=$((FIX_FAILED + 1))
+    return 1
 }
 
 # ============================================================

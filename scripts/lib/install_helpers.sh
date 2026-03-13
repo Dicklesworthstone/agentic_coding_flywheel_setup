@@ -571,7 +571,12 @@ acfs_apply_legacy_skips() {
 # Common paths for user-installed tools (added to PATH for verification)
 # This ensures tools installed in user directories are findable
 _acfs_user_paths() {
-    echo "\$HOME/.local/bin:\$HOME/.cargo/bin:\$HOME/.bun/bin:\$HOME/.atuin/bin:\$HOME/go/bin"
+    local acfs_bin_prefix="\$HOME/.local/bin"
+    if [[ -n "${ACFS_BIN_DIR:-}" ]]; then
+        acfs_bin_prefix="$ACFS_BIN_DIR"
+    fi
+
+    echo "${acfs_bin_prefix}:\$HOME/.cargo/bin:\$HOME/.bun/bin:\$HOME/.atuin/bin:\$HOME/go/bin"
 }
 
 _run_shell_with_strict_mode() {
@@ -603,10 +608,14 @@ if ! declare -f run_as_target >/dev/null 2>&1; then
     run_as_target() {
         local user="${TARGET_USER:-ubuntu}"
         local user_home="${TARGET_HOME:-/home/$user}"
+        local target_path_prefix="${ACFS_BIN_DIR:-$user_home/.local/bin}:$user_home/.cargo/bin:$user_home/.bun/bin:$user_home/.atuin/bin:$user_home/go/bin"
+        local current_path="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
         # UV_NO_CONFIG prevents uv from looking for config in /root when running via sudo/runuser.
         # HOME is set explicitly for consistent tool installs and path resolution.
-        local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home")
+        # PATH must include user-local ACFS bins because we deliberately avoid
+        # login shells and therefore cannot depend on profile files.
+        local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home" "PATH=$target_path_prefix:$current_path")
 
         # Pass core ACFS variables to the target user environment
         [[ -n "${TARGET_USER:-}" ]] && env_args+=("TARGET_USER=$TARGET_USER")
@@ -791,12 +800,16 @@ acfs_module_is_installed() {
     # Run the check in the appropriate context
     case "$run_as" in
         target_user|target)
+            local path_prefix=""
+            path_prefix="$(_acfs_user_paths)"
             if declare -f run_as_target >/dev/null 2>&1; then
-                run_as_target bash -c "$check_cmd" >/dev/null 2>&1
+                run_as_target env "ACFS_TARGET_PATH_PREFIX=$path_prefix" \
+                    bash -c "export PATH=\"\$ACFS_TARGET_PATH_PREFIX:\$PATH\"; $check_cmd" >/dev/null 2>&1
                 return $?
             fi
             # Fallback to current user if run_as_target not available
-            bash -c "$check_cmd" >/dev/null 2>&1
+            env "ACFS_TARGET_PATH_PREFIX=$path_prefix" \
+                bash -c "export PATH=\"\$ACFS_TARGET_PATH_PREFIX:\$PATH\"; $check_cmd" >/dev/null 2>&1
             return $?
             ;;
         root)
@@ -847,18 +860,20 @@ command_exists() {
 
 command_exists_as_target() {
     local cmd="$1"
+    local path_prefix
     if ! declare -f run_as_target >/dev/null 2>&1; then
         return 1
     fi
+
+    path_prefix="$(_acfs_user_paths)"
 
     # NOTE: We intentionally avoid embedding $cmd into the shell string.
     # Passing as $1 avoids quoting bugs when cmd contains special chars.
     #
     # Also, extend PATH with common user install locations so we can detect
-    # tools installed under $HOME (bun, cargo, etc.) when running via sudo/runuser.
-    # shellcheck disable=SC2016  # $HOME/$PATH expand inside the target user's bash -c
-    run_as_target bash -c \
-        'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin:$PATH"; command -v -- "$1" >/dev/null 2>&1' \
+    # tools installed under the configured user bin dir, cargo, bun, etc.
+    run_as_target env "ACFS_TARGET_PATH_PREFIX=$path_prefix" bash -c \
+        'export PATH="${ACFS_TARGET_PATH_PREFIX}:$PATH"; command -v -- "$1" >/dev/null 2>&1' \
         _ "$cmd"
 }
 

@@ -126,7 +126,7 @@ handle_features_input() {
                 --cursor.foreground "#cba6f7" \
                 --selected.foreground "#a6e3a1" \
                 --header "Select features (Space to toggle, Enter to confirm)" \
-                "${options[@]}" 2>/dev/null) || {
+                "${options[@]}" < /dev/tty 2>/dev/null) || {
                 # User cancelled
                 return 1
             }
@@ -207,9 +207,11 @@ handle_features_input() {
 run_features_screen() {
     log_screen "ENTER" "features"
 
-    local next
-    next=$(handle_features_input)
-    local result=$?
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+    run_screen_handler_capture handle_features_input
+    local result="$SCREEN_HANDLER_STATUS"
+    local next="$SCREEN_HANDLER_OUTPUT"
 
     if [[ $result -eq 0 ]] && [[ -n "$next" ]]; then
         navigate_forward "$next"

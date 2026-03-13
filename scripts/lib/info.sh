@@ -33,7 +33,10 @@ fi
 _ACFS_INFO_SH_LOADED=1
 
 # ACFS home directory
-ACFS_HOME="${ACFS_HOME:-$HOME/.acfs}"
+_INFO_DEFAULT_ACFS_HOME="$HOME/.acfs"
+ACFS_HOME="${ACFS_HOME:-$_INFO_DEFAULT_ACFS_HOME}"
+_INFO_SYSTEM_STATE_FILE="${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}"
+_INFO_RESOLVED_ACFS_HOME=""
 
 # Source output formatting library (for TOON support)
 _INFO_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,6 +87,107 @@ info_get_file_mtime() {
     echo "$mtime"
 }
 
+info_home_for_user() {
+    local user="$1"
+    local passwd_entry=""
+
+    [[ -n "$user" ]] || return 1
+
+    if command -v getent &>/dev/null; then
+        passwd_entry=$(getent passwd "$user" 2>/dev/null || true)
+        if [[ -n "$passwd_entry" ]]; then
+            printf '%s\n' "$(printf '%s\n' "$passwd_entry" | cut -d: -f6)"
+            return 0
+        fi
+    fi
+
+    if [[ "$user" == "root" ]]; then
+        echo "/root"
+        return 0
+    fi
+
+    if [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        echo "/home/$user"
+        return 0
+    fi
+
+    return 1
+}
+
+info_read_target_user_from_state() {
+    local state_file="${1:-$_INFO_SYSTEM_STATE_FILE}"
+    local target_user=""
+
+    [[ -f "$state_file" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        target_user=$(jq -r '.target_user // empty' "$state_file" 2>/dev/null || true)
+    else
+        target_user=$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$state_file" 2>/dev/null | head -n 1)
+    fi
+
+    [[ -n "$target_user" ]] && [[ "$target_user" != "null" ]] || return 1
+    echo "$target_user"
+}
+
+info_get_data_home() {
+    if [[ -n "$_INFO_RESOLVED_ACFS_HOME" ]]; then
+        echo "$_INFO_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    if [[ "$ACFS_HOME" != "$_INFO_DEFAULT_ACFS_HOME" ]]; then
+        _INFO_RESOLVED_ACFS_HOME="$ACFS_HOME"
+        echo "$_INFO_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    local candidate=""
+    local target_home=""
+    local target_user=""
+
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        target_home=$(info_home_for_user "$SUDO_USER" || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && [[ -e "$candidate/state.json" || -e "$candidate/onboard_progress.json" || -d "$candidate/onboard" ]]; then
+            _INFO_RESOLVED_ACFS_HOME="$candidate"
+            echo "$_INFO_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    target_user=$(info_read_target_user_from_state || true)
+    if [[ -n "$target_user" ]]; then
+        target_home=$(info_home_for_user "$target_user" || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && [[ -e "$candidate/state.json" || -e "$candidate/onboard_progress.json" || -d "$candidate/onboard" ]]; then
+            _INFO_RESOLVED_ACFS_HOME="$candidate"
+            echo "$_INFO_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    _INFO_RESOLVED_ACFS_HOME="$ACFS_HOME"
+    echo "$_INFO_RESOLVED_ACFS_HOME"
+}
+
+info_get_install_state_file() {
+    local data_home
+    data_home=$(info_get_data_home)
+
+    if [[ -f "$data_home/state.json" ]]; then
+        echo "$data_home/state.json"
+        return 0
+    fi
+
+    if [[ -f "$_INFO_SYSTEM_STATE_FILE" ]]; then
+        echo "$_INFO_SYSTEM_STATE_FILE"
+        return 0
+    fi
+
+    echo "$data_home/state.json"
+}
+
 # Get system hostname
 info_get_hostname() {
     cat /etc/hostname 2>/dev/null || hostname 2>/dev/null || echo "unknown"
@@ -92,15 +196,21 @@ info_get_hostname() {
 # Get primary IP address (cached or live)
 info_get_ip() {
     # Try cached value first
-    local cache_file="${ACFS_HOME}/cache/ip_address"
+    local data_home
+    data_home=$(info_get_data_home)
+    local cache_file="${data_home}/cache/ip_address"
     local now
     now="$(date +%s 2>/dev/null || echo "")"
 
     if [[ -f "$cache_file" ]] && [[ "$now" =~ ^[0-9]+$ ]]; then
         local cache_mtime
         if cache_mtime="$(info_get_file_mtime "$cache_file")" && [[ $cache_mtime -gt $((now - 3600)) ]]; then
-            cat "$cache_file"
-            return 0
+            local cached_ip=""
+            cached_ip="$(head -1 "$cache_file" 2>/dev/null | tr -d '[:space:]')"
+            if [[ -n "$cached_ip" ]] && [[ "$cached_ip" != "unknown" ]]; then
+                echo "$cached_ip"
+                return 0
+            fi
         fi
     fi
 
@@ -114,9 +224,11 @@ info_get_ip() {
         ip="unknown"
     fi
 
-    # Cache it
-    mkdir -p "${ACFS_HOME}/cache" 2>/dev/null
-    echo "$ip" > "$cache_file" 2>/dev/null
+    # Cache successful lookups, but do not pin transient failures for an hour.
+    if [[ "$ip" != "unknown" ]]; then
+        mkdir -p "${data_home}/cache" 2>/dev/null
+        echo "$ip" > "$cache_file" 2>/dev/null
+    fi
 
     echo "$ip"
 }
@@ -150,12 +262,16 @@ info_get_os_codename() {
 
 # Get installation state from state.json
 info_get_install_state() {
-    local state_file="${ACFS_HOME}/state.json"
-    if [[ -f "$state_file" ]] && command -v jq &>/dev/null; then
-        cat "$state_file"
-    else
-        echo '{}'
+    local state_file
+    state_file="$(info_get_install_state_file)"
+    [[ -f "$state_file" ]] || { echo '{}'; return 0; }
+
+    if command -v jq &>/dev/null; then
+        jq -c '.' "$state_file" 2>/dev/null || cat "$state_file" 2>/dev/null || echo '{}'
+        return 0
     fi
+
+    cat "$state_file" 2>/dev/null || echo '{}'
 }
 
 # Get completed phases count
@@ -175,14 +291,73 @@ info_get_total_phases() {
 }
 
 # Get skipped tools
-info_get_skipped_tools() {
-    local state
-    state=$(info_get_install_state)
+info_get_skipped_tools_json() {
+    local state_file
+    state_file="$(info_get_install_state_file)"
+    [[ -f "$state_file" ]] || { echo '[]'; return 0; }
+
     if command -v jq &>/dev/null; then
-        echo "$state" | jq -r '.skipped_tools // [] | join(", ")'
-    else
-        echo ""
+        jq -c '.skipped_tools // []' "$state_file" 2>/dev/null || echo '[]'
+        return 0
     fi
+
+    if command -v python3 &>/dev/null; then
+        python3 - "$state_file" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+    skipped = data.get("skipped_tools", [])
+    if isinstance(skipped, dict):
+        skipped = list(skipped.keys())
+    elif not isinstance(skipped, list):
+        skipped = []
+    print(json.dumps([str(item) for item in skipped if item is not None]))
+except Exception:
+    print("[]")
+PY
+        return 0
+    fi
+
+    local raw
+    raw=$(sed -n 's/.*"skipped_tools"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' "$state_file" 2>/dev/null | head -n1)
+    if [[ -z "$raw" ]]; then
+        echo '[]'
+    else
+        printf '[%s]\n' "$raw"
+    fi
+}
+
+info_get_skipped_tools() {
+    local skipped_tools_json
+    skipped_tools_json="$(info_get_skipped_tools_json)"
+
+    if command -v jq &>/dev/null; then
+        echo "$skipped_tools_json" | jq -r 'join(", ")'
+        return 0
+    fi
+
+    if command -v python3 &>/dev/null; then
+        python3 - "$skipped_tools_json" <<'PY'
+import json
+import sys
+
+try:
+    skipped = json.loads(sys.argv[1])
+    if isinstance(skipped, dict):
+        skipped = list(skipped.keys())
+    elif not isinstance(skipped, list):
+        skipped = []
+    print(", ".join(str(item) for item in skipped if item is not None))
+except Exception:
+    print("")
+PY
+        return 0
+    fi
+
+    printf '%s\n' "$skipped_tools_json" | sed -e 's/^\[//' -e 's/\]$//' -e 's/"//g' -e 's/, */, /g'
 }
 
 # Get installation date
@@ -204,13 +379,56 @@ info_get_install_date() {
 }
 
 # Get onboard progress
+info_get_onboard_lessons_dir() {
+    local data_home
+    data_home=$(info_get_data_home)
+    echo "${ACFS_LESSONS_DIR:-${data_home}/onboard/lessons}"
+}
+
+info_get_onboard_progress_file() {
+    local data_home
+    data_home=$(info_get_data_home)
+    echo "${ACFS_PROGRESS_FILE:-${data_home}/onboard_progress.json}"
+}
+
+info_get_lesson_file_by_index() {
+    local index="${1:-}"
+    local lessons_dir
+    lessons_dir=$(info_get_onboard_lessons_dir)
+
+    if [[ ! "$index" =~ ^[0-9]+$ ]] || [[ ! -d "$lessons_dir" ]]; then
+        return 1
+    fi
+
+    find "$lessons_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null \
+        | LC_ALL=C sort \
+        | sed -n "$((index + 1))p"
+}
+
 info_get_onboard_progress() {
-    local progress_file="${ACFS_HOME}/onboard_progress.json"
-    if [[ -f "$progress_file" ]] && command -v jq &>/dev/null; then
+    local progress_file
+    progress_file=$(info_get_onboard_progress_file)
+    local total
+    total=$(info_get_lessons_total)
+    if [[ -f "$progress_file" ]]; then
         cat "$progress_file"
     else
-        echo '{"completed": [], "total": 9}'
+        printf '{"completed": [], "total": %s}\n' "$total"
     fi
+}
+
+info_get_onboard_progress_compact() {
+    local progress_file
+    progress_file=$(info_get_onboard_progress_file)
+
+    [[ -f "$progress_file" ]] || return 1
+    tr -d '[:space:]' < "$progress_file" 2>/dev/null
+}
+
+info_get_onboard_completed_csv() {
+    local compact
+    compact="$(info_get_onboard_progress_compact || true)"
+    printf '%s\n' "$compact" | sed -n 's/.*"completed":\[\([^]]*\)\].*/\1/p' | head -1
 }
 
 # Get onboard lessons completed count
@@ -220,53 +438,102 @@ info_get_lessons_completed() {
     if command -v jq &>/dev/null; then
         echo "$progress" | jq -r '(.completed // []) | length'
     else
-        echo "0"
+        local completed_raw
+        completed_raw="$(info_get_onboard_completed_csv)"
+        if [[ -z "$completed_raw" ]]; then
+            echo "0"
+        else
+            echo "$completed_raw" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | wc -l | awk '{print $1}'
+        fi
     fi
 }
 
 # Get total lessons
 info_get_lessons_total() {
-    echo "9"  # Fixed in ACFS onboard
+    local lessons_dir
+    lessons_dir=$(info_get_onboard_lessons_dir)
+
+    if [[ ! -d "$lessons_dir" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    find "$lessons_dir" -maxdepth 1 -type f -name '*.md' -print 2>/dev/null \
+        | LC_ALL=C sort \
+        | wc -l \
+        | awk '{print $1}'
 }
 
-# Map onboard lesson index (0-8) to a human title.
+# Map an onboard lesson index to its discovered title.
 info_get_lesson_title() {
-    case "${1:-}" in
-        0) echo "Welcome & Overview" ;;
-        1) echo "Linux Navigation" ;;
-        2) echo "SSH & Persistence" ;;
-        3) echo "tmux Basics" ;;
-        4) echo "Agent Commands (cc, cod, gmi)" ;;
-        5) echo "NTM Command Center" ;;
-        6) echo "NTM Prompt Palette" ;;
-        7) echo "The Flywheel Loop" ;;
-        8) echo "Keeping Updated" ;;
-        *) echo "unknown" ;;
-    esac
+    local lesson_path
+    local title
+
+    lesson_path=$(info_get_lesson_file_by_index "${1:-}") || {
+        echo "unknown"
+        return 0
+    }
+
+    title=$(grep -m1 '^# ' "$lesson_path" 2>/dev/null | sed 's/^# //')
+    if [[ -n "$title" ]]; then
+        echo "$title"
+    else
+        basename "${lesson_path%.md}"
+    fi
 }
 
 # Get next lesson
 info_get_next_lesson() {
     local progress
+    local total
     progress=$(info_get_onboard_progress)
+    total=$(info_get_lessons_total)
+
+    if [[ ! "$total" =~ ^[0-9]+$ ]] || [[ "$total" -le 0 ]]; then
+        echo "No lessons available"
+        return 0
+    fi
+
     if command -v jq &>/dev/null; then
         local completed_count
         completed_count=$(echo "$progress" | jq -r '(.completed // []) | length' 2>/dev/null || echo "0")
 
-        if [[ "$completed_count" -ge 9 ]]; then
+        if [[ "$completed_count" -ge "$total" ]]; then
             echo "All complete!"
             return 0
         fi
 
         local next_idx
-        next_idx=$(echo "$progress" | jq -r '(.completed // []) as $c | ([range(0;9) as $i | select(($c | index($i)) == null) | $i] | first // 0)' 2>/dev/null || echo "0")
-        [[ "$next_idx" =~ ^[0-8]$ ]] || next_idx=0
+        next_idx=$(echo "$progress" | jq -r --argjson total "$total" '(.completed // []) as $c | ([range(0;$total) as $i | select(($c | index($i)) == null) | $i] | first // 0)' 2>/dev/null || echo "0")
+        [[ "$next_idx" =~ ^[0-9]+$ ]] || next_idx=0
 
         local title
         title=$(info_get_lesson_title "$next_idx")
         echo "Lesson $((next_idx + 1)) - $title"
     else
-        echo "unknown"
+        local completed_count
+        completed_count=$(info_get_lessons_completed)
+
+        if [[ "$completed_count" =~ ^[0-9]+$ ]] && [[ "$completed_count" -ge "$total" ]]; then
+            echo "All complete!"
+            return 0
+        fi
+
+        local completed_csv
+        completed_csv="$(info_get_onboard_completed_csv | tr -d ' ')"
+
+        local next_idx=0
+        local idx
+        for ((idx = 0; idx < total; idx++)); do
+            if [[ ",${completed_csv}," != *",$idx,"* ]]; then
+                next_idx="$idx"
+                break
+            fi
+        done
+
+        local title
+        title=$(info_get_lesson_title "$next_idx")
+        echo "Lesson $((next_idx + 1)) - $title"
     fi
 }
 
@@ -323,6 +590,34 @@ info_get_installed_tools_summary() {
     command -v ntm &>/dev/null && stack_ok="✓"
 
     echo "shell:$shell_ok|lang:$lang_ok|agents:$agents_ok|stack:$stack_ok"
+}
+
+info_render_onboard_bar() {
+    local completed="${1:-0}"
+    local total="${2:-0}"
+    local width="${3:-24}"
+    local filled=0
+    local empty="$width"
+
+    [[ "$completed" =~ ^[0-9]+$ ]] || completed=0
+    [[ "$total" =~ ^[0-9]+$ ]] || total=0
+    [[ "$width" =~ ^[0-9]+$ ]] || width=24
+
+    if (( total > 0 )); then
+        (( completed < 0 )) && completed=0
+        (( completed > total )) && completed="$total"
+        filled=$((completed * width / total))
+        if (( completed > 0 && filled == 0 )); then
+            filled=1
+        fi
+        (( filled > width )) && filled="$width"
+        empty=$((width - filled))
+    fi
+
+    local bar=""
+    for ((i=0; i<filled; i++)); do bar+="█"; done
+    for ((i=0; i<empty; i++)); do bar+="░"; done
+    printf '%s' "$bar"
 }
 
 # ============================================================
@@ -400,22 +695,33 @@ info_render_terminal() {
 
     # Onboard Progress section
     echo -e "${C_BOLD}Onboard Progress${C_RESET}"
-    local percent=$((lessons_completed * 100 / lessons_total))
-    local bar_filled=$((lessons_completed))
-    local bar_empty=$((lessons_total - lessons_completed))
-    local bar=""
-    for ((i=0; i<bar_filled; i++)); do bar+="█"; done
-    for ((i=0; i<bar_empty; i++)); do bar+="░"; done
+    if [[ "$lessons_total" =~ ^[0-9]+$ ]] && (( lessons_total == 0 )); then
+        echo -e "  No lessons available"
+        echo -e "  ${C_DIM}Re-run the installer or set ACFS_LESSONS_DIR to a directory with onboarding lessons.${C_RESET}"
+    else
+        local percent=0
+        local display_completed="$lessons_completed"
+        if [[ "$lessons_completed" =~ ^[0-9]+$ ]] && [[ "$lessons_total" =~ ^[0-9]+$ ]] && (( lessons_total > 0 )); then
+            if (( lessons_completed > lessons_total )); then
+                display_completed="$lessons_total"
+            fi
+            percent=$((display_completed * 100 / lessons_total))
+        fi
+        local bar=""
+        bar=$(info_render_onboard_bar "$display_completed" "$lessons_total" 24)
 
-    echo -e "  ${C_GREEN}$bar${C_RESET} ${lessons_completed}/${lessons_total} lessons (${percent}%)"
-    if [[ "$lessons_completed" -lt "$lessons_total" ]]; then
-        echo -e "  ${C_DIM}Next:${C_RESET} $next_lesson"
+        echo -e "  ${C_GREEN}$bar${C_RESET} ${display_completed}/${lessons_total} lessons (${percent}%)"
+        if [[ "$lessons_completed" -lt "$lessons_total" ]]; then
+            echo -e "  ${C_DIM}Next:${C_RESET} $next_lesson"
+        fi
     fi
     echo ""
 
     # Footer
     echo -e "${C_DIM}Run 'acfs doctor' for health verification${C_RESET}"
-    echo -e "${C_DIM}Run 'onboard' to continue learning${C_RESET}"
+    if [[ "$lessons_total" =~ ^[0-9]+$ ]] && (( lessons_total > 0 )); then
+        echo -e "${C_DIM}Run 'onboard' to continue learning${C_RESET}"
+    fi
 }
 
 # ============================================================
@@ -445,9 +751,10 @@ info_render_json() {
     os_version=$(info_get_os_version)
     os_codename=$(info_get_os_codename)
 
-    local install_date skipped_tools
+    local install_date
     install_date=$(info_get_install_date)
-    skipped_tools=$(info_get_skipped_tools)
+    local skipped_tools_json="[]"
+    skipped_tools_json="$(info_get_skipped_tools_json)"
 
     local lessons_completed lessons_total next_lesson
     lessons_completed=$(info_get_lessons_completed)
@@ -476,9 +783,8 @@ info_render_json() {
     os_version_json="$(_info_json_escape "$os_version")"
     os_codename_json="$(_info_json_escape "$os_codename")"
 
-    local install_date_json skipped_tools_json next_lesson_json
+    local install_date_json next_lesson_json
     install_date_json="$(_info_json_escape "$install_date")"
-    skipped_tools_json="$(_info_json_escape "$skipped_tools")"
     next_lesson_json="$(_info_json_escape "$next_lesson")"
 
     local json_output
@@ -495,7 +801,7 @@ info_render_json() {
   },
   "installation": {
     "date": "$install_date_json",
-    "skipped_tools": "$skipped_tools_json"
+    "skipped_tools": $skipped_tools_json
   },
   "onboard": {
     "lessons_completed": $lessons_completed,
@@ -561,7 +867,36 @@ info_render_html() {
     local lessons_completed lessons_total
     lessons_completed=$(info_get_lessons_completed)
     lessons_total=$(info_get_lessons_total)
-    local percent=$((lessons_completed * 100 / lessons_total))
+    local percent=0
+    local display_completed="$lessons_completed"
+    if [[ "$lessons_completed" =~ ^[0-9]+$ ]] && [[ "$lessons_total" =~ ^[0-9]+$ ]] && (( lessons_total > 0 )); then
+        if (( lessons_completed > lessons_total )); then
+            display_completed="$lessons_total"
+        fi
+        percent=$((display_completed * 100 / lessons_total))
+    fi
+
+    local onboard_card
+    if [[ "$lessons_total" =~ ^[0-9]+$ ]] && (( lessons_total == 0 )); then
+        onboard_card=$(cat <<'EOF'
+        <div class="card">
+            <h2>Onboard Progress</h2>
+            <p class="label">No lessons available.</p>
+            <p class="label">Re-run the installer or set ACFS_LESSONS_DIR to a directory with onboarding lessons.</p>
+        </div>
+EOF
+)
+    else
+        onboard_card=$(cat <<EOF
+        <div class="card">
+            <h2>Onboard Progress</h2>
+            <div class="progress-bar">
+                <div class="progress-fill">${display_completed}/${lessons_total}</div>
+            </div>
+        </div>
+EOF
+)
+    fi
 
     cat <<EOF
 <!DOCTYPE html>
@@ -645,12 +980,7 @@ info_render_html() {
             </div>
         </div>
 
-        <div class="card">
-            <h2>Onboard Progress</h2>
-            <div class="progress-bar">
-                <div class="progress-fill">${lessons_completed}/${lessons_total}</div>
-            </div>
-        </div>
+$onboard_card
 
         <div class="footer">
             Generated: $(date -Iseconds)<br>
@@ -684,12 +1014,20 @@ info_main() {
                     return 1
                 fi
                 _INFO_OUTPUT_FORMAT="$1"
+                if [[ "$_INFO_OUTPUT_FORMAT" != "json" && "$_INFO_OUTPUT_FORMAT" != "toon" ]]; then
+                    echo "Error: invalid format '$_INFO_OUTPUT_FORMAT' (expected json or toon)" >&2
+                    return 1
+                fi
                 output_mode="json"  # --format implies structured output
                 ;;
             --format=*)
                 _INFO_OUTPUT_FORMAT="${1#*=}"
                 if [[ -z "$_INFO_OUTPUT_FORMAT" ]]; then
                     echo "Error: --format requires a value (json or toon)" >&2
+                    return 1
+                fi
+                if [[ "$_INFO_OUTPUT_FORMAT" != "json" && "$_INFO_OUTPUT_FORMAT" != "toon" ]]; then
+                    echo "Error: invalid format '$_INFO_OUTPUT_FORMAT' (expected json or toon)" >&2
                     return 1
                 fi
                 output_mode="json"

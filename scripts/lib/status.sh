@@ -16,29 +16,16 @@
 #   acfs status --check-updates  # Include network-based update check
 # ============================================================
 
-# --- PATH setup (matches doctor.sh) ---
-_status_ensure_path() {
-    local dir
-    for dir in \
-        "$HOME/.local/bin" \
-        "$HOME/.bun/bin" \
-        "$HOME/.cargo/bin" \
-        "$HOME/go/bin" \
-        "$HOME/.atuin/bin"; do
-        [[ -d "$dir" ]] || continue
-        case ":$PATH:" in
-            *":$dir:"*) ;;
-            *) export PATH="$dir:$PATH" ;;
-        esac
-    done
-}
-_status_ensure_path
-
 # --- Defaults ---
 _STATUS_JSON=false
 _STATUS_SHORT=false
 _STATUS_CHECK_UPDATES=false
-_ACFS_HOME="${ACFS_HOME:-$HOME/.acfs}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_STATUS_EXPLICIT_ACFS_HOME="${ACFS_HOME:-}"
+_STATUS_DEFAULT_ACFS_HOME="$HOME/.acfs"
+_ACFS_HOME="${_STATUS_EXPLICIT_ACFS_HOME:-$_STATUS_DEFAULT_ACFS_HOME}"
+_STATUS_SYSTEM_STATE_FILE="${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}"
+_STATUS_RESOLVED_ACFS_HOME=""
 
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
@@ -71,9 +58,216 @@ while [[ $# -gt 0 ]]; do
             echo "  PROMPT='\$(acfs status --short 2>/dev/null) \w \$ '"
             exit 0
             ;;
-        *) shift ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            echo "Try 'acfs status --help' for usage." >&2
+            exit 1
+            ;;
     esac
 done
+
+_status_prepend_user_paths() {
+    local base_home="$1"
+    local dir=""
+
+    [[ -n "$base_home" ]] || return 0
+
+    for dir in \
+        "$base_home/.local/bin" \
+        "$base_home/.bun/bin" \
+        "$base_home/.cargo/bin" \
+        "$base_home/go/bin" \
+        "$base_home/.atuin/bin"; do
+        case ":$PATH:" in
+            *":$dir:"*) ;;
+            *) export PATH="$dir:$PATH" ;;
+        esac
+    done
+}
+
+_status_ensure_path() {
+    _status_prepend_user_paths "$HOME"
+
+    if [[ -n "${TARGET_HOME:-}" ]] && [[ "$TARGET_HOME" != "$HOME" ]]; then
+        _status_prepend_user_paths "$TARGET_HOME"
+    fi
+}
+
+_status_home_for_user() {
+    local user="$1"
+    local passwd_entry=""
+
+    [[ -n "$user" ]] || return 1
+
+    if command -v getent &>/dev/null; then
+        passwd_entry=$(getent passwd "$user" 2>/dev/null || true)
+        if [[ -n "$passwd_entry" ]]; then
+            printf '%s\n' "$(printf '%s\n' "$passwd_entry" | cut -d: -f6)"
+            return 0
+        fi
+    fi
+
+    if [[ "$user" == "root" ]]; then
+        echo "/root"
+        return 0
+    fi
+
+    if [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        echo "/home/$user"
+        return 0
+    fi
+
+    return 1
+}
+
+_status_read_target_user_from_state() {
+    local state_file="$1"
+    local target_user=""
+
+    [[ -f "$state_file" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        target_user=$(jq -r '.target_user // empty' "$state_file" 2>/dev/null || true)
+    else
+        target_user=$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$state_file" 2>/dev/null | head -n 1)
+    fi
+
+    [[ -n "$target_user" ]] && [[ "$target_user" != "null" ]] || return 1
+    printf '%s\n' "$target_user"
+}
+
+_status_script_acfs_home() {
+    local candidate=""
+    candidate=$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd) || return 1
+    [[ "$(basename "$candidate")" == ".acfs" ]] || return 1
+    printf '%s\n' "$candidate"
+}
+
+_status_resolve_acfs_home() {
+    if [[ -n "$_STATUS_RESOLVED_ACFS_HOME" ]]; then
+        printf '%s\n' "$_STATUS_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    local candidate=""
+    local target_home=""
+    local target_user=""
+
+    if [[ -n "$_STATUS_EXPLICIT_ACFS_HOME" ]]; then
+        _STATUS_RESOLVED_ACFS_HOME="$_STATUS_EXPLICIT_ACFS_HOME"
+        printf '%s\n' "$_STATUS_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    candidate=$(_status_script_acfs_home 2>/dev/null || true)
+    if [[ -n "$candidate" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -d "$candidate/onboard" ]]; then
+        _STATUS_RESOLVED_ACFS_HOME="$candidate"
+        printf '%s\n' "$_STATUS_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    if [[ -f "$_ACFS_HOME/state.json" || -f "$_ACFS_HOME/VERSION" || -d "$_ACFS_HOME/onboard" ]]; then
+        _STATUS_RESOLVED_ACFS_HOME="$_ACFS_HOME"
+        printf '%s\n' "$_STATUS_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        target_home=$(_status_home_for_user "$SUDO_USER" 2>/dev/null || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -d "$candidate/onboard" ]]; then
+            _STATUS_RESOLVED_ACFS_HOME="$candidate"
+            printf '%s\n' "$_STATUS_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    target_user=$(_status_read_target_user_from_state "$_STATUS_SYSTEM_STATE_FILE" 2>/dev/null || true)
+    if [[ -n "$target_user" ]]; then
+        target_home=$(_status_home_for_user "$target_user" 2>/dev/null || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -d "$candidate/onboard" ]]; then
+            _STATUS_RESOLVED_ACFS_HOME="$candidate"
+            printf '%s\n' "$_STATUS_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    _STATUS_RESOLVED_ACFS_HOME="$_ACFS_HOME"
+    printf '%s\n' "$_STATUS_RESOLVED_ACFS_HOME"
+}
+
+_status_resolve_state_file() {
+    local candidate="$_ACFS_HOME/state.json"
+
+    if [[ -f "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    if [[ -f "$_STATUS_SYSTEM_STATE_FILE" ]]; then
+        printf '%s\n' "$_STATUS_SYSTEM_STATE_FILE"
+        return 0
+    fi
+
+    printf '%s\n' "$candidate"
+}
+
+_status_prepare_context() {
+    _ACFS_HOME="$(_status_resolve_acfs_home)"
+    local state_file=""
+    state_file="$(_status_resolve_state_file)"
+
+    if [[ -z "${TARGET_USER:-}" ]]; then
+        TARGET_USER=$(_status_read_target_user_from_state "$state_file" 2>/dev/null || \
+            _status_read_target_user_from_state "$_STATUS_SYSTEM_STATE_FILE" 2>/dev/null || true)
+        [[ -n "${TARGET_USER:-}" ]] && export TARGET_USER
+    fi
+
+    if [[ -z "${TARGET_HOME:-}" ]] && [[ -n "${TARGET_USER:-}" ]]; then
+        TARGET_HOME=$(_status_home_for_user "$TARGET_USER" 2>/dev/null || true)
+        [[ -n "${TARGET_HOME:-}" ]] && export TARGET_HOME
+    fi
+
+    _status_ensure_path
+}
+
+_status_prepare_context
+
+_state_file="$(_status_resolve_state_file)"
+
+_status_read_last_update_ts() {
+    local state_file="$1"
+    local ts=""
+    local key=""
+
+    [[ -f "$state_file" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        ts=$(jq -r '
+            .last_updated //
+            .last_completed_phase_ts //
+            .updated_at //
+            .last_update //
+            .started_at //
+            .install_date //
+            empty
+        ' "$state_file" 2>/dev/null) || true
+    fi
+
+    if [[ -z "$ts" || "$ts" == "null" ]]; then
+        for key in last_updated last_completed_phase_ts updated_at last_update started_at install_date; do
+            ts=$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" \
+                "$state_file" 2>/dev/null | head -n1)
+            if [[ -n "$ts" ]]; then
+                break
+            fi
+        done
+    fi
+
+    [[ -n "$ts" ]] || return 1
+    printf '%s\n' "$ts"
+}
 
 # --- Collect checks ---
 _warnings=()
@@ -91,11 +285,12 @@ if [[ ! -d "$_ACFS_HOME" ]]; then
 fi
 
 # 2. State file check
-_state_file="$_ACFS_HOME/state.json"
 if [[ ! -f "$_state_file" ]]; then
     _errors+=("state file missing")
 elif [[ ! -s "$_state_file" ]]; then
     _errors+=("state file empty")
+elif command -v jq &>/dev/null && ! jq -e . "$_state_file" >/dev/null 2>&1; then
+    _errors+=("state file invalid JSON")
 fi
 
 # 3. Count tools in PATH
@@ -117,17 +312,7 @@ done
 _last_update_ts=""
 _last_update_human=""
 if [[ -f "$_state_file" ]]; then
-    if command -v jq &>/dev/null; then
-        _last_update_ts=$(jq -r '
-            .last_completed_phase_ts //
-            .updated_at //
-            empty
-        ' "$_state_file" 2>/dev/null) || true
-    fi
-    if [[ -z "$_last_update_ts" ]]; then
-        _last_update_ts=$(sed -n 's/.*"updated_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-            "$_state_file" 2>/dev/null | head -n1)
-    fi
+    _last_update_ts=$(_status_read_last_update_ts "$_state_file" 2>/dev/null || true)
 fi
 
 if [[ -n "$_last_update_ts" ]]; then
@@ -182,6 +367,17 @@ _json_escape() {
     s=${s//$'\r'/\\r}
     s=${s//$'\t'/\\t}
     printf '%s' "$s"
+}
+
+_status_print() {
+    local color="$1"
+    local message="$2"
+
+    if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]]; then
+        printf '%b%s\033[0m\n' "$color" "$message"
+    else
+        printf '%s\n' "$message"
+    fi
 }
 
 # --- Output ---
@@ -242,9 +438,9 @@ else
     fi
 
     case $_exit_code in
-        0) printf '\033[0;32m%s\033[0m\n' "$_msg" ;;
-        1) printf '\033[0;33m%s\033[0m\n' "$_msg" ;;
-        2) printf '\033[0;31m%s\033[0m\n' "$_msg" ;;
+        0) _status_print '\033[0;32m' "$_msg" ;;
+        1) _status_print '\033[0;33m' "$_msg" ;;
+        2) _status_print '\033[0;31m' "$_msg" ;;
     esac
 fi
 

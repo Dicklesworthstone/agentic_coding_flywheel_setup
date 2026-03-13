@@ -185,6 +185,7 @@ declare -gA KNOWN_INSTALLERS=(
     [rust]="https://sh.rustup.rs"
     [nvm]="https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
     [ohmyzsh]="https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh"
+    [opencode]="https://opencode.ai/install"
     [zoxide]="https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
     [atuin]="https://setup.atuin.sh"
     [ntm]="https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh"
@@ -216,6 +217,7 @@ declare -gA KNOWN_INSTALLERS=(
     [fsfs]="https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/main/install.sh"
     [sbh]="https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
     [casr]="https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh"
+    [dsr]="https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
     [asb]="https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
     [pcr]="https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
 )

@@ -430,40 +430,50 @@ install_stack_meta_skill() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
-            if acfs_security_init; then
-                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
-                    local tool="ms"
-                    local url=""
-                    local expected_sha256=""
-
-                    # Safe access with explicit empty default
-                    url="${KNOWN_INSTALLERS[$tool]:-}"
-                    if ! expected_sha256="$(get_checksum "$tool")"; then
-                        log_error "stack.meta_skill: get_checksum failed for tool '$tool'"
-                        expected_sha256=""
-                    fi
-
-                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--easy-mode'; then
-                            install_success=true
-                        else
-                            log_error "stack.meta_skill: verify_checksum or installer execution failed"
-                        fi
-                    else
-                        if [[ -z "$url" ]]; then
-                            log_error "stack.meta_skill: KNOWN_INSTALLERS[$tool] not found"
-                        fi
-                        if [[ -z "$expected_sha256" ]]; then
-                            log_error "stack.meta_skill: checksum for '$tool' not found"
-                        fi
-                    fi
+            # meta_skill has no prebuilt Linux ARM64 release asset yet; build from source there.
+            if [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && { [[ "$(uname -m 2>/dev/null)" == "aarch64" ]] || [[ "$(uname -m 2>/dev/null)" == "arm64" ]]; }; then
+                log_info "stack.meta_skill: Linux ARM64 detected; building meta_skill from source"
+                if run_as_target_shell "command -v cargo >/dev/null 2>&1 && cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"; then
+                    install_success=true
                 else
-                    log_error "stack.meta_skill: KNOWN_INSTALLERS array not available"
+                    log_error "stack.meta_skill: cargo source install failed for Linux ARM64"
                 fi
             else
-                log_error "stack.meta_skill: acfs_security_init failed - check security.sh and checksums.yaml"
+                if acfs_security_init; then
+                    # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                    # The grep ensures we specifically have an associative array, not just any variable
+                    if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                        local tool="ms"
+                        local url=""
+                        local expected_sha256=""
+
+                        # Safe access with explicit empty default
+                        url="${KNOWN_INSTALLERS[$tool]:-}"
+                        if ! expected_sha256="$(get_checksum "$tool")"; then
+                            log_error "stack.meta_skill: get_checksum failed for tool '$tool'"
+                            expected_sha256=""
+                        fi
+
+                        if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                            if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--easy-mode'; then
+                                install_success=true
+                            else
+                                log_error "stack.meta_skill: verify_checksum or installer execution failed"
+                            fi
+                        else
+                            if [[ -z "$url" ]]; then
+                                log_error "stack.meta_skill: KNOWN_INSTALLERS[$tool] not found"
+                            fi
+                            if [[ -z "$expected_sha256" ]]; then
+                                log_error "stack.meta_skill: checksum for '$tool' not found"
+                            fi
+                        fi
+                    else
+                        log_error "stack.meta_skill: KNOWN_INSTALLERS array not available"
+                    fi
+                else
+                    log_error "stack.meta_skill: acfs_security_init failed - check security.sh and checksums.yaml"
+                fi
             fi
 
             # Verified install is required - no fallback

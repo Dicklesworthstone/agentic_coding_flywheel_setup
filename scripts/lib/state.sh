@@ -699,14 +699,6 @@ confirm_resume() {
         IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
     fi
 
-    # If no phases completed, nothing to resume
-    if [[ "$completed_count" -eq 0 ]]; then
-        return 1
-    fi
-
-    local last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
-    local total_phases="${#ACFS_PHASE_IDS[@]}"
-
     # Handle explicit CLI flags first (these override everything)
     if [[ "${ACFS_FORCE_REINSTALL:-}" == "true" ]]; then
         _confirm_resume_log_info "Force reinstall requested. Wiping state..."
@@ -717,34 +709,67 @@ confirm_resume() {
         return 1
     fi
 
+    local force_resume_requested=false
     if [[ "${ACFS_FORCE_RESUME:-}" == "true" ]]; then
-        _confirm_resume_log_info "Resuming installation from: $last_phase_name"
-        _confirm_resume_log_info "Progress: $completed_count/$total_phases phases completed"
-        return 0
+        force_resume_requested=true
     fi
 
-    # Version mismatch detection: if the running script's version differs from
-    # the state file's version, force the finalize phase to re-run so that
-    # all scripts from the new version get deployed. This prevents stale
-    # install.sh copies from producing incomplete installations.
+    # If nothing completed and no failed phase recorded, there is no meaningful resume point.
+    if [[ "$force_resume_requested" != "true" ]] && [[ "$completed_count" -eq 0 ]] && [[ -z "$failed_phase" || "$failed_phase" == "null" ]]; then
+        return 1
+    fi
+
+    local last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
+    if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
+        last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
+    fi
+    local total_phases="${#ACFS_PHASE_IDS[@]}"
+
+    local resume_state=""
     local state_version=""
     if command -v jq &>/dev/null; then
         state_version=$(echo "$state" | jq -r '.version // "unknown"')
     fi
     if [[ -n "${ACFS_VERSION:-}" && -n "$state_version" && "$state_version" != "unknown" ]]; then
-        if [[ "$ACFS_VERSION" != "$state_version" ]]; then
+        if [[ "$ACFS_VERSION" != "$state_version" ]] && command -v jq &>/dev/null; then
             _confirm_resume_log_warn "Version mismatch: state=$state_version, running=$ACFS_VERSION"
-            _confirm_resume_log_info "Marking finalize phase for re-run to deploy updated scripts"
-            # Remove finalize from completed_phases so it re-runs with the new version's file list
-            if command -v jq &>/dev/null; then
-                local updated_state
-                updated_state=$(echo "$state" | jq --arg ver "$ACFS_VERSION" '
-                    .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
-                    .version = $ver
-                ')
-                state_save "$updated_state"
+            _confirm_resume_log_info "Finalize will be re-run on resume to deploy updated scripts"
+            resume_state=$(echo "$state" | jq --arg ver "$ACFS_VERSION" '
+                .completed_phases = (.completed_phases | map(select(. != "finalize"))) |
+                .version = $ver
+            ')
+            state="$resume_state"
+
+            extracted=$(echo "$state" | jq -r '
+                [
+                    (.completed_phases | length | tostring),
+                    (.completed_phases[-1] // "unknown"),
+                    (.started_at // "unknown"),
+                    (.failed_phase // ""),
+                    (.mode // "unknown")
+                ] | join("\u001f")
+            ')
+            IFS=$'\x1f' read -r completed_count last_phase started_at failed_phase mode <<< "$extracted"
+
+            last_phase_name="${ACFS_PHASE_NAMES[$last_phase]:-$last_phase}"
+            if [[ "$completed_count" -eq 0 && -n "$failed_phase" && "$failed_phase" != "null" ]]; then
+                last_phase_name="${ACFS_PHASE_NAMES[$failed_phase]:-$failed_phase}"
             fi
         fi
+    fi
+
+    if [[ "$force_resume_requested" == "true" ]]; then
+        local forced_resume_phase="$last_phase_name"
+        if [[ -z "$forced_resume_phase" || "$forced_resume_phase" == "unknown" ]]; then
+            forced_resume_phase="the beginning"
+        fi
+        if [[ -n "$resume_state" ]]; then
+            state_save "$resume_state"
+        fi
+        _confirm_resume_log_info "Force resume requested."
+        _confirm_resume_log_info "Resuming installation from: $forced_resume_phase"
+        _confirm_resume_log_info "Progress: $completed_count/$total_phases phases completed"
+        return 0
     fi
 
     # Default behavior: silent resume with status
@@ -788,6 +813,9 @@ confirm_resume() {
                     return 2
                     ;;
                 *)
+                    if [[ -n "$resume_state" ]]; then
+                        state_save "$resume_state"
+                    fi
                     _confirm_resume_log_info "Resuming installation..."
                     return 0
                     ;;
@@ -813,6 +841,9 @@ confirm_resume() {
                     return 2
                     ;;
                 *)
+                    if [[ -n "$resume_state" ]]; then
+                        state_save "$resume_state"
+                    fi
                     _confirm_resume_log_info "Resuming installation..."
                     return 0
                     ;;
@@ -822,6 +853,9 @@ confirm_resume() {
 
     # Non-interactive: silent resume (default behavior)
     echo "" >&2
+    if [[ -n "$resume_state" ]]; then
+        state_save "$resume_state"
+    fi
     _confirm_resume_log_info "Resuming installation (use --force-reinstall for fresh start)"
     echo "" >&2
     return 0
@@ -1353,6 +1387,41 @@ state_update() {
     return $save_result
 }
 
+# Persist the current resume hint while preserving the normal atomic write and
+# ownership semantics used for the main state file.
+# Usage: state_set_resume_hint <resume_hint>
+# Returns: 0 on success, 1 on failure
+state_set_resume_hint() {
+    local resume_hint="${1-}"
+
+    if ! command -v jq &>/dev/null; then
+        return 1
+    fi
+
+    if ! _state_acquire_lock; then
+        return 1
+    fi
+
+    local state
+    if ! state=$(state_load); then
+        _state_release_lock
+        return 1
+    fi
+
+    local new_state
+    if ! new_state=$(echo "$state" | jq --arg hint "$resume_hint" '
+        .resume_hint = (if $hint == "" then null else $hint end)
+    '); then
+        _state_release_lock
+        return 1
+    fi
+
+    local save_result=0
+    state_save "$new_state" || save_result=$?
+    _state_release_lock
+    return $save_result
+}
+
 # ============================================================
 # Phase Lifecycle Functions
 # ============================================================
@@ -1524,9 +1593,11 @@ state_phase_fail() {
         --arg phase "$phase_id" \
         --arg step "$step" \
         --arg err "$error" '
+        . as $state |
+        ($step == "Execution failed" and ($state.failed_phase // "") == $phase and ($state.failed_step // "") != "") as $preserve_detailed_failure |
         .failed_phase = $phase |
-        .failed_step = $step |
-        .failed_error = $err |
+        .failed_step = (if $preserve_detailed_failure then $state.failed_step else $step end) |
+        .failed_error = (if $preserve_detailed_failure then ($state.failed_error // $err) else $err end) |
         .current_phase = null |
         .current_step = null
     '); then

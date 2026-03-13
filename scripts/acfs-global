@@ -42,39 +42,6 @@ read_target_user_from_state_file() {
     return 1
 }
 
-# Detect target user from state file(s) or default to ubuntu
-detect_target_user() {
-    local state_candidate
-
-    if [[ -n "${ACFS_STATE_FILE:-}" ]] && read_target_user_from_state_file "$ACFS_STATE_FILE"; then
-        return 0
-    fi
-
-    # 1) Current user's installed state (works when invoked as the target user)
-    if read_target_user_from_state_file "$HOME/.acfs/state.json"; then
-        return 0
-    fi
-
-    # 2) Common default target user
-    if read_target_user_from_state_file "/home/ubuntu/.acfs/state.json"; then
-        return 0
-    fi
-
-    # 3) Scan for an installed state file under /home/*
-    for state_candidate in /home/*/.acfs/state.json; do
-        if read_target_user_from_state_file "$state_candidate"; then
-            return 0
-        fi
-    done
-
-    # 4) Upgrade/resume state file (root-owned, may remain after upgrades)
-    if read_target_user_from_state_file "/var/lib/acfs/state.json"; then
-        return 0
-    fi
-
-    echo "ubuntu"
-}
-
 # Find acfs installation for a user
 find_acfs_bin() {
     local user="$1"
@@ -94,6 +61,100 @@ find_acfs_bin() {
     else
         return 1
     fi
+}
+
+find_installed_acfs_owner() {
+    local current_user=""
+    local candidate=""
+    local candidate_user=""
+    local nullglob_was_set=0
+    local -a candidates=()
+
+    current_user="$(whoami 2>/dev/null || true)"
+    if [[ -n "$current_user" ]] && find_acfs_bin "$current_user" >/dev/null 2>&1; then
+        printf '%s\n' "$current_user"
+        return 0
+    fi
+
+    if shopt -q nullglob; then
+        nullglob_was_set=1
+    fi
+    shopt -s nullglob
+    candidates=(/home/*/.local/bin/acfs /home/*/.acfs/bin/acfs /root/.local/bin/acfs /root/.acfs/bin/acfs)
+    if (( ! nullglob_was_set )); then
+        shopt -u nullglob
+    fi
+
+    for candidate in "${candidates[@]}"; do
+        [[ -x "$candidate" ]] || continue
+
+        if [[ "$candidate" == /home/* ]]; then
+            candidate_user="$(printf '%s\n' "$candidate" | cut -d/ -f3)"
+        elif [[ "$candidate" == /root/* ]]; then
+            candidate_user="root"
+        else
+            candidate_user=""
+        fi
+
+        if [[ -n "$candidate_user" ]]; then
+            printf '%s\n' "$candidate_user"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+# Detect target user from state file(s) or default to ubuntu
+detect_target_user() {
+    local state_candidate
+    local candidate_user=""
+
+    if [[ -n "${ACFS_STATE_FILE:-}" ]]; then
+        candidate_user="$(read_target_user_from_state_file "$ACFS_STATE_FILE" 2>/dev/null || true)"
+        if [[ -n "$candidate_user" ]] && find_acfs_bin "$candidate_user" >/dev/null 2>&1; then
+            printf '%s\n' "$candidate_user"
+            return 0
+        fi
+    fi
+
+    # 1) Current user's installed state (works when invoked as the target user)
+    candidate_user="$(read_target_user_from_state_file "$HOME/.acfs/state.json" 2>/dev/null || true)"
+    if [[ -n "$candidate_user" ]] && find_acfs_bin "$candidate_user" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate_user"
+        return 0
+    fi
+
+    # 2) Common default target user
+    candidate_user="$(read_target_user_from_state_file "/home/ubuntu/.acfs/state.json" 2>/dev/null || true)"
+    if [[ -n "$candidate_user" ]] && find_acfs_bin "$candidate_user" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate_user"
+        return 0
+    fi
+
+    # 3) Scan for an installed state file under /home/*
+    for state_candidate in /home/*/.acfs/state.json; do
+        candidate_user="$(read_target_user_from_state_file "$state_candidate" 2>/dev/null || true)"
+        if [[ -n "$candidate_user" ]] && find_acfs_bin "$candidate_user" >/dev/null 2>&1; then
+            printf '%s\n' "$candidate_user"
+            return 0
+        fi
+    done
+
+    # 4) Upgrade/resume state file (root-owned, may remain after upgrades)
+    candidate_user="$(read_target_user_from_state_file "/var/lib/acfs/state.json" 2>/dev/null || true)"
+    if [[ -n "$candidate_user" ]] && find_acfs_bin "$candidate_user" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate_user"
+        return 0
+    fi
+
+    candidate_user="$(find_installed_acfs_owner 2>/dev/null || true)"
+    if [[ -n "$candidate_user" ]]; then
+        printf '%s\n' "$candidate_user"
+        return 0
+    fi
+
+    echo "ubuntu"
 }
 
 main() {
@@ -153,22 +214,54 @@ main() {
         exit 1
     fi
 
+    exec_as_target_user() {
+        local user="$1"
+        shift
+        local -a env_args=()
+
+        [[ -n "${ACFS_STATE_FILE:-}" ]] && env_args+=("ACFS_STATE_FILE=$ACFS_STATE_FILE")
+        [[ -n "${ACFS_HOME:-}" ]] && env_args+=("ACFS_HOME=$ACFS_HOME")
+        [[ -n "${ACFS_REF:-}" ]] && env_args+=("ACFS_REF=$ACFS_REF")
+        [[ -n "${ACFS_RAW:-}" ]] && env_args+=("ACFS_RAW=$ACFS_RAW")
+
+        if [[ "$EUID" -eq 0 ]]; then
+            if command -v runuser >/dev/null 2>&1; then
+                if [[ ${#env_args[@]} -gt 0 ]]; then
+                    exec runuser -u "$user" -- env "${env_args[@]}" "$@"
+                fi
+                exec runuser -u "$user" -- "$@"
+            fi
+            if command -v sudo >/dev/null 2>&1; then
+                if [[ ${#env_args[@]} -gt 0 ]]; then
+                    exec sudo -u "$user" -H env "${env_args[@]}" "$@"
+                fi
+                exec sudo -u "$user" -H -- "$@"
+            fi
+            echo "Error: need runuser or sudo to run acfs as '$user'" >&2
+            exit 1
+        fi
+
+        if ! command -v sudo >/dev/null 2>&1; then
+            echo "Error: need sudo to run acfs as '$user'" >&2
+            exit 1
+        fi
+
+        echo "Note: Running acfs as '$user' (ACFS owner)" >&2
+        if [[ ${#env_args[@]} -gt 0 ]]; then
+            exec sudo -u "$user" -H env "${env_args[@]}" "$@"
+        fi
+        exec sudo -u "$user" -H -- "$@"
+    }
+
     # If we're already the target user, run directly
     if [[ "$current_user" == "$target_user" ]]; then
         exec "$acfs_bin" "$@"
     fi
 
-    # If we're root, run as target user
-    if [[ "$EUID" -eq 0 ]]; then
-        # IMPORTANT: Avoid `sudo -i` which sources shell profile files.
-        # Third-party installers sometimes modify those files in ways that can
-        # break non-interactive runs. We set HOME with `-H` but preserve CWD.
-        exec sudo -u "$target_user" -H -- "$acfs_bin" "$@"
-    fi
-
-    # Otherwise, we need sudo to switch users
-    echo "Note: Running acfs as '$target_user' (ACFS owner)" >&2
-    exec sudo -u "$target_user" -H -- "$acfs_bin" "$@"
+    # IMPORTANT: Avoid `sudo -i` which sources shell profile files.
+    # Third-party installers sometimes modify those files in ways that can
+    # break non-interactive runs. We set HOME with `-H` but preserve CWD.
+    exec_as_target_user "$target_user" "$acfs_bin" "$@"
 }
 
 main "$@"

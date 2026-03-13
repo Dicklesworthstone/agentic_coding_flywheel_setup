@@ -98,8 +98,10 @@ _stack_get_sudo() {
 # Run a command as target user
 _stack_run_as_user() {
     local target_user="${TARGET_USER:-ubuntu}"
+    local target_home="${TARGET_HOME:-/home/$target_user}"
+    local target_path_prefix="${ACFS_BIN_DIR:-$target_home/.local/bin}:$target_home/.cargo/bin:$target_home/.bun/bin:$target_home/.atuin/bin:$target_home/go/bin"
     local cmd="$1"
-    local wrapped_cmd="set -o pipefail; $cmd"
+    local wrapped_cmd="export PATH=\"$target_path_prefix:\$PATH\"; set -o pipefail; $cmd"
 
     if [[ "$(whoami)" == "$target_user" ]]; then
         bash -c "$wrapped_cmd"
@@ -229,6 +231,168 @@ _stack_run_installer() {
     _stack_run_verified_installer "$tool" "$@"
 }
 
+# Check whether the local Agent Mail HTTP service is healthy.
+_stack_agent_mail_healthy() {
+    curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1
+}
+
+_stack_agent_mail_ready() {
+    local check_cmd
+    check_cmd="$(cat <<'EOF'
+set -euo pipefail
+command -v am >/dev/null 2>&1
+
+if ! curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+    exit 1
+fi
+
+runtime_dir="/run/user/$(id -u)"
+if [[ -d "$runtime_dir" ]]; then
+    export XDG_RUNTIME_DIR="$runtime_dir"
+    if [[ -S "$runtime_dir/bus" ]]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+    fi
+fi
+
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
+fi
+EOF
+)"
+
+    _stack_run_as_user "$check_cmd"
+}
+
+# Write and enable the managed Agent Mail user service for the target user.
+_stack_configure_agent_mail_service() {
+    local service_cmd
+    service_cmd="$(cat <<'EOF'
+set -euo pipefail
+command -v am >/dev/null 2>&1
+storage_root="$HOME/.mcp_agent_mail_git_mailbox_repo"
+unit_dir="$HOME/.config/systemd/user"
+unit_file="$unit_dir/agent-mail.service"
+am_bin="$(command -v am)"
+db_url="sqlite+aiosqlite:///${storage_root}/storage.sqlite3"
+
+mkdir -p "$storage_root" "$unit_dir"
+cat > "$unit_file" <<UNIT_EOF
+[Unit]
+Description=MCP Agent Mail Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$storage_root
+Environment=RUST_LOG=info
+Environment=STORAGE_ROOT=$storage_root
+Environment=DATABASE_URL=$db_url
+Environment=HTTP_PATH=/mcp/
+ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+UNIT_EOF
+
+runtime_dir="/run/user/$(id -u)"
+if [[ -d "$runtime_dir" ]]; then
+    export XDG_RUNTIME_DIR="$runtime_dir"
+    if [[ -S "$runtime_dir/bus" ]]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+    fi
+fi
+
+fallback_pid_file="$storage_root/agent-mail.pid"
+fallback_log_file="$storage_root/agent-mail.log"
+
+stop_agent_mail_fallback() {
+    if [[ -f "$fallback_pid_file" ]]; then
+        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
+           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+            kill "$existing_pid" >/dev/null 2>&1 || true
+            for _ in {1..10}; do
+                if ! kill -0 "$existing_pid" 2>/dev/null; then
+                    break
+                fi
+                sleep 1
+            done
+            if kill -0 "$existing_pid" 2>/dev/null; then
+                kill -9 "$existing_pid" >/dev/null 2>&1 || true
+            fi
+        fi
+        rm -f "$fallback_pid_file"
+    fi
+}
+
+launch_agent_mail_fallback() {
+    if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [[ -f "$fallback_pid_file" ]]; then
+        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
+           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+            return 0
+        fi
+        rm -f "$fallback_pid_file"
+    fi
+
+    nohup env \
+        RUST_LOG=info \
+        STORAGE_ROOT="$storage_root" \
+        DATABASE_URL="$db_url" \
+        HTTP_PATH=/mcp/ \
+        "$am_bin" serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui \
+        >>"$fallback_log_file" 2>&1 < /dev/null &
+    echo $! > "$fallback_pid_file"
+}
+
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    stop_agent_mail_fallback
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
+        systemctl --user restart agent-mail.service >/dev/null 2>&1
+    fi
+    active_waited=0
+    active_max_wait=10
+    until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do
+        if [[ "$active_waited" -ge "$active_max_wait" ]]; then
+            break
+        fi
+        sleep 1
+        active_waited=$((active_waited + 1))
+    done
+    systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
+else
+    echo "Agent Mail: systemctl --user unavailable, using background fallback" >&2
+    launch_agent_mail_fallback
+fi
+EOF
+)"
+
+    _stack_run_as_user "$service_cmd"
+}
+
+# Wait for the managed Agent Mail service to become healthy.
+_stack_wait_for_agent_mail_health() {
+    local waited=0
+    local max_wait=30
+
+    until _stack_agent_mail_healthy; do
+        if [[ "$waited" -ge "$max_wait" ]]; then
+            return 1
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    return 0
+}
+
 # Check if a stack tool is installed
 _stack_is_installed() {
     local tool="$1"
@@ -258,6 +422,43 @@ _stack_is_installed() {
     fi
 
     return 1
+}
+
+# PCR is only fully installed once both the hook binary and Claude settings entry exist.
+_stack_pcr_installed() {
+    local target_home="${TARGET_HOME:-/home/${TARGET_USER:-ubuntu}}"
+    local hook_script="$target_home/.local/bin/claude-post-compact-reminder"
+    local settings_file="$target_home/.claude/settings.json"
+    local alt_settings_file="$target_home/.config/claude/settings.json"
+
+    [[ -x "$hook_script" ]] || return 1
+
+    if [[ -f "$settings_file" ]] && grep -q "claude-post-compact-reminder" "$settings_file" 2>/dev/null; then
+        return 0
+    fi
+
+    if [[ -f "$alt_settings_file" ]] && grep -q "claude-post-compact-reminder" "$alt_settings_file" 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
+# Some stack tools are only "ready" when their managed service or config is in place.
+_stack_tool_ready() {
+    local tool="$1"
+
+    case "$tool" in
+        mcp_agent_mail)
+            _stack_is_installed "$tool" && _stack_agent_mail_ready
+            ;;
+        pcr)
+            _stack_pcr_installed
+            ;;
+        *)
+            _stack_is_installed "$tool"
+            ;;
+    esac
 }
 
 # ============================================================
@@ -291,29 +492,42 @@ install_ntm() {
 # Agent coordination server
 install_mcp_agent_mail() {
     local tool="mcp_agent_mail"
+    local target_user="${TARGET_USER:-ubuntu}"
+    local target_home="${TARGET_HOME:-/home/$target_user}"
+    local target_dir="$target_home/mcp_agent_mail"
 
-    if _stack_is_installed "$tool"; then
-        log_detail "${STACK_NAMES[$tool]} already installed"
+    if _stack_tool_ready "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed and healthy"
         return 0
     fi
 
-    log_detail "Installing ${STACK_NAMES[$tool]}..."
-
-    # MCP Agent Mail uses --yes for non-interactive install
-    local -a args=()
-    if ! _stack_is_interactive; then
-        args+=(--yes)
-    fi
-
-    if _stack_run_installer "$tool" "${args[@]}"; then
-        if _stack_is_installed "$tool"; then
-            log_success "${STACK_NAMES[$tool]} installed"
-            return 0
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed; ensuring managed service"
+    else
+        log_detail "Installing ${STACK_NAMES[$tool]}..."
+        if ! _stack_run_installer "$tool" --dir "$target_dir" --yes --no-start; then
+            log_warn "${STACK_NAMES[$tool]} installation may have failed"
+            return 1
         fi
     fi
 
-    log_warn "${STACK_NAMES[$tool]} installation may have failed"
-    return 1
+    if ! _stack_is_installed "$tool"; then
+        log_warn "${STACK_NAMES[$tool]} CLI missing after install"
+        return 1
+    fi
+
+    if ! _stack_configure_agent_mail_service; then
+        log_warn "${STACK_NAMES[$tool]} installed but managed service setup failed"
+        return 1
+    fi
+
+    if ! _stack_wait_for_agent_mail_health; then
+        log_warn "${STACK_NAMES[$tool]} installed but service did not become healthy on http://127.0.0.1:8765"
+        return 1
+    fi
+
+    log_success "${STACK_NAMES[$tool]} installed and running on http://127.0.0.1:8765"
+    return 0
 }
 
 # Install Ultimate Bug Scanner (UBS)
@@ -580,7 +794,7 @@ install_fsfs() {
 
     log_detail "Installing ${STACK_NAMES[$tool]}..."
 
-    if _stack_run_installer "$tool"; then
+    if _stack_run_verified_installer "$tool" --easy-mode; then
         if _stack_is_installed "$tool"; then
             log_success "${STACK_NAMES[$tool]} installed"
             return 0
@@ -649,21 +863,7 @@ install_dsr() {
 
     log_detail "Installing ${STACK_NAMES[$tool]}..."
 
-    # DSR uses git clone instead of a curl|bash installer
-    local target_user="${TARGET_USER:-ubuntu}"
-    local target_home="${TARGET_HOME:-/home/$target_user}"
-    local install_cmd='
-        DSR_TMP="$(mktemp -d "${TMPDIR:-/tmp}/dsr_install.XXXXXX")"
-        cd "$DSR_TMP"
-        git clone --depth 1 https://github.com/Dicklesworthstone/doodlestein_self_releaser.git .
-        mkdir -p "$HOME/.local/bin"
-        cp dsr "$HOME/.local/bin/dsr"
-        chmod 755 "$HOME/.local/bin/dsr"
-        cd ..
-        rm -rf "$DSR_TMP"
-    '
-
-    if _stack_run_as_user "$install_cmd"; then
+    if _stack_run_verified_installer "$tool" --easy-mode; then
         if _stack_is_installed "$tool"; then
             log_success "${STACK_NAMES[$tool]} installed"
             return 0
@@ -701,26 +901,20 @@ install_asb() {
 # Claude Code hook for AGENTS.md re-read after compaction
 install_pcr() {
     local tool="pcr"
-    local target_home="${TARGET_HOME:-/home/${TARGET_USER:-ubuntu}}"
-    local hook_script="$target_home/.local/bin/claude-post-compact-reminder"
+    if _stack_pcr_installed; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
 
-    # PCR is only complete once both the hook script and Claude settings entry exist.
-    local settings_file="$target_home/.claude/settings.json"
-    local alt_settings_file="$target_home/.config/claude/settings.json"
-    if [[ -x "$hook_script" ]]; then
-        if [[ -f "$settings_file" ]] && grep -q "claude-post-compact-reminder" "$settings_file" 2>/dev/null; then
-            log_detail "${STACK_NAMES[$tool]} already installed"
-            return 0
-        elif [[ -f "$alt_settings_file" ]] && grep -q "claude-post-compact-reminder" "$alt_settings_file" 2>/dev/null; then
-            log_detail "${STACK_NAMES[$tool]} already installed"
-            return 0
-        fi
+    if ! _stack_command_exists claude; then
+        log_detail "Skipping ${STACK_NAMES[$tool]} because Claude Code is not installed"
+        return 0
     fi
 
     log_detail "Installing ${STACK_NAMES[$tool]}..."
 
     if _stack_run_installer "$tool" --yes; then
-        if [[ -x "$hook_script" ]]; then
+        if _stack_pcr_installed; then
             log_success "${STACK_NAMES[$tool]} installed"
             return 0
         fi
@@ -746,11 +940,11 @@ verify_stack() {
         local cmd="${STACK_COMMANDS[$tool]}"
         local name="${STACK_NAMES[$tool]}"
 
-        if _stack_is_installed "$tool"; then
+        if _stack_tool_ready "$tool"; then
             log_detail "  $cmd: installed"
             ((installed_count += 1))
         else
-            log_warn "  Missing: $cmd ($name)"
+            log_warn "  Not ready: $cmd ($name)"
             all_pass=false
         fi
     done

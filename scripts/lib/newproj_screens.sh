@@ -31,6 +31,23 @@ source "$NEWPROJ_LIB_DIR/newproj_detect.sh"
 source "$NEWPROJ_LIB_DIR/newproj_agents.sh"
 
 # ============================================================
+# Shared Helpers
+# ============================================================
+
+newproj_claude_settings_path() {
+    local project_dir="$1"
+    printf '%s/.claude/settings.local.json\n' "$project_dir"
+}
+
+newproj_has_existing_claude_settings() {
+    local project_dir="$1"
+    local settings_local_json=""
+
+    settings_local_json=$(newproj_claude_settings_path "$project_dir")
+    [[ -f "$settings_local_json" ]] || [[ -f "$project_dir/.claude/settings.toml" ]]
+}
+
+# ============================================================
 # Screen Loading
 # ============================================================
 
@@ -172,6 +189,7 @@ run_screen() {
 # Runs screens until completion or cancellation
 run_wizard() {
     log_info "Starting wizard loop"
+    local exit_code=1
 
     # Initialize TUI
     if ! tui_init; then
@@ -199,12 +217,14 @@ run_wizard() {
         if ! run_screen "$CURRENT_SCREEN"; then
             # Screen indicated exit or error
             log_info "Wizard exited from screen: $CURRENT_SCREEN"
+            exit_code=1
             break
         fi
 
         # Check if we've completed the flow
         if [[ "$CURRENT_SCREEN" == "success" ]]; then
             log_info "Wizard completed successfully"
+            exit_code=0
             break
         fi
 
@@ -215,7 +235,7 @@ run_wizard() {
     # Cleanup
     tui_cleanup
 
-    return 0
+    return "$exit_code"
 }
 
 # ============================================================
@@ -266,15 +286,19 @@ run_wizard_confirm_only() {
     tui_init || return 1
     load_screens || return 1
 
+    local exit_code=1
+
     while true; do
         if ! run_screen "$CURRENT_SCREEN"; then
+            exit_code=1
             break
         fi
         if [[ "$CURRENT_SCREEN" == "success" ]]; then
+            exit_code=0
             break
         fi
     done
 
     tui_cleanup
-    return 0
+    return "$exit_code"
 }

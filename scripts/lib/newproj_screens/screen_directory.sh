@@ -97,8 +97,8 @@ check_directory_status() {
                 echo "WARNING:Directory exists but is empty (will be used)"
                 return 1
             else
-                echo "WARNING:Directory already exists and is not empty (will add ACFS tooling)"
-                return 1
+                echo "ERROR:Directory already exists and is not empty"
+                return 2
             fi
         else
             echo "ERROR:Path exists but is not a directory"
@@ -194,13 +194,13 @@ handle_directory_input() {
                 --prompt "Directory: " \
                 --prompt.foreground "#89b4fa" \
                 --cursor.foreground "#cba6f7" \
-                --width 60 2>/dev/null) || {
+                --width 60 < /dev/tty 2>/dev/null) || {
                 # User cancelled
                 echo ""
                 return 1
             }
         else
-            echo -n "Directory [$current_dir]: "
+            newproj_tty_printf "%s [%s]: " "Directory" "$current_dir"
             # Read from /dev/tty explicitly to avoid stdin conflicts
             # from signal handlers or subshell capture (issue #153)
             read -r dir < /dev/tty || true
@@ -240,7 +240,7 @@ handle_directory_input() {
                 ;;
             1)
                 # Warning - confirm with user
-                echo -e "${TUI_WARNING}${status#WARNING:}${TUI_NC}"
+                newproj_tty_printf "%b\n" "${TUI_WARNING}${status#WARNING:}${TUI_NC}"
                 if read_yes_no "Continue anyway?" "y"; then
                     state_set "project_dir" "$dir"
                     log_validation "directory" "$dir" "PASS" "warning_accepted"
@@ -251,8 +251,8 @@ handle_directory_input() {
                 ;;
             2)
                 # Error
-                echo -e "${TUI_ERROR}${BOX_CROSS} ${status#ERROR:}${TUI_NC}"
-                echo ""
+                newproj_tty_printf "%b\n" "${TUI_ERROR}${BOX_CROSS} ${status#ERROR:}${TUI_NC}"
+                newproj_tty_printf "%b\n" ""
                 log_validation "directory" "$dir" "FAIL" "$status"
                 current_dir="$dir"
                 ;;
@@ -272,9 +272,11 @@ run_directory_screen() {
 
     render_directory_screen "$current_dir"
 
-    local next
-    next=$(handle_directory_input)
-    local result=$?
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+    run_screen_handler_capture handle_directory_input
+    local result="$SCREEN_HANDLER_STATUS"
+    local next="$SCREEN_HANDLER_OUTPUT"
 
     if [[ $result -eq 0 ]] && [[ -n "$next" ]]; then
         navigate_forward "$next"

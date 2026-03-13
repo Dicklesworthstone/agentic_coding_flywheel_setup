@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ACFS_HOME="${ACFS_HOME:-$HOME/.acfs}"
+ACFS_HOME="${ACFS_HOME:-}"
 
 # Source logging utilities
 if [[ -f "$SCRIPT_DIR/logging.sh" ]]; then
@@ -30,9 +30,13 @@ fi
 # ============================================================
 VERBOSE=false
 REDACT=true
-OUTPUT_BASE="${ACFS_HOME}/support"
+OUTPUT_BASE=""
+OUTPUT_BASE_EXPLICIT=false
 REDACTION_COUNT=0
 DOCTOR_TIMEOUT="${SUPPORT_BUNDLE_DOCTOR_TIMEOUT:-120}"
+SUPPORT_SYSTEM_STATE_FILE="${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}"
+SUPPORT_TARGET_USER=""
+SUPPORT_TARGET_HOME=""
 
 # ============================================================
 # Parse arguments
@@ -49,6 +53,7 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             OUTPUT_BASE="$2"
+            OUTPUT_BASE_EXPLICIT=true
             shift 2
             ;;
         --no-redact)
@@ -85,21 +90,154 @@ done
 # Bundle collection functions
 # ============================================================
 
+support_home_for_user() {
+    local user="$1"
+    local passwd_entry=""
+
+    [[ -n "$user" ]] || return 1
+
+    if command -v getent &>/dev/null; then
+        passwd_entry=$(getent passwd "$user" 2>/dev/null || true)
+        if [[ -n "$passwd_entry" ]]; then
+            printf '%s\n' "$(printf '%s\n' "$passwd_entry" | cut -d: -f6)"
+            return 0
+        fi
+    fi
+
+    if [[ "$user" == "root" ]]; then
+        echo "/root"
+        return 0
+    fi
+
+    if [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        echo "/home/$user"
+        return 0
+    fi
+
+    return 1
+}
+
+support_candidate_has_acfs_data() {
+    local candidate="$1"
+    [[ -n "$candidate" ]] || return 1
+    [[ -e "$candidate/state.json" || -e "$candidate/onboard_progress.json" || -d "$candidate/logs" || -d "$candidate/onboard" ]]
+}
+
+support_read_target_user_from_state() {
+    local state_file="${1:-$SUPPORT_SYSTEM_STATE_FILE}"
+    local target_user=""
+
+    [[ -f "$state_file" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        target_user=$(jq -r '.target_user // empty' "$state_file" 2>/dev/null || true)
+    else
+        target_user=$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$state_file" 2>/dev/null | head -n 1)
+    fi
+
+    [[ -n "$target_user" ]] && [[ "$target_user" != "null" ]] || return 1
+    printf '%s\n' "$target_user"
+}
+
+support_resolve_acfs_home() {
+    local target_home=""
+    local candidate=""
+    local target_user=""
+
+    if [[ -n "$ACFS_HOME" ]]; then
+        printf '%s\n' "$ACFS_HOME"
+        return 0
+    fi
+
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER}" != "root" ]]; then
+        target_home=$(support_home_for_user "$SUDO_USER" || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && support_candidate_has_acfs_data "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    fi
+
+    target_user=$(support_read_target_user_from_state || true)
+    if [[ -n "$target_user" ]]; then
+        target_home=$(support_home_for_user "$target_user" || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && support_candidate_has_acfs_data "$candidate"; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    fi
+
+    printf '%s\n' "$HOME/.acfs"
+}
+
+support_initialize_context() {
+    ACFS_HOME=$(support_resolve_acfs_home)
+
+    if [[ -n "${SUDO_USER:-}" ]] && [[ "${SUDO_USER}" != "root" ]]; then
+        SUPPORT_TARGET_USER="$SUDO_USER"
+    else
+        SUPPORT_TARGET_USER=$(support_read_target_user_from_state || whoami 2>/dev/null || echo unknown)
+    fi
+
+    if [[ "$ACFS_HOME" == */.acfs ]]; then
+        SUPPORT_TARGET_HOME="${ACFS_HOME%/.acfs}"
+    else
+        SUPPORT_TARGET_HOME=$(support_home_for_user "$SUPPORT_TARGET_USER" || true)
+    fi
+
+    [[ -n "$SUPPORT_TARGET_HOME" ]] || SUPPORT_TARGET_HOME="$HOME"
+
+    if [[ "$OUTPUT_BASE_EXPLICIT" != "true" ]]; then
+        OUTPUT_BASE="${ACFS_HOME}/support"
+    fi
+}
+
+# Record a bundle-relative path in the manifest file list exactly once.
+# Usage: record_bundle_file <relative_path>
+record_bundle_file() {
+    local relative_path="$1"
+    local existing_path=""
+    for existing_path in "${BUNDLE_FILES[@]:-}"; do
+        if [[ "$existing_path" == "$relative_path" ]]; then
+            return 0
+        fi
+    done
+    BUNDLE_FILES+=("$relative_path")
+}
+
+# Generate a bundle name that stays unique even when multiple runs land
+# in the same second or a prior bundle path already exists.
+# Usage: next_bundle_name
+next_bundle_name() {
+    local timestamp base_name
+    timestamp=$(date +%Y%m%d_%H%M%S)
+    base_name="${timestamp}_$$"
+
+    while [[ -e "${OUTPUT_BASE}/${base_name}" || -e "${OUTPUT_BASE}/${base_name}.tar.gz" ]]; do
+        base_name="${timestamp}_$$_${RANDOM}"
+    done
+
+    printf '%s\n' "$base_name"
+}
+
 # Safely copy a file into the bundle, logging the result.
-# Usage: collect_file <source_path> <bundle_subdir> [display_name]
+# Usage: collect_file <source_path> <bundle_dir> <bundle_relative_path> [display_name]
 collect_file() {
     local src="$1"
-    local dest_dir="$2"
-    local display="${3:-$(basename "$src")}"
+    local bundle_dir="$2"
+    local relative_path="$3"
+    local display="${4:-$relative_path}"
+    local dest_path="${bundle_dir}/${relative_path}"
 
     if [[ -f "$src" ]]; then
-        mkdir -p "$dest_dir"
-        cp "$src" "$dest_dir/" 2>/dev/null || {
+        mkdir -p "$(dirname "$dest_path")"
+        cp "$src" "$dest_path" 2>/dev/null || {
             log_warn "Could not copy: $display"
             return 1
         }
         [[ "$VERBOSE" == "true" ]] && log_detail "Collected: $display"
-        BUNDLE_FILES+=("$display")
+        record_bundle_file "$relative_path"
         return 0
     else
         [[ "$VERBOSE" == "true" ]] && log_detail "Not found: $display"
@@ -122,13 +260,13 @@ capture_doctor_json() {
     if [[ -n "$doctor_script" ]]; then
         log_detail "Running acfs doctor --json ..."
         if timeout "$DOCTOR_TIMEOUT" bash "$doctor_script" doctor --json > "$bundle_dir/doctor.json" 2>/dev/null; then
-            BUNDLE_FILES+=("doctor.json")
+            record_bundle_file "doctor.json"
             return 0
         else
             log_warn "Doctor check timed out or failed"
             # Write partial output marker
             echo '{"error": "doctor check failed or timed out"}' > "$bundle_dir/doctor.json"
-            BUNDLE_FILES+=("doctor.json (partial)")
+            record_bundle_file "doctor.json"
             return 1
         fi
     else
@@ -194,7 +332,7 @@ capture_versions() {
         }') || versions='{"error": "failed to collect versions"}'
 
     echo "$versions" > "$versions_file"
-    BUNDLE_FILES+=("versions.json")
+    record_bundle_file "versions.json"
 }
 
 # Capture environment summary.
@@ -202,6 +340,8 @@ capture_versions() {
 capture_env_summary() {
     local bundle_dir="$1"
     local env_file="$bundle_dir/environment.json"
+    local support_home="${SUPPORT_TARGET_HOME:-$HOME}"
+    local support_user="${SUPPORT_TARGET_USER:-$(whoami 2>/dev/null || echo unknown)}"
 
     if ! command -v jq &>/dev/null; then
         log_warn "jq not available, skipping environment capture"
@@ -229,16 +369,16 @@ capture_env_summary() {
         --arg os_id "$os_id" \
         --arg os_version "$os_version" \
         --arg os_codename "$os_codename" \
-        --arg user "$(whoami 2>/dev/null || echo unknown)" \
-        --arg home "$HOME" \
+        --arg user "$support_user" \
+        --arg home "$support_home" \
         --arg acfs_home "$ACFS_HOME" \
         --arg acfs_version "$acfs_version" \
         --arg shell "$SHELL" \
         --argjson uptime_seconds "$(cat /proc/uptime 2>/dev/null | awk '{printf "%d", $1}' || echo 0)" \
         --argjson mem_total_kb "$(grep MemTotal /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)" \
         --argjson mem_available_kb "$(grep MemAvailable /proc/meminfo 2>/dev/null | awk '{print $2}' || echo 0)" \
-        --argjson disk_total_kb "$(df -k "$HOME" 2>/dev/null | tail -1 | awk '{print $2}' || echo 0)" \
-        --argjson disk_available_kb "$(df -k "$HOME" 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)" \
+        --argjson disk_total_kb "$(df -k "$support_home" 2>/dev/null | tail -1 | awk '{print $2}' || echo 0)" \
+        --argjson disk_available_kb "$(df -k "$support_home" 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)" \
         '{
             hostname: $hostname,
             kernel: $kernel,
@@ -257,7 +397,7 @@ capture_env_summary() {
         return 1
     }
 
-    BUNDLE_FILES+=("environment.json")
+    record_bundle_file "environment.json"
 }
 
 # Write a manifest JSON describing the bundle contents.
@@ -268,9 +408,12 @@ write_manifest() {
 
     if ! command -v jq &>/dev/null; then
         # Fallback: write a simple text manifest
+        record_bundle_file "manifest.txt"
         printf '%s\n' "${BUNDLE_FILES[@]}" > "$bundle_dir/manifest.txt"
         return 0
     fi
+
+    record_bundle_file "manifest.json"
 
     local acfs_version="unknown"
     if [[ -f "$ACFS_HOME/VERSION" ]]; then
@@ -394,11 +537,13 @@ redact_bundle() {
 # Main bundle collection
 # ============================================================
 main() {
-    local timestamp
-    timestamp=$(date +%Y%m%d_%H%M%S)
+    support_initialize_context
 
-    local bundle_dir="${OUTPUT_BASE}/${timestamp}"
-    local archive_path="${OUTPUT_BASE}/${timestamp}.tar.gz"
+    local bundle_name
+    bundle_name=$(next_bundle_name)
+
+    local bundle_dir="${OUTPUT_BASE}/${bundle_name}"
+    local archive_path="${OUTPUT_BASE}/${bundle_name}.tar.gz"
 
     # Track collected files for manifest
     BUNDLE_FILES=()
@@ -423,14 +568,14 @@ main() {
     local logs_dir="$ACFS_HOME/logs"
     if [[ -d "$logs_dir" ]]; then
         mkdir -p "$bundle_dir/logs"
-        # Collect recent install logs (last 5)
+        # Collect recent install logs
         local log_count=0
         while IFS= read -r logfile; do
             cp "$logfile" "$bundle_dir/logs/" 2>/dev/null && {
-                BUNDLE_FILES+=("logs/$(basename "$logfile")")
+                record_bundle_file "logs/$(basename "$logfile")"
                 log_count=$((log_count + 1))
             }
-        done < <(find "$logs_dir" -name 'install-*.log' -o -name 'install_summary_*.json' 2>/dev/null | sort -r | head -10)
+        done < <(find "$logs_dir" -name 'install-*.log' 2>/dev/null | sort -r | head -10)
         [[ "$VERBOSE" == "true" ]] && log_detail "Collected $log_count log files"
     fi
 
@@ -438,7 +583,7 @@ main() {
     if [[ -d "$logs_dir" ]]; then
         while IFS= read -r summary; do
             cp "$summary" "$bundle_dir/logs/" 2>/dev/null && {
-                BUNDLE_FILES+=("logs/$(basename "$summary")")
+                record_bundle_file "logs/$(basename "$summary")"
             }
         done < <(find "$logs_dir" -name 'install_summary_*.json' 2>/dev/null | sort -r | head -5)
     fi
@@ -463,15 +608,24 @@ main() {
 
     # Systemd journal (last 100 acfs-related lines)
     if command -v journalctl &>/dev/null; then
-        journalctl --no-pager -n 100 -u 'acfs*' > "$bundle_dir/journal-acfs.log" 2>/dev/null && {
-            BUNDLE_FILES+=("journal-acfs.log")
-        } || true
+        local journal_tmp=""
+        journal_tmp=$(mktemp "${bundle_dir}/journal-acfs.log.tmp.XXXXXX") || journal_tmp=""
+        if [[ -n "$journal_tmp" ]] && journalctl --no-pager -n 100 -u 'acfs*' > "$journal_tmp" 2>/dev/null; then
+            if mv "$journal_tmp" "$bundle_dir/journal-acfs.log"; then
+                record_bundle_file "journal-acfs.log"
+            else
+                log_warn "Could not finalize journal capture"
+                rm -f "$journal_tmp"
+            fi
+        else
+            [[ -n "$journal_tmp" ]] && rm -f "$journal_tmp"
+        fi
     fi
 
     # --- Collect configuration ---
     log_detail "Collecting configuration..."
-    collect_file "$HOME/.zshrc" "$bundle_dir/config" ".zshrc" || true
-    collect_file "$ACFS_HOME/acfs.manifest.yaml" "$bundle_dir/config" "acfs.manifest.yaml" || true
+    collect_file "${SUPPORT_TARGET_HOME}/.zshrc" "$bundle_dir" "config/.zshrc" ".zshrc" || true
+    collect_file "$ACFS_HOME/acfs.manifest.yaml" "$bundle_dir" "config/acfs.manifest.yaml" "acfs.manifest.yaml" || true
 
     # --- Redact sensitive data ---
     redact_bundle "$bundle_dir"
@@ -482,14 +636,13 @@ main() {
 
     # --- Create tar archive ---
     log_detail "Creating archive..."
-    if tar -czf "$archive_path" -C "$OUTPUT_BASE" "$timestamp" 2>/dev/null; then
+    if tar -czf "$archive_path" -C "$OUTPUT_BASE" "$bundle_name" 2>/dev/null; then
         log_success "Bundle created: $archive_path"
+        echo "$archive_path"
     else
         log_warn "Could not create tar archive, bundle available at: $bundle_dir"
+        echo "$bundle_dir"
     fi
-
-    # Print summary to stdout (clean for piping)
-    echo "$archive_path"
 }
 
 main "$@"

@@ -44,6 +44,17 @@ WIZARD_CURRENT_SCREEN=""
 # Redraw function (set by TUI framework)
 WIZARD_REDRAW_FUNCTION=""
 
+newproj_tty_printf() {
+    local format="$1"
+    shift
+
+    if [[ -w /dev/tty ]] && { printf "$format" "$@" > /dev/tty; } 2>/dev/null; then
+        return 0
+    fi
+
+    printf "$format" "$@" >&2
+}
+
 # ============================================================
 # Cleanup Registration
 # ============================================================
@@ -61,7 +72,7 @@ normalize_path() {
     if [[ "$path" == "~" ]]; then
         path="$HOME"
     elif [[ ${path:0:1} == "~" && ${path:1:1} == "/" ]]; then
-        path="${HOME}/${path#~/}"
+        path="${HOME}/${path:2}"
     fi
 
     # Make absolute if relative
@@ -126,6 +137,14 @@ safe_cleanup_target() {
 # Usage: register_cleanup "/path/to/file_or_dir"
 register_cleanup() {
     local item="$1"
+
+    local existing
+    for existing in "${WIZARD_CLEANUP_ITEMS[@]}"; do
+        if [[ "$existing" == "$item" ]]; then
+            return 0
+        fi
+    done
+
     WIZARD_CLEANUP_ITEMS+=("$item")
     log_debug "Registered for cleanup: $item" 2>/dev/null || true
 }
@@ -346,14 +365,33 @@ preflight_check() {
 # Returns: 0 on success, 1 on failure
 try_create_directory() {
     local dir="$1"
+    local existing_entries=""
 
     log_debug "Creating directory: $dir" 2>/dev/null || true
 
     # Check if path already exists
     if [[ -e "$dir" ]]; then
-        log_error "Path already exists: $dir" 2>/dev/null || true
-        show_error_with_recovery "exists" "Path already exists: $dir"
-        return 1
+        if [[ ! -d "$dir" ]]; then
+            log_error "Path exists and is not a directory: $dir" 2>/dev/null || true
+            show_error_with_recovery "exists" "Path exists and is not a directory: $dir"
+            return 1
+        fi
+
+        if [[ ! -w "$dir" ]]; then
+            log_error "No write permission to directory: $dir" 2>/dev/null || true
+            show_error_with_recovery "permission" "No write permission to: $dir"
+            return 1
+        fi
+
+        existing_entries="$(ls -A "$dir" 2>/dev/null || true)"
+        if [[ -n "$existing_entries" ]]; then
+            log_error "Directory already exists and is not empty: $dir" 2>/dev/null || true
+            show_error_with_recovery "exists" "Directory already exists and is not empty: $dir"
+            return 1
+        fi
+
+        log_info "Using existing empty directory: $dir" 2>/dev/null || true
+        return 0
     fi
 
     # Check parent directory exists and is writable
@@ -386,7 +424,7 @@ try_create_directory() {
         return $errno
     fi
 
-    # Register for cleanup and track for transaction
+    # Register for cleanup and track for rollback
     register_cleanup "$dir"
     track_created_file "$dir"
 
@@ -430,8 +468,8 @@ try_br_init() {
     # Check if br is available
     if ! command -v br &>/dev/null; then
         log_warn "br not found - skipping beads initialization" 2>/dev/null || true
-        echo -e "${NEWPROJ_YELLOW}Note: br not installed. Skipping beads setup.${NEWPROJ_NC}"
-        return 0  # Graceful degradation
+        newproj_tty_printf "%b\n" "${NEWPROJ_YELLOW}Note: br not installed. Skipping beads setup.${NEWPROJ_NC}"
+        return 2
     fi
 
     # Check if already initialized
@@ -444,8 +482,8 @@ try_br_init() {
     local errno=$?
     if [[ $errno -ne 0 ]]; then
         log_warn "br init failed in $dir (errno: $errno)" 2>/dev/null || true
-        echo -e "${NEWPROJ_YELLOW}Warning: Failed to initialize beads. You can run 'br init' later.${NEWPROJ_NC}"
-        return 0  # Graceful degradation - not fatal
+        newproj_tty_printf "%b\n" "${NEWPROJ_YELLOW}Warning: Failed to initialize beads. You can run 'br init' later.${NEWPROJ_NC}"
+        return 2
     fi
 
     track_created_file "$dir/.beads"
@@ -458,6 +496,7 @@ try_br_init() {
 try_write_file() {
     local file="$1"
     local content="$2"
+    local missing_dirs=()
 
     log_debug "Writing file: $file" 2>/dev/null || true
 
@@ -465,10 +504,33 @@ try_write_file() {
     local parent_dir
     parent_dir=$(dirname "$file")
     if [[ ! -d "$parent_dir" ]]; then
+        local probe_dir="$parent_dir"
+        while [[ ! -d "$probe_dir" ]]; do
+            missing_dirs+=("$probe_dir")
+            local next_dir
+            next_dir=$(dirname "$probe_dir")
+            if [[ "$next_dir" == "$probe_dir" ]]; then
+                break
+            fi
+            probe_dir="$next_dir"
+        done
+
         if ! mkdir -p "$parent_dir" 2>/dev/null; then
             log_error "Failed to create parent directory: $parent_dir" 2>/dev/null || true
             return 1
         fi
+
+        local i
+        for ((i=${#missing_dirs[@]}-1; i>=0; i--)); do
+            register_cleanup "${missing_dirs[i]}"
+            track_created_file "${missing_dirs[i]}"
+        done
+    fi
+
+    if [[ -e "$file" ]]; then
+        log_error "Refusing to overwrite existing file: $file" 2>/dev/null || true
+        show_error_with_recovery "exists" "Refusing to overwrite existing file: $file"
+        return 1
     fi
 
     # Write the file
@@ -480,6 +542,7 @@ try_write_file() {
         return $errno
     fi
 
+    register_cleanup "$file"
     track_created_file "$file"
     log_file_op "WRITE" "$file" "OK" 2>/dev/null || true
     return 0
@@ -494,6 +557,7 @@ try_write_file() {
 begin_project_creation() {
     local project_root="${1:-}"
     WIZARD_TRANSACTION_ACTIVE=true
+    WIZARD_CLEANUP_ITEMS=()
     WIZARD_CREATED_FILES=()
     WIZARD_PROJECT_ROOT="$project_root"
     log_info "Beginning project creation transaction" 2>/dev/null || true
@@ -501,9 +565,21 @@ begin_project_creation() {
 
 # Track a created file within the current transaction
 track_created_file() {
-    if [[ "$WIZARD_TRANSACTION_ACTIVE" == "true" ]]; then
-        WIZARD_CREATED_FILES+=("$1")
+    local path="$1"
+
+    if [[ "$WIZARD_TRANSACTION_ACTIVE" != "true" ]] || [[ -z "$path" ]]; then
+        return 0
     fi
+
+    local existing
+    for existing in "${WIZARD_CREATED_FILES[@]}"; do
+        if [[ "$existing" == "$path" ]]; then
+            return 0
+        fi
+    done
+
+    WIZARD_CREATED_FILES+=("$path")
+    register_cleanup "$path"
 }
 
 # Commit the transaction (files will not be cleaned up)
@@ -520,6 +596,12 @@ commit_project_creation() {
     WIZARD_PROJECT_ROOT=""
 
     log_info "Project creation committed successfully" 2>/dev/null || true
+}
+
+suspend_project_creation_cleanup() {
+    WIZARD_TRANSACTION_ACTIVE=false
+    WIZARD_CLEANUP_ITEMS=()
+    log_info "Suspended automatic cleanup for failed project creation" 2>/dev/null || true
 }
 
 # Rollback the transaction (remove all created files)
@@ -539,11 +621,12 @@ rollback_project_creation() {
         rm -rf "$safe_file" 2>/dev/null || true
     done
 
+    WIZARD_CLEANUP_ITEMS=()
     WIZARD_CREATED_FILES=()
     WIZARD_TRANSACTION_ACTIVE=false
     WIZARD_PROJECT_ROOT=""
 
-    echo -e "${NEWPROJ_YELLOW}Project creation rolled back.${NEWPROJ_NC}"
+    newproj_tty_printf "%b\n" "${NEWPROJ_YELLOW}Project creation rolled back.${NEWPROJ_NC}"
 }
 
 # ============================================================
@@ -586,62 +669,62 @@ show_error_with_recovery() {
     local error_type="$1"
     local message="$2"
 
-    echo ""
-    echo -e "${NEWPROJ_RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NEWPROJ_NC}"
-    echo -e "${NEWPROJ_RED}  Error: $message${NEWPROJ_NC}"
-    echo -e "${NEWPROJ_RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NEWPROJ_NC}"
-    echo ""
+    newproj_tty_printf "%b\n" ""
+    newproj_tty_printf "%b\n" "${NEWPROJ_RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NEWPROJ_NC}"
+    newproj_tty_printf "%b\n" "${NEWPROJ_RED}  Error: $message${NEWPROJ_NC}"
+    newproj_tty_printf "%b\n" "${NEWPROJ_RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NEWPROJ_NC}"
+    newproj_tty_printf "%b\n" ""
 
     case "$error_type" in
         permission)
-            echo "How to fix:"
-            echo "  1. Check permissions: ls -la <parent_directory>"
-            echo "  2. Fix ownership: sudo chown -R \$(whoami) <directory>"
+            newproj_tty_printf "%s\n" "How to fix:"
+            newproj_tty_printf "%s\n" "  1. Check permissions: ls -la <parent_directory>"
+            newproj_tty_printf "%s\n" "  2. Fix ownership: sudo chown -R \$(whoami) <directory>"
             ;;
         disk_full)
-            echo "How to fix:"
-            echo "  1. Check disk space: df -h"
-            echo "  2. Free up space and try again"
+            newproj_tty_printf "%s\n" "How to fix:"
+            newproj_tty_printf "%s\n" "  1. Check disk space: df -h"
+            newproj_tty_printf "%s\n" "  2. Free up space and try again"
             ;;
         exists)
-            echo "How to fix:"
-            echo "  1. Choose a different project name"
-            echo "  2. Or move/rename the existing directory first"
+            newproj_tty_printf "%s\n" "How to fix:"
+            newproj_tty_printf "%s\n" "  1. Choose a different project name"
+            newproj_tty_printf "%s\n" "  2. Or move/rename the existing directory first"
             ;;
         no_parent)
-            echo "How to fix:"
-            echo "  1. Create the parent directory first"
-            echo "  2. Or choose a different location"
+            newproj_tty_printf "%s\n" "How to fix:"
+            newproj_tty_printf "%s\n" "  1. Create the parent directory first"
+            newproj_tty_printf "%s\n" "  2. Or choose a different location"
             ;;
         git_not_installed)
-            echo "How to fix:"
-            echo "  1. Install git: sudo apt install git"
-            echo "  2. Run wizard again"
+            newproj_tty_printf "%s\n" "How to fix:"
+            newproj_tty_printf "%s\n" "  1. Install git: sudo apt install git"
+            newproj_tty_printf "%s\n" "  2. Run wizard again"
             ;;
         git_init)
-            echo "How to fix:"
-            echo "  1. Check if git is installed: git --version"
-            echo "  2. Check directory permissions"
+            newproj_tty_printf "%s\n" "How to fix:"
+            newproj_tty_printf "%s\n" "  1. Check if git is installed: git --version"
+            newproj_tty_printf "%s\n" "  2. Check directory permissions"
             ;;
         write)
-            echo "How to fix:"
-            echo "  1. Check write permissions to the directory"
-            echo "  2. Check available disk space"
+            newproj_tty_printf "%s\n" "How to fix:"
+            newproj_tty_printf "%s\n" "  1. Check write permissions to the directory"
+            newproj_tty_printf "%s\n" "  2. Check available disk space"
             ;;
         *)
-            echo "For more details, check the log file."
+            newproj_tty_printf "%s\n" "For more details, check the log file."
             ;;
     esac
 
-    echo ""
-    echo "Need help? Run: acfs newproj --help"
+    newproj_tty_printf "%b\n" ""
+    newproj_tty_printf "%s\n" "Need help? Run: acfs newproj --help"
 
     # Show log location if available
     if [[ -n "${ACFS_SESSION_LOG:-}" && -f "${ACFS_SESSION_LOG:-}" ]]; then
-        echo ""
-        echo "Debug log: $ACFS_SESSION_LOG"
+        newproj_tty_printf "%b\n" ""
+        newproj_tty_printf "%s\n" "Debug log: $ACFS_SESSION_LOG"
     fi
-    echo ""
+    newproj_tty_printf "%b\n" ""
 }
 
 # ============================================================

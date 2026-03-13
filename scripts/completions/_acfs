@@ -36,6 +36,14 @@ _acfs() {
                         '-h[Show help message]' \
                         '--help[Show help message]'
                     ;;
+                status)
+                    _arguments \
+                        '--json[Machine-readable JSON output]' \
+                        '--short[Minimal output for shell prompt integration]' \
+                        '--check-updates[Include network-based update checks]' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
                 info|i)
                     _arguments \
                         '--json[JSON output for scripting]' \
@@ -45,6 +53,22 @@ _acfs() {
                 cheatsheet|cs)
                     _arguments \
                         '--json[JSON output for scripting]'
+                    ;;
+                changelog|changes|log)
+                    _arguments \
+                        '--all[Show full changelog history]' \
+                        '--since[Show changes since period]:period:' \
+                        '--json[Output in JSON format]' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
+                export-config|export)
+                    _arguments \
+                        '--json[Output in JSON format]' \
+                        '--minimal[Output only module list]' \
+                        '--output[Write to file]:file:_files' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
                     ;;
                 session|sessions)
                     _arguments -C \
@@ -78,10 +102,24 @@ _acfs() {
                                         '1:json file:_files -g "*.json"' \
                                         '--dry-run[Preview import without executing]'
                                     ;;
+                                convert)
+                                    _arguments \
+                                        '1:session path:_files' \
+                                        '--from[Source agent]:agent:(claude-code codex gemini)' \
+                                        '--to[Target agent]:agent:(claude-code codex gemini)' \
+                                        '--workspace[Workspace path]:path:_files -/' \
+                                        '--session-id[Target session id]:session id:' \
+                                        '--dry-run[Preview conversion without writing output]' \
+                                        '--json[Output JSON summary]' \
+                                        '--no-json[Output plain-text summary]'
+                                    ;;
                                 show)
                                     _arguments \
                                         '1:session id:' \
                                         '--format[Output format]:format:(json markdown summary)'
+                                    ;;
+                                list-imported)
+                                    _arguments
                                     ;;
                             esac
                             ;;
@@ -92,7 +130,7 @@ _acfs() {
                         '1: :_acfs_dashboard_commands' \
                         '*::arg:->dashboard_args'
                     ;;
-                update|status|continue|progress|services-setup|services|setup|support-bundle|bundle)
+                update|continue|progress|services-setup|services|setup|support-bundle|bundle)
                     _arguments \
                         '-h[Show help message]' \
                         '--help[Show help message]'
@@ -122,6 +160,11 @@ _acfs_commands() {
         'i:System overview (alias for info)'
         'cheatsheet:Command reference (aliases, shortcuts)'
         'cs:Command reference (alias for cheatsheet)'
+        'changelog:Show recent project changes'
+        'changes:Show recent project changes (alias for changelog)'
+        'log:Show recent project changes (alias for changelog)'
+        'export-config:Export config for backup or migration'
+        'export:Export config (alias for export-config)'
         'dashboard:Static HTML dashboard'
         'dash:Dashboard (alias for dashboard)'
         'support-bundle:Collect diagnostic data for troubleshooting'
@@ -139,7 +182,9 @@ _acfs_session_commands() {
         'export:Export a session'
         'recent:Show recent sessions'
         'import:Import a session'
+        'convert:Convert a native session between agent formats'
         'show:Show session details'
+        'list-imported:List locally imported session exports'
     )
     _describe -t commands 'session command' commands
 }

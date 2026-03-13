@@ -44,7 +44,9 @@ get_files_to_create() {
 
     if [[ "$(state_get "enable_claude")" == "true" ]]; then
         files+=("$project_dir/.claude/")
-        files+=("$project_dir/.claude/settings.local.json")
+        if ! newproj_has_existing_claude_settings "$project_dir"; then
+            files+=("$(newproj_claude_settings_path "$project_dir")")
+        fi
     fi
 
     if [[ "$(state_get "enable_ubsignore")" == "true" ]]; then
@@ -204,11 +206,7 @@ handle_confirmation_input() {
             'e'|'E')
                 # Edit - go back to project name
                 log_input "confirmation" "edit"
-                # Clear history and go back to beginning
-                SCREEN_HISTORY=("welcome")
-                CURRENT_SCREEN="project_name"
-                echo "project_name"
-                return 0
+                return 3
                 ;;
             'q'|'Q')
                 # Quit
@@ -238,9 +236,11 @@ handle_confirmation_input() {
 run_confirmation_screen() {
     log_screen "ENTER" "confirmation"
 
-    local next
-    next=$(handle_confirmation_input)
-    local result=$?
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+    run_screen_handler_capture handle_confirmation_input
+    local result="$SCREEN_HANDLER_STATUS"
+    local next="$SCREEN_HANDLER_OUTPUT"
 
     case $result in
         0)
@@ -248,6 +248,7 @@ run_confirmation_screen() {
                 navigate_forward "$next"
                 return 0
             fi
+            return 0
             ;;
         1)
             navigate_back
@@ -256,6 +257,12 @@ run_confirmation_screen() {
         2)
             # User wants to exit
             return 1
+            ;;
+        3)
+            # Reset edit flow so the user restarts from the project name screen.
+            SCREEN_HISTORY=("welcome")
+            CURRENT_SCREEN="project_name"
+            return 0
             ;;
     esac
 }

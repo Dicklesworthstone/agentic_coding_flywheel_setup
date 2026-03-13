@@ -36,8 +36,14 @@ set -euo pipefail
 # ============================================================
 # Configuration
 # ============================================================
-ACFS_HOME="${ACFS_HOME:-$HOME/.acfs}"
-ACFS_REPO="${ACFS_REPO:-$ACFS_HOME}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_CHANGELOG_EXPLICIT_ACFS_HOME="${ACFS_HOME:-}"
+_CHANGELOG_DEFAULT_ACFS_HOME="$HOME/.acfs"
+ACFS_HOME="${_CHANGELOG_EXPLICIT_ACFS_HOME:-$_CHANGELOG_DEFAULT_ACFS_HOME}"
+_CHANGELOG_EXPLICIT_ACFS_REPO="${ACFS_REPO:-}"
+ACFS_REPO="${_CHANGELOG_EXPLICIT_ACFS_REPO:-$ACFS_HOME}"
+_CHANGELOG_SYSTEM_STATE_FILE="${ACFS_SYSTEM_STATE_FILE:-/var/lib/acfs/state.json}"
+_CHANGELOG_RESOLVED_ACFS_HOME=""
 CHANGELOG_FILE="${ACFS_REPO}/CHANGELOG.md"
 
 # Find CHANGELOG.md - check multiple locations
@@ -89,15 +95,187 @@ fi
 # Helper Functions
 # ============================================================
 
+json_escape() {
+    local value="$1"
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    value=${value//$'\n'/\\n}
+    value=${value//$'\r'/\\r}
+    value=${value//$'\t'/\\t}
+    printf '%s' "$value"
+}
+
+changelog_home_for_user() {
+    local user="$1"
+    local passwd_entry=""
+
+    [[ -n "$user" ]] || return 1
+
+    if command -v getent &>/dev/null; then
+        passwd_entry=$(getent passwd "$user" 2>/dev/null || true)
+        if [[ -n "$passwd_entry" ]]; then
+            printf '%s\n' "$(printf '%s\n' "$passwd_entry" | cut -d: -f6)"
+            return 0
+        fi
+    fi
+
+    if [[ "$user" == "root" ]]; then
+        echo "/root"
+        return 0
+    fi
+
+    if [[ "$user" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+        echo "/home/$user"
+        return 0
+    fi
+
+    return 1
+}
+
+changelog_read_target_user_from_state() {
+    local state_file="$1"
+    local target_user=""
+
+    [[ -f "$state_file" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        target_user=$(jq -r '.target_user // empty' "$state_file" 2>/dev/null || true)
+    else
+        target_user=$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$state_file" 2>/dev/null | head -n 1)
+    fi
+
+    [[ -n "$target_user" ]] && [[ "$target_user" != "null" ]] || return 1
+    printf '%s\n' "$target_user"
+}
+
+changelog_script_acfs_home() {
+    local candidate=""
+    candidate=$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd) || return 1
+    [[ "$(basename "$candidate")" == ".acfs" ]] || return 1
+    printf '%s\n' "$candidate"
+}
+
+resolve_changelog_acfs_home() {
+    if [[ -n "$_CHANGELOG_RESOLVED_ACFS_HOME" ]]; then
+        printf '%s\n' "$_CHANGELOG_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    local candidate=""
+    local target_home=""
+    local target_user=""
+
+    if [[ -n "$_CHANGELOG_EXPLICIT_ACFS_HOME" ]]; then
+        _CHANGELOG_RESOLVED_ACFS_HOME="$_CHANGELOG_EXPLICIT_ACFS_HOME"
+        printf '%s\n' "$_CHANGELOG_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    candidate=$(changelog_script_acfs_home 2>/dev/null || true)
+    if [[ -n "$candidate" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -f "$candidate/CHANGELOG.md" ]]; then
+        _CHANGELOG_RESOLVED_ACFS_HOME="$candidate"
+        printf '%s\n' "$_CHANGELOG_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    if [[ -f "$ACFS_HOME/state.json" || -f "$ACFS_HOME/VERSION" || -f "$ACFS_HOME/CHANGELOG.md" ]]; then
+        _CHANGELOG_RESOLVED_ACFS_HOME="$ACFS_HOME"
+        printf '%s\n' "$_CHANGELOG_RESOLVED_ACFS_HOME"
+        return 0
+    fi
+
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        target_home=$(changelog_home_for_user "$SUDO_USER" 2>/dev/null || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -f "$candidate/CHANGELOG.md" ]]; then
+            _CHANGELOG_RESOLVED_ACFS_HOME="$candidate"
+            printf '%s\n' "$_CHANGELOG_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    target_user=$(changelog_read_target_user_from_state "$_CHANGELOG_SYSTEM_STATE_FILE" 2>/dev/null || true)
+    if [[ -n "$target_user" ]]; then
+        target_home=$(changelog_home_for_user "$target_user" 2>/dev/null || true)
+        candidate="${target_home}/.acfs"
+        if [[ -n "$target_home" ]] && [[ -f "$candidate/state.json" || -f "$candidate/VERSION" || -f "$candidate/CHANGELOG.md" ]]; then
+            _CHANGELOG_RESOLVED_ACFS_HOME="$candidate"
+            printf '%s\n' "$_CHANGELOG_RESOLVED_ACFS_HOME"
+            return 0
+        fi
+    fi
+
+    _CHANGELOG_RESOLVED_ACFS_HOME="$ACFS_HOME"
+    printf '%s\n' "$_CHANGELOG_RESOLVED_ACFS_HOME"
+}
+
+resolve_changelog_state_file() {
+    local candidate="${ACFS_HOME}/state.json"
+
+    if [[ -f "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    if [[ -f "$_CHANGELOG_SYSTEM_STATE_FILE" ]]; then
+        printf '%s\n' "$_CHANGELOG_SYSTEM_STATE_FILE"
+        return 0
+    fi
+
+    printf '%s\n' "$candidate"
+}
+
+refresh_changelog_paths() {
+    ACFS_HOME="$(resolve_changelog_acfs_home)"
+    if [[ -n "$_CHANGELOG_EXPLICIT_ACFS_REPO" ]]; then
+        ACFS_REPO="$_CHANGELOG_EXPLICIT_ACFS_REPO"
+    else
+        ACFS_REPO="$ACFS_HOME"
+    fi
+    CHANGELOG_FILE="${ACFS_REPO}/CHANGELOG.md"
+}
+
+read_state_timestamp() {
+    local state_file="$1"
+    local ts=""
+    local key=""
+
+    [[ -f "$state_file" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        ts=$(jq -r '
+            .last_updated //
+            .last_completed_phase_ts //
+            .updated_at //
+            .last_update //
+            .started_at //
+            .install_date //
+            empty
+        ' "$state_file" 2>/dev/null || true)
+    fi
+
+    if [[ -z "$ts" || "$ts" == "null" ]]; then
+        for key in last_updated last_completed_phase_ts updated_at last_update started_at install_date; do
+            ts=$(sed -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" \
+                "$state_file" 2>/dev/null | head -n 1)
+            if [[ -n "$ts" ]]; then
+                break
+            fi
+        done
+    fi
+
+    [[ -n "$ts" ]] || return 1
+    printf '%s\n' "$ts"
+}
+
 # Get last update timestamp from state.json
 get_last_update_date() {
-    local state_file="${ACFS_HOME}/state.json"
+    local state_file=""
+    state_file="$(resolve_changelog_state_file)"
+    local ts=""
 
-    if [[ -f "$state_file" ]] && command -v jq &>/dev/null; then
-        local ts
-        ts=$(jq -r '.last_update // .install_date // empty' "$state_file" 2>/dev/null || true)
+    if ts=$(read_state_timestamp "$state_file" 2>/dev/null || true); then
         if [[ -n "$ts" ]]; then
-            # Convert to YYYY-MM-DD format
             date -d "$ts" '+%Y-%m-%d' 2>/dev/null || echo ""
             return 0
         fi
@@ -110,6 +288,10 @@ get_last_update_date() {
 # Parse duration string (e.g., "7d", "2w", "1m") to days
 parse_duration() {
     local duration="$1"
+    if [[ ! "$duration" =~ ^[0-9]+([dDwWmM])?$ ]]; then
+        return 1
+    fi
+
     local num="${duration%[dwmDWM]}"
     local unit="${duration: -1}"
 
@@ -117,7 +299,7 @@ parse_duration() {
         d|D) echo "$num" ;;
         w|W) echo "$((num * 7))" ;;
         m|M) echo "$((num * 30))" ;;
-        *) echo "${duration:-30}" ;;  # Assume days if no unit
+        *) echo "$duration" ;;  # Assume days if no unit
     esac
 }
 
@@ -161,6 +343,8 @@ get_acfs_version() {
         echo "unknown"
     fi
 }
+
+refresh_changelog_paths
 
 # ============================================================
 # Changelog Parsing
@@ -316,18 +500,17 @@ format_json() {
         fi
         first=false
 
-        # Escape JSON special characters
-        local escaped_entry
-        escaped_entry=$(echo "$entry" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
-
         printf '    {"version": "%s", "date": "%s", "type": "%s", "entry": "%s"}' \
-            "$version" "$date" "$type" "$escaped_entry"
+            "$(json_escape "$version")" \
+            "$(json_escape "$date")" \
+            "$(json_escape "$type")" \
+            "$(json_escape "$entry")"
     done
 
     echo ""
     echo "  ],"
-    echo "  \"acfs_version\": \"$(get_acfs_version)\","
-    echo "  \"generated_at\": \"$(date -Iseconds)\""
+    printf '  "acfs_version": "%s",\n' "$(json_escape "$(get_acfs_version)")"
+    printf '  "generated_at": "%s"\n' "$(json_escape "$(date -Iseconds)")"
     echo "}"
 }
 
@@ -416,7 +599,10 @@ main() {
         since_date="1970-01-01"
     elif [[ -n "$since_period" ]]; then
         local days
-        days=$(parse_duration "$since_period")
+        if ! days=$(parse_duration "$since_period"); then
+            echo "Error: invalid duration '$since_period' (expected 7d, 2w, 1m, or whole days)" >&2
+            exit 1
+        fi
         since_date=$(date -d "${days} days ago" '+%Y-%m-%d' 2>/dev/null || date '+%Y-%m-%d')
     else
         since_date=$(get_last_update_date)

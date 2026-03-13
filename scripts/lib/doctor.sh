@@ -45,20 +45,41 @@ fi
 # Source gum_ui library if available
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-_acfs_doctor_source_first() {
+_acfs_doctor_find_project_path() {
     local rel_path="$1"
-    local candidate
+    local candidate=""
+
     for candidate in \
-        "$SCRIPT_DIR/$rel_path" \
-        "$SCRIPT_DIR/../scripts/lib/$rel_path" \
-        "$HOME/.acfs/scripts/lib/$rel_path"; do
+        "$SCRIPT_DIR/../$rel_path" \
+        "$SCRIPT_DIR/../../$rel_path" \
+        "${ACFS_HOME:-$HOME/.acfs}/$rel_path" \
+        "$HOME/.acfs/$rel_path"; do
         if [[ -f "$candidate" ]]; then
-            # shellcheck source=/dev/null
-            source "$candidate"
+            printf '%s\n' "$candidate"
             return 0
         fi
     done
+
     return 1
+}
+
+_acfs_doctor_find_lib_script() {
+    _acfs_doctor_find_project_path "scripts/lib/$1"
+}
+
+_acfs_doctor_find_scripts_script() {
+    _acfs_doctor_find_project_path "scripts/$1"
+}
+
+_acfs_doctor_source_first() {
+    local rel_path="$1"
+    local candidate=""
+    candidate="$(_acfs_doctor_find_lib_script "$rel_path" 2>/dev/null || true)"
+    [[ -n "$candidate" ]] || return 1
+
+    # shellcheck source=/dev/null
+    source "$candidate"
+    return 0
 }
 
 # Source output formatting library (for TOON support)
@@ -72,24 +93,24 @@ _DOCTOR_SHOW_STATS=false
 _acfs_doctor_source_first "doctor_fix.sh" || true
 
 # Prefer the installed VERSION file when available.
-if [[ -f "$HOME/.acfs/VERSION" ]]; then
-    ACFS_VERSION="$(cat "$HOME/.acfs/VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
-elif [[ -f "$SCRIPT_DIR/../VERSION" ]]; then
-    ACFS_VERSION="$(cat "$SCRIPT_DIR/../VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
-elif [[ -f "$SCRIPT_DIR/../../VERSION" ]]; then
-    ACFS_VERSION="$(cat "$SCRIPT_DIR/../../VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
+_acfs_doctor_version_file="$(_acfs_doctor_find_project_path "VERSION" 2>/dev/null || true)"
+if [[ -n "$_acfs_doctor_version_file" ]]; then
+    ACFS_VERSION="$(cat "$_acfs_doctor_version_file" 2>/dev/null || echo "$ACFS_VERSION")"
 fi
+unset _acfs_doctor_version_file
 
 # Prefer the installed state file for mode (vibe/safe) when available.
-if [[ -z "${ACFS_MODE:-}" ]] && [[ -f "$HOME/.acfs/state.json" ]]; then
+_acfs_doctor_installed_state="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
+if [[ -z "${ACFS_MODE:-}" ]] && [[ -f "$_acfs_doctor_installed_state" ]]; then
     if command -v jq &>/dev/null; then
-        ACFS_MODE="$(jq -r '.mode // empty' "$HOME/.acfs/state.json" 2>/dev/null || true)"
+        ACFS_MODE="$(jq -r '.mode // empty' "$_acfs_doctor_installed_state" 2>/dev/null || true)"
     fi
     if [[ -z "${ACFS_MODE:-}" ]]; then
-        ACFS_MODE="$(sed -n 's/.*"mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.acfs/state.json" | head -n 1)"
+        ACFS_MODE="$(sed -n 's/.*"mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_installed_state" | head -n 1)"
     fi
     [[ -n "${ACFS_MODE:-}" ]] && export ACFS_MODE
 fi
+unset _acfs_doctor_installed_state
 
 # Prefer the installed state file for target user (for installs where the target user is not ubuntu).
 _acfs_doctor_state_files=()
@@ -98,6 +119,10 @@ if [[ -n "${ACFS_STATE_FILE:-}" ]]; then
 fi
 if [[ -n "${ACFS_HOME:-}" ]]; then
     _acfs_doctor_state_files+=("$ACFS_HOME/state.json")
+fi
+_acfs_doctor_installed_state="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
+if [[ -n "$_acfs_doctor_installed_state" ]]; then
+    _acfs_doctor_state_files+=("$_acfs_doctor_installed_state")
 fi
 _acfs_doctor_state_files+=("$HOME/.acfs/state.json")
 
@@ -116,6 +141,7 @@ if [[ -z "${TARGET_USER:-}" ]]; then
 fi
 unset _acfs_doctor_state_files
 unset _acfs_doctor_state_file
+unset _acfs_doctor_installed_state
 if [[ -z "${TARGET_USER:-}" ]]; then
     _acfs_current_user="$(id -un 2>/dev/null || whoami 2>/dev/null || true)"
     if [[ -n "$_acfs_current_user" ]] && [[ "$_acfs_current_user" != "root" ]]; then
@@ -129,11 +155,7 @@ if [[ ! "$TARGET_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
 fi
 export TARGET_USER
 
-if [[ -f "$SCRIPT_DIR/gum_ui.sh" ]]; then
-    source "$SCRIPT_DIR/gum_ui.sh"
-elif [[ -f "$HOME/.acfs/scripts/lib/gum_ui.sh" ]]; then
-    source "$HOME/.acfs/scripts/lib/gum_ui.sh"
-fi
+_acfs_doctor_source_first "gum_ui.sh" || true
 
 # ============================================================
 # Fix Suggestion Builder (bd-31ps.5.2)
@@ -183,7 +205,8 @@ build_fix_suggestion() {
     # Build the command
     # Check if we have a pinned ref from state.json
     local ref_env=""
-    local state_file="$HOME/.acfs/state.json"
+    local state_file=""
+    state_file="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
     if [[ -f "$state_file" ]]; then
         local pinned_ref=""
         if command -v jq &>/dev/null; then
@@ -208,6 +231,76 @@ fix_for_phase() {
     build_fix_suggestion "" --phase "$phase_num"
 }
 
+agent_mail_doctor_check_json() {
+    local description="Agent Mail doctor check"
+    local result
+
+    if [[ $# -gt 0 ]]; then
+        result="$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$description" am doctor check --json "$1")"
+    else
+        result="$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$description" am doctor check --json)"
+    fi
+
+    if [[ $? -ne 0 ]] || [[ -z "$result" ]] || [[ "$result" == "TIMEOUT" ]]; then
+        return 1
+    fi
+
+    printf '%s' "$result"
+}
+
+agent_mail_doctor_is_healthy() {
+    local doctor_json="${1:-}"
+
+    [[ -n "$doctor_json" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        [[ "$(printf '%s' "$doctor_json" | jq -r '.healthy // false' 2>/dev/null)" == "true" ]]
+        return $?
+    fi
+
+    printf '%s' "$doctor_json" | grep -q '"healthy"[[:space:]]*:[[:space:]]*true'
+}
+
+agent_mail_doctor_summary() {
+    local doctor_json="${1:-}"
+    local summary=""
+
+    [[ -n "$doctor_json" ]] || return 1
+
+    if command -v jq &>/dev/null; then
+        summary="$(printf '%s' "$doctor_json" | jq -r '
+            [
+                .checks[]?
+                | select(.status == "fail")
+                | "\(.check): \(.detail)"
+            ] | join("; ")
+        ' 2>/dev/null || true)"
+        if [[ -n "$summary" ]]; then
+            printf '%s' "$summary"
+            return 0
+        fi
+
+        summary="$(printf '%s' "$doctor_json" | jq -r '
+            [
+                .checks[]?
+                | select(.status == "warn")
+                | "\(.check): \(.detail)"
+            ] | join("; ")
+        ' 2>/dev/null || true)"
+        if [[ -n "$summary" ]]; then
+            printf '%s' "$summary"
+            return 0
+        fi
+    fi
+
+    if printf '%s' "$doctor_json" | grep -q '"healthy"[[:space:]]*:[[:space:]]*false'; then
+        printf '%s' "doctor check reported unhealthy state"
+        return 0
+    fi
+
+    return 1
+}
+
 # ============================================================
 # Manifest-Derived Checks (bd-31ps.5.1)
 # ============================================================
@@ -221,11 +314,7 @@ MANIFEST_CHECKS_LOADED=false
 # "declare -a MANIFEST_CHECKS=(...)" which bash scopes as local inside a
 # function.  Top-level sourcing keeps the array globally visible.
 _MANIFEST_CHECKS_FILE=""
-if [[ -f "$SCRIPT_DIR/../generated/doctor_checks.sh" ]]; then
-    _MANIFEST_CHECKS_FILE="$SCRIPT_DIR/../generated/doctor_checks.sh"
-elif [[ -f "$HOME/.acfs/scripts/generated/doctor_checks.sh" ]]; then
-    _MANIFEST_CHECKS_FILE="$HOME/.acfs/scripts/generated/doctor_checks.sh"
-fi
+_MANIFEST_CHECKS_FILE="$(_acfs_doctor_find_project_path "scripts/generated/doctor_checks.sh" 2>/dev/null || true)"
 
 if [[ -n "$_MANIFEST_CHECKS_FILE" ]]; then
     # Save shell options before sourcing (doctor_checks.sh sets -euo pipefail)
@@ -301,24 +390,26 @@ print_acfs_help() {
     echo "    --json            Output results as JSON"
     echo "    --deep            Run functional tests (auth, connections)"
     echo "  info [options]      Quick system overview (terminal/json/html)"
+    echo "  status [options]    Quick one-line health summary"
     echo "  cheatsheet          Command reference (aliases, shortcuts)"
+    echo "  changelog [options] Show recent project changes"
+    echo "  export-config       Export config for backup/migration"
     echo "  continue [options]  View installation/upgrade progress"
     echo "  dashboard <command> Generate/view a static HTML dashboard"
     echo "  newproj <name>      Create new project with git, br, claude settings"
     echo "  update [options]    Update ACFS tools to latest versions"
     echo "  services-setup      Configure AI agents and cloud services"
     echo "  session <command>   Export/import/share agent sessions"
+    echo "  support-bundle      Collect diagnostic data for troubleshooting"
     echo "  version             Show ACFS version"
     echo "  help                Show this help message"
 }
 
 resolve_session_lib() {
-    if [[ -f "$HOME/.acfs/scripts/lib/session.sh" ]]; then
-        echo "$HOME/.acfs/scripts/lib/session.sh"
-        return 0
-    fi
-    if [[ -f "$SCRIPT_DIR/session.sh" ]]; then
-        echo "$SCRIPT_DIR/session.sh"
+    local session_script=""
+    session_script="$(_acfs_doctor_find_lib_script "session.sh" 2>/dev/null || true)"
+    if [[ -n "$session_script" ]]; then
+        echo "$session_script"
         return 0
     fi
     return 1
@@ -352,10 +443,18 @@ acfs_session_recent() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --workspace)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --workspace requires a path" >&2
+                    return 1
+                fi
                 workspace="$2"
                 shift 2
                 ;;
             --format)
+                if [[ -z "${2:-}" || "$2" == -* ]]; then
+                    echo "Error: --format requires a value (json or markdown)" >&2
+                    return 1
+                fi
                 format="$2"
                 shift 2
                 ;;
@@ -378,11 +477,18 @@ acfs_session_main() {
     # shellcheck source=/dev/null
     source "$session_lib"
 
+    local subcmd="${1:-}"
+    case "$subcmd" in
+        help|-h|"")
+            print_session_help
+            return 0
+            ;;
+    esac
+
     if ! check_session_deps; then
         return 1
     fi
 
-    local subcmd="${1:-}"
     case "$subcmd" in
         list)
             shift
@@ -411,9 +517,6 @@ acfs_session_main() {
         list-imported)
             shift
             list_imported_sessions "$@"
-            ;;
-        help|-h|"")
-            print_session_help
             ;;
         *)
             echo "Unknown session command: $subcmd" >&2
@@ -543,6 +646,139 @@ get_cached_result() {
 
     cat "$cache_file"
     return 0
+}
+
+normalize_config_value() {
+    local value="${1-}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    if [[ ${#value} -ge 2 ]]; then
+        local first_char="${value:0:1}"
+        local last_char="${value: -1}"
+        if [[ ( "$first_char" == '"' && "$last_char" == '"' ) || ( "$first_char" == "'" && "$last_char" == "'" ) ]]; then
+            value="${value:1:${#value}-2}"
+            value="${value#"${value%%[![:space:]]*}"}"
+            value="${value%"${value##*[![:space:]]}"}"
+        fi
+    fi
+
+    printf '%s\n' "$value"
+}
+
+is_placeholder_secret() {
+    local normalized
+    normalized="$(normalize_config_value "${1-}")"
+    normalized="${normalized,,}"
+
+    case "$normalized" in
+        your-token-here|your-token|your_api_key|your-api-key|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+has_usable_secret() {
+    local normalized
+    normalized="$(normalize_config_value "${1-}")"
+    [[ -n "${normalized//[[:space:]]/}" ]] && ! is_placeholder_secret "$normalized"
+}
+
+read_configured_var_from_file() {
+    local var_name="$1"
+    local file_path="$2"
+    [[ -f "$file_path" ]] || return 1
+
+    local line=""
+    local regex="^[[:space:]]*(export[[:space:]]+)?${var_name}[[:space:]]*=(.*)$"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        if [[ "$line" =~ $regex ]]; then
+            local value="${BASH_REMATCH[2]}"
+            local first_char="${value:0:1}"
+            if [[ "$first_char" != '"' && "$first_char" != "'" ]]; then
+                value="${value%%#*}"
+            fi
+            value="$(normalize_config_value "$value")"
+            if [[ -n "${value//[[:space:]]/}" ]]; then
+                printf '%s\n' "$value"
+                return 0
+            fi
+        fi
+    done < "$file_path"
+
+    return 1
+}
+
+get_configured_value() {
+    local var_name="$1"
+    shift
+
+    local env_value="${!var_name-}"
+    if [[ -n "${env_value//[[:space:]]/}" ]] && ! is_placeholder_secret "$env_value"; then
+        normalize_config_value "$env_value"
+        return 0
+    fi
+
+    local file_path=""
+    local configured_value=""
+    for file_path in "$@"; do
+        configured_value="$(read_configured_var_from_file "$var_name" "$file_path" || true)"
+        if [[ -n "${configured_value//[[:space:]]/}" ]] && ! is_placeholder_secret "$configured_value"; then
+            printf '%s\n' "$configured_value"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+get_configured_secret() {
+    local var_name="$1"
+    shift
+
+    local env_value="${!var_name-}"
+    if has_usable_secret "$env_value"; then
+        normalize_config_value "$env_value"
+        return 0
+    fi
+
+    local file_path=""
+    local configured_value=""
+    for file_path in "$@"; do
+        configured_value="$(read_configured_var_from_file "$var_name" "$file_path" || true)"
+        if has_usable_secret "$configured_value"; then
+            printf '%s\n' "$configured_value"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+configured_truthy_value() {
+    local var_name="$1"
+    shift
+
+    local configured_value=""
+    configured_value="$(get_configured_value "$var_name" "$@" || true)"
+    case "${configured_value,,}" in
+        1|true|yes|on)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+default_auth_config_files() {
+    printf '%s\n' \
+        "$HOME/.zshrc.local" \
+        "$HOME/.zshrc" \
+        "$HOME/.bashrc" \
+        "$HOME/.profile"
 }
 
 # Run a check with cache support
@@ -1142,11 +1378,69 @@ check_stack() {
         "Re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh | bash"
 
     # Check MCP Agent Mail
-    if command -v am &>/dev/null || [[ -d "$HOME/mcp_agent_mail" ]]; then
-        check "stack.mcp_agent_mail" "MCP Agent Mail" "pass"
+    local am_install_fix am_repair_fix am_version am_label
+    am_install_fix="Re-run: $(fix_for_module "stack.mcp_agent_mail")"
+    am_repair_fix='Run: am doctor repair --yes && am doctor fix --yes'
+    am_label="MCP Agent Mail"
+
+    if command -v am &>/dev/null; then
+        local am_global_doctor_json am_project_doctor_json am_project_path am_details
+
+        am_version=$(get_version_line "am")
+        am_label="MCP Agent Mail ($am_version)"
+
+        if ! curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+            check "stack.mcp_agent_mail" "$am_label" "warn" "installed but service is not running" "$am_install_fix"
+        elif {
+            local am_runtime_dir="/run/user/$(id -u)"
+            if [[ -d "$am_runtime_dir" ]]; then
+                export XDG_RUNTIME_DIR="$am_runtime_dir"
+                if [[ -S "$am_runtime_dir/bus" ]]; then
+                    export DBUS_SESSION_BUS_ADDRESS="unix:path=$am_runtime_dir/bus"
+                fi
+            fi
+            command -v systemctl &>/dev/null && systemctl --user show-environment >/dev/null 2>&1 && \
+                ! systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
+        }; then
+            check "stack.mcp_agent_mail" "$am_label" "warn" \
+                "HTTP endpoint is healthy but agent-mail.service is inactive; rerun install/update to migrate off the fallback launcher" \
+                "$am_install_fix"
+        else
+            am_global_doctor_json="$(agent_mail_doctor_check_json || true)"
+            if [[ -z "$am_global_doctor_json" ]]; then
+                check "stack.mcp_agent_mail" "$am_label" "warn" \
+                    "service healthy but doctor check timed out or returned invalid output" \
+                    "$am_repair_fix"
+            elif ! agent_mail_doctor_is_healthy "$am_global_doctor_json"; then
+                am_details="$(agent_mail_doctor_summary "$am_global_doctor_json")"
+                check "stack.mcp_agent_mail" "$am_label" "warn" \
+                    "${am_details:-global doctor check reported unhealthy state}" \
+                    "$am_repair_fix"
+            else
+                am_project_path="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+                if [[ -n "$am_project_path" ]]; then
+                    am_project_doctor_json="$(agent_mail_doctor_check_json "$am_project_path" || true)"
+                    if [[ -z "$am_project_doctor_json" ]]; then
+                        check "stack.mcp_agent_mail" "$am_label" "warn" \
+                            "service healthy but current-project doctor check timed out or returned invalid output" \
+                            "$am_repair_fix"
+                    elif ! agent_mail_doctor_is_healthy "$am_project_doctor_json"; then
+                        am_details="$(agent_mail_doctor_summary "$am_project_doctor_json")"
+                        check "stack.mcp_agent_mail" "$am_label" "warn" \
+                            "current project unhealthy: ${am_details:-project doctor check reported unhealthy state}" \
+                            "$am_repair_fix"
+                    else
+                        check "stack.mcp_agent_mail" "$am_label" "pass" "service healthy; doctor check OK"
+                    fi
+                else
+                    check "stack.mcp_agent_mail" "$am_label" "pass" "service healthy; doctor check OK"
+                fi
+            fi
+        fi
+    elif [[ -d "$HOME/mcp_agent_mail" ]]; then
+        check "stack.mcp_agent_mail" "$am_label" "warn" "install directory present but am CLI is missing" "$am_install_fix"
     else
-        check "stack.mcp_agent_mail" "MCP Agent Mail" "warn" "not installed" \
-            "Re-run: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/scripts/install.sh | bash"
+        check "stack.mcp_agent_mail" "$am_label" "warn" "not installed" "$am_install_fix"
     fi
 
     # Check RU (Repo Updater)
@@ -1189,7 +1483,7 @@ check_stack() {
                 # ARM64 Linux binary is not yet published; the install script will 404
                 check "stack.meta_skill" "meta_skill (ms)" "warn" \
                     "ARM64 Linux binary not yet available (see https://github.com/Dicklesworthstone/meta_skill/issues/1)" \
-                    "Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill"
+                    "Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"
                 ;;
             x86_64-Linux|x86_64-Darwin|arm64-Darwin|aarch64-Darwin)
                 # These platforms have pre-built binaries
@@ -1197,7 +1491,7 @@ check_stack() {
                     "$_ms_fix"
                 ;;
             *)
-                _ms_fix="meta_skill has no pre-built binary for ${_ms_arch}-${_ms_os}. Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill"
+                _ms_fix="meta_skill has no pre-built binary for ${_ms_arch}-${_ms_os}. Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"
                 check "stack.meta_skill" "meta_skill (ms)" "warn" "not installed" \
                     "$_ms_fix"
                 ;;
@@ -1387,7 +1681,7 @@ _is_bespoke_covered() {
         stack.dcg.*|stack.ru|stack.meta_skill.*) return 0 ;;
         stack.brenner_bot|stack.rch|stack.wezterm_automata) return 0 ;;
         # check_utilities (bd-2gog)
-        util.*) return 0 ;;
+        util.*|utils.*) return 0 ;;
     esac
     return 1
 }
@@ -1476,7 +1770,8 @@ check_manifest_supplemental() {
 # Populates SKIPPED_TOOLS_DATA array with "tool:reason" entries
 load_skipped_tools() {
     SKIPPED_TOOLS_DATA=()
-    local state_file="$HOME/.acfs/state.json"
+    local state_file=""
+    state_file="$(_acfs_doctor_find_project_path "state.json" 2>/dev/null || true)"
 
     [[ -f "$state_file" ]] || return 0
 
@@ -1575,6 +1870,148 @@ DEEP_FAIL_COUNT=0
 # Enhanced per bead aqs: Adds counters and summary
 # Enhanced per bead lz1: Adds timing
 # Usage: run_deep_checks
+deep_check_optional_probe() {
+    local id="$1"
+    local label="$2"
+    local binary="$3"
+    local fix="$4"
+    shift 4
+
+    if ! command -v "$binary" &>/dev/null; then
+        check "$id" "$label" "warn" "not installed" "$fix"
+        return 0
+    fi
+
+    local cache_key="${id//./_}"
+    local cached_result=""
+    if cached_result=$(get_cached_result "$cache_key"); then
+        check "$id" "$label" "pass" "$cached_result (cached)"
+        return 0
+    fi
+
+    local cmd=""
+    local output=""
+    local status=0
+    local summary=""
+    local detail=""
+    local last_timeout=false
+
+    for cmd in "$@"; do
+        output=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$label via $cmd" env PATH="$PATH" bash -o pipefail -c "$cmd")
+        status=$?
+
+        if ((status == 0)); then
+            detail="$(printf '%s\n' "$output" | head -n 1)"
+            if [[ -n "$detail" ]]; then
+                summary="$cmd: ${detail:0:120}"
+            else
+                summary="$cmd"
+            fi
+            cache_result "$cache_key" "$summary"
+            check "$id" "$label" "pass" "$summary"
+            return 0
+        fi
+
+        if ((status == 124)); then
+            last_timeout=true
+            detail="timed out running: $cmd"
+            continue
+        fi
+
+        if [[ -z "$detail" ]]; then
+            detail="$(printf '%s\n' "$output" | head -n 1)"
+            [[ -n "$detail" ]] || detail="command failed: $cmd"
+        fi
+    done
+
+    if [[ "$last_timeout" == "true" ]]; then
+        check_with_timeout_status "$id" "$label" "timeout" "$detail" "$fix"
+    else
+        check "$id" "$label" "warn" "$detail" "$fix"
+    fi
+}
+
+deep_check_stack_tools() {
+    deep_check_optional_probe \
+        "deep.stack.rch" \
+        "RCH operational probe" \
+        "rch" \
+        "Run: rch doctor --fix" \
+        "rch doctor" \
+        "rch status"
+
+    deep_check_optional_probe \
+        "deep.stack.pt" \
+        "Process Triage operational probe" \
+        "pt" \
+        "Run: pt check" \
+        "pt check" \
+        "pt doctor" \
+        "pt --help"
+
+    deep_check_optional_probe \
+        "deep.stack.fsfs" \
+        "FrankenSearch operational probe" \
+        "fsfs" \
+        "Run: fsfs status" \
+        "fsfs status" \
+        "fsfs version" \
+        "fsfs --help"
+
+    deep_check_optional_probe \
+        "deep.stack.sbh" \
+        "Storage Ballast Helper operational probe" \
+        "sbh" \
+        "Run: sbh check" \
+        "sbh check" \
+        "sbh status" \
+        "sbh --help"
+
+    deep_check_optional_probe \
+        "deep.stack.casr" \
+        "CASR provider probe" \
+        "casr" \
+        "Run: casr providers" \
+        "casr providers" \
+        "casr list" \
+        "casr --help"
+
+    deep_check_optional_probe \
+        "deep.stack.dsr" \
+        "DSR operational probe" \
+        "dsr" \
+        "Run: dsr check --all" \
+        "dsr doctor" \
+        "dsr check --all" \
+        "dsr --help"
+
+    deep_check_optional_probe \
+        "deep.stack.ru" \
+        "Repo Updater operational probe" \
+        "ru" \
+        "Run: ru doctor" \
+        "ru doctor" \
+        "ru list" \
+        "ru --help"
+
+    deep_check_optional_probe \
+        "deep.stack.asb" \
+        "Agent Settings Backup operational probe" \
+        "asb" \
+        "Run: asb list" \
+        "test -d \"$HOME/.asb\" && asb list" \
+        "asb list" \
+        "asb help"
+
+    deep_check_optional_probe \
+        "deep.stack.pcr" \
+        "Post-Compact Reminder operational probe" \
+        "claude-post-compact-reminder" \
+        "Reinstall PCR or verify Claude settings registration" \
+        "test -x \"$HOME/.local/bin/claude-post-compact-reminder\" && (grep -q \"claude-post-compact-reminder\" \"$HOME/.claude/settings.json\" 2>/dev/null || grep -q \"claude-post-compact-reminder\" \"$HOME/.config/claude/settings.json\" 2>/dev/null)" \
+        "printf '{\"session_id\":\"doctor\",\"source\":\"compact\"}\n' | claude-post-compact-reminder"
+}
+
 run_deep_checks() {
     section "Deep Checks (Functional Tests)"
 
@@ -1618,6 +2055,9 @@ run_deep_checks() {
 
     # Notification (ntfy.sh) connectivity check (GitHub issue #131)
     deep_check_notifications
+
+    # Stack tool functional probes for newly integrated tools
+    deep_check_stack_tools
 
     # Calculate deep check specific counts
     DEEP_PASS_COUNT=$((PASS_COUNT - pre_pass))
@@ -1694,12 +2134,12 @@ check_claude_auth() {
     local has_token=false
     if command -v jq &>/dev/null; then
         # Use jq for reliable JSON parsing
-        if jq -e '.claudeAiOauth.accessToken // empty' "$creds_file" >/dev/null 2>&1; then
+        if jq -e '((.claudeAiOauth.accessToken // "") | strings | length) > 0' "$creds_file" >/dev/null 2>&1; then
             has_token=true
         fi
     else
-        # Fallback: basic grep check (less reliable but works without jq)
-        if grep -q '"accessToken"' "$creds_file" 2>/dev/null; then
+        # Fallback: require a non-empty string token, not just key presence.
+        if grep -Eq '"accessToken"[[:space:]]*:[[:space:]]*"[^"]+"' "$creds_file" 2>/dev/null; then
             has_token=true
         fi
     fi
@@ -1734,7 +2174,7 @@ check_codex_auth() {
 
     # Check if auth.json exists
     if [[ ! -f "$auth_file" ]]; then
-        check "deep.agent.codex_auth" "Codex CLI auth" "warn" "not authenticated" "Run: codex login"
+        check "deep.agent.codex_auth" "Codex CLI auth" "warn" "not authenticated" "Run: codex login --device-auth"
         return
     fi
 
@@ -1746,16 +2186,16 @@ check_codex_auth() {
     # Check for OAuth tokens.access_token (preferred)
     if command -v jq &>/dev/null; then
         # Use jq if available for reliable JSON parsing
-        if jq -e '.tokens.access_token // empty' "$auth_file" >/dev/null 2>&1; then
+        if jq -e '((.tokens.access_token // .access_token // .accessToken // "") | strings | length) > 0' "$auth_file" >/dev/null 2>&1; then
             has_oauth=true
         fi
         # Check for legacy API key in auth.json
-        if jq -e '.OPENAI_API_KEY // empty' "$auth_file" 2>/dev/null | grep -q .; then
+        if jq -e '((.OPENAI_API_KEY // "") | strings | length) > 0' "$auth_file" >/dev/null 2>&1; then
             has_api_key=true
         fi
     else
-        # Fallback: basic grep checks (less reliable but works without jq)
-        if grep -q '"access_token"' "$auth_file" 2>/dev/null; then
+        # Fallback: require non-empty strings, not just key presence.
+        if grep -Eq '"(access(_token|Token))"[[:space:]]*:[[:space:]]*"[^"]+"' "$auth_file" 2>/dev/null; then
             has_oauth=true
         fi
         if grep -q '"OPENAI_API_KEY".*:.*"[^"]\+"' "$auth_file" 2>/dev/null; then
@@ -1768,14 +2208,14 @@ check_codex_auth() {
     elif [[ "$has_api_key" == "true" ]]; then
         check "deep.agent.codex_auth" "Codex CLI auth" "pass" "API key authenticated (pay-as-you-go)"
     else
-        check "deep.agent.codex_auth" "Codex CLI auth" "warn" "auth.json exists but no valid tokens" "Run: codex login"
+        check "deep.agent.codex_auth" "Codex CLI auth" "warn" "auth.json exists but no valid tokens" "Run: codex login --device-auth"
     fi
 }
 
 # check_gemini_auth - Thorough Gemini CLI authentication check
 # Returns via check(): pass (auth OK), warn (partial/skipped), fail (auth broken)
 # Related: bead 325
-# Fixed: Check actual Gemini CLI credential files (mcp-oauth-tokens-v2.json, google_accounts.json)
+# Fixed: Check actual Gemini CLI credential files (oauth_creds.json, google_accounts.json)
 check_gemini_auth() {
     # Skip if not installed
     if ! command -v gemini &>/dev/null; then
@@ -1789,41 +2229,77 @@ check_gemini_auth() {
         return
     fi
 
-    # Gemini CLI uses OAuth web login (like Claude Code and Codex CLI)
-    # Users authenticate via `gemini` command which opens browser login
-    # Credentials are stored in ~/.gemini/ directory
+    local gemini_home="${GEMINI_CLI_HOME:-$HOME}"
+    local shell_config_files=()
+    mapfile -t shell_config_files < <(default_auth_config_files)
+    local gemini_config_files=(
+        "$gemini_home/.gemini/.env"
+        "${shell_config_files[@]}"
+    )
+    if get_configured_secret "GEMINI_API_KEY" "${gemini_config_files[@]}" >/dev/null; then
+        check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "via GEMINI_API_KEY"
+        return
+    fi
+    if configured_truthy_value "GOOGLE_GENAI_USE_VERTEXAI" "${gemini_config_files[@]}"; then
+        if get_configured_secret "GOOGLE_API_KEY" "${gemini_config_files[@]}" >/dev/null; then
+            check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "via GOOGLE_API_KEY (Vertex AI)"
+            return
+        fi
+
+        local vertex_project=""
+        local vertex_location=""
+        local service_account_path=""
+        vertex_project="$(get_configured_value "GOOGLE_CLOUD_PROJECT" "${gemini_config_files[@]}" || get_configured_value "GOOGLE_CLOUD_PROJECT_ID" "${gemini_config_files[@]}" || true)"
+        vertex_location="$(get_configured_value "GOOGLE_CLOUD_LOCATION" "${gemini_config_files[@]}" || true)"
+        service_account_path="$(get_configured_value "GOOGLE_APPLICATION_CREDENTIALS" "${gemini_config_files[@]}" || true)"
+
+        if [[ -n "$vertex_project" && -n "$vertex_location" ]]; then
+            if [[ -n "$service_account_path" && -f "$service_account_path" ]]; then
+                check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "via GOOGLE_APPLICATION_CREDENTIALS (Vertex AI)"
+                return
+            fi
+            if command -v gcloud &>/dev/null && timeout 5 gcloud auth application-default print-access-token >/dev/null 2>&1; then
+                check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "via gcloud ADC (Vertex AI)"
+                return
+            fi
+        fi
+    fi
+
+    # Gemini CLI also stores browser-login state under ~/.gemini/ (or $GEMINI_CLI_HOME/.gemini).
+    local google_accounts_file="$gemini_home/.gemini/google_accounts.json"
+    local oauth_creds_file="$gemini_home/.gemini/oauth_creds.json"
     local found_auth=false
 
-    # Check for actual Gemini CLI OAuth tokens (primary auth method)
-    if [[ -f "$HOME/.gemini/mcp-oauth-tokens-v2.json" ]]; then
-        found_auth=true
-    fi
+    if command -v jq &>/dev/null; then
+        local gemini_active=""
+        local gemini_access_token=""
+        local gemini_refresh_token=""
 
-    # Check for Google accounts file (secondary auth evidence)
-    if [[ -f "$HOME/.gemini/google_accounts.json" ]]; then
-        found_auth=true
-    fi
+        if [[ -f "$google_accounts_file" ]]; then
+            gemini_active="$(jq -r '.active // empty' "$google_accounts_file" 2>/dev/null || true)"
+        fi
+        if [[ -f "$oauth_creds_file" ]]; then
+            gemini_access_token="$(jq -r '.access_token // empty' "$oauth_creds_file" 2>/dev/null || true)"
+            gemini_refresh_token="$(jq -r '.refresh_token // empty' "$oauth_creds_file" 2>/dev/null || true)"
+        fi
 
-    # Fallback checks for other potential credential locations
-    if [[ -f "$HOME/.config/gemini/credentials.json" ]]; then
-        found_auth=true
-    fi
-
-    # Some versions may store auth tokens in other files; only treat the config
-    # directory as evidence of auth if it exists and is non-empty.
-    if [[ -d "$HOME/.config/gemini" ]] && [[ -n "$(ls -A "$HOME/.config/gemini" 2>/dev/null)" ]]; then
-        found_auth=true
-    fi
-
-    # Check for legacy config
-    if [[ -f "$HOME/.gemini/config" ]]; then
-        found_auth=true
+        if [[ -n "$gemini_active" || -n "$gemini_access_token" || -n "$gemini_refresh_token" ]]; then
+            found_auth=true
+        fi
+    else
+        if [[ -f "$google_accounts_file" ]] && grep -Eq '"active"[[:space:]]*:[[:space:]]*"[^"]+"' "$google_accounts_file"; then
+            found_auth=true
+        fi
+        if [[ "$found_auth" == "false" ]] && [[ -f "$oauth_creds_file" ]] && \
+           grep -Eq '"(access_token|refresh_token)"[[:space:]]*:[[:space:]]*"[^"]+"' "$oauth_creds_file"; then
+            found_auth=true
+        fi
     fi
 
     if [[ "$found_auth" == "true" ]]; then
         check "deep.agent.gemini_auth" "Gemini CLI auth" "pass" "authenticated"
     else
-        check "deep.agent.gemini_auth" "Gemini CLI auth" "warn" "not logged in" "Run 'gemini' to authenticate via browser"
+        check "deep.agent.gemini_auth" "Gemini CLI auth" "warn" "not authenticated" "Set GEMINI_API_KEY (or Vertex AI env vars), then run gemini"
     fi
 }
 
@@ -2253,13 +2729,21 @@ check_wrangler_auth() {
         return
     fi
 
+    local shell_config_files=()
+    mapfile -t shell_config_files < <(default_auth_config_files)
+    if get_configured_secret "CLOUDFLARE_API_TOKEN" "${shell_config_files[@]}" >/dev/null; then
+        cache_result "wrangler_auth" "CLOUDFLARE_API_TOKEN"
+        check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "pass" "CLOUDFLARE_API_TOKEN set"
+        return
+    fi
+
     # Run with timeout
     local result
     result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "Wrangler auth" wrangler whoami 2>&1)
     local status=$?
 
     if ((status == 124)); then
-        check_with_timeout_status "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "timeout" "check timed out" "Check network, then: wrangler login"
+        check_with_timeout_status "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "timeout" "check timed out" "Check network, then set CLOUDFLARE_API_TOKEN or run wrangler login from a browser-capable session"
     elif ((status == 0)); then
         # Extract account info from wrangler whoami output
         local wrangler_account="authenticated"
@@ -2269,19 +2753,12 @@ check_wrangler_auth() {
         cache_result "wrangler_auth" "$wrangler_account"
         check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "pass" "$wrangler_account"
     else
-        # Check for CLOUDFLARE_API_TOKEN as alternative
-        if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
-            cache_result "wrangler_auth" "CLOUDFLARE_API_TOKEN"
-            check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "pass" "CLOUDFLARE_API_TOKEN set"
-            return
-        fi
-
-        # Fallback: detect auth file if offline
+        # A wrangler config file alone does not prove the user is still
+        # authenticated, so do not treat it as a pass if `whoami` failed.
         if [[ -f "$HOME/.wrangler/config/default.toml" ]]; then
-            cache_result "wrangler_auth" "config file present"
-            check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "pass" "config file present"
+            check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "warn" "config file present but auth could not be verified" "Set CLOUDFLARE_API_TOKEN or rerun wrangler login from a browser-capable session"
         else
-            check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "warn" "not authenticated" "wrangler login (or set CLOUDFLARE_API_TOKEN)"
+            check "deep.cloud.wrangler_auth" "Wrangler (Cloudflare) auth" "warn" "not authenticated" "Set CLOUDFLARE_API_TOKEN or run wrangler login from a browser-capable session"
         fi
     fi
 }
@@ -2302,18 +2779,26 @@ check_supabase_auth() {
     fi
 
     # Check for SUPABASE_ACCESS_TOKEN (headless auth)
-    if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+    local shell_config_files=()
+    mapfile -t shell_config_files < <(default_auth_config_files)
+    if get_configured_secret "SUPABASE_ACCESS_TOKEN" "${shell_config_files[@]}" >/dev/null; then
         cache_result "supabase_auth" "SUPABASE_ACCESS_TOKEN"
         check "deep.cloud.supabase_auth" "Supabase CLI auth" "pass" "SUPABASE_ACCESS_TOKEN set"
         return
     fi
 
-    # Check for local auth file
+    local token_file=""
     if [[ -f "$HOME/.supabase/access-token" ]]; then
+        token_file="$HOME/.supabase/access-token"
+    elif [[ -f "$HOME/.config/supabase/access-token" ]]; then
+        token_file="$HOME/.config/supabase/access-token"
+    fi
+
+    if [[ -n "$token_file" && -s "$token_file" ]]; then
         cache_result "supabase_auth" "access-token file"
         check "deep.cloud.supabase_auth" "Supabase CLI auth" "pass" "access-token file present"
     else
-        check "deep.cloud.supabase_auth" "Supabase CLI auth" "warn" "not authenticated" "supabase login (or set SUPABASE_ACCESS_TOKEN)"
+        check "deep.cloud.supabase_auth" "Supabase CLI auth" "warn" "not authenticated" "supabase login --token <token> (or set SUPABASE_ACCESS_TOKEN)"
     fi
 }
 
@@ -2332,13 +2817,21 @@ check_vercel_auth() {
         return
     fi
 
+    local shell_config_files=()
+    mapfile -t shell_config_files < <(default_auth_config_files)
+    if get_configured_secret "VERCEL_TOKEN" "${shell_config_files[@]}" >/dev/null; then
+        cache_result "vercel_auth" "VERCEL_TOKEN"
+        check "deep.cloud.vercel_auth" "Vercel CLI auth" "pass" "VERCEL_TOKEN set"
+        return
+    fi
+
     # Run with timeout
     local result
     result=$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "Vercel auth" vercel whoami 2>&1)
     local status=$?
 
     if ((status == 124)); then
-        check_with_timeout_status "deep.cloud.vercel_auth" "Vercel CLI auth" "timeout" "check timed out" "Check network, then: vercel login"
+        check_with_timeout_status "deep.cloud.vercel_auth" "Vercel CLI auth" "timeout" "check timed out" "Check network, then run vercel login or set VERCEL_TOKEN"
     elif ((status == 0)); then
         local vercel_user
         vercel_user=$(echo "$result" | head -n1 | tr -d ' ')
@@ -2346,15 +2839,17 @@ check_vercel_auth() {
         cache_result "vercel_auth" "$vercel_user"
         check "deep.cloud.vercel_auth" "Vercel CLI auth" "pass" "$vercel_user"
     else
-        # Check for VERCEL_TOKEN as alternative
-        if [[ -n "${VERCEL_TOKEN:-}" ]]; then
-            cache_result "vercel_auth" "VERCEL_TOKEN"
-            check "deep.cloud.vercel_auth" "Vercel CLI auth" "pass" "VERCEL_TOKEN set"
-            return
+        local auth_file=""
+        if [[ -f "$HOME/.config/vercel/auth.json" ]]; then
+            auth_file="$HOME/.config/vercel/auth.json"
+        elif [[ -f "$HOME/.vercel/auth.json" ]]; then
+            auth_file="$HOME/.vercel/auth.json"
         fi
 
-        # Fallback: detect auth file if offline
-        if [[ -f "$HOME/.config/vercel/auth.json" || -f "$HOME/.vercel/auth.json" ]]; then
+        if [[ -n "$auth_file" ]] && command -v jq &>/dev/null && jq -e '((.token // .user.email // "") | strings | length) > 0' "$auth_file" >/dev/null 2>&1; then
+            cache_result "vercel_auth" "auth file present"
+            check "deep.cloud.vercel_auth" "Vercel CLI auth" "pass" "auth file present"
+        elif [[ -n "$auth_file" ]] && grep -Eq '"(token|email)"[[:space:]]*:[[:space:]]*"[^"]+"' "$auth_file" 2>/dev/null; then
             cache_result "vercel_auth" "auth file present"
             check "deep.cloud.vercel_auth" "Vercel CLI auth" "pass" "auth file present"
         else
@@ -2441,11 +2936,7 @@ main() {
         info|i)
             shift
             local info_script=""
-            if [[ -f "$HOME/.acfs/scripts/lib/info.sh" ]]; then
-                info_script="$HOME/.acfs/scripts/lib/info.sh"
-            elif [[ -f "$SCRIPT_DIR/info.sh" ]]; then
-                info_script="$SCRIPT_DIR/info.sh"
-            fi
+            info_script="$(_acfs_doctor_find_lib_script "info.sh" 2>/dev/null || true)"
 
             if [[ -n "$info_script" ]]; then
                 exec bash "$info_script" "$@"
@@ -2454,14 +2945,22 @@ main() {
             echo "Error: info.sh not found" >&2
             return 1
             ;;
+        status)
+            shift
+            local status_script=""
+            status_script="$(_acfs_doctor_find_lib_script "status.sh" 2>/dev/null || true)"
+
+            if [[ -n "$status_script" ]]; then
+                exec bash "$status_script" "$@"
+            fi
+
+            echo "Error: status.sh not found" >&2
+            return 1
+            ;;
         dashboard)
             shift
             local dashboard_script=""
-            if [[ -f "$HOME/.acfs/scripts/lib/dashboard.sh" ]]; then
-                dashboard_script="$HOME/.acfs/scripts/lib/dashboard.sh"
-            elif [[ -f "$SCRIPT_DIR/dashboard.sh" ]]; then
-                dashboard_script="$SCRIPT_DIR/dashboard.sh"
-            fi
+            dashboard_script="$(_acfs_doctor_find_lib_script "dashboard.sh" 2>/dev/null || true)"
 
             if [[ -n "$dashboard_script" ]]; then
                 exec bash "$dashboard_script" "$@"
@@ -2473,11 +2972,7 @@ main() {
         continue|progress)
             shift
             local continue_script=""
-            if [[ -f "$HOME/.acfs/scripts/lib/continue.sh" ]]; then
-                continue_script="$HOME/.acfs/scripts/lib/continue.sh"
-            elif [[ -f "$SCRIPT_DIR/continue.sh" ]]; then
-                continue_script="$SCRIPT_DIR/continue.sh"
-            fi
+            continue_script="$(_acfs_doctor_find_lib_script "continue.sh" 2>/dev/null || true)"
 
             if [[ -n "$continue_script" ]]; then
                 exec bash "$continue_script" "$@"
@@ -2486,14 +2981,34 @@ main() {
             echo "Error: continue.sh not found" >&2
             return 1
             ;;
+        changelog|changes|log)
+            shift
+            local changelog_script=""
+            changelog_script="$(_acfs_doctor_find_lib_script "changelog.sh" 2>/dev/null || true)"
+
+            if [[ -n "$changelog_script" ]]; then
+                exec bash "$changelog_script" "$@"
+            fi
+
+            echo "Error: changelog.sh not found" >&2
+            return 1
+            ;;
+        export-config|export)
+            shift
+            local export_config_script=""
+            export_config_script="$(_acfs_doctor_find_lib_script "export-config.sh" 2>/dev/null || true)"
+
+            if [[ -n "$export_config_script" ]]; then
+                exec bash "$export_config_script" "$@"
+            fi
+
+            echo "Error: export-config.sh not found" >&2
+            return 1
+            ;;
         cheatsheet|cs)
             shift
             local cheatsheet_script=""
-            if [[ -f "$HOME/.acfs/scripts/lib/cheatsheet.sh" ]]; then
-                cheatsheet_script="$HOME/.acfs/scripts/lib/cheatsheet.sh"
-            elif [[ -f "$SCRIPT_DIR/cheatsheet.sh" ]]; then
-                cheatsheet_script="$SCRIPT_DIR/cheatsheet.sh"
-            fi
+            cheatsheet_script="$(_acfs_doctor_find_lib_script "cheatsheet.sh" 2>/dev/null || true)"
 
             if [[ -n "$cheatsheet_script" ]]; then
                 exec bash "$cheatsheet_script" "$@"
@@ -2502,7 +3017,7 @@ main() {
             echo "Error: cheatsheet.sh not found" >&2
             return 1
             ;;
-        session)
+        session|sessions)
             shift
             acfs_session_main "$@"
             return $?
@@ -2510,11 +3025,7 @@ main() {
         update)
             shift
             local update_script=""
-            if [[ -f "$HOME/.acfs/scripts/lib/update.sh" ]]; then
-                update_script="$HOME/.acfs/scripts/lib/update.sh"
-            elif [[ -f "$SCRIPT_DIR/update.sh" ]]; then
-                update_script="$SCRIPT_DIR/update.sh"
-            fi
+            update_script="$(_acfs_doctor_find_lib_script "update.sh" 2>/dev/null || true)"
 
             if [[ -n "$update_script" ]]; then
                 exec bash "$update_script" "$@"
@@ -2526,11 +3037,7 @@ main() {
         newproj|new-project|new)
             shift
             local newproj_script=""
-            if [[ -f "$HOME/.acfs/scripts/lib/newproj.sh" ]]; then
-                newproj_script="$HOME/.acfs/scripts/lib/newproj.sh"
-            elif [[ -f "$SCRIPT_DIR/newproj.sh" ]]; then
-                newproj_script="$SCRIPT_DIR/newproj.sh"
-            fi
+            newproj_script="$(_acfs_doctor_find_lib_script "newproj.sh" 2>/dev/null || true)"
 
             if [[ -n "$newproj_script" ]]; then
                 exec bash "$newproj_script" "$@"
@@ -2542,11 +3049,7 @@ main() {
         services-setup|services|setup)
             shift
             local services_script=""
-            if [[ -f "$HOME/.acfs/scripts/services-setup.sh" ]]; then
-                services_script="$HOME/.acfs/scripts/services-setup.sh"
-            elif [[ -f "$SCRIPT_DIR/../services-setup.sh" ]]; then
-                services_script="$SCRIPT_DIR/../services-setup.sh"
-            fi
+            services_script="$(_acfs_doctor_find_scripts_script "services-setup.sh" 2>/dev/null || true)"
 
             if [[ -n "$services_script" ]]; then
                 exec bash "$services_script" "$@"
@@ -2558,11 +3061,7 @@ main() {
         support-bundle|bundle)
             shift
             local support_script=""
-            if [[ -f "$HOME/.acfs/scripts/lib/support.sh" ]]; then
-                support_script="$HOME/.acfs/scripts/lib/support.sh"
-            elif [[ -f "$SCRIPT_DIR/support.sh" ]]; then
-                support_script="$SCRIPT_DIR/support.sh"
-            fi
+            support_script="$(_acfs_doctor_find_lib_script "support.sh" 2>/dev/null || true)"
 
             if [[ -n "$support_script" ]]; then
                 exec bash "$support_script" "$@"
@@ -2573,13 +3072,7 @@ main() {
             ;;
         version|-v|--version)
             local version_file=""
-            if [[ -f "$HOME/.acfs/VERSION" ]]; then
-                version_file="$HOME/.acfs/VERSION"
-            elif [[ -f "$SCRIPT_DIR/../VERSION" ]]; then
-                version_file="$SCRIPT_DIR/../VERSION"
-            elif [[ -f "$SCRIPT_DIR/../../VERSION" ]]; then
-                version_file="$SCRIPT_DIR/../../VERSION"
-            fi
+            version_file="$(_acfs_doctor_find_project_path "VERSION" 2>/dev/null || true)"
 
             if [[ -n "$version_file" ]]; then
                 cat "$version_file"

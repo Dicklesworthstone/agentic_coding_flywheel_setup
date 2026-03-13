@@ -884,17 +884,10 @@ print_resume_hint() {
         log_detail "Failed step: ${failed_step:-}"
     fi
 
-    # Also update the summary JSON with the precise resume hint.
-    # Wrap mktemp in || return 0: if /tmp is full, mktemp fails but
-    # cleanup must not abort — the user still needs to see the hint.
-    if [[ -f "${ACFS_STATE_FILE:-}" ]] && command -v jq &>/dev/null; then
-        local tmp_state=""
-        tmp_state=$(mktemp 2>/dev/null) || return 0
-        if jq --arg hint "${resume_cmd:-}" '.resume_hint = $hint' "${ACFS_STATE_FILE:-}" > "$tmp_state" 2>/dev/null; then
-            mv "$tmp_state" "${ACFS_STATE_FILE:-}" 2>/dev/null || true
-        else
-            rm -f "${tmp_state:-}" 2>/dev/null || true
-        fi
+    # Also persist the precise resume hint into state.json, but only through the
+    # state library so we keep same-directory atomic writes and target-user ownership.
+    if [[ -f "${ACFS_STATE_FILE:-}" ]] && type -t state_set_resume_hint &>/dev/null; then
+        state_set_resume_hint "${resume_cmd:-}" 2>/dev/null || true
     fi
 }
 
@@ -2178,6 +2171,66 @@ install_asset() {
     fi
 }
 
+install_asset_from_path() {
+    local src_path="$1"
+    local dest_path="$2"
+
+    if [[ -z "$src_path" || -z "$dest_path" ]]; then
+        log_error "install_asset_from_path: Missing source or destination path"
+        return 1
+    fi
+
+    if [[ ! -f "$src_path" ]]; then
+        log_error "install_asset_from_path: Source file not found: $src_path"
+        return 1
+    fi
+
+    local dest_dir
+    dest_dir="$(dirname "$dest_path")"
+
+    local sudo_cmd="${SUDO:-}"
+    if [[ -z "$sudo_cmd" ]] && [[ $EUID -ne 0 ]] && command -v sudo &>/dev/null; then
+        sudo_cmd="sudo"
+    fi
+
+    local need_sudo=false
+    if [[ -e "$dest_path" ]]; then
+        [[ -w "$dest_path" ]] || need_sudo=true
+    else
+        [[ -w "$dest_dir" ]] || need_sudo=true
+    fi
+
+    if [[ "$need_sudo" == "true" ]] && [[ -z "$sudo_cmd" ]]; then
+        log_error "install_asset_from_path: Destination not writable and sudo not available: $dest_path"
+        return 1
+    fi
+
+    if [[ "$need_sudo" == "true" ]]; then
+        if ! $sudo_cmd mkdir -p "$dest_dir"; then
+            log_error "install_asset_from_path: Failed to create destination directory: $dest_dir"
+            return 1
+        fi
+        if ! $sudo_cmd cp "$src_path" "$dest_path"; then
+            log_error "install_asset_from_path: Failed to copy $src_path to $dest_path"
+            return 1
+        fi
+    else
+        if ! mkdir -p "$dest_dir"; then
+            log_error "install_asset_from_path: Failed to create destination directory: $dest_dir"
+            return 1
+        fi
+        if ! cp "$src_path" "$dest_path"; then
+            log_error "install_asset_from_path: Failed to copy $src_path to $dest_path"
+            return 1
+        fi
+    fi
+
+    if [[ ! -f "$dest_path" ]]; then
+        log_error "install_asset_from_path: File not created: $dest_path"
+        return 1
+    fi
+}
+
 install_checksums_yaml() {
     local dest_path="$1"
 
@@ -2233,13 +2286,17 @@ install_checksums_yaml() {
 run_as_target() {
     local user="$TARGET_USER"
     local user_home="${TARGET_HOME:-/home/$user}"
+    local target_path_prefix="${ACFS_BIN_DIR:-$user_home/.local/bin}:$user_home/.cargo/bin:$user_home/.bun/bin:$user_home/.atuin/bin:$user_home/go/bin"
+    local current_path="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
 
     # Environment variables to set for target user commands
     # UV_NO_CONFIG prevents uv from looking for config in /root when running via sudo
-    # HOME is set explicitly to ensure consistent home directory
+    # HOME is set explicitly to ensure consistent home directory.
+    # PATH must include the target user's tool bins because we intentionally
+    # avoid login shells and therefore cannot rely on profile files.
     # XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS let user services work even when
     # install.sh is running as root and switching to TARGET_USER non-interactively.
-    local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home")
+    local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home" "PATH=$target_path_prefix:$current_path")
     local target_uid=""
     local target_runtime_dir=""
     if target_uid="$(id -u "$user" 2>/dev/null)"; then
@@ -2921,7 +2978,13 @@ run_ubuntu_upgrade_phase() {
     # target user's home existing yet (user normalization runs later).
     # Use a root-owned, persistent state file under the resume directory.
     local upgrade_state_file="${ACFS_RESUME_DIR:-/var/lib/acfs}/state.json"
+    local had_state_file=false
+    local previous_state_file="${ACFS_STATE_FILE:-}"
+    if [[ "${ACFS_STATE_FILE+x}" == "x" ]]; then
+        had_state_file=true
+    fi
     export ACFS_STATE_FILE="$upgrade_state_file"
+    trap 'restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"; trap - RETURN' RETURN
 
     # Convert target version string to number for comparison
     # TARGET_UBUNTU_VERSION is "25.10", need 2510
@@ -2947,6 +3010,7 @@ run_ubuntu_upgrade_phase() {
             log_info "  - /var/lib/acfs/check_status.sh"
             log_info "  - journalctl -u acfs-upgrade-resume -f"
             log_info "  - tail -f /var/log/acfs/upgrade_resume.log"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
             ;;
         pre_upgrade_reboot)
@@ -2956,10 +3020,12 @@ run_ubuntu_upgrade_phase() {
             if type -t state_update &>/dev/null; then
                 if ! state_update ".ubuntu_upgrade.current_stage = \"not_started\" | .ubuntu_upgrade.enabled = false"; then
                     log_error "Failed to clear pre_upgrade_reboot stage; aborting to prevent stale state."
+                    restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                     return 1
                 fi
             else
                 log_error "State tracking is unavailable; cannot continue upgrade safely."
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
             # Set flag to skip redundant warning (user already confirmed before reboot)
@@ -2975,6 +3041,7 @@ run_ubuntu_upgrade_phase() {
             log_info "  sudo mv -- '${upgrade_state_file}' '${upgrade_state_file}.backup.\$(date +%Y%m%d_%H%M%S)'"
             log_error "To proceed without upgrading:"
             log_info "  Re-run with --skip-ubuntu-upgrade (not recommended)"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
             ;;
     esac
@@ -2982,6 +3049,7 @@ run_ubuntu_upgrade_phase() {
     # Check if upgrade is needed (using numeric comparison)
     if ubuntu_version_gte "$current_version_num" "$target_version_num"; then
         log_detail "Ubuntu $current_version_str meets target ($TARGET_UBUNTU_VERSION)"
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
         return 0
     fi
 
@@ -2991,6 +3059,7 @@ run_ubuntu_upgrade_phase() {
     if [[ $EUID -ne 0 ]]; then
         log_error "Ubuntu auto-upgrade requires running the installer as root"
         log_info "Re-run as root (e.g., run 'sudo -i' then run the install command again), or use --skip-ubuntu-upgrade."
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
         return 1
     fi
 
@@ -3001,6 +3070,7 @@ run_ubuntu_upgrade_phase() {
 
     if [[ -z "$upgrade_path" ]]; then
         log_detail "No upgrade path found from $current_version_str to $TARGET_UBUNTU_VERSION"
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
         return 0
     fi
 
@@ -3033,6 +3103,7 @@ run_ubuntu_upgrade_phase() {
             if [[ ! "$response" =~ ^[Yy] ]]; then
                 log_info "Ubuntu upgrade skipped by user"
                 log_info "Continuing with ACFS installation on Ubuntu $current_version_str"
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 0
             fi
         fi
@@ -3069,11 +3140,13 @@ run_ubuntu_upgrade_phase() {
                 if ! state_update ".ubuntu_upgrade.enabled = true | .ubuntu_upgrade.current_stage = \"pre_upgrade_reboot\" | .ubuntu_upgrade.original_version = \"$current_version_str\" | .ubuntu_upgrade.target_version = \"$TARGET_UBUNTU_VERSION\""; then
                     log_error "Failed to record upgrade stage; cannot safely auto-reboot."
                     log_info "Please reboot manually and re-run the installer."
+                    restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                     return 1
                 fi
             else
                 log_error "State tracking is unavailable; cannot safely auto-reboot."
                 log_info "Please reboot manually and re-run the installer."
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
 
@@ -3088,11 +3161,13 @@ run_ubuntu_upgrade_phase() {
             if [[ -z "$acfs_source_dir" ]] || ! type -t upgrade_setup_infrastructure &>/dev/null; then
                 log_error "Resume infrastructure is unavailable. Cannot safely auto-reboot."
                 log_info "Please reboot manually and re-run the installer."
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
             if ! upgrade_setup_infrastructure "$acfs_source_dir" "$@"; then
                 log_error "Failed to set up resume infrastructure. Cannot safely reboot."
                 log_info "Please reboot manually and re-run the installer."
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
 
@@ -3114,6 +3189,7 @@ run_ubuntu_upgrade_phase() {
             log_error "Manual action required: reboot the system first"
             log_info "Run: sudo reboot"
             log_info "Then re-run the ACFS installer"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
     fi
@@ -3123,6 +3199,7 @@ run_ubuntu_upgrade_phase() {
         if ! ubuntu_preflight_checks; then
             log_error "Preflight checks failed. Cannot proceed with upgrade."
             log_info "Use --skip-ubuntu-upgrade to bypass (not recommended)"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
     fi
@@ -3133,6 +3210,7 @@ run_ubuntu_upgrade_phase() {
     if type -t state_ensure_valid &>/dev/null; then
         if ! state_ensure_valid; then
             log_error "State validation failed. Aborting Ubuntu upgrade."
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
     fi
@@ -3141,6 +3219,7 @@ run_ubuntu_upgrade_phase() {
             log_detail "Initializing state file for Ubuntu upgrade tracking..."
             if ! state_init; then
                 log_error "Failed to initialize state file. Aborting Ubuntu upgrade."
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
         fi
@@ -3165,6 +3244,7 @@ run_ubuntu_upgrade_phase() {
 
         if ! ubuntu_start_upgrade_sequence "$acfs_source_dir" "$@"; then
             log_error "Ubuntu upgrade failed to start"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
 
@@ -3176,7 +3256,19 @@ run_ubuntu_upgrade_phase() {
     else
         log_warn "ubuntu_start_upgrade_sequence not available"
         log_warn "Continuing with ACFS installation on current Ubuntu version"
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
         return 0
+    fi
+}
+
+restore_previous_acfs_state_file() {
+    local had_state_file=${1:-false}
+    local previous_state_file=${2-}
+
+    if [[ "$had_state_file" == "true" ]]; then
+        export ACFS_STATE_FILE="$previous_state_file"
+    else
+        unset ACFS_STATE_FILE
     fi
 }
 
@@ -4611,8 +4703,20 @@ NTM_CONFIG_EOF
     local tool="mcp_agent_mail"
     local target_dir="$TARGET_HOME/mcp_agent_mail"
     local am_service_ready=false
-    if run_as_target bash -c 'command -v am >/dev/null 2>&1' && \
-       curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+    if run_as_target bash -c 'set -euo pipefail
+        command -v am >/dev/null 2>&1
+        runtime_dir="/run/user/$(id -u)"
+        if [[ -d "$runtime_dir" ]]; then
+            export XDG_RUNTIME_DIR="$runtime_dir"
+            if [[ -S "$runtime_dir/bus" ]]; then
+                export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+            fi
+        fi
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+            systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
+        fi
+        curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1
+    '; then
         log_success "MCP Agent Mail service already running on http://127.0.0.1:8765"
         am_service_ready=true
     fi
@@ -4665,9 +4769,73 @@ UNIT_EOF
                                 export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
                             fi
                         fi
-                        systemctl --user daemon-reload >/dev/null 2>&1 || true
-                        if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
-                            systemctl --user restart agent-mail.service >/dev/null 2>&1
+                        fallback_pid_file="$storage_root/agent-mail.pid"
+                        fallback_log_file="$storage_root/agent-mail.log"
+                        stop_agent_mail_fallback() {
+                            if [[ -f "$fallback_pid_file" ]]; then
+                                existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+                                if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
+                                   ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+                                    kill "$existing_pid" >/dev/null 2>&1 || true
+                                    for _ in {1..10}; do
+                                        if ! kill -0 "$existing_pid" 2>/dev/null; then
+                                            break
+                                        fi
+                                        sleep 1
+                                    done
+                                    if kill -0 "$existing_pid" 2>/dev/null; then
+                                        kill -9 "$existing_pid" >/dev/null 2>&1 || true
+                                    fi
+                                fi
+                                rm -f "$fallback_pid_file"
+                            fi
+                        }
+                        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+                            stop_agent_mail_fallback
+                            systemctl --user daemon-reload >/dev/null 2>&1 || true
+                            if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
+                                systemctl --user restart agent-mail.service >/dev/null 2>&1
+                            fi
+                            active_waited=0
+                            active_max_wait=10
+                            until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do
+                                if [[ "$active_waited" -ge "$active_max_wait" ]]; then
+                                    break
+                                fi
+                                sleep 1
+                                active_waited=$((active_waited + 1))
+                            done
+                            systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
+                        else
+                            existing_pid=""
+                            if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+                                :
+                            elif [[ -f "$fallback_pid_file" ]]; then
+                                existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
+                                if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
+                                   ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+                                    :
+                                else
+                                    rm -f "$fallback_pid_file"
+                                    nohup env \
+                                        RUST_LOG=info \
+                                        STORAGE_ROOT="$storage_root" \
+                                        DATABASE_URL="$db_url" \
+                                        HTTP_PATH=/mcp/ \
+                                        "$am_bin" serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui \
+                                        >>"$fallback_log_file" 2>&1 < /dev/null &
+                                    echo $! > "$fallback_pid_file"
+                                fi
+                            else
+                                nohup env \
+                                    RUST_LOG=info \
+                                    STORAGE_ROOT="$storage_root" \
+                                    DATABASE_URL="$db_url" \
+                                    HTTP_PATH=/mcp/ \
+                                    "$am_bin" serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui \
+                                    >>"$fallback_log_file" 2>&1 < /dev/null &
+                                echo $! > "$fallback_pid_file"
+                            fi
                         fi
                     '; then
                         local am_waited=0
@@ -4854,6 +5022,8 @@ UNIT_EOF
 
     if [[ "$pcr_installed" == "true" ]]; then
         log_detail "Post-Compact Reminder already installed"
+    elif ! binary_installed "claude"; then
+        log_detail "Skipping Post-Compact Reminder because Claude Code is not installed"
     else
         log_detail "Installing Post-Compact Reminder"
         try_step "Installing PCR" acfs_run_verified_upstream_script_as_target "pcr" "bash" --yes || log_warn "PCR installation may have failed"
@@ -4930,22 +5100,24 @@ finalize() {
     # Install onboard lessons + command
     log_detail "Installing onboard lessons"
     try_step "Creating onboard lessons directory" $SUDO mkdir -p "$ACFS_HOME/onboard/lessons" || return 1
-    local lesson_files=(
-        "00_welcome.md"
-        "01_linux_basics.md"
-        "02_ssh_basics.md"
-        "03_tmux_basics.md"
-        "04_agents_login.md"
-        "05_ntm_core.md"
-        "06_ntm_command_palette.md"
-        "07_flywheel_loop.md"
-        "08_keeping_updated.md"
-        "09_ru.md"
-        "10_dcg.md"
-    )
-    local lesson
-    for lesson in "${lesson_files[@]}"; do
-        try_step "Installing onboard lesson: $lesson" install_asset "acfs/onboard/lessons/$lesson" "$ACFS_HOME/onboard/lessons/$lesson" || return 1
+    local lesson_path
+    local lesson_name
+    local nullglob_was_set=0
+    if shopt -q nullglob; then
+        nullglob_was_set=1
+    fi
+    shopt -s nullglob
+    local lesson_files=(acfs/onboard/lessons/*.md)
+    if (( ! nullglob_was_set )); then
+        shopt -u nullglob
+    fi
+    if [[ ${#lesson_files[@]} -eq 0 ]]; then
+        log_error "No onboard lessons found in acfs/onboard/lessons"
+        return 1
+    fi
+    for lesson_path in "${lesson_files[@]}"; do
+        lesson_name=$(basename "$lesson_path")
+        try_step "Installing onboard lesson: $lesson_name" install_asset "$lesson_path" "$ACFS_HOME/onboard/lessons/$lesson_name" || return 1
     done
 
     log_detail "Installing onboard command"
@@ -4959,6 +5131,7 @@ finalize() {
     # Install acfs scripts (for acfs CLI subcommands)
     log_detail "Installing acfs scripts"
     try_step "Creating ACFS scripts directory" $SUDO mkdir -p "$ACFS_HOME/scripts/lib" || return 1
+    try_step "Creating ACFS generated scripts directory" $SUDO mkdir -p "$ACFS_HOME/scripts/generated" || return 1
     
     # Install script libraries
     try_step "Installing logging.sh" install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh" || return 1
@@ -4977,6 +5150,20 @@ finalize() {
     try_step "Installing notify.sh" install_asset "scripts/lib/notify.sh" "$ACFS_HOME/scripts/lib/notify.sh" || return 1
     try_step "Installing notifications.sh" install_asset "scripts/lib/notifications.sh" "$ACFS_HOME/scripts/lib/notifications.sh" || return 1
     try_step "Installing dashboard.sh" install_asset "scripts/lib/dashboard.sh" "$ACFS_HOME/scripts/lib/dashboard.sh" || return 1
+
+    local generated_script=""
+    local generated_basename=""
+    local generated_count=0
+    for generated_script in "$ACFS_GENERATED_DIR"/*.sh; do
+        [[ -f "$generated_script" ]] || continue
+        generated_basename="$(basename "$generated_script")"
+        try_step "Installing generated script: $generated_basename" install_asset_from_path "$generated_script" "$ACFS_HOME/scripts/generated/$generated_basename" || return 1
+        generated_count=$((generated_count + 1))
+    done
+    if [[ $generated_count -eq 0 ]]; then
+        log_error "No generated ACFS scripts found to install from $ACFS_GENERATED_DIR"
+        return 1
+    fi
 
     # Install acfs-update wrapper command
     try_step "Installing acfs-update" install_asset "scripts/acfs-update" "$ACFS_HOME/bin/acfs-update" || return 1
@@ -4998,6 +5185,7 @@ finalize() {
     try_step "Installing services-setup.sh" install_asset "scripts/services-setup.sh" "$ACFS_HOME/scripts/services-setup.sh" || return 1
     try_step "Setting scripts permissions" $SUDO chmod 755 "$ACFS_HOME/scripts/services-setup.sh" || return 1
     try_step "Setting lib scripts permissions" $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"*.sh || return 1
+    try_step "Setting generated scripts permissions" $SUDO find "$ACFS_HOME/scripts/generated" -maxdepth 1 -type f -name '*.sh' -exec chmod 755 {} + || return 1
     try_step "Setting scripts ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts" || return 1
 
     # Install newproj command scripts (used by acfs newproj CLI and TUI wizard)
@@ -5305,7 +5493,20 @@ run_smoke_test() {
     fi
 
     # Non-critical: Agent Mail service status
-    if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness &>/dev/null; then
+    if run_as_target bash -c 'set -euo pipefail
+        command -v am >/dev/null 2>&1
+        runtime_dir="/run/user/$(id -u)"
+        if [[ -d "$runtime_dir" ]]; then
+            export XDG_RUNTIME_DIR="$runtime_dir"
+            if [[ -S "$runtime_dir/bus" ]]; then
+                export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
+            fi
+        fi
+        if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+            systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
+        fi
+        curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1
+    ' &>/dev/null; then
         echo "✅ Agent Mail: running on http://127.0.0.1:8765" >&2
     elif [[ -x "$TARGET_HOME/.local/bin/am" ]] || [[ -x "$TARGET_HOME/mcp_agent_mail/scripts/run_server_with_token.sh" ]]; then
         echo "⚠️ Agent Mail: installed but service is not running" >&2

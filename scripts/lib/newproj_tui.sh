@@ -231,6 +231,12 @@ declare -ga SCREEN_HISTORY=()
 # Current screen
 CURRENT_SCREEN=""
 
+# Captured stdout from the most recent screen handler.
+SCREEN_HANDLER_OUTPUT=""
+
+# Exit status from the most recent screen handler.
+SCREEN_HANDLER_STATUS=0
+
 # Push a screen onto the history stack
 # Usage: push_screen "screen_name"
 push_screen() {
@@ -285,6 +291,37 @@ navigate_back() {
     else
         return 1
     fi
+}
+
+# Run a screen handler in the current shell while capturing its stdout.
+# This preserves state mutations performed by the handler.
+run_screen_handler_capture() {
+    local handler="$1"
+    shift
+
+    local capture_file=""
+    capture_file=$(mktemp "${TMPDIR:-/tmp}/acfs_newproj_handler.XXXXXX") || {
+        SCREEN_HANDLER_OUTPUT=""
+        SCREEN_HANDLER_STATUS=1
+        log_error "Unable to create handler capture file for: $handler" 2>/dev/null || true
+        return 0
+    }
+
+    SCREEN_HANDLER_OUTPUT=""
+    SCREEN_HANDLER_STATUS=0
+
+    local status=0
+    if "$handler" "$@" >"$capture_file"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    SCREEN_HANDLER_OUTPUT=$(awk 'NF { last=$0 } END { if (last) print last }' "$capture_file")
+    SCREEN_HANDLER_STATUS="$status"
+    rm -f -- "$capture_file" 2>/dev/null || true
+
+    return 0
 }
 
 # ============================================================
@@ -423,16 +460,16 @@ read_text_input() {
                 --placeholder "${default:-Type here...}" \
                 --prompt "$prompt: " \
                 --prompt.foreground "#89b4fa" \
-                --cursor.foreground "#cba6f7" 2>/dev/null) || true
+                --cursor.foreground "#cba6f7" < /dev/tty 2>/dev/null) || true
         else
             # Fallback to read from /dev/tty to avoid stdin conflicts
             # from signal handlers or subshell capture (issue #153)
             if [[ -n "$default" ]]; then
-                echo -n "$prompt [$default]: "
+                newproj_tty_printf "%s [%s]: " "$prompt" "$default"
                 read -r input < /dev/tty || true
                 [[ -z "$input" ]] && input="$default"
             else
-                echo -n "$prompt: "
+                newproj_tty_printf "%s: " "$prompt"
                 read -r input < /dev/tty || true
             fi
         fi
@@ -445,7 +482,7 @@ read_text_input() {
             if error=$("$validator" "$input" 2>&1); then
                 valid=true
             else
-                echo -e "${TUI_ERROR}${error}${TUI_NC}"
+                newproj_tty_printf "%b\n" "${TUI_ERROR}${error}${TUI_NC}"
                 log_validation "$prompt" "$input" "FAIL" "$error"
             fi
         else
@@ -465,7 +502,7 @@ read_yes_no() {
     local result=""
 
     if [[ "$GUM_AVAILABLE" == "true" && "$TERM_HAS_COLOR" == "true" ]]; then
-        if gum confirm "$prompt" 2>/dev/null; then
+        if gum confirm "$prompt" < /dev/tty > /dev/tty 2>/dev/null; then
             result="y"
         else
             result="n"
@@ -478,7 +515,7 @@ read_yes_no() {
             hint="[y/N]"
         fi
 
-        echo -n "$prompt $hint "
+        newproj_tty_printf "%s %s " "$prompt" "$hint"
         read -r response < /dev/tty || true
         response="${response:-$default}"
 
@@ -507,16 +544,17 @@ read_selection() {
         selected=$(gum choose \
             --cursor.foreground "#cba6f7" \
             --selected.foreground "#a6e3a1" \
+            < /dev/tty \
             "${options[@]}" 2>/dev/null) || true
     else
-        echo "$prompt"
+        newproj_tty_printf "%s\n" "$prompt"
         local i=1
         for opt in "${options[@]}"; do
-            echo "  $i) $opt"
+            newproj_tty_printf "%s\n" "  $i) $opt"
             ((i++))
         done
 
-        echo -n "Enter number [1-${#options[@]}]: "
+        newproj_tty_printf "%s" "Enter number [1-${#options[@]}]: "
         read -r num < /dev/tty || true
         if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le ${#options[@]} ]]; then
             selected="${options[$((num - 1))]}"
@@ -540,16 +578,17 @@ read_checkbox() {
         selected=$(gum choose --no-limit \
             --cursor.foreground "#cba6f7" \
             --selected.foreground "#a6e3a1" \
+            < /dev/tty \
             "${options[@]}" 2>/dev/null | tr '\n' ' ') || true
     else
-        echo "$prompt (enter numbers separated by spaces, or 'all')"
+        newproj_tty_printf "%s\n" "$prompt (enter numbers separated by spaces, or 'all')"
         local i=1
         for opt in "${options[@]}"; do
-            echo "  $i) $opt"
+            newproj_tty_printf "%s\n" "  $i) $opt"
             ((i++))
         done
 
-        echo -n "Select: "
+        newproj_tty_printf "%s" "Select: "
         read -r input < /dev/tty || true
 
         if [[ "$input" == "all" ]]; then

@@ -6,50 +6,229 @@
 
 set -euo pipefail
 
+ACFS_STATE_FILE="${ACFS_STATE_FILE:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-find_update_script() {
-  local candidate=""
+is_valid_username() {
+  local username="$1"
+  [[ "$username" =~ ^[a-z_][a-z0-9_-]*$ ]]
+}
 
-  # Respect ACFS_HOME if set (installed location)
-  if [[ -n "${ACFS_HOME:-}" ]] && [[ -f "${ACFS_HOME}/scripts/lib/update.sh" ]]; then
-    candidate="${ACFS_HOME}/scripts/lib/update.sh"
-    echo "$candidate"
-    return 0
+read_target_user_from_state_file() {
+  local state_file="$1"
+  local target_user=""
+
+  [[ -f "$state_file" ]] || return 1
+
+  if command -v jq &>/dev/null; then
+    target_user="$(jq -r '.target_user // empty' "$state_file" 2>/dev/null || true)"
   fi
 
-  # Repo-relative path (running from source)
-  if [[ -f "${SCRIPT_DIR}/lib/update.sh" ]]; then
-    candidate="${SCRIPT_DIR}/lib/update.sh"
-    echo "$candidate"
-    return 0
+  if [[ -z "$target_user" ]]; then
+    target_user="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$state_file" | head -n 1)"
   fi
 
-  # Installed path (relative to ~/.acfs/bin/acfs-update)
-  if [[ -f "${SCRIPT_DIR}/../scripts/lib/update.sh" ]]; then
-    candidate="${SCRIPT_DIR}/../scripts/lib/update.sh"
-    # normalize path
-    candidate="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"
-    echo "$candidate"
-    return 0
-  fi
-
-  # Installed path (after install.sh fallback)
-  if [[ -f "$HOME/.acfs/scripts/lib/update.sh" ]]; then
-    candidate="$HOME/.acfs/scripts/lib/update.sh"
-    echo "$candidate"
+  if [[ -n "$target_user" ]] && is_valid_username "$target_user"; then
+    printf '%s\n' "$target_user"
     return 0
   fi
 
   return 1
 }
 
-UPDATE_SCRIPT="$(find_update_script || true)"
+find_repo_local_update_script() {
+  local candidate=""
 
-if [[ -z "${UPDATE_SCRIPT:-}" ]]; then
-  echo "Error: update.sh not found." >&2
-  echo "Run from the repo or install ACFS first." >&2
-  exit 1
-fi
+  # Only treat this as a repo-local checkout when the wrapper lives under the
+  # source tree next to the manifest. Direct installed-wrapper invocations from
+  # ~/.acfs/bin still need owner detection before dispatch.
+  if [[ -f "${SCRIPT_DIR}/lib/update.sh" ]] && [[ -f "${SCRIPT_DIR}/../acfs.manifest.yaml" ]]; then
+    candidate="${SCRIPT_DIR}/lib/update.sh"
+    # normalize path
+    candidate="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"
+    printf '%s\n' "$candidate"
+    return 0
+  fi
 
-exec bash "$UPDATE_SCRIPT" "$@"
+  return 1
+}
+
+find_update_script_for_user() {
+  local user="$1"
+  local user_home=""
+
+  user_home="$(getent passwd "$user" 2>/dev/null | cut -d: -f6)" || true
+  if [[ -z "$user_home" ]]; then
+    user_home="/home/$user"
+  fi
+
+  if [[ -f "$user_home/.acfs/scripts/lib/update.sh" ]]; then
+    printf '%s\n' "$user_home/.acfs/scripts/lib/update.sh"
+    return 0
+  fi
+
+  return 1
+}
+
+user_has_installed_update_script() {
+  local user="$1"
+  find_update_script_for_user "$user" >/dev/null 2>&1
+}
+
+find_installed_update_owner() {
+  local current_user=""
+  local candidate=""
+  local candidate_user=""
+  local nullglob_was_set=0
+  local -a candidates=()
+
+  current_user="$(whoami 2>/dev/null || true)"
+  if [[ -n "$current_user" ]] && user_has_installed_update_script "$current_user"; then
+    printf '%s\n' "$current_user"
+    return 0
+  fi
+
+  if shopt -q nullglob; then
+    nullglob_was_set=1
+  fi
+  shopt -s nullglob
+  candidates=(/home/*/.acfs/scripts/lib/update.sh /root/.acfs/scripts/lib/update.sh)
+  if (( ! nullglob_was_set )); then
+    shopt -u nullglob
+  fi
+
+  for candidate in "${candidates[@]}"; do
+    [[ -f "$candidate" ]] || continue
+
+    if [[ "$candidate" == /home/* ]]; then
+      candidate_user="$(printf '%s\n' "$candidate" | cut -d/ -f3)"
+    elif [[ "$candidate" == /root/* ]]; then
+      candidate_user="root"
+    else
+      candidate_user=""
+    fi
+
+    if [[ -n "$candidate_user" ]]; then
+      printf '%s\n' "$candidate_user"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+detect_target_user() {
+  local state_candidate=""
+  local candidate_user=""
+
+  if [[ -n "${ACFS_STATE_FILE:-}" ]]; then
+    candidate_user="$(read_target_user_from_state_file "$ACFS_STATE_FILE" 2>/dev/null || true)"
+    if [[ -n "$candidate_user" ]] && user_has_installed_update_script "$candidate_user"; then
+      printf '%s\n' "$candidate_user"
+      return 0
+    fi
+  fi
+
+  candidate_user="$(read_target_user_from_state_file "$HOME/.acfs/state.json" 2>/dev/null || true)"
+  if [[ -n "$candidate_user" ]] && user_has_installed_update_script "$candidate_user"; then
+    printf '%s\n' "$candidate_user"
+    return 0
+  fi
+
+  candidate_user="$(read_target_user_from_state_file "/home/ubuntu/.acfs/state.json" 2>/dev/null || true)"
+  if [[ -n "$candidate_user" ]] && user_has_installed_update_script "$candidate_user"; then
+    printf '%s\n' "$candidate_user"
+    return 0
+  fi
+
+  for state_candidate in /home/*/.acfs/state.json; do
+    candidate_user="$(read_target_user_from_state_file "$state_candidate" 2>/dev/null || true)"
+    if [[ -n "$candidate_user" ]] && user_has_installed_update_script "$candidate_user"; then
+      printf '%s\n' "$candidate_user"
+      return 0
+    fi
+  done
+
+  candidate_user="$(read_target_user_from_state_file "/var/lib/acfs/state.json" 2>/dev/null || true)"
+  if [[ -n "$candidate_user" ]] && user_has_installed_update_script "$candidate_user"; then
+    printf '%s\n' "$candidate_user"
+    return 0
+  fi
+
+  candidate_user="$(find_installed_update_owner 2>/dev/null || true)"
+  if [[ -n "$candidate_user" ]]; then
+    printf '%s\n' "$candidate_user"
+    return 0
+  fi
+
+  return 1
+}
+
+exec_as_target_user() {
+  local user="$1"
+  shift
+  local -a env_args=()
+
+  [[ -n "${ACFS_STATE_FILE:-}" ]] && env_args+=("ACFS_STATE_FILE=$ACFS_STATE_FILE")
+  [[ -n "${ACFS_HOME:-}" ]] && env_args+=("ACFS_HOME=$ACFS_HOME")
+  [[ -n "${ACFS_REF:-}" ]] && env_args+=("ACFS_REF=$ACFS_REF")
+  [[ -n "${ACFS_RAW:-}" ]] && env_args+=("ACFS_RAW=$ACFS_RAW")
+
+  if [[ "$EUID" -eq 0 ]]; then
+    if command -v runuser >/dev/null 2>&1; then
+      if [[ ${#env_args[@]} -gt 0 ]]; then
+        exec runuser -u "$user" -- env "${env_args[@]}" "$@"
+      fi
+      exec runuser -u "$user" -- "$@"
+    fi
+    if command -v sudo >/dev/null 2>&1; then
+      if [[ ${#env_args[@]} -gt 0 ]]; then
+        exec sudo -u "$user" -H env "${env_args[@]}" "$@"
+      fi
+      exec sudo -u "$user" -H -- "$@"
+    fi
+    echo "Error: need runuser or sudo to run acfs-update as '$user'" >&2
+    exit 1
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "Error: need sudo to run acfs-update as '$user'" >&2
+    exit 1
+  fi
+
+  echo "Note: Running acfs-update as '$user' (ACFS owner)" >&2
+  if [[ ${#env_args[@]} -gt 0 ]]; then
+    exec sudo -u "$user" -H env "${env_args[@]}" "$@"
+  fi
+  exec sudo -u "$user" -H -- "$@"
+}
+
+main() {
+  local update_script=""
+  local repo_update_script=""
+  local target_user=""
+  local current_user=""
+
+  repo_update_script="$(find_repo_local_update_script || true)"
+  target_user="$(detect_target_user || true)"
+  if [[ -n "$repo_update_script" ]]; then
+    update_script="$repo_update_script"
+  elif [[ -n "$target_user" ]]; then
+    update_script="$(find_update_script_for_user "$target_user" || true)"
+  fi
+
+  if [[ -z "${update_script:-}" ]]; then
+    echo "Error: update.sh not found." >&2
+    echo "Run from the repo or install ACFS first." >&2
+    exit 1
+  fi
+
+  current_user="$(whoami)"
+  if [[ -z "$target_user" || "$current_user" == "$target_user" ]]; then
+    exec bash "$update_script" "$@"
+  fi
+
+  exec_as_target_user "$target_user" bash "$update_script" "$@"
+}
+
+main "$@"

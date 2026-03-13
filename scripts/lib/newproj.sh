@@ -9,6 +9,8 @@ set -e
 
 # Get script directory for sourcing other modules
 NEWPROJ_SCRIPT_DIR="${NEWPROJ_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+# shellcheck source=newproj_errors.sh
+source "$NEWPROJ_SCRIPT_DIR/newproj_errors.sh"
 
 # Colors
 RED='\033[0;31m'
@@ -102,7 +104,7 @@ print_help() {
     echo ""
     echo "Examples:"
     echo "  acfs newproj myapp                       # CLI mode"
-    echo "  acfs newproj myapp /home/user/projects   # CLI mode with custom dir"
+    echo "  acfs newproj myapp /home/user/projects/myapp  # CLI mode with explicit project dir"
     echo "  acfs newproj --interactive               # TUI wizard"
     echo "  acfs newproj -i                          # TUI wizard (short form)"
     echo "  acfs newproj -i myapp                    # TUI with pre-filled name"
@@ -571,6 +573,13 @@ main() {
 
     # Handle interactive mode
     if [[ "$interactive_mode" == "true" ]]; then
+        if [[ -n "$project_name" ]]; then
+            local validation_error=""
+            validation_error=$(validate_project_name "$project_name" 2>&1) || {
+                echo -e "${RED}Error: $validation_error${NC}" >&2
+                return 1
+            }
+        fi
         run_interactive_mode "$project_name" "$project_dir"
         return $?
     fi
@@ -582,12 +591,11 @@ main() {
         exit 1
     fi
 
-    # Validate project name format (alphanumeric, hyphens, underscores)
-    # Allow dots for domain-style names (e.g. com.example.app), but ensure it starts with alphanumeric
-    if [[ ! "$project_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]]; then
-        echo -e "${RED}Error: Project name must start with a letter/number and contain only letters, numbers, hyphens, underscores, and dots${NC}" >&2
+    local validation_error=""
+    validation_error=$(validate_project_name "$project_name" 2>&1) || {
+        echo -e "${RED}Error: $validation_error${NC}" >&2
         exit 1
-    fi
+    }
 
     # SAFEGUARD: Reject test-like project names that may leak from test frameworks
     # This prevents BATS tests from accidentally creating projects in /data/projects
@@ -680,6 +688,9 @@ __pycache__/
 node_modules/
 .venv/
 venv/
+
+# Local AI agent settings
+.claude/settings.local.json
 EOF
         CREATED_ITEMS+=(".gitignore")
 
@@ -750,7 +761,7 @@ EOF
             fi
         else
             echo -e "${YELLOW}Warning: br not found, skipping beads initialization${NC}"
-            echo -e "${YELLOW}Install with: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only stack.beads_viewer${NC}"
+            echo -e "${YELLOW}Install with: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --only stack.beads_rust${NC}"
         fi
     fi
 
@@ -758,19 +769,19 @@ EOF
     if [[ "$skip_claude" == "false" ]]; then
         mkdir -p .claude/commands
 
-        if [[ ! -f .claude/settings.toml ]]; then
+        if [[ ! -f .claude/settings.local.json ]] && [[ ! -f .claude/settings.toml ]]; then
             echo -e "${GREEN}Creating Claude settings...${NC}"
-            cat > .claude/settings.toml << 'EOF'
-# Claude Code project settings
-# See: https://docs.anthropic.com/en/docs/claude-code/settings
-
-[project]
-# Project-specific settings go here
-
-[permissions]
-# allow = ["Bash(npm:*)", "Bash(bun:*)"]
+            cat > .claude/settings.local.json << 'EOF'
+{
+  "model": "claude-sonnet-4-20250514",
+  "permissions": {
+    "allow_file_read": true,
+    "allow_file_write": true,
+    "allow_shell": true
+  }
+}
 EOF
-            CREATED_ITEMS+=("Claude settings (.claude/)")
+            CREATED_ITEMS+=("Claude settings (.claude/settings.local.json)")
         else
             echo -e "${CYAN}Claude settings already exist, skipping${NC}"
         fi
