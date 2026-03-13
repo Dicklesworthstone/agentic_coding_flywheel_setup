@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-03-12T15:28:28+00:00
+# checksums.yaml - Auto-generated 2026-03-13T02:11:12+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -60,7 +60,7 @@ installers:
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
-    sha256: "7f4783e3ed99b2fe06d5eda7c7394cf13cd250ac89831b129f54719b954cd802"
+    sha256: "21460de5ad0bb348c4a2ad4aca8f1703a00ba4bd54201a280e79d9f575607d86"
 
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/main/install.sh"
@@ -165,3 +165,4 @@ installers:
   zoxide:
     url: "https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
     sha256: "0c25aed6cce9d56ee0596c9a5df8cbe99ffd0f7a7054de0262234dd268b61404"
+
