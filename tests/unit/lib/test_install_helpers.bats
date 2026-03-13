@@ -110,6 +110,22 @@ teardown() {
     fi
 }
 
+@test "run_as_target: extends PATH for target-user non-login shells" {
+    export TARGET_USER="testuser"
+    export TARGET_HOME="/home/testuser"
+    export ACFS_BIN_DIR="/home/testuser/.local/bin"
+
+    spy_command "sudo"
+
+    run run_as_target env
+    assert_success
+
+    local captured
+    captured="$(cat "$STUB_DIR/sudo.log")"
+    [[ "$captured" == *"PATH=/home/testuser/.local/bin:/home/testuser/.cargo/bin:/home/testuser/.bun/bin:/home/testuser/.atuin/bin:/home/testuser/go/bin:"* ]] \
+        || fail "Expected run_as_target to extend PATH for target-user bins, got: $captured"
+}
+
 @test "_acfs_force_reinstall_enabled: returns 0 when true" {
     export ACFS_FORCE_REINSTALL="true"
     run _acfs_force_reinstall_enabled
@@ -188,4 +204,25 @@ teardown() {
 
     run acfs_module_is_installed "mod1"
     assert_success
+}
+
+@test "acfs_module_is_installed: target_user checks include ACFS user PATH prefix" {
+    unset ACFS_MODULE_INSTALLED_CHECK ACFS_MODULE_INSTALLED_CHECK_RUN_AS
+    declare -gA ACFS_MODULE_INSTALLED_CHECK=( ["mod1"]="command -v br" )
+    declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=( ["mod1"]="target_user" )
+
+    export CAPTURE_FILE="$BATS_TEST_TMPDIR/run_as_target_args.txt"
+    run_as_target() {
+        printf '%s\n' "$*" > "$CAPTURE_FILE"
+        return 0
+    }
+    export -f run_as_target
+
+    run acfs_module_is_installed "mod1"
+    assert_success
+
+    local captured
+    captured="$(cat "$CAPTURE_FILE")"
+    [[ "$captured" == *'env ACFS_TARGET_PATH_PREFIX=$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin bash -c export PATH="$ACFS_TARGET_PATH_PREFIX:$PATH"; command -v br'* ]] \
+        || fail "Expected target-user installed check to extend PATH, got: $captured"
 }

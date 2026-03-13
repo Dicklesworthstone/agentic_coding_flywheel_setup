@@ -18,10 +18,16 @@ const PROPERTY_ID = '517085078';
 const PROPERTY_NAME = `properties/${PROPERTY_ID}`;
 
 const adminClient = new AnalyticsAdminServiceClient();
+let hadOperationalError = false;
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function recordOperationalError(message: string): void {
+  hadOperationalError = true;
+  console.log(`  ❌ ${message}`);
 }
 
 async function enableGoogleSignals(): Promise<void> {
@@ -61,13 +67,13 @@ async function enableGoogleSignals(): Promise<void> {
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
     if (msg.includes('PERMISSION_DENIED')) {
-      console.log('  ❌ Permission denied - you need Admin access to enable Google Signals');
+      recordOperationalError('Permission denied - you need Admin access to enable Google Signals');
       console.log('     Please enable it manually in GA4 Admin → Data Settings → Data Collection');
     } else if (msg.includes('requires user consent')) {
-      console.log('  ❌ Google Signals requires user consent acknowledgment');
+      recordOperationalError('Google Signals requires user consent acknowledgment');
       console.log('     Please enable it manually in GA4 Admin → Data Settings → Data Collection');
     } else {
-      console.log(`  ❌ Error: ${msg}`);
+      recordOperationalError(`Error: ${msg}`);
     }
   }
 }
@@ -103,7 +109,7 @@ async function extendDataRetention(): Promise<void> {
 
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
-    console.log(`  ❌ Error: ${msg}`);
+    recordOperationalError(`Error: ${msg}`);
   }
 }
 
@@ -185,9 +191,9 @@ async function addMissingDimensions(): Promise<void> {
         console.log(`  ⏭️  ${dim.name} (already exists)`);
         skipped++;
       } else if (msg.includes('limit')) {
-        console.log(`  ❌ ${dim.name}: Hit dimension limit`);
+        recordOperationalError(`${dim.name}: Hit dimension limit`);
       } else {
-        console.log(`  ❌ ${dim.name}: ${msg}`);
+        recordOperationalError(`${dim.name}: ${msg}`);
       }
     }
   }
@@ -221,7 +227,7 @@ async function verifyConfiguration(): Promise<void> {
 
   } catch (error: unknown) {
     const msg = getErrorMessage(error);
-    console.log(`  ❌ Error verifying: ${msg}`);
+    recordOperationalError(`Error verifying: ${msg}`);
   }
 }
 
@@ -263,6 +269,11 @@ async function main() {
     await verifyConfiguration();
     await printNextSteps();
 
+    if (hadOperationalError) {
+      console.error('\n⚠️ Configuration updates completed with errors.');
+      process.exit(1);
+    }
+
     console.log('\n' + '═'.repeat(60));
     console.log('  ✅ Configuration updates complete!');
     console.log('═'.repeat(60) + '\n');
@@ -282,4 +293,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

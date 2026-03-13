@@ -69,6 +69,7 @@ setup_test_env() {
     export DOCTOR_FIX_DRY_RUN=false
     export DOCTOR_FIX_YES=false
     export DOCTOR_FIX_PROMPT=false
+    export DOCTOR_FIX_SECURITY_READY=false
 
     # Reset counters
     FIX_APPLIED=0
@@ -103,6 +104,7 @@ setup_test_env() {
 
     # Save original HOME and override
     export ORIGINAL_HOME="$HOME"
+    export ORIGINAL_PATH="$PATH"
     export HOME="$TEST_HOME"
 }
 
@@ -111,6 +113,9 @@ cleanup_test_env() {
     # Restore HOME
     if [[ -n "${ORIGINAL_HOME:-}" ]]; then
         export HOME="$ORIGINAL_HOME"
+    fi
+    if [[ -n "${ORIGINAL_PATH:-}" ]]; then
+        export PATH="$ORIGINAL_PATH"
     fi
     rm -rf "/tmp/test_doctor_fix_"* 2>/dev/null || true
 }
@@ -669,6 +674,240 @@ test_fix_acfs_sourcing_dry_run() {
 }
 
 # ============================================================
+# Test: fix_verified_install
+# ============================================================
+
+test_fix_verified_install_applies() {
+    setup_test_env
+    local original_doctor_fix_run_verified_installer
+    original_doctor_fix_run_verified_installer="$(declare -f doctor_fix_run_verified_installer)"
+    export PATH="$HOME/.local/bin:$PATH"
+
+    doctor_fix_run_verified_installer() {
+        cat > "$HOME/.local/bin/ms-test-bin" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+        chmod +x "$HOME/.local/bin/ms-test-bin"
+        return 0
+    }
+
+    if ! fix_verified_install "stack.meta_skill" "ms-test-bin" "ms" --easy-mode >/dev/null 2>&1; then
+        echo "  fix_verified_install should succeed"
+        eval "$original_doctor_fix_run_verified_installer"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ! -x "$HOME/.local/bin/ms-test-bin" ]]; then
+        echo "  Verified installer stub did not create ms-test-bin"
+        eval "$original_doctor_fix_run_verified_installer"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ $FIX_APPLIED -ne 1 ]]; then
+        echo "  FIX_APPLIED should be 1, got $FIX_APPLIED"
+        eval "$original_doctor_fix_run_verified_installer"
+        cleanup_test_env
+        return 1
+    fi
+
+    eval "$original_doctor_fix_run_verified_installer"
+    cleanup_test_env
+    return 0
+}
+
+test_fix_verified_install_dry_run() {
+    setup_test_env
+
+    DOCTOR_FIX_DRY_RUN=true
+    if ! fix_verified_install "stack.meta_skill" "ms-test-bin" "ms" --easy-mode >/dev/null 2>&1; then
+        echo "  fix_verified_install dry-run should succeed"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ${#FIXES_DRY_RUN[@]} -ne 1 ]]; then
+        echo "  Expected 1 dry-run record, got ${#FIXES_DRY_RUN[@]}"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "${FIXES_DRY_RUN[0]}" != *"verified:ms --easy-mode"* ]]; then
+        echo "  Dry-run record should note verified installer invocation"
+        cleanup_test_env
+        return 1
+    fi
+
+    DOCTOR_FIX_DRY_RUN=false
+    cleanup_test_env
+    return 0
+}
+
+test_fix_verified_install_ms_arm64_fallback_uses_cargo() {
+    setup_test_env
+    export PATH="$HOME/.local/bin:$PATH"
+
+    local cargo_signal="$ACFS_STATE_DIR/cargo.args"
+    cat > "$HOME/.local/bin/cargo" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" > "$cargo_signal"
+cat > "$HOME/.local/bin/ms-test-bin" <<'BIN_EOF'
+#!/usr/bin/env bash
+exit 0
+BIN_EOF
+chmod +x "$HOME/.local/bin/ms-test-bin"
+exit 0
+EOF
+    chmod +x "$HOME/.local/bin/cargo"
+
+    local original_uname=""
+    original_uname="$(declare -f uname 2>/dev/null || true)"
+    local arch=""
+    for arch in aarch64 arm64; do
+        rm -f "$cargo_signal" "$HOME/.local/bin/ms-test-bin"
+
+        uname() {
+            case "${1:-}" in
+                -s) printf 'Linux\n' ;;
+                -m) printf '%s\n' "$arch" ;;
+                *) command uname "$@" ;;
+            esac
+        }
+
+        if ! fix_verified_install "stack.meta_skill" "ms-test-bin" "ms" --easy-mode >/dev/null 2>&1; then
+            echo "  fix_verified_install should succeed via cargo fallback on ARM64 Linux ($arch)"
+            [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
+            cleanup_test_env
+            return 1
+        fi
+
+        if [[ ! -f "$cargo_signal" ]]; then
+            echo "  cargo fallback was not invoked for arch $arch"
+            [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
+            cleanup_test_env
+            return 1
+        fi
+
+        if ! grep -q -- '--git https://github.com/Dicklesworthstone/meta_skill --force' "$cargo_signal"; then
+            echo "  cargo fallback did not force reinstall from meta_skill git source for arch $arch"
+            cat "$cargo_signal"
+            [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
+            cleanup_test_env
+            return 1
+        fi
+
+        if [[ ! -x "$HOME/.local/bin/ms-test-bin" ]]; then
+            echo "  cargo fallback did not produce ms-test-bin for arch $arch"
+            [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
+            cleanup_test_env
+            return 1
+        fi
+    done
+
+    [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
+    cleanup_test_env
+    return 0
+}
+
+test_dcg_hook_already_installed_detects_hook_wiring() {
+    setup_test_env
+    local original_dcg
+    original_dcg="$(declare -f dcg 2>/dev/null || true)"
+
+    dcg() {
+        if [[ "${1:-}" == "doctor" && "${2:-}" == "--format" && "${3:-}" == "json" ]]; then
+            cat <<'EOF'
+{"checks":[{"id":"hook_wiring","status":"ok","message":"dcg hook registered"}]}
+EOF
+            return 0
+        fi
+        return 1
+    }
+
+    if ! dcg_hook_already_installed; then
+        echo "  Expected hook_wiring=ok to be treated as installed"
+        [[ -n "$original_dcg" ]] && eval "$original_dcg" || unset -f dcg
+        cleanup_test_env
+        return 1
+    fi
+
+    [[ -n "$original_dcg" ]] && eval "$original_dcg" || unset -f dcg
+    cleanup_test_env
+    return 0
+}
+
+test_agent_mail_fix_stop_fallback_cleans_up_matching_pid() {
+    setup_test_env
+    export PATH="$HOME/.local/bin:$PATH"
+
+    mkdir -p "$HOME/.mcp_agent_mail_git_mailbox_repo"
+    cat > "$HOME/.local/bin/am" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$HOME/.local/bin/am"
+
+    local fallback_pid_file="$HOME/.mcp_agent_mail_git_mailbox_repo/agent-mail.pid"
+    echo "4242" > "$fallback_pid_file"
+
+    kill() {
+        if [[ "${1:-}" == "-0" ]]; then
+            if [[ "${2:-}" == "4242" && ! -f "$HOME/.terminated" ]]; then
+                return 0
+            fi
+            return 1
+        fi
+
+        if [[ "${1:-}" == "4242" ]]; then
+            : > "$HOME/.terminated"
+            return 0
+        fi
+
+        if [[ "${1:-}" == "-9" && "${2:-}" == "4242" ]]; then
+            : > "$HOME/.terminated"
+            return 0
+        fi
+
+        return 1
+    }
+
+    ps() {
+        if [[ "${1:-}" == "-p" && "${2:-}" == "4242" && "${3:-}" == "-o" && "${4:-}" == "args=" ]]; then
+            printf '%s\n' "$HOME/.local/bin/am serve-http --host 127.0.0.1 --port 8765"
+            return 0
+        fi
+        return 1
+    }
+
+    if ! agent_mail_fix_stop_fallback; then
+        echo "  agent_mail_fix_stop_fallback should succeed"
+        unset -f kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -f "$fallback_pid_file" ]]; then
+        echo "  Fallback PID file should be removed"
+        unset -f kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ! -f "$HOME/.terminated" ]]; then
+        echo "  Matching fallback process should have been terminated"
+        unset -f kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    unset -f kill ps
+    cleanup_test_env
+    return 0
+}
+
+# ============================================================
 # Test: dispatch_fix routing
 # ============================================================
 
@@ -907,6 +1146,13 @@ main() {
     run_test test_fix_acfs_sourcing_idempotent
     run_test test_fix_acfs_sourcing_missing_acfs_config
     run_test test_fix_acfs_sourcing_dry_run
+
+    # fix_verified_install tests
+    run_test test_fix_verified_install_applies
+    run_test test_fix_verified_install_dry_run
+    run_test test_fix_verified_install_ms_arm64_fallback_uses_cargo
+    run_test test_dcg_hook_already_installed_detects_hook_wiring
+    run_test test_agent_mail_fix_stop_fallback_cleans_up_matching_pid
 
     # dispatch_fix tests
     run_test test_dispatch_fix_skips_pass

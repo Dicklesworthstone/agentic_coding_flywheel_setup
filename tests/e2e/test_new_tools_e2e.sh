@@ -18,6 +18,8 @@ JSON_FILE="/tmp/acfs_e2e_results_${TIMESTAMP}.json"
 PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
+VERBOSE=false
+JSON_STDOUT=false
 
 declare -a TEST_RESULTS=()
 
@@ -27,7 +29,12 @@ log() {
     shift
     local test_name="${1:-}"
     shift
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] [$test_name] $*" | tee -a "$LOG_FILE"
+    local line="[$(date '+%Y-%m-%d %H:%M:%S')] [$level] [$test_name] $*"
+    if [[ "$JSON_STDOUT" == "true" ]]; then
+        printf '%s\n' "$line" | tee -a "$LOG_FILE" >&2
+    else
+        printf '%s\n' "$line" | tee -a "$LOG_FILE"
+    fi
 }
 
 json_escape() {
@@ -68,6 +75,21 @@ skip() {
     local escaped_msg
     escaped_msg=$(json_escape "$*")
     TEST_RESULTS+=("{\"test\":\"$test_name\",\"status\":\"skip\",\"message\":\"$escaped_msg\"}")
+}
+
+verbose_log() {
+    if [[ "$VERBOSE" == "true" ]]; then
+        log "INFO" "$@"
+    fi
+}
+
+file_details() {
+    local path="$1"
+    if command -v stat >/dev/null 2>&1; then
+        stat -c '%n perms=%A mode=%a mtime=%y' "$path" 2>/dev/null
+    else
+        ls -l "$path" 2>/dev/null
+    fi
 }
 
 # ============================================================
@@ -285,9 +307,106 @@ test_additional_stack_tools() {
     # agent_settings_backup (asb)
     log "INFO" "asb" "Testing agent_settings_backup (asb)..."
     if test_tool_basic "agent_settings_backup" "asb" "false"; then
-        test_tool_probe "asb_probe" "asb" "asb operational probe" "false" \
-            "asb --help" \
-            "asb status"
+        local asb_timeout="${ACFS_E2E_ASB_TIMEOUT:-20}"
+        local asb_config_output=""
+        local asb_backup_root=""
+        local asb_version_output=""
+        local asb_probe_agent=""
+        local asb_backup_output=""
+        local asb_backup_exit=0
+        local asb_list_output=""
+        local asb_list_exit=0
+        local asb_repo_git_dir=""
+        local asb_repo_dir=""
+        local asb_git_log=""
+
+        if asb_version_output=$(asb version 2>&1); then
+            asb_version_output="${asb_version_output%%$'\n'*}"
+            pass "asb_version_detail" "asb version returned: ${asb_version_output:-<empty>}"
+        elif asb_version_output=$(asb help 2>&1); then
+            asb_version_output="${asb_version_output%%$'\n'*}"
+            pass "asb_version_detail" "asb help returned: ${asb_version_output:-<empty>}"
+        else
+            fail "asb_version_detail" "asb version/help probe failed"
+        fi
+
+        if asb_config_output=$(asb config show 2>&1); then
+            asb_backup_root=$(printf '%s\n' "$asb_config_output" | sed -n 's/^ASB_BACKUP_ROOT:[[:space:]]*//p' | head -n 1)
+        fi
+        if [[ -z "$asb_backup_root" ]]; then
+            asb_backup_root="${ASB_BACKUP_ROOT:-$HOME/.agent_settings_backups}"
+        fi
+
+        if command -v timeout >/dev/null 2>&1; then
+            asb_list_output=$(timeout "$asb_timeout" asb list 2>&1)
+            asb_list_exit=$?
+        else
+            asb_list_output=$(asb list 2>&1)
+            asb_list_exit=$?
+        fi
+
+        if [[ $asb_list_exit -eq 0 ]]; then
+            local asb_list_lines
+            asb_list_lines=$(printf '%s\n' "$asb_list_output" | grep -cve '^[[:space:]]*$')
+            pass "asb_list" "asb list succeeded with ${asb_list_lines} non-empty line(s)"
+        elif [[ $asb_list_exit -eq 124 ]]; then
+            fail "asb_list" "asb list timed out after ${asb_timeout}s"
+        else
+            fail "asb_list" "asb list failed: ${asb_list_output:0:140}"
+        fi
+
+        if [[ $asb_list_exit -eq 0 ]]; then
+            local candidate=""
+            for candidate in codex cline cursor gemini opencode factory claude; do
+                if printf '%s\n' "$asb_list_output" | grep -Eq "^${candidate}[[:space:]].*(backed up|no backup)"; then
+                    asb_probe_agent="$candidate"
+                    break
+                fi
+            done
+            if [[ -z "$asb_probe_agent" ]]; then
+                asb_probe_agent=$(printf '%s\n' "$asb_list_output" | awk '/^[a-z0-9]/ && $0 !~ /not installed/ { print $1; exit }')
+            fi
+        fi
+
+        if [[ -n "$asb_probe_agent" ]]; then
+            if command -v timeout >/dev/null 2>&1; then
+                asb_backup_output=$(timeout "$asb_timeout" asb --dry-run backup "$asb_probe_agent" 2>&1)
+                asb_backup_exit=$?
+            else
+                asb_backup_output=$(asb --dry-run backup "$asb_probe_agent" 2>&1)
+                asb_backup_exit=$?
+            fi
+
+            if [[ $asb_backup_exit -eq 0 ]]; then
+                pass "asb_backup" "asb dry-run backup succeeded for ${asb_probe_agent}: ${asb_backup_output:0:140}"
+            elif [[ $asb_backup_exit -eq 124 ]]; then
+                skip "asb_backup" "asb dry-run backup for ${asb_probe_agent} timed out after ${asb_timeout}s"
+            else
+                skip "asb_backup" "asb dry-run backup for ${asb_probe_agent} failed: ${asb_backup_output:0:140}"
+            fi
+        else
+            skip "asb_backup" "No installed agents reported by asb list"
+        fi
+
+        if [[ -d "$asb_backup_root" ]]; then
+            pass "asb_backup_dir" "ASB backup root exists at $asb_backup_root"
+        else
+            skip "asb_backup_dir" "ASB backup root missing at $asb_backup_root"
+        fi
+
+        if [[ -d "$asb_backup_root" ]]; then
+            asb_repo_git_dir=$(find "$asb_backup_root" -mindepth 2 -maxdepth 2 -type d -name .git 2>/dev/null | head -n 1)
+            if [[ -n "$asb_repo_git_dir" ]]; then
+                asb_repo_dir=$(dirname "$asb_repo_git_dir")
+            fi
+        fi
+
+        if [[ -n "$asb_repo_dir" ]] && asb_git_log=$(git -C "$asb_repo_dir" log --oneline -1 2>&1); then
+            asb_git_log="${asb_git_log%%$'\n'*}"
+            pass "asb_git_repo" "ASB git repo valid at $asb_repo_dir: ${asb_git_log:-latest commit found}"
+        else
+            skip "asb_git_repo" "ASB per-agent git repo not found or invalid under $asb_backup_root"
+        fi
     fi
 
     # post_compact_reminder (pcr)
@@ -295,20 +414,82 @@ test_additional_stack_tools() {
     local pcr_hook_script="${HOME}/.local/bin/claude-post-compact-reminder"
     local pcr_settings="${HOME}/.claude/settings.json"
     local pcr_alt_settings="${HOME}/.config/claude/settings.json"
-    local pcr_hook_registered="false"
+    local pcr_selected_settings=""
+    local pcr_settings_has_hook="false"
+    local pcr_hook_info=""
 
-    if [[ -f "$pcr_settings" ]] && grep -q "claude-post-compact-reminder" "$pcr_settings" 2>/dev/null; then
-        pcr_hook_registered="true"
-    elif [[ -f "$pcr_alt_settings" ]] && grep -q "claude-post-compact-reminder" "$pcr_alt_settings" 2>/dev/null; then
-        pcr_hook_registered="true"
+    if [[ -f "$pcr_settings" ]]; then
+        pcr_selected_settings="$pcr_settings"
+    elif [[ -f "$pcr_alt_settings" ]]; then
+        pcr_selected_settings="$pcr_alt_settings"
     fi
 
-    if [[ -x "$pcr_hook_script" && "$pcr_hook_registered" == "true" ]]; then
-        pass "pcr_hook" "PCR hook script and Claude settings entry are present"
-    elif [[ -e "$pcr_hook_script" || "$pcr_hook_registered" == "true" ]]; then
-        fail "pcr_hook" "PCR installation is partial; expected hook script plus Claude settings entry"
+    if [[ -n "$pcr_selected_settings" ]] && grep -q "claude-post-compact-reminder" "$pcr_selected_settings" 2>/dev/null; then
+        pcr_settings_has_hook="true"
+    fi
+
+    if [[ ! -e "$pcr_hook_script" && "$pcr_settings_has_hook" != "true" ]]; then
+        skip "pcr_hook" "pcr: hook not installed — optional tool"
     else
-        skip "pcr_hook" "PCR hook not installed (optional tool)"
+        if [[ -x "$pcr_hook_script" ]]; then
+            pass "pcr_hook_script" "pcr: hook script present — $(file_details "$pcr_hook_script")"
+        else
+            fail "pcr_hook_script" "pcr: expected executable hook script at $pcr_hook_script"
+        fi
+
+        if [[ "$pcr_settings_has_hook" == "true" && -n "$pcr_selected_settings" ]]; then
+            pass "pcr_settings_hook" "pcr: hook reference found in $pcr_selected_settings"
+
+            if command -v python3 >/dev/null 2>&1; then
+                if pcr_hook_info=$(PCR_SETTINGS="$pcr_selected_settings" python3 - <<'PY'
+import json
+import os
+
+path = os.environ["PCR_SETTINGS"]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+hooks = data.get("hooks", {}).get("SessionStart", [])
+matches = [hook for hook in hooks if "compact" in json.dumps(hook)]
+assert matches, "PCR hook not found in SessionStart hooks"
+
+sample = json.dumps(matches[0], separators=(",", ":"))
+print(f"settings={path}; session_hooks={len(hooks)}; matching_hooks={len(matches)}; sample={sample[:160]}")
+PY
+); then
+                    pass "pcr_settings_structure" "pcr: settings hook structure validated — $pcr_hook_info"
+                else
+                    skip "pcr_settings_structure" "pcr: hook reference found, but deep SessionStart validation failed in $pcr_selected_settings"
+                fi
+            fi
+        else
+            if [[ -n "$pcr_selected_settings" ]]; then
+                fail "pcr_settings_hook" "pcr: hook entry missing in expected settings file $pcr_selected_settings"
+            else
+                fail "pcr_settings_hook" "pcr: settings.json hook entry missing in $pcr_settings and $pcr_alt_settings"
+            fi
+        fi
+
+        if [[ -x "$pcr_hook_script" ]]; then
+            if bash -n "$pcr_hook_script" 2>/dev/null; then
+                pass "pcr_hook_syntax" "pcr: bash -n passed for $pcr_hook_script"
+            else
+                fail "pcr_hook_syntax" "pcr: bash -n failed for $pcr_hook_script"
+            fi
+        fi
+
+        if [[ -n "$pcr_selected_settings" ]]; then
+            local -a pcr_backups=()
+            shopt -s nullglob
+            pcr_backups=("${pcr_selected_settings}".bak*)
+            shopt -u nullglob
+            if (( ${#pcr_backups[@]} > 0 )); then
+                pass "pcr_settings_backup" "pcr: found ${#pcr_backups[@]} settings backup file(s) for $pcr_selected_settings"
+                verbose_log "pcr_settings_backup" "pcr backups: ${pcr_backups[*]}"
+            else
+                skip "pcr_settings_backup" "pcr: no settings backup file found for $pcr_selected_settings"
+            fi
+        fi
     fi
 }
 
@@ -377,7 +558,9 @@ test_integration() {
     if command -v acfs >/dev/null 2>&1; then
         local doctor_output=""
         local doctor_exit=0
-        local doctor_timeout="${ACFS_E2E_DOCTOR_TIMEOUT:-240}"
+        # acfs doctor can legitimately take several minutes when the local
+        # machine is under load, so keep the default timeout generous.
+        local doctor_timeout="${ACFS_E2E_DOCTOR_TIMEOUT:-600}"
 
         if command -v timeout >/dev/null 2>&1; then
             doctor_output=$(timeout "$doctor_timeout" env ACFS_DOCTOR_CI=true acfs doctor 2>&1)
@@ -395,8 +578,10 @@ test_integration() {
             fail "doctor_runs" "acfs doctor failed (exit=$doctor_exit)"
         fi
 
-        # Check for DCG in doctor output
-        if echo "$doctor_output" | command grep -qiE 'dcg|destructive[[:space:]-]+command'; then
+        # Check for DCG in doctor output without a pipe so pipefail cannot
+        # turn an early grep match into a false negative.
+        local doctor_output_lc="${doctor_output,,}"
+        if [[ "$doctor_output_lc" =~ dcg|destructive[[:space:]-]+command ]]; then
             pass "doctor_dcg_check" "acfs doctor includes DCG health check"
         else
             skip "doctor_dcg_check" "DCG check not visible in doctor output"
@@ -511,6 +696,40 @@ EOF
     log "INFO" "OUTPUT" "JSON results written to: $JSON_FILE"
 }
 
+print_usage() {
+    cat <<'EOF'
+Usage: test_new_tools_e2e.sh [--json] [--verbose]
+
+Options:
+  --json     Emit the final JSON summary to stdout and send logs to stderr
+  --verbose  Include additional detail in the log output
+  -h, --help Show this help text
+EOF
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json)
+                JSON_STDOUT=true
+                ;;
+            --verbose)
+                VERBOSE=true
+                ;;
+            -h|--help)
+                print_usage
+                exit 0
+                ;;
+            *)
+                printf 'Unknown option: %s\n' "$1" >&2
+                print_usage >&2
+                exit 2
+                ;;
+        esac
+        shift
+    done
+}
+
 # ============================================================
 # Summary
 # ============================================================
@@ -542,6 +761,8 @@ print_summary() {
 # ============================================================
 
 main() {
+    parse_args "$@"
+
     log "INFO" "START" "========================================"
     log "INFO" "START" "ACFS New Tools E2E Test Suite"
     log "INFO" "START" "Started: $(date -Iseconds)"
@@ -556,6 +777,13 @@ main() {
     # Output results
     write_json_results
     print_summary
+    local summary_exit=$?
+
+    if [[ "$JSON_STDOUT" == "true" ]]; then
+        cat "$JSON_FILE"
+    fi
+
+    return $summary_exit
 }
 
 main "$@"

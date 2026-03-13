@@ -125,6 +125,41 @@ test_force_reinstall() {
   export ACFS_FORCE_REINSTALL=false
 }
 
+test_force_resume_without_completed_phases() {
+  local state_file
+  state_file="$(new_state_file force-resume-empty)"
+  init_state_with_completed "$state_file"
+  state_update '.failed_phase = "user_setup"'
+
+  export ACFS_FORCE_REINSTALL=false
+  export ACFS_FORCE_RESUME=true
+  export ACFS_INTERACTIVE=false
+
+  local rc
+  if confirm_resume; then rc=0; else rc=$?; fi
+  assert_eq 0 "$rc" "force resume works when a phase failed before any phase completed"
+
+  export ACFS_FORCE_RESUME=false
+}
+
+test_force_reinstall_without_completed_phases() {
+  local state_file
+  state_file="$(new_state_file force-reinstall-empty)"
+  init_state_with_completed "$state_file"
+  state_update '.failed_phase = "user_setup"'
+
+  export ACFS_FORCE_REINSTALL=true
+  export ACFS_FORCE_RESUME=false
+  export ACFS_INTERACTIVE=false
+
+  local rc
+  if confirm_resume; then rc=0; else rc=$?; fi
+  assert_eq 1 "$rc" "force reinstall works when a phase failed before any phase completed"
+  assert_file_missing "$state_file" "force reinstall removes failed zero-progress state file"
+
+  export ACFS_FORCE_REINSTALL=false
+}
+
 test_corrupted_state() {
   local state_file
   state_file="$(new_state_file corrupt)"
@@ -187,6 +222,8 @@ main() {
   test_normal_resume
   test_corrupted_state
   test_force_reinstall
+  test_force_resume_without_completed_phases
+  test_force_reinstall_without_completed_phases
   test_interrupt_phase
   test_version_mismatch
 

@@ -18,6 +18,7 @@ const PROPERTY_NAME = `properties/${PROPERTY_ID}`;
 
 const adminClient = new AnalyticsAdminServiceClient();
 const dataClient = new BetaAnalyticsDataClient();
+let hadOperationalError = false;
 
 function printSection(title: string): void {
   console.log('\n' + '═'.repeat(60));
@@ -32,6 +33,12 @@ function printCheck(label: string, status: boolean | string, details?: string): 
   if (details) {
     console.log(`     └─ ${details}`);
   }
+}
+
+function recordOperationalError(context: string, error: unknown): void {
+  hadOperationalError = true;
+  const msg = error instanceof Error ? error.message : String(error);
+  console.log(`  ❌ ${context}: ${msg}`);
 }
 
 async function checkPropertySettings(): Promise<void> {
@@ -69,8 +76,7 @@ async function checkPropertySettings(): Promise<void> {
     console.log(`  Create Time: ${createTimeStr}`);
     console.log(`  Service Level: ${property.serviceLevel}`);
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(`  ❌ Error fetching property: ${msg}`);
+    recordOperationalError('Error fetching property', error);
   }
 }
 
@@ -103,7 +109,7 @@ async function checkGoogleSignals(): Promise<void> {
       console.log('  ⚠️  Cannot check Google Signals (needs Admin access)');
       console.log('     Check manually: GA4 Admin → Data Settings → Data Collection');
     } else {
-      console.log(`  ❌ Error: ${msg}`);
+      recordOperationalError('Error checking Google Signals', error);
     }
   }
 }
@@ -123,8 +129,7 @@ async function checkDataRetention(): Promise<void> {
       console.log('\n  ⚠️  Consider extending data retention to 14 months for better analysis');
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(`  ❌ Error: ${msg}`);
+    recordOperationalError('Error checking data retention', error);
   }
 }
 
@@ -189,8 +194,7 @@ async function checkCustomDimensions(): Promise<void> {
       }
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(`  ❌ Error: ${msg}`);
+    recordOperationalError('Error checking custom dimensions', error);
   }
 }
 
@@ -227,8 +231,7 @@ async function checkGeographicData(): Promise<void> {
       console.log('     This could indicate a configuration issue.');
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(`  ❌ Error: ${msg}`);
+    recordOperationalError('Error checking geographic data', error);
   }
 }
 
@@ -280,7 +283,7 @@ async function checkDemographicData(): Promise<void> {
       console.log('  ⚠️  Demographics dimensions not available');
       console.log('     This usually means Google Signals is not enabled.');
     } else {
-      console.log(`  ❌ Error: ${msg}`);
+      recordOperationalError('Error checking demographic data', error);
     }
   }
 }
@@ -315,8 +318,7 @@ async function checkTrafficSourceData(): Promise<void> {
       }
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(`  ❌ Error: ${msg}`);
+    recordOperationalError('Error checking traffic source data', error);
   }
 }
 
@@ -351,8 +353,7 @@ async function checkDeviceData(): Promise<void> {
       }
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(`  ❌ Error: ${msg}`);
+    recordOperationalError('Error checking device data', error);
   }
 }
 
@@ -375,8 +376,7 @@ async function checkDataStreams(): Promise<void> {
       }
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.log(`  ❌ Error: ${msg}`);
+    recordOperationalError('Error checking data streams', error);
   }
 }
 
@@ -433,6 +433,11 @@ async function main() {
     await checkDeviceData();
     await generateRecommendations();
 
+    if (hadOperationalError) {
+      console.error('\n⚠️ Diagnostic completed with partial failures.');
+      process.exit(1);
+    }
+
     console.log('\n' + '═'.repeat(60));
     console.log('  ✅ Diagnostic complete!');
     console.log('═'.repeat(60) + '\n');
@@ -452,4 +457,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

@@ -17,6 +17,10 @@ const TIMEOUTS = {
   FAST: 3000,
 } as const;
 
+const COMPLETED_STEPS_KEY = "agent-flywheel-wizard-completed-steps";
+const COMMAND_COMPLETION_PREFIX = "acfs-command-";
+const FINAL_STEP_PREREQUISITES = Array.from({ length: 12 }, (_, index) => index + 1);
+
 function urlPathWithOptionalQuery(pathname: string): RegExp {
   const escaped = pathname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`${escaped}(\\?.*)?$`);
@@ -28,16 +32,36 @@ function urlPathWithOptionalQuery(pathname: string): RegExp {
  */
 async function setupWizardState(
   page: Page,
-  options: { os?: "mac" | "windows"; ip?: string } = {}
+  options: {
+    os?: "mac" | "windows";
+    ip?: string;
+    completedSteps?: number[];
+    commandCompletions?: string[];
+  } = {}
 ) {
   await page.goto("/");
   await page.evaluate(
-    ({ os, ip }) => {
+    ({ os, ip, completedSteps, commandCompletions, completedStepsKey, commandCompletionPrefix }) => {
       localStorage.clear();
       if (os) localStorage.setItem("agent-flywheel-user-os", os);
       if (ip) localStorage.setItem("agent-flywheel-vps-ip", ip);
+      if (completedSteps) {
+        localStorage.setItem(completedStepsKey, JSON.stringify(completedSteps));
+      }
+      if (commandCompletions) {
+        for (const key of commandCompletions) {
+          localStorage.setItem(`${commandCompletionPrefix}${key}`, "true");
+        }
+      }
     },
-    { os: options.os, ip: options.ip }
+    {
+      os: options.os,
+      ip: options.ip,
+      completedSteps: options.completedSteps,
+      commandCompletions: options.commandCompletions,
+      completedStepsKey: COMPLETED_STEPS_KEY,
+      commandCompletionPrefix: COMMAND_COMPLETION_PREFIX,
+    }
   );
 }
 
@@ -301,6 +325,17 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
 
     // The SSH command should contain the user's IP
     await expect(page.locator(`text=ubuntu@${testIP}`).first()).toBeVisible();
+  });
+
+  test("should bracket IPv6 hosts in SSH commands", async ({ page }) => {
+    const testIP = "2001:db8::10";
+    await setupWizardState(page, { os: "mac", ip: testIP });
+
+    await page.goto("/wizard/ssh-connect");
+    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
+
+    await expect(page.locator('text="ssh root@[2001:db8::10]"').first()).toBeVisible();
+    await expect(page.locator('text="ssh ubuntu@[2001:db8::10]"').first()).toBeVisible();
   });
 });
 
@@ -598,6 +633,7 @@ test.describe("Complete Wizard Flow Integration", () => {
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/status-check"));
 
     // Step 12: Status Check
+    await page.locator("#flywheel-doctor").click();
     await page.click('button:has-text("Everything looks good!")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/launch-onboarding"));
 
@@ -841,6 +877,7 @@ test.describe("Step 9: Run Installer Page", () => {
     // Command should no longer include ACFS_REF
     await expect(commandElement).not.toContainText('ACFS_REF=');
   });
+
 });
 
 // =============================================================================
@@ -986,6 +1023,9 @@ test.describe("Step 12: Status Check Page", () => {
     await page.goto("/wizard/status-check");
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
 
+    await expect(page.getByRole("button", { name: /everything looks good/i })).toBeDisabled();
+    await page.locator("#flywheel-doctor").click();
+
     // Click continue
     await page.click('button:has-text("Everything looks good!")');
 
@@ -999,7 +1039,12 @@ test.describe("Step 12: Status Check Page", () => {
 // =============================================================================
 test.describe("Step 13: Launch Onboarding Page", () => {
   test.beforeEach(async ({ page }) => {
-    await setupWizardState(page, { os: "mac", ip: "192.168.1.100" });
+    await setupWizardState(page, {
+      os: "mac",
+      ip: "192.168.1.100",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+      commandCompletions: ["flywheel-doctor"],
+    });
   });
 
   test("should load launch-onboarding page correctly", async ({ page }) => {
@@ -1042,6 +1087,23 @@ test.describe("Step 13: Launch Onboarding Page", () => {
 
     // Should have positive messaging in the main heading
     await expect(page.locator("h1").first()).toContainText(/congratulations|set up|ready/i);
+  });
+
+  test("should redirect to status-check when final-step prerequisites are missing", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => localStorage.clear());
+
+    await page.goto("/wizard/launch-onboarding");
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/status-check"));
+  });
+
+  test("should return to launch-onboarding from the Windows detour when opened there", async ({ page }) => {
+    await page.goto("/wizard/launch-onboarding");
+    await page.getByRole("link", { name: /windows user\? set up one-click vps access/i }).click();
+    await expect(page).toHaveURL(/\/wizard\/windows-terminal-setup/);
+
+    await page.getByRole("button", { name: /back to previous page/i }).click();
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/launch-onboarding"));
   });
 });
 
@@ -1500,7 +1562,12 @@ test.describe("Accessibility", () => {
 // =============================================================================
 test.describe("Command Builder Panel", () => {
   test.beforeEach(async ({ page }) => {
-    await setupWizardState(page, { os: "mac", ip: "192.168.1.100" });
+    await setupWizardState(page, {
+      os: "mac",
+      ip: "192.168.1.100",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+      commandCompletions: ["flywheel-doctor"],
+    });
   });
 
   test("should display command builder on launch-onboarding page", async ({ page }) => {
@@ -1642,9 +1709,11 @@ test.describe("Command Builder Panel", () => {
   });
 
   test("should display IP input when no IP is stored", async ({ page }) => {
-    // Clear state and navigate
-    await page.goto("/");
-    await page.evaluate(() => localStorage.clear());
+    await setupWizardState(page, {
+      os: "mac",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+      commandCompletions: ["flywheel-doctor"],
+    });
     await page.goto("/wizard/launch-onboarding");
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
 
@@ -1657,9 +1726,11 @@ test.describe("Command Builder Panel", () => {
   });
 
   test("should validate IP input and show error for invalid IP", async ({ page }) => {
-    // Clear state
-    await page.goto("/");
-    await page.evaluate(() => localStorage.clear());
+    await setupWizardState(page, {
+      os: "mac",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+      commandCompletions: ["flywheel-doctor"],
+    });
     await page.goto("/wizard/launch-onboarding");
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
 
@@ -1673,9 +1744,11 @@ test.describe("Command Builder Panel", () => {
   });
 
   test("should generate commands when valid IP is entered", async ({ page }) => {
-    // Clear state
-    await page.goto("/");
-    await page.evaluate(() => localStorage.clear());
+    await setupWizardState(page, {
+      os: "mac",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+      commandCompletions: ["flywheel-doctor"],
+    });
     await page.goto("/wizard/launch-onboarding");
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
 
@@ -1687,6 +1760,20 @@ test.describe("Command Builder Panel", () => {
     // Commands should appear with the entered IP
     await expect(page.locator('text="ssh root@203.0.113.42"')).toBeVisible();
   });
+
+  test("should generate bracketed SSH commands for IPv6 addresses", async ({ page }) => {
+    await setupWizardState(page, {
+      os: "mac",
+      ip: "2001:db8::99",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+      commandCompletions: ["flywheel-doctor"],
+    });
+    await page.goto("/wizard/launch-onboarding");
+    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+
+    await expect(page.locator('text="ssh root@[2001:db8::99]"').first()).toBeVisible();
+    await expect(page.locator('text="ssh -i ~/.ssh/acfs_ed25519 ubuntu@[2001:db8::99]"').first()).toBeVisible();
+  });
 });
 
 // =============================================================================
@@ -1695,7 +1782,12 @@ test.describe("Command Builder Panel", () => {
 test.describe("Command Builder Panel - Mobile", () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 667 });
-    await setupWizardState(page, { os: "mac", ip: "192.168.1.100" });
+    await setupWizardState(page, {
+      os: "mac",
+      ip: "192.168.1.100",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+      commandCompletions: ["flywheel-doctor"],
+    });
   });
 
   test("should display command builder on mobile", async ({ page }) => {

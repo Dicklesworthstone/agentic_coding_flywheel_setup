@@ -7,6 +7,13 @@ import { BetaAnalyticsDataClient } from '@google-analytics/data';
 
 const PROPERTY_ID = '517085078';
 const client = new BetaAnalyticsDataClient();
+let hadOperationalError = false;
+
+function recordOperationalError(context: string, error: unknown): void {
+  hadOperationalError = true;
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`  ❌ ${context}: ${message}`);
+}
 
 async function listAllEvents(): Promise<void> {
   console.log('\n📋 All Events (Last 30 Days):\n');
@@ -31,8 +38,7 @@ async function listAllEvents(): Promise<void> {
       console.log(`  ${name.padEnd(30)} ${count.padStart(6)}    ${users.padStart(5)}`);
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`  ❌ Error listing events: ${msg}`);
+    recordOperationalError('Error listing events', error);
   }
 }
 
@@ -70,6 +76,7 @@ async function checkCustomDimensions(): Promise<void> {
       if (msg.includes('not a valid dimension')) {
         console.log(`    ❌ Dimension not registered`);
       } else {
+        hadOperationalError = true;
         console.log(`    ❌ Error: ${msg.slice(0, 80)}`);
       }
     }
@@ -111,8 +118,10 @@ async function checkFunnelEvents(): Promise<void> {
       } else {
         console.log(`  ❌ ${eventName.padEnd(25)} No data`);
       }
-    } catch {
-      console.log(`  ❌ ${eventName.padEnd(25)} Error`);
+    } catch (error: unknown) {
+      hadOperationalError = true;
+      const msg = error instanceof Error ? error.message : String(error);
+      console.log(`  ❌ ${eventName.padEnd(25)} ${msg.slice(0, 60)}`);
     }
   }
 }
@@ -140,8 +149,7 @@ async function checkPageViews(): Promise<void> {
       console.log(`  ${path.padEnd(40).slice(0, 40)} ${views.padStart(6)}  ${users.padStart(6)}`);
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`  ❌ Error checking page views: ${msg}`);
+    recordOperationalError('Error checking page views', error);
   }
 }
 
@@ -155,7 +163,15 @@ async function main() {
   await checkFunnelEvents();
   await checkPageViews();
 
+  if (hadOperationalError) {
+    console.error('\n⚠️ Debug report completed with errors.');
+    process.exit(1);
+  }
+
   console.log('\n═'.repeat(60));
 }
 
-main().catch(console.error);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

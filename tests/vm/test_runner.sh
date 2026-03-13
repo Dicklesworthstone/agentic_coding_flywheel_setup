@@ -62,6 +62,8 @@ failed_checks=0
 run_check "doctor" "zsh -ic 'acfs doctor'" || failed_checks=$((failed_checks + 1))
 run_check "state_file" "test -f ~/.acfs/VERSION" || failed_checks=$((failed_checks + 1))
 run_check "onboard" "zsh -ic 'onboard --help >/dev/null'" || failed_checks=$((failed_checks + 1))
+run_check "onboard_noninteractive_lesson" "zsh -ic 'progress=\$(mktemp); exec </dev/null; ACFS_PROGRESS_FILE=\"\$progress\" onboard 1 >/dev/null'" || failed_checks=$((failed_checks + 1))
+run_check "onboard_noninteractive_menu" "zsh -ic 'out=\$(mktemp); if timeout 5s onboard </dev/null >\"\$out\" 2>&1; then false; else status=\$?; grep -q \"Interactive menu requires a TTY\" \"\$out\" && [ \"\$status\" -eq 1 ]; fi'" || failed_checks=$((failed_checks + 1))
 run_check "ntm" "zsh -ic 'ntm --help >/dev/null'" || failed_checks=$((failed_checks + 1))
 run_check "gh" "zsh -ic 'gh --version >/dev/null'" || failed_checks=$((failed_checks + 1))
 run_check "jq" "zsh -ic 'jq --version >/dev/null'" || failed_checks=$((failed_checks + 1))

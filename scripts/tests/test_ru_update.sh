@@ -50,16 +50,44 @@ test_update_sh_has_ru() {
 # Test 3: get_version handles ru
 test_get_version_ru() {
     local update_sh="$REPO_ROOT/scripts/lib/update.sh"
-    # Source update.sh and check for get_version function
-    if command grep -q "get_version" "$update_sh" 2>/dev/null; then
-        # Check if ru is in the case statement
-        command grep -A50 "get_version" "$update_sh" | command grep -q "ru" 2>/dev/null || return 0
+    local tmpdir
+
+    # Pass if get_version does not exist.
+    if ! command grep -q '^get_version()' "$update_sh" 2>/dev/null; then
         return 0
     fi
-    return 0  # Pass if get_version doesn't exist
+
+    tmpdir="$(mktemp -d)" || return 1
+
+    cat > "$tmpdir/ru" <<'EOF'
+#!/usr/bin/env bash
+echo "ru 9.9.9"
+EOF
+    chmod +x "$tmpdir/ru"
+
+    PATH="$tmpdir:$PATH" UPDATE_SH_PATH="$update_sh" bash -c '
+        set -euo pipefail
+        source "$UPDATE_SH_PATH"
+        [[ "$(get_version ru)" == "ru 9.9.9" ]]
+    '
+    local rc=$?
+    rm -rf "$tmpdir"
+    return "$rc"
 }
 
-# Test 4: ru self-update mechanism (if ru is installed)
+# Test 4: update helper supports env-aware verified installers
+test_update_helper_has_env_support() {
+    local update_sh="$REPO_ROOT/scripts/lib/update.sh"
+    command grep -q "update_run_verified_installer_with_env()" "$update_sh" 2>/dev/null
+}
+
+# Test 5: RU update preserves non-interactive env
+test_ru_update_uses_non_interactive_env() {
+    local update_sh="$REPO_ROOT/scripts/lib/update.sh"
+    command grep -q 'update_run_verified_installer_with_env ru "RU_NON_INTERACTIVE=1"' "$update_sh" 2>/dev/null
+}
+
+# Test 6: ru self-update mechanism (if ru is installed)
 test_ru_self_update_check() {
     if command -v ru &>/dev/null; then
         # ru should have --version or version command
@@ -74,25 +102,26 @@ test_ru_self_update_check() {
     fi
 }
 
-# Test 5: ru is in manifest
+# Test 7: ru is in manifest
 test_ru_in_manifest() {
     local manifest="$REPO_ROOT/acfs.manifest.yaml"
     [[ -f "$manifest" ]] && command grep -q "stack.ru" "$manifest" 2>/dev/null
 }
 
-# Test 6: ru is in checksums
+# Test 8: ru is in checksums
 test_ru_in_checksums() {
     local checksums="$REPO_ROOT/checksums.yaml"
     [[ -f "$checksums" ]] && command grep -q "ru:" "$checksums" 2>/dev/null
 }
 
-# Test 7: Generated install script has RU
+# Test 9: Generated install script has RU
 test_generated_install_has_ru() {
     local install_stack="$REPO_ROOT/scripts/generated/install_stack.sh"
-    [[ -f "$install_stack" ]] && command grep -q "install_stack_ru" "$install_stack" 2>/dev/null || command grep -q '"ru"' "$install_stack" 2>/dev/null
+    [[ -f "$install_stack" ]] || return 1
+    command grep -q "install_stack_ru" "$install_stack" 2>/dev/null || command grep -q '"ru"' "$install_stack" 2>/dev/null
 }
 
-# Test 8: ru binary works if installed
+# Test 10: ru binary works if installed
 test_ru_binary_works() {
     if command -v ru &>/dev/null; then
         # ru should respond to --help or help
@@ -117,6 +146,8 @@ main() {
     run_test "update.sh syntax valid" test_update_sh_syntax
     run_test "update.sh has RU handling" test_update_sh_has_ru
     run_test "get_version handles ru" test_get_version_ru
+    run_test "update helper has env support" test_update_helper_has_env_support
+    run_test "RU update uses non-interactive env" test_ru_update_uses_non_interactive_env
     run_test "ru self-update check" test_ru_self_update_check
     run_test "ru in manifest" test_ru_in_manifest
     run_test "ru in checksums" test_ru_in_checksums

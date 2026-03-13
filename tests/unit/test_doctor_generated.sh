@@ -355,6 +355,40 @@ test_doctor_summary_counts() {
     fi
 }
 
+test_meta_skill_arm64_linux_guidance() {
+    harness_section "Test: meta_skill ARM64 Linux guidance is specific"
+
+    local doctor_file arm64_branch
+    doctor_file="$REPO_ROOT/scripts/lib/doctor.sh"
+    arm64_branch="$(sed -n '/aarch64-Linux|arm64-Linux)/,/;;/p' "$doctor_file")"
+
+    if [[ -z "$arm64_branch" ]]; then
+        harness_fail "meta_skill ARM64 Linux branch is missing from doctor.sh"
+        return 1
+    fi
+
+    if echo "$arm64_branch" | grep -q 'ARM64 Linux binary not yet available (see https://github.com/Dicklesworthstone/meta_skill/issues/1)'; then
+        harness_pass "meta_skill ARM64 Linux warning includes the upstream issue link"
+    else
+        harness_fail "meta_skill ARM64 Linux warning is missing the specific upstream guidance"
+        harness_capture_output "meta_skill_arm64_branch" "$arm64_branch"
+    fi
+
+    if echo "$arm64_branch" | grep -q 'Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill --force'; then
+        harness_pass "meta_skill ARM64 Linux fix uses the source-build fallback"
+    else
+        harness_fail "meta_skill ARM64 Linux fix hint is incorrect"
+        harness_capture_output "meta_skill_arm64_branch" "$arm64_branch"
+    fi
+
+    if echo "$arm64_branch" | grep -q 'curl -fsSL'; then
+        harness_fail "meta_skill ARM64 Linux branch still suggests the raw installer path"
+        harness_capture_output "meta_skill_arm64_branch" "$arm64_branch"
+    else
+        harness_pass "meta_skill ARM64 Linux branch avoids the raw installer path"
+    fi
+}
+
 # ============================================================
 # Main
 # ============================================================
@@ -375,6 +409,7 @@ main() {
     test_fix_hint_uses_module_id
     test_manifest_checks_have_required_fields
     test_doctor_summary_counts
+    test_meta_skill_arm64_linux_guidance
 
     # Summary
     harness_section "Test Summary"

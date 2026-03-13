@@ -30,7 +30,7 @@ const adminClient = new AnalyticsAdminServiceClient();
 // NOTE: Parameter names must EXACTLY match what the analytics.ts code sends in events
 const CUSTOM_DIMENSIONS = [
   // Wizard/Funnel step tracking - these match the actual event parameters
-  { name: 'step_number', scope: 'EVENT', description: 'Step number (1-13 for wizard)' },
+  { name: 'step_number', scope: 'EVENT', description: 'Wizard step number' },
   { name: 'step_name', scope: 'EVENT', description: 'Step name (e.g., os_selection, rent_vps)' },
   { name: 'step_title', scope: 'EVENT', description: 'Human-readable step title' },
   { name: 'previous_step', scope: 'EVENT', description: 'Previous step number' },
@@ -45,7 +45,7 @@ const CUSTOM_DIMENSIONS = [
   { name: 'wizard_step_title', scope: 'EVENT', description: '[Legacy] Human-readable wizard step title' },
 
   // Lesson tracking
-  { name: 'lesson_id', scope: 'EVENT', description: 'Lesson ID (0-19)' },
+  { name: 'lesson_id', scope: 'EVENT', description: 'Learning hub lesson index' },
   { name: 'lesson_slug', scope: 'EVENT', description: 'Lesson URL slug' },
   { name: 'lesson_title', scope: 'EVENT', description: 'Lesson title' },
 
@@ -75,6 +75,12 @@ const CUSTOM_DIMENSIONS = [
   { name: 'time_from_previous_lesson_seconds', scope: 'EVENT', description: 'Seconds since previous lesson' },
   // Note: time_on_step_seconds is defined as a metric (not dimension) since it's a numeric value
 ];
+let hadOperationalError = false;
+
+function recordOperationalError(message: string): void {
+  hadOperationalError = true;
+  console.log(`  ❌ ${message}`);
+}
 
 // Custom metrics to create
 const CUSTOM_METRICS = [
@@ -163,7 +169,7 @@ async function createCustomDimensions() {
         console.log(`  ⏭️  ${dim.name} (already exists)`);
         skipped++;
       } else {
-        console.log(`  ❌ ${dim.name}: ${message}`);
+        recordOperationalError(`${dim.name}: ${message}`);
       }
     }
   }
@@ -204,7 +210,7 @@ async function createCustomMetrics() {
         console.log(`  ⏭️  ${metric.name} (already exists)`);
         skipped++;
       } else {
-        console.log(`  ❌ ${metric.name}: ${message}`);
+        recordOperationalError(`${metric.name}: ${message}`);
       }
     }
   }
@@ -246,7 +252,7 @@ async function markConversionEvents() {
         console.log(`  ⏭️  ${eventName} (already a conversion)`);
         skipped++;
       } else {
-        console.log(`  ❌ ${eventName}: ${message}`);
+        recordOperationalError(`${eventName}: ${message}`);
       }
     }
   }
@@ -416,7 +422,7 @@ async function createAudiences() {
         console.log(`  ⏭️  ${audience.displayName} (already exists)`);
         skipped++;
       } else {
-        console.log(`  ❌ ${audience.displayName}: ${message}`);
+        recordOperationalError(`${audience.displayName}: ${message}`);
       }
     }
   }
@@ -465,6 +471,11 @@ async function main() {
     await createAudiences();
     await printSummary();
 
+    if (hadOperationalError) {
+      console.error('\n⚠️ GA4 configuration completed with errors.\n');
+      process.exit(1);
+    }
+
     console.log('\n✅ GA4 configuration complete!\n');
   } catch (error: unknown) {
     console.error('\n❌ Configuration failed:', getErrorMessage(error));
@@ -476,4 +487,7 @@ async function main() {
   }
 }
 
-main();
+main().catch((error: unknown) => {
+  console.error('\n❌ Configuration failed:', getErrorMessage(error));
+  process.exit(1);
+});

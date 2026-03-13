@@ -99,14 +99,33 @@ teardown() {
     [[ -d "$new_dir" ]]
 }
 
-@test "try_create_directory fails if path exists" {
+@test "try_create_directory reuses an existing empty writable directory" {
     local existing_dir="$TEST_DIR/existing"
     mkdir "$existing_dir"
 
     run try_create_directory "$existing_dir"
+    assert_success
+}
+
+@test "try_create_directory fails for an existing non-empty directory" {
+    local existing_dir="$TEST_DIR/existing-non-empty"
+    mkdir "$existing_dir"
+    echo "existing" > "$existing_dir/file.txt"
+
+    run try_create_directory "$existing_dir"
     assert_failure
 
-    [[ "$output" == *"already exists"* ]]
+    [[ "$output" == *"already exists and is not empty"* ]]
+}
+
+@test "try_create_directory does not register existing directories for cleanup" {
+    local existing_dir="$TEST_DIR/existing-no-cleanup"
+    mkdir "$existing_dir"
+    WIZARD_CLEANUP_ITEMS=()
+
+    try_create_directory "$existing_dir"
+
+    [[ " ${WIZARD_CLEANUP_ITEMS[*]} " != *" $existing_dir "* ]]
 }
 
 @test "try_create_directory fails if parent doesn't exist" {
@@ -178,8 +197,40 @@ teardown() {
         try_br_init "'"$project_dir"'"
     '
 
-    assert_success  # Should not fail, just skip
+    [[ "$status" -eq 2 ]]
     [[ "$output" == *"br not installed"* ]]
+}
+
+@test "suspend_project_creation_cleanup disables EXIT cleanup but preserves rollback state" {
+    local test_file="$TEST_DIR/suspended-file.txt"
+
+    begin_project_creation "$TEST_DIR/project-root"
+    echo "test" > "$test_file"
+    track_created_file "$test_file"
+    register_cleanup "$test_file"
+
+    suspend_project_creation_cleanup
+
+    [[ "$WIZARD_TRANSACTION_ACTIVE" == "false" ]]
+    [[ ${#WIZARD_CLEANUP_ITEMS[@]} -eq 0 ]]
+    [[ " ${WIZARD_CREATED_FILES[*]} " == *" $test_file "* ]]
+    [[ "$WIZARD_PROJECT_ROOT" == "$TEST_DIR/project-root" ]]
+}
+
+@test "rollback_project_creation still removes files after cleanup is suspended" {
+    local project_root="$TEST_DIR/project-root"
+    local test_file="$project_root/suspended-rollback.txt"
+    mkdir -p "$project_root"
+
+    begin_project_creation "$project_root"
+    echo "test" > "$test_file"
+    track_created_file "$test_file"
+    suspend_project_creation_cleanup
+
+    rollback_project_creation
+
+    [[ ! -f "$test_file" ]]
+    [[ "$WIZARD_TRANSACTION_ACTIVE" == "false" ]]
 }
 
 # ============================================================
@@ -203,18 +254,69 @@ teardown() {
     assert_success
 
     [[ -f "$test_file" ]]
+    [[ -d "$TEST_DIR/subdir" ]]
+    [[ -d "$TEST_DIR/subdir/nested" ]]
 }
 
 @test "try_write_file tracks file for transaction" {
     WIZARD_TRANSACTION_ACTIVE=true
     WIZARD_CREATED_FILES=()
+    WIZARD_CLEANUP_ITEMS=()
 
     local test_file="$TEST_DIR/tracked-file.txt"
     try_write_file "$test_file" "Content"
 
     [[ " ${WIZARD_CREATED_FILES[*]} " == *" $test_file "* ]]
+    [[ " ${WIZARD_CLEANUP_ITEMS[*]} " == *" $test_file "* ]]
 
     WIZARD_TRANSACTION_ACTIVE=false
+}
+
+@test "try_write_file registers created parent directories for cleanup and rollback" {
+    local project_dir="$TEST_DIR/existing-project"
+    mkdir -p "$project_dir"
+
+    begin_project_creation "$project_dir"
+
+    local test_file="$project_dir/.claude/settings.local.json"
+    try_write_file "$test_file" "{}"
+
+    [[ " ${WIZARD_CLEANUP_ITEMS[*]} " == *" $project_dir/.claude "* ]]
+    [[ " ${WIZARD_CREATED_FILES[*]} " == *" $project_dir/.claude "* ]]
+    [[ " ${WIZARD_CLEANUP_ITEMS[*]} " == *" $test_file "* ]]
+
+    rollback_project_creation
+
+    [[ -d "$project_dir" ]]
+    [[ ! -e "$project_dir/.claude" ]]
+}
+
+@test "try_write_file refuses to overwrite an existing file" {
+    local test_file="$TEST_DIR/existing-file.txt"
+    echo "old" > "$test_file"
+
+    run try_write_file "$test_file" "new"
+    assert_failure
+
+    [[ "$(cat "$test_file")" == "old" ]]
+    [[ "$output" == *"Refusing to overwrite existing file"* ]]
+}
+
+@test "try_write_file rollback removes parent directories created inside existing project root" {
+    local project_dir="$TEST_DIR/existing-project"
+    mkdir -p "$project_dir"
+
+    begin_project_creation "$project_dir"
+
+    try_write_file "$project_dir/.claude/settings.local.json" "{}"
+
+    [[ -d "$project_dir/.claude" ]]
+    [[ -f "$project_dir/.claude/settings.local.json" ]]
+
+    rollback_project_creation
+
+    [[ -d "$project_dir" ]]
+    [[ ! -e "$project_dir/.claude" ]]
 }
 
 # ============================================================
@@ -222,9 +324,11 @@ teardown() {
 # ============================================================
 
 @test "begin_project_creation starts transaction" {
+    register_cleanup "/tmp/stale-cleanup-item"
     begin_project_creation
 
     [[ "$WIZARD_TRANSACTION_ACTIVE" == "true" ]]
+    [[ ${#WIZARD_CLEANUP_ITEMS[@]} -eq 0 ]]
     [[ ${#WIZARD_CREATED_FILES[@]} -eq 0 ]]
 }
 
@@ -263,6 +367,7 @@ teardown() {
 
     [[ ! -f "$test_file1" ]]
     [[ ! -f "$test_file2" ]]
+    [[ ${#WIZARD_CLEANUP_ITEMS[@]} -eq 0 ]]
     [[ "$WIZARD_TRANSACTION_ACTIVE" == "false" ]]
 }
 
@@ -336,6 +441,18 @@ teardown() {
     run validate_project_name "123project"
     assert_failure
     [[ "$output" == *"must start with a letter"* ]]
+}
+
+@test "validate_project_name rejects test framework style names" {
+    run validate_project_name "test_project"
+    assert_failure
+    [[ "$output" == *"starting with 'test_'"* ]]
+}
+
+@test "validate_project_name rejects URL-encoded names explicitly" {
+    run validate_project_name "my%2dproject"
+    assert_failure
+    [[ "$output" == *"URL-encoded"* ]]
 }
 
 @test "validate_project_name rejects reserved names" {

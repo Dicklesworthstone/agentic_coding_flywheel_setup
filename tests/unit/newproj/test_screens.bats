@@ -249,11 +249,12 @@ teardown() {
     source_lib "newproj_screens"
     load_screens
 
+    local tilde_path=~/nonexistent-project-test-123
     local status
-    status=$(check_directory_status "~/nonexistent-project-test-123")
+    status=$(check_directory_status "$tilde_path")
 
     # Should have resolved the tilde
-    [[ "$status" != *"~"* ]] || [[ "$status" == "ERROR:"* ]]
+    [[ "$status" != *"~"* ]]
 }
 
 # ============================================================
@@ -417,6 +418,27 @@ teardown() {
     [[ "$SCREEN_CONFIRMATION_ID" == "confirmation" ]]
 }
 
+@test "confirmation edit returns to project name with reset history" {
+    source_lib "newproj_screens"
+    load_screens
+
+    handle_confirmation_input() {
+        return 3
+    }
+
+    CURRENT_SCREEN="confirmation"
+    SCREEN_HISTORY=("welcome" "project_name" "directory" "tech_stack" "features" "agents_preview")
+
+    run_confirmation_screen
+    local result=$?
+
+    [[ "$result" -eq 0 ]]
+
+    [[ "$CURRENT_SCREEN" == "project_name" ]]
+    [[ ${#SCREEN_HISTORY[@]} -eq 1 ]]
+    [[ "${SCREEN_HISTORY[0]}" == "welcome" ]]
+}
+
 @test "get_files_to_create returns file list" {
     source_lib "newproj_screens"
     load_screens
@@ -445,6 +467,24 @@ teardown() {
 
     [[ "$files" != *"AGENTS.md"* ]]
     [[ "$files" != *".beads"* ]]
+}
+
+@test "get_files_to_create omits Claude local settings when legacy config exists" {
+    source_lib "newproj_screens"
+    load_screens
+
+    local project_dir="$TEST_DIR/existing-claude-project"
+    mkdir -p "$project_dir/.claude"
+    printf '[permissions]\n' > "$project_dir/.claude/settings.toml"
+
+    state_set "project_dir" "$project_dir"
+    state_set "enable_claude" "true"
+
+    local files
+    files=$(get_files_to_create)
+
+    [[ "$files" == *".claude/"* ]]
+    [[ "$files" != *".claude/settings.local.json"* ]]
 }
 
 # ============================================================
@@ -486,6 +526,26 @@ teardown() {
     [[ "$name" == *"Git"* ]]
 }
 
+@test "create_claude step skips when legacy Claude settings already exist" {
+    source_lib "newproj_screens"
+    load_screens
+
+    local project_dir="$TEST_DIR/existing-legacy-claude"
+    mkdir -p "$project_dir/.claude"
+    printf '[permissions]\n' > "$project_dir/.claude/settings.toml"
+
+    state_set "project_dir" "$project_dir"
+    state_set "project_name" "existing-legacy-claude"
+
+    render_progress_screen() { :; }
+
+    execute_step create_claude
+
+    [[ -f "$project_dir/.claude/settings.toml" ]]
+    [[ ! -f "$project_dir/.claude/settings.local.json" ]]
+    [[ "${STEP_STATUS[create_claude]}" == "success" ]]
+}
+
 # ============================================================
 # Success Screen Tests
 # ============================================================
@@ -509,6 +569,36 @@ teardown() {
     output=$(render_success_screen 2>&1 | head -30)
 
     [[ "$output" == *"SUCCESS"* ]] || [[ "$output" == *"Created"* ]]
+}
+
+@test "handle_success_input keeps prompting when Claude launch fails" {
+    run bash -c '
+        set -euo pipefail
+        export NEWPROJ_LIB_DIR="'"$ACFS_LIB_DIR"'"
+        source "'"$ACFS_LIB_DIR"'/newproj_screens.sh"
+        load_screens >/dev/null
+        render_success_screen() { echo "render"; }
+        open_in_claude() { echo "claude failed"; return 1; }
+        handle_success_input
+    ' <<< $'cq'
+
+    assert_success
+    [[ "$output" == *"claude failed"* ]]
+    [[ "$(printf "%s" "$output" | grep -c '^render$')" -ge 2 ]]
+}
+
+@test "execute_step init_br does not claim success when beads init is skipped" {
+    source_lib "newproj_screens"
+    load_screens
+
+    state_set "project_dir" "$TEST_DIR/no-br-project"
+    mkdir -p "$TEST_DIR/no-br-project"
+    render_progress_screen() { :; }
+    try_br_init() { return 2; }
+
+    execute_step init_br
+
+    [[ "${STEP_STATUS[init_br]}" == "pending" ]]
 }
 
 # ============================================================

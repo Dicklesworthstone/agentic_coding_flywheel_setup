@@ -74,6 +74,10 @@ extract_resume_hint_function() {
     sed -n '/^generate_resume_hint()/,/^}$/p' "$REPO_ROOT/install.sh"
 }
 
+extract_print_resume_hint_function() {
+    sed -n '/^print_resume_hint()/,/^}$/p' "$REPO_ROOT/install.sh"
+}
+
 # Actually, let's just define our test environment and source install.sh functions
 setup_test_env() {
     # Reset all variables to defaults
@@ -93,6 +97,17 @@ setup_test_env() {
 # Source the generate_resume_hint function
 # shellcheck disable=SC1090
 eval "$(extract_resume_hint_function)"
+# shellcheck disable=SC1090
+eval "$(extract_print_resume_hint_function)"
+
+STATE_SET_RESUME_HINT_CALLS=0
+STATE_SET_RESUME_HINT_VALUE=""
+
+state_set_resume_hint() {
+    ((STATE_SET_RESUME_HINT_CALLS++))
+    STATE_SET_RESUME_HINT_VALUE="$1"
+    return 0
+}
 
 # ============================================================
 # Tests
@@ -348,6 +363,39 @@ test_empty_ref_shorthand() {
     return 0
 }
 
+# Test: print_resume_hint uses the state helper instead of rewriting state directly
+test_print_resume_hint_uses_state_helper() {
+    setup_test_env
+    YES_MODE=true
+    ACFS_STATE_FILE="$(mktemp)"
+    printf '{}\n' > "$ACFS_STATE_FILE"
+    STATE_SET_RESUME_HINT_CALLS=0
+    STATE_SET_RESUME_HINT_VALUE=""
+
+    print_resume_hint "languages" "install_rust"
+
+    if [[ "$STATE_SET_RESUME_HINT_CALLS" -ne 1 ]]; then
+        log "  Expected state_set_resume_hint to be called once, got: $STATE_SET_RESUME_HINT_CALLS"
+        rm -f "$ACFS_STATE_FILE"
+        return 1
+    fi
+
+    if [[ "$STATE_SET_RESUME_HINT_VALUE" != *"--resume"* ]]; then
+        log "  Expected generated resume hint to include --resume, got: $STATE_SET_RESUME_HINT_VALUE"
+        rm -f "$ACFS_STATE_FILE"
+        return 1
+    fi
+
+    if [[ "$STATE_SET_RESUME_HINT_VALUE" != *"--yes"* ]]; then
+        log "  Expected generated resume hint to include --yes, got: $STATE_SET_RESUME_HINT_VALUE"
+        rm -f "$ACFS_STATE_FILE"
+        return 1
+    fi
+
+    rm -f "$ACFS_STATE_FILE"
+    return 0
+}
+
 # ============================================================
 # Main
 # ============================================================
@@ -372,6 +420,7 @@ main() {
     run_test test_complex_combination
     run_test test_main_branch_shorthand
     run_test test_empty_ref_shorthand
+    run_test test_print_resume_hint_uses_state_helper
 
     # Summary
     log ""

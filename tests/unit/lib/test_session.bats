@@ -37,6 +37,31 @@ teardown() {
     assert_failure
 }
 
+@test "validate_session_export: rejects blank required strings" {
+    local invalid_json='{
+        "schema_version": 1,
+        "session_id": "   ",
+        "agent": "   ",
+        "stats": { "turns": 5 }
+    }'
+    local file
+    file=$(create_temp_file "$invalid_json")
+
+    run validate_session_export "$file"
+    assert_failure
+    assert_output --partial "missing required fields"
+}
+
+@test "list_sessions: rejects non-numeric day and limit values before calling cass" {
+    run list_sessions --days nope
+    assert_failure
+    assert_output --partial "positive integer"
+
+    run list_sessions --limit zero
+    assert_failure
+    assert_output --partial "positive integer"
+}
+
 @test "export_session: streams output" {
     local file=$(create_temp_file "dummy session")
     local output_file=$(create_temp_file)
@@ -61,6 +86,58 @@ EOF
     assert_output --partial "streaming test"
 }
 
+@test "export_session: fails clearly when output path cannot be written" {
+    local file
+    file=$(create_temp_file "dummy session")
+    local missing_parent
+    missing_parent="$(create_temp_dir)/missing"
+    local output_file="${missing_parent}/export.json"
+
+    init_stub_dir
+    cat > "$STUB_DIR/cass" <<EOF
+#!/bin/bash
+if [[ "\$1" == "export" ]]; then
+    echo '{"schema_version": 1, "session_id": "1", "agent": "claude-code", "stats": {"turns":1}, "content": "streaming test"}'
+    exit 0
+fi
+echo "Unknown command: \$@" >&2
+exit 1
+EOF
+    chmod +x "$STUB_DIR/cass"
+
+    run export_session "$file" --output "$output_file"
+    assert_failure
+    assert_output --partial "Failed to write exported session"
+}
+
+@test "export_session: cleanup does not leak into the caller scope" {
+    local file
+    file=$(create_temp_file "dummy session")
+    local sentinel
+    sentinel=$(create_temp_file "caller sentinel")
+
+    init_stub_dir
+    cat > "$STUB_DIR/cass" <<EOF
+#!/bin/bash
+if [[ "\$1" == "export" ]]; then
+    echo '{"schema_version": 1, "session_id": "1", "agent": "claude-code", "stats": {"turns":1}, "content": "streaming test"}'
+    exit 0
+fi
+echo "Unknown command: \$@" >&2
+exit 1
+EOF
+    chmod +x "$STUB_DIR/cass"
+
+    caller_wrapper() {
+        local tmp_export="$sentinel"
+        export_session "$file" >/dev/null
+    }
+
+    run caller_wrapper
+    assert_success
+    [[ -f "$sentinel" ]]
+}
+
 @test "sanitize_session_export: preserves structure and redacts secrets" {
     local json='{
         "schema_version": 1,
@@ -81,6 +158,18 @@ EOF
     assert_output --partial '"session_id": "123"'
 }
 
+@test "import_session: rejects malformed ACFS exports" {
+    local malformed='{
+        "schema_version": 1
+    }'
+    local file
+    file=$(create_temp_file "$malformed")
+
+    run import_session "$file" --dry-run
+    assert_failure
+    assert_output --partial "missing required fields"
+}
+
 @test "convert_session_native: codex -> claude writes native file and sessions-index" {
     local test_home
     test_home=$(create_temp_dir)
@@ -99,9 +188,10 @@ EOF
     run convert_session_native "$codex_src" --from codex --to claude-code --workspace "/data/projects/agentic_coding_flywheel_setup" --json
     assert_success
 
-    local written_path target_session_id
+    local written_path target_session_id resume_command
     written_path="$(jq -r '.written_path' <<<"$output")"
     target_session_id="$(jq -r '.target_session_id' <<<"$output")"
+    resume_command="$(jq -r '.resume_command' <<<"$output")"
 
     [[ -f "$written_path" ]]
     [[ "$written_path" == "$HOME/.claude/projects/-data-projects-agentic-coding-flywheel-setup/"*".jsonl" ]]
@@ -115,6 +205,7 @@ EOF
     run jq -r --arg sid "$target_session_id" '.entries[] | select(.sessionId == $sid) | .fullPath' "$index_file"
     assert_success
     assert_equal "$output" "$written_path"
+    assert_equal "$resume_command" "claude -r $target_session_id"
 }
 
 @test "convert_session_native: claude -> codex writes native rollout format" {
@@ -134,9 +225,10 @@ EOF
     run convert_session_native "$claude_src" --from claude-code --to codex --workspace "/data/projects/agentic_coding_flywheel_setup" --json
     assert_success
 
-    local written_path target_session_id
+    local written_path target_session_id resume_command
     written_path="$(jq -r '.written_path' <<<"$output")"
     target_session_id="$(jq -r '.target_session_id' <<<"$output")"
+    resume_command="$(jq -r '.resume_command' <<<"$output")"
 
     [[ -f "$written_path" ]]
     [[ "$written_path" == "$HOME/.codex/sessions/"*"/rollout-"*".jsonl" ]]
@@ -149,6 +241,7 @@ EOF
     assert_output --partial "session_meta"
     assert_output --partial "event_msg"
     assert_output --partial "response_item"
+    assert_equal "$resume_command" "codex exec resume $target_session_id"
 }
 
 @test "convert_session_native: codex -> gemini writes chat json and logs" {

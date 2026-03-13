@@ -21,6 +21,11 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = join(__dirname, '..', '..', '..', 'research_screenshots');
+let hadResearchError = false;
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 // Ensure screenshot directory exists
 try { mkdirSync(SCREENSHOT_DIR, { recursive: true }); } catch {}
@@ -127,8 +132,11 @@ async function researchContabo(page) {
     });
 
   } catch (error) {
-    console.error('Contabo error:', error.message);
-    await page.screenshot({ path: join(SCREENSHOT_DIR, 'contabo_error.png') });
+    hadResearchError = true;
+    console.error('Contabo error:', getErrorMessage(error));
+    try {
+      await page.screenshot({ path: join(SCREENSHOT_DIR, 'contabo_error.png') });
+    } catch {}
   }
 
   return results;
@@ -237,8 +245,11 @@ async function researchOVH(page) {
     });
 
   } catch (error) {
-    console.error('OVH error:', error.message);
-    await page.screenshot({ path: join(SCREENSHOT_DIR, 'ovh_error.png') });
+    hadResearchError = true;
+    console.error('OVH error:', getErrorMessage(error));
+    try {
+      await page.screenshot({ path: join(SCREENSHOT_DIR, 'ovh_error.png') });
+    } catch {}
   }
 
   return results;
@@ -295,20 +306,31 @@ async function main() {
   console.log('#  ' + new Date().toISOString());
   console.log('#'.repeat(70));
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
-    locale: 'en-US',
-    timezoneId: 'America/New_York'
-  });
-  const page = await context.newPage();
+  let browser;
 
   try {
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      viewport: { width: 1920, height: 1080 },
+      locale: 'en-US',
+      timezoneId: 'America/New_York'
+    });
+    const page = await context.newPage();
+
     await researchContabo(page);
     await researchOVH(page);
     generateSummary();
   } finally {
-    await browser.close();
+    if (browser) {
+      await browser.close();
+    }
+  }
+
+  if (hadResearchError) {
+    console.error('\n' + '='.repeat(70));
+    console.error('  RESEARCH COMPLETED WITH ERRORS');
+    console.error('='.repeat(70) + '\n');
+    process.exit(1);
   }
 
   console.log('\n' + '='.repeat(70));
@@ -316,4 +338,7 @@ async function main() {
   console.log('='.repeat(70) + '\n');
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

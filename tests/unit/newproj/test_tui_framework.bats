@@ -302,6 +302,19 @@ teardown() {
     [[ "$progress" == *"0%"* ]]
 }
 
+@test "run_screen_handler_capture preserves state mutations from handlers" {
+    test_capture_handler() {
+        state_set "project_name" "captured-project"
+        echo "next_screen"
+    }
+
+    run_screen_handler_capture test_capture_handler
+
+    [[ "$SCREEN_HANDLER_STATUS" -eq 0 ]]
+    [[ "$SCREEN_HANDLER_OUTPUT" == "next_screen" ]]
+    [[ "$(state_get "project_name")" == "captured-project" ]]
+}
+
 # ============================================================
 # Input Handling Tests (limited without actual terminal)
 # ============================================================

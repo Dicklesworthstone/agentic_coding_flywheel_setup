@@ -9,10 +9,13 @@
  */
 
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
+import { TOTAL_LESSONS } from '../lib/lessons';
+import { TOTAL_STEPS } from '../lib/wizardSteps';
 
 const PROPERTY_ID = '517085078';
 
 const client = new BetaAnalyticsDataClient();
+let hadOperationalError = false;
 
 interface FunnelStep {
   step: number;
@@ -33,6 +36,12 @@ function safeParseInt(value: string | undefined | null): number | null {
   }
   const parsed = parseInt(value, 10);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+function recordOperationalError(context: string, error: unknown): void {
+  hadOperationalError = true;
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`Error querying ${context}: ${message}`);
 }
 
 async function queryWizardFunnel(): Promise<FunnelStep[]> {
@@ -74,7 +83,7 @@ async function queryWizardFunnel(): Promise<FunnelStep[]> {
         const events = parseInt(row.metricValues?.[1]?.value || '0', 10);
 
         // Skip invalid step numbers (null from "(not set)" or out of range)
-        if (stepNum !== null && stepNum > 0 && stepNum <= 13) {
+        if (stepNum !== null && stepNum > 0 && stepNum <= TOTAL_STEPS) {
           steps.push({ step: stepNum, users, events });
         }
       }
@@ -89,14 +98,13 @@ async function queryWizardFunnel(): Promise<FunnelStep[]> {
 
     return steps;
   } catch (error) {
-    console.error('Error querying wizard funnel:', error);
+    recordOperationalError('wizard funnel', error);
     return [];
   }
 }
 
 async function queryLessonFunnel(): Promise<FunnelStep[]> {
   console.log('\n📚 Querying Learning Hub Funnel Data...\n');
-  console.log('   Note: No lesson tracking events detected yet - learning hub may need traffic.\n');
 
   try {
     const [response] = await client.runReport({
@@ -133,7 +141,7 @@ async function queryLessonFunnel(): Promise<FunnelStep[]> {
         const events = parseInt(row.metricValues?.[1]?.value || '0', 10);
 
         // Skip invalid lesson IDs (null from "(not set)" or out of range)
-        if (lessonId !== null && lessonId >= 0 && lessonId < 20) {
+        if (lessonId !== null && lessonId >= 0 && lessonId < TOTAL_LESSONS) {
           steps.push({ step: lessonId, users, events });
         }
       }
@@ -145,9 +153,13 @@ async function queryLessonFunnel(): Promise<FunnelStep[]> {
     // NOTE: Drop-off rates are calculated in printFunnelChart based on sequential
     // step numbers, not array indices. This handles gaps correctly.
 
+    if (steps.length === 0) {
+      console.log('   Note: No lesson tracking events detected yet - learning hub may need traffic.\n');
+    }
+
     return steps;
   } catch (error) {
-    console.error('Error querying lesson funnel:', error);
+    recordOperationalError('lesson funnel', error);
     return [];
   }
 }
@@ -181,7 +193,7 @@ async function queryOverviewMetrics(): Promise<void> {
       console.log(`  Bounce Rate:      ${bounceRate.toFixed(1)}%`);
     }
   } catch (error) {
-    console.error('Error querying overview:', error);
+    recordOperationalError('overview metrics', error);
   }
 }
 
@@ -232,7 +244,7 @@ async function queryConversions(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('Error querying conversions:', error);
+    recordOperationalError('conversion events', error);
   }
 }
 
@@ -304,13 +316,23 @@ async function main() {
     // Query conversions
     await queryConversions();
 
-    // Query and display wizard funnel (steps 1-13)
+    // Query and display wizard funnel across the current step count.
     const wizardSteps = await queryWizardFunnel();
-    printFunnelChart(wizardSteps, 'Wizard Funnel (13 Steps)', 13, 1);
+    printFunnelChart(wizardSteps, `Wizard Funnel (${TOTAL_STEPS} Steps)`, TOTAL_STEPS, 1);
 
-    // Query and display lesson funnel (lessons 0-19)
+    // Query and display lesson funnel across the full current curriculum.
     const lessonSteps = await queryLessonFunnel();
-    printFunnelChart(lessonSteps, 'Learning Hub Funnel (20 Lessons)', 20, 0);
+    printFunnelChart(
+      lessonSteps,
+      `Learning Hub Funnel (${TOTAL_LESSONS} Lessons)`,
+      TOTAL_LESSONS,
+      0
+    );
+
+    if (hadOperationalError) {
+      console.error('\n⚠️ Report completed with query errors.');
+      process.exit(1);
+    }
 
     console.log('\n═'.repeat(60));
     console.log('✅ Report complete!');
@@ -331,4 +353,7 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
+});

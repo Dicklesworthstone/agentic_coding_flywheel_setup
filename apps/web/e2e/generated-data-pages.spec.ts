@@ -185,6 +185,49 @@ test.describe("Learn Commands Page (generated data)", () => {
     const count = await elements.count();
     expect(count).toBeGreaterThan(5);
   });
+
+  test("includes manifest-generated utility commands", async ({ page }) => {
+    await page.goto("/learn/commands");
+    await waitForPageSettled(page);
+
+    await expect(page.getByText("giil", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Get Image from Internet Link", { exact: true })
+    ).toBeVisible();
+  });
+
+  test("finds PCR by acronym after generated command-name changes", async ({ page }) => {
+    await page.goto("/learn/commands");
+    await waitForPageSettled(page);
+
+    await page.getByLabel("Search commands").fill("pcr");
+
+    await expect(
+      page.getByText("claude-post-compact-reminder", { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByText("Post-Compact Reminder", { exact: true })
+    ).toBeVisible();
+  });
+
+  test("prefers canonical generated examples for matching manual commands", async ({ page }) => {
+    await page.goto("/learn/commands");
+    await waitForPageSettled(page);
+
+    const search = page.getByLabel("Search commands");
+
+    await search.fill("cass");
+    await expect(page.getByText('cass search "auth error" --robot')).toBeVisible();
+    await expect(page.getByText("cass --help")).toHaveCount(0);
+
+    await search.fill("cm");
+    await expect(page.getByText('cm context "task" --json')).toBeVisible();
+    await expect(page.getByText("cm --help")).toHaveCount(0);
+
+    await search.fill("ru");
+    await expect(page.getByText("ru sync --parallel 4")).toBeVisible();
+    await expect(page.getByText("ru sync -j4")).toHaveCount(0);
+  });
 });
 
 test.describe("Learn Dashboard (generated data)", () => {
@@ -305,4 +348,51 @@ test.describe("Tool Detail Pages (generated data)", () => {
       expect(criticalErrors).toEqual([]);
     });
   }
+
+  test("/learn/tools/ntm uses the canonical repository link", async ({ page }) => {
+    await page.goto("/learn/tools/ntm");
+    await waitForPageSettled(page);
+
+    const html = await page.content();
+    expect(html).toContain("https://github.com/Dicklesworthstone/ntm");
+  });
+
+  test("/learn/tools/pcr shows a hook usage example, not a raw installer pipe", async ({
+    page,
+  }) => {
+    await page.goto("/learn/tools/pcr");
+    await waitForPageSettled(page);
+
+    const bodyText = await page.textContent("body");
+    expect(bodyText).toContain("claude-post-compact-reminder");
+    expect(bodyText).not.toContain("install-post-compact-reminder.sh");
+    expect(bodyText).not.toContain("curl -fsSL");
+  });
+
+  test("/learn/tools/pt prefers the canonical robot-mode example", async ({ page }) => {
+    await page.goto("/learn/tools/pt");
+    await waitForPageSettled(page);
+
+    const bodyText = await page.textContent("body");
+    expect(bodyText).toContain("pt --robot --top 10");
+    expect(bodyText).not.toContain("pt --help");
+  });
+
+  test("/learn/tools/rch and /learn/tools/casr prefer canonical manifest examples", async ({
+    page,
+  }) => {
+    await page.goto("/learn/tools/rch");
+    await waitForPageSettled(page);
+
+    let bodyText = await page.textContent("body");
+    expect(bodyText).toContain("rch status");
+    expect(bodyText).not.toContain("rch exec -- cargo build --release");
+
+    await page.goto("/learn/tools/casr");
+    await waitForPageSettled(page);
+
+    bodyText = await page.textContent("body");
+    expect(bodyText).toContain("casr export --from claude");
+    expect(bodyText).not.toContain("casr providers");
+  });
 });

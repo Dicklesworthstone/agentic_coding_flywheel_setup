@@ -220,6 +220,141 @@ test_manifest_json_valid() {
     cleanup_mock_env
 }
 
+test_manifest_lists_each_summary_once() {
+    setup_mock_env
+    local output_dir="$MOCK_HOME/test-output"
+    mkdir -p "$output_dir"
+
+    local archive_path
+    archive_path=$(HOME="$MOCK_HOME" ACFS_HOME="$MOCK_ACFS" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
+        bash "$SUPPORT_SH" --output "$output_dir" 2>/dev/null) || true
+
+    if [[ -z "$archive_path" ]] || [[ ! -f "$archive_path" ]]; then
+        harness_fail "Bundle archive exists for manifest dedup check"
+        cleanup_mock_env
+        return
+    fi
+
+    local extract_dir
+    extract_dir=$(mktemp -d)
+    tar xzf "$archive_path" -C "$extract_dir" 2>/dev/null
+
+    local manifest
+    manifest=$(find "$extract_dir" -name 'manifest.json' -type f 2>/dev/null | head -1)
+    if [[ -z "$manifest" ]]; then
+        harness_fail "manifest.json exists for manifest dedup check"
+        rm -rf "$extract_dir"
+        cleanup_mock_env
+        return
+    fi
+
+    local summary_count
+    summary_count=$(jq '[.files[] | select(. == "logs/install_summary_20260126_220000.json")] | length' "$manifest" 2>/dev/null || echo 0)
+    harness_assert_eq "1" "$summary_count" "Manifest lists each install summary once"
+
+    rm -rf "$extract_dir"
+    cleanup_mock_env
+}
+
+test_bundle_names_stay_unique_when_timestamps_collide() {
+    setup_mock_env
+    local output_dir="$MOCK_HOME/test-output"
+    local stub_dir="$MOCK_HOME/test-bin"
+    mkdir -p "$output_dir" "$stub_dir"
+
+    cat > "$stub_dir/date" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    +%Y%m%d_%H%M%S)
+        printf '20260312_181600\n'
+        ;;
+    -Iseconds)
+        printf '2026-03-12T18:16:00+00:00\n'
+        ;;
+    +%s)
+        printf '1741803360\n'
+        ;;
+    *)
+        command -p date "$@"
+        ;;
+esac
+EOF
+    chmod +x "$stub_dir/date"
+
+    local first_path=""
+    local second_path=""
+    first_path=$(HOME="$MOCK_HOME" ACFS_HOME="$MOCK_ACFS" PATH="$stub_dir:$PATH" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
+        bash "$SUPPORT_SH" --output "$output_dir" 2>/dev/null) || true
+    second_path=$(HOME="$MOCK_HOME" ACFS_HOME="$MOCK_ACFS" PATH="$stub_dir:$PATH" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
+        bash "$SUPPORT_SH" --output "$output_dir" 2>/dev/null) || true
+
+    if [[ -n "$first_path" ]] && [[ -n "$second_path" ]] \
+        && [[ "$first_path" != "$second_path" ]] \
+        && [[ -f "$first_path" ]] && [[ -f "$second_path" ]]; then
+        harness_pass "Support bundles stay unique when timestamps collide"
+    else
+        harness_fail "Support bundles stay unique when timestamps collide" "first=$first_path second=$second_path"
+    fi
+
+    cleanup_mock_env
+}
+
+test_manifest_matches_bundle_inventory() {
+    setup_mock_env
+    local output_dir="$MOCK_HOME/test-output"
+    mkdir -p "$output_dir"
+
+    local archive_path
+    archive_path=$(HOME="$MOCK_HOME" ACFS_HOME="$MOCK_ACFS" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
+        bash "$SUPPORT_SH" --output "$output_dir" 2>/dev/null) || true
+
+    if [[ -z "$archive_path" ]] || [[ ! -f "$archive_path" ]]; then
+        harness_fail "Bundle archive exists for manifest inventory check"
+        cleanup_mock_env
+        return
+    fi
+
+    local extract_dir
+    extract_dir=$(mktemp -d)
+    tar xzf "$archive_path" -C "$extract_dir" 2>/dev/null
+
+    local bundle_root
+    bundle_root=$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)
+    if [[ -z "$bundle_root" ]]; then
+        harness_fail "Bundle root exists for manifest inventory check"
+        rm -rf "$extract_dir"
+        cleanup_mock_env
+        return
+    fi
+
+    local manifest
+    manifest="$bundle_root/manifest.json"
+    if [[ ! -f "$manifest" ]]; then
+        harness_fail "manifest.json exists for manifest inventory check"
+        rm -rf "$extract_dir"
+        cleanup_mock_env
+        return
+    fi
+
+    local listed_files actual_files listed_count actual_count
+    listed_files=$(jq -r '.files[]' "$manifest" 2>/dev/null | sort)
+    actual_files=$(cd "$bundle_root" && find . -type f | sed 's#^\./##' | sort)
+    listed_count=$(jq -r '.file_count' "$manifest" 2>/dev/null)
+    actual_count=$(printf '%s\n' "$actual_files" | sed '/^$/d' | wc -l | tr -d ' ')
+
+    if [[ "$listed_files" == "$actual_files" ]] \
+        && [[ "$listed_count" == "$actual_count" ]] \
+        && printf '%s\n' "$listed_files" | grep -qx 'manifest.json'; then
+        harness_pass "Manifest inventory matches extracted bundle contents"
+    else
+        harness_fail "Manifest inventory matches extracted bundle contents" \
+            "listed_count=$listed_count actual_count=$actual_count listed=[$listed_files] actual=[$actual_files]"
+    fi
+
+    rm -rf "$extract_dir"
+    cleanup_mock_env
+}
+
 test_redaction_catches_secrets() {
     setup_mock_env
     local output_dir="$MOCK_HOME/test-output"
@@ -397,6 +532,31 @@ test_verbose_flag() {
     cleanup_mock_env
 }
 
+test_tar_failure_returns_bundle_dir() {
+    setup_mock_env
+    local output_dir="$MOCK_HOME/test-output"
+    local stub_dir="$MOCK_HOME/test-bin"
+    mkdir -p "$output_dir" "$stub_dir"
+
+    cat > "$stub_dir/tar" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+    chmod +x "$stub_dir/tar"
+
+    local output_path=""
+    output_path=$(HOME="$MOCK_HOME" ACFS_HOME="$MOCK_ACFS" PATH="$stub_dir:$PATH" SUPPORT_BUNDLE_DOCTOR_TIMEOUT=5 \
+        bash "$SUPPORT_SH" --output "$output_dir" 2>/dev/null) || true
+
+    if [[ "$output_path" == "$output_dir"/* ]] && [[ "$output_path" != *.tar.gz ]] && [[ -d "$output_path" ]]; then
+        harness_pass "Tar failure returns the bundle directory path"
+    else
+        harness_fail "Tar failure returns the bundle directory path" "Got: $output_path"
+    fi
+
+    cleanup_mock_env
+}
+
 test_unknown_flag_errors() {
     local exit_code=0
     bash "$SUPPORT_SH" --bogus-flag >/dev/null 2>&1 || exit_code=$?
@@ -427,9 +587,13 @@ main() {
     harness_section "Bundle Collection Tests"
     test_bundle_creates_archive || true
     test_bundle_contains_expected_files || true
+    test_bundle_names_stay_unique_when_timestamps_collide || true
+    test_tar_failure_returns_bundle_dir || true
 
     harness_section "Manifest JSON Tests"
     test_manifest_json_valid || true
+    test_manifest_lists_each_summary_once || true
+    test_manifest_matches_bundle_inventory || true
 
     harness_section "Redaction Tests"
     test_redaction_catches_secrets || true

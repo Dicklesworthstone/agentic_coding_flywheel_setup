@@ -425,6 +425,47 @@ run_one() {
             cd /repo
             bash install.sh --yes --mode vibe
 
+            # Verify the direct installed wrapper does not short-circuit owner
+            # handoff before state discovery, even if root has stale state.
+            echo ""
+            echo "Verifying direct installed acfs-update handoff..."
+            mkdir -p /root/.acfs
+            cat > /root/.acfs/state.json <<'"'"'EOF'"'"'
+{"target_user":"staleuser"}
+EOF
+            mv /home/ubuntu/.acfs/scripts/lib/update.sh /home/ubuntu/.acfs/scripts/lib/update.sh.real
+            cat > /home/ubuntu/.acfs/scripts/lib/update.sh <<'"'"'EOF'"'"'
+#!/usr/bin/env bash
+set -euo pipefail
+printf "wrapper-user=%s\n" "$(whoami)"
+printf "wrapper-args=%s\n" "$*"
+EOF
+            chmod 755 /home/ubuntu/.acfs/scripts/lib/update.sh
+            chown ubuntu:ubuntu /home/ubuntu/.acfs/scripts/lib/update.sh
+            probe_output=""
+            probe_status=0
+            probe_output=$(/home/ubuntu/.acfs/bin/acfs-update --help 2>&1) || probe_status=$?
+            mv /home/ubuntu/.acfs/scripts/lib/update.sh.real /home/ubuntu/.acfs/scripts/lib/update.sh
+            if [[ $probe_status -ne 0 ]]; then
+                echo "ERROR: direct installed-wrapper dispatch failed" >&2
+                echo "$probe_output" >&2
+                exit 1
+            fi
+            if ! echo "$probe_output" | grep -q "^wrapper-user=ubuntu$"; then
+                echo "ERROR: direct installed-wrapper did not run update.sh as ubuntu" >&2
+                echo "$probe_output" >&2
+                exit 1
+            fi
+
+            # Verify the installed user-bin wrapper still resolves update.sh
+            # when invoked from root/non-target-user context.
+            echo ""
+            echo "Verifying root-side acfs-update wrapper dispatch..."
+            if ! /home/ubuntu/.local/bin/acfs-update --help 2>&1 | grep -q "USAGE:"; then
+                echo "ERROR: root-side acfs-update wrapper dispatch failed" >&2
+                exit 1
+            fi
+
             # Switch to ubuntu user and run update tests
             echo ""
             echo "Running acfs-update E2E tests..."

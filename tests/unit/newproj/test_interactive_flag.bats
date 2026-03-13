@@ -74,7 +74,8 @@ teardown() {
     unset CI GITHUB_ACTIONS GITLAB_CI JENKINS_URL TRAVIS CIRCLECI
     export TERM=xterm
 
-    ! is_ci_environment
+    run is_ci_environment
+    assert_failure
 }
 
 # ============================================================
@@ -274,6 +275,41 @@ teardown() {
     [[ -d "$test_project" ]] || [[ "$output" == *"Creating project"* ]]
 }
 
+@test "main CLI creates local Claude settings and gitignores them" {
+    local project_dir="$TEST_DIR/cli-claude-project"
+
+    run bash -c '
+        source '"$ACFS_LIB_DIR"'/newproj.sh
+        main --no-br --no-agents myproj "'"$project_dir"'"
+    '
+    assert_success
+
+    [[ -f "$project_dir/.claude/settings.local.json" ]]
+    [[ ! -f "$project_dir/.claude/settings.toml" ]]
+
+    run grep -Fx ".claude/settings.local.json" "$project_dir/.gitignore"
+    assert_success
+}
+
+@test "main CLI recommends beads_rust when br is missing" {
+    local project_dir="$TEST_DIR/cli-missing-br-project"
+
+    run bash -c '
+        source '"$ACFS_LIB_DIR"'/newproj.sh
+        command() {
+            if [[ "$1" == "-v" ]] && [[ "${2:-}" == "br" ]]; then
+                return 1
+            fi
+            builtin command "$@"
+        }
+        main --no-claude --no-agents myproj "'"$project_dir"'" 2>&1
+    '
+    assert_success
+
+    [[ "$output" == *"stack.beads_rust"* ]]
+    [[ "$output" != *"stack.beads_viewer"* ]]
+}
+
 @test "main rejects unknown flags" {
     run bash -c '
         source '"$ACFS_LIB_DIR"'/newproj.sh
@@ -282,6 +318,24 @@ teardown() {
 
     assert_failure
     [[ "$output" == *"Unknown option"* ]]
+}
+
+@test "main rejects project names that the TUI would reject" {
+    run bash -c '
+        source '"$ACFS_LIB_DIR"'/newproj.sh
+        main 1app 2>&1
+    '
+
+    assert_failure
+    [[ "$output" == *"must start with a letter"* ]]
+
+    run bash -c '
+        source '"$ACFS_LIB_DIR"'/newproj.sh
+        main com.example.app 2>&1
+    '
+
+    assert_failure
+    [[ "$output" == *"contain only letters, numbers, dashes, and underscores"* ]]
 }
 
 # ============================================================

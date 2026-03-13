@@ -216,6 +216,61 @@ else
 fi
 
 # ============================================================
+section "Test 5b: meta_skill ARM64 Linux source fallback"
+# ============================================================
+for ms_arm64_arch in aarch64 arm64; do
+    MS_ARM64_SIGNAL="/tmp/test_update_channel_ms_arm64_${ms_arm64_arch}_$$"
+    rm -f "$MS_ARM64_SIGNAL"
+    ms_arm64_output=$(
+        bash -c '
+            DRY_RUN=false
+            VERBOSE=false
+            QUIET=true
+            FORCE_MODE=false
+            YES_MODE=false
+            ABORT_ON_FAILURE=false
+            UPDATE_LOG_FILE="/dev/null"
+            SUCCESS_COUNT=0
+            SKIP_COUNT=0
+            FAIL_COUNT=0
+            NO_COLOR=1
+            RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
+            declare -gA VERSION_BEFORE=()
+            declare -gA VERSION_AFTER=()
+
+            source "'"$UPDATE_SH"'"
+
+            uname() {
+                case "${1:-}" in
+                    -s) printf "Linux\n" ;;
+                    -m) printf "'"$ms_arm64_arch"'\n" ;;
+                    *) command uname "$@" ;;
+                esac
+            }
+
+            cargo() {
+                echo "$*" > "'"$MS_ARM64_SIGNAL"'"
+                return 0
+            }
+
+            update_run_verified_installer ms --easy-mode
+        ' 2>&1
+    ) || true
+
+    if [[ -f "$MS_ARM64_SIGNAL" ]]; then
+        ms_arm64_args=$(cat "$MS_ARM64_SIGNAL")
+        rm -f "$MS_ARM64_SIGNAL"
+        if [[ "$ms_arm64_args" == *"--git https://github.com/Dicklesworthstone/meta_skill --force"* ]]; then
+            pass "meta_skill ARM64 Linux update path falls back to cargo source install ($ms_arm64_arch)"
+        else
+            fail "meta_skill ARM64 Linux fallback used wrong cargo args for $ms_arm64_arch: $ms_arm64_args"
+        fi
+    else
+        fail "meta_skill ARM64 Linux fallback did not invoke cargo for $ms_arm64_arch. Output: $ms_arm64_output"
+    fi
+done
+
+# ============================================================
 section "Test 6: uca alias definition"
 # ============================================================
 if [[ -f "$ZSHRC" ]]; then
