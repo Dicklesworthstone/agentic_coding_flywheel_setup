@@ -135,8 +135,9 @@ export function SwarmExecutionViz() {
 
           <div className="h-4 w-px bg-white/10 mx-1" />
           
-          <button 
+          <button
             onClick={handleReset}
+            aria-label="Reset simulation"
             className="flex items-center justify-center h-8 w-8 rounded-lg hover:bg-white/10 text-white/70 transition-colors"
           >
             <RotateCcw className="h-4 w-4" />
