@@ -13,6 +13,8 @@ import { normalizeGitRef } from "./userPreferences";
 const INSTALL_SCRIPT_BASE_URL =
   "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup";
 const DEFAULT_INSTALL_REF = "main";
+const SSH_KEY_PATH_UNIX = "~/.ssh/acfs_ed25519";
+const SSH_KEY_PATH_WINDOWS = "$HOME\\.ssh\\acfs_ed25519";
 
 export interface CommandBuilderInputs {
   ip: string;
@@ -32,12 +34,12 @@ export interface GeneratedCommand {
 }
 
 function sshKeyPath(): string {
-  // Modern OpenSSH for Windows (standard in Win10+) supports ~/.ssh/
-  return "~/.ssh/acfs_ed25519";
+  return SSH_KEY_PATH_UNIX;
 }
 
 function sshKeyPathWindows(): string {
-  return "~/.ssh/acfs_ed25519";
+  // Match the rest of the wizard's PowerShell-safe examples.
+  return SSH_KEY_PATH_WINDOWS;
 }
 
 export function formatSshHost(host: string): string {
