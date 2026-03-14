@@ -548,8 +548,9 @@ export function ArtifactLadderViz() {
     setAutoPlay((prev) => !prev);
   }, []);
 
-  /* Keyboard navigation */
+  /* Keyboard navigation — only when this viz is in the viewport */
   useEffect(() => {
+    if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
@@ -566,7 +567,7 @@ export function ArtifactLadderViz() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isInView]);
 
   /* Auto-play timer */
   useEffect(() => {

@@ -568,8 +568,9 @@ export function SwarmChaosViz() {
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 
-  /* Keyboard navigation */
+  /* Keyboard navigation — only when this viz is in the viewport */
   useEffect(() => {
+    if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === " ") {
         e.preventDefault();
@@ -581,7 +582,7 @@ export function SwarmChaosViz() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isPlaying, play, reset]);
+  }, [isInView, isPlaying, play, reset]);
 
   const currentPhase = PHASES[phase];
   const isDone = phase === TOTAL_PHASES - 1 && !isPlaying;

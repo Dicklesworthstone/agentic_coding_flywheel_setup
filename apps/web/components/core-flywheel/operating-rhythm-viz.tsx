@@ -476,8 +476,9 @@ export function OperatingRhythmViz() {
     [],
   );
 
-  /* Keyboard navigation */
+  /* Keyboard navigation — only when this viz is in the viewport */
   useEffect(() => {
+    if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "ArrowRight") {
         e.preventDefault();
@@ -494,7 +495,7 @@ export function OperatingRhythmViz() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isInView]);
 
   useEffect(() => {
     if (!autoPlay || !isInView || reducedMotion) return;

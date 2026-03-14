@@ -645,8 +645,9 @@ export function HumanAgentTimelineViz() {
     setActiveIndex(0);
   }, []);
 
-  /* Keyboard navigation */
+  /* Keyboard navigation — only when this viz is in the viewport */
   useEffect(() => {
+    if (!isInView) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "ArrowRight") {
         e.preventDefault();
@@ -658,7 +659,7 @@ export function HumanAgentTimelineViz() {
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isInView]);
 
   /* Count by actor type for the summary */
   const humanCount = STAGES.filter((s) => s.actor === "human").length;
