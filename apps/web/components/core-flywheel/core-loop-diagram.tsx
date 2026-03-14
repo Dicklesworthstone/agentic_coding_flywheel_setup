@@ -25,7 +25,7 @@ import type { LucideIcon } from "lucide-react";
 /* ------------------------------------------------------------------ */
 
 const EXHIBIT_PANEL_CLASS =
-  "my-16 overflow-hidden rounded-[3rem] border border-white/[0.03] bg-[#020408] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
+  "my-16 overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] lg:rounded-[3rem] border border-white/[0.03] bg-[#020408] p-5 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
 
 const AUTO_TOUR_INTERVAL_MS = 3000;
 
@@ -68,7 +68,7 @@ const STAGES: Stage[] = [
     color: "#FF5500",
     artifact: "Bead Graph",
     command: "br create --title '...' --type task --priority 1",
-    tip: "Beads are executable memory\u2014detailed enough agents never consult the plan",
+    tip: "Beads are executable memory. Detailed enough that agents never consult the plan.",
   },
   {
     id: "triage",
@@ -108,7 +108,7 @@ const STAGES: Stage[] = [
     color: "#FFBD2E",
     artifact: "Updated Graph",
     command: "br close 123 --reason 'Completed'",
-    tip: "The graph changes after each close\u2014bv now has better information",
+    tip: "Each close reshapes the graph. bv sees a different map next time.",
   },
 ];
 
@@ -329,7 +329,7 @@ function StageNode({
           r: isActive ? 36 : 28,
           strokeOpacity: isActive ? 0.35 : 0.08,
         }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        transition={{ type: "spring", stiffness: 200, damping: 25 }}
       />
 
       {/* Background circle */}
@@ -348,7 +348,7 @@ function StageNode({
           fillOpacity: isActive ? 0.15 : 1,
           strokeOpacity: isActive ? 0.6 : 0.15,
         }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
+        transition={{ type: "spring", stiffness: 200, damping: 25 }}
       />
 
       {/* Pulse ring when active */}
@@ -691,7 +691,7 @@ export function CoreLoopDiagram() {
   const rm = prefersReducedMotion ?? false;
 
   const [activeIndex, setActiveIndex] = useState(0);
-  const [autoTour, setAutoTour] = useState(true);
+  const [autoTour, setAutoTour] = useState(false);
 
   const currentStage = STAGES[activeIndex];
 
@@ -705,6 +705,26 @@ export function CoreLoopDiagram() {
 
     return () => window.clearInterval(id);
   }, [autoTour, isInView, rm]);
+
+  /* Keyboard navigation */
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setActiveIndex((cur) => (cur + 1) % STAGE_COUNT);
+        setAutoTour(false);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setActiveIndex((cur) => (cur - 1 + STAGE_COUNT) % STAGE_COUNT);
+        setAutoTour(false);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setAutoTour((cur) => !cur);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleStageSelect = useCallback(
     (index: number) => {
@@ -737,8 +757,8 @@ export function CoreLoopDiagram() {
             Six stages, one loop, compounding leverage
           </h4>
           <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
-            Each cycle closes a bead, updates the graph, and gives the next
-            agent better information. Click any stage to explore.
+            Each closed bead reshapes the graph. The next agent gets a
+            better map. Click any stage to see the details.
           </p>
         </div>
 
@@ -967,7 +987,7 @@ export function CoreLoopDiagram() {
                         : "none",
                   }}
                   layout
-                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  transition={{ type: "spring", stiffness: 200, damping: 25 }}
                 />
               </button>
             ))}

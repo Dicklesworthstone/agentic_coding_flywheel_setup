@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 /* ------------------------------------------------------------------ */
 
 const EXHIBIT_PANEL_CLASS =
-  "my-16 overflow-hidden rounded-[3rem] border border-white/[0.03] bg-[#020408] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
+  "my-16 overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] lg:rounded-[3rem] border border-white/[0.03] bg-[#020408] p-5 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
 
 type StageId =
   | "raw-idea"
@@ -548,6 +548,26 @@ export function ArtifactLadderViz() {
     setAutoPlay((prev) => !prev);
   }, []);
 
+  /* Keyboard navigation */
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIndex((cur) => (cur + 1) % STAGES.length);
+        setAutoPlay(false);
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex((cur) => (cur - 1 + STAGES.length) % STAGES.length);
+        setAutoPlay(false);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setAutoPlay((cur) => !cur);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   /* Auto-play timer */
   useEffect(() => {
     if (!autoPlay || !isInView || reducedMotion) return undefined;
@@ -581,9 +601,9 @@ export function ArtifactLadderViz() {
             How artifacts transform through the core loop
           </h4>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight">
-            Each stage refines a rough signal into a sharper, more executable
-            form. Click any stage to see what the artifact looks like, what it
-            means for the system, and what you do next.
+            An idea becomes a plan, a plan becomes beads, beads become
+            finished code. Click any stage to see the artifact, what it
+            means, and your next move.
           </p>
         </div>
 
@@ -676,7 +696,7 @@ export function ArtifactLadderViz() {
         />
 
         {/* Right: Detail panel */}
-        <div className="sticky top-8 rounded-[2.5rem] border border-white/[0.03] bg-white/[0.02] backdrop-blur-sm p-8 shadow-inner relative overflow-hidden min-h-[500px]">
+        <div className="sticky top-8 rounded-[2.5rem] border border-white/[0.03] bg-white/[0.02] backdrop-blur-sm p-8 shadow-inner relative overflow-hidden min-h-[400px] lg:min-h-[500px]">
           {/* Colored top border that transitions with active stage */}
           <motion.div
             className="absolute top-0 left-0 right-0 h-[3px] pointer-events-none"
@@ -732,7 +752,7 @@ export function ArtifactLadderViz() {
             {STAGES.length}
           </div>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-extralight">
-            From raw idea to completed work, each stage sharpens the signal.
+            Raw idea to finished code. Each stage adds precision.
           </p>
         </div>
 
@@ -746,8 +766,8 @@ export function ArtifactLadderViz() {
             Plan to Bead
           </div>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400 font-extralight">
-            The moment prose becomes executable memory is where leverage is
-            created.
+            Prose becomes executable memory. This is where agents stop
+            guessing.
           </p>
         </div>
 
@@ -760,9 +780,8 @@ export function ArtifactLadderViz() {
             The Insight
           </div>
           <p className="relative z-10 mt-3 text-sm leading-relaxed text-zinc-300 font-medium">
-            Each completed bead re-shapes the graph, unlocking the next wave
-            of ready work. The loop never stalls because structure begets
-            structure.
+            Each completed bead reshapes the graph and unblocks new work.
+            Finished beads create ready beads.
           </p>
         </div>
       </motion.div>

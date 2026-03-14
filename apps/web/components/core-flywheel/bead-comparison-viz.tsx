@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 /* -------------------------------------------------------------------------- */
 
 const EXHIBIT_PANEL_CLASS =
-  "my-16 overflow-hidden rounded-[3rem] border border-white/[0.03] bg-[#020408] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
+  "my-16 overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] lg:rounded-[3rem] border border-white/[0.03] bg-[#020408] p-5 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
 
 type TabId = "plan" | "bead";
 
@@ -311,7 +311,7 @@ function QualityMetrics({
   tabKey: string;
 }) {
   return (
-    <div className="flex flex-row lg:flex-col items-center justify-center gap-3 py-4 lg:py-0 lg:px-5 relative">
+    <div className="flex flex-row flex-wrap lg:flex-col items-center justify-center gap-3 py-4 lg:py-0 lg:px-5 relative">
       {/* #2 (connecting lines): subtle horizontal connector lines on desktop */}
       <div className="hidden lg:block absolute top-1/2 -translate-y-1/2 -left-4 w-4 border-t border-dashed border-red-500/15 pointer-events-none" />
       <div className="hidden lg:block absolute top-1/2 -translate-y-1/2 -right-4 w-4 border-t border-dashed border-emerald-500/15 pointer-events-none" />
@@ -336,7 +336,7 @@ function QualityMetrics({
           animate={{ opacity: 1, scale: 1 }}
           exit={reducedMotion ? undefined : { opacity: 0, scale: 0.95 }}
           transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="flex flex-row lg:flex-col items-center justify-center gap-3"
+          className="flex flex-row flex-wrap lg:flex-col items-center justify-center gap-3"
         >
           {metrics.map((metric, i) => (
             <motion.div
@@ -387,7 +387,7 @@ export function BeadComparisonViz() {
   return (
     <div ref={ref} className={cn(EXHIBIT_PANEL_CLASS, "relative group/viz")}>
       {/* Noise texture overlay */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none rounded-[3rem]" />
+      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none rounded-[inherit]" />
 
       {/* HEADER */}
       <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between mb-8 sm:mb-10">
@@ -405,9 +405,8 @@ export function BeadComparisonViz() {
             </h4>
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
-            Compare the information density of weak and strong plan bullets and
-            beads. The gap between them is the gap between guesswork and
-            execution.
+            A weak artifact names a topic. A strong one carries scope,
+            constraints, and a test plan. See the difference.
           </p>
         </div>
 

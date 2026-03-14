@@ -1100,20 +1100,20 @@ export default function HomePage() {
             <div className="absolute right-1/4 top-1/2 h-[400px] w-[400px] translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.7_0.2_330)]/[0.04] blur-[120px]" />
           </div>
 
-          <div className="relative mx-auto max-w-4xl px-6">
+          <div className="relative mx-auto max-w-4xl px-6 space-y-8">
             <Link href="/complete-guide" className="group block">
               <motion.div
                 className="relative overflow-hidden rounded-3xl border border-primary/20 p-px"
-                initial={{ opacity: 0, y: 30, scale: 0.98 }}
-                whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                viewport={{ once: true, margin: "-80px" }}
-                transition={springs.smooth}
-                whileHover={{ y: -4, scale: 1.005 }}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ ...springs.gentle, delay: 0.05 }}
+                whileHover={{ y: -4 }}
                 style={{
                   boxShadow: "0 0 60px -12px oklch(0.75 0.18 195 / 0.15), 0 24px 48px -12px rgba(0,0,0,0.4)",
                 }}
               >
-                {/* Animated border gradient — glows brighter on hover */}
+                {/* Animated border gradient */}
                 <div
                   className="absolute inset-0 rounded-3xl opacity-40 transition-opacity duration-500 group-hover:opacity-100"
                   style={{
@@ -1129,75 +1129,43 @@ export default function HomePage() {
 
                 {/* Inner card */}
                 <div className="relative rounded-[23px] bg-gradient-to-br from-card via-card/95 to-card px-8 py-10 sm:px-12 sm:py-14">
-                  {/* Top label */}
-                  <motion.div
-                    className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary"
-                    initial={{ opacity: 0, x: -10 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.snappy, delay: 0.1 }}
-                  >
+                  <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary">
                     <Sparkles className="h-3.5 w-3.5" />
                     Featured Guide
-                  </motion.div>
+                  </div>
 
-                  {/* Headline with gradient */}
-                  <motion.h3
+                  <h3
                     className="mb-4 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl"
                     style={{ letterSpacing: "-0.025em" }}
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.smooth, delay: 0.15 }}
                   >
                     <span className="text-gradient-cosmic">The Flywheel Methodology</span>
-                  </motion.h3>
+                  </h3>
 
-                  <motion.p
-                    className="mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.smooth, delay: 0.2 }}
-                  >
-                    The definitive guide to planning-first agentic development — decompose complex projects into beads,
+                  <p className="mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+                    The definitive guide to planning-first agentic development: decompose complex projects into beads,
                     detect convergence, coordinate agent swarms, and ship 10&times; faster with the Flywheel approach.
-                  </motion.p>
+                  </p>
 
-                  {/* Stats row */}
-                  <motion.div
-                    className="mb-8 flex flex-wrap gap-x-6 gap-y-3 text-sm"
-                    initial={{ opacity: 0 }}
-                    whileInView={{ opacity: 1 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.smooth, delay: 0.25 }}
-                  >
+                  <div className="mb-8 flex flex-wrap gap-x-6 gap-y-3 text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Clock className="h-4 w-4 text-primary/60" />
                       <span>25 in-depth sections</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Cpu className="h-4 w-4 text-primary/60" />
-                      <span>3 interactive visualizations</span>
+                      <span>9 interactive visualizations</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Zap className="h-4 w-4 text-primary/60" />
                       <span>Complete methodology</span>
                     </div>
-                  </motion.div>
+                  </div>
 
-                  {/* CTA button */}
-                  <motion.div
-                    className="inline-flex items-center gap-3 rounded-xl bg-primary px-7 py-3.5 text-base font-bold text-primary-foreground shadow-lg transition-all duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_195/0.5)] group-hover:scale-[1.03]"
-                    initial={{ opacity: 0, y: 10 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ ...springs.snappy, delay: 0.3 }}
-                  >
+                  <div className="inline-flex items-center gap-3 rounded-xl bg-primary px-7 py-3.5 text-base font-bold text-primary-foreground shadow-lg transition-all duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_195/0.5)] group-hover:scale-[1.03]">
                     <BookOpen className="h-5 w-5" />
                     Read the Flywheel Guide
                     <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
-                  </motion.div>
+                  </div>
                 </div>
 
                 {/* Decorative gradient orbs */}
@@ -1207,14 +1175,14 @@ export default function HomePage() {
             </Link>
 
             {/* Core Flywheel — Simpler Starting Point */}
-            <Link href="/core_flywheel" className="group block mt-8">
+            <Link href="/core_flywheel" className="group block">
               <motion.div
                 className="relative overflow-hidden rounded-3xl border border-[#FF5500]/20 p-px"
-                initial={{ opacity: 0, y: 30, scale: 0.98 }}
-                whileInView={{ opacity: 1, y: 0, scale: 1 }}
-                viewport={{ once: true, margin: "-80px" }}
-                transition={springs.smooth}
-                whileHover={{ y: -4, scale: 1.005 }}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-100px" }}
+                transition={{ ...springs.gentle, delay: 0.1 }}
+                whileHover={{ y: -4 }}
                 style={{
                   boxShadow: "0 0 60px -12px oklch(0.75 0.18 30 / 0.12), 0 24px 48px -12px rgba(0,0,0,0.4)",
                 }}
@@ -1235,7 +1203,6 @@ export default function HomePage() {
 
                 {/* Inner card */}
                 <div className="relative rounded-[23px] bg-gradient-to-br from-card via-card/95 to-card px-8 py-10 sm:px-12 sm:py-14">
-                  {/* Top label */}
                   <motion.div
                     className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#FF5500]/30 bg-[#FF5500]/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-[#FF5500]"
                     initial={{ opacity: 0, x: -10 }}
@@ -1268,7 +1235,6 @@ export default function HomePage() {
                     New to the Flywheel? Start with just three tools — Agent Mail, beads, and bv. This focused guide covers the core loop that captures most of the methodology&apos;s value, without the full system&apos;s complexity.
                   </motion.p>
 
-                  {/* Stats row */}
                   <motion.div
                     className="mb-8 flex flex-wrap gap-x-6 gap-y-3 text-sm"
                     initial={{ opacity: 0 }}
@@ -1282,7 +1248,7 @@ export default function HomePage() {
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Cpu className="h-4 w-4 text-[#FF5500]/60" />
-                      <span>3 interactive visualizations</span>
+                      <span>4 interactive visualizations</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Clock className="h-4 w-4 text-[#FF5500]/60" />
@@ -1290,7 +1256,6 @@ export default function HomePage() {
                     </div>
                   </motion.div>
 
-                  {/* CTA button */}
                   <motion.div
                     className="inline-flex items-center gap-3 rounded-xl bg-[#FF5500] px-7 py-3.5 text-base font-bold text-black shadow-lg transition-all duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_30/0.5)] group-hover:scale-[1.03]"
                     initial={{ opacity: 0, y: 10 }}

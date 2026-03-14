@@ -21,6 +21,8 @@ import { ArtifactLadderViz } from "@/components/core-flywheel/artifact-ladder-vi
 import { BeadComparisonViz } from "@/components/core-flywheel/bead-comparison-viz";
 import { QuickNav } from "@/components/core-flywheel/quick-nav";
 import { OperatingRhythmViz } from "@/components/core-flywheel/operating-rhythm-viz";
+import { SwarmChaosViz } from "@/components/core-flywheel/swarm-chaos-viz";
+import { HumanAgentTimelineViz } from "@/components/core-flywheel/human-agent-timeline-viz";
 
 
 export default function CoreFlywheelPage() {
@@ -56,6 +58,11 @@ export default function CoreFlywheelPage() {
 
             <P>Separate the process into two layers: the <Hl>planning substrate</Hl> (frontier models used to create and refine the markdown plan) and the <Hl>core operating loop</Hl> (Agent Mail, br, and bv once the plan is ready to drive execution).</P>
 
+            <SubSection title="Who This Is For">
+              <P>This document is for a relatively smart software developer who is new to agentic coding and does not want to absorb the entire larger Flywheel guide up front. The goal is narrower: get you to the point where you can coordinate multiple agents without chaos, keep work organized as explicit tasks with dependencies, and keep agents working on the best next unblocked task instead of choosing randomly.</P>
+              <P>If that works well for you, the larger Flywheel stack becomes much easier to appreciate later.</P>
+            </SubSection>
+
             <TipBox variant="info">
               When this guide says &quot;three-tool core,&quot; it means the durable execution substrate you keep live while the project is being carried out. It does not mean the planning phase happens in a vacuum. The first step is still creating an excellent markdown plan.
             </TipBox>
@@ -74,21 +81,17 @@ export default function CoreFlywheelPage() {
               rows={[
                 ["Bead", "A self-contained task with enough context, dependency information, and completion criteria that an agent can work it without guessing."],
                 ["Ready bead", "A bead whose blockers are cleared, so it can be started right now."],
-                ["Claim", "The act of announcing, usually in Agent Mail, that a specific agent is taking responsibility for a bead."],
-                ["Reservation", "A coordination lock or lease on files or resources so two agents do not unknowingly collide."],
-                ["Thread", "The running Agent Mail conversation tied to one bead ID, where start, progress, review, and completion messages accumulate."],
+                ["Claim", "When an agent announces via Agent Mail that it is taking responsibility for a bead. Agents do this automatically."],
+                ["Reservation", "A coordination lock on files so two agents do not unknowingly collide. Agents manage these automatically via Agent Mail."],
+                ["Thread", "The Agent Mail conversation tied to one bead, where start, progress, and completion messages accumulate. Created automatically by agents."],
               ]}
             />
 
-            <SubSection title="The One Convention That Holds It Together">
-              <P>Use the <Hl>bead ID everywhere</Hl>. If the task is <code>br-123</code>, then:</P>
-              <BulletList items={[
-                <>The Agent Mail thread should also be <code>br-123</code></>,
-                <>The subject line should start with <code>[br-123]</code></>,
-                <>The file reservation reason should mention <code>br-123</code></>,
-                <>Commit messages should include <code>br-123</code> for traceability</>,
-              ]} />
-              <P>It sounds small, but it is one of the most practical conventions in the whole workflow. The task graph, the coordination thread, and the work claim all line up under the same identifier.</P>
+            <SubSection title="How the Tools Work Together (Behind the Scenes)">
+              <P>You do not need to manually manage the coordination between these tools. When your <code>AGENTS.md</code> file is set up correctly, the agents handle the integration automatically: they use bead IDs as thread identifiers in Agent Mail, they announce claims and reserve files before editing, and they update bead status as they work. You configure this once in AGENTS.md and then the agents just do it.</P>
+              <TipBox variant="info">
+                The human&apos;s job is to write a good plan, create good beads, launch agents with the right marching orders, and then tend the swarm. The agents handle the coordination plumbing themselves.
+              </TipBox>
             </SubSection>
           </GuideSection>
 
@@ -98,7 +101,7 @@ export default function CoreFlywheelPage() {
           {/* SECTION 3: THE CORE IDEA                                       */}
           {/* ============================================================= */}
           <GuideSection id="core-loop" number="3" title="The Core Loop">
-            <P highlight>The core loop is simple: generate a plan, encode it as beads, let bv route work, coordinate through Agent Mail, implement, close, and repeat until the graph is done.</P>
+            <P highlight>The core loop is simple: generate a plan, encode it as beads, launch agents with marching orders, let them coordinate through Agent Mail while bv routes them toward the best next bead, and tend the swarm until the graph is done.</P>
 
             <CoreLoopDiagram />
 
@@ -116,6 +119,8 @@ export default function CoreFlywheelPage() {
             </SubSection>
 
             <P>The core loop moves work out of ephemeral chat and into explicit, inspectable artifacts. That is the short answer to &quot;why bother?&quot;</P>
+
+            <SwarmChaosViz />
           </GuideSection>
 
           <Divider />
@@ -128,7 +133,7 @@ export default function CoreFlywheelPage() {
 
             <SubSection title="Agent Mail Solves Coordination">
               <P>Without Agent Mail, multiple agents constantly collide: two agents edit the same files, nobody knows who is doing what, messages disappear into chat history, and work gets stranded when an agent crashes.</P>
-              <P>Agent Mail gives you a shared coordination layer with <Hl>identities</Hl>, <Hl>threads</Hl>, <Hl>inboxes</Hl>, and <Hl>file reservations</Hl>. Agents announce what they are doing, reserve edit surfaces, and recover when another agent disappears.</P>
+              <P>Agent Mail gives agents a shared coordination layer with <Hl>identities</Hl>, <Hl>threads</Hl>, <Hl>inboxes</Hl>, and <Hl>file reservations</Hl>. Agents announce what they are doing, reserve edit surfaces, and recover when another agent disappears. All of this happens automatically once your AGENTS.md tells agents to use Agent Mail.</P>
             </SubSection>
 
             <SubSection title="br Solves Task Structure">
@@ -173,6 +178,26 @@ export default function CoreFlywheelPage() {
               </TipBox>
             </SubSection>
 
+            <SubSection title="What a Good Plan Looks Like">
+              <P>A strong plan lets a fresh reader answer five questions without guessing: what are the main workflows? What constraints matter? What architecture are we choosing? How will we know it works? What failure cases must not disappear into hand-waving?</P>
+              <CodeBlock language="markdown" code={`## Upload workflow
+- Users drag Markdown files into the upload surface.
+- The system parses frontmatter plus body text and stores a normalized note record.
+
+## Constraints
+- Unauthorized users must never see note content or note metadata.
+- Failed ingestions must be preserved for operator review instead of discarded.
+
+## Architecture choice
+- Use a dedicated ingestion pipeline so parse failures can be persisted and retried.
+- Keep search indexing separate from upload handling so indexing can be retried independently.
+
+## Tests and failure handling
+- Unit coverage for parsing and index mapping.
+- E2E coverage for upload, failed-ingestion review, retry, search, and filtering.`} />
+              <P>It gives a fresh agent workflows, constraints, architecture, testing, and failure handling in one place. Before you turn the plan into beads, check that these five questions are answerable from the plan alone.</P>
+            </SubSection>
+
             <SubSection title="Escalation Ladder">
               <P>When something feels wrong, use the smallest escalation that actually fits the problem:</P>
               <BulletList items={[
@@ -196,21 +221,45 @@ export default function CoreFlywheelPage() {
             <P>If you gave four agents only that vague description, they would step on each other and make mismatched assumptions. The core loop instead looks like this:</P>
 
             <NumberedList items={[
-              "Ask multiple frontier models to produce competing markdown plans, then synthesize them into one strong plan describing uploads, parsing, tagging, search, admin review, and testing expectations.",
-              <>Convert that plan into beads in <code>br</code>: upload pipeline (br-101), indexing and search (br-102), admin screen (br-103), auth (br-104), end-to-end tests (br-105).</>,
-              "Add dependencies so the graph reflects reality — br-103 depends on br-101 and br-104.",
-              "Agents use Agent Mail to announce claims and reserve files.",
-              "Agents use bv to see which ready bead matters most right now.",
-              "They work, update bead status, send progress in-thread, and repeat.",
+              "You ask multiple frontier models to produce competing markdown plans, then synthesize them into one strong plan.",
+              "You tell an agent to convert that plan into beads — upload pipeline, indexing, admin screen, auth, and end-to-end tests — with explicit dependencies.",
+              "You launch 2-4 agents with marching orders. They read AGENTS.md, join Agent Mail, and start picking up beads using bv.",
+              "You tend the swarm: check progress every 10-15 minutes, rescue confused agents, and add missing beads when needed.",
+              "Agents implement, review their own work with fresh eyes, close beads, and move to the next one. You step in for strategic decisions.",
             ]} />
+
+            <SubSection title="What a Good Bead Looks Like">
+              <P>The bead is the unit of work agents actually execute. Weak beads force improvisation. Rich beads make execution mechanical. Here is a real bead from the ACFS project:</P>
+              <CodeBlock language="markdown" code={`bd-01s: Add --deep flag to acfs doctor
+
+Context:
+Part of EPIC: Enhanced Doctor with Functional Tests.
+
+What to Do:
+Add --deep flag to doctor.sh that enables functional tests beyond
+binary existence checks:
+- Add DEEP_MODE=false global
+- Parse --deep flag alongside existing --json
+- --deep and --json can be combined
+
+Acceptance Criteria:
+- --deep flag parsed correctly
+- Default doctor unchanged (fast, existence checks only)
+- --deep runs additional functional tests
+- Works with --json for structured output
+
+Files to Modify:
+- scripts/lib/doctor.sh: Argument parsing`} />
+              <P>The prose does not need polish. A fresh agent should be able to understand the task, the reason for it, and the acceptance criteria without reopening the whole markdown plan. You can browse real beads from actual Flywheel projects at <a href="https://dicklesworthstone.github.io/beads_for_franken_engine" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">FrankenEngine</a>, <a href="https://dicklesworthstone.github.io/beads-for-frankentui/" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">FrankenTUI</a>, and <a href="https://dicklesworthstone.github.io/beads_for_asupersync" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">Asupersync</a>.</P>
+            </SubSection>
 
             <SubSection title="Weak vs. Strong Artifacts">
               <P>Quality thresholds get easier to feel when you compare weak and strong versions directly. The weak version names a topic. The strong version scopes the actual requirement, constraint, and testing obligation.</P>
               <BeadComparisonViz />
             </SubSection>
 
-            <SubSection title="Sample Agent Mail Thread">
-              <P>A typical bead thread has a simple rhythm — three short updates are usually enough:</P>
+            <SubSection title="What the Agents Do Automatically">
+              <P>Once you launch agents with good marching orders, they automatically handle the coordination mechanics. A typical bead thread in Agent Mail looks like this — created entirely by agents, not by you:</P>
 
               <CodeBlock language="text" code={`[br-103] Start: Failed-ingestion admin screen
 Claiming br-103. Reserving admin UI files plus retry handler path.
@@ -222,6 +271,7 @@ List view and detail view working. Now handling edge cases and tests.
 [br-103] Completed
 Admin screen done. List view, detail view, and retry action wired.
 Auth checks in place. E2E coverage for malformed upload → admin review → retry.`} />
+              <P>You do not write these messages. The agents create them because your AGENTS.md tells them to coordinate through Agent Mail and use bead IDs as thread anchors. Your job is to monitor these threads to see if work is flowing or stuck.</P>
             </SubSection>
           </GuideSection>
 
@@ -231,6 +281,8 @@ Auth checks in place. E2E coverage for malformed upload → admin review → ret
           {/* SECTION 7: THE OPERATING RHYTHM                                */}
           {/* ============================================================= */}
           <GuideSection id="operating-rhythm" number="7" title="The Operating Rhythm">
+            <P highlight>This section describes what <strong>you, the human</strong>, actually do. The agents handle the coordination plumbing (Agent Mail messages, file reservations, bead status updates). Your job is to create the conditions for them to succeed.</P>
+
             <OperatingRhythmViz />
 
             <SubSection title="Step 1: Create an Excellent Markdown Plan">
@@ -248,65 +300,58 @@ Auth checks in place. E2E coverage for malformed upload → admin review → ret
               <P>At minimum, you want: the user-facing workflows, the important constraints, the major architectural decisions, and the testing expectations.</P>
             </SubSection>
 
-            <SubSection title="Step 2: Turn the Plan into Beads">
-              <P>Use <code>br</code> to create actual beads — real work units, not vague slogans.</P>
+            <SubSection title="Step 2: Tell an Agent to Convert the Plan into Beads">
+              <P>You do not need to manually create every bead yourself. Tell a coding agent to do the conversion:</P>
 
-              <CodeBlock language="bash" code={`# Create the bead with a clear title and basic metadata
-br create --title "Upload and parse pipeline" --type task --priority 1
-br create --title "Failed-ingestion admin screen" --type task --priority 1
-br create --title "End-to-end ingestion tests" --type task --priority 1
+              <PromptBlock
+                title="Plan to Beads Conversion"
+                prompt={`OK so please take ALL of that and elaborate on it and use it to create a comprehensive and granular set of beads for all this with tasks, subtasks, and dependency structure overlaid, with detailed comments so that the whole thing is totally self-contained and self-documenting. The beads should be so detailed that we never need to consult back to the original markdown plan document. Remember to ONLY use the \`br\` tool to create and modify the beads and add the dependencies. Use ultrathink.`}
+                where="Claude Code with Opus"
+                whyItWorks="Beads become the active source of truth for execution. Once they're strong enough, you never look back at the markdown plan."
+              />
 
-# Add the first obvious dependencies
-br dep add 103 101
-br dep add 105 101
-
-# Check what's ready
-br ready --json`} />
-
-              <P>Good beads include: what needs to be done, relevant background, what it depends on, what counts as done, and what tests need to exist. The more explicit the bead graph is, the less improvisation the swarm has to do later.</P>
+              <P>Then polish the beads 4-6 times with fresh review passes. Each round catches things the previous round missed. This is the &quot;measure twice, cut once&quot; of the methodology.</P>
 
               <TipBox>
                 <strong>Beads are executable memory.</strong> The markdown plan is the best artifact for whole-system thought. Beads are the plan after it has been transformed into a format optimized for distributed execution. Weak beads force improvisation. Rich beads make execution mechanical.
               </TipBox>
             </SubSection>
 
-            <SubSection title="Step 3: Let bv Tell You What Matters Next">
-              <P>Once the bead graph exists, stop relying on intuition for task ordering. Use <code>bv</code> to see what is ready, what clears the most downstream blockers, and what work has outsized impact.</P>
+            <SubSection title="Step 3: Launch Agents with Marching Orders">
+              <P>Once beads are polished and your AGENTS.md is solid, start up a swarm of agents. Give each one these marching orders:</P>
 
-              <CodeBlock language="bash" code={`# THE MEGA-COMMAND: start here
-bv --robot-triage
+              <PromptBlock
+                title="Swarm Marching Orders"
+                prompt={`First read ALL of the AGENTS.md file and README.md file super carefully and understand ALL of both! Then use your code investigation agent mode to fully understand the code, and technical architecture and purpose of the project. Then register with MCP Agent Mail and introduce yourself to the other agents.
 
-# Minimal: just the single top pick + claim command
-bv --robot-next`} />
+Be sure to check your agent mail and to promptly respond if needed to any messages; then proceed meticulously with your next assigned beads, working on the tasks systematically and meticulously and tracking your progress via beads and agent mail messages.
 
-              <P>Do not stare at the JSON forever. Look for the <Hl>top recommendation</Hl>, <Hl>why it is top</Hl>, and <Hl>what it unblocks</Hl>.</P>
+Don't get stuck in "communication purgatory" where nothing is getting done; be proactive about starting tasks that need to be done, but inform your fellow agents via messages when you do so and mark beads appropriately.
 
-              <TipBox variant="warning">
-                Sometimes the right response to bv is not &quot;follow the recommendation&quot; but &quot;the graph itself still needs work.&quot; If there are no good ready beads even though work obviously exists, go back and fix the dependencies or add missing beads.
-              </TipBox>
+When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to prioritize the best beads to work on next; pick the next one that you can usefully work on and get started. Use ultrathink.`}
+                where="Every agent in the swarm gets this as their initial prompt"
+                whyItWorks="Every agent is fungible and a generalist. The specifics come from AGENTS.md and the beads, not from the prompt. This generic prompt works for every project."
+              />
+
+              <P>Stagger agent starts by at least 30 seconds to avoid the &quot;thundering herd&quot; problem where all agents grab the same bead. Start smaller than your ego wants to: 1 agent to learn, 2 to feel coordination, 4 for real swarm behavior.</P>
             </SubSection>
 
-            <SubSection title="Step 4: Coordinate Through Agent Mail">
-              <P>When an agent starts a bead, it should communicate what it is working on and reserve the relevant files.</P>
+            <SubSection title="Step 4: Tend the Swarm">
+              <P>Now you are the operator. On roughly a 10-15 minute cadence, check on the swarm:</P>
 
-              <CodeBlock language="text" code={`# Join the coordination layer
-ensure_project(project_key="/path/to/repo")
-register_agent(project_key="/path/to/repo", program="claude-code", model="opus")
+              <NumberedList items={[
+                <>Run <code>bv --robot-triage</code> and check whether the top recommendation still makes sense.</>,
+                "Glance through Agent Mail threads — are agents making progress or stuck?",
+                "Look for beads stuck in in_progress without movement.",
+                <>If an agent seems confused after compaction, send: &quot;Reread AGENTS.md so it&apos;s still fresh in your mind.&quot;</>,
+                "If an agent is truly degraded, kill it and start a fresh one.",
+              ]} />
 
-# Claim and reserve
-file_reservation_paths(..., reason="br-101")
-send_message(..., thread_id="br-101", subject="[br-101] Start: Upload pipeline")`} />
-
-              <P>That keeps the swarm legible. Other agents can see what is happening. If someone crashes, the thread is still there. If there is overlap, the reservation system makes it visible.</P>
+              <P>That is usually enough to keep the loop healthy without turning the human into a full-time traffic cop.</P>
             </SubSection>
 
-            <SubSection title="Step 5: Finish, Review, Repeat">
-              <P>As work completes: update bead status, send completion notes, and ask bv what the next best ready bead is.</P>
-
-              <CodeBlock language="bash" code={`br update 101 --status in_progress
-# ... implement, test, review ...
-br close 101 --reason "Completed"
-bv --robot-next`} />
+            <SubSection title="Step 5: Review, Close, Repeat">
+              <P>After agents finish each bead, have them review their own work:</P>
 
               <PromptBlock
                 title="Fresh-Eyes Review"
@@ -314,6 +359,8 @@ bv --robot-next`} />
                 where="After each bead is implemented — run until no more bugs found"
                 whyItWorks="Forces a mode switch from writing to adversarial reading while the code is still fresh. One of the cheapest quality multipliers in the whole method."
               />
+
+              <P>Then they move to the next bead using bv to find the most impactful one. The cycle repeats until the graph is done.</P>
             </SubSection>
           </GuideSection>
 
@@ -323,27 +370,37 @@ bv --robot-next`} />
           {/* SECTION 8: THE HUMAN'S JOB                                     */}
           {/* ============================================================= */}
           <GuideSection id="operator" number="8" title="The Human&apos;s Job">
-            <P highlight>The human is not supposed to micromanage every code edit. The human is there to keep the structure clean enough that the agents can work effectively inside it.</P>
+            <P highlight>The human is not supposed to micromanage every code edit or manually coordinate Agent Mail threads. The human is there to keep the structure clean enough that the agents can work effectively inside it.</P>
 
-            <SubSection title="Main Responsibilities">
+            <HumanAgentTimelineViz />
+
+            <SubSection title="What You Do">
               <BulletList items={[
-                <><strong>Keep the bead graph honest</strong> — notice when a missing task or missing dependency must be added</>,
+                <><strong>Create the plan and beads</strong> — this is where most of your time and thinking goes</>,
+                <><strong>Write a good AGENTS.md</strong> — this is the operating manual that makes everything else work</>,
+                <><strong>Launch agents with marching orders</strong> — the same generic prompt every time</>,
+                <><strong>Keep the bead graph honest</strong> — notice when a missing task or dependency must be added</>,
                 <><strong>Restart or redirect agents</strong> when they drift, get loopy, or lose context</>,
-                <><strong>Keep the system moving</strong> instead of letting it stall in over-coordination</>,
-                <><strong>Ask the hard question:</strong> if all open beads land cleanly, does that actually close the remaining gap?</>,
+                <><strong>Ask the hard question</strong> periodically (see below)</>,
               ]} />
             </SubSection>
 
-            <SubSection title="The 15-Minute Operator Sweep">
-              <P>During active execution, check the swarm on roughly a 10-15 minute cadence:</P>
-              <NumberedList items={[
-                <>Run <code>bv --robot-next</code> or <code>bv --robot-triage</code> and check whether the top recommendation still makes sense.</>,
-                "Glance through Agent Mail threads for fresh claims, blockers, or silence.",
-                "Look for stale reservations or beads stuck in in_progress without movement.",
-                "Restart or redirect one drifting agent if something looks loopy or confused.",
-                "Ask whether the open and in-progress beads still close the remaining goal gap.",
+            <SubSection title="What the Agents Do (Not You)">
+              <BulletList items={[
+                "Register with Agent Mail and discover other active agents",
+                "Claim beads and announce what they are working on",
+                "Reserve files before editing to prevent conflicts",
+                "Update bead status (in_progress, closed) as they work",
+                "Use bv to find the next best bead when they finish one",
+                "Send progress updates and completion messages in Agent Mail threads",
               ]} />
-              <P>That is usually enough to keep the loop healthy without turning the human into a full-time traffic cop.</P>
+              <P>All of this is configured once in your AGENTS.md. You do not need to manually invoke Agent Mail calls, update bead statuses, or thread bead IDs into messages. The agents do it because the operating manual tells them to.</P>
+            </SubSection>
+
+            <SubSection title="The Reality Check">
+              <P>When the swarm looks active but you suspect it is not actually closing the real gap, stop and ask:</P>
+              <BlockQuote>Where are we on this project? Do we actually have the thing we are trying to build? If not, what is blocking us? If we intelligently implement all open and in-progress beads, would we close that gap completely? Why or why not?</BlockQuote>
+              <P>If the answer is &quot;no,&quot; the fix is usually not more implementation effort. Revise the bead graph, add missing work, or step back into planning.</P>
             </SubSection>
 
             <SubSection title="Minimum Viable AGENTS.md">
@@ -352,7 +409,7 @@ bv --robot-next`} />
                 "What the repo is for",
                 "What the stack is",
                 "Any non-negotiable safety or style rules",
-                "How this project uses Agent Mail, br, and bv",
+                "How to use Agent Mail, br, and bv (include the prepared blurbs from each tool's docs)",
               ]} />
               <BlockQuote>Treat AGENTS.md as the swarm&apos;s durable operating manual. It tells a fresh or partially confused agent how to behave, what tools exist, and what &quot;doing a good job&quot; looks like in this repo.</BlockQuote>
 
@@ -371,10 +428,10 @@ bv --robot-next`} />
             <DataTable
               headers={["Symptom", "Likely Cause", "Fix"]}
               rows={[
-                ["Agents keep overlapping", "Weak or missing Agent Mail claims and reservations", "Force thread use, reserve surfaces, restate ownership"],
-                ["Agents choose random work", "The team is not using bv consistently", "Run bv --robot-triage and route from the graph"],
+                ["Agents keep overlapping", "AGENTS.md doesn't emphasize Agent Mail claims and reservations enough", "Strengthen the coordination section in AGENTS.md"],
+                ["Agents choose random work", "AGENTS.md doesn't explain bv usage clearly", "Add bv usage instructions to AGENTS.md with the robot-flag commands"],
                 ["A task keeps stalling", "The bead is underspecified or missing a dependency", "Rewrite the bead or add the missing dependency"],
-                ["The swarm feels busy but confused", "The markdown plan was too weak", "Go back up a level and improve the plan"],
+                ["The swarm feels busy but confused", "The markdown plan was too weak", "Go back up a level and improve the plan before continuing"],
               ]}
             />
 
@@ -382,14 +439,12 @@ bv --robot-next`} />
               <P>When an agent vanishes mid-bead, the recovery path should be boring:</P>
               <NumberedList items={[
                 "Check the Agent Mail thread for the last meaningful progress update.",
-                "Check whether the file reservation is still active and looks abandoned.",
-                "Reread AGENTS.md so the local operating contract is fresh.",
-                "If the original session is salvageable, resume it. If loopy or degraded, restart.",
-                "Reclaim the bead explicitly in Agent Mail so ownership is visible.",
-                "Continue from the bead body plus the thread history instead of guessing.",
+                "Launch a fresh agent with the standard marching orders.",
+                "The new agent will read AGENTS.md, discover the abandoned bead via bv, and pick it up.",
+                "If the bead was partially completed, the new agent can continue from the code state plus the thread history.",
               ]} />
               <TipBox variant="info">
-                If that recovery feels hard, the bead or the thread was probably too thin. That is a signal to write richer beads in the future.
+                If recovery feels hard, the bead or the AGENTS.md was probably too thin. That is a signal to write richer beads and a more thorough operating manual.
               </TipBox>
             </SubSection>
           </GuideSection>
@@ -397,9 +452,42 @@ bv --robot-next`} />
           <Divider />
 
           {/* ============================================================= */}
-          {/* SECTION 10: HELPER UTILITIES                                    */}
+          {/* SECTION 10: WHAT IT FEELS LIKE                                  */}
           {/* ============================================================= */}
-          <GuideSection id="helpers" number="10" title="Helper Utilities: DCG, UBS & CASS">
+          <GuideSection id="what-it-feels-like" number="10" title="What It Feels Like Once It Clicks">
+            <P>At some point, the workflow stops feeling like extra ceremony and starts feeling like a <Hl>calmer control surface</Hl>:</P>
+
+            <BulletList items={[
+              <><strong>Less duplicated work</strong>, because agents manage ownership and reservations automatically</>,
+              <><strong>Less &quot;what should I do next?&quot; drift</strong>, because bv keeps answering that question for the agents</>,
+              <><strong>Easier restart after context loss</strong>, because the work lives in beads and threads instead of only in chat history</>,
+              <><strong>Easier handoff</strong>, because any agent can read the bead, read the thread, and continue</>,
+            ]} />
+
+            <P>That operator feeling is a good sign. It usually means the artifacts are carrying the work instead of your short-term memory.</P>
+
+            <SubSection title="Why This Captures Most of the Value">
+              <P>People often assume the magic of the Flywheel comes from the total number of tools. It does not. Most of the value comes from three things:</P>
+              <NumberedList items={[
+                "Work is explicit instead of implicit",
+                "Coordination is externalized instead of living in human memory",
+                "Task choice is graph-aware instead of random",
+              ]} />
+              <P>Those three properties are already present in the core loop. That is why the smaller system gets you surprisingly far.</P>
+            </SubSection>
+
+            <SubSection title="When Not to Use the Core Loop">
+              <P>You probably do not need it for a tiny one-file change with no real dependency structure, a purely local experiment, or a quick one-agent cleanup that does not need externalized coordination.</P>
+              <P>The loop earns its keep when work has enough structure, enough ambiguity, or enough parallelism that explicit planning, explicit tasks, and explicit coordination start paying for themselves.</P>
+            </SubSection>
+          </GuideSection>
+
+          <Divider />
+
+          {/* ============================================================= */}
+          {/* SECTION 11: HELPER UTILITIES                                    */}
+          {/* ============================================================= */}
+          <GuideSection id="helpers" number="11" title="Helper Utilities: DCG, UBS & CASS">
             <P>Once the core loop is running smoothly, three helper utilities significantly improve safety, quality, and learning. They are <Hl>multipliers on top of the core loop</Hl>, not prerequisites.</P>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6 my-12">
@@ -432,25 +520,46 @@ bv --robot-next`} />
               />
             </div>
 
-            <P>These utilities share a common theme: they take knowledge that would otherwise be invisible or ephemeral — dangerous commands, latent bugs, past session decisions — and make it <Hl>durable and actionable</Hl>.</P>
+            <SubSection title="What You Can Ignore for Now">
+              <P>If you are just getting started, you do not need to master all of this immediately:</P>
+              <BulletList items={[
+                "Large-scale session memory systems like CASS and CM",
+                "Big prompt libraries",
+                "Advanced launch tooling like ntm",
+                "The full exhaustive planning doctrine",
+                "Every supporting tool in ACFS",
+              ]} />
+              <P>Those things help. Some help a lot. But they are multipliers on top of the core loop, not prerequisites. You can run the core loop with separate terminal tabs and no special session manager.</P>
+            </SubSection>
+
+            <SubSection title="What You Should Not Ignore">
+              <P>Even in the smaller version, a few principles still matter a lot:</P>
+              <BulletList items={[
+                "Do not start a swarm with only vague goals — make a real plan first",
+                "Do not treat beads as tiny throwaway todo lines — they need rich context",
+                "Do not skip the bead polishing rounds — single-pass beads are never optimal",
+                "Do not rely on chat scrollback as your coordination system — that is what Agent Mail is for",
+              ]} />
+              <P>If you violate those, the workflow quickly degrades back into ordinary multi-agent chaos.</P>
+            </SubSection>
           </GuideSection>
 
           <Divider />
 
           {/* ============================================================= */}
-          {/* SECTION 11: GETTING STARTED & GRADUATION                       */}
+          {/* SECTION 12: GETTING STARTED & GRADUATION                       */}
           {/* ============================================================= */}
-          <GuideSection id="getting-started" number="11" title="Getting Started">
+          <GuideSection id="getting-started" number="12" title="Getting Started">
             <SubSection title="The First 30 Minutes">
               <NumberedList items={[
                 "Pick one real project, not a toy.",
                 "Ask multiple frontier models for competing markdown plans.",
                 "Synthesize them into one strong plan.",
-                "Create the first meaningful beads in br.",
-                "Add the most obvious dependencies.",
-                <>Run <code>bv --robot-triage</code> or <code>bv --robot-next</code>.</>,
-                "Launch 2-4 agents however you prefer.",
-                "Have each agent coordinate through Agent Mail and claim a real bead.",
+                "Tell an agent to create beads from the plan with dependencies.",
+                "Polish the beads 4-6 times with fresh review passes.",
+                <>Run <code>bv --robot-triage</code> to verify the graph makes sense.</>,
+                "Launch 2-4 agents with the standard marching orders.",
+                "Tend the swarm. Check every 10-15 minutes.",
               ]} />
 
               <P>Start smaller than your ego wants to:</P>
@@ -458,10 +567,22 @@ bv --robot-next`} />
                 headers={["Mode", "What It Is Good For"]}
                 rows={[
                   ["1 agent", "Learn the artifact flow without coordination overhead"],
-                  ["2 agents", "Feel the first real coordination benefits and start using Agent Mail seriously"],
-                  ["4 agents", "Experience meaningful swarm behavior where routing and handoff start to matter a lot"],
+                  ["2 agents", "Feel the first real coordination benefits"],
+                  ["4 agents", "Experience meaningful swarm behavior where routing and handoff matter"],
                 ]}
               />
+            </SubSection>
+
+            <SubSection title="Try This Now">
+              <P>If you want to feel the method instead of only reading about it:</P>
+              <NumberedList items={[
+                "Pick one real repo",
+                "Write one serious markdown plan",
+                "Tell an agent to create two real beads with one dependency",
+                <>Run <code>bv --robot-next</code> and check that the recommendation makes sense</>,
+                "Launch a second agent with the marching orders and watch them coordinate",
+              ]} />
+              <P>Those five steps are enough to make the core loop stop feeling theoretical.</P>
             </SubSection>
 
             <SubSection title="The Cheat Card">
@@ -469,14 +590,13 @@ bv --robot-next`} />
               <NumberedList items={[
                 "Plan with multiple models",
                 "Synthesize into one markdown plan",
-                "Create beads in br",
-                "Add dependencies",
-                "Run bv",
-                "Claim the bead in Agent Mail",
-                "Implement",
-                "Do a fresh-eyes review",
-                "Close the bead",
-                "Repeat",
+                "Tell an agent to create beads",
+                "Polish beads 4-6 times",
+                "Write a good AGENTS.md",
+                "Launch agents with marching orders",
+                "Tend the swarm every 10-15 minutes",
+                "Have agents do fresh-eyes review after each bead",
+                "Repeat until the graph is done",
               ]} />
             </SubSection>
 
@@ -525,7 +645,7 @@ function Hero() {
           <span className="relative z-10">The Focused Version</span>
         </div>
 
-        <h1 className="text-[2.75rem] sm:text-6xl md:text-7xl lg:text-8xl font-black text-white tracking-tighter drop-shadow-2xl leading-[1.05]">
+        <h1 className="text-[2.25rem] sm:text-[2.75rem] md:text-7xl lg:text-8xl font-black text-white tracking-tighter drop-shadow-2xl leading-[1.05]">
           The Core <br/><span className="bg-gradient-to-r from-[#FF5500] to-[#FFBD2E] bg-clip-text text-transparent">Flywheel</span>
         </h1>
 
@@ -596,7 +716,7 @@ function HelperCard({
         style={{ background: `radial-gradient(ellipse at top, ${color}0A, transparent 70%)` }}
       />
 
-      <div className="relative z-10 flex flex-col h-full gap-5 p-8">
+      <div className="relative z-10 flex flex-col h-full gap-5 p-6 sm:p-8">
         {/* Icon with glow on hover */}
         <div
           className="flex h-12 w-12 items-center justify-center rounded-xl border transition-all duration-500 group-hover:scale-110"

@@ -14,8 +14,9 @@ const NAV_ITEMS = [
   { id: "operating-rhythm", label: "Rhythm", number: "07" },
   { id: "operator", label: "Human's Job", number: "08" },
   { id: "failure-modes", label: "Failures", number: "09" },
-  { id: "helpers", label: "Helpers", number: "10" },
-  { id: "getting-started", label: "Start", number: "11" },
+  { id: "what-it-feels-like", label: "The Feeling", number: "10" },
+  { id: "helpers", label: "Helpers", number: "11" },
+  { id: "getting-started", label: "Start", number: "12" },
 ] as const;
 
 export function QuickNav() {
@@ -172,7 +173,7 @@ export function QuickNav() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 20 }}
                   transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                  className="mx-4 mb-2 rounded-2xl border border-white/[0.06] bg-[#020408]/95 backdrop-blur-xl p-4 shadow-2xl"
+                  className="mx-4 mb-2 rounded-2xl border border-white/[0.06] bg-[#020408]/95 backdrop-blur-xl p-4 shadow-2xl max-h-[60vh] overflow-y-auto"
                 >
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {NAV_ITEMS.map((item) => {

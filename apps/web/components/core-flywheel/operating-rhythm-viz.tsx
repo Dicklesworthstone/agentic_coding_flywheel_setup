@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 /* ------------------------------------------------------------------ */
 
 const EXHIBIT_PANEL_CLASS =
-  "my-16 overflow-hidden rounded-[3rem] border border-white/[0.03] bg-[#020408] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
+  "my-16 overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] lg:rounded-[3rem] border border-white/[0.03] bg-[#020408] p-5 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)]";
 
 const AUTO_PLAY_INTERVAL_MS = 4000;
 
@@ -55,7 +55,7 @@ const STEPS: Step[] = [
     action:
       "Ask 3+ frontier models for competing plans, synthesize into one",
     output:
-      "A comprehensive markdown plan covering workflows, architecture, and tests",
+      "A markdown plan covering workflows, architecture, and tests",
     timing: "~1-3 hours",
     inLoop: false,
   },
@@ -461,7 +461,7 @@ function LoopArrow({
 
 export function OperatingRhythmViz() {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [autoPlay, setAutoPlay] = useState(true);
+  const [autoPlay, setAutoPlay] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(containerRef, { once: true, margin: "-100px" });
   const prefersReducedMotion = useReducedMotion();
@@ -475,6 +475,26 @@ export function OperatingRhythmViz() {
     },
     [],
   );
+
+  /* Keyboard navigation */
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setActiveIndex((cur) => (cur + 1) % STEP_COUNT);
+        setAutoPlay(false);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setActiveIndex((cur) => (cur - 1 + STEP_COUNT) % STEP_COUNT);
+        setAutoPlay(false);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setAutoPlay((cur) => !cur);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!autoPlay || !isInView || reducedMotion) return;
@@ -494,7 +514,7 @@ export function OperatingRhythmViz() {
       className={cn(EXHIBIT_PANEL_CLASS, "relative group/viz")}
     >
       {/* Noise texture overlay */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none rounded-[3rem]" />
+      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none rounded-[inherit]" />
 
       {/* ---- HEADER ---- */}
       <div className="relative z-10 mb-8 sm:mb-10">
@@ -506,7 +526,7 @@ export function OperatingRhythmViz() {
           From plan to production in five steps
         </h4>
         <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
-          Steps 3-5 repeat for each bead. The rhythm becomes automatic.
+          Steps 3-5 repeat for every bead. You stop thinking about the process after the second cycle.
         </p>
       </div>
 
