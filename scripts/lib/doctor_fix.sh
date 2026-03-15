@@ -944,12 +944,12 @@ fix_mcp_agent_mail() {
 
     if ! command -v am &>/dev/null; then
         if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-            FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail|Install MCP Agent Mail via verified installer, then repair service state|$HOME/.mcp_agent_mail_git_mailbox_repo|verified:mcp_agent_mail --dir $HOME/mcp_agent_mail --yes --no-start")
+            FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail|Install MCP Agent Mail via verified installer, then repair service state|$HOME/.mcp_agent_mail_git_mailbox_repo|verified:mcp_agent_mail --dest $HOME/mcp_agent_mail --yes --no-start")
             doctor_fix_log DRY "Install MCP Agent Mail via verified installer, then repair service state"
             return 0
         fi
 
-        if doctor_fix_run_verified_installer "mcp_agent_mail" --dir "$HOME/mcp_agent_mail" --yes --no-start >/dev/null 2>&1; then
+        if doctor_fix_run_verified_installer "mcp_agent_mail" --dest "$HOME/mcp_agent_mail" --yes --no-start >/dev/null 2>&1; then
             hash -r
             if command -v am &>/dev/null; then
                 doctor_fix_log INFO "Installed MCP Agent Mail CLI via verified installer"

@@ -513,7 +513,7 @@ install_mcp_agent_mail() {
         log_detail "${STACK_NAMES[$tool]} already installed; ensuring managed service"
     else
         log_detail "Installing ${STACK_NAMES[$tool]}..."
-        if ! _stack_run_installer "$tool" --dir "$target_dir" --yes --no-start; then
+        if ! _stack_run_installer "$tool" --dest "$target_dir" --yes --no-start; then
             log_warn "${STACK_NAMES[$tool]} installation may have failed"
             return 1
         fi
