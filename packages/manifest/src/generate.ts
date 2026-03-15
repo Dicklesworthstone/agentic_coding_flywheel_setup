@@ -235,6 +235,8 @@ function shellQuote(str: string): string {
  * - This ensures that input like `$(rm -rf /)` is treated as a literal string `'$(rm -rf /)'`.
  */
 function shellQuoteVerifiedInstallerArg(str: string): string {
+  if (str === '') return "''";
+
   // Regex to capture allowed variables.
   // Order matters: match longest tokens first (${VAR} before $VAR).
   // capturing group () is included in split output.

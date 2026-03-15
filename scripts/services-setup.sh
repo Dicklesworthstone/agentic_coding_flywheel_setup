@@ -227,7 +227,7 @@ select_dcg_packs() {
                     user_input+="$num "
                 fi
             done
-            local selected_lines=""
+            selected_lines=""
             for num in $user_input; do
                 if [[ "$num" =~ ^[0-9]+$ ]] && [[ "$num" -ge 1 ]] && [[ "$num" -le "${#options[@]}" ]]; then
                     selected_lines+="${options[$((10#$num - 1))]}"$'\n'

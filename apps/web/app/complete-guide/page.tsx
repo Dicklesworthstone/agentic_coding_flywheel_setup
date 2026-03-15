@@ -150,6 +150,8 @@ export default function CompleteGuidePage() {
             <SubSection title="Before You Start: The Foundation Bundle">
               <P>Before writing the plan itself, you need a coherent foundation. Think of it as assembling a <Hl>foundation bundle</Hl>: a tech stack decision, an initial architectural direction, a strong AGENTS.md file bootstrapped from a known-good template, up-to-date best-practices guides, and enough product and workflow explanation for the models to understand what &quot;good&quot; looks like.</P>
 
+              <P>Keep <a href="https://github.com/Dicklesworthstone/claude_code_agent_farm/tree/main/best_practices_guides" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">best practices guides</a> in the project folder and reference them in AGENTS.md. These guides should be kept up to date; you can have Claude Code search the web and update them to the latest versions of your frameworks and libraries.</P>
+
               <P>A strong bootstrap move is to start every new project by copying an AGENTS.md from an existing project that already has good general behavioral rules, safety notes, tool blurbs, and coordination guidance. Later, once the plan and beads are clearer, you ask agents to replace the project-specific content while preserving the general rules that carry across projects.</P>
 
               <TipBox variant="warning">
@@ -238,6 +240,8 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               <P>Plans created this way routinely reach 3,000-6,000+ lines. They are not slop. They are the result of countless iterations and blending of ideas and feedback from many models. For the CASS GitHub Pages export feature, the plan went through multiple rounds over about 3 hours, growing to approximately <a href="https://github.com/Dicklesworthstone/coding_agent_session_search/blob/main/PLAN_TO_CREATE_GH_PAGES_WEB_EXPORT_APP.md" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">3,500 lines</a>. You can also see a <a href="https://github.com/Dicklesworthstone/jeffreysprompts.com/blob/main/PLAN_TO_MAKE_JEFFREYSPROMPTS_WEBAPP_AND_CLI_TOOL.md" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">6,000-line plan</a> to get a feel for the scale.</P>
 
               <P>It feels slow because no code is being written. But if you do it correctly and then start up enough agents in your swarm with Agent Mail, beads, and bv, the code will be written so ridiculously quickly that it more than makes up for this slow part. And what&apos;s more, the code will be really good.</P>
+
+              <P><strong>When to stop refining and start converting to beads:</strong> Stay in plan refinement if whole-workflow questions are still moving around, major architecture debates are still open, or fresh models keep finding substantial missing features, constraints, or tradeoffs. Switch to beads when the plan mostly feels stable and the remaining improvements are about execution structure, testing obligations, sequencing, and embedded context rather than about what the system fundamentally is. If you are still redesigning the product, stay in plan space. If you are mainly packaging the work for execution, move to bead space.</P>
             </SubSection>
           </GuideSection>
 
@@ -247,6 +251,10 @@ For each proposed change, give me your detailed analysis and rationale/justifica
           {/* SECTION 4: PLANS BECOME BEADS                                  */}
           {/* ============================================================= */}
           <GuideSection id="beads" number="4" title="Converting the Plan into Beads">
+            <TipBox variant="warning">
+              <strong>Watch for the plan-bead gap.</strong> In the destructive_command_guard sessions, agents occasionally got stuck between plan revision and bead creation: the competing plan was revised but no beads were ever created. Always ensure the synthesis step concludes with an explicit transition to bead creation.
+            </TipBox>
+
             <P>Then you&apos;re ready to turn the plan into beads. Think of these as epics, tasks, and subtasks with an associated dependency structure. The name comes from <a href="https://github.com/AstroBeads/beads" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">Steve Yegge&apos;s amazing project</a>, which is like Jira or Linear, but optimized for use by coding agents. They are stored locally in <code>.beads/</code> JSONL files that commit with your code.</P>
 
             <P highlight>There are two separate stages here. The planning is and should be prior to and orthogonal to beads. You should always have a super detailed markdown plan first. Then treat transforming that markdown plan into beads as a separate, distinct problem with its own challenges. But once you&apos;re in &quot;bead space&quot; you never look back at the markdown plan. But that&apos;s why it&apos;s so critical to transfer all the details over to the beads.</P>
@@ -259,6 +267,10 @@ For each proposed change, give me your detailed analysis and rationale/justifica
             />
 
             <P>For existing projects with a specific plan file, prefix it: &quot;OK so now read ALL of PLAN_FILE_NAME.md; please take ALL of that and elaborate on it...&quot; The rest of the prompt stays the same.</P>
+
+            <TipBox variant="warning">
+              Never write pseudo-beads in markdown documents. Go directly from the markdown plan to actual real beads using the <code>br</code> tool, and from that point on just add and change actual beads. If the model starts describing beads in text form instead of creating them, stop it and redirect to <code>br create</code>.
+            </TipBox>
 
             <PlanToBeadsViz />
 
@@ -548,6 +560,8 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`} />
             </SubSection>
 
             <SubSection title="Single-Branch Git Model">
+              <BlockQuote>I really think worktrees are a bad pattern and not worth the trouble. There are other, much better ways at getting multiple agents to work well together at the same time that don&apos;t come with the overhead and reconciliation burden of worktrees. I run like 10+ of them at once in a single project without git worktrees. Agent Mail is the solution.</BlockQuote>
+
               <P>All agents commit directly to <code>main</code>. This may surprise you if you&apos;re used to feature branches. But branch-per-agent creates merge hell with 10+ agents making frequent commits. Worktrees add filesystem complexity and path confusion. Agents lose context when switching branches. Logical conflicts survive textual merges: a function signature change on one branch and a new callsite on another merge cleanly but fail to compile. On a single branch, the second agent sees the signature change immediately and adapts.</P>
 
               <P>Instead of branch isolation, three complementary mechanisms prevent conflicts: <strong>file reservations</strong> (agents reserve files via Agent Mail before editing; advisory, not rigid, with TTL expiry so dead agents cannot deadlock the system), a <strong>pre-commit guard</strong> (blocks commits to files reserved by another agent), and <strong>DCG</strong> (Destructive Command Guard, which mechanically blocks dangerous commands).</P>
@@ -574,6 +588,8 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`} />
 
             <SubSection title="Agent Fungibility">
               <P>Every agent is a generalist. No role specialization. All agents read the same AGENTS.md and can pick up any bead. This is deliberately opposed to &quot;specialist agent&quot; architectures where one agent has a special role — specialist agents become single points of failure. When the specialist crashes or needs compaction, the whole system stalls. With 12 fungible agents, losing one makes almost no difference.</P>
+
+              <P>You also do not want &quot;ringleaders&quot;: a coordinating boss agent whose crash takes down the whole system. Coordination must live in artifacts (beads, reservations, threads) and tools (bv, Agent Mail), not in any special agent.</P>
 
               <P>Think of it like <Hl>RaptorQ fountain codes</Hl>: beads are &quot;blobs&quot; in a stream, any agent catches any bead in any order. There is no &quot;rarest chunk&quot; bottleneck, and the system is resilient to partial agent failures by design. Failure recovery is trivial: the bead remains marked <code>in_progress</code>, any other agent can resume it, and a replacement agent is just <code>ntm add PROJECT --cc=1</code> plus the standard marching orders prompt.</P>
 
@@ -659,6 +675,22 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               whyItWorks="This is the closest thing to a canonical swarm kickoff packet. It front-loads the shared operating context, forces the agent to establish social presence through Agent Mail, and then pivots away from passive waiting toward execution. The line about 'communication purgatory' matters because swarm failure often comes from over-coordination rather than under-coordination. Under the hood, the prompt establishes a control loop: load rules, understand the codebase, join the coordination layer, claim work, keep state synchronized, and use bv whenever local judgment is insufficient. The rch requirement is especially important in real swarms because it externalizes expensive builds and tests, preventing local CPU contention from degrading the entire multi-agent system. That one sentence is operational, not cosmetic. The prompts are deliberately generic; their vagueness is a feature, letting you reuse them for every project while the agent gets specifics from AGENTS.md and the beads."
             />
 
+            <SubSection title="The First 10 Minutes After Launch">
+              <P>Newcomers often understand each individual tool but do not have a clean picture of the first live operating loop. In practice, the first 10 minutes look like this:</P>
+
+              <NumberedList items={[
+                "Your session manager creates the agent terminals (ntm spawn, WezTerm mux, or equivalent).",
+                "You send the marching-orders prompt to each agent (staggered, not all at once).",
+                "Each agent reads AGENTS.md and the repo docs, inspects the codebase, and joins Agent Mail.",
+                "Each agent checks who else is active, acknowledges waiting messages, and learns the bead-thread naming conventions.",
+                <>Each agent uses <code>bv --robot-triage</code> and <code>br ready --json</code> to choose a bead.</>,
+                "Before editing, the agent reserves the relevant file surface and announces the claim in the matching br-### thread.",
+                "Only then does the agent start coding, reviewing, or testing.",
+              ]} />
+
+              <P>That sequence turns a pile of terminals into a coordinated swarm. Skipping the join-up steps produces duplicate work, silent conflicts, and &quot;communication purgatory.&quot; Skipping the routing steps means agents choose work randomly instead of unlocking the dependency graph intelligently.</P>
+            </SubSection>
+
             <SubSection title="Agent Composition & Model Recommendations">
               <DataTable
                 headers={["Phase", "Recommended Model", "Why"]}
@@ -687,7 +719,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
 
             <SubSection title="The Thundering Herd">
-              <P>When you start up like 5 of each kind of agent and have them all collaborate in the same shared workspace, you can hit the classic &quot;thundering herd&quot; problem. The fix: stagger agent starts by 30 seconds minimum, make sure agents mark beads as in-progress quickly, and wait 4 seconds after launch before sending the initial prompt.</P>
+              <P>When you start up like 5 of each kind of agent and have them all collaborate in the same shared workspace, you can hit the classic &quot;thundering herd&quot; problem. The fix: stagger agent starts by 30 seconds minimum, make sure agents mark beads as in-progress quickly, and wait 4 seconds after launch before sending the initial prompt. For Codex specifically: send Enter twice after pasting long prompts (Codex has an input buffer quirk that sometimes swallows the first submit).</P>
 
               <SwarmExecutionViz />
             </SubSection>
@@ -710,10 +742,12 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
               <BlockQuote>If you use the right tooling and workflows (agent mail + beads + bv), it transforms into 80% planning (AI-assisted, based on an initial prompt) and turning the markdown plan into very detailed and granular beads. And then the rest is just making sure the swarm of agents stay busy and executing their beads tasks effectively.</BlockQuote>
 
+              <P>Taken to its endpoint, this design supports full autonomy: one puppet master agent controlling ntm via robot mode, replacing the human for routine machine-tending. The methodology is building toward a future where the human designs the plan, polishes the beads, and then walks away entirely while agents execute, review, ship, and start the next cycle.</P>
+
               <P><strong>When the &quot;foregone conclusion&quot; breaks down:</strong> If you find yourself doing heavy cognitive work during implementation, that is a signal that planning or bead polishing was insufficient. The remedies are specific: <strong>vague beads</strong> means agents improvise and produce inconsistent implementations; <strong>missing dependencies</strong> means agents work on tasks whose prerequisites are not done; <strong>thin AGENTS.md</strong> means agents produce non-idiomatic code; <strong>no Agent Mail</strong> means agents step on each other&apos;s files. The fix is always the same: pause implementation, go back to bead space, and add the missing detail.</P>
 
               <TipBox variant="warning">
-                <strong>Watch for strategic drift.</strong> A swarm can look productive while heading in the wrong direction — agents generating lots of code and commits while the real goal still feels far away. If that happens, stop and ask: &quot;Where are we on this project? Do we actually have the thing we are trying to build? If we intelligently implement all open beads, would we close that gap completely?&quot; If the answer is no, add or revise beads, re-polish them, and resume with a corrected frontier. Busy agents are not the goal; a bead graph that actually converges on the project goal is the goal.
+                <strong>Watch for strategic drift.</strong> A swarm can look productive while heading in the wrong direction: agents generating lots of code and commits while the real goal still feels far away. A recent X post about FrankenEngine described these as <strong>&quot;Come to Jesus&quot; moments</strong> with the agents, used to make sure &quot;we are not losing sight of the bigger picture&quot; after days of methodically cranking through beads. If that happens, stop and ask: &quot;Where are we on this project? Do we actually have the thing we are trying to build? If we intelligently implement all open beads, would we close that gap completely?&quot; If the answer is no, add or revise beads, re-polish them, and resume with a corrected frontier. Busy agents are not the goal; a bead graph that actually converges on the project goal is the goal.
               </TipBox>
             </SubSection>
 
@@ -763,7 +797,13 @@ caam activate claude backup-2   # Switch instantly`} />
               whyItWorks="This prompt is short because it is not redirecting the agent into a new domain. It is forcing a mode switch from generative coding to adversarial reading. The phrase 'fresh eyes' pushes the model to reframe code it just wrote as something potentially wrong, confusing, or internally inconsistent. That reduces the pattern where an agent stops once code compiles and never performs the low-cost bug sweep that catches obvious issues. The most effective reviews use subagent delegation: dispatch a fresh subagent with no memory of the original implementation to review each changed file."
             />
 
-            <P>Keep running rounds until they stop finding bugs. Typically 1-2 rounds for simple beads, 2-3 for complex ones. If an agent keeps finding bugs after 3 rounds, the implementation approach may be fundamentally off; consider having a different agent take over. Each review should answer four questions:</P>
+            <P>Keep running rounds until they stop finding bugs. Typically 1-2 rounds for simple beads, 2-3 for complex ones. If an agent keeps finding bugs after 3 rounds, the implementation approach may be fundamentally off; consider having a different agent take over.</P>
+
+            <TipBox variant="info">
+              You do not need to send the review prompt manually every time. Include it as part of the agent&apos;s workflow expectations in AGENTS.md: &quot;After completing each bead, do a self-review before moving to the next one.&quot; Well-trained agents (with a good skill) will do this automatically.
+            </TipBox>
+
+            <P>Each review should answer four questions:</P>
 
             <NumberedList items={[
               <><strong>Is the implementation correct?</strong> Does it do what the bead description says it should?</>,
@@ -846,7 +886,11 @@ bun lint`} />
             </SubSection>
 
             <SubSection title="Deep Cross-Agent Review">
-              <P>This phase is distinct from the per-bead self-reviews above. Self-reviews happen after each bead is completed and focus on the code that was just written. Deep review happens after all (or most) beads are done and casts a wider net across the entire codebase, looking for problems that only become visible when you see how all the pieces fit together. Every 30-60 minutes during active implementation, or after a natural milestone (e.g., all beads in an epic are done), trigger cross-agent review. Do not have all agents stop to review simultaneously; pick one or two agents that just finished a bead and send them the review prompt while the others keep implementing.</P>
+              <P>This phase is distinct from the per-bead self-reviews above. Self-reviews happen after each bead is completed and focus on the code that was just written. Deep review happens after all (or most) beads are done and casts a wider net across the entire codebase, looking for problems that only become visible when you see how all the pieces fit together.</P>
+
+              <P>Cross-agent review catches a fundamentally different class of bugs than self-review. When Agent A implements a function and Agent B calls it, Agent A&apos;s self-review will never catch the fact that Agent B is passing arguments in the wrong order, because Agent A does not know about Agent B&apos;s code. Cross-agent review surfaces these integration issues.</P>
+
+              <P>Every 30-60 minutes during active implementation, or after a natural milestone (e.g., all beads in an epic are done), trigger cross-agent review. Do not have all agents stop to review simultaneously; pick one or two agents that just finished a bead and send them the review prompt while the others keep implementing. This keeps the swarm productive while still catching inter-agent issues.</P>
 
               <P>Keep doing rounds of these two prompts until they consistently come back clean with no changes made. These prompts serve different purposes and should be alternated. This is one of the more art-than-science parts of the methodology. The prompts overlap in literal meaning, but they reliably activate different search behaviors in the models:</P>
 
@@ -1118,7 +1162,7 @@ alias gmi='gemini --yolo'`} />
             </SubSection>
 
             <SubSection title="Cost">
-              <P>~$500/month for Claude Max and GPT Pro subscriptions (at minimum), plus ~$50/month for a cloud server (OVH, Contabo). Multiple Max accounts may be needed for large swarms; CAAM enables instant switching when hitting rate limits. At scale, token usage for a single intensive session can reach ~20M input tokens and ~3.5M output tokens.</P>
+              <P>~$500/month for Claude Max and GPT Pro subscriptions (at minimum), plus ~$50/month for a cloud server (OVH, Contabo). Multiple Max accounts may be needed for large swarms; CAAM enables instant switching when hitting rate limits. At scale, token usage for a single intensive session can reach ~20M input tokens, ~3.5M output tokens, ~2.6M reasoning tokens, and ~1.15 billion cached token reads. At full scale: 22 Claude Max accounts, 22 GPT Pro accounts, and 7 Gemini Ultra accounts.</P>
             </SubSection>
           </GuideSection>
 
@@ -1154,7 +1198,7 @@ alias gmi='gemini --yolo'`} />
 
 What changes to [TOOL] would make it work even better for you and be more useful in your development workflow? Would you recommend it to fellow coding agents? How strongly, and why or why not? The more specific you can be, and the more dimensions you can score [TOOL] on, the more helpful it will be for me as I improve it and incorporate your feedback to make [TOOL] even better for you in the future!`}
                 where="After an agent finishes using a tool in a real project"
-                whyItWorks="Many of the same concepts we use for people are directly applicable to agents. 'By robots, for robots.' This produces structured, actionable feedback. When used across multiple agents on different project types, you get a diverse sample of experiences."
+                whyItWorks="Many of the same concepts we use for people are directly applicable to agents. 'By robots, for robots.' This produces structured, actionable feedback. When used across multiple agents on different project types, you get a diverse sample of experiences. One caveat: as with humans who would tell you they wanted a 'faster horse' instead of a car, it is dangerous to trust agent feedback about potential new features before those features exist. The real test is always after implementation, in real-world usage."
               />
             </SubSection>
 
@@ -1201,7 +1245,14 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
                 ]}
               />
 
-              <P>This is how the prompt library in this guide was originally discovered. It was not invented top-down; it was mined bottom-up from hundreds of real sessions.</P>
+              <P>The mining query (user prompts live at lines 1-3 of session entries; <code>--fields minimal</code> reduces output 5x):</P>
+
+              <CodeBlock language="bash" code={`cass search "*" --workspace /data/projects/PROJECT --json --fields minimal --limit 500 \\
+  | jq '[.hits[] | select(.line_number <= 3) | .title[0:80]]
+        | group_by(.) | map({prompt: .[0], count: length})
+        | sort_by(-.count) | map(select(.count >= 5)) | .[0:30]'`} />
+
+              <P>This is how the prompt library in this guide was originally discovered and validated. It was not invented top-down; it was mined bottom-up from hundreds of real sessions.</P>
             </SubSection>
 
             <SubSection title="Why It Works: Layered Context">
@@ -1472,6 +1523,8 @@ acfs newproj my-first-project --interactive
 ntm spawn my-first-project --cc=2 --cod=1 --gmi=1`} />
 
               <P>You don&apos;t even need to know much at all about computers; you just need the desire to learn and some grit and determination. And about $500/month for the subscriptions, plus another $50 or so for the cloud server.</P>
+
+              <P>Once you get Claude Code up and running on the cloud server, you basically have an ultra competent friend who can help you with any other problems you encounter. And Jeffrey will personally answer your questions if you reach out on <a href="https://x.com/doodlestein" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">X</a> or on <a href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">GitHub issues</a>.</P>
 
               <P highlight>If you want to change the entire direction of your life, it has truly never been easier. If you think you might want to do it, I really recommend just immersing yourself.</P>
             </SubSection>

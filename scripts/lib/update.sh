@@ -1579,16 +1579,46 @@ update_agents() {
         local codex_fallback_version="0.87.0"
 
         capture_version_before "codex"
-        run_cmd_bun_with_retry "Codex CLI" "$bun_bin" install -g --trust @openai/codex@latest
-
-        if [[ ! -x "$codex_bin_local" && ! -x "$codex_bin_bun" ]]; then
-            log_item "warn" "Codex CLI" "latest tag failed; retrying @openai/codex"
-            run_cmd_bun_with_retry "Codex CLI (fallback)" "$bun_bin" install -g --trust @openai/codex
-        fi
-
-        if [[ ! -x "$codex_bin_local" && ! -x "$codex_bin_bun" ]]; then
-            log_item "warn" "Codex CLI" "unversioned failed; retrying pinned $codex_fallback_version"
-            run_cmd_bun_with_retry "Codex CLI (pinned)" "$bun_bin" install -g --trust "@openai/codex@$codex_fallback_version"
+        
+        log_item "run" "Codex CLI"
+        local success=false
+        local output=""
+        
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_item "skip" "Codex CLI" "dry-run"
+        else
+            for pkg in "@openai/codex@latest" "@openai/codex" "@openai/codex@$codex_fallback_version"; do
+                log_to_file "Trying bun install $pkg"
+                local attempt=1
+                local pkg_success=false
+                while [[ $attempt -le 3 ]]; do
+                    if output=$("$bun_bin" install -g --trust "$pkg" 2>&1); then
+                        pkg_success=true
+                        success=true
+                        break 2
+                    fi
+                    sleep 2
+                    attempt=$((attempt + 1))
+                done
+                log_to_file "Failed $pkg after 3 attempts: $output"
+            done
+            
+            if [[ "$success" == "true" ]]; then
+                if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
+                    printf "\033[1A\033[2K  ${GREEN}[ok]${NC} Codex CLI\n"
+                elif [[ "$QUIET" != "true" ]]; then
+                    printf "  ${GREEN}[ok]${NC} Codex CLI\n"
+                fi
+                ((SUCCESS_COUNT += 1))
+            else
+                if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
+                    printf "\033[1A\033[2K  ${RED}[FAIL]${NC} Codex CLI\n"
+                elif [[ "$QUIET" != "true" ]]; then
+                    printf "  ${RED}[FAIL]${NC} Codex CLI\n"
+                fi
+                log_to_file "All Codex install attempts failed. Last output: $output"
+                ((FAIL_COUNT += 1))
+            fi
         fi
 
         # Show version change without double-counting
@@ -2230,8 +2260,10 @@ EOF
                         log_to_file "Success: MCP Agent Mail"
                         ((SUCCESS_COUNT += 1))
                     else
-                        if [[ "$QUIET" != "true" ]]; then
-                            printf "  ${RED}[fail]${NC} %s\n" "MCP Agent Mail - service setup failed"
+                        if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
+                            printf "\033[1A\033[2K  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
+                        elif [[ "$QUIET" != "true" ]]; then
+                            printf "  ${RED}[FAIL]${NC} %s\n" "MCP Agent Mail"
                         fi
                         log_to_file "Failed: MCP Agent Mail - service setup failed"
                         ((FAIL_COUNT += 1))
@@ -2339,13 +2371,6 @@ EOF
         capture_version_after "aadc"
     fi
 
-    # Coding Agent Usage Tracker (caut) - update when installed, or install with --force
-    if cmd_exists caut || [[ "$FORCE_MODE" == "true" ]]; then
-        capture_version_before "caut"
-        run_cmd "CAUT" bash -c 'TMPDIR="$(mktemp -d)"; trap "rm -rf \"$TMPDIR\"" EXIT; git clone --depth 1 https://github.com/Dicklesworthstone/coding_agent_usage_tracker.git "$TMPDIR/caut" && cd "$TMPDIR/caut" && cargo build --release && cp target/release/caut ~/.cargo/bin/'
-        capture_version_after "caut"
-    fi
-
     # Rust Proxy (rust_proxy) - update when installed, or install with --force
     if cmd_exists rust_proxy || [[ "$FORCE_MODE" == "true" ]]; then
         capture_version_before "rust_proxy"
@@ -2409,10 +2434,16 @@ update_root_agents_md() {
     if ! cmd_exists flywheel_update_agents_md; then
         local generator=""
         local candidate=""
-        for candidate in \
-            "${ACFS_BIN_DIR:-$HOME/.local/bin}/flywheel-update-agents-md" \
-            "${ACFS_HOME:-$HOME/.acfs}/bin/flywheel-update-agents-md" \
-            "${ACFS_REPO_ROOT:-}/scripts/generate-root-agents-md.sh"; do
+        local -a security_candidates=(
+            "${ACFS_BIN_DIR:-$HOME/.local/bin}/flywheel-update-agents-md"
+            "${ACFS_HOME:-$HOME/.acfs}/bin/flywheel-update-agents-md"
+            "${ACFS_REPO_ROOT:-}/scripts/generate-root-agents-md.sh"
+        )
+        if [[ -n "${ACFS_REPO_ROOT:-}" ]]; then
+            security_candidates+=("${ACFS_REPO_ROOT}/scripts/generate-root-agents-md.sh")
+        fi
+
+        for candidate in "${security_candidates[@]}"; do
             if [[ -n "$candidate" ]] && [[ -f "$candidate" ]]; then
                 generator="$candidate"
                 break
