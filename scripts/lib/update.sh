@@ -2132,6 +2132,13 @@ unit_file="$unit_dir/agent-mail.service"
 db_url="sqlite:///${storage_root}/storage.sqlite3"
 am_systemd_activation_failed=false
 
+# Detect MCP base path: Rust am uses /mcp/, Python mcp_agent_mail uses /api/
+if "$am_bin" --version 2>/dev/null | grep -q '^am '; then
+    am_mcp_path="/mcp/"
+else
+    am_mcp_path="/api/"
+fi
+
 service_env=("HOME=$HOME")
 if [[ -d "$runtime_dir" ]]; then
     service_env+=("XDG_RUNTIME_DIR=$runtime_dir")
@@ -2154,9 +2161,10 @@ Environment=STORAGE_ROOT=$storage_root
 Environment=DATABASE_URL=$db_url
 Environment=HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true
 ExecStartPre=$am_bin migrate
-ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp/
-Restart=on-failure
+ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path $am_mcp_path
+Restart=always
 RestartSec=5
+LimitNOFILE=65536
 
 [Install]
 WantedBy=default.target
@@ -2221,7 +2229,7 @@ else
                 STORAGE_ROOT="$storage_root" \
                 DATABASE_URL="$db_url" \
                 HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
-                bash -c "$am_bin migrate && $am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp/" \
+                bash -c "$am_bin migrate && $am_bin serve-http --host 127.0.0.1 --port 8765 --path $am_mcp_path" \
                 >>"$fallback_log_file" 2>&1 < /dev/null &
             echo $! > "$fallback_pid_file"
         fi
@@ -2231,7 +2239,7 @@ else
             STORAGE_ROOT="$storage_root" \
             DATABASE_URL="$db_url" \
             HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
-            bash -c "$am_bin migrate && $am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp/" \
+            bash -c "$am_bin migrate && $am_bin serve-http --host 127.0.0.1 --port 8765 --path $am_mcp_path" \
             >>"$fallback_log_file" 2>&1 < /dev/null &
         echo $! > "$fallback_pid_file"
     fi

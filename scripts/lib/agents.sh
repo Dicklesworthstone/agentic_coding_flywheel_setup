@@ -309,6 +309,15 @@ _configure_gemini_settings() {
     local settings_dir="$target_home/.gemini"
     local settings_file="$settings_dir/settings.json"
 
+    # Detect MCP base path: Rust am uses /mcp/, Python mcp_agent_mail uses /api/
+    local am_mcp_path="/mcp/"
+    if command -v am &>/dev/null; then
+        if ! am --version 2>/dev/null | grep -q '^am '; then
+            am_mcp_path="/api/"
+        fi
+    fi
+    local am_mcp_url="http://127.0.0.1:8765${am_mcp_path}"
+
     # Create settings directory if needed
     _agent_run_as_user "mkdir -p '$settings_dir'" || return 1
 
@@ -328,7 +337,7 @@ _configure_gemini_settings() {
   },
   \"mcpServers\": {
     \"mcp-agent-mail\": {
-      \"httpUrl\": \"http://127.0.0.1:8765/mcp/\"
+      \"httpUrl\": \"$am_mcp_url\"
     }
   }
 }
@@ -370,7 +379,7 @@ GEMINI_EOF"
         if [[ "$needs_update" == "true" ]]; then
             log_detail "Configuring Gemini settings for tmux compatibility, OAuth, and MCP Agent Mail..."
             # Update shell settings, auth type, and MCP server config
-            if _agent_run_as_user "jq '.selectedType = \"oauth-personal\" | .tools = (.tools // {}) | .tools.shell = (.tools.shell // {}) | .tools.shell.enableInteractiveShell = false | .mcpServers = (.mcpServers // {}) | .mcpServers.\"mcp-agent-mail\" = {\"httpUrl\": \"http://127.0.0.1:8765/mcp/\"}' '$settings_file' > '$tmp_file' && mv '$tmp_file' '$settings_file'" 2>/dev/null; then
+            if _agent_run_as_user "jq '.selectedType = \"oauth-personal\" | .tools = (.tools // {}) | .tools.shell = (.tools.shell // {}) | .tools.shell.enableInteractiveShell = false | .mcpServers = (.mcpServers // {}) | .mcpServers.\"mcp-agent-mail\" = {\"httpUrl\": \"$am_mcp_url\"}' '$settings_file' > '$tmp_file' && mv '$tmp_file' '$settings_file'" 2>/dev/null; then
                 log_detail "Gemini settings configured (OAuth + tmux + MCP Agent Mail)"
             else
                 _agent_run_as_user "rm -f '$tmp_file'" 2>/dev/null

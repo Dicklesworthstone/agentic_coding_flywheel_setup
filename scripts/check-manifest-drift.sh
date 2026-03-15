@@ -27,7 +27,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-EXPECTED_AGENT_MAIL_MCP_URL="http://127.0.0.1:8765/mcp/"
+# Detect MCP base path: Rust am uses /mcp/, Python mcp_agent_mail uses /api/
+if command -v am &>/dev/null && am --version 2>/dev/null | grep -q '^am '; then
+    EXPECTED_AGENT_MAIL_MCP_URL="http://127.0.0.1:8765/mcp/"
+else
+    EXPECTED_AGENT_MAIL_MCP_URL="http://127.0.0.1:8765/api/"
+fi
 REPO_MCP_CONFIG_FILES=(
     ".claude/settings.local.json"
     "cline.mcp.json"

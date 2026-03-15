@@ -256,6 +256,13 @@ unit_file="$unit_dir/agent-mail.service"
 am_bin="$(command -v am)"
 db_url="sqlite:///${storage_root}/storage.sqlite3"
 
+# Detect MCP base path: Rust am uses /mcp/, Python mcp_agent_mail uses /api/
+if "$am_bin" --version 2>/dev/null | grep -q '^am '; then
+    am_mcp_path="/mcp/"
+else
+    am_mcp_path="/api/"
+fi
+
 mkdir -p "$storage_root" "$unit_dir"
 cat > "$unit_file" <<UNIT_EOF
 [Unit]
@@ -270,9 +277,10 @@ Environment=STORAGE_ROOT=$storage_root
 Environment=DATABASE_URL=$db_url
 Environment=HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true
 ExecStartPre=$am_bin migrate
-ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp/
-Restart=on-failure
+ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path $am_mcp_path
+Restart=always
 RestartSec=5
+LimitNOFILE=65536
 
 [Install]
 WantedBy=default.target
@@ -327,8 +335,8 @@ launch_agent_mail_fallback() {
     RUST_LOG=info \
     STORAGE_ROOT="$storage_root" \
     DATABASE_URL="$db_url" \
-    HTTP_PATH=/mcp/ \
-    "$am_bin" serve-http --host 127.0.0.1 --port 8765 --path /mcp --no-auth --no-tui \
+    HTTP_PATH="$am_mcp_path" \
+    "$am_bin" serve-http --host 127.0.0.1 --port 8765 --path "$am_mcp_path" --no-auth --no-tui \
     >>"$fallback_log_file" 2>&1 < /dev/null &
   echo $! > "$fallback_pid_file"
 }

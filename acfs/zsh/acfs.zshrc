@@ -501,7 +501,13 @@ amserve() {
     return 1
   fi
 
-  am serve-http --host 127.0.0.1 --port 8765 --path /mcp/
+  # Detect MCP base path: Rust am uses /mcp/, Python mcp_agent_mail uses /api/
+  local am_mcp_path="/mcp/"
+  if ! am --version 2>/dev/null | grep -q '^am '; then
+    am_mcp_path="/api/"
+  fi
+
+  am serve-http --host 127.0.0.1 --port 8765 --path "$am_mcp_path"
 }
 
 # --- ACFS tool aliases (new tools) ---
