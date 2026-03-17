@@ -10,6 +10,15 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     theme: "default",
     tags: ["Claude", "Codex", "Gemini"],
   },
+  "/core-flywheel": {
+    badge: "The 3-Tool Core Loop",
+    title: "The Core Flywheel",
+    description:
+      "The beginner-friendly entry point: Agent Mail for coordination, br for task management, and bv for graph-aware triage.",
+    path: "/core-flywheel",
+    theme: "flywheel",
+    tags: ["Agent Mail", "Beads", "bv"],
+  },
   "/flywheel": {
     badge: "20+ Interconnected Tools",
     title: "The Agentic Coding Flywheel",
