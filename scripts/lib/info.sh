@@ -240,24 +240,15 @@ info_get_uptime() {
 
 # Get OS version info
 info_get_os_version() {
-    if [[ -f /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        source /etc/os-release
-        echo "${VERSION_ID:-unknown}"
-    else
-        echo "unknown"
-    fi
+    # Use subshell to avoid leaking os-release variables (ID, NAME, etc.)
+    # shellcheck disable=SC1091
+    (. /etc/os-release 2>/dev/null && echo "${VERSION_ID:-unknown}") || echo "unknown"
 }
 
 # Get OS codename
 info_get_os_codename() {
-    if [[ -f /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        source /etc/os-release
-        echo "${VERSION_CODENAME:-unknown}"
-    else
-        echo "unknown"
-    fi
+    # shellcheck disable=SC1091
+    (. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-unknown}") || echo "unknown"
 }
 
 # Get installation state from state.json

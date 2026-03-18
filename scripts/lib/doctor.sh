@@ -243,13 +243,14 @@ agent_mail_doctor_check_json() {
     local description="Agent Mail doctor check"
     local result
 
+    local exit_status=0
     if [[ $# -gt 0 ]]; then
-        result="$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$description" am doctor check --json "$1")"
+        result="$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$description" am doctor check --json "$1")" || exit_status=$?
     else
-        result="$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$description" am doctor check --json)"
+        result="$(run_with_timeout "$DEEP_CHECK_TIMEOUT" "$description" am doctor check --json)" || exit_status=$?
     fi
 
-    if [[ $? -ne 0 ]] || [[ -z "$result" ]] || [[ "$result" == "TIMEOUT" ]]; then
+    if [[ $exit_status -ne 0 ]] || [[ -z "$result" ]] || [[ "$result" == "TIMEOUT" ]]; then
         return 1
     fi
 
@@ -1065,9 +1066,9 @@ check_shell() {
     fi
 
     if [[ -d "$plugins_dir/zsh-syntax-highlighting" ]]; then
-        check "shell.plugins.zsh_syntax_highlightinging" "zsh-syntax-highlighting" "pass"
+        check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "pass"
     else
-        check "shell.plugins.zsh_syntax_highlightinging" "zsh-syntax-highlighting" "warn" "not installed" \
+        check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "warn" "not installed" \
             "git clone https://github.com/zsh-users/zsh-syntax-highlighting \${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting"
     fi
 
@@ -1358,7 +1359,7 @@ check_stack() {
             version=$(get_version_line "bv")
             # Also warn if gcloud's bv exists anywhere in PATH
             local gcloud_bv
-            gcloud_bv=$(whence -ap bv 2>/dev/null | grep "google-cloud-sdk" | head -1 || true)
+            gcloud_bv=$(type -ap bv 2>/dev/null | grep "google-cloud-sdk" | head -1 || true)
             if [[ -n "$gcloud_bv" ]]; then
                 check "stack.bv" "Beads Viewer ($version)" "warn" "gcloud bv exists at $gcloud_bv (but correctly shadowed)" \
                     "beads_viewer is correctly prioritized, but gcloud's bv exists. ACFS zshrc handles this."

@@ -7,9 +7,9 @@
 
 # Ensure we have logging functions available
 if [[ -z "${ACFS_BLUE:-}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    CLOUD_DB_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     # shellcheck source=logging.sh
-    source "$SCRIPT_DIR/logging.sh"
+    source "$CLOUD_DB_SCRIPT_DIR/logging.sh"
 fi
 
 # ============================================================
@@ -112,17 +112,20 @@ _cloud_get_bun_bin() {
 
 # Get Ubuntu codename
 _cloud_get_codename() {
-    if [[ -f /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        source /etc/os-release
-        local codename="${VERSION_CODENAME:-noble}"
-        case "$codename" in
-            oracular|plucky|questing) codename="noble" ;;
-        esac
-        echo "$codename"
-    else
-        echo "noble"  # Default to Ubuntu 24.04
-    fi
+    local codename
+    codename=$(
+        if [[ -f /etc/os-release ]]; then
+            # shellcheck disable=SC1091
+            . /etc/os-release
+            echo "${VERSION_CODENAME:-noble}"
+        else
+            echo "noble"
+        fi
+    )
+    case "$codename" in
+        oracular|plucky|questing) codename="noble" ;;
+    esac
+    echo "$codename"
 }
 
 # ============================================================
