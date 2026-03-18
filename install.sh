@@ -2100,6 +2100,21 @@ install_asset() {
         return 1
     fi
 
+    # Ensure destination directory exists (matches install_asset_from_path behavior)
+    local _ia_dest_dir
+    _ia_dest_dir="$(dirname "$dest_path")"
+    if [[ ! -d "$_ia_dest_dir" ]]; then
+        local _ia_sudo="${SUDO:-}"
+        if [[ -z "$_ia_sudo" ]] && [[ $EUID -ne 0 ]] && command -v sudo &>/dev/null; then
+            _ia_sudo="sudo"
+        fi
+        if [[ -w "$(dirname "$_ia_dest_dir" 2>/dev/null)" ]] || [[ $EUID -eq 0 ]]; then
+            mkdir -p "$_ia_dest_dir" 2>/dev/null || true
+        elif [[ -n "$_ia_sudo" ]]; then
+            $_ia_sudo mkdir -p "$_ia_dest_dir" 2>/dev/null || true
+        fi
+    fi
+
     # If running with elevated privileges, refuse to write through symlink path
     # components for sensitive destinations (prevents symlink clobber attacks).
     if [[ $EUID -eq 0 ]]; then
@@ -2914,7 +2929,7 @@ ensure_ubuntu() {
         log_fatal "Cannot detect Ubuntu version (VERSION_ID missing)"
     fi
 
-    VERSION_MAJOR="${version_id%%.*}"
+    local VERSION_MAJOR="${version_id%%.*}"
     if [[ "$VERSION_MAJOR" -lt 22 ]]; then
         log_fatal "Unsupported Ubuntu version: ${version_id}. ACFS supports Ubuntu 22.04+ only."
     fi

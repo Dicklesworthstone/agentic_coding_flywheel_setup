@@ -1302,8 +1302,7 @@ export const trackLessonFunnelComplete = (totalLessons: number): void => {
   const funnelData = getLessonFunnelData();
   if (!funnelData) return;
 
-  const startTime = new Date(funnelData.startedAt).getTime();
-  const totalTimeSeconds = Math.round((Date.now() - startTime) / 1000);
+  const totalTimeSeconds = getElapsedSecondsSince(funnelData.startedAt) ?? 0;
 
   sendEvent('lesson_funnel_complete', {
     funnel_id: funnelData.sessionId,
@@ -1334,8 +1333,7 @@ export const trackLessonDropoff = (reason?: string): void => {
   const funnelData = getLessonFunnelData();
   if (!funnelData) return;
 
-  const startTime = new Date(funnelData.startedAt).getTime();
-  const totalTimeSeconds = Math.round((Date.now() - startTime) / 1000);
+  const totalTimeSeconds = getElapsedSecondsSince(funnelData.startedAt) ?? 0;
 
   sendEvent('lesson_funnel_dropoff', {
     funnel_id: funnelData.sessionId,
