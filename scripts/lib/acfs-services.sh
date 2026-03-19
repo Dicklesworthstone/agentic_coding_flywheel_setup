@@ -139,10 +139,11 @@ cmd_start() {
     local i
     for i in $(seq 1 $(( ${#ACFS_SERVICES[@]} - 1 ))); do
         local svc="${ACFS_SERVICES[$i]}"
-        # split-window creates a new pane and selects it
-        tmux split-window -t "$ACFS_SVC_SESSION:services" -v
-        # The newly created pane is now selected; send command to it via current pane
-        tmux send-keys "$(_svc_cmd "$svc")" Enter
+        # split-window -P -F prints the new pane's ID so we can target it explicitly.
+        # Without -t on send-keys, tmux may target the wrong session if another is active.
+        local new_pane_id
+        new_pane_id="$(tmux split-window -t "$ACFS_SVC_SESSION:services" -v -P -F '#{pane_id}')"
+        tmux send-keys -t "$new_pane_id" "$(_svc_cmd "$svc")" Enter
     done
 
     # Even out the pane layout
