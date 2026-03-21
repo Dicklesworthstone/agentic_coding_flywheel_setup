@@ -2076,7 +2076,6 @@ main_menu() {
                 echo -e "${YELLOW}Invalid choice. Please try again.${NC}"
                 sleep 1
                 ;;
- esac
         esac
     done
 }
