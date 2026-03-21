@@ -3457,6 +3457,24 @@ normalize_user() {
         try_step "Adding $TARGET_USER to docker group" $SUDO usermod -aG docker "$TARGET_USER" || true
     fi
 
+    # Enable lingering user sessions so systemctl --user works on fresh VPS installs
+    # where the target user has never had an interactive login (no /run/user/<uid>).
+    # This must happen BEFORE the stack phase (Phase 8) attempts systemctl --user.
+    if command_exists loginctl; then
+        log_detail "Enabling loginctl linger for $TARGET_USER"
+        $SUDO loginctl enable-linger "$TARGET_USER" 2>/dev/null || true
+    fi
+    local target_uid=""
+    if target_uid="$(id -u "$TARGET_USER" 2>/dev/null)"; then
+        local runtime_dir="/run/user/$target_uid"
+        if [[ ! -d "$runtime_dir" ]]; then
+            log_detail "Creating XDG_RUNTIME_DIR: $runtime_dir"
+            $SUDO mkdir -p "$runtime_dir"
+            $SUDO chown "$TARGET_USER:$TARGET_USER" "$runtime_dir"
+            $SUDO chmod 700 "$runtime_dir"
+        fi
+    fi
+
     log_success "User normalization complete"
 }
 

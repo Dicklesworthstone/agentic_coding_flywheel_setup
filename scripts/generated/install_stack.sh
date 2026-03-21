@@ -294,6 +294,26 @@ if [[ -d "$runtime_dir" ]]; then
   fi
 fi
 
+# On fresh VPS installs the user manager may not be running even though
+# /run/user/<uid> exists (created by install.sh Phase 1).  Ensure the
+# D-Bus session bus environment is set so systemctl --user can connect.
+_systemctl_user_ok=false
+if command -v systemctl >/dev/null 2>&1; then
+  # If show-environment fails, the user manager isn't running yet.
+  # Try to start it via a no-op systemctl --user invocation which
+  # triggers socket-activation of dbus-daemon --session on systemd 245+.
+  if ! systemctl --user show-environment >/dev/null 2>&1; then
+    # Ensure XDG_RUNTIME_DIR is exported (needed for dbus activation)
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+      export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+    fi
+    # Retry after setting the env — the socket may now be activatable
+    systemctl --user show-environment >/dev/null 2>&1 && _systemctl_user_ok=true
+  else
+    _systemctl_user_ok=true
+  fi
+fi
+
 fallback_pid_file="$storage_root/agent-mail.pid"
 fallback_log_file="$storage_root/agent-mail.log"
 
@@ -341,7 +361,7 @@ launch_agent_mail_fallback() {
   echo $! > "$fallback_pid_file"
 }
 
-if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+if [[ "$_systemctl_user_ok" = "true" ]]; then
   stop_agent_mail_fallback
   systemctl --user daemon-reload >/dev/null 2>&1 || true
   if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
@@ -408,9 +428,7 @@ INSTALL_STACK_MCP_AGENT_MAIL
 runtime_dir="/run/user/$(id -u)"
 if [[ -d "$runtime_dir" ]]; then
   export XDG_RUNTIME_DIR="$runtime_dir"
-  if [[ -S "$runtime_dir/bus" ]]; then
-    export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
-  fi
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime_dir/bus"
 fi
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || exit 1
