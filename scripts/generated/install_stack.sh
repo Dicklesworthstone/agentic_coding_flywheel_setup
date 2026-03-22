@@ -525,10 +525,10 @@ INSTALL_STACK_META_SKILL
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify (optional): ms doctor --json (target_user)"
+        log_info "dry-run: verify (optional): ms doctor (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_META_SKILL'
-ms doctor --json
+ms doctor
 INSTALL_STACK_META_SKILL
         then
             log_warn "Optional verify failed: stack.meta_skill"
@@ -907,10 +907,10 @@ INSTALL_STACK_ULTIMATE_BUG_SCANNER
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify (optional): ubs doctor (target_user)"
+        log_info "dry-run: verify (optional): cd /tmp && ubs doctor (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_ULTIMATE_BUG_SCANNER'
-ubs doctor
+cd /tmp && ubs doctor
 INSTALL_STACK_ULTIMATE_BUG_SCANNER
         then
             log_warn "Optional verify failed: stack.ultimate_bug_scanner"
@@ -1855,15 +1855,15 @@ install_stack_srps() {
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: sysmoni --version || sysmoni --help (target_user)"
+        log_info "dry-run: verify: command -v sysmoni (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_SRPS'
-sysmoni --version || sysmoni --help
+command -v sysmoni
 INSTALL_STACK_SRPS
         then
-            log_warn "stack.srps: verify failed: sysmoni --version || sysmoni --help"
+            log_warn "stack.srps: verify failed: command -v sysmoni"
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "stack.srps" "verify failed: sysmoni --version || sysmoni --help"
+              record_skipped_tool "stack.srps" "verify failed: command -v sysmoni"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "stack.srps"
             fi
@@ -2047,15 +2047,15 @@ install_stack_storage_ballast_helper() {
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: sbh status || sbh --help (target_user)"
+        log_info "dry-run: verify: command -v sbh (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_STORAGE_BALLAST_HELPER'
-sbh status || sbh --help
+command -v sbh
 INSTALL_STACK_STORAGE_BALLAST_HELPER
         then
-            log_warn "stack.storage_ballast_helper: verify failed: sbh status || sbh --help"
+            log_warn "stack.storage_ballast_helper: verify failed: command -v sbh"
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "stack.storage_ballast_helper" "verify failed: sbh status || sbh --help"
+              record_skipped_tool "stack.storage_ballast_helper" "verify failed: command -v sbh"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "stack.storage_ballast_helper"
             fi

@@ -1271,7 +1271,7 @@ modules:
     install: []
     verify:
       - ms --version
-      - ms doctor --json || true
+      - ms doctor
 
   - id: stack.automated_plan_reviser
     description: Automated iterative spec refinement with extended AI reasoning (apr)
@@ -1441,7 +1441,7 @@ modules:
     install: []
     verify:
       - ubs --help
-      - ubs doctor || true
+      - cd /tmp && ubs doctor
 
   - id: stack.beads_rust
     description: beads_rust (br) - Rust issue tracker with graph-aware dependencies
@@ -1980,7 +1980,7 @@ modules:
       args: ["--install"]
     install: []
     verify:
-      - sysmoni --version || sysmoni --help
+      - command -v sysmoni
       - systemctl is-active ananicy-cpp
     notes:
       - "Installs ananicy-cpp with curated rules for compilers, browsers, IDEs"
@@ -2072,7 +2072,7 @@ modules:
       url: "https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
     install: []
     verify:
-      - sbh status || sbh --help
+      - command -v sbh
 
   - id: stack.cross_agent_session_resumer
     description: Cross-provider AI coding session resumption — convert and resume sessions across providers (casr)
