@@ -962,6 +962,11 @@ update_run_verified_installer_with_env() {
         return 1
     fi
 
+    # Guard: verify_checksum() sets a RETURN trap referencing $tmp_file.
+    # Under some bash versions the trap can leak into the caller scope;
+    # declaring the variable here prevents "unbound variable" under set -u.
+    local tmp_file=""
+
     local url="${KNOWN_INSTALLERS[$tool]:-}"
     local expected_sha256
     expected_sha256="$(get_checksum "$tool")"
@@ -2120,6 +2125,7 @@ update_stack() {
     # MCP Agent Mail - always install/update via non-blocking installer mode,
     # then enable the managed user service on port 8765.
     local tool="mcp_agent_mail"
+    local tmp_file=""  # guard against verify_checksum RETURN trap leak
     local url="${KNOWN_INSTALLERS[$tool]:-}"
     local expected_sha256
     expected_sha256="$(get_checksum "$tool")"

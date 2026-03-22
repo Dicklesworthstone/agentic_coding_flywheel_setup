@@ -305,7 +305,7 @@ fetch_checksum() {
         return 1
     }
     # Ensure cleanup on return
-    trap 'rm -f "$tmp_file" 2>/dev/null' RETURN
+    trap 'rm -f "${tmp_file:-}" 2>/dev/null' RETURN
 
     if ! acfs_download_to_file "$url" "$tmp_file" "$url"; then
         log_error "Failed to fetch $url"
@@ -347,7 +347,7 @@ verify_checksum() {
         return 1
     }
     # Ensure cleanup on return
-    trap 'rm -f "$tmp_file" 2>/dev/null' RETURN
+    trap 'rm -f "${tmp_file:-}" 2>/dev/null' RETURN
 
     if ! acfs_download_to_file "$url" "$tmp_file" "$name"; then
         log_error "Security Error: Failed to fetch $name"
@@ -464,7 +464,7 @@ fetch_and_run_with_recovery() {
         return 1
     }
     # Ensure cleanup on return
-    trap 'rm -f "$tmp_file" 2>/dev/null' RETURN
+    trap 'rm -f "${tmp_file:-}" 2>/dev/null' RETURN
 
     # Fetch content to file with retries
     if ! acfs_download_to_file "$url" "$tmp_file" "$name"; then
