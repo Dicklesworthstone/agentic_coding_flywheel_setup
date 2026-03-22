@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-03-22T03:17:49+00:00
+# checksums.yaml - Auto-generated 2026-03-22T16:21:21+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -40,7 +40,7 @@ installers:
 
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
-    sha256: "0f22e2db8ddc928614a0c28ced39cfd019355e752fdf5000c0cc6bceedeb8f7b"
+    sha256: "fb3bf07da30b13e452f093ccd50aa889255614d2a708ddc3d6290d7e8ddc4cf4"
 
   claude:
     url: "https://claude.ai/install.sh"
