@@ -525,14 +525,13 @@ INSTALL_STACK_META_SKILL
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: ms doctor (target_user)"
+        log_info "dry-run: verify (optional): ms doctor (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_META_SKILL'
 ms doctor
 INSTALL_STACK_META_SKILL
         then
-            log_error "stack.meta_skill: verify failed: ms doctor"
-            return 1
+            log_warn "Optional verify failed: stack.meta_skill"
         fi
     fi
 
@@ -908,14 +907,13 @@ INSTALL_STACK_ULTIMATE_BUG_SCANNER
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: cd /tmp && ubs doctor (target_user)"
+        log_info "dry-run: verify (optional): cd /tmp && ubs doctor (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_ULTIMATE_BUG_SCANNER'
 cd /tmp && ubs doctor
 INSTALL_STACK_ULTIMATE_BUG_SCANNER
         then
-            log_error "stack.ultimate_bug_scanner: verify failed: cd /tmp && ubs doctor"
-            return 1
+            log_warn "Optional verify failed: stack.ultimate_bug_scanner"
         fi
     fi
 

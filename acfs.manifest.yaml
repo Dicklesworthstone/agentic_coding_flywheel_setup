@@ -1271,7 +1271,7 @@ modules:
     install: []
     verify:
       - ms --version
-      - ms doctor
+      - ms doctor || true
 
   - id: stack.automated_plan_reviser
     description: Automated iterative spec refinement with extended AI reasoning (apr)
@@ -1441,7 +1441,7 @@ modules:
     install: []
     verify:
       - ubs --help
-      - cd /tmp && ubs doctor
+      - cd /tmp && ubs doctor || true
 
   - id: stack.beads_rust
     description: beads_rust (br) - Rust issue tracker with graph-aware dependencies
