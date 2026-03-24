@@ -303,7 +303,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       if (deps.existsSync(configPath)) {
         const config = safeReadJson<{ user?: { email?: string } }>(deps.readFileSync, configPath);
         if (hasNonBlankString(config?.user?.email)) {
-          return { authenticated: true, details: config.user.email.trim() };
+          return { authenticated: true, details: config?.user?.email.trim() };
         }
       }
     }
@@ -448,7 +448,7 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       }
       const auth = safeReadJson<{ token?: string; user?: { email?: string } }>(deps.readFileSync, authPath);
       if (hasNonBlankString(auth?.user?.email)) {
-        return { authenticated: true, details: auth.user.email.trim() };
+        return { authenticated: true, details: auth?.user?.email.trim() };
       }
       if (hasNonBlankString(auth?.token)) {
         return { authenticated: true };

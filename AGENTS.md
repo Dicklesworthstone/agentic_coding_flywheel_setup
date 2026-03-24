@@ -137,20 +137,21 @@ If you see errors, **carefully understand and resolve each issue**. Read suffici
 
 ACFS treats `checksums.yaml` as a security boundary for any manifest module that uses `verified_installer`.
 
-- **Whenever you change or release a tool whose ACFS manifest entry installs via `verified_installer`, you MUST verify that tool's SHA256 in `checksums.yaml` and regenerate the file if the upstream installer hash changed.**
-- **For `rch` specifically:** every new `remote_compilation_helper` release/version change must be followed by checking `https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh` and verifying the `rch` entry in `checksums.yaml`; if the installer hash changed, regenerate `checksums.yaml`.
-- **For `br` specifically:** every new `beads_rust` release/version change must be followed by checking `https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh` and verifying the `br` entry in `checksums.yaml`; if the installer hash changed, regenerate `checksums.yaml`.
+- **Whenever you change or release a tool whose ACFS manifest entry installs via `verified_installer`, you MUST run the canonical checksum refresh flow and review the diff.**
+- **For `rch` specifically:** every new `remote_compilation_helper` release/version change must be followed by this checksum review in ACFS, even if you expect the installer script hash to stay the same.
 - **Do not assume** a version bump is complete just because the upstream release exists; ACFS is still stale until the verified installer checksum is updated here.
-- **Use the canonical updater, not a hand-edited checksum:** regenerate with `./scripts/lib/security.sh --update-checksums > checksums.yaml`, then review the diff and confirm the intended tool entry changed if the upstream installer hash changed.
+- **Use the canonical updater, not a hand-edited checksum:** generate a candidate path such as `candidate="/tmp/acfs-checksums.$$.candidate.yaml"`, then compare it to `checksums.yaml`.
+- **If unrelated installer entries changed too:** stop and investigate before replacing `checksums.yaml`, even if the target tool entry also changed.
+- **If the diff is limited to the timestamp header plus the target tool entry:** replace `checksums.yaml` with the generated output.
+- **If the only diff is the timestamp header:** leave `checksums.yaml` unchanged.
 - Preferred targeted verification before or after regeneration:
   ```bash
+  candidate="/tmp/acfs-checksums.$$.candidate.yaml"
+  ./scripts/lib/security.sh --update-checksums > "$candidate"
+  diff -u checksums.yaml "$candidate" || [[ $? -eq 1 ]]
   ./scripts/lib/security.sh --checksum https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh
   awk '/^  rch:/{flag=1;print;next} flag && /^    /{print;next} flag{exit}' checksums.yaml
-  ```
-- `br` example:
-  ```bash
-  ./scripts/lib/security.sh --checksum https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh
-  awk '/^  br:/{flag=1;print;next} flag && /^    /{print;next} flag{exit}' checksums.yaml
+  awk '/^  rch:/{flag=1;print;next} flag && /^    /{print;next} flag{exit}' "$candidate"
   ```
 
 ---
