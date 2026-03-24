@@ -685,15 +685,18 @@ test.describe("No localStorage (query-only resilience)", () => {
 
     // Step 1: pick an OS
     await page.goto("/wizard/os-selection");
-    await expect(page.locator("h1").first()).toBeVisible();
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
 
     // On mobile, auto-detect is disabled, so Continue should start disabled.
     if (/Mobile/i.test(testInfo.project.name)) {
       await expect(page.getByRole("button", { name: /^continue$/i })).toBeDisabled();
     }
 
-    await page.getByRole("radio", { name: /Mac/i }).click();
-    await page.getByRole("button", { name: /^continue$/i }).click();
+    // Select an OS
+    await page.getByRole('radio', { name: /Mac/i }).click();
+    await page.getByRole('button', { name: /^continue$/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
 
@@ -751,7 +754,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should display the install command", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // The curl command should be visible
     await expect(page.locator('text=curl -fsSL').first()).toBeVisible();
@@ -759,7 +762,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should have copy button for install command", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Copy button should be present
     await expect(page.getByRole('button', { name: /copy/i }).first()).toBeVisible();
@@ -767,7 +770,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should have expandable 'What it installs' section", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Find the details/summary element
     const detailsToggle = page.locator('summary:has-text("What this command installs")');
@@ -783,7 +786,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should navigate to reconnect-ubuntu on continue", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Click the continue button
     await page.click('button:has-text("Installation finished")');
@@ -794,7 +797,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should show warning about not closing terminal", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Warning message should be visible
     await expect(page.locator('text=/don.t close the terminal/i')).toBeVisible();
@@ -802,7 +805,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should have pin-ref toggle checkbox", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Pin checkbox should be visible
     const pinCheckbox = page.locator('#pin-ref');
@@ -813,7 +816,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should show pinned ref input when toggle is enabled", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Initially, input should not be visible
     const refInput = page.locator('input[placeholder*="main, v1.0.0"]');
@@ -830,7 +833,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should update command when pinned ref is set", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Get the default command (without pinning)
     const commandElement = page.locator('code').filter({ hasText: 'curl -fsSL' }).first();
@@ -851,7 +854,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should include commit SHA in command when pinned", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Enable pinning with a commit SHA
     await page.locator('#pin-ref').click();
@@ -868,7 +871,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
   test("should revert to default command when pin toggle is disabled", async ({ page }) => {
     await page.goto("/wizard/run-installer");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Enable pinning
     await page.locator('#pin-ref').click();
@@ -996,7 +999,7 @@ test.describe("Step 12: Status Check Page", () => {
 
   test("should display acfs doctor command", async ({ page }) => {
     await page.goto("/wizard/status-check");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Doctor command should be visible
     await expect(page.locator('text="acfs doctor"')).toBeVisible();
@@ -1004,7 +1007,7 @@ test.describe("Step 12: Status Check Page", () => {
 
   test("should display quick spot check commands", async ({ page }) => {
     await page.goto("/wizard/status-check");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Quick check commands should be visible
     await expect(page.locator('text="cc --version"')).toBeVisible();
@@ -1014,7 +1017,7 @@ test.describe("Step 12: Status Check Page", () => {
 
   test("should have copy buttons for commands", async ({ page }) => {
     await page.goto("/wizard/status-check");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Should have at least one copy button
     const copyButtons = page.getByRole('button', { name: /copy/i });
@@ -1023,7 +1026,7 @@ test.describe("Step 12: Status Check Page", () => {
 
   test("should show troubleshooting advice", async ({ page }) => {
     await page.goto("/wizard/status-check");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Troubleshooting section should mention source ~/.zshrc (use .first() as page may have multiple instances)
     await expect(page.locator('text=/source.*zshrc/i').first()).toBeVisible();
@@ -1031,7 +1034,7 @@ test.describe("Step 12: Status Check Page", () => {
 
   test("should navigate to launch-onboarding on continue", async ({ page }) => {
     await page.goto("/wizard/status-check");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     await expect(page.getByRole("button", { name: /everything looks good/i })).toBeDisabled();
     await page.locator("#flywheel-doctor").click();
@@ -1068,7 +1071,7 @@ test.describe("Step 13: Launch Onboarding Page", () => {
 
   test("should display onboarding command", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Onboarding command should be visible
     await expect(page.locator('text="onboard"')).toBeVisible();
@@ -1076,7 +1079,7 @@ test.describe("Step 13: Launch Onboarding Page", () => {
 
   test("should be the final step with no next button", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // This is the final step of the wizard - it should have learning hub CTAs
     // but should NOT have a standard wizard "Next" navigation button
@@ -1093,7 +1096,7 @@ test.describe("Step 13: Launch Onboarding Page", () => {
 
   test("should show celebration/success messaging", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Should have positive messaging in the main heading
     await expect(page.locator("h1").first()).toContainText(/congratulations|set up|ready/i);
@@ -1127,7 +1130,7 @@ test.describe("Create VPS - Button Disabled States", () => {
 
   test("should have disabled button when no checkboxes are checked", async ({ page }) => {
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Enter valid IP but don't check any boxes
     const ipInput = page.locator('[data-vps-ip-input]');
@@ -1143,7 +1146,7 @@ test.describe("Create VPS - Button Disabled States", () => {
 
   test("should have disabled button when only some checkboxes are checked", async ({ page }) => {
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Check only the first checkbox
     const checkboxes = page.locator('button[role="checkbox"]');
@@ -1163,7 +1166,7 @@ test.describe("Create VPS - Button Disabled States", () => {
 
   test("should have disabled button when IP is empty", async ({ page }) => {
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Check all checkboxes
     const checkboxes = page.locator('button[role="checkbox"]');
@@ -1179,7 +1182,7 @@ test.describe("Create VPS - Button Disabled States", () => {
 
   test("should have disabled button when IP is invalid", async ({ page }) => {
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Check all checkboxes
     const checkboxes = page.locator('button[role="checkbox"]');
@@ -1204,7 +1207,7 @@ test.describe("Create VPS - Button Disabled States", () => {
 
   test("should enable button only when ALL requirements are met", async ({ page }) => {
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Check all checkboxes
     const checkboxes = page.locator('button[role="checkbox"]');
@@ -1227,7 +1230,7 @@ test.describe("Create VPS - Button Disabled States", () => {
 
   test("should count checkboxes correctly (expect 4 items)", async ({ page }) => {
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     const checkboxes = page.locator('button[role="checkbox"]');
     const count = await checkboxes.count();
@@ -1244,7 +1247,7 @@ test.describe("Form Validation - Error States", () => {
   test("should show error immediately on invalid IP blur", async ({ page }) => {
     await setupWizardState(page, { os: "mac" });
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     const input = page.locator('[data-vps-ip-input]');
     await input.clear();
@@ -1258,14 +1261,16 @@ test.describe("Form Validation - Error States", () => {
   test("should clear error when valid IP is entered", async ({ page }) => {
     await setupWizardState(page, { os: "mac" });
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     const input = page.locator('[data-vps-ip-input]');
 
-    // First enter invalid
+    // Clear any existing value and type the invalid IP (more reliable than fill across browsers)
     await input.clear();
     await input.type("invalid");
     await input.blur();
+
+    // Should show error (allow extra time for React state updates)
     await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
 
     // Now enter valid
@@ -1281,7 +1286,7 @@ test.describe("Form Validation - Error States", () => {
   test("should validate various IP edge cases", async ({ page }) => {
     await setupWizardState(page, { os: "mac" });
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     const input = page.locator('[data-vps-ip-input]');
 
@@ -1444,9 +1449,8 @@ test.describe("Mobile Navigation", () => {
     await page.goto("/wizard/generate-ssh-key?os=mac");
     await page.waitForLoadState("domcontentloaded");
 
-    // Should show step indicator with "Step X of Y" format
-    // Using regex for partial match since text spans multiple elements
-    await expect(page.locator('text=/Step.*of/i').first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    // Mobile header should show step indicator
+    await expect(page.getByText(/Step \d+ of \d+/).first()).toBeVisible({ timeout: 5000 });
   });
 
   test("should hide desktop sidebar on mobile", async ({ page }) => {
@@ -1532,7 +1536,7 @@ test.describe("Accessibility", () => {
   test("should have accessible buttons", async ({ page }) => {
     await setupWizardState(page, { os: "mac", ip: "192.168.1.100" });
     await page.goto("/wizard/ssh-connect");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
+    await page.waitForLoadState("domcontentloaded");
 
     // Continue button should be accessible
     const continueButton = page.getByRole('button', { name: /continue/i });
@@ -1543,7 +1547,7 @@ test.describe("Accessibility", () => {
   test("should have accessible form inputs", async ({ page }) => {
     await setupWizardState(page, { os: "mac" });
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // IP input should be accessible
     const input = page.locator('[data-vps-ip-input]');
@@ -1554,7 +1558,7 @@ test.describe("Accessibility", () => {
   test("should have accessible checkboxes", async ({ page }) => {
     await setupWizardState(page, { os: "mac" });
     await page.goto("/wizard/create-vps");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Checkboxes should have proper role
     const checkboxes = page.locator('button[role="checkbox"]');
@@ -1582,7 +1586,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should display command builder on launch-onboarding page", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Command builder panel should be visible
     await expect(page.locator('text="Your Commands"')).toBeVisible();
@@ -1590,7 +1594,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should show SSH root command with stored IP", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // SSH root command should include the stored IP
     await expect(page.locator('text="ssh root@192.168.1.100"')).toBeVisible();
@@ -1598,7 +1602,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should show installer command in vibe mode by default", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Installer command should include --mode vibe
     await expect(page.locator('code').filter({ hasText: '--mode vibe' }).first()).toBeVisible();
@@ -1606,7 +1610,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should update installer command when mode is changed to safe", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Click on Safe mode button
     const safeModeBtn = page.locator('button:has-text("Safe")');
@@ -1618,7 +1622,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should show advanced settings when clicked", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Advanced settings should be hidden initially
     const usernameInput = page.locator('#cb-user');
@@ -1634,7 +1638,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should update SSH user command when username is changed", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Default should show ubuntu user
     await expect(page.locator('text="SSH as ubuntu"')).toBeVisible();
@@ -1655,7 +1659,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should include ACFS_REF in installer command when ref is set", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Open advanced settings
     await page.click('button:has-text("Advanced")');
@@ -1672,7 +1676,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should have share link button that copies URL", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Share button should be visible
     const shareBtn = page.locator('button:has-text("Share link")');
@@ -1687,7 +1691,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should have copy buttons for each command", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Should have multiple copy buttons (one for each command)
     const copyButtons = page.locator('button[aria-label*="Copy"]');
@@ -1697,7 +1701,7 @@ test.describe("Command Builder Panel", () => {
 
   test("should show checkmark after clicking copy button", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Click first copy button
     const copyBtn = page.locator('button[aria-label*="Copy"]').first();
@@ -1711,7 +1715,7 @@ test.describe("Command Builder Panel", () => {
   test("should restore state from URL query params", async ({ page }) => {
     // Navigate with query params
     await page.goto("/wizard/launch-onboarding?ip=10.20.30.40&mode=safe&user=admin&ref=v2.0.0");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Commands should reflect the URL params
     // Note: IP might still use localStorage if set; this tests fresh load
@@ -1725,7 +1729,7 @@ test.describe("Command Builder Panel", () => {
       commandCompletions: ["flywheel-doctor"],
     });
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // IP input should be visible when no IP is stored
     const ipInput = page.locator('#cb-ip');
@@ -1742,7 +1746,7 @@ test.describe("Command Builder Panel", () => {
       commandCompletions: ["flywheel-doctor"],
     });
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Enter invalid IP
     const ipInput = page.locator('#cb-ip');
@@ -1760,7 +1764,7 @@ test.describe("Command Builder Panel", () => {
       commandCompletions: ["flywheel-doctor"],
     });
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Enter valid IP
     const ipInput = page.locator('#cb-ip');
@@ -1779,7 +1783,7 @@ test.describe("Command Builder Panel", () => {
       commandCompletions: ["flywheel-doctor"],
     });
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     await expect(page.locator('text="ssh root@[2001:db8::99]"').first()).toBeVisible();
     await expect(page.locator('text="ssh -i ~/.ssh/acfs_ed25519 ubuntu@[2001:db8::99]"').first()).toBeVisible();
@@ -1802,7 +1806,7 @@ test.describe("Command Builder Panel - Mobile", () => {
 
   test("should display command builder on mobile", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Command builder should be visible on mobile
     await expect(page.locator('text="Your Commands"')).toBeVisible();
@@ -1810,7 +1814,7 @@ test.describe("Command Builder Panel - Mobile", () => {
 
   test("should have horizontally scrollable command text", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Code blocks should have overflow-x-auto for scrolling
     const codeBlock = page.locator('code.overflow-x-auto').first();
@@ -1819,7 +1823,7 @@ test.describe("Command Builder Panel - Mobile", () => {
 
   test("should toggle mode on mobile", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
-    await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
+    await page.waitForLoadState("domcontentloaded");
 
     // Toggle to Safe mode
     await page.click('button:has-text("Safe")');

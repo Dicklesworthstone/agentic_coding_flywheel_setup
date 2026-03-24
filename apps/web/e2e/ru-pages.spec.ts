@@ -123,8 +123,9 @@ test.describe.serial("RU Website Pages", () => {
       await page.waitForLoadState("networkidle");
 
       // Check RU is in the stack visualization
-      const ruMention = page.getByText(/\bRU\b|Repo Updater/i).first();
-      await expect(ruMention).toBeVisible();
+      // Note: Flywheel renders both desktop and mobile versions, one is hidden via CSS.
+      // We explicitly filter for the visible one to pass on both desktop and mobile.
+      await expect(page.getByText(/\bRU\b|Repo Updater/i).filter({ state: 'visible' }).first()).toBeVisible({ timeout: 5000 });
     });
 
     test("RU workflow scenarios visible", async ({ page }) => {
@@ -196,6 +197,10 @@ test.describe.serial("RU Website Pages", () => {
 
   test.describe("RU Navigation", () => {
     test("can navigate from learn to RU lesson page", async ({ page }) => {
+      // Mock progress to unlock lessons
+      await page.addInitScript(() => {
+        window.localStorage.setItem('acfs-learning-hub-completed-lessons', JSON.stringify(Array.from({length: 50}, (_, i) => i)));
+      });
       await page.goto("/learn");
       await page.waitForLoadState("networkidle");
 

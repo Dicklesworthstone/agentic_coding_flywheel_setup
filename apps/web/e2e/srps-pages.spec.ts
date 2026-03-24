@@ -120,8 +120,9 @@ test.describe.serial("SRPS Website Pages", () => {
       await page.waitForLoadState("networkidle");
 
       // Check SRPS is in the stack visualization
-      const srpsMention = page.getByText(/SRPS/i).first();
-      await expect(srpsMention).toBeVisible();
+      // Note: Flywheel renders both desktop and mobile versions, one is hidden via CSS.
+      // We explicitly filter for the visible one.
+      await expect(page.getByText(/\bSRPS\b|System Resource/i).filter({ state: 'visible' }).first()).toBeVisible({ timeout: 5000 });
     });
 
     test("flywheel page mentions System Resource Protection", async ({
@@ -241,16 +242,17 @@ test.describe.serial("SRPS Website Pages", () => {
 
   test.describe("SRPS Navigation", () => {
     test("can navigate from learn to SRPS lesson page", async ({ page }) => {
+      // Mock progress to unlock lessons
+      await page.addInitScript(() => {
+        window.localStorage.setItem('acfs-learning-hub-completed-lessons', JSON.stringify(Array.from({length: 50}, (_, i) => i)));
+      });
       await page.goto("/learn");
       await page.waitForLoadState("networkidle");
 
-      // Find and click link to SRPS
-      const srpsLink = page.getByRole("link", { name: /SRPS/i }).first();
-      if (await srpsLink.isVisible()) {
-        await srpsLink.click();
-        await page.waitForLoadState("networkidle");
-        await expect(page).toHaveURL(/srps/i);
-      }
+      // Find and click link to SRPS - the link should exist
+      const srpsLink = page.getByRole("link", { name: /\bSRPS\b/i }).first();
+      await expect(srpsLink).toBeVisible({ timeout: 5000 });
+      await srpsLink.click();
     });
 
     test("can navigate from flywheel to SRPS tool page", async ({ page }) => {

@@ -145,7 +145,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     term: "powerlevel10k",
     short: "A theme that displays useful information right in your terminal prompt",
     long: "Powerlevel10k (often shortened to 'p10k') is a visual theme for zsh that transforms your terminal prompt from a simple blinking cursor into an informative dashboard. A normal terminal might just show 'user@computer:~$' and wait for you to type. With Powerlevel10k, that same area can show you: what folder you're in (with a shortened path so it fits nicely), whether you're in a version-controlled project and if you have unsaved changes (with color coding: green means clean, yellow means changes), how long your last command took to run, the current time, whether any background processes are running, and more. All of this appears in neatly organized, color-coded segments with small icons. Despite displaying so much information, Powerlevel10k is engineered to be extremely fast and never slows down your terminal.",
-    analogy: "Think of a car dashboard versus a car with no gauges at all. Without a dashboard, you'd have to constantly guess how fast you're going, whether you're low on fuel, if the engine has a problem. With a dashboard, all that information is visible at a glance. Powerlevel10k is that dashboard for your terminal: instead of remembering 'what folder am I in? did I save my work? how long has this been running?', you just glance at the prompt and all that context is right there.",
+    analogy: "Think of a car dashboard versus a car with no gauges at all. Without a dashboard, you'd have to constantly guess how fast you're going, whether you're low on fuel, if the engine has a problem. With a dashboard, all that information is visible and instantly accessible. Powerlevel10k is that dashboard for your terminal: instead of remembering 'what folder am I in? did I save my work? how long has this been running?', you just glance at the prompt and all that context is right there.",
     why: "When working on projects, context matters. Knowing which version-controlled branch you're on prevents mistakes (like accidentally changing the wrong version). Seeing that you have unsaved changes reminds you to save before switching tasks. Watching command execution time helps you realize when something is taking too long. This 'ambient awareness' makes you more efficient and prevents common mistakes, all without requiring you to actively check anything.",
     related: ["zsh", "oh-my-zsh", "git"],
   },
@@ -204,7 +204,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     short: "Fuzzy finder that lets you search lists by typing approximate matches",
     long: "fzf (fuzzy finder) helps you find items in a list by typing just a few letters from what you remember. The 'fuzzy' part means the letters don't have to be consecutive or exact. Looking for a file called 'user-configuration-settings.json'? Just type 'usrconf' or 'config set' and fzf finds it because those letters appear in that order somewhere in the name. It shows you matching options as you type, and you can arrow down to pick one. fzf works with any list: files in your project, commands you've run before, different versions of your code, or anything else. It's most commonly activated by pressing Ctrl+R to search your command history or Ctrl+T to search for files.",
     analogy: "Think of how Google Search works: you don't need to type the exact title of a webpage to find it; you type some related words and Google figures out what you meant. fzf does the same thing for finding files, commands, and other items on your computer. You type what you vaguely remember, and it shows you matches ranked by how well they match, letting you quickly pick the right one.",
-    why: "Human memory is fuzzy. You remember 'that config file with settings' but not 'src/config/application-settings.json'. fzf bridges that gap by letting you type what you remember and quickly finding what you need. When jumping around a project with hundreds of files, this saves enormous amounts of time compared to manually navigating through folder structures.",
+    why: "Human memory is fuzzy. You remember 'that config file with settings' but not 'src/config/application-settings.json'. fzf bridges that gap by letting you type what you remember and quickly find what you need. When jumping around a project with hundreds of files, this saves enormous amounts of time compared to manually navigating through folder structures.",
     related: ["ripgrep", "zoxide", "terminal"],
   },
 
@@ -253,8 +253,8 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     short: "A very fast tool for running JavaScript and installing packages",
     long: "Bun is a tool for working with JavaScript (the programming language that powers interactive websites). It does several things that traditionally required separate tools: it runs JavaScript code, it downloads and installs code libraries (called packages) that your project depends on, it combines multiple code files into one for deployment, and it runs tests to check your code works. The key selling point is speed: Bun can be 10-100 times faster than the traditional tools it replaces. Installing packages that took 30 seconds with the older tool (npm) takes 2 seconds with Bun. This speed comes from Bun being written in a low-level language (Zig) that runs very close to the hardware, while older tools are written in JavaScript itself.",
     analogy: "Imagine going to a shopping center where the grocery store, hardware store, and pharmacy are all different buildings with separate checkouts, versus a single mega-store where everything is under one roof with express checkouts. That's the difference between the traditional JavaScript tools and Bun. Same result, but much less time walking around and waiting in lines.",
-    why: "Speed improvements compound. When installing packages takes 2 seconds instead of 30, you don't mind experimenting with new libraries. When tests run instantly, you run them more often and catch bugs earlier. Bun makes the whole development experience feel snappy and responsive. AI coding assistants use Bun behind the scenes for JavaScript work because it gets things done faster.",
-    related: ["uv", "node"],
+    why: "Speed improvements compound. When installing packages takes 2 seconds instead of 30, you barely notice. This removes friction from Python development and makes AI coding assistants faster when they need to install Python packages.",
+    related: ["uv", "go", "rust"],
   },
 
   uv: {
@@ -318,7 +318,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
   "ai-agents": {
     term: "AI Agents",
     short: "AI programs that can take actions to complete tasks on their own",
-    long: "AI agents are programs that combine large AI models (the technology behind ChatGPT, Claude, etc.) with the ability to take actions in the real world: writing and modifying code, creating and editing files, running programs, searching the internet, and more. The word 'agent' emphasizes that these programs have agency; they can decide what to do next based on results, recover when something goes wrong, and pursue multi-step goals. For example, if you ask an AI agent to 'add user authentication to this application,' it might: search the codebase to understand its structure, decide which authentication approach fits best, write the necessary code across multiple files, test that it works, and report back with a summary. Each step involves decisions the agent makes independently.",
+    long: "AI agents are programs that combine large AI models (the technology behind ChatGPT, Claude, etc.) with the ability to take actions in the real world: writing and modifying code, creating and editing files, running programs, searching the internet, and more. The word 'agent' emphasizes that these programs have agency; they can decide what to do next based on results, recover when something goes wrong, and pursue multi-step goals. For example, if you ask an AI agent to 'add user authentication to this application,' it might: search the codebase to understand its structure, decide which authentication approach fits best, write the necessary code across potentially multiple files, and can run tests to verify the changes work. It's designed for substantial tasks, not just quick questions. Claude Code asks for your permission before making changes, so you stay in control while it does the detailed work.",
     analogy: "Regular AI is like a brilliant consultant who sits in a chair and answers questions. AI agents are like that same brilliant consultant, but now they can get up, walk around your office, use your computer, look through your files, and actually do work. They still need your guidance on what work to do, but they can execute tasks independently rather than just advising you on how to do them yourself.",
     why: "AI agents are the core of what this setup enables. Once your cloud server is configured with these tools, AI agents can work on your projects: writing code, fixing problems, running tests, and building features. You become like a manager directing a team, deciding priorities and reviewing work, rather than doing every task personally. This doesn't replace understanding what's being built; you're deeply involved in guiding and reviewing. But the agents handle execution.",
     related: ["agentic", "claude-code", "codex", "gemini-cli"],
@@ -516,13 +516,22 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     related: ["ru"],
   },
 
+  srps: {
+    term: "SRPS",
+    short: "System Monitor & Process Deprioritization Daemon",
+    long: "SRPS (System Resource Protection System) is an intelligent background daemon that monitors running processes. When you run CPU-heavy or memory-hungry operations like a large compilation, 'npm install', or spawn multiple AI agents concurrently, SRPS automatically adjusts their priority to keep your core UI (like tmux and your shell) snappy. It is safety-first: it never automatically kills processes. Instead, it relies on Ananicy rules (thousands of community-maintained rules) to gracefully deprioritize known resource hogs so your machine remains responsive.",
+    analogy: "Imagine an office manager who notices when the accounting department starts a massive calculation. Instead of letting them hog all the power and bring the elevators and coffee machines to a halt, the manager gently limits their power draw so everyone else can continue working normally. SRPS does this for your CPU and memory.",
+    why: "In agentic coding, launching 5-10 AI agents in parallel can easily overwhelm even a powerful VPS. SRPS prevents resource exhaustion, allowing multiple agents to work concurrently without locking up your terminal.",
+    related: ["pt", "linux"],
+  },
+
   "open-source": {
     term: "Open-source",
     short: "Software whose code is publicly available for anyone to inspect, use, and improve",
-    long: "Open-source software makes its underlying code freely available to the public. Unlike proprietary software where the code is secret, open-source lets anyone read the code (to verify it's not doing anything harmful), modify it (to fix bugs or add features), and share their improvements. This model has produced some of the world's most important software: Linux (operating system), Firefox (web browser), Python (programming language), Git (version control), and countless development tools. Open-source projects are typically maintained by communities of volunteers and companies who benefit from the shared infrastructure.",
+    long: "Open-source software makes its underlying code freely available to the public. Unlike proprietary software where the code is secret, open-source projects are transparent: you can see how they work, modify them, and share your changes. This collaborative model has produced world-class tools like Linux, Git, and countless development libraries. Open-source projects are maintained by communities of users who contribute improvements.",
     analogy: "Open-source is like a recipe that anyone can read, cook from, modify, and share. A restaurant might keep its recipes secret, but open-source is like a community cookbook where everyone contributes their best recipes. No secrets, no license fees, and if you want to add more garlic, you're free to fork off and make your own version.",
     why: "All tools in the Agent Flywheel are open-source. This matters for several reasons: (1) Security: you can verify the code isn't malicious, (2) Cost: there are no license fees, (3) Longevity: even if the original author disappears, the community can continue maintaining it, (4) Customization: if something doesn't work for you, you or others can fix it. Open-source is the foundation of modern software development.",
-    related: ["linux", "git"],
+    related: ["linux"],
   },
 
   // ═══════════════════════════════════════════════════════════════
@@ -586,7 +595,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
   token: {
     term: "Token",
     short: "A chunk of text that AI processes, roughly one word or 4 characters",
-    long: "When AI reads text, it doesn't process individual letters. Instead, it breaks text into 'tokens,' which are roughly word-sized chunks. 'Hello' is one token. 'World' is one token. 'Unbelievable' might be split into two or three tokens. On average, one token equals about 4 characters or 0.75 words. This matters because AI systems have limits on how many tokens they can process at once, and API pricing is often based on tokens. When someone says 'Claude has a 200K token context window,' they mean it can process about 150,000 words at once.",
+    long: "When AI reads text, it doesn't process individual letters. Instead, it breaks text into 'tokens,' which are roughly word-sized chunks. 'Hello' is one token. 'World' is one token. 'Unbelievable' might be split into two or three tokens. On average, one token equals about 4 characters or 0.75 words. This matters because AI systems have limits on how many tokens they can process at once, and API pricing is often based on tokens. When someone says 'Claude has a 200K token context window,' they mean it can hold about 150,000 words in a single conversation. If you share a 500-page book plus ask questions about it, that all needs to fit in the window. When the conversation exceeds the window size, older parts get dropped and the AI no longer 'remembers' them. Newer AI models have much larger context windows than older ones, which is why they can analyze larger codebases and maintain longer conversations.",
     analogy: "Tokens are like the 'words' in the AI's vocabulary. Just as you read text word by word rather than letter by letter, the AI processes text token by token. Some tokens are whole common words; some are pieces of less common words joined together. The AI learned these chunks during training.",
     why: "Understanding tokens helps you understand AI limitations. If an AI says 'context limit reached,' it means too many tokens. If you're comparing AI costs, you'll see pricing per thousand tokens. And if a codebase is very large, an AI might not be able to analyze all of it at once because of token limits.",
     related: ["llm", "context-window"],
@@ -605,7 +614,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     term: "Data Center",
     short: "A warehouse full of computers that power cloud services",
     long: "A data center is a specialized building filled with thousands of servers, all connected to very fast internet with multiple power backups. When you rent a VPS, your virtual server lives in a data center. These facilities have 24/7 security, redundant power supplies, advanced cooling systems, and connections to major internet backbones. Major data centers are run by companies like Equinix, AWS, Google, and Microsoft.",
-    analogy: "Like a massive hotel for computers. Each computer gets its own space, power, internet, and cooling. Staff are on-site 24/7 to handle any issues.",
+    analogy: "Think of a massive hotel for computers. Each computer gets its own space, power, internet, and cooling. Staff are on-site 24/7 to handle any issues.",
     why: "Your VPS lives in a data center, which is why it has better uptime and faster internet than your home computer. Data centers are designed for reliability.",
     related: ["vps", "cloud-server"],
   },
@@ -623,7 +632,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     term: "GitHub",
     short: "The world's largest code hosting platform, owned by Microsoft",
     long: "GitHub is where most open-source code lives. It hosts Git repositories in the cloud, provides collaboration tools (pull requests, issues, code review), and offers GitHub Actions for CI/CD automation. Public repositories are free and unlimited. Private repositories are free for individuals (with some limits) but teams and heavy Actions usage may require a paid plan ($4-21/user/month). GitHub is the de facto standard; having your code on GitHub means it's backed up, shareable, and ready for collaboration.",
-    analogy: "Like Google Drive but specifically for code, with built-in tools for collaboration, code review, and automation. It's where developers store, share, and work on code together.",
+    analogy: "Think of GitHub like a massive shared workspace where developers can collaborate, share code, and work on projects together. It's like a shared office where everyone can access and contribute to code projects.",
     why: "GitHub IS your backup strategy. If your VPS dies, your code is safe on GitHub. We use the 'gh' CLI to interact with GitHub from the terminal. For open-source projects, everything (repos, Actions, Pages) is free. Private projects may need GitHub Pro or Team for unlimited Actions minutes and advanced features.",
     related: ["git", "repository", "deployment"],
   },
@@ -880,7 +889,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     short: "JavaScript Object Notation, a simple format for structured data",
     long: "JSON (JavaScript Object Notation) is a text format for representing structured data. It looks like: {\"name\": \"John\", \"age\": 30, \"languages\": [\"Python\", \"JavaScript\"]}. It's human-readable (you can open it in any text editor) and machine-parseable (programs can easily read and write it). JSON has become the standard way to exchange data between programs, APIs, and services. Nearly every programming language can read and write JSON.",
     analogy: "Like a standardized form that everyone agrees on. Instead of each program inventing its own way to describe data, JSON is the common language they all speak.",
-    why: "Many Agent Flywheel tools communicate using JSON. Agent Mail sends JSON messages, APIs return JSON responses, configuration files use JSON. Understanding JSON helps you read logs, debug issues, and understand how tools communicate.",
+    why: "Understanding JSON helps you read logs, debug issues, and understand how tools communicate. Many Agent Flywheel tools use JSON for configuration and data exchange.",
     related: ["api", "configuration"],
   },
 
@@ -910,7 +919,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     term: "Session",
     short: "A persistent terminal environment that keeps running even when you disconnect",
     long: "In the context of tmux and terminal work, a session is a saved terminal environment that persists on the server. When you start a tmux session, it creates a container for your terminal work. You can open multiple windows and panes within that session, run programs, and do your work. The key feature is persistence: if you disconnect (close your laptop, lose internet, or just log off), the session keeps running on the server. When you reconnect, you can 'attach' back to that same session and find everything exactly as you left it, with programs still running.",
-    analogy: "It's like leaving your desk at work with papers spread out and programs open. When you come back the next day, everything is still there. A normal SSH connection is like a phone call; when you hang up, it's over. A tmux session is like your desk; it stays there waiting for you.",
+    analogy: "It's like leaving your desk at work with papers spread out and programs open. When you come back the next day, everything is still there. A normal SSH connection is more like a phone call; when you hang up, it's over. A tmux session is like your desk; it stays there waiting for you.",
     why: "Sessions are essential for AI coding assistants because they often run long tasks. Without sessions, if your internet blips or you close your laptop, all running work stops. With sessions, agents can work for hours or days, and you can check in whenever you want. The installer sets up ntm (nice tmux) to manage sessions easily.",
     related: ["tmux", "ntm", "ssh"],
   },
@@ -920,7 +929,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     short: "A secret password that lets programs access a service on your behalf",
     long: "An API key is a unique string of characters (like 'sk-abc123xyz789...') that acts as a password for automated access to a service. When you sign up for a service like Anthropic (for Claude) or OpenAI (for ChatGPT), you can generate API keys in your account settings. You give this key to programs that need to use the service on your behalf. The program sends the key with each request to prove it's authorized. API keys should be kept secret; anyone with your key can use the service and potentially rack up charges on your account.",
     analogy: "It's like a valet key for your car. You give it to someone who needs to use your car (the program), and it lets them do specific things (access the AI service), but it's not your master key (your account password). If someone steals it, they can use your car, so you keep it private.",
-    why: "AI coding assistants need API keys to access AI services like Claude or ChatGPT. The key proves you have an account and tracks usage for billing. You'll typically set API keys as environment variables so programs can find them without hardcoding secrets in code.",
+    why: "API keys are how AI coding assistants access AI services like Claude or ChatGPT. The key proves you have an account and tracks usage for billing. You'll typically set API keys as environment variables so programs can find them without hardcoding secrets in code.",
     related: ["environment-variable", "claude-code", "api"],
   },
 
