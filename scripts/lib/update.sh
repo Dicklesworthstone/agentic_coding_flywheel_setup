@@ -946,17 +946,16 @@ update_run_meta_skill_source_install() {
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
 update_run_slb_source_install() {
     log_to_file "Building SLB from source (upstream installer issue workaround)"
-    
+
     local build_cmd
     build_cmd="$(cat <<'EOF'
 set -euo pipefail
 mkdir -p "$HOME/go/bin"
 SLB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/slb_build.XXXXXX")"
+trap 'rm -rf "$SLB_TMP"' EXIT
 cd "$SLB_TMP"
 git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git .
 go build -o "$HOME/go/bin/slb" ./cmd/slb
-cd ..
-rm -rf "$SLB_TMP"
 EOF
 )"
     update_run_in_target_context "" bash -c "$build_cmd"
@@ -2743,15 +2742,20 @@ update_zoxide() {
     if update_require_security; then
         run_cmd "Zoxide (reinstall)" update_run_verified_installer zoxide
     else
-        log_item "skip" "Zoxide" "checksum verification unavailable (missing security.sh/checksums.yaml)"
-        local curl_cmd="curl --connect-timeout 30 --max-time 300 -fsSL"
-        if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            curl_cmd="curl --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL"
+        # Last resort: no checksum verification available
+        if [[ "$YES_MODE" == "true" ]]; then
+            log_item "skip" "Zoxide" "checksum verification unavailable (missing security.sh/checksums.yaml)"
+        else
+            log_item "skip" "Zoxide" "no self-update command, manual update recommended"
+            local curl_cmd="curl --connect-timeout 30 --max-time 300 -fsSL"
+            if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
+                curl_cmd="curl --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL"
+            fi
+            log_to_file "Zoxide update (manual; review first):"
+            log_to_file "  ${curl_cmd} https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh -o /tmp/zoxide.install.sh"
+            log_to_file "  sed -n '1,120p' /tmp/zoxide.install.sh"
+            log_to_file "  bash /tmp/zoxide.install.sh"
         fi
-        log_to_file "Zoxide update (manual; review first):"
-        log_to_file "  ${curl_cmd} https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh -o /tmp/zoxide.install.sh"
-        log_to_file "  sed -n '1,120p' /tmp/zoxide.install.sh"
-        log_to_file "  bash /tmp/zoxide.install.sh"
         return 0
     fi
 

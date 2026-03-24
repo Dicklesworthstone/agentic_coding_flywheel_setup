@@ -122,7 +122,7 @@ test.describe.serial("SRPS Website Pages", () => {
       // Check SRPS is in the stack visualization
       // Note: Flywheel renders both desktop and mobile versions, one is hidden via CSS.
       // We explicitly filter for the visible one.
-      await expect(page.getByText(/\bSRPS\b|System Resource/i).filter({ state: 'visible' }).first()).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/\bSRPS\b|System Resource/i).filter({ visible: true }).first()).toBeVisible({ timeout: 5000 });
     });
 
     test("flywheel page mentions System Resource Protection", async ({

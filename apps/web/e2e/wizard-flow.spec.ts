@@ -91,15 +91,19 @@ async function setupWizardState(
  */
 
 test.describe("Wizard Flow", () => {
-  test.beforeEach(async ({ page }) => {
-    // Clear localStorage before each test for clean state
-    await page.goto("/");
-    await page.evaluate(() => localStorage.clear());
+  test.beforeEach(async ({ context }) => {
+    // Clear state via browser context rather than double-navigating
+    await context.clearCookies();
   });
 
   test("should navigate from home to wizard", async ({ page }) => {
+    // Clear localStorage by adding an init script for the very first load, 
+    // or just clear it after goto.
     await page.goto("/");
-    await page.waitForLoadState("domcontentloaded");
+    await page.evaluate(() => localStorage.clear());
+    // Reload to ensure state is clean
+    await page.reload();
+    await page.waitForLoadState("networkidle");
 
     // Click the primary CTA
     await page.getByRole("link", { name: /start the wizard/i }).click();
@@ -112,7 +116,9 @@ test.describe("Wizard Flow", () => {
 
   test("should complete step 1: OS selection", async ({ page }) => {
     await page.goto("/wizard/os-selection");
-    await page.waitForLoadState("domcontentloaded");
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForLoadState("networkidle");
 
     // Page should load without getting stuck
     await expect(page.locator("h1").first()).toBeVisible({ timeout: 10000 });
@@ -273,9 +279,10 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
 
   test("should redirect to create-vps when IP is missing", async ({ page }) => {
     // Set up only OS, not IP
-    await setupWizardState(page, { 
-      os: "mac",
-      completedSteps: [1, 2, 3, 4]
+    await page.goto("/");
+    await page.evaluate(() => {
+      localStorage.clear();
+      localStorage.setItem("agent-flywheel-user-os", "mac");
     });
 
     // Navigate to SSH connect page
@@ -1152,14 +1159,13 @@ test.describe("Create VPS - Button Disabled States", () => {
     const checkboxes = page.locator('button[role="checkbox"]');
     await checkboxes.first().click();
 
-    // Enter valid IP
+    // Enter valid IP - button should still be disabled (not all checkboxes checked)
     const ipInput = page.locator('[data-vps-ip-input]');
     await ipInput.clear();
     await ipInput.type("192.168.1.100");
     await ipInput.blur();
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
 
-    // Continue button should still be disabled (not all checkboxes checked)
     const continueButton = page.locator('button:has-text("Continue to SSH")');
     await expect(continueButton).toBeDisabled();
   });
@@ -1255,7 +1261,7 @@ test.describe("Form Validation - Error States", () => {
     await input.blur();
 
     // Error should appear
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
   });
 
   test("should clear error when valid IP is entered", async ({ page }) => {
@@ -1271,7 +1277,7 @@ test.describe("Form Validation - Error States", () => {
     await input.blur();
 
     // Should show error (allow extra time for React state updates)
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
 
     // Now enter valid
     await input.clear();
@@ -1280,7 +1286,7 @@ test.describe("Form Validation - Error States", () => {
 
     // Error should disappear, success should appear
     await expect(page.getByText(/Please enter a valid IP address/i)).not.toBeVisible();
-    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: 10000 });
   });
 
   test("should validate various IP edge cases", async ({ page }) => {
@@ -1299,18 +1305,18 @@ test.describe("Form Validation - Error States", () => {
     await input.clear();
     await input.type("192.168");
     await input.blur();
-    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: 10000 });
 
     // Test valid edge cases
     await input.clear();
     await input.type("0.0.0.0");
     await input.blur();
-    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: 10000 });
 
     await input.clear();
     await input.type("255.255.255.255");
     await input.blur();
-    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
+    await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: 10000 });
   });
 });
 
@@ -1670,8 +1676,10 @@ test.describe("Command Builder Panel", () => {
     await refInput.fill("v1.0.0");
     await refInput.blur();
 
-    // Installer command should include ACFS_REF
-    await expect(page.locator('code').filter({ hasText: 'ACFS_REF="v1.0.0"' }).first()).toBeVisible();
+    // Installer command should include the SHA
+    const commandElement = page.locator('code').filter({ hasText: 'curl -fsSL' }).first();
+    await expect(commandElement).toContainText('ACFS_REF="v1.0.0"');
+    await expect(commandElement).toContainText('v1.0.0/install.sh');
   });
 
   test("should have share link button that copies URL", async ({ page }) => {

@@ -163,6 +163,14 @@ function normalizeIP(raw: string): string {
     return 'unknown';
   }
 
+  // Handle IPv4-mapped IPv6 (e.g. ::ffff:192.168.1.1)
+  if (trimmed.toLowerCase().startsWith('::ffff:')) {
+    const ipv4Part = trimmed.slice(7);
+    if (ipv4Part.includes('.')) {
+      return normalizeIP(ipv4Part);
+    }
+  }
+
   // IPv4:port
   if (trimmed.includes('.') && trimmed.includes(':')) {
     const beforePort = trimmed.split(':')[0]?.trim();

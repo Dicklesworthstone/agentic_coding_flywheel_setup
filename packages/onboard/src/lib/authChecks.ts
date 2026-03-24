@@ -269,8 +269,8 @@ export function createAuthChecks(overrides: Partial<AuthCheckDeps> = {}) {
       if (!result) {
         return { authenticated: false };
       }
-      const status = JSON.parse(result) as { BackendState?: string };
-      if (status.BackendState === 'Running') {
+      const status = JSON.parse(result) as { BackendState?: string } | null;
+      if (status?.BackendState === 'Running') {
         const ip = runCommand('tailscale ip -4');
         return ip ? { authenticated: true, details: `IP: ${ip}` } : { authenticated: true };
       }

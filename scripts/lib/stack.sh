@@ -692,11 +692,11 @@ install_slb() {
 set -euo pipefail
 mkdir -p "$HOME/go/bin"
 SLB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/slb_build.XXXXXX")"
+trap 'rm -rf "$SLB_TMP"' EXIT
 cd "$SLB_TMP"
 git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git .
 go build -o "$HOME/go/bin/slb" ./cmd/slb
-cd ..
-rm -rf "$SLB_TMP"
+
 # Add ~/go/bin to PATH if not already present
 if ! grep -q 'export PATH=.*\$HOME/go/bin' ~/.zshrc 2>/dev/null; then
   echo '' >> ~/.zshrc

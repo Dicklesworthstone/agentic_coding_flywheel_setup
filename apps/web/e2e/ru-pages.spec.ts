@@ -125,7 +125,7 @@ test.describe.serial("RU Website Pages", () => {
       // Check RU is in the stack visualization
       // Note: Flywheel renders both desktop and mobile versions, one is hidden via CSS.
       // We explicitly filter for the visible one to pass on both desktop and mobile.
-      await expect(page.getByText(/\bRU\b|Repo Updater/i).filter({ state: 'visible' }).first()).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/\bRU\b|Repo Updater/i).filter({ visible: true }).first()).toBeVisible({ timeout: 5000 });
     });
 
     test("RU workflow scenarios visible", async ({ page }) => {
