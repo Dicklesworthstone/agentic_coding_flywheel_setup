@@ -577,9 +577,7 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK=(
   ['tools.lazygit']="command -v lazygit"
   ['tools.lazydocker']="command -v lazydocker"
   ['network.tailscale']="command -v tailscale"
-  ['network.ssh_keepalive']="# Check if ClientAliveInterval is configured (non-zero)
-grep -qE '^ClientAliveInterval[[:space:]]+[1-9]' /etc/ssh/sshd_config 2>/dev/null
-"
+  ['network.ssh_keepalive']="# Check if ClientAliveInterval is configured (non-zero) grep -qE '^ClientAliveInterval[[:space:]]+[1-9]' /etc/ssh/sshd_config 2>/dev/null "
   ['lang.bun']="test -x ~/.bun/bin/bun"
   ['lang.uv']="test -x ~/.local/bin/uv"
   ['lang.rust']="test -x ~/.cargo/bin/cargo"
@@ -621,21 +619,7 @@ grep -qE '^ClientAliveInterval[[:space:]]+[1-9]' /etc/ssh/sshd_config 2>/dev/nul
   ['stack.cross_agent_session_resumer']="command -v casr"
   ['stack.doodlestein_self_releaser']="command -v dsr"
   ['stack.agent_settings_backup']="command -v asb"
-  ['stack.pcr']="target_home=\"\${TARGET_HOME:-\$HOME}\"
-hook_script=\"\$target_home/.local/bin/claude-post-compact-reminder\"
-settings=\"\$target_home/.claude/settings.json\"
-alt_settings=\"\$target_home/.config/claude/settings.json\"
-
-test -x \"\$hook_script\" || exit 1
-
-if [[ -f \"\$settings\" ]]; then
-  grep -q \"claude-post-compact-reminder\" \"\$settings\"
-elif [[ -f \"\$alt_settings\" ]]; then
-  grep -q \"claude-post-compact-reminder\" \"\$alt_settings\"
-else
-  exit 1
-fi
-"
+  ['stack.pcr']="target_home=\"\${TARGET_HOME:-\$HOME}\" hook_script=\"\$target_home/.local/bin/claude-post-compact-reminder\" settings=\"\$target_home/.claude/settings.json\" alt_settings=\"\$target_home/.config/claude/settings.json\"  test -x \"\$hook_script\" || exit 1  if [[ -f \"\$settings\" ]]; then   grep -q \"claude-post-compact-reminder\" \"\$settings\" elif [[ -f \"\$alt_settings\" ]]; then   grep -q \"claude-post-compact-reminder\" \"\$alt_settings\" else   exit 1 fi "
   ['utils.giil']="command -v giil"
   ['utils.csctf']="command -v csctf"
   ['utils.xf']="command -v xf"
