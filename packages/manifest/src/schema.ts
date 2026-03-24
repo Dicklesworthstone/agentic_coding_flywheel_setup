@@ -194,7 +194,11 @@ export const ModuleSchema = z
     description: z
       .string()
       .min(1, 'Description cannot be empty')
-      .refine((s) => s.trim().length > 0, 'Description cannot be only whitespace'),
+      .refine((s) => s.trim().length > 0, 'Description cannot be only whitespace')
+      .refine(
+        (s) => !/[\n\r]/.test(s),
+        'Description must be single-line (newlines break generated bash scripts)'
+      ),
 
     // SECURITY: Category is used in generated script filenames (install_<category>.sh)
     // and function names (install_<category>). Must be validated to prevent path traversal

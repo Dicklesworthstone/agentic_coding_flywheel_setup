@@ -222,7 +222,15 @@ test_flywheel_tools() {
         if (
             run_beads_probe_command "$br_probe_dir" br create "E2E probe issue" --type task --priority 4 >/dev/null 2>>"$LOG_FILE" &&
             br_list_output=$(run_beads_probe_command "$br_probe_dir" br list --json 2>>"$LOG_FILE") &&
-            jq -e 'type == "array"' <<<"$br_list_output" >/dev/null 2>&1
+            jq -e '
+                if type == "array" then
+                    any(.[]?; .title == "E2E probe issue")
+                elif type == "object" then
+                    (.issues | type == "array") and any(.issues[]?; .title == "E2E probe issue")
+                else
+                    false
+                end
+            ' <<<"$br_list_output" >/dev/null 2>&1
         ); then
             pass "br_list" "br init + br list --json succeeds in isolated workspace ($br_probe_dir)"
         else

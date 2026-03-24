@@ -65,7 +65,7 @@ test_br_functionality() {
     fi
 
     local create_output create_exit test_id
-    create_output=$(run_beads_probe_command "$probe_dir" br create "Smoke test issue" --type task --priority 4 --json 2>&1)
+    create_output=$(run_beads_probe_command "$probe_dir" br create "Smoke test issue" --type task --priority 4 --json 2>>"$LOG_FILE")
     create_exit=$?
 
     if [[ $create_exit -ne 0 ]]; then
@@ -84,9 +84,17 @@ test_br_functionality() {
     fi
 
     local list_output list_exit
-    list_output=$(run_beads_probe_command "$probe_dir" br list --json 2>&1)
+    list_output=$(run_beads_probe_command "$probe_dir" br list --json 2>>"$LOG_FILE")
     list_exit=$?
-    if [[ $list_exit -eq 0 ]] && jq -e --arg id "$test_id" 'type == "array" and any(.[]?; .id == $id)' <<<"$list_output" >/dev/null 2>&1; then
+    if [[ $list_exit -eq 0 ]] && jq -e --arg id "$test_id" '
+        if type == "array" then
+            any(.[]?; .id == $id)
+        elif type == "object" then
+            (.issues | type == "array") and any(.issues[]?; .id == $id)
+        else
+            false
+        end
+    ' <<<"$list_output" >/dev/null 2>&1; then
         pass "br created and listed issue in isolated workspace: $test_id"
     else
         if [[ $list_exit -eq 124 ]]; then
@@ -238,7 +246,7 @@ test_bv_functionality() {
     fi
 
     local output exit_code
-    output=$(run_beads_probe_command "$probe_dir" bv --robot-next 2>&1)
+    output=$(run_beads_probe_command "$probe_dir" bv --robot-next 2>>"$LOG_FILE")
     exit_code=$?
 
     if [[ $exit_code -eq 0 ]] && jq -e 'type == "object" and (.id? // .recommendation?.id? // .issue?.id?) != null' <<<"$output" >/dev/null 2>&1; then

@@ -108,8 +108,16 @@ test_br_list() {
 
     output=$(run_probe_command br list --json 2>>"$LOG_FILE")
     rc=$?
-    if [[ "$rc" -eq 0 ]] && jq -e 'type == "array"' <<<"$output" >/dev/null 2>&1; then
-        pass "br list --json returns valid JSON array in isolated workspace"
+    if [[ "$rc" -eq 0 ]] && jq -e '
+        if type == "array" then
+            any(.[]?; .title == "Integration test probe issue")
+        elif type == "object" then
+            (.issues | type == "array") and any(.issues[]?; .title == "Integration test probe issue")
+        else
+            false
+        end
+    ' <<<"$output" >/dev/null 2>&1; then
+        pass "br list --json returns the probe issue in isolated workspace"
     else
         report_probe_failure "br list --json" "$rc" "$output"
     fi
