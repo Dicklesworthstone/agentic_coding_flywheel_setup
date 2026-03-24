@@ -133,6 +133,26 @@ cd apps/web && bun run build
 
 If you see errors, **carefully understand and resolve each issue**. Read sufficient context to fix them the RIGHT way.
 
+## Verified Installer Checksum Discipline
+
+ACFS treats `checksums.yaml` as a security boundary for any manifest module that uses `verified_installer`.
+
+- **Whenever you change or release a tool whose ACFS manifest entry installs via `verified_installer`, you MUST verify that tool's SHA256 in `checksums.yaml` and regenerate the file if the upstream installer hash changed.**
+- **For `rch` specifically:** every new `remote_compilation_helper` release/version change must be followed by checking `https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh` and verifying the `rch` entry in `checksums.yaml`; if the installer hash changed, regenerate `checksums.yaml`.
+- **For `br` specifically:** every new `beads_rust` release/version change must be followed by checking `https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh` and verifying the `br` entry in `checksums.yaml`; if the installer hash changed, regenerate `checksums.yaml`.
+- **Do not assume** a version bump is complete just because the upstream release exists; ACFS is still stale until the verified installer checksum is updated here.
+- **Use the canonical updater, not a hand-edited checksum:** regenerate with `./scripts/lib/security.sh --update-checksums > checksums.yaml`, then review the diff and confirm the intended tool entry changed if the upstream installer hash changed.
+- Preferred targeted verification before or after regeneration:
+  ```bash
+  ./scripts/lib/security.sh --checksum https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh
+  awk '/^  rch:/{flag=1;print;next} flag && /^    /{print;next} flag{exit}' checksums.yaml
+  ```
+- `br` example:
+  ```bash
+  ./scripts/lib/security.sh --checksum https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh
+  awk '/^  br:/{flag=1;print;next} flag && /^    /{print;next} flag{exit}' checksums.yaml
+  ```
+
 ---
 
 ## Testing
