@@ -38,6 +38,9 @@
 
 set -euo pipefail
 
+# Enable shell tracing when ACFS_DEBUG=true (matches the hint in our error messages)
+[[ "${ACFS_DEBUG:-}" == "true" ]] && set -x
+
 # Prevent apt/dpkg from displaying interactive dialogs (kernel upgrade prompts,
 # debconf questions, etc.) that corrupt the terminal with ncurses escape sequences
 export DEBIAN_FRONTEND=noninteractive

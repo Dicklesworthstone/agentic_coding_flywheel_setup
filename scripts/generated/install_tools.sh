@@ -1017,7 +1017,7 @@ install_utils_s2p() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--skip-cass'; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'env' 'RU_NON_INTERACTIVE=1' 'bash' '-s' '--' '--skip-cass'; then
                             install_success=true
                         else
                             log_error "utils.s2p: verify_checksum or installer execution failed"

@@ -1077,7 +1077,6 @@ modules:
           unit_dir="$HOME/.config/systemd/user"
           unit_file="$unit_dir/agent-mail.service"
           am_bin="$(command -v am)"
-<<<<<<< Updated upstream
           db_url="sqlite:///${storage_root}/storage.sqlite3"
 
           # Detect MCP base path: Rust am uses /mcp/, Python mcp_agent_mail uses /api/
@@ -1086,9 +1085,6 @@ modules:
           else
               am_mcp_path="/api/"
           fi
-=======
-          db_url="sqlite://${storage_root}/storage.sqlite3"
->>>>>>> Stashed changes
 
           mkdir -p "$storage_root" "$unit_dir"
           cat > "$unit_file" <<UNIT_EOF
@@ -1104,13 +1100,8 @@ modules:
           Environment=DATABASE_URL=$db_url
           Environment=HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true
           ExecStartPre=$am_bin migrate
-<<<<<<< Updated upstream
           ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path $am_mcp_path
           Restart=always
-=======
-          ExecStart=$am_bin serve-http --host 127.0.0.1 --port 8765 --path /mcp/
-          Restart=on-failure
->>>>>>> Stashed changes
           RestartSec=5
           LimitNOFILE=65536
 
@@ -2613,11 +2604,8 @@ modules:
       tool: s2p
       runner: bash
       url: "https://raw.githubusercontent.com/Dicklesworthstone/source_to_prompt_tui/main/install.sh"
-<<<<<<< Updated upstream
       args: ["--", "--skip-cass"]
-=======
       env: ["RU_NON_INTERACTIVE=1"]
->>>>>>> Stashed changes
     install: []
     verify:
       - s2p --help || s2p --version
@@ -2892,7 +2880,6 @@ modules:
       - mkdir -p ~/.local/bin
       - |
         # Install acfs-update wrapper
-<<<<<<< Updated upstream
         if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -f "${ACFS_BOOTSTRAP_DIR}/scripts/lib/nightly_update.sh" ]]; then
           cp "${ACFS_BOOTSTRAP_DIR}/scripts/lib/nightly_update.sh" ~/.acfs/scripts/nightly-update.sh
         elif [[ -f "scripts/lib/nightly_update.sh" ]]; then
@@ -2927,8 +2914,6 @@ modules:
       - mkdir -p ~/.acfs/scripts ~/.config/systemd/user
       - |
         # Install nightly update wrapper script
-=======
->>>>>>> Stashed changes
         if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -f "${ACFS_BOOTSTRAP_DIR}/scripts/lib/nightly_update.sh" ]]; then
           cp "${ACFS_BOOTSTRAP_DIR}/scripts/lib/nightly_update.sh" ~/.acfs/scripts/nightly-update.sh
         elif [[ -f "scripts/lib/nightly_update.sh" ]]; then
