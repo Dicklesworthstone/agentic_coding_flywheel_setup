@@ -1253,6 +1253,22 @@ update_acfs_self() {
     log_item "ok" "ACFS $ACFS_VERSION_DISPLAY" "updated ($commit_count commits)"
     log_to_file "ACFS updated from $local_head to $remote_head"
 
+    # Refresh installed security.sh from the repo so checksum verification
+    # uses the latest KNOWN_INSTALLERS URLs and logic.  Without this, stale
+    # copies at ~/.acfs/scripts/lib/security.sh shadow the fresh repo copy
+    # because update_require_security() searches installed paths first.
+    local repo_security="${ACFS_REPO_ROOT}/scripts/lib/security.sh"
+    local installed_security="${ACFS_HOME:-$HOME/.acfs}/scripts/lib/security.sh"
+    if [[ -f "$repo_security" ]] && [[ -f "$installed_security" ]]; then
+        local repo_sec_hash installed_sec_hash
+        repo_sec_hash=$(sha256sum "$repo_security" 2>/dev/null | cut -d' ' -f1) || true
+        installed_sec_hash=$(sha256sum "$installed_security" 2>/dev/null | cut -d' ' -f1) || true
+        if [[ -n "$repo_sec_hash" ]] && [[ "$repo_sec_hash" != "$installed_sec_hash" ]]; then
+            cp "$repo_security" "$installed_security"
+            log_to_file "Refreshed installed security.sh (was stale)"
+        fi
+    fi
+
     # Check if update.sh itself changed - if so, re-exec
     local new_hash=""
     if [[ -f "$update_script" ]]; then
