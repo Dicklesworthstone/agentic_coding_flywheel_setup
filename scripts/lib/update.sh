@@ -1168,10 +1168,9 @@ update_run_verified_installer() {
 # Stale installed copies shadow the repo because
 # update_require_security() searches installed paths first.
 #
-# When acfs-update runs from ~/.acfs, ACFS_REPO_ROOT == ~/.acfs,
-# so "repo" and "installed" security.sh are the same file.
-# We explicitly check the workspace repo checkout to find the
-# authoritative copy that was updated by git pull.
+# Note: sync_acfs_deployed() also syncs security.sh, but this
+# function provides a targeted safety net with hardcoded paths
+# that works even before sync_acfs_deployed was introduced.
 # ------------------------------------------------------------
 update_refresh_installed_security() {
     local installed_security="${ACFS_HOME:-$HOME/.acfs}/scripts/lib/security.sh"
