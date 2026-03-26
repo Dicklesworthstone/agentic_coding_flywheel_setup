@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-03-25T22:12:00+00:00
+# checksums.yaml - Auto-generated 2026-03-26T19:55:42+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -100,7 +100,7 @@ installers:
 
   ohmyzsh:
     url: "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh"
-    sha256: "ce0b7c94aa04d8c7a8137e45fe5c4744e3947871f785fd58117c480c1bf49352"
+    sha256: "21043aec5b791ce4835479dc33ba2f92155946aeafd54604a8c83522627cc803"
 
   opencode:
     url: "https://opencode.ai/install"
@@ -112,7 +112,7 @@ installers:
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
-    sha256: "fb45de091ed63e8332751ead36c32f5df910c6dc36c9cdaab8fdbfd2f6e4083e"
+    sha256: "f42461ddeb861957a9d610284d6bd3d80bc261eabb8cfce6deca40d5176233d6"
 
   rano:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/rano/main/install.sh"
