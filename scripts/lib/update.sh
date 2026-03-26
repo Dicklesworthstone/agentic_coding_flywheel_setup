@@ -1131,7 +1131,7 @@ update_acfs_self() {
                 return 0
             fi
 
-            if git -C "$ACFS_REPO_ROOT" checkout -B main --track origin/main; then
+            if git -C "$ACFS_REPO_ROOT" checkout -f -B main --track origin/main; then
                 log_to_file "Git bootstrap recovery succeeded"
             else
                 log_item "warn" "ACFS self-update" "git recovery checkout failed; leaving existing .git untouched"
@@ -1177,9 +1177,11 @@ update_acfs_self() {
             return 0
         fi
 
-        # Use a hard reset via checkout so the working tree is updated to match
+        # Use a forced checkout so the working tree is updated to match
         # origin/main exactly (tarball files are replaced with the real repo state).
-        if ! git -C "$ACFS_REPO_ROOT" checkout -B main --track origin/main; then
+        # -f is required because the tarball-installed files appear as untracked
+        # and git refuses to overwrite them without force.
+        if ! git -C "$ACFS_REPO_ROOT" checkout -f -B main --track origin/main; then
             log_item "warn" "ACFS self-update" "git checkout failed during bootstrap"
             return 0
         fi
