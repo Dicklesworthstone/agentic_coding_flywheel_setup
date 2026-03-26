@@ -51,14 +51,14 @@ ACFS_REPO_ROOT="$(_acfs_discover_repo_root)"
 # Track if self-update already ran (prevents re-exec loops)
 ACFS_SELF_UPDATE_DONE="${ACFS_SELF_UPDATE_DONE:-false}"
 
-if [[ -f "$SCRIPT_DIR/../../VERSION" ]]; then
-    ACFS_VERSION="$(cat "$SCRIPT_DIR/../../VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
+if [[ -f "$ACFS_REPO_ROOT/VERSION" ]]; then
+    ACFS_VERSION="$(cat "$ACFS_REPO_ROOT/VERSION" 2>/dev/null || echo "$ACFS_VERSION")"
 fi
 
 # Build display version: v0.7.0+a7598d0 (with short commit hash when available)
 _acfs_short_hash=""
-if command -v git &>/dev/null && [[ -d "$SCRIPT_DIR/../../.git" ]]; then
-    _acfs_short_hash=$(git -C "$SCRIPT_DIR/../.." rev-parse --short HEAD 2>/dev/null) || true
+if command -v git &>/dev/null && [[ -d "$ACFS_REPO_ROOT/.git" ]]; then
+    _acfs_short_hash=$(git -C "$ACFS_REPO_ROOT" rev-parse --short HEAD 2>/dev/null) || true
 fi
 if [[ -n "$_acfs_short_hash" ]]; then
     ACFS_VERSION_DISPLAY="v${ACFS_VERSION}+${_acfs_short_hash}"
@@ -764,8 +764,6 @@ cleanup_legacy_git_safety_guard() {
     fi
 }
 
-# Fix stale aliases in deployed acfs.zshrc
-# Older versions aliased br='bun run dev', which shadows beads_rust (br).
 cleanup_legacy_bv_alias() {
     local zshrc_local="$HOME/.zshrc.local"
     [[ -f "$zshrc_local" ]] || return 0
@@ -781,6 +779,8 @@ cleanup_legacy_bv_alias() {
     fi
 }
 
+# Fix stale aliases in deployed acfs.zshrc
+# Older versions aliased br='bun run dev', which shadows beads_rust (br).
 cleanup_legacy_br_alias() {
     local deployed="$HOME/.acfs/zsh/acfs.zshrc"
     [[ -f "$deployed" ]] || return 0
@@ -828,7 +828,10 @@ sync_acfs_deployed() {
     local acfs_home="${ACFS_HOME:-$HOME/.acfs}"
 
     # Only sync when the repo is a different directory from ~/.acfs
-    [[ "$(realpath "$ACFS_REPO_ROOT" 2>/dev/null)" != "$(realpath "$acfs_home" 2>/dev/null)" ]] || return 0
+    local resolved_repo resolved_home
+    resolved_repo="$(realpath "$ACFS_REPO_ROOT" 2>/dev/null || printf '%s' "$ACFS_REPO_ROOT")"
+    resolved_home="$(realpath "$acfs_home" 2>/dev/null || printf '%s' "$acfs_home")"
+    [[ "$resolved_repo" != "$resolved_home" ]] || return 0
 
     local -a file_pairs=(
         # repo-relative-path : deployed-relative-path
@@ -851,6 +854,12 @@ sync_acfs_deployed() {
 
         # Skip if identical
         if [[ -f "$deployed_file" ]] && cmp -s "$repo_file" "$deployed_file"; then
+            continue
+        fi
+
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then
+            log_to_file "Would sync $repo_rel -> $deployed_file"
+            synced=$((synced + 1))
             continue
         fi
 
