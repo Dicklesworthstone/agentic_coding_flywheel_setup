@@ -40,7 +40,7 @@ installers:
 
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
-    sha256: "4c72ecd448548215f279be4b4d931079dc2919d7bdc224f97b681e8dc5033868"
+    sha256: "c291b6dc43136a308fc46f5652131a2b1d094a9049533cb04f547a153cf096f5"
 
   claude:
     url: "https://claude.ai/install.sh"
