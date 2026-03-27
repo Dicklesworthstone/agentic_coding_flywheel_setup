@@ -772,10 +772,40 @@ cleanup_legacy_bv_alias() {
     # Any leftover "alias bv=" in .zshrc.local causes zsh parse errors
     # ("defining function based on alias 'bv'") when acfs.zshrc tries to
     # define the bv() function after .zshrc.local has already created an alias.
+    #
+    # The alias was typically inside an if/elif/fi block like:
+    #   # === BV ...
+    #   if [ -x "$HOME/.local/bin/bv" ]; then
+    #       alias bv="..."
+    #   elif ...
+    #   fi
+    # A naive sed '/alias bv=/d' leaves orphaned if/elif/fi with empty
+    # bodies — a syntax error.  We must remove the entire block.
     if grep -q 'alias bv=' "$zshrc_local" 2>/dev/null; then
+        # Remove the entire bv alias block: from "# === BV" through the
+        # closing "fi" (inclusive), plus any surrounding blank lines.
+        sed -i '/^# === BV/,/^fi$/d' "$zshrc_local"
+        # Safety net: if the alias existed outside a block, remove it too
         sed -i '/alias bv=/d' "$zshrc_local"
-        log_item "ok" "legacy cleanup" "removed stale bv alias from .zshrc.local (handled by acfs.zshrc bv() function)"
-        log_to_file "Removed alias bv= lines from $zshrc_local"
+        log_item "ok" "legacy cleanup" "removed stale bv alias block from .zshrc.local"
+        log_to_file "Removed bv alias block from $zshrc_local"
+    fi
+
+    # Also clean up orphaned if/elif/fi skeletons left by earlier runs
+    # that only deleted the alias lines but not the surrounding block.
+    # Pattern: "if [ -x ... bv" followed by empty elif/fi.
+    if grep -q 'if \[.*bv.*\]; then' "$zshrc_local" 2>/dev/null; then
+        # Check if any of the bv if-blocks have substance (non-empty bodies)
+        local has_bv_content
+        has_bv_content=$(awk '/if \[.*bv.*\]; then/{found=1; next} found && /^(elif|fi$)/{next} found && /[^ \t]/{print; found=0} found && /^fi$/{found=0}' "$zshrc_local")
+        if [[ -z "$has_bv_content" ]]; then
+            # Block is empty (only if/elif/fi skeleton) — safe to remove
+            sed -i '/^# === BV/,/^fi$/d' "$zshrc_local"
+            # Handle case where the block has no comment header
+            sed -i '/if \[.*bv.*\]; then/,/^fi$/d' "$zshrc_local"
+            log_item "ok" "legacy cleanup" "removed orphaned bv if/elif/fi skeleton from .zshrc.local"
+            log_to_file "Removed orphaned bv block skeleton from $zshrc_local"
+        fi
     fi
 }
 
