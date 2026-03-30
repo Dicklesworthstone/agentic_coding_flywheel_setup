@@ -1106,7 +1106,8 @@ check_core_tools() {
     check_command "tool.strace" "strace" "strace" "sudo apt-get install -y strace"
     check_command "tool.lsof" "lsof" "lsof" "sudo apt-get install -y lsof"
     check_command "tool.zstd" "zstd" "zstd" "sudo apt-get install -y zstd"
-    check_optional_command "tool.cosign" "cosign" "cosign" "sudo apt-get install -y cosign"
+    check_optional_command "tool.cosign" "cosign" "cosign" \
+        "COSIGN_VERSION=v2.4.1 && curl -fsSL https://github.com/sigstore/cosign/releases/download/\${COSIGN_VERSION}/cosign-linux-amd64 -o /tmp/cosign && sudo install /tmp/cosign /usr/local/bin/cosign"
     check_command "tool.dig" "dig (dnsutils)" "dig" "sudo apt-get install -y dnsutils"
     check_command "tool.nc" "nc (netcat-openbsd)" "nc" "sudo apt-get install -y netcat-openbsd"
     check_command "tool.sg" "ast-grep" "sg" "cargo install ast-grep --locked"
@@ -1470,9 +1471,19 @@ check_stack() {
     fi
 
     # Check beads_rust (br) - local-first issue tracker
+    # Also check $HOME/.cargo/bin/ explicitly for curl|bash root installs
+    # where the target user's cargo bin may not be in the current PATH.
+    local _br_bin=""
     if command -v br &>/dev/null; then
+        _br_bin="br"
+    elif [[ -x "${HOME}/.cargo/bin/br" ]]; then
+        _br_bin="${HOME}/.cargo/bin/br"
+    elif [[ -n "${TARGET_HOME:-}" && -x "${TARGET_HOME}/.cargo/bin/br" ]]; then
+        _br_bin="${TARGET_HOME}/.cargo/bin/br"
+    fi
+    if [[ -n "$_br_bin" ]]; then
         local version
-        version=$(get_version_line "br")
+        version=$(get_version_line "$_br_bin")
         check "stack.beads_rust" "beads_rust ($version)" "pass" "installed"
     else
         check "stack.beads_rust" "beads_rust (br)" "warn" "not installed" \
@@ -1563,6 +1574,45 @@ check_stack() {
 
     # Check DCG (Destructive Command Guard)
     check_dcg_hook_status
+
+    # Check acfs-nightly-update timer (systemd user unit)
+    # Gracefully handle missing systemd user session (curl|bash installs as
+    # root don't have a D-Bus session, so systemctl --user always fails).
+    local _nightly_status="unknown"
+    if command -v systemctl &>/dev/null && [[ -d /run/systemd/system ]]; then
+        # Try to access the user session; if no D-Bus, fall back to checking
+        # the unit file exists on disk instead.
+        local _target_home="${TARGET_HOME:-$HOME}"
+        local _nightly_unit_file="${_target_home}/.config/systemd/user/acfs-nightly-update.timer"
+        if systemctl --user is-enabled acfs-nightly-update.timer &>/dev/null 2>&1; then
+            _nightly_status="enabled"
+        elif [[ -f "$_nightly_unit_file" ]]; then
+            _nightly_status="unit_exists"
+        else
+            _nightly_status="missing"
+        fi
+    else
+        _nightly_status="no_systemd"
+    fi
+    case "$_nightly_status" in
+        enabled)
+            check "acfs.nightly" "Nightly auto-update timer" "pass" "enabled"
+            ;;
+        unit_exists)
+            check "acfs.nightly" "Nightly auto-update timer" "warn" \
+                "unit file exists but timer not enabled (no D-Bus user session?)" \
+                "loginctl enable-linger \$(whoami) && systemctl --user enable --now acfs-nightly-update.timer"
+            ;;
+        no_systemd)
+            check "acfs.nightly" "Nightly auto-update timer" "skip" \
+                "no systemd or no user session (expected for curl|bash root installs)"
+            ;;
+        *)
+            check "acfs.nightly" "Nightly auto-update timer" "warn" \
+                "not installed (optional)" \
+                "$(fix_for_module "acfs.nightly")"
+            ;;
+    esac
 
     blank_line
 }
@@ -1706,6 +1756,8 @@ _is_bespoke_covered() {
         stack.beads_rust.*|stack.cass|stack.cm.*|stack.caam) return 0 ;;
         stack.dcg.*|stack.ru|stack.meta_skill.*) return 0 ;;
         stack.brenner_bot|stack.rch|stack.wezterm_automata) return 0 ;;
+        # check_stack  (acfs nightly timer — bespoke handles D-Bus gracefully)
+        acfs.nightly) return 0 ;;
         # check_utilities (bd-2gog)
         util.*|utils.*) return 0 ;;
     esac
@@ -1811,7 +1863,7 @@ check_manifest_supplemental() {
         local tool_name
         tool_name="${cmd%% *}"
         case "$tool_name" in
-            test|"["|grep|export|command|bash|sh|systemctl|"[["*)
+            test|"["|grep|export|command|bash|sh|cd|systemctl|"[["*)
                 tool_name="${id%.[0-9]*}"    # strip trailing .N
                 tool_name="${tool_name##*.}" # keep last segment
                 ;;

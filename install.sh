@@ -130,6 +130,7 @@ export AUTO_FIX_MODE
 # Ubuntu upgrade options (nb4: integrate upgrade phase)
 SKIP_UBUNTU_UPGRADE=false
 TARGET_UBUNTU_VERSION="25.10"
+TARGET_UBUNTU_VERSION_EXPLICIT=false  # true when user passes --target-ubuntu
 
 # Target user configuration
 # Default: detect the current user (or SUDO_USER if running under sudo).
@@ -1096,11 +1097,13 @@ parse_args() {
                     fi
                     # shellcheck disable=SC2034  # used by run_ubuntu_upgrade_phase
                     TARGET_UBUNTU_VERSION="$2"
+                    TARGET_UBUNTU_VERSION_EXPLICIT=true
                     shift 2
                 else
                     # Handle --target-ubuntu=25.10 format
                     # shellcheck disable=SC2034  # used by run_ubuntu_upgrade_phase
                     TARGET_UBUNTU_VERSION="${1#*=}"
+                    TARGET_UBUNTU_VERSION_EXPLICIT=true
                     shift
                 fi
                 ;;
@@ -2966,6 +2969,28 @@ run_ubuntu_upgrade_phase() {
     if [[ "$ID" != "ubuntu" ]]; then
         log_detail "Not Ubuntu (detected: $ID), skipping upgrade"
         return 0
+    fi
+
+    # If the user did NOT explicitly pass --target-ubuntu, check whether this
+    # is a fully-patched LTS release.  LTS users (e.g., 24.04) should not be
+    # forced to upgrade to a non-LTS target just because the default
+    # TARGET_UBUNTU_VERSION is ahead of them.
+    if [[ "$TARGET_UBUNTU_VERSION_EXPLICIT" != "true" ]]; then
+        local _current_ver="${VERSION_ID:-}"
+        # Ubuntu LTS releases have .04 minor versions (e.g., 22.04, 24.04)
+        if [[ "$_current_ver" == *.04 ]]; then
+            # Check whether all packages are up to date (0 upgradable)
+            local _upgradable=0
+            if command -v apt-get &>/dev/null; then
+                # apt-get update may need root; try non-destructively first
+                _upgradable=$(apt list --upgradable 2>/dev/null | grep -c 'upgradable' || true)
+            fi
+            if [[ "$_upgradable" -eq 0 ]]; then
+                log_detail "Ubuntu $_current_ver LTS is fully patched (0 packages upgradable); skipping auto-upgrade"
+                log_detail "  (pass --target-ubuntu=<VER> to force an upgrade)"
+                return 0
+            fi
+        fi
     fi
 
     # CRITICAL: Ensure jq is installed for state tracking (state.sh depends on it).
@@ -6170,7 +6195,13 @@ main() {
     # Run as "Phase -1" before all other phases.
     # This may trigger a reboot and exit. After final reboot,
     # the resume service will call install.sh again to continue.
-    run_ubuntu_upgrade_phase "$@"
+    # Skip when --only or --only-phase is specified, since the user
+    # is targeting a specific module on an already-installed system.
+    if [[ ${#ONLY_MODULES[@]} -eq 0 ]] && [[ ${#ONLY_PHASES[@]} -eq 0 ]]; then
+        run_ubuntu_upgrade_phase "$@"
+    else
+        log_debug "Skipping Ubuntu auto-upgrade (--only/--only-phase mode)"
+    fi
 
     # ============================================================
     # State Management and Resume Logic (mjt.5.8)
