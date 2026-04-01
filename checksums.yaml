@@ -92,7 +92,7 @@ installers:
 
   ntm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh"
-    sha256: "5c3bde1d76bda7aa267944dea44907c3fecc2eeede36b56d9d7db5a3d571183e"
+    sha256: "bef8e3d98373e64f0fde83b1732eaa1fc31750371eef0dbc7bff573e1af3fe51"
 
   nvm:
     url: "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
@@ -165,4 +165,3 @@ installers:
   zoxide:
     url: "https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh"
     sha256: "0c25aed6cce9d56ee0596c9a5df8cbe99ffd0f7a7054de0262234dd268b61404"
-
