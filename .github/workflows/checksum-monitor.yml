@@ -2,7 +2,7 @@ name: Auto-Update Upstream Checksums
 
 on:
   schedule:
-    - cron: "0 */2 * * *"   # Every 2 hours (more frequent for faster updates)
+    - cron: "*/15 * * * *"  # Every 15 minutes — minimizes stale-checksum window
   workflow_dispatch:         # Manual trigger for testing
   push:
     branches:

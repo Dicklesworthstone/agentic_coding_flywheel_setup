@@ -1226,6 +1226,36 @@ update_refresh_installed_security() {
 }
 
 # ------------------------------------------------------------
+# Extract security-critical files from an already-fetched remote.
+# Called when a full git pull is not possible (dirty worktree,
+# ff-only failure, wrong branch, etc.) but we still need fresh
+# checksums and URLs so verified-installer checks don't break.
+# Requires: git fetch origin main has already succeeded.
+# ------------------------------------------------------------
+_acfs_refresh_security_from_fetched_remote() {
+    local _sec_files_refreshed=false
+    local _sec_relpath
+    for _sec_relpath in checksums.yaml scripts/lib/security.sh; do
+        local _sec_target="$ACFS_REPO_ROOT/$_sec_relpath"
+        local _sec_tmp=""
+        _sec_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-sec-refresh.XXXXXX" 2>/dev/null)" || continue
+        if git -C "$ACFS_REPO_ROOT" show "origin/main:$_sec_relpath" > "$_sec_tmp" 2>/dev/null; then
+            if [[ -s "$_sec_tmp" ]] && ! cmp -s "$_sec_tmp" "$_sec_target" 2>/dev/null; then
+                cp -f "$_sec_tmp" "$_sec_target" 2>/dev/null && _sec_files_refreshed=true
+                log_to_file "Refreshed $_sec_relpath from origin/main (bypassing full pull)"
+            fi
+        fi
+        rm -f "$_sec_tmp" 2>/dev/null
+    done
+
+    if [[ "$_sec_files_refreshed" == "true" ]]; then
+        log_item "ok" "ACFS checksums" "refreshed from remote"
+        update_refresh_installed_security
+        sync_acfs_deployed
+    fi
+}
+
+# ------------------------------------------------------------
 # Self-Update: Update ACFS itself before anything else
 # ------------------------------------------------------------
 # This ensures users always have the latest update logic,
@@ -1344,9 +1374,13 @@ update_acfs_self() {
         return 0
     fi
 
-    # Only auto-update on main branch
+    # Only auto-update on main branch, but still refresh security files
     if [[ "$current_branch" != "main" ]]; then
         log_item "skip" "ACFS self-update" "not on main branch (on: $current_branch)"
+        # Still fetch and refresh security files so checksums stay fresh
+        if git -C "$ACFS_REPO_ROOT" fetch origin main --quiet 2>/dev/null; then
+            _acfs_refresh_security_from_fetched_remote
+        fi
         return 0
     fi
 
@@ -1391,22 +1425,30 @@ update_acfs_self() {
         return 0
     fi
 
-    # Skip self-update if tracked files have local modifications to avoid
+    # Skip full git pull if tracked files have local modifications to avoid
     # merge conflicts. Use --untracked-files=no because ~/.acfs/ contains
     # runtime state files (state.json, logs/, cache/, autofix/) that are
     # not in the git repo — these must not block self-update since
     # git pull --ff-only never touches untracked files.
+    #
+    # Even when we can't pull, we STILL extract security-critical files
+    # (checksums.yaml, security.sh) from the fetched remote so that
+    # verified-installer checks use fresh checksums and URLs. Without this,
+    # machines with local modifications run with stale checksums indefinitely,
+    # causing constant checksum-mismatch failures for Dicklesworthstone tools.
     if [[ -n "$(git -C "$ACFS_REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
-        log_item "warn" "ACFS self-update" "tracked files have local modifications; skipping self-update"
-        log_to_file "Self-update skipped: working tree has tracked modifications"
+        log_item "warn" "ACFS self-update" "tracked files have local modifications; skipping full pull"
+        log_to_file "Self-update skipped: working tree has tracked modifications — refreshing security files only"
+        _acfs_refresh_security_from_fetched_remote
         return 0
     fi
 
     # Pull updates
     log_to_file "Pulling updates..."
     if ! git -C "$ACFS_REPO_ROOT" pull --ff-only origin main 2>/dev/null; then
-        log_item "warn" "ACFS self-update" "ff-only pull failed; skipping (branch divergence?)"
-        log_to_file "Self-update skipped: git pull --ff-only failed"
+        log_item "warn" "ACFS self-update" "ff-only pull failed (branch divergence?); refreshing security files"
+        log_to_file "Self-update skipped: git pull --ff-only failed — refreshing security files only"
+        _acfs_refresh_security_from_fetched_remote
         return 0
     fi
 

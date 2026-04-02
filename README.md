@@ -2327,10 +2327,10 @@ jobs:
 ACFS automatically monitors upstream installers for changes, and also repairs generated artifact checksum drift:
 
 ```yaml
-# Runs every 2 hours + on upstream changes
-schedule: "0 */2 * * *"
+# Runs every 15 minutes + on upstream changes
+schedule: "*/15 * * * *"
 triggers:
-  - Schedule (every 2 hours)
+  - Schedule (every 15 minutes)
   - Webhook from upstream repos (repository_dispatch)
   - Pushes touching installer/checksum/generator files
 ```
@@ -2365,7 +2365,7 @@ This ensures:
 **Upstream Repo Dispatch (Fast Path):**
 - ACFS-owned tool repos emit a `repository_dispatch` event (`upstream-changed`) when their `install.sh` changes or a release is published.
 - Requires a PAT secret named `ACFS_REPO_DISPATCH_TOKEN` in each tool repo (repo scope for this org/user).
-- If dispatch fails, the 2-hour scheduled monitor still catches drift (but slower).
+- If dispatch fails, the 15-minute scheduled monitor still catches drift (but slower).
 
 ### Production Smoke Tests (`production-smoke.yml`)
 

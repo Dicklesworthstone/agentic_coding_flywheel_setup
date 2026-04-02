@@ -4,7 +4,7 @@ This document explains how to configure ACFS-owned tool repositories to automati
 
 ## Overview
 
-When an ACFS tool (ntm, dcg, bv, etc.) updates its `install.sh`, ACFS's `checksums.yaml` becomes stale. Currently, ACFS polls every 2 hours to detect changes. With repo-dispatch hooks, tool repos can **immediately** notify ACFS when installer scripts change, reducing the mismatch window from hours to minutes.
+When an ACFS tool (ntm, dcg, bv, etc.) updates its `install.sh`, ACFS's `checksums.yaml` becomes stale. Currently, ACFS polls every 15 minutes to detect changes. With repo-dispatch hooks, tool repos can **immediately** notify ACFS when installer scripts change, reducing the mismatch window from minutes to seconds.
 
 ## Architecture
 
@@ -121,7 +121,7 @@ Different tools have different installer locations. Adjust the `paths` trigger a
 |------|------|----------------|
 | giil | `Dicklesworthstone/giil` | `install.sh` |
 | cass | `Dicklesworthstone/coding_agent_session_search` | `install.sh` |
-| mcp_agent_mail | `Dicklesworthstone/mcp_agent_mail` | `scripts/install.sh` |
+| mcp_agent_mail | `Dicklesworthstone/mcp_agent_mail_rust` | `install.sh` |
 | dcg | `Dicklesworthstone/destructive_command_guard` | `install.sh` |
 | ntm | `Dicklesworthstone/ntm` | `install.sh` |
 | cm | `Dicklesworthstone/cass_memory_system` | `install.sh` |
