@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-04-01T22:12:36+00:00
+# checksums.yaml - Auto-generated 2026-04-02T20:26:06+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -68,7 +68,7 @@ installers:
 
   gemini_patch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh"
-    sha256: "0728069a332382a20679c63e345e81c870c33285fc11540b38ff0be35a7bb25e"
+    sha256: "874b083c34a966f76f2b3c1af0ab5a8c23ac39b97d7f7a58481f291005e127c4"
 
   giil:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/giil/main/install.sh"
