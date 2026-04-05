@@ -473,7 +473,7 @@ const SCENARIOS: ScenarioStep[] = [
     ],
     timing: { dns: 3, tls: 45, proxyProcessing: 8, serverWait: 920, transfer: 24 },
     totalLatency: 1000,
-    bodyPreview: '{\n  "model": "claude-3-7-sonnet-20250219",\n  "content": [{\n    "text": "Decrypted response visible"\n  }]\n}',
+    bodyPreview: '{\n  "model": "claude-sonnet-4-6-20250514",\n  "content": [{\n    "text": "Decrypted response visible"\n  }]\n}',
     rules: [
       { id: 'r1', type: 'inspect', pattern: '*.anthropic.com', action: 'TLS intercept + log body', matched: true },
       { id: 'r2', type: 'modify', pattern: '*', action: 'Add trace header', matched: true },

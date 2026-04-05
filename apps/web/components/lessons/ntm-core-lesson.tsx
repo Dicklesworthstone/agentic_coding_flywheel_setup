@@ -273,7 +273,7 @@ const AGENTS: AgentPaneV2[] = [
   {
     id: "cc1",
     name: "Claude-1",
-    model: "claude-3.7-sonnet",
+    model: "claude-sonnet-4-6",
     flag: "--cc",
     color: "#f97316",
     colorLight: "#fdba74",
@@ -292,7 +292,7 @@ const AGENTS: AgentPaneV2[] = [
   {
     id: "cc2",
     name: "Claude-2",
-    model: "claude-3.7-sonnet",
+    model: "claude-sonnet-4-6",
     flag: "--cc",
     color: "#f97316",
     colorLight: "#fdba74",
@@ -352,8 +352,8 @@ const TOTAL_STEPS = 8;
 
 const STEP_COMMANDS: Record<number, string> = {
   0: "ntm spawn myproject --cc=2 --cod=1 --gmi=1",
-  1: "Spawning Claude-1 (claude-3.7-sonnet)...",
-  2: "Spawning Claude-2 (claude-3.7-sonnet)...",
+  1: "Spawning Claude-1 (claude-sonnet-4-6)...",
+  2: "Spawning Claude-2 (claude-sonnet-4-6)...",
   3: "Spawning Codex (codex-mini)...",
   4: "Spawning Gemini (gemini-2.5-pro)...",
   5: 'ntm send myproject "Analyze this codebase"',

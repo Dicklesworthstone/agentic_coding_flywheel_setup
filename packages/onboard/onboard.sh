@@ -31,10 +31,10 @@ MENU_SEPARATOR="─────────────────────�
 # Signal Handling — clean exit on Ctrl+C / SIGTERM
 # ─────────────────────────────────────────────────────────────────────────────
 _onboard_cleanup() {
-    printf '\033[?25h' 2>/dev/null  # Restore cursor visibility
-    stty echo 2>/dev/null || true   # Re-enable echo if gum disabled it
-    echo ""                         # Clean newline so shell prompt isn't mangled
-    exit 130                        # Standard SIGINT exit code
+    printf '\033[?25h' 2>/dev/null   # Restore cursor visibility
+    stty echo 2>/dev/null || true    # Re-enable echo if gum disabled it
+    printf '\n' 2>/dev/null || true  # Clean newline so shell prompt isn't mangled
+    exit 130                         # Standard SIGINT exit code
 }
 trap _onboard_cleanup INT TERM HUP
 
@@ -1560,10 +1560,9 @@ render_markdown() {
         # Prevent glow's built-in pager from blocking on long lessons
         PAGER="cat" glow -s dark "$file"
     elif has_gum; then
-        # Use gum format for markdown rendering
         gum format -t markdown < "$file"
     elif command -v bat &>/dev/null; then
-        bat --style=plain --language=markdown "$file"
+        bat --paging=never --style=plain --language=markdown "$file"
     else
         # Basic markdown rendering with sed
         sed \

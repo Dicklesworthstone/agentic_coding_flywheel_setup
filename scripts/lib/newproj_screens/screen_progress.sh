@@ -342,7 +342,7 @@ venv/
             fi
 
             local claude_settings='{
-  "model": "claude-3-7-sonnet-20250219",
+  "model": "claude-sonnet-4-6-20250514",
   "permissions": {
     "allow_file_read": true,
     "allow_file_write": true,

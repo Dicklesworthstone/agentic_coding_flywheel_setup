@@ -795,7 +795,7 @@ EOF
             echo -e "${GREEN}Creating Claude settings...${NC}"
             cat > .claude/settings.local.json << 'EOF'
 {
-  "model": "claude-3-7-sonnet-20250219",
+  "model": "claude-sonnet-4-6-20250514",
   "permissions": {
     "allow_file_read": true,
     "allow_file_write": true,
