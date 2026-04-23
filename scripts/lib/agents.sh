@@ -552,13 +552,16 @@ _agent_latest_nvm_node_bin() {
     local target_user="${TARGET_USER:-ubuntu}"
     local target_home=""
     target_home="$(_agent_target_home "$target_user")"
-    local latest_bin=""
+    local node_path=""
 
-    latest_bin="$(
-        compgen -G "$target_home/.nvm/versions/node/*/bin" | sort -V | tail -n 1
-    )"
-    [[ -n "$latest_bin" ]] || return 1
-    printf '%s\n' "$latest_bin"
+    while IFS= read -r node_path; do
+        if [[ -x "$node_path" ]]; then
+            printf '%s\n' "${node_path%/node}"
+            return 0
+        fi
+    done < <(compgen -G "$target_home/.nvm/versions/node/*/bin/node" | sort -Vr)
+
+    return 1
 }
 
 _agent_ensure_nvm_node() {

@@ -298,6 +298,28 @@ EOF
     assert_success
 }
 
+@test "update_nvm_node_bin_dir: picks newest executable node binary" {
+    local older_bin="$HOME/.nvm/versions/node/v20.11.1/bin"
+    local newer_bin="$HOME/.nvm/versions/node/v99.0.0/bin"
+
+    mkdir -p "$older_bin" "$newer_bin"
+    cat > "$older_bin/node" <<'EOF'
+#!/usr/bin/env bash
+echo older node
+EOF
+    chmod +x "$older_bin/node"
+    touch "$newer_bin/node"
+
+    run update_nvm_node_bin_dir
+    assert_success
+    assert_output "$older_bin"
+
+    chmod +x "$newer_bin/node"
+    run update_nvm_node_bin_dir
+    assert_success
+    assert_output "$newer_bin"
+}
+
 @test "update_preferred_user_bin_dir: falls back to target home when HOME differs" {
     local current_home
     local target_home
@@ -8257,6 +8279,8 @@ EOF
     # shellcheck disable=SC1090
     eval "$(sed -n '/^doctor_binary_exists()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
+    eval "$(sed -n '/^doctor_version_probe()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
     eval "$(sed -n '/^get_version_line()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^check_command()/,/^}$/p' "$doctor_lib")"
@@ -8271,6 +8295,7 @@ EOF
 
     export TARGET_HOME="$HOME/target-home"
     export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+    DOCTOR_VERSION_TIMEOUT=2
     mkdir -p "$ACFS_BIN_DIR"
 
     cat > "$STUB_DIR/current-shell-only-tool" <<'EOF'

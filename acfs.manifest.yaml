@@ -897,45 +897,67 @@ modules:
       - |
         security_lib="${ACFS_LIB_DIR:-$HOME/.acfs/scripts/lib}/security.sh"
         if [[ ! -f "$security_lib" ]]; then
-          echo "agents.gemini: security library not found at $security_lib" >&2
-          exit 1
+          echo "agents.gemini: security library not found at $security_lib; skipping Gemini patch" >&2
+          exit 0
         fi
         if [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]]; then
           export CHECKSUMS_FILE="$ACFS_CHECKSUMS_YAML"
         fi
         # shellcheck disable=SC1090,SC1091
         source "$security_lib"
-        load_checksums
+        if ! load_checksums; then
+          echo "agents.gemini: checksum metadata unavailable; skipping Gemini patch" >&2
+          exit 0
+        fi
         if ! compgen -G "$HOME/.nvm/versions/node/*/bin/node" > /dev/null; then
           nvm_url="${KNOWN_INSTALLERS[nvm]:-}"
           nvm_sha256="$(get_checksum nvm)"
           if [[ -z "$nvm_url" || -z "$nvm_sha256" ]]; then
-            echo "agents.gemini: missing verified installer metadata for nvm" >&2
-            exit 1
+            echo "agents.gemini: missing verified installer metadata for nvm; skipping Gemini patch" >&2
+            exit 0
           fi
-          verify_checksum "$nvm_url" "$nvm_sha256" "nvm" | bash
+          if ! verify_checksum "$nvm_url" "$nvm_sha256" "nvm" | bash; then
+            echo "agents.gemini: nvm installer verification failed; skipping Gemini patch" >&2
+            exit 0
+          fi
           export NVM_DIR="$HOME/.nvm"
           if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
-            echo "agents.gemini: nvm.sh not found at $NVM_DIR/nvm.sh" >&2
-            exit 1
+            echo "agents.gemini: nvm.sh not found at $NVM_DIR/nvm.sh; skipping Gemini patch" >&2
+            exit 0
           fi
           . "$NVM_DIR/nvm.sh"
-          nvm install node
-          nvm alias default node
+          if ! nvm install node || ! nvm alias default node; then
+            echo "agents.gemini: failed to install Node.js via nvm; skipping Gemini patch" >&2
+            exit 0
+          fi
         fi
-        nvm_node_bin="$(compgen -G "$HOME/.nvm/versions/node/*/bin" | sort -V | tail -n 1)"
+        nvm_node=""
+        while IFS= read -r node_path; do
+          if [[ -x "$node_path" ]]; then
+            nvm_node="$node_path"
+            break
+          fi
+        done < <(compgen -G "$HOME/.nvm/versions/node/*/bin/node" | sort -Vr)
+        if [[ -z "$nvm_node" ]]; then
+          echo "agents.gemini: nvm Node.js binary not found after install; skipping Gemini patch" >&2
+          exit 0
+        fi
+        nvm_node_bin="${nvm_node%/node}"
         if [[ -z "$nvm_node_bin" ]]; then
-          echo "agents.gemini: nvm Node.js bin not found after install" >&2
-          exit 1
+          echo "agents.gemini: nvm Node.js bin not found after install; skipping Gemini patch" >&2
+          exit 0
         fi
         export PATH="$nvm_node_bin:$PATH"
         patch_url="${KNOWN_INSTALLERS[gemini_patch]:-}"
         patch_sha256="$(get_checksum gemini_patch)"
         if [[ -z "$patch_url" || -z "$patch_sha256" ]]; then
-          echo "agents.gemini: missing verified installer metadata for gemini_patch" >&2
-          exit 1
+          echo "agents.gemini: missing verified installer metadata for gemini_patch; skipping Gemini patch" >&2
+          exit 0
         fi
-        verify_checksum "$patch_url" "$patch_sha256" "gemini_patch" | bash
+        if ! verify_checksum "$patch_url" "$patch_sha256" "gemini_patch" | bash; then
+          echo "agents.gemini: Gemini patch verification failed; skipping patch" >&2
+          exit 0
+        fi
     verify:
       - |
         target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"

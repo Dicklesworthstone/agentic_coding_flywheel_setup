@@ -653,12 +653,16 @@ update_has_nvm_node() {
 }
 
 update_nvm_node_bin_dir() {
-    local latest_bin=""
-    latest_bin="$(
-        compgen -G "$HOME/.nvm/versions/node/*/bin" | sort -V | tail -n 1
-    )"
-    [[ -n "$latest_bin" ]] || return 1
-    printf '%s\n' "$latest_bin"
+    local node_path=""
+
+    while IFS= read -r node_path; do
+        if [[ -x "$node_path" ]]; then
+            printf '%s\n' "${node_path%/node}"
+            return 0
+        fi
+    done < <(compgen -G "$HOME/.nvm/versions/node/*/bin/node" | sort -Vr)
+
+    return 1
 }
 
 update_ensure_gemini_patch_node() {

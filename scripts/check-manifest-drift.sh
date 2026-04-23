@@ -198,8 +198,12 @@ check_generated_artifact_drift() {
             done <<< "$diff_output"
             GENERATED_ARTIFACT_DRIFT_COUNT=${#GENERATED_ARTIFACT_DRIFT_FILES[@]}
             if [[ "$GENERATED_ARTIFACT_DRIFT_COUNT" -eq 0 ]]; then
-                GENERATED_ARTIFACT_DRIFT_FILES+=("manifest-derived outputs differ")
-                GENERATED_ARTIFACT_DRIFT_COUNT=1
+                GENERATED_ARTIFACT_STATUS="error"
+                log_error "generate:diff failed before reporting any generated-file differences"
+                if [[ -n "$diff_output" ]]; then
+                    log_error "$diff_output"
+                fi
+                return 1
             fi
             if [[ "$record_drift" == "true" ]]; then
                 DRIFT_DETECTED=true

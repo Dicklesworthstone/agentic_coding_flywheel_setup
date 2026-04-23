@@ -4885,12 +4885,16 @@ _target_has_nvm_node() {
 }
 
 _target_latest_nvm_node_bin() {
-    local latest_bin=""
-    latest_bin="$(
-        compgen -G "$TARGET_HOME/.nvm/versions/node/*/bin" | sort -V | tail -n 1
-    )"
-    [[ -n "$latest_bin" ]] || return 1
-    printf '%s\n' "$latest_bin"
+    local node_path=""
+
+    while IFS= read -r node_path; do
+        if [[ -x "$node_path" ]]; then
+            printf '%s\n' "${node_path%/node}"
+            return 0
+        fi
+    done < <(compgen -G "$TARGET_HOME/.nvm/versions/node/*/bin/node" | sort -Vr)
+
+    return 1
 }
 
 _ensure_target_nvm_node() {
@@ -4912,6 +4916,8 @@ _ensure_target_nvm_node() {
         nvm install node
         nvm alias default node
     ' || return 1
+
+    _target_has_nvm_node
 }
 
 install_languages_legacy_lang() {
@@ -5264,7 +5270,7 @@ install_agents_phase() {
                 try_step "Patching Gemini CLI" \
                     acfs_run_verified_upstream_script_as_target_with_env \
                     "gemini_patch" "bash" "PATH=$gemini_nvm_bin:$PATH" || \
-                    log_warn "Gemini CLI patch step failed (continuing)"
+                    log_warn "Gemini CLI patches were not applied (continuing)"
             else
                 log_warn "Skipping Gemini CLI patch because no nvm Node.js bin was found after install"
             fi
