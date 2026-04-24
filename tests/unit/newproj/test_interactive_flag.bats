@@ -143,6 +143,25 @@ teardown() {
     [[ "$error" == *"not found"* ]]
 }
 
+@test "create_agents_template substitutes project name without backup file" {
+    local project_dir="$TEST_DIR/template-project"
+    mkdir -p "$project_dir"
+
+    (
+        cd "$project_dir"
+        create_agents_template "Template_Project-123"
+    )
+
+    [[ -f "$project_dir/AGENTS.md" ]]
+    [[ ! -e "$project_dir/AGENTS.md.bak" ]]
+
+    run grep -F "PROJECT_NAME_PLACEHOLDER" "$project_dir/AGENTS.md"
+    assert_failure
+
+    run grep -F "Template_Project-123/" "$project_dir/AGENTS.md"
+    assert_success
+}
+
 # ============================================================
 # Help Text Tests
 # ============================================================
