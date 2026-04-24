@@ -10047,6 +10047,76 @@ EOF2
     cleanup_mock_env
 }
 
+test_onboard_auth_checks_reject_placeholder_credentials() {
+    setup_installed_layout_env
+
+    mkdir -p "$TEST_TARGET_HOME/.claude" "$TEST_TARGET_HOME/.codex" "$TEST_TARGET_HOME/.gemini" \
+        "$TEST_TARGET_HOME/.config/vercel" "$TEST_TARGET_HOME/.supabase"
+
+    cat > "$TEST_TARGET_HOME/.claude/.credentials.json" <<'JSON'
+{
+  "claudeAiOauth": {
+    "accessToken": "your-token-here"
+  }
+}
+JSON
+
+    cat > "$TEST_TARGET_HOME/.codex/auth.json" <<'JSON'
+{
+  "tokens": {
+    "access_token": "your_token_here"
+  },
+  "OPENAI_API_KEY": "your_openai_api_key"
+}
+JSON
+
+    cat > "$TEST_TARGET_HOME/.gemini/google_accounts.json" <<'JSON'
+{
+  "active": "replace-me"
+}
+JSON
+    cat > "$TEST_TARGET_HOME/.gemini/oauth_creds.json" <<'JSON'
+{
+  "refresh_token": "your-token-here"
+}
+JSON
+    cat > "$TEST_TARGET_HOME/.gemini/.env" <<'EOF2'
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY" # replace me
+EOF2
+
+    cat > "$TEST_TARGET_HOME/.config/vercel/auth.json" <<'JSON'
+{
+  "user": {
+    "email": "tester@example.com"
+  },
+  "token": "your_vercel_token"
+}
+JSON
+
+    printf '%s\n' 'your_supabase_access_token' > "$TEST_TARGET_HOME/.supabase/access-token"
+
+    write_fake_command "$TEST_TARGET_HOME/.local/bin/claude" "claude 1.2.3"
+    write_fake_command "$TEST_TARGET_HOME/.local/bin/codex" "codex 1.2.3"
+    write_fake_command "$TEST_TARGET_HOME/.local/bin/gemini" "gemini 1.2.3"
+    write_fake_command "$TEST_TARGET_HOME/.local/bin/vercel" "not logged in"
+    write_fake_command "$TEST_TARGET_HOME/.local/bin/supabase" "supabase 2.99.0"
+
+    local output=""
+    output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_INSTALLED_ACFS" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" bash -lc 'source "'"$ONBOARD_SH"'" help >/dev/null; for svc in claude codex gemini vercel supabase; do check_auth_status "$svc" && rc=0 || rc=$?; printf "%s\n" "$svc=$rc"; done')
+
+    if [[ "$output" == *$'claude=1\n'* ]] \
+        && [[ "$output" == *$'codex=1\n'* ]] \
+        && [[ "$output" == *$'gemini=1\n'* ]] \
+        && [[ "$output" == *$'vercel=1\n'* ]] \
+        && [[ "$output" == *"supabase=1"* ]]; then
+        harness_pass "onboard auth checks reject placeholder credentials"
+    else
+        harness_fail "onboard auth checks reject placeholder credentials" "$output"
+    fi
+
+    cleanup_mock_env
+}
+
 test_onboard_auth_checks_ignore_poisoned_current_path_and_env_bin_dir() {
     setup_installed_layout_env
 
@@ -11105,6 +11175,7 @@ main() {
     test_onboard_cheatsheet_uses_installed_layout_under_root_home || true
     test_onboard_auth_checks_use_installed_target_home_under_root_home || true
     test_onboard_auth_checks_find_target_binaries_outside_current_path || true
+    test_onboard_auth_checks_reject_placeholder_credentials || true
     test_onboard_auth_checks_ignore_poisoned_current_path_and_env_bin_dir || true
     test_onboard_auth_checks_ignore_other_user_home_bin_dir_from_state || true
     test_onboard_auth_checks_use_explicit_target_user_when_no_authoritative_runtime_home_exists || true

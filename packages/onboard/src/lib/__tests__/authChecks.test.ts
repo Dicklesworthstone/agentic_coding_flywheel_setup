@@ -276,7 +276,7 @@ describe('authChecks', () => {
     const checks = createAuthChecks(
       makeDeps({
         commandExists: (command) => command === 'gemini',
-        env: { GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY' } as NodeJS.ProcessEnv,
+        env: { GEMINI_API_KEY: 'your-gemini-api-key' } as NodeJS.ProcessEnv,
       }),
     );
 

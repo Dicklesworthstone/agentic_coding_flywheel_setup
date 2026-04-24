@@ -1072,7 +1072,7 @@ is_placeholder_secret() {
     normalized="${normalized,,}"
 
     case "$normalized" in
-        your-token-here|your-token|your_api_key|your-api-key|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
+        your-token-here|your_token_here|your-token|your_token|your_api_key|your-api-key|your_github_token|your_openai_api_key|your_claude_token|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your-gemini-api-key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
             return 0
             ;;
     esac
@@ -1086,10 +1086,97 @@ has_usable_secret() {
     has_nonblank_value "$normalized" && ! is_placeholder_secret "$normalized"
 }
 
-file_has_nonblank_content() {
+json_file_has_usable_jq_value() {
+    local file_path="${1:-}"
+    local jq_expr="${2:-}"
+    local candidate=""
+
+    [[ -s "$file_path" ]] || return 1
+    [[ -n "$jq_expr" ]] || return 1
+    command -v jq >/dev/null 2>&1 || return 1
+
+    while IFS= read -r candidate; do
+        if has_usable_secret "$candidate"; then
+            return 0
+        fi
+    done < <(jq -r "$jq_expr" "$file_path" 2>/dev/null || true)
+
+    return 1
+}
+
+json_file_has_usable_string_key() {
+    local file_path="${1:-}"
+    shift || true
+
+    [[ -s "$file_path" ]] || return 1
+
+    local key=""
+    local regex=""
+    local line=""
+    for key in "$@"; do
+        [[ -n "$key" ]] || continue
+        regex="\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\""
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ $regex ]] && has_usable_secret "${BASH_REMATCH[1]}"; then
+                return 0
+            fi
+        done < "$file_path"
+    done
+
+    return 1
+}
+
+file_has_usable_secret() {
     local file=$1
+    local value=""
+
     [[ -f "$file" ]] || return 1
-    grep -q '[^[:space:]]' "$file" 2>/dev/null
+    value="$(cat "$file" 2>/dev/null || true)"
+    has_usable_secret "$value"
+}
+
+strip_shell_inline_comment() {
+    local value="${1-}"
+    local quote=""
+    local char=""
+    local prev=""
+    local i
+
+    for (( i = 0; i < ${#value}; i++ )); do
+        char="${value:i:1}"
+
+        if [[ -n "$quote" ]]; then
+            if [[ "$char" == "\\" ]]; then
+                (( i += 1 ))
+                continue
+            fi
+            if [[ "$char" == "$quote" ]]; then
+                quote=""
+            fi
+            continue
+        fi
+
+        if [[ "$char" == '"' || "$char" == "'" ]]; then
+            quote="$char"
+            continue
+        fi
+
+        if [[ "$char" == "#" ]]; then
+            if (( i == 0 )); then
+                printf '%s\n' "${value:0:i}"
+                return 0
+            fi
+            prev="${value:i-1:1}"
+            case "$prev" in
+                [[:space:]])
+                    printf '%s\n' "${value:0:i}"
+                    return 0
+                    ;;
+            esac
+        fi
+    done
+
+    printf '%s\n' "$value"
 }
 
 read_configured_var_from_file() {
@@ -1103,10 +1190,7 @@ read_configured_var_from_file() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         if [[ "$line" =~ $regex ]]; then
             local value="${BASH_REMATCH[2]}"
-            local first_char="${value:0:1}"
-            if [[ "$first_char" != '"' && "$first_char" != "'" ]]; then
-                value="${value%%#*}"
-            fi
+            value="$(strip_shell_inline_comment "$value")"
             value="$(normalize_config_value "$value")"
             if has_nonblank_value "$value"; then
                 printf '%s\n' "$value"
@@ -1711,12 +1795,10 @@ check_auth_status() {
             [[ -s "$creds_file" ]] || return 1
 
             if command -v jq &>/dev/null; then
-                local claude_token=""
-                claude_token="$(jq -r '.claudeAiOauth.accessToken // empty' "$creds_file" 2>/dev/null || true)"
-                has_nonblank_value "$claude_token" && return 0 || return 1
+                json_file_has_usable_jq_value "$creds_file" '.claudeAiOauth.accessToken // empty | strings' && return 0 || return 1
             fi
 
-            grep -Eq '"accessToken"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$creds_file" && return 0 || return 1
+            json_file_has_usable_string_key "$creds_file" "accessToken" && return 0 || return 1
             ;;
         codex)
             local codex_bin=""
@@ -1731,13 +1813,10 @@ check_auth_status() {
             [[ -s "$auth_file" ]] || return 1
 
             if command -v jq &>/dev/null; then
-                local token=""
-                token="$(jq -r '.tokens.access_token // .access_token // .accessToken // .OPENAI_API_KEY // empty' "$auth_file" 2>/dev/null || true)"
-                has_nonblank_value "$token" && return 0 || return 1
+                json_file_has_usable_jq_value "$auth_file" '[.tokens.access_token, .access_token, .accessToken, .OPENAI_API_KEY] | .[]? | strings' && return 0 || return 1
             fi
 
-            # Basic grep fallback if jq is unavailable.
-            grep -Eq '"(access(_token|Token)|OPENAI_API_KEY)"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$auth_file" && return 0 || return 1
+            json_file_has_usable_string_key "$auth_file" "access_token" "accessToken" "OPENAI_API_KEY" && return 0 || return 1
             ;;
         gemini)
             local gemini_bin=""
@@ -1794,14 +1873,14 @@ check_auth_status() {
                     gemini_refresh_token="$(jq -r '.refresh_token // empty' "$oauth_creds_file" 2>/dev/null || true)"
                 fi
 
-                if has_nonblank_value "$gemini_active" || has_nonblank_value "$gemini_access_token" || has_nonblank_value "$gemini_refresh_token"; then
+                if has_usable_secret "$gemini_active" || has_usable_secret "$gemini_access_token" || has_usable_secret "$gemini_refresh_token"; then
                     return 0
                 fi
             else
-                if [[ -f "$google_accounts_file" ]] && grep -Eq '"active"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$google_accounts_file"; then
+                if json_file_has_usable_string_key "$google_accounts_file" "active"; then
                     return 0
                 fi
-                if [[ -f "$oauth_creds_file" ]] && grep -Eq '"(access_token|refresh_token)"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$oauth_creds_file"; then
+                if json_file_has_usable_string_key "$oauth_creds_file" "access_token" "refresh_token"; then
                     return 0
                 fi
             fi
@@ -1835,13 +1914,11 @@ check_auth_status() {
                 [[ -s "$auth_file" ]] || continue
                 if command -v jq &>/dev/null; then
                     local vercel_token=""
-                    local vercel_email=""
-                    vercel_email="$(jq -r '.user.email // empty' "$auth_file" 2>/dev/null || true)"
                     vercel_token="$(jq -r '.token // empty' "$auth_file" 2>/dev/null || true)"
-                    if has_nonblank_value "$vercel_email" || has_nonblank_value "$vercel_token"; then
+                    if has_usable_secret "$vercel_token"; then
                         return 0
                     fi
-                elif grep -Eq '"(token|email)"[[:space:]]*:[[:space:]]*"[[:space:]]*[^[:space:]"][^"]*"' "$auth_file"; then
+                elif json_file_has_usable_string_key "$auth_file" "token"; then
                     return 0
                 fi
             done
@@ -1856,7 +1933,7 @@ check_auth_status() {
             if get_configured_secret "SUPABASE_ACCESS_TOKEN" "${shell_config_files[@]}" >/dev/null; then
                 return 0
             fi
-            if file_has_nonblank_content "$runtime_home/.supabase/access-token" || file_has_nonblank_content "$runtime_home/.config/supabase/access-token"; then
+            if file_has_usable_secret "$runtime_home/.supabase/access-token" || file_has_usable_secret "$runtime_home/.config/supabase/access-token"; then
                 return 0
             fi
             return 1

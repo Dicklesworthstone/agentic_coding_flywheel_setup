@@ -1306,7 +1306,7 @@ is_placeholder_secret() {
     normalized="${normalized,,}"
 
     case "$normalized" in
-        your-token-here|your_token_here|your-token|your_token|your_api_key|your-api-key|your_github_token|your_openai_api_key|your_claude_token|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
+        your-token-here|your_token_here|your-token|your_token|your_api_key|your-api-key|your_github_token|your_openai_api_key|your_claude_token|your_vercel_token|your_supabase_access_token|your_cloudflare_api_token|your_gemini_api_key|your-gemini-api-key|your_google_api_key|your_project_id|your_project_location|replace-me|change-me|changeme|"<token>"|"<api-key>"|"<secret>")
             return 0
             ;;
     esac
@@ -1360,6 +1360,50 @@ json_file_has_usable_string_key() {
     return 1
 }
 
+strip_shell_inline_comment() {
+    local value="${1-}"
+    local quote=""
+    local char=""
+    local prev=""
+    local i
+
+    for (( i = 0; i < ${#value}; i++ )); do
+        char="${value:i:1}"
+
+        if [[ -n "$quote" ]]; then
+            if [[ "$char" == "\\" ]]; then
+                (( i += 1 ))
+                continue
+            fi
+            if [[ "$char" == "$quote" ]]; then
+                quote=""
+            fi
+            continue
+        fi
+
+        if [[ "$char" == '"' || "$char" == "'" ]]; then
+            quote="$char"
+            continue
+        fi
+
+        if [[ "$char" == "#" ]]; then
+            if (( i == 0 )); then
+                printf '%s\n' "${value:0:i}"
+                return 0
+            fi
+            prev="${value:i-1:1}"
+            case "$prev" in
+                [[:space:]])
+                    printf '%s\n' "${value:0:i}"
+                    return 0
+                    ;;
+            esac
+        fi
+    done
+
+    printf '%s\n' "$value"
+}
+
 read_configured_var_from_file() {
     local var_name="$1"
     local file_path="$2"
@@ -1371,10 +1415,7 @@ read_configured_var_from_file() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         if [[ "$line" =~ $regex ]]; then
             local value="${BASH_REMATCH[2]}"
-            local first_char="${value:0:1}"
-            if [[ "$first_char" != '"' && "$first_char" != "'" ]]; then
-                value="${value%%#*}"
-            fi
+            value="$(strip_shell_inline_comment "$value")"
             value="$(normalize_config_value "$value")"
             if [[ -n "${value//[[:space:]]/}" ]]; then
                 printf '%s\n' "$value"

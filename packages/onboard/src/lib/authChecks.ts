@@ -126,6 +126,7 @@ const PLACEHOLDER_SECRETS = new Set([
   'your_supabase_access_token',
   'your_cloudflare_api_token',
   'your_gemini_api_key',
+  'your-gemini-api-key',
   'your_google_api_key',
   'your_project_id',
   'your_project_location',

@@ -7293,6 +7293,7 @@ EOF
     local services_setup="$PROJECT_ROOT/scripts/services-setup.sh"
     local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
     local auth_file="$BATS_TEST_TMPDIR/auth.json"
+    local env_file="$BATS_TEST_TMPDIR/auth.env"
 
     cat > "$auth_file" <<'JSON'
 {
@@ -7311,6 +7312,10 @@ JSON
     eval "$(sed -n '/^json_file_has_usable_jq_value()/,/^}$/p' "$doctor_lib")"
     # shellcheck disable=SC1090
     eval "$(sed -n '/^json_file_has_usable_string_key()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^strip_shell_inline_comment()/,/^}$/p' "$doctor_lib")"
+    # shellcheck disable=SC1090
+    eval "$(sed -n '/^read_configured_var_from_file()/,/^}$/p' "$doctor_lib")"
 
     run has_usable_secret "your-token-here"
     assert_failure
@@ -7320,6 +7325,25 @@ JSON
         run json_file_has_usable_jq_value "$auth_file" '[.token, .accessToken] | .[]? | strings'
         assert_failure
     fi
+    run has_usable_secret "your-gemini-api-key"
+    assert_failure
+
+    cat > "$env_file" <<'EOF'
+GEMINI_API_KEY="YOUR_GEMINI_API_KEY" # replace me
+EOF
+    run read_configured_var_from_file "GEMINI_API_KEY" "$env_file"
+    assert_success
+    assert_output "YOUR_GEMINI_API_KEY"
+    local configured_value="$output"
+    run has_usable_secret "$configured_value"
+    assert_failure
+
+    cat > "$env_file" <<'EOF'
+GEMINI_API_KEY=real#hash
+EOF
+    run read_configured_var_from_file "GEMINI_API_KEY" "$env_file"
+    assert_success
+    assert_output "real#hash"
 
     cat > "$auth_file" <<'JSON'
 {
