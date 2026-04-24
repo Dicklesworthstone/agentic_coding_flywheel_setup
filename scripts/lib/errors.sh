@@ -24,7 +24,7 @@ declare -gA ERROR_PATTERNS=(
     # Network connectivity issues
     ['curl: (7) Failed to connect']="Network connection failed. Check internet connectivity:\n  curl -I https://google.com\nAlso verify firewall allows outbound HTTPS (port 443)."
 
-    ['curl: (6) Could not resolve']="DNS resolution failed. Check DNS configuration:\n  cat /etc/resolv.conf\n  ping -c1 8.8.8.8\nIf ping works but DNS doesn't, try adding 'nameserver 8.8.8.8' to /etc/resolv.conf"
+    ['curl: (6) Could not resolve']="DNS resolution failed. Check DNS configuration:\n  cat /etc/resolv.conf\n  resolvectl status 2>/dev/null || true\n  ping -c1 8.8.8.8\nIf ping works but DNS doesn't, check your VPS provider DNS settings or reboot before retrying."
 
     ['curl: (28) Connection timed out']="Network timeout. This could be:\n  1. Slow/unstable internet connection\n  2. Firewall blocking outbound HTTPS\n  3. Upstream server temporarily down\nTry: curl -v https://google.com --connect-timeout 10"
 

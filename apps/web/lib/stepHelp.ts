@@ -145,7 +145,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
       {
         symptom: "Cannot reach github.com",
         solution:
-          "Check your VPS network: try 'ping 8.8.8.8'. If that works but github.com doesn't, try 'echo nameserver 8.8.8.8 | sudo tee /etc/resolv.conf'.",
+          "Check your VPS network: try 'ping 8.8.8.8'. If that works but github.com doesn't, inspect DNS with 'resolvectl status' or reboot the VPS before retrying.",
       },
     ],
     tips: [

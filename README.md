@@ -520,7 +520,7 @@ This checks:
 **Network checks performed:**
 | Check | What it verifies | Fix if failing |
 |-------|------------------|----------------|
-| DNS resolution | Can resolve github.com, raw.githubusercontent.com | Check `/etc/resolv.conf` or add `8.8.8.8` |
+| DNS resolution | Can resolve github.com, raw.githubusercontent.com | Check provider DNS settings; inspect `resolvectl status` or `/etc/resolv.conf` |
 | GitHub HTTPS | Can reach github.com:443 | Check firewall, proxy, or VPN settings |
 | Installer URLs | Raw GitHub, Homebrew, Oh-My-Zsh, Rust, etc. | May need to retry; transient failures OK |
 | APT mirrors | Default Ubuntu mirror reachable | Check `/etc/apt/sources.list` or try different mirror |
@@ -529,10 +529,10 @@ This checks:
 
 | Error | Cause | Solution |
 |-------|-------|----------|
-| "Cannot resolve github.com" | DNS misconfigured | Add `nameserver 8.8.8.8` to `/etc/resolv.conf` |
+| "Cannot resolve github.com" | DNS misconfigured | Check provider DNS settings or reboot; do not overwrite managed resolver files |
 | "Cannot reach github.com" | Firewall blocking HTTPS | Allow outbound port 443 |
 | "APT mirror slow or unreachable" | Regional mirror down | Edit `/etc/apt/sources.list` to use `archive.ubuntu.com` |
-| "APT lock held" | Another apt process running | Wait for it to finish or `sudo kill <pid>` |
+| "APT lock held" | Another apt process running | Wait for it to finish; reboot and resume if it remains stuck |
 | "Insufficient disk space" | Less than 10GB free | Clean up with `sudo apt autoremove` or expand disk |
 
 ### Console Output
