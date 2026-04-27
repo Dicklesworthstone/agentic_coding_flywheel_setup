@@ -67,7 +67,7 @@ test_pin_ref_resolves_main() {
     fi
 
     # Check for copy-pasteable command
-    if echo "$output" | grep -qE 'curl -fsSL.*ACFS_REF='; then
+    if echo "$output" | grep -qE 'curl -fsSL.*--ref "[a-f0-9]{40}"'; then
         harness_pass "Output contains copy-pasteable pinned command"
     else
         harness_fail "Output missing copy-pasteable command"
@@ -241,7 +241,7 @@ test_pinned_command_is_valid() {
 
     # Extract the curl command from output
     local curl_cmd
-    curl_cmd=$(echo "$output" | grep 'curl -fsSL.*ACFS_REF=' | head -1 | sed 's/^[[:space:]]*//')
+    curl_cmd=$(echo "$output" | grep 'curl -fsSL.*--ref' | head -1 | sed 's/^[[:space:]]*//')
 
     if [[ -z "$curl_cmd" ]]; then
         harness_fail "Could not extract curl command from output"
@@ -258,10 +258,10 @@ test_pinned_command_is_valid() {
         harness_fail "Command missing proper curl flags"
     fi
 
-    if echo "$curl_cmd" | grep -qE 'ACFS_REF="[a-f0-9]{40}"'; then
-        harness_pass "Command has full SHA in ACFS_REF"
+    if echo "$curl_cmd" | grep -qE -- '--ref "[a-f0-9]{40}"'; then
+        harness_pass "Command has full SHA in --ref"
     else
-        harness_fail "Command missing full SHA in ACFS_REF"
+        harness_fail "Command missing full SHA in --ref"
     fi
 
     if echo "$curl_cmd" | grep -q 'bash -s -- --yes --mode vibe'; then

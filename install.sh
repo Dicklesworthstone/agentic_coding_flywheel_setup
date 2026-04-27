@@ -689,12 +689,7 @@ print_pinned_ref() {
     echo "─────────────────────────────────────────────────────────────────"
     echo "Copy-paste this command to install from this exact commit:"
     echo ""
-    echo "  curl -fsSL \"${install_url}\" | ACFS_REF=\"${sha}\" bash -s -- --yes --mode vibe"
-    echo ""
-    echo "Or with environment variable:"
-    echo ""
-    echo "  export ACFS_REF=\"${sha}\""
-    echo "  curl -fsSL \"https://agent-flywheel.com/install\" | bash -s -- --yes --mode vibe"
+    echo "  curl -fsSL \"${install_url}\" | bash -s -- --yes --mode vibe --ref \"${sha}\""
     echo ""
     echo "─────────────────────────────────────────────────────────────────"
     echo ""
@@ -1243,6 +1238,17 @@ acfs_require_ref_arg_value() {
     if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
         log_fatal "$flag requires a single-line ref"
     fi
+    if ((${#value} > 120)); then
+        log_fatal "$flag ref is too long"
+    fi
+    if [[ ! "$value" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+        log_fatal "$flag contains unsafe ref characters; use letters, numbers, '.', '_', '-', and '/'"
+    fi
+    case "$value" in
+        @|.|..|/*|*/|.*|*.|*//*|*/.*|*..*|*.lock)
+            log_fatal "$flag has invalid git ref syntax"
+            ;;
+    esac
 }
 
 parse_args() {
@@ -7246,6 +7252,8 @@ $summary_content"
 # ============================================================
 main() {
     parse_args "$@"
+    acfs_require_ref_arg_value "ACFS_REF" "${ACFS_REF:-}" "main"
+    acfs_require_ref_arg_value "ACFS_CHECKSUMS_REF" "${ACFS_CHECKSUMS_REF:-}" "main"
     normalize_read_only_modes
 
     # --yes should always behave non-interactively (skip prompts), regardless of flag order.

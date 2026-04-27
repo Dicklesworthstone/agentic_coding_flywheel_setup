@@ -75,10 +75,10 @@ export function buildInstallCommand(
   const safeUsername = normalizeInstallUsername(username);
   const installRef = safeRef ?? DEFAULT_INSTALL_REF;
   const userEnv = safeUsername ? `TARGET_USER="${safeUsername}" ` : "";
-  const refEnv = safeRef ? `ACFS_REF="${safeRef}" ` : "";
+  const refArg = safeRef ? ` --ref "${safeRef}"` : "";
   const installerUrl = `${INSTALL_SCRIPT_BASE_URL}/${installRef}/install.sh`;
 
-  return `curl -fsSL "${installerUrl}?$(date +%s)" | ${userEnv}${refEnv}bash -s -- --yes --mode ${mode}`;
+  return `curl -fsSL "${installerUrl}?$(date +%s)" | ${userEnv}bash -s -- --yes --mode ${mode}${refArg}`;
 }
 
 /**

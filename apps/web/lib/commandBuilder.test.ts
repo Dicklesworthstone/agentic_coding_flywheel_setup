@@ -9,11 +9,11 @@ describe("buildInstallCommand", () => {
     expect(command).toContain("--mode vibe");
   });
 
-  test("includes TARGET_USER and ACFS_REF for a customized install", () => {
+  test("includes TARGET_USER and --ref for a customized install", () => {
     const command = buildInstallCommand("safe", "v1.2.3", "admin");
 
     expect(command).toContain('TARGET_USER="admin"');
-    expect(command).toContain('ACFS_REF="v1.2.3"');
+    expect(command).toContain('--ref "v1.2.3"');
     expect(command).toContain("/v1.2.3/install.sh");
     expect(command).toContain("--mode safe");
   });

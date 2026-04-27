@@ -357,16 +357,9 @@ export default function RunInstallerPage() {
               </p>
             </div>
             <div>
-              <code className="text-[oklch(0.75_0.18_195)]">{usePinnedRef && safePinnedRef ? `| ACFS_REF="${safePinnedRef}" bash` : "| bash"}</code>
+              <code className="text-[oklch(0.75_0.18_195)]">| bash</code>
               <p className="mt-1 font-sans text-muted-foreground">
                 Pipes the downloaded script to bash (the shell) to run it.
-                {usePinnedRef && safePinnedRef && (
-                  <>
-                    {" "}The <code className="text-foreground/80">ACFS_REF</code> environment variable
-                    pins the installer to version <code className="text-foreground/80">{safePinnedRef}</code>,
-                    ensuring reproducible installs across machines.
-                  </>
-                )}
               </p>
             </div>
             <div>
@@ -381,6 +374,14 @@ export default function RunInstallerPage() {
                 Tells the installer which mode to use based on your wizard selection.
               </p>
             </div>
+            {usePinnedRef && safePinnedRef && (
+              <div>
+                <code className="text-[oklch(0.75_0.18_195)]">--ref &quot;{safePinnedRef}&quot;</code>
+                <p className="mt-1 font-sans text-muted-foreground">
+                  Keeps downloaded installer files pinned to <code className="text-foreground/80">{safePinnedRef}</code>.
+                </p>
+              </div>
+            )}
           </div>
           <AlertCard variant="info" title="Is curl | bash safe?">
             <p className="text-sm">

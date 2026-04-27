@@ -315,6 +315,20 @@ EOF
     assert_output --partial "--checksums-ref requires a ref"
 }
 
+@test "install.sh: ref flags reject unsafe git ref syntax" {
+    run env -i PATH="/usr/bin:/bin" bash "$PROJECT_ROOT/install.sh" --print-plan "--ref=bad;touch"
+    assert_failure
+    assert_output --partial "--ref contains unsafe ref characters"
+
+    run env -i PATH="/usr/bin:/bin" bash "$PROJECT_ROOT/install.sh" --print-plan "--checksums-ref=feature/../main"
+    assert_failure
+    assert_output --partial "--checksums-ref has invalid git ref syntax"
+
+    run env -i PATH="/usr/bin:/bin" ACFS_REF="bad ref" bash "$PROJECT_ROOT/install.sh" --print-plan
+    assert_failure
+    assert_output --partial "ACFS_REF contains unsafe ref characters"
+}
+
 @test "install.sh: Ubuntu upgrade state override does not use RETURN trap" {
     local installer="$PROJECT_ROOT/install.sh"
 
