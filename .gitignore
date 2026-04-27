@@ -61,6 +61,7 @@ tmp/
 temp/
 *.tmp
 *.temp
+/.keep
 test_sed_flags.sh
 .tsconfig.next-*.json
 
@@ -92,10 +93,18 @@ ehthumbs.db
 # ----- Beads -----
 # Keep .beads directory but ignore sensitive data
 .beads/cache/
+.beads/.br_history/
+.beads/*.db
+.beads/*.db-*
+.beads/interactions.jsonl
 .beads/*.log
 .beads/*.sock
 .beads/*.sock.*
 .beads/*.lock
+# This repo has one canonical tracker at the root. Nested app-level trackers are stale local state.
+apps/**/.beads/
+packages/**/.beads/
+tests/**/.beads/
 
 # ----- Local testing artifacts -----
 tests/vm/.vagrant/
