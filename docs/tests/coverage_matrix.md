@@ -12,7 +12,7 @@ actual files, generated scripts, and real flags/CLI behavior rather than stubs.
 
 | Component | Current | Target | Fixtures (real files) | Notes |
 | --- | --- | --- | --- | --- |
-| `packages/manifest` schema + parser | Partial (`test-edge-cases.ts`) | Full unit suite | `acfs.manifest.yaml`, `docs/MANIFEST_SCHEMA_VNEXT.md`, generated `scripts/generated/manifest_index.sh` | Add fixture-driven tests for schema fields + errors |
+| `packages/manifest` schema + parser | Partial (`test-edge-cases.ts`) | Full unit suite | `acfs.manifest.yaml`, `docs/reference/MANIFEST_SCHEMA_VNEXT.md`, generated `scripts/generated/manifest_index.sh` | Add fixture-driven tests for schema fields + errors |
 | `packages/manifest` generator outputs | Minimal | Full unit suite | `acfs.manifest.yaml`, `scripts/generated/*.sh` | Validate deterministic ordering + content |
 | `scripts/lib/install_helpers.sh` (selection) | None | Unit + integration | `scripts/generated/manifest_index.sh` | Exercise `--only/--skip/--only-phase/--no-deps/--print-plan` via real arrays |
 | `scripts/lib/contract.sh` | None | Unit | `scripts/lib/contract.sh` | Verify error cases + required env checks |

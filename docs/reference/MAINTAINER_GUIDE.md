@@ -128,7 +128,7 @@ modules:
       visible: true              # Set false to hide from web
 ```
 
-See `docs/MANIFEST_SCHEMA_VNEXT.md` for full field reference.
+See `docs/reference/MANIFEST_SCHEMA_VNEXT.md` for full field reference.
 
 ### 5. Validate
 
