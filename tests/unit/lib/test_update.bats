@@ -6816,6 +6816,25 @@ EOF
     assert_failure
 }
 
+@test "install.sh: run_as_target same-user branch confines cd to subshell" {
+    local installer="$PROJECT_ROOT/install.sh"
+
+    run bash -c 'sed -n "/^run_as_target()/,/^}/p" "$1" | grep -E "^        \\($"' _ "$installer"
+    assert_success
+
+    run bash -c 'sed -n "/^run_as_target()/,/^}/p" "$1" | grep -F "            if ! cd \"\$user_home\"; then"' _ "$installer"
+    assert_success
+
+    run bash -c 'sed -n "/^run_as_target()/,/^}/p" "$1" | grep -F "            \"\$env_bin\" \"\${env_args[@]}\" \"\${command_argv[@]}\""' _ "$installer"
+    assert_success
+
+    run bash -c 'sed -n "/^run_as_target()/,/^}/p" "$1" | grep -E "^        if ! cd \"\\$user_home\"; then$"' _ "$installer"
+    assert_failure
+
+    run bash -c 'sed -n "/^run_as_target()/,/^}/p" "$1" | grep -E "^        \"\\$env_bin\" \"\\$\\{env_args\\[@\\]\\}\" \"\\$\\{command_argv\\[@\\]\\}\"$"' _ "$installer"
+    assert_failure
+}
+
 @test "install.sh: Gemini trusted folders creation JSON-escapes target home" {
     local installer="$PROJECT_ROOT/install.sh"
 

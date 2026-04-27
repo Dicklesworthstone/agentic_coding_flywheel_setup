@@ -906,11 +906,13 @@ if ! declare -f run_as_target >/dev/null 2>&1; then
         # Already the target user
         if [[ "$(_acfs_resolve_current_user 2>/dev/null || true)" == "$user" ]]; then
             # Use explicit home path to avoid ambiguity if $HOME was mutated.
-            if ! cd "$user_home"; then
-                log_error "Unable to enter target home for '$user': $user_home"
-                return 1
-            fi
-            "$env_bin" "${env_args[@]}" "${command_argv[@]}"
+            (
+                if ! cd "$user_home"; then
+                    log_error "Unable to enter target home for '$user': $user_home"
+                    exit 1
+                fi
+                "$env_bin" "${env_args[@]}" "${command_argv[@]}"
+            )
             return $?
         fi
 

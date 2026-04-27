@@ -2931,11 +2931,13 @@ run_as_target() {
     # Already the target user
     current_user="$(acfs_early_resolve_current_user 2>/dev/null || true)"
     if [[ "${current_user:-}" == "$user" ]]; then
-        if ! cd "$user_home"; then
-            log_error "Unable to enter target home for '$user': $user_home"
-            return 1
-        fi
-        "$env_bin" "${env_args[@]}" "${command_argv[@]}"
+        (
+            if ! cd "$user_home"; then
+                log_error "Unable to enter target home for '$user': $user_home"
+                exit 1
+            fi
+            "$env_bin" "${env_args[@]}" "${command_argv[@]}"
+        )
         return $?
     fi
 

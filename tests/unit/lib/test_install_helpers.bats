@@ -525,6 +525,39 @@ EOF
     fi
 }
 
+@test "run_as_target: same-user fast path preserves caller directory" {
+    local caller_dir="$BATS_TEST_TMPDIR/caller"
+    local target_home="$BATS_TEST_TMPDIR/target home"
+    local after_pwd=""
+    local status=0
+
+    mkdir -p "$caller_dir" "$target_home"
+
+    export TARGET_USER="testuser"
+    export TARGET_HOME="$target_home"
+    unset ACFS_BIN_DIR ACFS_HOME
+
+    _acfs_resolve_current_user() {
+        printf 'testuser\n'
+    }
+
+    _acfs_getent_passwd_entry() {
+        if [[ "${1:-}" == "testuser" ]]; then
+            printf 'testuser:x:1000:1000::%s:/bin/bash\n' "$target_home"
+            return 0
+        fi
+        return 1
+    }
+
+    cd "$caller_dir" || fail "failed to enter caller dir"
+    run_as_target true || status=$?
+    after_pwd="$(pwd -P)"
+    cd "$PROJECT_ROOT" || true
+
+    [[ "$status" -eq 0 ]] || fail "run_as_target failed with status $status"
+    [[ "$after_pwd" == "$caller_dir" ]] || fail "run_as_target leaked cwd: $after_pwd"
+}
+
 @test "acfs_ensure_primary_bin_dir: rejects invalid ACFS_BIN_DIR before mkdir" {
     export TARGET_USER="testuser"
     export TARGET_HOME="/home/testuser"
