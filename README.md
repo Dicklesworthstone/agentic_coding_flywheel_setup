@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/dicklesworthstone-agentic-coding-flywheel-setup-badge.png)](https://mseep.ai/app/dicklesworthstone-agentic-coding-flywheel-setup)
+
 # Agentic Coding Flywheel Setup (ACFS)
 
 <div align="center">
