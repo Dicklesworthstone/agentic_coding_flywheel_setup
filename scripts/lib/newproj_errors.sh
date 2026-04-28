@@ -644,16 +644,20 @@ rollback_project_creation() {
 # ============================================================
 
 # Try an optional feature, skip gracefully if it fails
-# Usage: optional_feature "feature_name" command_to_run
+# Usage: optional_feature "feature_name" command [args...]
 # Returns: 0 always (feature is optional)
 optional_feature() {
     local feature_name="$1"
     shift
-    local command="$*"
 
     log_debug "Attempting optional feature: $feature_name" 2>/dev/null || true
 
-    if eval "$command" 2>/dev/null; then
+    if [[ $# -eq 0 ]]; then
+        log_warn "Optional feature skipped: $feature_name" 2>/dev/null || true
+        return 0
+    fi
+
+    if "$@" 2>/dev/null; then
         log_info "Optional feature succeeded: $feature_name" 2>/dev/null || true
         return 0
     else

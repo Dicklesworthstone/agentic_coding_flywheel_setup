@@ -415,6 +415,21 @@ teardown() {
     assert_success  # Should not propagate failure
 }
 
+@test "optional_feature does not evaluate shell metacharacters" {
+    local marker="$TEST_DIR/eval-marker"
+
+    run optional_feature "literal argument" printf '%s' "hello; touch $marker"
+
+    assert_success
+    [[ ! -e "$marker" ]]
+}
+
+@test "optional_feature treats missing command as skipped" {
+    run optional_feature "missing command"
+    assert_success
+    [[ "$output" != *"Optional feature succeeded"* ]]
+}
+
 @test "feature_available returns 0 for existing command" {
     run feature_available "bash"
     assert_success
