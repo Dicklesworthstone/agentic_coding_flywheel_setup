@@ -507,6 +507,71 @@ test_upgrade_setup_infrastructure_rejects_unresolved_target_home() {
     fi
 }
 
+test_upgrade_lock_rejects_contender_without_truncating_pid() {
+    log_test "Upgrade Lock Rejects Contender Without Truncating PID"
+
+    local test_dir=""
+    local lockfile=""
+    local first_pid=""
+    local after_contender_pid=""
+    test_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-ubuntu-upgrade-lock.XXXXXX")"
+    lockfile="$test_dir/acfs-upgrade.lock"
+
+    ACFS_UPGRADE_LOCK="$lockfile"
+    ACFS_UPGRADE_LOCK_FD=""
+    if ! upgrade_acquire_lock; then
+        log_fail "first upgrade lock acquisition should succeed"
+        return 1
+    fi
+
+    first_pid="$(cat "$lockfile" 2>/dev/null || true)"
+    if [[ "$first_pid" == "$$" ]]; then
+        log_pass "first lock writes holder PID"
+    else
+        log_fail "first lock PID mismatch: expected $$, got ${first_pid:-<empty>}"
+    fi
+
+    if bash -c '
+        exec 197>&- 2>/dev/null || true
+        exec 196>&- 2>/dev/null || true
+        source "$1"
+        ACFS_UPGRADE_LOCK="$2"
+        ACFS_UPGRADE_LOCK_FD=""
+        upgrade_acquire_lock
+    ' _ "$PROJECT_ROOT/scripts/lib/ubuntu_upgrade.sh" "$lockfile" >"$test_dir/contender.out" 2>&1; then
+        log_fail "contending lock acquisition should fail"
+    else
+        log_pass "contending lock acquisition fails"
+    fi
+
+    after_contender_pid="$(cat "$lockfile" 2>/dev/null || true)"
+    assert_equals "$first_pid" "$after_contender_pid" "contender does not truncate holder PID"
+
+    upgrade_release_lock
+
+    if bash -c '
+        source "$1"
+        ACFS_UPGRADE_LOCK="$2"
+        ACFS_UPGRADE_LOCK_FD=""
+        upgrade_acquire_lock
+        upgrade_release_lock
+    ' _ "$PROJECT_ROOT/scripts/lib/ubuntu_upgrade.sh" "$lockfile" >"$test_dir/reacquire.out" 2>&1; then
+        log_pass "lock can be reacquired after release"
+    else
+        log_fail "lock should be reacquirable after release"
+    fi
+
+    ACFS_UPGRADE_LOCK="$lockfile"
+    ACFS_UPGRADE_LOCK_FD=197
+    _ACFS_UPGRADE_LOCK_FILE="${lockfile}.old"
+    if upgrade_acquire_lock; then
+        log_pass "stale descriptor metadata is ignored"
+        upgrade_release_lock
+    else
+        log_fail "stale descriptor metadata should not block reacquisition"
+    fi
+}
+
 # ============================================================
 # State Function Tests
 # ============================================================
@@ -616,6 +681,10 @@ run_all_tests() {
     test_target_home_resolution_rejects_missing_user_guess || true
     test_upgrade_setup_infrastructure_persists_resolved_target_home || true
     test_upgrade_setup_infrastructure_rejects_unresolved_target_home || true
+    echo ""
+
+    echo "--- Upgrade Lock Tests ---"
+    test_upgrade_lock_rejects_contender_without_truncating_pid || true
     echo ""
 
     echo "--- State Function Tests ---"

@@ -456,6 +456,12 @@ else
     exit 1
 fi
 
+if ! upgrade_acquire_lock; then
+    log_error "Another Ubuntu upgrade process is already running"
+    exit 1
+fi
+trap 'upgrade_release_lock' EXIT
+
 # Set state file location for resume context
 export ACFS_STATE_FILE="${ACFS_STATE_FILE}"
 

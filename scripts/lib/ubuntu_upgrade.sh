@@ -23,6 +23,8 @@ export ACFS_RESUME_DIR="/var/lib/acfs"
 
 # Lock file location
 export ACFS_UPGRADE_LOCK="/var/run/acfs-upgrade.lock"
+ACFS_UPGRADE_LOCK_FD="${ACFS_UPGRADE_LOCK_FD:-}"
+_ACFS_UPGRADE_LOCK_FILE="${_ACFS_UPGRADE_LOCK_FILE:-}"
 
 # Fallback logging if not already defined (check each individually)
 declare -f log_fatal &>/dev/null || log_fatal() { echo "FATAL: $1" >&2; exit 1; }
@@ -1102,24 +1104,77 @@ upgrade_remove_motd() {
 # Acquire upgrade lock to prevent concurrent runs
 # Returns: 0 if lock acquired, 1 if already locked
 upgrade_acquire_lock() {
-    if [[ -f "$ACFS_UPGRADE_LOCK" ]]; then
-        local pid
-        pid=$(cat "$ACFS_UPGRADE_LOCK" 2>/dev/null)
-        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            log_error "Another upgrade is in progress (PID: $pid)"
-            return 1
-        fi
-        # Stale lock file - remove it
-        rm -f "$ACFS_UPGRADE_LOCK"
+    if [[ -n "${ACFS_UPGRADE_LOCK_FD:-}" && "${_ACFS_UPGRADE_LOCK_FILE:-}" == "$ACFS_UPGRADE_LOCK" ]]; then
+        case "$ACFS_UPGRADE_LOCK_FD" in
+            196|197)
+                if { : >&"$ACFS_UPGRADE_LOCK_FD"; } 2>/dev/null; then
+                    return 0
+                fi
+                ;;
+        esac
+    fi
+    if [[ -n "${ACFS_UPGRADE_LOCK_FD:-}" ]]; then
+        upgrade_release_lock
+    else
+        _ACFS_UPGRADE_LOCK_FILE=""
     fi
 
-    echo $$ > "$ACFS_UPGRADE_LOCK"
+    local lock_dir
+    lock_dir="$(dirname "$ACFS_UPGRADE_LOCK")"
+    if ! mkdir -p "$lock_dir" 2>/dev/null; then
+        log_error "Could not create upgrade lock directory: $lock_dir"
+        return 1
+    fi
+
+    # Open without truncating first. A contending process must not erase the
+    # current holder's PID before it knows it owns the flock.
+    if (exec 197>>"$ACFS_UPGRADE_LOCK") 2>/dev/null; then
+        exec 197>>"$ACFS_UPGRADE_LOCK"
+        ACFS_UPGRADE_LOCK_FD=197
+    elif (exec 196>>"$ACFS_UPGRADE_LOCK") 2>/dev/null; then
+        exec 196>>"$ACFS_UPGRADE_LOCK"
+        ACFS_UPGRADE_LOCK_FD=196
+    else
+        log_error "Could not open upgrade lock: $ACFS_UPGRADE_LOCK"
+        return 1
+    fi
+
+    if ! flock -n "$ACFS_UPGRADE_LOCK_FD"; then
+        local pid=""
+        pid="$(cat "$ACFS_UPGRADE_LOCK" 2>/dev/null || true)"
+        if [[ -n "$pid" ]]; then
+            log_error "Another upgrade is in progress (PID: $pid)"
+        else
+            log_error "Another upgrade is in progress"
+        fi
+        upgrade_release_lock
+        return 1
+    fi
+
+    printf '%s\n' "$$" > "$ACFS_UPGRADE_LOCK" || {
+        log_error "Could not write upgrade lock PID: $ACFS_UPGRADE_LOCK"
+        upgrade_release_lock
+        return 1
+    }
+
+    _ACFS_UPGRADE_LOCK_FILE="$ACFS_UPGRADE_LOCK"
     return 0
 }
 
 # Release upgrade lock
 upgrade_release_lock() {
-    rm -f "$ACFS_UPGRADE_LOCK"
+    case "${ACFS_UPGRADE_LOCK_FD:-}" in
+        196)
+            flock -u 196 2>/dev/null || true
+            exec 196>&- 2>/dev/null || true
+            ;;
+        197)
+            flock -u 197 2>/dev/null || true
+            exec 197>&- 2>/dev/null || true
+            ;;
+    esac
+    ACFS_UPGRADE_LOCK_FD=""
+    _ACFS_UPGRADE_LOCK_FILE=""
 }
 
 # Show progress and time estimation
@@ -1498,15 +1553,25 @@ ubuntu_start_upgrade_sequence() {
     upgrade_count=$(echo "$upgrade_path" | wc -l | tr -d ' ')
     log_step "Upgrades needed: $upgrade_count"
 
+    if ! upgrade_acquire_lock; then
+        return 1
+    fi
+
     # Convert upgrade path to JSON array for state
     local path_json
     path_json=$(echo "$upgrade_path" | jq -R . | jq -s .)
 
     # Initialize state tracking
-    state_upgrade_init "$current_version" "$UBUNTU_TARGET_VERSION" "$path_json"
+    if ! state_upgrade_init "$current_version" "$UBUNTU_TARGET_VERSION" "$path_json"; then
+        upgrade_release_lock
+        return 1
+    fi
 
     # Setup infrastructure for resume after reboot
-    upgrade_setup_infrastructure "$source_dir" "${install_args[@]}"
+    if ! upgrade_setup_infrastructure "$source_dir" "${install_args[@]}"; then
+        upgrade_release_lock
+        return 1
+    fi
 
     # Update MOTD
     upgrade_update_motd "Starting upgrade: $current_version → $UBUNTU_TARGET_VERSION"
@@ -1520,6 +1585,7 @@ ubuntu_start_upgrade_sequence() {
     if ! ubuntu_do_upgrade "$first_target"; then
         log_error "First upgrade failed"
         state_upgrade_set_error "do-release-upgrade failed"
+        upgrade_release_lock
         return 1
     fi
 

@@ -3966,6 +3966,18 @@ run_ubuntu_upgrade_phase() {
         fi
     fi
 
+    local upgrade_lock_acquired=false
+    if ! type -t upgrade_acquire_lock &>/dev/null; then
+        log_error "Ubuntu upgrade lock is unavailable; refusing to continue upgrade."
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+        return 1
+    fi
+    if ! upgrade_acquire_lock; then
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+        return 1
+    fi
+    upgrade_lock_acquired=true
+
     # Check if system requires reboot before upgrade (package updates pending)
     # This must be handled before preflight checks, otherwise do-release-upgrade fails
     if [[ -f /var/run/reboot-required ]]; then
@@ -4012,12 +4024,14 @@ run_ubuntu_upgrade_phase() {
                 ' --arg current_version "$current_version_str" --arg target_version "$TARGET_UBUNTU_VERSION"; then
                     log_error "Failed to record upgrade stage; cannot safely auto-reboot."
                     log_info "Please reboot manually and re-run the installer."
+                    release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
                     restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                     return 1
                 fi
             else
                 log_error "State tracking is unavailable; cannot safely auto-reboot."
                 log_info "Please reboot manually and re-run the installer."
+                release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
                 restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
@@ -4033,12 +4047,14 @@ run_ubuntu_upgrade_phase() {
             if [[ -z "$acfs_source_dir" ]] || ! type -t upgrade_setup_infrastructure &>/dev/null; then
                 log_error "Resume infrastructure is unavailable. Cannot safely auto-reboot."
                 log_info "Please reboot manually and re-run the installer."
+                release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
                 restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
             if ! upgrade_setup_infrastructure "$acfs_source_dir" "$@"; then
                 log_error "Failed to set up resume infrastructure. Cannot safely reboot."
                 log_info "Please reboot manually and re-run the installer."
+                release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
                 restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
@@ -4061,6 +4077,7 @@ run_ubuntu_upgrade_phase() {
             log_error "Manual action required: reboot the system first"
             log_info "Run: sudo reboot"
             log_info "Then re-run the ACFS installer"
+            release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
             restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
@@ -4071,6 +4088,7 @@ run_ubuntu_upgrade_phase() {
         if ! ubuntu_preflight_checks; then
             log_error "Preflight checks failed. Cannot proceed with upgrade."
             log_info "Use --skip-ubuntu-upgrade to bypass (not recommended)"
+            release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
             restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
@@ -4082,6 +4100,7 @@ run_ubuntu_upgrade_phase() {
     if type -t state_ensure_valid &>/dev/null; then
         if ! state_ensure_valid; then
             log_error "State validation failed. Aborting Ubuntu upgrade."
+            release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
             restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
@@ -4091,6 +4110,7 @@ run_ubuntu_upgrade_phase() {
             log_detail "Initializing state file for Ubuntu upgrade tracking..."
             if ! state_init; then
                 log_error "Failed to initialize state file. Aborting Ubuntu upgrade."
+                release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
                 restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
                 return 1
             fi
@@ -4116,6 +4136,7 @@ run_ubuntu_upgrade_phase() {
 
         if ! ubuntu_start_upgrade_sequence "$acfs_source_dir" "$@"; then
             log_error "Ubuntu upgrade failed to start"
+            release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
             restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
         fi
@@ -4128,8 +4149,16 @@ run_ubuntu_upgrade_phase() {
     else
         log_warn "ubuntu_start_upgrade_sequence not available"
         log_warn "Continuing with ACFS installation on current Ubuntu version"
+        release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
         restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
         return 0
+    fi
+}
+
+release_ubuntu_upgrade_lock_if_acquired() {
+    local upgrade_lock_acquired="${1:-false}"
+    if [[ "$upgrade_lock_acquired" == "true" ]] && type -t upgrade_release_lock &>/dev/null; then
+        upgrade_release_lock
     fi
 }
 
