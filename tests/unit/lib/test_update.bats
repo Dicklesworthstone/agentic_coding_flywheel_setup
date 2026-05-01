@@ -6445,6 +6445,100 @@ EOF
     assert_success
 }
 
+@test "update_source_stack_lib skips stale stack candidates missing Agent Mail helpers" {
+    local stale_lib="$BATS_TEST_TMPDIR/stale-lib"
+    local runtime_acfs="$BATS_TEST_TMPDIR/runtime-acfs"
+    local repo_root="$BATS_TEST_TMPDIR/repo"
+    local log_file="$BATS_TEST_TMPDIR/update.log"
+
+    mkdir -p "$stale_lib" "$runtime_acfs/scripts/lib" "$repo_root/scripts/lib"
+
+    cat > "$stale_lib/stack.sh" <<'EOF'
+#!/usr/bin/env bash
+_stack_configure_agent_mail_service() { printf 'stale-config\n'; }
+EOF
+
+    cat > "$runtime_acfs/scripts/lib/stack.sh" <<'EOF'
+#!/usr/bin/env bash
+_stack_agent_mail_cli_path() { printf 'runtime-cli\n'; }
+_stack_repair_agent_mail_cli_symlink() { printf 'runtime-symlink\n'; }
+_stack_wait_for_agent_mail_health() { printf 'runtime-health\n'; }
+EOF
+
+    cat > "$repo_root/scripts/lib/stack.sh" <<'EOF'
+#!/usr/bin/env bash
+_stack_agent_mail_cli_path() { printf 'fresh-cli\n'; }
+_stack_repair_agent_mail_cli_symlink() { printf 'fresh-symlink\n'; }
+_stack_configure_agent_mail_service() { printf 'fresh-config\n'; }
+_stack_wait_for_agent_mail_health() { printf 'fresh-health\n'; }
+EOF
+
+    SCRIPT_DIR="$stale_lib"
+    ACFS_REPO_ROOT="$repo_root"
+    UPDATE_LOG_FILE="$log_file"
+    update_runtime_acfs_home() { printf '%s\n' "$runtime_acfs"; }
+
+    update_source_stack_lib
+
+    run _stack_agent_mail_cli_path
+    assert_success
+    assert_output "fresh-cli"
+
+    run _stack_configure_agent_mail_service
+    assert_success
+    assert_output "fresh-config"
+
+    run grep -F "Ignoring stack.sh from $stale_lib/stack.sh: missing Agent Mail service helpers" "$log_file"
+    assert_success
+}
+
+@test "doctor_fix_source_stack_lib skips stale stack candidates missing Agent Mail helpers" {
+    local doctor_fix="$PROJECT_ROOT/scripts/lib/doctor_fix.sh"
+    local stale_lib="$BATS_TEST_TMPDIR/stale-lib"
+    local runtime_acfs="$BATS_TEST_TMPDIR/runtime-acfs"
+    local repo_root="$BATS_TEST_TMPDIR/repo"
+
+    mkdir -p "$stale_lib" "$runtime_acfs/scripts/lib" "$repo_root/scripts/lib"
+
+    cat > "$stale_lib/stack.sh" <<'EOF'
+#!/usr/bin/env bash
+_stack_configure_agent_mail_service() { printf 'stale-config\n'; }
+EOF
+
+    cat > "$runtime_acfs/scripts/lib/stack.sh" <<'EOF'
+#!/usr/bin/env bash
+_stack_agent_mail_cli_path() { printf 'runtime-cli\n'; }
+_stack_repair_agent_mail_cli_symlink() { printf 'runtime-symlink\n'; }
+_stack_wait_for_agent_mail_health() { printf 'runtime-health\n'; }
+EOF
+
+    cat > "$repo_root/scripts/lib/stack.sh" <<'EOF'
+#!/usr/bin/env bash
+_stack_agent_mail_cli_path() { printf 'fresh-cli\n'; }
+_stack_repair_agent_mail_cli_symlink() { printf 'fresh-symlink\n'; }
+_stack_configure_agent_mail_service() { printf 'fresh-config\n'; }
+_stack_wait_for_agent_mail_health() { printf 'fresh-health\n'; }
+EOF
+
+    eval "$(sed -n '/^doctor_fix_stack_agent_mail_helpers_loaded()/,/^}$/p' "$doctor_fix")"
+    eval "$(sed -n '/^doctor_fix_clear_stack_agent_mail_helpers()/,/^}$/p' "$doctor_fix")"
+    eval "$(sed -n '/^doctor_fix_source_stack_lib()/,/^}$/p' "$doctor_fix")"
+
+    SCRIPT_DIR="$stale_lib"
+    ACFS_REPO_ROOT="$repo_root"
+    doctor_fix_runtime_acfs_home() { printf '%s\n' "$runtime_acfs"; }
+
+    doctor_fix_source_stack_lib
+
+    run _stack_agent_mail_cli_path
+    assert_success
+    assert_output "fresh-cli"
+
+    run _stack_configure_agent_mail_service
+    assert_success
+    assert_output "fresh-config"
+}
+
 @test "finalize keeps legacy runtime deployment after generated acfs phase" {
     local installer="$PROJECT_ROOT/install.sh"
     local block=""

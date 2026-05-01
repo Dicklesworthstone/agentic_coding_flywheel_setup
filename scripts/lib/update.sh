@@ -385,12 +385,26 @@ ensure_path() {
     fi
 }
 
+update_stack_agent_mail_helpers_loaded() {
+    declare -f _stack_agent_mail_cli_path >/dev/null 2>&1 \
+        && declare -f _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 \
+        && declare -f _stack_configure_agent_mail_service >/dev/null 2>&1 \
+        && declare -f _stack_wait_for_agent_mail_health >/dev/null 2>&1
+}
+
+update_clear_stack_agent_mail_helpers() {
+    unset -f _stack_agent_mail_cli_path \
+        _stack_repair_agent_mail_cli_symlink \
+        _stack_configure_agent_mail_service \
+        _stack_wait_for_agent_mail_health 2>/dev/null || true
+}
+
 update_source_stack_lib() {
     local runtime_acfs_home=""
     local candidate=""
     local -a candidates=()
 
-    if declare -f _stack_configure_agent_mail_service >/dev/null 2>&1; then
+    if update_stack_agent_mail_helpers_loaded; then
         return 0
     fi
 
@@ -405,12 +419,20 @@ update_source_stack_lib() {
 
     for candidate in "${candidates[@]}"; do
         [[ -n "$candidate" && -r "$candidate" ]] || continue
+        update_clear_stack_agent_mail_helpers
         # shellcheck source=stack.sh
-        source "$candidate"
-        log_to_file "Loaded stack.sh from $candidate"
-        return 0
+        if source "$candidate"; then
+            if update_stack_agent_mail_helpers_loaded; then
+                log_to_file "Loaded stack.sh from $candidate"
+                return 0
+            fi
+            log_to_file "Ignoring stack.sh from $candidate: missing Agent Mail service helpers"
+        else
+            log_to_file "Ignoring stack.sh from $candidate: source failed"
+        fi
     done
 
+    update_clear_stack_agent_mail_helpers
     echo "Stack library not found in deployed or repo paths" >&2
     return 1
 }

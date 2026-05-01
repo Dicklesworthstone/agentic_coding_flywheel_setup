@@ -409,25 +409,53 @@ doctor_fix_curl() {
     "$curl_bin" "$@"
 }
 
+doctor_fix_stack_agent_mail_helpers_loaded() {
+    declare -f _stack_agent_mail_cli_path >/dev/null 2>&1 \
+        && declare -f _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 \
+        && declare -f _stack_configure_agent_mail_service >/dev/null 2>&1 \
+        && declare -f _stack_wait_for_agent_mail_health >/dev/null 2>&1
+}
+
+doctor_fix_clear_stack_agent_mail_helpers() {
+    unset -f _stack_agent_mail_cli_path \
+        _stack_repair_agent_mail_cli_symlink \
+        _stack_configure_agent_mail_service \
+        _stack_wait_for_agent_mail_health 2>/dev/null || true
+}
+
 doctor_fix_source_stack_lib() {
-    if declare -f _stack_configure_agent_mail_service >/dev/null 2>&1; then
+    local runtime_stack_lib=""
+    local repo_stack_lib=""
+    local candidate=""
+    local -a candidates=()
+
+    if doctor_fix_stack_agent_mail_helpers_loaded; then
         return 0
     fi
 
-    if [[ -f "$SCRIPT_DIR/stack.sh" ]]; then
-        # shellcheck source=stack.sh
-        source "$SCRIPT_DIR/stack.sh"
-        return 0
-    fi
+    candidates+=("$SCRIPT_DIR/stack.sh")
 
-    local runtime_stack_lib
     runtime_stack_lib="$(doctor_fix_runtime_acfs_home)/scripts/lib/stack.sh"
-    if [[ -f "$runtime_stack_lib" ]]; then
-        # shellcheck source=stack.sh
-        source "$runtime_stack_lib"
-        return 0
+    if [[ -n "${ACFS_REPO_ROOT:-}" ]]; then
+        repo_stack_lib="${ACFS_REPO_ROOT%/}/scripts/lib/stack.sh"
     fi
+    candidates+=(
+        "$runtime_stack_lib"
+        "$repo_stack_lib"
+        "/data/projects/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
+        "/dp/agentic_coding_flywheel_setup/scripts/lib/stack.sh"
+    )
 
+    for candidate in "${candidates[@]}"; do
+        [[ -n "$candidate" && -f "$candidate" ]] || continue
+        doctor_fix_clear_stack_agent_mail_helpers
+        # shellcheck source=stack.sh
+        if source "$candidate" && doctor_fix_stack_agent_mail_helpers_loaded; then
+            return 0
+        fi
+    done
+
+    doctor_fix_clear_stack_agent_mail_helpers
     return 1
 }
 
