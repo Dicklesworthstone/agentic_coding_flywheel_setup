@@ -17,8 +17,11 @@ import {
   TOTAL_STEPS,
 } from "./wizardSteps";
 import {
+  ACFS_REF_KEY,
   CREATE_VPS_CHECKLIST_KEY,
+  getACFSRef,
   getCreateVPSChecklist,
+  setACFSRef,
   setCreateVPSChecklist,
 } from "./userPreferences";
 
@@ -182,5 +185,24 @@ describe("progress persistence guards", () => {
     expect(setCreateVPSChecklist(["ubuntu"])).toBe(false);
     expect(failingBrowser.getStoredValue(CREATE_VPS_CHECKLIST_KEY)).toBeNull();
     expect(failingBrowser.dispatchCalls).toHaveLength(0);
+  });
+
+  test("ACFS ref persistence rejects invalid refs without clearing the saved ref", () => {
+    const browser = installMockBrowser({
+      initialValues: {
+        [ACFS_REF_KEY]: "v1.2.3",
+      },
+    });
+
+    expect(getACFSRef()).toBe("v1.2.3");
+    expect(setACFSRef("bad ref")).toBe(false);
+    expect(getACFSRef()).toBe("v1.2.3");
+    expect(browser.getStoredValue(ACFS_REF_KEY)).toBe("v1.2.3");
+    expect(browser.dispatchCalls).toHaveLength(0);
+
+    expect(setACFSRef(null)).toBe(true);
+    expect(getACFSRef()).toBeNull();
+    expect(browser.getStoredValue(ACFS_REF_KEY)).toBe("");
+    expect(browser.dispatchCalls).toHaveLength(1);
   });
 });

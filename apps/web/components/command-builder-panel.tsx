@@ -202,8 +202,8 @@ export function CommandBuilderPanel() {
   const effectiveRef = useMemo(() => {
     const trimmed = refDraft.trim();
     if (!trimmed) return null;
-    return normalizedRefDraft ?? ref;
-  }, [normalizedRefDraft, ref, refDraft]);
+    return normalizedRefDraft;
+  }, [normalizedRefDraft, refDraft]);
 
   const commands = useMemo(() => {
     if (!effectiveIP) return null;

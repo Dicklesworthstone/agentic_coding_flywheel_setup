@@ -16,7 +16,7 @@ const OS_KEY = "agent-flywheel-user-os";
 const VPS_IP_KEY = "agent-flywheel-vps-ip";
 const INSTALL_MODE_KEY = "agent-flywheel-install-mode";
 const SSH_USERNAME_KEY = "agent-flywheel-ssh-username";
-const ACFS_REF_KEY = "agent-flywheel-acfs-ref";
+export const ACFS_REF_KEY = "agent-flywheel-acfs-ref";
 export const CREATE_VPS_CHECKLIST_KEY = "agent-flywheel-create-vps-checklist";
 const CHECKED_SERVICES_KEY = "agent-flywheel-checked-services";
 
@@ -496,7 +496,11 @@ export function getACFSRef(): string | null {
 }
 
 export function setACFSRef(ref: string | null): boolean {
-  const value = normalizeGitRef(ref);
+  const raw = ref?.trim() ?? "";
+  if (raw && !normalizeGitRef(raw)) {
+    return false;
+  }
+  const value = raw ? normalizeGitRef(raw) : null;
   const storedOk = value
     ? safeSetItem(ACFS_REF_KEY, value)
     : safeSetItem(ACFS_REF_KEY, "");

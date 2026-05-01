@@ -74,13 +74,16 @@ export default function RunInstallerPage() {
   const [vpsIP, , vpsIPLoaded] = useVPSIP();
   const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
   const [pinEditorOpen, setPinEditorOpen] = useState(false);
+  const [refDraftOverride, setRefDraftOverride] = useState<string | null>(null);
   const usePinnedRef = pinEditorOpen || pinnedRef !== null;
-  const refInput = pinnedRef ?? "main";
-  const safePinnedRef = useMemo(() => normalizeGitRef(refInput), [refInput]);
+  const refDraft = pinEditorOpen
+    ? (refDraftOverride ?? pinnedRef ?? "main")
+    : (pinnedRef ?? "main");
+  const safePinnedRef = useMemo(() => normalizeGitRef(refDraft), [refDraft]);
   const ready =
     installModeLoaded && acfsRefLoaded && vpsIPLoaded && sshUsernameLoaded;
   const effectiveInstallMode = installMode;
-  const effectiveRef = usePinnedRef ? refInput : null;
+  const effectiveRef = usePinnedRef ? safePinnedRef : null;
   const effectiveVpsIP = vpsIP ?? "";
   const effectiveSSHUsername = sshUsername.trim() || "ubuntu";
   const reconnectCommand = useMemo(
@@ -95,9 +98,12 @@ export default function RunInstallerPage() {
   const handlePinnedRefToggle = useCallback((checked: boolean) => {
     if (!checked) {
       setPinEditorOpen(false);
+      setRefDraftOverride(null);
       setPinnedRef(null);
       return;
     }
+    const nextRef = pinnedRef ?? "main";
+    setRefDraftOverride(nextRef);
     setPinEditorOpen(true);
     if (!pinnedRef || !pinnedRef.trim()) {
       setPinnedRef("main");
@@ -106,7 +112,18 @@ export default function RunInstallerPage() {
 
   const handlePinnedRefChange = useCallback((value: string) => {
     setPinEditorOpen(true);
-    setPinnedRef(value || null);
+    setRefDraftOverride(value);
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setPinnedRef(null);
+      return;
+    }
+
+    const normalized = normalizeGitRef(trimmed);
+    if (normalized) {
+      setPinnedRef(normalized);
+    }
   }, [setPinnedRef]);
 
   // Build command dynamically based on pinning options
@@ -239,7 +256,7 @@ export default function RunInstallerPage() {
               <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  value={refInput}
+                  value={refDraft}
                   onChange={(e) => handlePinnedRefChange(e.target.value)}
                   placeholder="main, v1.0.0, or commit SHA"
                   className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -253,7 +270,7 @@ export default function RunInstallerPage() {
                   or a full SHA for exact reproducibility.
                 </span>
               </div>
-              {refInput.trim() && !safePinnedRef && (
+              {refDraft.trim() && !safePinnedRef && (
                 <p className="text-xs text-[oklch(0.72_0.19_145)]">
                   Invalid ref format. Allowed characters: letters, numbers, <code className="rounded bg-muted px-1 py-0.5">.</code>,
                   <code className="rounded bg-muted px-1 py-0.5">_</code>, <code className="rounded bg-muted px-1 py-0.5">-</code>,
