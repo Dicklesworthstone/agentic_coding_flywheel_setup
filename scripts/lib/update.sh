@@ -3717,7 +3717,7 @@ update_apt() {
     fix_apt_issues
 
     # Run apt update
-    run_cmd_sudo "apt update" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get update -y
+    run_cmd_sudo_with_retry_status "apt update" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get update -y || true
 
     # Get list of upgradable packages before upgrade
     local upgradable_list=""
@@ -3734,10 +3734,12 @@ update_apt() {
         log_item "ok" "apt upgrade" "all packages up to date"
     else
         log_to_file "Attempting apt upgrade for $upgrade_count upgradable package candidates..."
-        run_cmd_sudo "apt upgrade" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get upgrade -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold
+        if ! run_cmd_sudo_attempt_with_retry "apt upgrade" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get upgrade -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold; then
+            run_cmd_sudo_with_retry_status "apt upgrade --fix-missing" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get upgrade -y --fix-missing -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold || true
+        fi
     fi
 
-    run_cmd_sudo "apt autoremove" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get autoremove -y
+    run_cmd_sudo_with_retry_status "apt autoremove" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 apt-get autoremove -y || true
 
     # Check if reboot is required (kernel updates, etc.)
     check_reboot_required
@@ -4585,7 +4587,13 @@ update_uv() {
     # Capture version before update
     capture_version_before "uv"
 
-    run_cmd "uv self-update" "$uv_bin" self update
+    if ! run_cmd_attempt_with_retry "uv self-update" "$uv_bin" self update; then
+        if update_require_security; then
+            run_cmd_with_retry_status "uv verified installer fallback" update_run_verified_installer uv || true
+        else
+            log_item "fail" "uv self-update" "failed and checksum-verified installer fallback is unavailable"
+        fi
+    fi
 
     # Show version change without double-counting
     if capture_version_after "uv"; then
@@ -4660,7 +4668,7 @@ update_stack() {
 
     # NTM - always install/update (installer is idempotent)
     capture_version_before "ntm"
-    run_cmd "NTM" update_run_verified_installer ntm
+    update_run_verified_installer_or_existing_on_transient "NTM" ntm ntm ntm || true
     if capture_version_after "ntm"; then
         [[ "$QUIET" != "true" ]] && printf "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[ntm]}" "${VERSION_AFTER[ntm]}"
     fi
@@ -4728,7 +4736,7 @@ update_stack() {
     fi
 
     # Meta Skill (ms) - always install/update (installer is idempotent)
-    run_cmd_with_retry_status "Meta Skill" update_run_verified_installer ms --easy-mode || true
+    update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode || true
 
     # APR (Automated Plan Reviser Pro) - always install/update
     run_cmd "APR" update_run_verified_installer apr --easy-mode
