@@ -877,6 +877,12 @@ EOF
     run grep -F 'run_cmd "DCG Hook" "$dcg_bin" install --force' "$update"
     assert_success
 
+    run grep -F 'update_run_verified_installer_or_existing_on_transient "NTM" ntm ntm ntm' "$update"
+    assert_success
+
+    run grep -F 'update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode' "$update"
+    assert_success
+
     run grep -F '"$target_home/.atuin/bin/atuin"' "$update"
     assert_success
 
@@ -6315,6 +6321,8 @@ EOF
     assert_success
     run grep -F 'install_asset "scripts/lib/support.sh" "$ACFS_HOME/scripts/lib/support.sh"' "$installer"
     assert_success
+    run grep -F 'install_asset "scripts/lib/stack.sh" "$ACFS_HOME/scripts/lib/stack.sh"' "$installer"
+    assert_success
 
     run grep -F '"scripts/lib/status.sh:scripts/lib/status.sh"' "$update"
     assert_success
@@ -6323,6 +6331,10 @@ EOF
     run grep -F '"scripts/lib/export-config.sh:scripts/lib/export-config.sh"' "$update"
     assert_success
     run grep -F '"scripts/lib/support.sh:scripts/lib/support.sh"' "$update"
+    assert_success
+    run grep -F '"scripts/lib/stack.sh:scripts/lib/stack.sh"' "$update"
+    assert_success
+    run grep -F '"/data/projects/agentic_coding_flywheel_setup/scripts/lib/stack.sh"' "$update"
     assert_success
     run grep -F '"scripts/lib/doctor.sh:bin/acfs"' "$update"
     assert_success
@@ -9213,6 +9225,60 @@ EOF
     [[ "$(cat "$HOME/zoxide-attempts")" == "2" ]]
     [[ "$SUCCESS_COUNT" -eq 1 ]]
     [[ "$FAIL_COUNT" -eq 0 ]]
+}
+
+@test "update_zoxide: skips transient reinstall failure when existing binary remains healthy" {
+    init_stub_dir
+    export PATH="$STUB_DIR:$PATH"
+    export ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    export ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    YES_MODE=false
+    ABORT_ON_FAILURE=false
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    cat > "$STUB_DIR/zoxide" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--version" ]]; then
+  echo "zoxide 0.9.9"
+else
+  echo "zoxide 0.9.9"
+fi
+EOF
+    chmod +x "$STUB_DIR/zoxide"
+
+    update_require_security() {
+        return 0
+    }
+
+    update_run_verified_installer() {
+        echo "Error: you have exceeded GitHub's API rate limit. Please try again later." >&2
+        return 1
+    }
+
+    update_zoxide
+
+    [[ "$SUCCESS_COUNT" -eq 0 ]]
+    [[ "$SKIP_COUNT" -eq 1 ]]
+    [[ "$FAIL_COUNT" -eq 0 ]]
+}
+
+@test "update uses retry/fallback paths for transient apt and uv failures" {
+    local update="$PROJECT_ROOT/scripts/lib/update.sh"
+
+    run grep -F 'run_cmd_sudo_attempt_with_retry "apt upgrade"' "$update"
+    assert_success
+    run grep -F 'apt-get upgrade -y --fix-missing' "$update"
+    assert_success
+    run grep -F 'run_cmd_attempt_with_retry "uv self-update"' "$update"
+    assert_success
+    run grep -F 'run_cmd_with_retry_status "uv verified installer fallback" update_run_verified_installer uv' "$update"
+    assert_success
 }
 
 

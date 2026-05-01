@@ -1091,7 +1091,7 @@ update_run_command_capture_with_retry() {
     local desc="$1"
     shift
 
-    local max_attempts=3
+    local max_attempts="${ACFS_UPDATE_RETRY_MAX_ATTEMPTS:-3}"
     local attempt=1
     local exit_code=0
     local output=""
