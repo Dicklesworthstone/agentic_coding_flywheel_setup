@@ -1092,7 +1092,7 @@ write_manifest() {
 # ============================================================
 
 # Redact sensitive values from a single text file in-place.
-# Increments REDACTION_COUNT for each substitution made.
+# Increments REDACTION_COUNT once when the file content changes.
 # Usage: redact_file <file_path>
 redact_file() {
     local file="$1"
