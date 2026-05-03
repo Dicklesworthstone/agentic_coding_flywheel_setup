@@ -55,6 +55,24 @@ teardown() {
     assert_output --partial "after_failure="
 }
 
+@test "try_step_eval missing command string fails without unbound variable" {
+    run env -i PATH="/usr/bin:/bin" /usr/bin/bash -c '
+        set -euo pipefail
+        source "$1"
+        status=0
+        try_step_eval "missing eval command" || status=$?
+        printf "status=%s\n" "$status"
+        printf "last_error=%s\n" "$LAST_ERROR"
+        printf "last_error_code=%s\n" "$LAST_ERROR_CODE"
+    ' _ "$PROJECT_ROOT/scripts/lib/error_tracking.sh"
+
+    assert_success
+    assert_output --partial "status=1"
+    assert_output --partial "last_error=try_step_eval: missing command string for: missing eval command"
+    assert_output --partial "last_error_code=1"
+    refute_output --partial "unbound variable"
+}
+
 @test "try_step_eval uses trusted bash instead of PATH bash" {
     local fake_bin
     local marker

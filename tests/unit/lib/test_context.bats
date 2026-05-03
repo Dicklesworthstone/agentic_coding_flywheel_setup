@@ -74,6 +74,24 @@ teardown() {
     assert_output --partial "caller_return_seen=1"
 }
 
+@test "try_step_eval: missing command string fails without unbound variable" {
+    local context_lib="$PROJECT_ROOT/scripts/lib/context.sh"
+
+    run bash -c '
+        set -euo pipefail
+        source "$1"
+        status=0
+        try_step_eval "missing eval command" || status=$?
+        printf "status=%s\n" "$status"
+        printf "last_error=%s\n" "$LAST_ERROR"
+    ' _ "$context_lib"
+
+    assert_success
+    assert_output --partial "status=1"
+    assert_output --partial "try_step_eval: missing command string"
+    refute_output --partial "unbound variable"
+}
+
 @test "try_step_eval: uses trusted bash instead of PATH bash" {
     local context_lib="$PROJECT_ROOT/scripts/lib/context.sh"
     local fake_bin

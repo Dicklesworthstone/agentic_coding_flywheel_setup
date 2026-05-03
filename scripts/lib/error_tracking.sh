@@ -288,8 +288,15 @@ try_step_eval() {
     local bash_bin=""
 
     if [[ -z "$command_str" ]]; then
+        LAST_ERROR="try_step_eval: missing command string for: $description"
+        LAST_ERROR_CODE=1
+        LAST_ERROR_OUTPUT="$LAST_ERROR"
+        LAST_ERROR_TIME=$(date -Iseconds)
+        if type -t state_phase_fail &>/dev/null; then
+            state_phase_fail "$CURRENT_PHASE" "$description" "$LAST_ERROR" || true
+        fi
         if type -t log_error &>/dev/null; then
-            log_error "try_step_eval: missing command string for: $description"
+            log_error "$LAST_ERROR"
         fi
         return 1
     fi

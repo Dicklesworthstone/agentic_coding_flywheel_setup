@@ -204,7 +204,7 @@ try_step() {
 #   try_step_eval "Checking status" "git status && git diff"
 try_step_eval() {
     local description="$1"
-    local command_str="$2"
+    local command_str="${2:-}"
     local bash_bin=""
 
     # Update context
@@ -221,6 +221,13 @@ try_step_eval() {
     # Never fall back to a predictable /tmp path (symlink/clobber risk under sudo/root).
     local temp_output=""
     temp_output=$(mktemp "${TMPDIR:-/tmp}/acfs_context.XXXXXX" 2>/dev/null) || temp_output=""
+
+    if [[ -z "$command_str" ]]; then
+        [[ -n "$temp_output" ]] && printf '%s\n' "try_step_eval: missing command string" > "$temp_output"
+        _handle_step_failure "$description" 1 "$temp_output"
+        _context_remove_temp_file "$temp_output"
+        return 1
+    fi
 
     # Execute command string via bash -c, capturing output when possible.
     #
