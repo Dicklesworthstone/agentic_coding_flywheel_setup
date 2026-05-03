@@ -8249,6 +8249,7 @@ stack-lib|$REPO_ROOT/scripts/lib/stack.sh|_stack_system_binary_path
 notify-lib|$REPO_ROOT/scripts/lib/notify.sh|_acfs_notify_system_binary_path
 notifications-lib|$REPO_ROOT/scripts/lib/notifications.sh|notifications_system_binary_path
 webhook-lib|$REPO_ROOT/scripts/lib/webhook.sh|webhook_system_binary_path
+ubuntu-upgrade-lib|$REPO_ROOT/scripts/lib/ubuntu_upgrade.sh|ubuntu_system_binary_path
 EOF
 
     if [[ -z "$failures" ]]; then
