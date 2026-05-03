@@ -52,6 +52,33 @@ fi
 # Enable/disable verbose error output
 ERROR_VERBOSE="${ERROR_VERBOSE:-false}"
 
+error_tracking_system_binary_path() {
+    local name="${1:-}"
+    local candidate=""
+
+    [[ -n "$name" ]] || return 1
+    case "$name" in
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
+
+    for candidate in \
+        "/usr/bin/$name" \
+        "/bin/$name" \
+        "/usr/local/bin/$name" \
+        "/usr/local/sbin/$name" \
+        "/usr/sbin/$name" \
+        "/sbin/$name"
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
+}
+
 # ============================================================
 # Phase Management
 # ============================================================
@@ -258,6 +285,7 @@ try_step() {
 try_step_eval() {
     local description="$1"
     local command_str="${2:-}"
+    local bash_bin=""
 
     if [[ -z "$command_str" ]]; then
         if type -t log_error &>/dev/null; then
@@ -266,7 +294,15 @@ try_step_eval() {
         return 1
     fi
 
-    try_step "$description" bash -e -o pipefail -c "$command_str"
+    bash_bin="$(error_tracking_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$bash_bin" ]]; then
+        if type -t log_error &>/dev/null; then
+            log_error "try_step_eval: trusted bash not found for: $description"
+        fi
+        return 127
+    fi
+
+    try_step "$description" "$bash_bin" -e -o pipefail -c "$command_str"
 }
 
 # Execute a command that can fail without aborting

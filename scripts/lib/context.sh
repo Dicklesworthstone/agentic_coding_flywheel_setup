@@ -66,6 +66,33 @@ _context_remove_temp_file() {
     [[ -n "$path" ]] && rm -f -- "$path" 2>/dev/null || true
 }
 
+context_system_binary_path() {
+    local name="${1:-}"
+    local candidate=""
+
+    [[ -n "$name" ]] || return 1
+    case "$name" in
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
+
+    for candidate in \
+        "/usr/bin/$name" \
+        "/bin/$name" \
+        "/usr/local/bin/$name" \
+        "/usr/local/sbin/$name" \
+        "/usr/sbin/$name" \
+        "/sbin/$name"
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
+}
+
 # ============================================================
 # Phase Management Functions
 # ============================================================
@@ -178,6 +205,7 @@ try_step() {
 try_step_eval() {
     local description="$1"
     local command_str="$2"
+    local bash_bin=""
 
     # Update context
     ((CURRENT_STEP_NUMBER += 1))
@@ -199,14 +227,21 @@ try_step_eval() {
     # Use `-o pipefail` so pipelines fail when any command fails.
     # Use `-e` so `cmd1; cmd2` doesn't accidentally mask failures.
     local exit_code=0
+    bash_bin="$(context_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$bash_bin" ]]; then
+        _handle_step_failure "$description" 127 "$temp_output"
+        _context_remove_temp_file "$temp_output"
+        return 127
+    fi
+
     if [[ -n "$temp_output" ]]; then
-        if bash -e -o pipefail -c "$command_str" > "$temp_output" 2>&1; then
+        if "$bash_bin" -e -o pipefail -c "$command_str" > "$temp_output" 2>&1; then
             exit_code=0
         else
             exit_code=$?
         fi
     else
-        if bash -e -o pipefail -c "$command_str"; then
+        if "$bash_bin" -e -o pipefail -c "$command_str"; then
             exit_code=0
         else
             exit_code=$?

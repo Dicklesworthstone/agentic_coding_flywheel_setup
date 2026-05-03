@@ -54,3 +54,29 @@ teardown() {
     assert_output --partial "after_success="
     assert_output --partial "after_failure="
 }
+
+@test "try_step_eval uses trusted bash instead of PATH bash" {
+    local fake_bin
+    local marker
+
+    fake_bin="$(create_temp_dir)/bin"
+    marker="$(create_temp_dir)/poisoned-bash"
+    mkdir -p "$fake_bin"
+    cat > "$fake_bin/bash" <<'EOF'
+#!/bin/sh
+printf poisoned > "$ACFS_POISON_MARKER"
+exit 43
+EOF
+    chmod +x "$fake_bin/bash"
+
+    run env -i ACFS_POISON_MARKER="$marker" PATH="$fake_bin:/usr/bin:/bin" /usr/bin/bash -c '
+        set -euo pipefail
+        source "$1"
+        try_step_eval "trusted bash probe" "true" >/dev/null 2>&1
+        [[ ! -e "$2" ]] || exit 44
+        printf "trusted bash used\n"
+    ' _ "$PROJECT_ROOT/scripts/lib/error_tracking.sh" "$marker"
+
+    assert_success
+    assert_output "trusted bash used"
+}
