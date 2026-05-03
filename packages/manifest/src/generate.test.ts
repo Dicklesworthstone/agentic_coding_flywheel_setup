@@ -394,7 +394,7 @@ describe('Generated verified installer args', () => {
       'install command failed: # Wait for the managed Agent Mail service to become healthy.'
     );
     expect(stackContent).toContain(
-      'install command failed: until curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do'
+      'install command failed: until agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do'
     );
   });
 

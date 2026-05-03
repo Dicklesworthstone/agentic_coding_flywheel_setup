@@ -240,6 +240,15 @@ _stack_curl() {
 
     "$curl_bin" "$@"
 }
+
+_stack_system_curl() {
+    local curl_bin=""
+
+    curl_bin="$(_stack_system_binary_path curl 2>/dev/null || true)"
+    [[ -n "$curl_bin" ]] || return 127
+
+    "$curl_bin" "$@"
+}
 # Check if we're in interactive mode (fallback if security.sh isn't loaded yet).
 _stack_is_interactive() {
     if declare -f _acfs_is_interactive >/dev/null 2>&1; then
@@ -836,7 +845,7 @@ _stack_resolve_fsfs_latest_version() {
     local latest_url="https://api.github.com/repos/Dicklesworthstone/frankensearch/releases/latest"
     local redirect_url="https://github.com/Dicklesworthstone/frankensearch/releases/latest"
     local tag=""
-    tag="$(curl -fsSL --connect-timeout 30 --max-time 60 -H "Accept: application/vnd.github.v3+json" "$latest_url" 2>/dev/null \
+    tag="$(_stack_system_curl -fsSL --connect-timeout 30 --max-time 60 -H "Accept: application/vnd.github.v3+json" "$latest_url" 2>/dev/null \
         | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
         | head -n 1 || true)"
 
@@ -845,7 +854,7 @@ _stack_resolve_fsfs_latest_version() {
         return 0
     fi
 
-    tag="$(curl -fsSL --connect-timeout 30 --max-time 60 -o /dev/null -w '%{url_effective}' "$redirect_url" 2>/dev/null \
+    tag="$(_stack_system_curl -fsSL --connect-timeout 30 --max-time 60 -o /dev/null -w '%{url_effective}' "$redirect_url" 2>/dev/null \
         | sed -E 's|.*/tag/||' || true)"
 
     _stack_is_valid_fsfs_version "$tag" || return 1
@@ -856,7 +865,7 @@ _stack_fetch_fsfs_artifact_checksum() {
     local checksum_url="$1"
     local checksum=""
 
-    checksum="$(curl -fsSL --connect-timeout 30 --max-time 60 "$checksum_url" 2>/dev/null \
+    checksum="$(_stack_system_curl -fsSL --connect-timeout 30 --max-time 60 "$checksum_url" 2>/dev/null \
         | awk 'NR == 1 { print $1 }' || true)"
     [[ "$checksum" =~ ^[0-9A-Fa-f]{64}$ ]] || return 1
     printf '%s\n' "${checksum,,}"
@@ -886,13 +895,13 @@ _stack_resolve_fsfs_artifact_contract() {
                 *) candidates+=("$candidate") ;;
             esac
         done < <(
-            curl -fsSL --connect-timeout 30 --max-time 60 \
+            _stack_system_curl -fsSL --connect-timeout 30 --max-time 60 \
                 -H "Accept: application/vnd.github.v3+json" \
                 "https://api.github.com/repos/Dicklesworthstone/frankensearch/releases?per_page=10" 2>/dev/null \
                 | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' || true
         )
 
-        candidate="$(curl -fsSL --connect-timeout 30 --max-time 60 -o /dev/null -w '%{url_effective}' \
+        candidate="$(_stack_system_curl -fsSL --connect-timeout 30 --max-time 60 -o /dev/null -w '%{url_effective}' \
             "https://github.com/Dicklesworthstone/frankensearch/releases/latest" 2>/dev/null \
             | sed -E 's|.*/tag/||' || true)"
         if _stack_is_valid_fsfs_version "$candidate"; then
@@ -983,15 +992,30 @@ _stack_agent_mail_ready() {
     check_cmd="$(cat <<EOF
 set -euo pipefail
 export PATH="\${ACFS_BIN_DIR:-\$HOME/.local/bin}:\$HOME/.local/bin:\$HOME/.acfs/bin:\$HOME/.cargo/bin:\$HOME/.bun/bin:\$HOME/.atuin/bin:\$HOME/go/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"
+
+stack_service_curl() {
+    local curl_bin=""
+    local candidate=""
+
+    for candidate in /usr/bin/curl /bin/curl /usr/local/bin/curl /usr/local/sbin/curl /usr/sbin/curl /sbin/curl; do
+        [[ -x "\$candidate" ]] || continue
+        curl_bin="\$candidate"
+        break
+    done
+
+    [[ -n "\$curl_bin" ]] || return 127
+    "\$curl_bin" "\$@"
+}
+
 am_bin=$am_cli_path_q
 [[ -x "\$am_bin" ]] || exit 1
 
-if ! curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
-   ! curl -fsS --max-time 10 http://127.0.0.1:8765/healthz >/dev/null 2>&1; then
+if ! stack_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
+   ! stack_service_curl -fsS --max-time 10 http://127.0.0.1:8765/healthz >/dev/null 2>&1; then
     exit 1
 fi
 
-readiness_body="\$(curl -fsS --max-time 10 http://127.0.0.1:8765/health 2>/dev/null)" || exit 1
+readiness_body="\$(stack_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health 2>/dev/null)" || exit 1
 printf '%s\n' "\$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])' || exit 1
 
 runtime_dir="/run/user/\$(id -u)"
@@ -1017,6 +1041,20 @@ _stack_configure_agent_mail_service() {
     service_cmd="$(cat <<'EOF'
 set -euo pipefail
 export PATH="${ACFS_BIN_DIR:-$HOME/.local/bin}:$HOME/.local/bin:$HOME/.acfs/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin:/usr/local/bin:/usr/bin:/bin:/snap/bin"
+
+stack_service_curl() {
+    local curl_bin=""
+    local candidate=""
+
+    for candidate in /usr/bin/curl /bin/curl /usr/local/bin/curl /usr/local/sbin/curl /usr/sbin/curl /sbin/curl; do
+        [[ -x "$candidate" ]] || continue
+        curl_bin="$candidate"
+        break
+    done
+
+    [[ -n "$curl_bin" ]] || return 127
+    "$curl_bin" "$@"
+}
 
 trim_ascii_whitespace() {
     local value="${1:-}"
@@ -1355,9 +1393,9 @@ stop_agent_mail_fallback() {
 
 launch_agent_mail_fallback() {
     if {
-        _stack_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 || \
-        _stack_curl -fsS --max-time 5 http://127.0.0.1:8765/healthz >/dev/null 2>&1;
-    } && _stack_curl -fsS --max-time 5 http://127.0.0.1:8765/health 2>/dev/null | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
+        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 || \
+        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/healthz >/dev/null 2>&1;
+    } && stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health 2>/dev/null | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'; then
         return 0
     fi
 
@@ -1393,13 +1431,13 @@ agent_mail_endpoint_ready() {
     local readiness_body=""
 
     if ! {
-        curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 || \
-        curl -fsS --max-time 5 http://127.0.0.1:8765/healthz >/dev/null 2>&1;
+        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 || \
+        stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/healthz >/dev/null 2>&1;
     }; then
         return 1
     fi
 
-    readiness_body="$(curl -fsS --max-time 5 http://127.0.0.1:8765/health 2>/dev/null)" || return 1
+    readiness_body="$(stack_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health 2>/dev/null)" || return 1
     printf '%s\n' "$readiness_body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"([[:space:]]*[,}])'
 }
 

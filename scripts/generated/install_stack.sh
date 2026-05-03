@@ -516,6 +516,20 @@ fi
 fallback_pid_file="$storage_root/agent-mail.pid"
 fallback_log_file="$storage_root/agent-mail.log"
 
+agent_mail_service_curl() {
+  local curl_bin=""
+  local candidate=""
+
+  for candidate in /usr/bin/curl /bin/curl /usr/local/bin/curl /usr/local/sbin/curl /usr/sbin/curl /sbin/curl; do
+    [[ -x "$candidate" ]] || continue
+    curl_bin="$candidate"
+    break
+  done
+
+  [[ -n "$curl_bin" ]] || return 127
+  "$curl_bin" "$@"
+}
+
 stop_agent_mail_fallback() {
   if [[ -f "$fallback_pid_file" ]]; then
     existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
@@ -537,7 +551,7 @@ stop_agent_mail_fallback() {
 }
 
 launch_agent_mail_fallback() {
-  if curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+  if agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
     return 0
   fi
 
@@ -587,13 +601,27 @@ INSTALL_STACK_MCP_AGENT_MAIL
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: until curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do (target_user)"
+        log_info "dry-run: install: until agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_MCP_AGENT_MAIL'
 # Wait for the managed Agent Mail service to become healthy.
+agent_mail_service_curl() {
+  local curl_bin=""
+  local candidate=""
+
+  for candidate in /usr/bin/curl /bin/curl /usr/local/bin/curl /usr/local/sbin/curl /usr/sbin/curl /sbin/curl; do
+    [[ -x "$candidate" ]] || continue
+    curl_bin="$candidate"
+    break
+  done
+
+  [[ -n "$curl_bin" ]] || return 127
+  "$curl_bin" "$@"
+}
+
 waited=0
 max_wait=30
-until curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do
+until agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do
   if [[ "$waited" -ge "$max_wait" ]]; then
     echo "Agent Mail service did not become healthy on 127.0.0.1:8765 after ${max_wait}s" >&2
     exit 1
@@ -603,7 +631,7 @@ until curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2
 done
 INSTALL_STACK_MCP_AGENT_MAIL
         then
-            log_error "stack.mcp_agent_mail: install command failed: until curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do"
+            log_error "stack.mcp_agent_mail: install command failed: until agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; do"
             return 1
         fi
     fi
@@ -624,6 +652,20 @@ INSTALL_STACK_MCP_AGENT_MAIL
         log_info "dry-run: verify: if [[ -d \"\$runtime_dir\" ]]; then (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_MCP_AGENT_MAIL'
+agent_mail_service_curl() {
+  local curl_bin=""
+  local candidate=""
+
+  for candidate in /usr/bin/curl /bin/curl /usr/local/bin/curl /usr/local/sbin/curl /usr/sbin/curl /sbin/curl; do
+    [[ -x "$candidate" ]] || continue
+    curl_bin="$candidate"
+    break
+  done
+
+  [[ -n "$curl_bin" ]] || return 127
+  "$curl_bin" "$@"
+}
+
 runtime_dir="/run/user/$(id -u)"
 if [[ -d "$runtime_dir" ]]; then
   export XDG_RUNTIME_DIR="$runtime_dir"
@@ -632,7 +674,7 @@ fi
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
   systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1 || exit 1
 fi
-curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null
+agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null
 INSTALL_STACK_MCP_AGENT_MAIL
         then
             log_error "stack.mcp_agent_mail: verify failed: if [[ -d \"\$runtime_dir\" ]]; then"

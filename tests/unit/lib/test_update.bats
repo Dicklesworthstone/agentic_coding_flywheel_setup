@@ -8421,6 +8421,83 @@ EOF
     assert_success
 }
 
+@test "stack FrankenSearch release resolution ignores shell function curl" {
+    local stack_lib="$PROJECT_ROOT/scripts/lib/stack.sh"
+    local curl_marker="${BATS_TEST_TMPDIR}/stack-curl-poison.marker"
+
+    # shellcheck disable=SC1090
+    source "$stack_lib"
+
+    unset ACFS_FSFS_VERSION
+    log_detail() { :; }
+    curl() {
+        : > "$curl_marker"
+        return 42
+    }
+    _stack_system_curl() {
+        case "$*" in
+            *"releases?per_page=10"*)
+                printf '%s\n' \
+                    '    "tag_name": "v1.2.5",' \
+                    '    "tag_name": "v1.2.4",'
+                ;;
+            *"v1.2.5"*.sha256*)
+                return 22
+                ;;
+            *"v1.2.4"*.sha256*)
+                printf '%s  %s\n' \
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+                    "fsfs-lite-1.2.4-x86_64-unknown-linux-musl.tar.xz"
+                ;;
+            *"releases/latest"*)
+                printf '%s\n' "https://github.com/Dicklesworthstone/frankensearch/releases/tag/v1.2.5"
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    }
+
+    run _stack_resolve_fsfs_artifact_contract "x86_64-unknown-linux-musl"
+
+    assert_success
+    assert_output --partial "v1.2.4"
+    assert_output --partial "https://github.com/Dicklesworthstone/frankensearch/releases/download/v1.2.4/fsfs-lite-1.2.4-x86_64-unknown-linux-musl.tar.xz"
+    assert_output --partial "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    [[ ! -e "$curl_marker" ]]
+}
+
+@test "stack Agent Mail target shell snippets use a local curl wrapper" {
+    local stack_lib="$PROJECT_ROOT/scripts/lib/stack.sh"
+
+    run grep -F 'stack_service_curl() {' "$stack_lib"
+    assert_success
+
+    run rg -n '(^|[[:space:]])curl -fsS --max-time 5 http://127\.0\.0\.1:8765/health' "$stack_lib"
+    assert_failure
+
+    run rg -n '(^|[[:space:]])_stack_curl -fsS --max-time 5 http://127\.0\.0\.1:8765/health' "$stack_lib"
+    assert_failure
+}
+
+@test "Agent Mail installer health checks do not use bare curl" {
+    local installer="$PROJECT_ROOT/install.sh"
+    local manifest="$PROJECT_ROOT/acfs.manifest.yaml"
+    local generated_stack="$PROJECT_ROOT/scripts/generated/install_stack.sh"
+
+    run grep -F 'agent_mail_service_curl() {' "$installer"
+    assert_success
+
+    run grep -F 'agent_mail_service_curl() {' "$manifest"
+    assert_success
+
+    run grep -F 'agent_mail_service_curl() {' "$generated_stack"
+    assert_success
+
+    run rg -n '(^|[[:space:]])curl -fsS --max-time (5|10) http://127\.0\.0\.1:8765/health' "$installer" "$manifest" "$generated_stack"
+    assert_failure
+}
+
 @test "stack verified installer command quotes inline env assignment values" {
     local stack_lib="$PROJECT_ROOT/scripts/lib/stack.sh"
 
