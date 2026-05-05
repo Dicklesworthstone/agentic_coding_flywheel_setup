@@ -2654,7 +2654,9 @@ sync_acfs_deployed() {
         local deployed_rel="$1"
 
         case "$deployed_rel" in
-            bin/acfs) printf '%s\n' "755" ;;
+            bin/acfs|bin/acfs-update|bin/flywheel-update-agents-md|onboard/onboard.sh|scripts/generated/*.sh|scripts/lib/*.sh|scripts/nightly-update.sh|scripts/services-setup.sh)
+                printf '%s\n' "755"
+                ;;
         esac
     }
 
@@ -2738,9 +2740,12 @@ sync_acfs_deployed() {
 
     local -a file_pairs=(
         # repo-relative-path : deployed-relative-path
+        "acfs/tmux/tmux.conf:tmux/tmux.conf"
+        "packages/onboard/onboard.sh:onboard/onboard.sh"
         "scripts/lib/doctor.sh:scripts/lib/doctor.sh"
         "scripts/lib/doctor.sh:bin/acfs"
         "scripts/acfs-update:bin/acfs-update"
+        "scripts/generate-root-agents-md.sh:bin/flywheel-update-agents-md"
         "scripts/services-setup.sh:scripts/services-setup.sh"
         "scripts/lib/info.sh:scripts/lib/info.sh"
         "scripts/lib/status.sh:scripts/lib/status.sh"
@@ -2753,11 +2758,34 @@ sync_acfs_deployed() {
         "scripts/lib/support.sh:scripts/lib/support.sh"
         "scripts/lib/update.sh:scripts/lib/update.sh"
         "scripts/lib/logging.sh:scripts/lib/logging.sh"
+        "scripts/lib/output.sh:scripts/lib/output.sh"
+        "scripts/lib/gum_ui.sh:scripts/lib/gum_ui.sh"
         "scripts/lib/stack.sh:scripts/lib/stack.sh"
         "scripts/lib/contract.sh:scripts/lib/contract.sh"
         "scripts/lib/nightly_update.sh:scripts/lib/nightly_update.sh"
         "scripts/lib/nightly_update.sh:scripts/nightly-update.sh"
         "scripts/lib/security.sh:scripts/lib/security.sh"
+        "scripts/lib/autofix.sh:scripts/lib/autofix.sh"
+        "scripts/lib/doctor_fix.sh:scripts/lib/doctor_fix.sh"
+        "scripts/lib/webhook.sh:scripts/lib/webhook.sh"
+        "scripts/lib/notify.sh:scripts/lib/notify.sh"
+        "scripts/lib/notifications.sh:scripts/lib/notifications.sh"
+        "scripts/lib/newproj.sh:scripts/lib/newproj.sh"
+        "scripts/lib/newproj_agents.sh:scripts/lib/newproj_agents.sh"
+        "scripts/lib/newproj_detect.sh:scripts/lib/newproj_detect.sh"
+        "scripts/lib/newproj_errors.sh:scripts/lib/newproj_errors.sh"
+        "scripts/lib/newproj_logging.sh:scripts/lib/newproj_logging.sh"
+        "scripts/lib/newproj_screens.sh:scripts/lib/newproj_screens.sh"
+        "scripts/lib/newproj_tui.sh:scripts/lib/newproj_tui.sh"
+        "scripts/lib/newproj_screens/screen_agents_preview.sh:scripts/lib/newproj_screens/screen_agents_preview.sh"
+        "scripts/lib/newproj_screens/screen_confirmation.sh:scripts/lib/newproj_screens/screen_confirmation.sh"
+        "scripts/lib/newproj_screens/screen_directory.sh:scripts/lib/newproj_screens/screen_directory.sh"
+        "scripts/lib/newproj_screens/screen_features.sh:scripts/lib/newproj_screens/screen_features.sh"
+        "scripts/lib/newproj_screens/screen_progress.sh:scripts/lib/newproj_screens/screen_progress.sh"
+        "scripts/lib/newproj_screens/screen_project_name.sh:scripts/lib/newproj_screens/screen_project_name.sh"
+        "scripts/lib/newproj_screens/screen_success.sh:scripts/lib/newproj_screens/screen_success.sh"
+        "scripts/lib/newproj_screens/screen_tech_stack.sh:scripts/lib/newproj_screens/screen_tech_stack.sh"
+        "scripts/lib/newproj_screens/screen_welcome.sh:scripts/lib/newproj_screens/screen_welcome.sh"
         "scripts/templates/acfs-nightly-update.service:scripts/templates/acfs-nightly-update.service"
         "scripts/templates/acfs-nightly-update.timer:scripts/templates/acfs-nightly-update.timer"
         "checksums.yaml:checksums.yaml"
@@ -2785,6 +2813,22 @@ sync_acfs_deployed() {
             [[ -f "$generated_script" ]] || continue
             generated_name="$(basename "$generated_script")"
             _acfs_sync_deployed_file "scripts/generated/$generated_name" "scripts/generated/$generated_name"
+        done
+    fi
+
+    local lesson_file=""
+    local lesson_name=""
+    if [[ -n "$source_ref" ]]; then
+        while IFS= read -r lesson_file; do
+            [[ "$lesson_file" == acfs/onboard/lessons/*.md ]] || continue
+            lesson_name="$(basename "$lesson_file")"
+            _acfs_sync_deployed_file "$lesson_file" "onboard/lessons/$lesson_name"
+        done < <(git -C "$ACFS_REPO_ROOT" ls-tree -r --name-only "$source_ref" -- acfs/onboard/lessons 2>/dev/null || true)
+    else
+        for lesson_file in "$ACFS_REPO_ROOT/acfs/onboard/lessons/"*.md; do
+            [[ -f "$lesson_file" ]] || continue
+            lesson_name="$(basename "$lesson_file")"
+            _acfs_sync_deployed_file "acfs/onboard/lessons/$lesson_name" "onboard/lessons/$lesson_name"
         done
     fi
 

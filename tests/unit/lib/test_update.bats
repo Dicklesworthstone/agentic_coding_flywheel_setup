@@ -7104,37 +7104,192 @@ EOF
 @test "install and update deploy all acfs doctor-dispatched runtime scripts" {
     local installer="$PROJECT_ROOT/install.sh"
     local update="$PROJECT_ROOT/scripts/lib/update.sh"
+    local install_asset_line
+    local update_pair
+    local -a install_asset_lines=(
+        'install_asset "acfs/tmux/tmux.conf" "$ACFS_HOME/tmux/tmux.conf"'
+        'install_asset "packages/onboard/onboard.sh" "$ACFS_HOME/onboard/onboard.sh"'
+        'install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh"'
+        'install_asset "scripts/lib/output.sh" "$ACFS_HOME/scripts/lib/output.sh"'
+        'install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh"'
+        'install_asset "scripts/lib/stack.sh" "$ACFS_HOME/scripts/lib/stack.sh"'
+        'install_asset "scripts/lib/contract.sh" "$ACFS_HOME/scripts/lib/contract.sh"'
+        'install_asset "scripts/lib/security.sh" "$ACFS_HOME/scripts/lib/security.sh"'
+        'install_asset "scripts/lib/autofix.sh" "$ACFS_HOME/scripts/lib/autofix.sh"'
+        'install_asset "scripts/lib/doctor_fix.sh" "$ACFS_HOME/scripts/lib/doctor_fix.sh"'
+        'install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh"'
+        'install_asset "scripts/lib/nightly_update.sh" "$ACFS_HOME/scripts/lib/nightly_update.sh"'
+        'install_asset "scripts/lib/nightly_update.sh" "$ACFS_HOME/scripts/nightly-update.sh"'
+        'install_asset "scripts/lib/update.sh" "$ACFS_HOME/scripts/lib/update.sh"'
+        'install_asset "scripts/lib/session.sh" "$ACFS_HOME/scripts/lib/session.sh"'
+        'install_asset "scripts/lib/continue.sh" "$ACFS_HOME/scripts/lib/continue.sh"'
+        'install_asset "scripts/lib/info.sh" "$ACFS_HOME/scripts/lib/info.sh"'
+        'install_asset "scripts/lib/status.sh" "$ACFS_HOME/scripts/lib/status.sh"'
+        'install_asset "scripts/lib/changelog.sh" "$ACFS_HOME/scripts/lib/changelog.sh"'
+        'install_asset "scripts/lib/export-config.sh" "$ACFS_HOME/scripts/lib/export-config.sh"'
+        'install_asset "scripts/lib/cheatsheet.sh" "$ACFS_HOME/scripts/lib/cheatsheet.sh"'
+        'install_asset "scripts/lib/webhook.sh" "$ACFS_HOME/scripts/lib/webhook.sh"'
+        'install_asset "scripts/lib/notify.sh" "$ACFS_HOME/scripts/lib/notify.sh"'
+        'install_asset "scripts/lib/notifications.sh" "$ACFS_HOME/scripts/lib/notifications.sh"'
+        'install_asset "scripts/lib/dashboard.sh" "$ACFS_HOME/scripts/lib/dashboard.sh"'
+        'install_asset "scripts/lib/support.sh" "$ACFS_HOME/scripts/lib/support.sh"'
+        'install_asset "scripts/generate-root-agents-md.sh" "$ACFS_HOME/bin/flywheel-update-agents-md"'
+        'install_asset "scripts/services-setup.sh" "$ACFS_HOME/scripts/services-setup.sh"'
+        'install_asset "scripts/lib/newproj.sh" "$ACFS_HOME/scripts/lib/newproj.sh"'
+        'install_asset "scripts/lib/newproj_agents.sh" "$ACFS_HOME/scripts/lib/newproj_agents.sh"'
+        'install_asset "scripts/lib/newproj_detect.sh" "$ACFS_HOME/scripts/lib/newproj_detect.sh"'
+        'install_asset "scripts/lib/newproj_errors.sh" "$ACFS_HOME/scripts/lib/newproj_errors.sh"'
+        'install_asset "scripts/lib/newproj_logging.sh" "$ACFS_HOME/scripts/lib/newproj_logging.sh"'
+        'install_asset "scripts/lib/newproj_screens.sh" "$ACFS_HOME/scripts/lib/newproj_screens.sh"'
+        'install_asset "scripts/lib/newproj_tui.sh" "$ACFS_HOME/scripts/lib/newproj_tui.sh"'
+        'install_asset "scripts/lib/newproj_screens/$screen" "$ACFS_HOME/scripts/lib/newproj_screens/$screen"'
+    )
+    local -a update_pairs=(
+        '"acfs/tmux/tmux.conf:tmux/tmux.conf"'
+        '"packages/onboard/onboard.sh:onboard/onboard.sh"'
+        '"scripts/lib/logging.sh:scripts/lib/logging.sh"'
+        '"scripts/lib/output.sh:scripts/lib/output.sh"'
+        '"scripts/lib/gum_ui.sh:scripts/lib/gum_ui.sh"'
+        '"scripts/lib/stack.sh:scripts/lib/stack.sh"'
+        '"scripts/lib/contract.sh:scripts/lib/contract.sh"'
+        '"scripts/lib/security.sh:scripts/lib/security.sh"'
+        '"scripts/lib/autofix.sh:scripts/lib/autofix.sh"'
+        '"scripts/lib/doctor_fix.sh:scripts/lib/doctor_fix.sh"'
+        '"scripts/lib/doctor.sh:scripts/lib/doctor.sh"'
+        '"scripts/lib/doctor.sh:bin/acfs"'
+        '"scripts/acfs-update:bin/acfs-update"'
+        '"scripts/generate-root-agents-md.sh:bin/flywheel-update-agents-md"'
+        '"scripts/lib/nightly_update.sh:scripts/lib/nightly_update.sh"'
+        '"scripts/lib/nightly_update.sh:scripts/nightly-update.sh"'
+        '"scripts/lib/update.sh:scripts/lib/update.sh"'
+        '"scripts/lib/session.sh:scripts/lib/session.sh"'
+        '"scripts/lib/continue.sh:scripts/lib/continue.sh"'
+        '"scripts/lib/info.sh:scripts/lib/info.sh"'
+        '"scripts/lib/status.sh:scripts/lib/status.sh"'
+        '"scripts/lib/changelog.sh:scripts/lib/changelog.sh"'
+        '"scripts/lib/export-config.sh:scripts/lib/export-config.sh"'
+        '"scripts/lib/cheatsheet.sh:scripts/lib/cheatsheet.sh"'
+        '"scripts/lib/webhook.sh:scripts/lib/webhook.sh"'
+        '"scripts/lib/notify.sh:scripts/lib/notify.sh"'
+        '"scripts/lib/notifications.sh:scripts/lib/notifications.sh"'
+        '"scripts/lib/dashboard.sh:scripts/lib/dashboard.sh"'
+        '"scripts/lib/support.sh:scripts/lib/support.sh"'
+        '"scripts/services-setup.sh:scripts/services-setup.sh"'
+        '"scripts/lib/newproj.sh:scripts/lib/newproj.sh"'
+        '"scripts/lib/newproj_agents.sh:scripts/lib/newproj_agents.sh"'
+        '"scripts/lib/newproj_detect.sh:scripts/lib/newproj_detect.sh"'
+        '"scripts/lib/newproj_errors.sh:scripts/lib/newproj_errors.sh"'
+        '"scripts/lib/newproj_logging.sh:scripts/lib/newproj_logging.sh"'
+        '"scripts/lib/newproj_screens.sh:scripts/lib/newproj_screens.sh"'
+        '"scripts/lib/newproj_tui.sh:scripts/lib/newproj_tui.sh"'
+        '"scripts/lib/newproj_screens/screen_agents_preview.sh:scripts/lib/newproj_screens/screen_agents_preview.sh"'
+        '"scripts/lib/newproj_screens/screen_confirmation.sh:scripts/lib/newproj_screens/screen_confirmation.sh"'
+        '"scripts/lib/newproj_screens/screen_directory.sh:scripts/lib/newproj_screens/screen_directory.sh"'
+        '"scripts/lib/newproj_screens/screen_features.sh:scripts/lib/newproj_screens/screen_features.sh"'
+        '"scripts/lib/newproj_screens/screen_progress.sh:scripts/lib/newproj_screens/screen_progress.sh"'
+        '"scripts/lib/newproj_screens/screen_project_name.sh:scripts/lib/newproj_screens/screen_project_name.sh"'
+        '"scripts/lib/newproj_screens/screen_success.sh:scripts/lib/newproj_screens/screen_success.sh"'
+        '"scripts/lib/newproj_screens/screen_tech_stack.sh:scripts/lib/newproj_screens/screen_tech_stack.sh"'
+        '"scripts/lib/newproj_screens/screen_welcome.sh:scripts/lib/newproj_screens/screen_welcome.sh"'
+    )
 
-    run grep -F 'install_asset "scripts/lib/status.sh" "$ACFS_HOME/scripts/lib/status.sh"' "$installer"
-    assert_success
-    run grep -F 'install_asset "scripts/lib/changelog.sh" "$ACFS_HOME/scripts/lib/changelog.sh"' "$installer"
-    assert_success
-    run grep -F 'install_asset "scripts/lib/export-config.sh" "$ACFS_HOME/scripts/lib/export-config.sh"' "$installer"
-    assert_success
-    run grep -F 'install_asset "scripts/lib/support.sh" "$ACFS_HOME/scripts/lib/support.sh"' "$installer"
-    assert_success
-    run grep -F 'install_asset "scripts/lib/stack.sh" "$ACFS_HOME/scripts/lib/stack.sh"' "$installer"
-    assert_success
+    for install_asset_line in "${install_asset_lines[@]}"; do
+        run grep -F "$install_asset_line" "$installer"
+        assert_success
+    done
 
-    run grep -F '"scripts/lib/status.sh:scripts/lib/status.sh"' "$update"
-    assert_success
-    run grep -F '"scripts/lib/changelog.sh:scripts/lib/changelog.sh"' "$update"
-    assert_success
-    run grep -F '"scripts/lib/export-config.sh:scripts/lib/export-config.sh"' "$update"
-    assert_success
-    run grep -F '"scripts/lib/support.sh:scripts/lib/support.sh"' "$update"
-    assert_success
-    run grep -F '"scripts/lib/stack.sh:scripts/lib/stack.sh"' "$update"
-    assert_success
+    for update_pair in "${update_pairs[@]}"; do
+        run grep -F "$update_pair" "$update"
+        assert_success
+    done
+
     run grep -F '"/data/projects/agentic_coding_flywheel_setup/scripts/lib/stack.sh"' "$update"
     assert_success
-    run grep -F '"scripts/lib/doctor.sh:bin/acfs"' "$update"
-    assert_success
-    run grep -F '"scripts/acfs-update:bin/acfs-update"' "$update"
+    run grep -F 'bin/acfs|bin/acfs-update|bin/flywheel-update-agents-md|onboard/onboard.sh|scripts/generated/*.sh|scripts/lib/*.sh|scripts/nightly-update.sh|scripts/services-setup.sh)' "$update"
     assert_success
     run grep -F 'for generated_script in "$ACFS_REPO_ROOT/scripts/generated/"*.sh; do' "$update"
     assert_success
+    run grep -F 'for lesson_file in "$ACFS_REPO_ROOT/acfs/onboard/lessons/"*.md; do' "$update"
+    assert_success
     run grep -F 'sync_acfs_global_wrapper' "$update"
+    assert_success
+}
+
+@test "sync_acfs_deployed deploys install-time runtime assets and executable modes" {
+    local temp_root
+    local repo_root
+    local deployed_home
+    local log_file
+
+    temp_root="$(create_temp_dir)"
+    repo_root="$temp_root/repo"
+    deployed_home="$temp_root/deployed-acfs"
+    log_file="$temp_root/update.log"
+
+    mkdir -p \
+        "$repo_root/acfs/onboard/lessons" \
+        "$repo_root/acfs/tmux" \
+        "$repo_root/packages/onboard" \
+        "$repo_root/scripts/generated" \
+        "$repo_root/scripts/lib/newproj_screens" \
+        "$deployed_home"
+
+    printf "tmux-runtime\n" > "$repo_root/acfs/tmux/tmux.conf"
+    printf "lesson-runtime\n" > "$repo_root/acfs/onboard/lessons/00_welcome.md"
+    printf "#!/usr/bin/env bash\nprintf 'onboard-runtime\\n'\n" > "$repo_root/packages/onboard/onboard.sh"
+    printf "#!/usr/bin/env bash\nprintf 'agents-runtime\\n'\n" > "$repo_root/scripts/generate-root-agents-md.sh"
+    printf "#!/usr/bin/env bash\nprintf 'generated-runtime\\n'\n" > "$repo_root/scripts/generated/install_stack.sh"
+    printf "output-runtime\n" > "$repo_root/scripts/lib/output.sh"
+    printf "gum-runtime\n" > "$repo_root/scripts/lib/gum_ui.sh"
+    printf "notify-runtime\n" > "$repo_root/scripts/lib/notify.sh"
+    printf "newproj-runtime\n" > "$repo_root/scripts/lib/newproj.sh"
+    printf "screen-runtime\n" > "$repo_root/scripts/lib/newproj_screens/screen_welcome.sh"
+
+    ACFS_REPO_ROOT="$repo_root"
+    ACFS_HOME="$deployed_home"
+    UPDATE_LOG_FILE="$log_file"
+    DRY_RUN=false
+
+    update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+
+    run sync_acfs_deployed
+    assert_success
+
+    run cat "$deployed_home/tmux/tmux.conf"
+    assert_success
+    assert_output "tmux-runtime"
+    run cat "$deployed_home/onboard/lessons/00_welcome.md"
+    assert_success
+    assert_output "lesson-runtime"
+    run cat "$deployed_home/scripts/lib/output.sh"
+    assert_success
+    assert_output "output-runtime"
+    run cat "$deployed_home/scripts/lib/gum_ui.sh"
+    assert_success
+    assert_output "gum-runtime"
+    run cat "$deployed_home/scripts/lib/notify.sh"
+    assert_success
+    assert_output "notify-runtime"
+    run cat "$deployed_home/scripts/lib/newproj.sh"
+    assert_success
+    assert_output "newproj-runtime"
+    run cat "$deployed_home/scripts/lib/newproj_screens/screen_welcome.sh"
+    assert_success
+    assert_output "screen-runtime"
+    run cat "$deployed_home/bin/flywheel-update-agents-md"
+    assert_success
+    assert_output --partial "agents-runtime"
+    run cat "$deployed_home/scripts/generated/install_stack.sh"
+    assert_success
+    assert_output --partial "generated-runtime"
+
+    [[ -x "$deployed_home/onboard/onboard.sh" ]]
+    [[ -x "$deployed_home/bin/flywheel-update-agents-md" ]]
+    [[ -x "$deployed_home/scripts/generated/install_stack.sh" ]]
+    [[ -x "$deployed_home/scripts/lib/output.sh" ]]
+    [[ -x "$deployed_home/scripts/lib/newproj_screens/screen_welcome.sh" ]]
+
+    run grep -F "Synced acfs/onboard/lessons/00_welcome.md -> $deployed_home/onboard/lessons/00_welcome.md" "$log_file"
     assert_success
 }
 
