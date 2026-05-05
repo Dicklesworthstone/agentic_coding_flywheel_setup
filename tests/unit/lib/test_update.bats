@@ -7339,6 +7339,69 @@ EOF
     assert_success
 }
 
+@test "deployed sync repairs executable mode when content is already current" {
+    local temp_root
+    local repo_root
+    local deployed_home
+    local log_file
+
+    temp_root="$(create_temp_dir)"
+    repo_root="$temp_root/repo"
+    deployed_home="$temp_root/deployed-acfs"
+    log_file="$temp_root/update.log"
+
+    mkdir -p "$repo_root/scripts/lib" "$deployed_home/bin"
+    printf "#!/usr/bin/env bash\nprintf 'current-acfs-doctor\\n'\n" > "$repo_root/scripts/lib/doctor.sh"
+    cp "$repo_root/scripts/lib/doctor.sh" "$deployed_home/bin/acfs"
+    chmod 644 "$deployed_home/bin/acfs"
+
+    ACFS_REPO_ROOT="$repo_root"
+    ACFS_HOME="$deployed_home"
+    UPDATE_LOG_FILE="$log_file"
+    DRY_RUN=false
+
+    update_runtime_acfs_home() { printf '%s\n' "$deployed_home"; }
+
+    run sync_acfs_deployed
+    assert_success
+    run "$deployed_home/bin/acfs"
+    assert_success
+    assert_output "current-acfs-doctor"
+    [[ -x "$deployed_home/bin/acfs" ]]
+    run grep -F "Synced scripts/lib/doctor.sh -> $deployed_home/bin/acfs" "$log_file"
+    assert_success
+}
+
+@test "global wrapper sync repairs executable mode when content is already current" {
+    local temp_root
+    local repo_root
+    local deployed_file
+    local log_file
+
+    temp_root="$(create_temp_dir)"
+    repo_root="$temp_root/repo"
+    deployed_file="$temp_root/acfs-global"
+    log_file="$temp_root/update.log"
+
+    mkdir -p "$repo_root/scripts"
+    printf "#!/usr/bin/env bash\nprintf 'current-global-acfs\\n'\n" > "$repo_root/scripts/acfs-global"
+    cp "$repo_root/scripts/acfs-global" "$deployed_file"
+    chmod 644 "$deployed_file"
+
+    ACFS_REPO_ROOT="$repo_root"
+    UPDATE_LOG_FILE="$log_file"
+    DRY_RUN=false
+
+    run sync_acfs_global_wrapper "" "$deployed_file"
+    assert_success
+    run "$deployed_file"
+    assert_success
+    assert_output "current-global-acfs"
+    [[ -x "$deployed_file" ]]
+    run grep -F "Synced scripts/acfs-global -> $deployed_file" "$log_file"
+    assert_success
+}
+
 @test "self-update done sentinel does not sync from unexpected origin" {
     local temp_root
     local repo_root

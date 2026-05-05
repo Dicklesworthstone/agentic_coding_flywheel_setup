@@ -2658,6 +2658,16 @@ sync_acfs_deployed() {
         esac
     }
 
+    _acfs_deployed_target_mode_is_healthy() {
+        local deployed_file="$1"
+        local target_mode="${2:-}"
+
+        case "$target_mode" in
+            755) [[ -x "$deployed_file" ]] ;;
+            *) return 0 ;;
+        esac
+    }
+
     local synced=0
     _acfs_sync_deployed_file() {
         local repo_rel="$1"
@@ -2689,8 +2699,8 @@ sync_acfs_deployed() {
         fi
         target_mode_override="$(_acfs_deployed_target_mode_override "$deployed_rel")"
 
-        # Skip if identical
-        if [[ -f "$deployed_file" ]] && cmp -s "$source_file" "$deployed_file"; then
+        # Skip only when content and required deployed mode are both healthy.
+        if [[ -f "$deployed_file" ]] && cmp -s "$source_file" "$deployed_file" && _acfs_deployed_target_mode_is_healthy "$deployed_file" "$target_mode_override"; then
             if [[ -n "$source_tmp" ]]; then
                 rm -f "$source_tmp" 2>/dev/null || true
             fi
@@ -2810,7 +2820,7 @@ sync_acfs_global_wrapper() {
 
     install_cmd=(install -m 0755 "$source_file" "$deployed_file")
 
-    if [[ -f "$deployed_file" ]] && cmp -s "$source_file" "$deployed_file"; then
+    if [[ -f "$deployed_file" ]] && cmp -s "$source_file" "$deployed_file" && [[ -x "$deployed_file" ]]; then
         if [[ -n "$source_tmp" ]]; then
             rm -f "$source_tmp" 2>/dev/null || true
         fi
