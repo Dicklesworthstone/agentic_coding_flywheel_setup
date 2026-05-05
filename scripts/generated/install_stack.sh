@@ -266,9 +266,10 @@ install_stack_ntm() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="ntm"
                     local url=""
                     local expected_sha256=""
@@ -344,9 +345,10 @@ install_stack_mcp_agent_mail() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="mcp_agent_mail"
                     local url=""
                     local expected_sha256=""
@@ -708,9 +710,10 @@ install_stack_meta_skill() {
                 fi
             else
                 if acfs_security_init; then
+                    local known_installers_decl=""
                     # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                    # The grep ensures we specifically have an associative array, not just any variable
-                    if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                    known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                    if [[ "$known_installers_decl" == declare\ -A* ]]; then
                         local tool="ms"
                         local url=""
                         local expected_sha256=""
@@ -797,9 +800,10 @@ install_stack_automated_plan_reviser() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="apr"
                     local url=""
                     local expected_sha256=""
@@ -895,9 +899,10 @@ install_stack_jeffreysprompts() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="jfp"
                     local url=""
                     local expected_sha256=""
@@ -993,9 +998,10 @@ install_stack_process_triage() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="pt"
                     local url=""
                     local expected_sha256=""
@@ -1091,9 +1097,10 @@ install_stack_ultimate_bug_scanner() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="ubs"
                     local url=""
                     local expected_sha256=""
@@ -1179,9 +1186,10 @@ install_stack_beads_rust() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="br"
                     local url=""
                     local expected_sha256=""
@@ -1267,9 +1275,10 @@ install_stack_beads_viewer() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="bv"
                     local url=""
                     local expected_sha256=""
@@ -1345,9 +1354,10 @@ install_stack_cass() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="cass"
                     local url=""
                     local expected_sha256=""
@@ -1423,9 +1433,10 @@ install_stack_cm() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="cm"
                     local url=""
                     local expected_sha256=""
@@ -1511,9 +1522,10 @@ install_stack_caam() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="caam"
                     local url=""
                     local expected_sha256=""
@@ -1657,9 +1669,10 @@ install_stack_dcg() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="dcg"
                     local url=""
                     local expected_sha256=""
@@ -1786,9 +1799,10 @@ install_stack_ru() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="ru"
                     local url=""
                     local expected_sha256=""
@@ -1864,9 +1878,10 @@ install_stack_brenner_bot() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="brenner_bot"
                     local url=""
                     local expected_sha256=""
@@ -1952,9 +1967,10 @@ install_stack_rch() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="rch"
                     local url=""
                     local expected_sha256=""
@@ -2090,9 +2106,10 @@ install_stack_srps() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="srps"
                     local url=""
                     local expected_sha256=""
@@ -2194,9 +2211,10 @@ install_stack_frankensearch() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="fsfs"
                     local url=""
                     local expected_sha256=""
@@ -2355,9 +2373,10 @@ install_stack_storage_ballast_helper() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="sbh"
                     local url=""
                     local expected_sha256=""
@@ -2443,9 +2462,10 @@ install_stack_cross_agent_session_resumer() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="casr"
                     local url=""
                     local expected_sha256=""
@@ -2531,9 +2551,10 @@ install_stack_doodlestein_self_releaser() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="dsr"
                     local url=""
                     local expected_sha256=""
@@ -2619,9 +2640,10 @@ install_stack_agent_settings_backup() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="asb"
                     local url=""
                     local expected_sha256=""
@@ -2776,9 +2798,10 @@ INSTALL_STACK_PCR_PRE_INSTALL_CHECK
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="pcr"
                     local url=""
                     local expected_sha256=""

@@ -300,9 +300,10 @@ install_shell_omz() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="ohmyzsh"
                     local url=""
                     local expected_sha256=""

@@ -372,9 +372,10 @@ install_tools_atuin() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="atuin"
                     local url=""
                     local expected_sha256=""
@@ -450,9 +451,10 @@ install_tools_zoxide() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="zoxide"
                     local url=""
                     local expected_sha256=""
@@ -625,9 +627,10 @@ install_utils_giil() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="giil"
                     local url=""
                     local expected_sha256=""
@@ -713,9 +716,10 @@ install_utils_csctf() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="csctf"
                     local url=""
                     local expected_sha256=""
@@ -801,9 +805,10 @@ install_utils_xf() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="xf"
                     local url=""
                     local expected_sha256=""
@@ -889,9 +894,10 @@ install_utils_toon_rust() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="tru"
                     local url=""
                     local expected_sha256=""
@@ -977,9 +983,10 @@ install_utils_rano() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="rano"
                     local url=""
                     local expected_sha256=""
@@ -1065,9 +1072,10 @@ install_utils_mdwb() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="mdwb"
                     local url=""
                     local expected_sha256=""
@@ -1153,9 +1161,10 @@ install_utils_s2p() {
             local install_success=false
 
             if acfs_security_init; then
+                local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
-                # The grep ensures we specifically have an associative array, not just any variable
-                if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
                     local tool="s2p"
                     local url=""
                     local expected_sha256=""

@@ -10237,6 +10237,16 @@ SECURITY
     assert_success
 }
 
+@test "generated verified installer guards avoid PATH-dependent grep" {
+    local generated_dir="$PROJECT_ROOT/scripts/generated"
+
+    run grep -R "declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'" "$generated_dir"
+    assert_failure
+
+    run grep -R -F 'known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"' "$generated_dir"
+    assert_success
+}
+
 @test "installer shell command builders quote dynamic paths and installer inputs" {
     local agents_lib="$PROJECT_ROOT/scripts/lib/agents.sh"
     local languages_lib="$PROJECT_ROOT/scripts/lib/languages.sh"

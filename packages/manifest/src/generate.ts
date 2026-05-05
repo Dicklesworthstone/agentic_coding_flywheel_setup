@@ -958,8 +958,10 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
       `local tool="${tool}"`,
       'local url=""',
       'local expected_sha256=""',
+      'local known_installers_decl=""',
       'if acfs_security_init; then',
-      "    if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then",
+      '    known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"',
+      '    if [[ "$known_installers_decl" == declare\\ -A* ]]; then',
       '        url="${KNOWN_INSTALLERS[$tool]:-}"',
       '        if ! expected_sha256="$(get_checksum "$tool")"; then',
       `            log_error "${escapeBash(module.id)}: get_checksum failed for tool '$tool'"`,
@@ -1068,9 +1070,10 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
 
   const verifiedInstallAttemptLines: string[] = [
     'if acfs_security_init; then',
+    '    local known_installers_decl=""',
     '    # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)',
-    '    # The grep ensures we specifically have an associative array, not just any variable',
-    "    if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then",
+    '    known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"',
+    '    if [[ "$known_installers_decl" == declare\\ -A* ]]; then',
     `        local tool="${tool}"`,
     '        local url=""',
     '        local expected_sha256=""',
@@ -1112,9 +1115,10 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     : `${shellQuote(vi.runner)} -s -- "\${fsfs_installer_args[@]}"`;
   const fsfsVerifiedInstallAttemptLines: string[] = [
     'if acfs_security_init; then',
+    '    local known_installers_decl=""',
     '    # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)',
-    '    # The grep ensures we specifically have an associative array, not just any variable',
-    "    if declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'; then",
+    '    known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"',
+    '    if [[ "$known_installers_decl" == declare\\ -A* ]]; then',
     `        local tool="${tool}"`,
     '        local url=""',
     '        local expected_sha256=""',

@@ -232,6 +232,21 @@ describe('Generated verified installer args', () => {
     expect(stackContent).not.toContain('TARGET_USER="${TARGET_USER:-ubuntu}"');
   });
 
+  test('verified-installer guards do not depend on external grep', () => {
+    const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
+    const agentsPath = resolve(GENERATED_DIR, 'install_agents.sh');
+    expect(existsSync(stackPath)).toBe(true);
+    expect(existsSync(agentsPath)).toBe(true);
+    const generatedContent = [
+      readFileSync(stackPath, 'utf-8'),
+      readFileSync(agentsPath, 'utf-8'),
+    ].join('\n');
+
+    expect(generatedContent).toContain('known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"');
+    expect(generatedContent).toContain('if [[ "$known_installers_decl" == declare\\ -A* ]]; then');
+    expect(generatedContent).not.toContain("declare -p KNOWN_INSTALLERS 2>/dev/null | grep -q 'declare -A'");
+  });
+
   test('generated direct-exec headers resolve TARGET_HOME via helpers and fail closed', () => {
     const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
     expect(existsSync(stackPath)).toBe(true);
