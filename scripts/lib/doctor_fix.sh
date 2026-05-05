@@ -78,6 +78,14 @@ doctor_fix_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
 
     for candidate in \
         "/usr/bin/$name" \

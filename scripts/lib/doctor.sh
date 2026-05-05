@@ -34,6 +34,14 @@ _acfs_doctor_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
 
     for candidate in \
         "/usr/local/bin/$name" \
@@ -57,6 +65,7 @@ _acfs_doctor_read_json_string_key() {
     local value=""
     local jq_bin=""
     local sed_bin=""
+    local head_bin=""
 
     [[ -f "$json_file" ]] || return 1
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
@@ -68,8 +77,9 @@ _acfs_doctor_read_json_string_key() {
 
     if [[ -z "$value" ]]; then
         sed_bin="$(_acfs_doctor_system_binary_path sed 2>/dev/null || true)"
-        if [[ -n "$sed_bin" ]]; then
-            value="$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$json_file" 2>/dev/null | head -n 1)"
+        head_bin="$(_acfs_doctor_system_binary_path head 2>/dev/null || true)"
+        if [[ -n "$sed_bin" && -n "$head_bin" ]]; then
+            value="$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$json_file" 2>/dev/null | "$head_bin" -n 1)"
         fi
     fi
 
@@ -589,24 +599,14 @@ fi
 if [[ -z "${TARGET_USER:-}" ]]; then
     for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        if command -v jq &>/dev/null; then
-            TARGET_USER="$(jq -r '.target_user // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-        fi
-        if [[ -z "${TARGET_USER:-}" ]]; then
-            TARGET_USER="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-        fi
+        TARGET_USER="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
         [[ -n "${TARGET_USER:-}" ]] && break
     done
 fi
 if [[ -z "${TARGET_USER:-}" ]]; then
     for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        if command -v jq &>/dev/null; then
-            TARGET_USER="$(jq -r '.target_user // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-        fi
-        if [[ -z "${TARGET_USER:-}" ]]; then
-            TARGET_USER="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-        fi
+        TARGET_USER="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
         [[ -n "${TARGET_USER:-}" ]] && break
     done
 fi
@@ -630,12 +630,7 @@ TARGET_HOME=""
 if [[ "$_ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET" != true ]]; then
     for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        if command -v jq &>/dev/null; then
-            TARGET_HOME="$(jq -r '.target_home // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-        fi
-        if [[ -z "${TARGET_HOME:-}" ]]; then
-            TARGET_HOME="$(sed -n 's/.*"target_home"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-        fi
+        TARGET_HOME="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_home 2>/dev/null || true)"
         if [[ -n "${TARGET_HOME:-}" ]]; then
             TARGET_HOME="$(_acfs_doctor_existing_abs_nonroot_dir "${TARGET_HOME%/}" 2>/dev/null || true)"
         fi
@@ -645,19 +640,9 @@ if [[ "$_ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET" != true ]]; then
         _acfs_doctor_ambient_target_user=""
         for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
             [[ -f "$_acfs_doctor_state_file" ]] || continue
-            if command -v jq &>/dev/null; then
-                _acfs_doctor_ambient_target_user="$(jq -r '.target_user // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-            fi
-            if [[ -z "${_acfs_doctor_ambient_target_user:-}" ]]; then
-                _acfs_doctor_ambient_target_user="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-            fi
+            _acfs_doctor_ambient_target_user="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
             [[ "${_acfs_doctor_ambient_target_user:-}" == "$TARGET_USER" ]] || continue
-            if command -v jq &>/dev/null; then
-                TARGET_HOME="$(jq -r '.target_home // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-            fi
-            if [[ -z "${TARGET_HOME:-}" ]]; then
-                TARGET_HOME="$(sed -n 's/.*"target_home"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-            fi
+            TARGET_HOME="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_home 2>/dev/null || true)"
             if [[ -n "${TARGET_HOME:-}" ]]; then
                 TARGET_HOME="$(_acfs_doctor_existing_abs_nonroot_dir "${TARGET_HOME%/}" 2>/dev/null || true)"
             fi
@@ -668,12 +653,7 @@ if [[ "$_ACFS_DOCTOR_ENV_TARGET_USER_WAS_SET" != true ]]; then
 fi
 for _acfs_doctor_state_file in "${_acfs_doctor_state_files[@]}"; do
     [[ -f "$_acfs_doctor_state_file" ]] || continue
-    if command -v jq &>/dev/null; then
-        ACFS_BIN_DIR="$(jq -r '.bin_dir // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-    fi
-    if [[ -z "${ACFS_BIN_DIR:-}" ]]; then
-        ACFS_BIN_DIR="$(sed -n 's/.*"bin_dir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-    fi
+    ACFS_BIN_DIR="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true)"
     ACFS_BIN_DIR="$(_acfs_doctor_existing_abs_nonroot_dir "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
     ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
     [[ -n "${ACFS_BIN_DIR:-}" ]] && break
@@ -682,19 +662,9 @@ if [[ -z "${ACFS_BIN_DIR:-}" ]]; then
     _acfs_doctor_ambient_target_user=""
     for _acfs_doctor_state_file in "${_acfs_doctor_ambient_state_files[@]}"; do
         [[ -f "$_acfs_doctor_state_file" ]] || continue
-        if command -v jq &>/dev/null; then
-            _acfs_doctor_ambient_target_user="$(jq -r '.target_user // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-        fi
-        if [[ -z "${_acfs_doctor_ambient_target_user:-}" ]]; then
-            _acfs_doctor_ambient_target_user="$(sed -n 's/.*"target_user"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-        fi
+        _acfs_doctor_ambient_target_user="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" target_user 2>/dev/null || true)"
         [[ "${_acfs_doctor_ambient_target_user:-}" == "$TARGET_USER" ]] || continue
-        if command -v jq &>/dev/null; then
-            ACFS_BIN_DIR="$(jq -r '.bin_dir // empty' "$_acfs_doctor_state_file" 2>/dev/null || true)"
-        fi
-        if [[ -z "${ACFS_BIN_DIR:-}" ]]; then
-            ACFS_BIN_DIR="$(sed -n 's/.*"bin_dir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$_acfs_doctor_state_file" | head -n 1)"
-        fi
+        ACFS_BIN_DIR="$(_acfs_doctor_read_json_string_key "$_acfs_doctor_state_file" bin_dir 2>/dev/null || true)"
         ACFS_BIN_DIR="$(_acfs_doctor_existing_abs_nonroot_dir "${ACFS_BIN_DIR:-}" 2>/dev/null || true)"
         ACFS_BIN_DIR="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${TARGET_HOME:-}" 2>/dev/null || true)"
         [[ -n "${ACFS_BIN_DIR:-}" ]] && break
@@ -1703,6 +1673,14 @@ doctor_binary_path() {
     local -a path_entries=()
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
 
     runtime_home="$(doctor_runtime_home)"
     [[ -n "$runtime_home" ]] || return 1

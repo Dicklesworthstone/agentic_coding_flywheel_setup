@@ -5374,6 +5374,77 @@ EOF
     assert_failure
 }
 
+@test "doctor and smoke system binary resolvers reject pathlike names" {
+    local label
+    local script
+    local func
+
+    while IFS='|' read -r label script func; do
+        run bash -s -- "$script" "$func" <<'EOF_DOCTOR_RESOLVER_REJECTS_PATHS'
+script="$1"
+func="$2"
+eval "$(sed -n "/^${func}()/,/^}$/p" "$script")"
+set -euo pipefail
+! "$func" "."
+! "$func" ".."
+! "$func" "../bin/sh"
+! "$func" "/bin/sh"
+! "$func" "sh name"
+EOF_DOCTOR_RESOLVER_REJECTS_PATHS
+        assert_success "$label resolver accepted a pathlike name"
+    done <<EOF
+doctor|$PROJECT_ROOT/scripts/lib/doctor.sh|_acfs_doctor_system_binary_path
+doctor-fix|$PROJECT_ROOT/scripts/lib/doctor_fix.sh|doctor_fix_system_binary_path
+smoke|$PROJECT_ROOT/scripts/lib/smoke_test.sh|_smoke_system_binary_path
+EOF
+}
+
+@test "doctor JSON string helper ignores PATH-poisoned jq" {
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+    local fake_bin
+    local marker
+    local state_file
+
+    fake_bin="$BATS_TEST_TMPDIR/doctor-fake-jq-bin"
+    marker="$BATS_TEST_TMPDIR/doctor-fake-jq-used"
+    state_file="$BATS_TEST_TMPDIR/doctor-state.json"
+    mkdir -p "$fake_bin"
+    cat > "$fake_bin/jq" <<EOF
+#!/usr/bin/env bash
+printf '/tmp/poisoned-home\n'
+: > "$marker"
+EOF
+    chmod +x "$fake_bin/jq"
+    cat > "$state_file" <<'EOF'
+{"target_home":"/tmp/real-home","target_user":"realuser","bin_dir":"/tmp/real-home/.local/bin"}
+EOF
+
+    run env -i PATH="$fake_bin:/usr/bin:/bin" HOME="$HOME" bash -s -- "$doctor" "$state_file" "$marker" <<'EOF_DOCTOR_JSON_HELPER'
+script="$1"
+state_file="$2"
+marker="$3"
+eval "$(sed -n '/^_acfs_doctor_system_binary_path()/,/^}$/p' "$script")"
+eval "$(sed -n '/^_acfs_doctor_read_json_string_key()/,/^}$/p' "$script")"
+set -euo pipefail
+[[ "$(_acfs_doctor_read_json_string_key "$state_file" target_home)" == "/tmp/real-home" ]]
+[[ "$(_acfs_doctor_read_json_string_key "$state_file" target_user)" == "realuser" ]]
+[[ ! -e "$marker" ]]
+EOF_DOCTOR_JSON_HELPER
+
+    assert_success
+}
+
+@test "doctor state bootstrap uses trusted JSON helper for target context" {
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+
+    run grep -F 'TARGET_USER="$(jq -r' "$doctor"
+    assert_failure
+    run grep -F 'TARGET_HOME="$(jq -r' "$doctor"
+    assert_failure
+    run grep -F 'ACFS_BIN_DIR="$(jq -r' "$doctor"
+    assert_failure
+}
+
 @test "dashboard generate failure clears cleanup RETURN trap under set -u" {
     local acfs_home
     local fake_info
