@@ -5091,21 +5091,55 @@ EOF_SUPPORT_ENV
 #!/usr/bin/env bash
 printf 'poisoned-user\n'
 EOF
+    cat > "$fake_bin/hostname" <<'EOF'
+#!/usr/bin/env bash
+printf '203.0.113.9\n'
+EOF
+    cat > "$fake_bin/lsof" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
     cat > "$fake_bin/python3" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-    chmod +x "$fake_bin/whoami" "$fake_bin/python3"
+    chmod +x "$fake_bin/whoami" "$fake_bin/hostname" "$fake_bin/lsof" "$fake_bin/python3"
 
-    run env -i PATH="$fake_bin:/usr/bin:/bin" HOME="$current_home" bash -s -- "$PROJECT_ROOT/scripts/lib/dashboard.sh" "$acfs_home" "$port" <<'EOF_DASHBOARD_SERVE'
+    run env -i PATH="$fake_bin:/usr/bin:/bin" HOME="$current_home" bash -s -- "$PROJECT_ROOT/scripts/lib/dashboard.sh" "$acfs_home" "$port" "$fake_bin" <<'EOF_DASHBOARD_SERVE'
 script="$1"
 acfs_home="$2"
 port="$3"
+fake_bin="$4"
 validate_port() { return 0; }
 dashboard_generate() { return 0; }
 eval "$(sed -n "/^dashboard_system_binary_path()/,/^}$/p" "$script")"
 eval "$(sed -n "/^dashboard_resolve_current_user()/,/^}$/p" "$script")"
 eval "$(sed -n "/^dashboard_serve()/,/^}$/p" "$script")"
+dashboard_system_binary_path() {
+    local name="${1:-}"
+    case "$name" in
+        python3)
+            printf '%s/python3\n' "$fake_bin"
+            return 0
+            ;;
+        lsof)
+            return 1
+            ;;
+    esac
+    for candidate in \
+        "/usr/bin/$name" \
+        "/bin/$name" \
+        "/usr/local/bin/$name" \
+        "/usr/local/sbin/$name" \
+        "/usr/sbin/$name" \
+        "/sbin/$name"
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+    return 1
+}
 _DASHBOARD_ACFS_HOME="$acfs_home"
 _DASHBOARD_RESOLVED_TARGET_USER=""
 dashboard_serve --port "$port"
@@ -5113,6 +5147,7 @@ EOF_DASHBOARD_SERVE
     assert_success
     [[ "$output" == *"${current_user}@"* ]]
     [[ "$output" != *"poisoned-user@"* ]]
+    [[ "$output" != *"203.0.113.9"* ]]
 }
 
 @test "dashboard validate_port treats numeric input as decimal" {
@@ -5132,6 +5167,35 @@ EOF_DASHBOARD_SERVE
     ' _ "$dashboard"
 
     assert_success
+}
+
+@test "dashboard system binary resolver rejects pathlike names" {
+    local dashboard="$PROJECT_ROOT/scripts/lib/dashboard.sh"
+
+    run bash -c '
+        source "$1"
+        set -euo pipefail
+        ! dashboard_system_binary_path "."
+        ! dashboard_system_binary_path ".."
+        ! dashboard_system_binary_path "../bin/sh"
+        ! dashboard_system_binary_path "/bin/sh"
+        ! dashboard_system_binary_path "sh name"
+    ' _ "$dashboard"
+
+    assert_success
+}
+
+@test "dashboard serve uses trusted resolver for subprocesses" {
+    local dashboard="$PROJECT_ROOT/scripts/lib/dashboard.sh"
+
+    run grep -F 'command -v hostname' "$dashboard"
+    assert_failure
+    run grep -F 'command -v lsof' "$dashboard"
+    assert_failure
+    run grep -F 'command -v python3' "$dashboard"
+    assert_failure
+    run grep -F 'command -v python ' "$dashboard"
+    assert_failure
 }
 
 @test "dashboard generate failure clears cleanup RETURN trap under set -u" {

@@ -63,6 +63,14 @@ dashboard_system_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
 
     for candidate in \
         "/usr/bin/$name" \
@@ -898,11 +906,13 @@ dashboard_serve() {
     fi
 
     # Get IP for display
-    local ip
-    if command -v hostname &>/dev/null; then
-        ip=$(hostname -I 2>/dev/null | awk '{print $1}') || ip="<your-server-ip>"
-    else
-        ip="<your-server-ip>"
+    local ip="<your-server-ip>"
+    local hostname_bin=""
+    local hostname_ips=""
+    hostname_bin="$(dashboard_system_binary_path hostname 2>/dev/null || true)"
+    if [[ -n "$hostname_bin" ]]; then
+        hostname_ips="$("$hostname_bin" -I 2>/dev/null || true)"
+        read -r ip _ <<< "$hostname_ips"
     fi
     # Fallback if hostname -I returned empty
     [[ -z "$ip" ]] && ip="<your-server-ip>"
@@ -918,7 +928,9 @@ dashboard_serve() {
     fi
 
     # Check if port is in use
-    if command -v lsof &>/dev/null && lsof -i :"$port" &>/dev/null; then
+    local lsof_bin=""
+    lsof_bin="$(dashboard_system_binary_path lsof 2>/dev/null || true)"
+    if [[ -n "$lsof_bin" ]] && "$lsof_bin" -i :"$port" &>/dev/null; then
         echo "Warning: Port $port appears to be in use." >&2
         echo "Try a different port: acfs dashboard serve --port 8081" >&2
         return 1
@@ -968,10 +980,10 @@ EOF
         return 1
     }
 
-    if command -v python3 &>/dev/null; then
-        python3 -m http.server --bind "$host" "$port"
-    elif command -v python &>/dev/null; then
-        python -m http.server --bind "$host" "$port"
+    local python_bin=""
+    python_bin="$(dashboard_system_binary_path python3 2>/dev/null || dashboard_system_binary_path python 2>/dev/null || true)"
+    if [[ -n "$python_bin" ]]; then
+        "$python_bin" -m http.server --bind "$host" "$port"
     else
         echo "Error: Python not found. Cannot start HTTP server." >&2
         echo "Install Python or open the dashboard directly: $html_file" >&2
