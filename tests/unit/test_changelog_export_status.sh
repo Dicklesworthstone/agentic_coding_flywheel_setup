@@ -4348,7 +4348,33 @@ EOF
 
     local output=""
     output=$(HOME="$TEST_ROOT_HOME" PATH="$TEST_FAKE_BIN:/usr/bin:/bin" \
-        bash "$TEST_INSTALLED_ACFS/scripts/lib/dashboard.sh" serve --port 9099 2>&1)
+        bash -s -- "$TEST_INSTALLED_ACFS/scripts/lib/dashboard.sh" "$TEST_FAKE_BIN/python3" <<'EOF_DASHBOARD_SERVE_HINT'
+script="$1"
+fake_python="$2"
+source "$script"
+dashboard_system_binary_path() {
+    case "${1:-}" in
+        python3|python)
+            printf '%s\n' "$fake_python"
+            ;;
+        jq)
+            [[ -x /usr/bin/jq ]] || return 1
+            printf '%s\n' /usr/bin/jq
+            ;;
+        sed)
+            printf '%s\n' /usr/bin/sed
+            ;;
+        head)
+            printf '%s\n' /usr/bin/head
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+dashboard_serve --port 9099
+EOF_DASHBOARD_SERVE_HINT
+    )
 
     if [[ "$output" == *"ssh -L 9099:localhost:9099 tester@"* ]] \
         && [[ "$output" != *"ssh -L 9099:localhost:9099 $(whoami 2>/dev/null || echo unknown)@"* ]]; then

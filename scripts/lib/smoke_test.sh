@@ -882,6 +882,10 @@ _smoke_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..) return 1 ;;
+        *[!A-Za-z0-9._+-]*) return 1 ;;
+    esac
     [[ -n "$base_home" ]] || return 1
     primary_bin_dir="$(_smoke_preferred_bin_dir "$base_home" 2>/dev/null || true)"
     [[ -n "$primary_bin_dir" ]] || primary_bin_dir="$base_home/.local/bin"

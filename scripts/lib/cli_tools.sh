@@ -84,6 +84,10 @@ _cli_target_has_command() {
     local candidate=""
 
     [[ -n "$cmd" ]] || return 1
+    case "$cmd" in
+        .|..) return 1 ;;
+        *[!A-Za-z0-9._+-]*) return 1 ;;
+    esac
 
     target_home="$(_cli_target_home "$target_user" 2>/dev/null || true)"
     [[ -n "$target_home" ]] || return 1

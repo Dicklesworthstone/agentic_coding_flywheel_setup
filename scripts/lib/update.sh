@@ -2049,7 +2049,7 @@ update_target_path() {
 }
 
 update_binary_path() {
-    local tool="$1"
+    local tool="${1:-}"
     local target_user=""
     local target_home=""
     local primary_bin=""
@@ -2058,6 +2058,10 @@ update_binary_path() {
     local candidate=""
 
     [[ -n "$tool" ]] || return 1
+    case "$tool" in
+        .|..) return 1 ;;
+        *[!A-Za-z0-9._+-]*) return 1 ;;
+    esac
 
     target_user="$(update_target_user 2>/dev/null || true)"
     update_validate_target_user "$target_user" >/dev/null 2>&1 || return 1

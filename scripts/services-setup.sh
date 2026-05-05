@@ -749,9 +749,16 @@ user_dir_has_content() {
 }
 
 find_user_bin() {
-    local name="$1"
-    local primary_bin_dir="${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}"
+    local name="${1:-}"
+    local primary_bin_dir=""
 
+    [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..) return 1 ;;
+        *[!A-Za-z0-9._+-]*) return 1 ;;
+    esac
+
+    primary_bin_dir="${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}"
     primary_bin_dir="$(services_setup_validate_bin_dir_for_home "$primary_bin_dir" "$TARGET_HOME" 2>/dev/null || true)"
     [[ -n "$primary_bin_dir" ]] || primary_bin_dir="$TARGET_HOME/.local/bin"
 

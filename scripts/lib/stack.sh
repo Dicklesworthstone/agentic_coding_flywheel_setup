@@ -168,6 +168,10 @@ _stack_target_command_path() {
     local candidate=""
 
     [[ -n "$cmd" ]] || return 1
+    case "$cmd" in
+        .|..) return 1 ;;
+        *[!A-Za-z0-9._+-]*) return 1 ;;
+    esac
 
     target_home="$(_stack_target_home "$target_user" 2>/dev/null || true)"
     [[ -n "$target_home" ]] || return 1

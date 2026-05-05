@@ -5247,6 +5247,40 @@ zsh|$PROJECT_ROOT/scripts/lib/zsh.sh|zsh_system_binary_path
 EOF
 }
 
+@test "target binary resolvers reject pathlike names" {
+    local label
+    local script
+    local func
+
+    while IFS='|' read -r label script func; do
+        run bash -s -- "$script" "$func" <<'EOF_TARGET_RESOLVERS_REJECT_PATHS'
+script="$1"
+func="$2"
+eval "$(sed -n "/^${func}()/,/^}$/p" "$script")"
+set -euo pipefail
+! "$func" "."
+! "$func" ".."
+! "$func" "../bin/sh"
+! "$func" "/bin/sh"
+! "$func" "sh name"
+EOF_TARGET_RESOLVERS_REJECT_PATHS
+        assert_success "$label resolver accepted a pathlike name"
+    done <<EOF
+install|$PROJECT_ROOT/install.sh|binary_path
+preflight|$PROJECT_ROOT/scripts/preflight.sh|preflight_binary_path
+services-setup|$PROJECT_ROOT/scripts/services-setup.sh|find_user_bin
+onboard|$PROJECT_ROOT/packages/onboard/onboard.sh|onboard_runtime_binary_path
+cli-tools|$PROJECT_ROOT/scripts/lib/cli_tools.sh|_cli_target_has_command
+stack|$PROJECT_ROOT/scripts/lib/stack.sh|_stack_target_command_path
+update|$PROJECT_ROOT/scripts/lib/update.sh|update_binary_path
+doctor|$PROJECT_ROOT/scripts/lib/doctor.sh|doctor_binary_path
+github-api|$PROJECT_ROOT/scripts/lib/github_api.sh|_github_api_binary_path
+info|$PROJECT_ROOT/scripts/lib/info.sh|info_binary_path
+smoke|$PROJECT_ROOT/scripts/lib/smoke_test.sh|_smoke_binary_path
+status|$PROJECT_ROOT/scripts/lib/status.sh|_status_binary_path
+EOF
+}
+
 @test "dashboard serve uses trusted resolver for subprocesses" {
     local dashboard="$PROJECT_ROOT/scripts/lib/dashboard.sh"
 

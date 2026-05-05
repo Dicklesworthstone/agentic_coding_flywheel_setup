@@ -5857,9 +5857,17 @@ install_cloud_db() {
 # Do not trust arbitrary inherited PATH entries here: they can point at tools from
 # the caller's shell instead of the target installation we are managing.
 binary_path() {
-    local name="$1"
-    local primary_bin="${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}"
+    local name="${1:-}"
+    local primary_bin=""
     local candidate=""
+
+    [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..) return 1 ;;
+        *[!A-Za-z0-9._+-]*) return 1 ;;
+    esac
+
+    primary_bin="${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}"
 
     for candidate in \
         "$primary_bin/$name" \

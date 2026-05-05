@@ -320,6 +320,10 @@ _github_api_binary_path() {
     local candidate=""
 
     [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..) return 1 ;;
+        *[!A-Za-z0-9._+-]*) return 1 ;;
+    esac
 
     runtime_home="$(_github_api_runtime_home 2>/dev/null || true)"
     if [[ -n "$runtime_home" ]]; then
