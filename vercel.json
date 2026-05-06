@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd apps/web && bun run build",
+  "framework": "nextjs",
+  "buildCommand": "bun run --filter @acfs/web build",
   "installCommand": "bun install",
-  "outputDirectory": "apps/web/.next",
-  "framework": null
+  "ignoreCommand": "bash apps/web/scripts/vercel-ignore-build.sh"
 }

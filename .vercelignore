@@ -3,4 +3,8 @@ core.*
 **/core.*
 .next_trash_*
 **/.next_trash_*
+apps/web/.next
+apps/web/.next-*
+**/.next
+**/.next-*
 .git/**

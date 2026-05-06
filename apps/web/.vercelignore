@@ -1,4 +1,6 @@
 core.*
+.next
+.next-*
 .next_trash_2
 .next_backup
 playwright-report
