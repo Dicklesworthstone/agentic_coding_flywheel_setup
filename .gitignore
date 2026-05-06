@@ -284,6 +284,7 @@ packages/manifest/scripts/
 /bin/
 /state.json
 /onboard_progress.json
+/onboard/docs/
 /onboard/lessons/
 /onboard/onboard.sh
 /tmux/

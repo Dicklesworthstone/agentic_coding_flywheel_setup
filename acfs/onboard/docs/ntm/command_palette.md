@@ -59,6 +59,28 @@ Ok I want you to look through the ENTIRE project and look for areas where, if we
 ### build_ui_ux | Build UI/UX
 I also want you to do a spectacular job building absolutely world-class UI/UX components, with an intense focus on making the most visually appealing, user-friendly, intuitive, slick, polished, "Stripe level" of quality UI/UX possible for this that leverages the good libraries that are already part of the project. 
 
+## Ensemble
+
+### ensemble_list | Ensemble Presets (Core)
+Run `ntm ensemble list` and summarize the core presets available. If the output includes advanced/experimental presets, call them out separately and keep the main list core-only.
+
+### ensemble_run | Ensemble Run (Pick Preset + Prompt)
+Pick the most appropriate ensemble preset for the task at hand, then run a new ensemble session using:
+`ntm ensemble spawn <session> --preset <preset> --question "<question>"`
+If a session name or question is missing, ask for them first.
+
+### ensemble_status | Ensemble Status
+Run `ntm ensemble status <session>` for the current ensemble session and summarize status counts, assignments, and synthesis readiness.
+
+### ensemble_synthesize | Ensemble Synthesize
+Run `ntm ensemble synthesize <session> --format=json` and summarize the synthesized output at a high level.
+
+### ensemble_modes_core | Ensemble Modes (Core)
+Run `ntm modes list --tier core` and summarize the core reasoning modes most relevant to the current task.
+
+### ensemble_modes_advanced | Ensemble Modes (Advanced)
+Warning: Advanced modes increase token spend. If approved, run `ntm modes list --tier advanced` and summarize the advanced reasoning modes.
+
 ## Documentation
 
 ### complete_docusaurus_site | Complete Docusaurus Site

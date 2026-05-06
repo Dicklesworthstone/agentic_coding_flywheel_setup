@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PALETTE_SOURCE="$REPO_ROOT/acfs/onboard/docs/ntm/command_palette.md"
 
 pass() { echo "✅ PASS: $1"; }
 fail() { echo "❌ FAIL: $1"; exit 1; }
@@ -14,7 +15,7 @@ log() { echo "[TEST] $*" >&2; }
 test_source_exists() {
     log "Test 1: Source palette exists"
 
-    local source="$REPO_ROOT/onboard/docs/ntm/command_palette.md"
+    local source="$PALETTE_SOURCE"
 
     if [[ -f "$source" ]]; then
         pass "Test 1: Source palette exists"
@@ -29,7 +30,7 @@ test_source_exists() {
 test_source_has_content() {
     log "Test 2: Source palette has substantial content"
 
-    local source="$REPO_ROOT/onboard/docs/ntm/command_palette.md"
+    local source="$PALETTE_SOURCE"
     local lines=$(wc -l < "$source")
 
     if [[ $lines -gt 50 ]]; then
@@ -45,7 +46,7 @@ test_source_has_content() {
 test_palette_format() {
     log "Test 3: Palette format is valid"
 
-    local source="$REPO_ROOT/onboard/docs/ntm/command_palette.md"
+    local source="$PALETTE_SOURCE"
 
     # Should have category headers
     if ! grep -q "^## " "$source"; then
