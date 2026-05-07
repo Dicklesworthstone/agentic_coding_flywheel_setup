@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Key, ShieldCheck, ExternalLink } from "lucide-react";
@@ -9,7 +10,7 @@ import { CodeBlock } from "@/components/ui/code-block";
 import { AlertCard, DetailsSection, OutputPreview } from "@/components/alert-card";
 import { markStepComplete } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { useUserOS } from "@/lib/userPreferences";
+import { useUserOS, type OperatingSystem } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
 import {
   SimplerGuide,
@@ -20,6 +21,57 @@ import {
   GuideCaution,
 } from "@/components/simpler-guide";
 import { Jargon } from "@/components/jargon";
+
+const GENERATE_SSH_KEY_COMMAND = [
+  "if [ -f ~/.ssh/acfs_ed25519 ]; then",
+  "ssh-keygen -y -f ~/.ssh/acfs_ed25519 > ~/.ssh/acfs_ed25519.pub;",
+  "else",
+  'ssh-keygen -t ed25519 -C "acfs" -f ~/.ssh/acfs_ed25519 -N "";',
+  "fi",
+].join(" ");
+
+const GENERATE_SSH_KEY_WINDOWS_COMMAND = [
+  "if (Test-Path $HOME\\.ssh\\acfs_ed25519) {",
+  "ssh-keygen -y -f $HOME\\.ssh\\acfs_ed25519 | Set-Content $HOME\\.ssh\\acfs_ed25519.pub",
+  "} else {",
+  'ssh-keygen -t ed25519 -C "acfs" -f $HOME\\.ssh\\acfs_ed25519 -N ""',
+  "}",
+].join(" ");
+
+const OS_DISPLAY_NAMES: Record<OperatingSystem, string> = {
+  mac: "Mac",
+  linux: "Linux",
+  windows: "Windows",
+};
+
+const SSH_FOLDER_PATHS: Record<OperatingSystem, string> = {
+  mac: "/Users/yourname/.ssh/",
+  linux: "/home/yourname/.ssh/",
+  windows: "C:\\Users\\yourname\\.ssh\\",
+};
+
+const OPEN_TERMINAL_INSTRUCTIONS: Record<OperatingSystem, ReactNode> = {
+  mac: (
+    <>
+      Open the terminal app you installed (Ghostty or WezTerm).
+      You can press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">⌘</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Space</kbd>,
+      type the name, and press Enter.
+    </>
+  ),
+  linux: (
+    <>
+      Open your terminal emulator. On most Linux distributions,
+      press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Alt</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">T</kbd>,
+      or find Terminal in your applications menu.
+    </>
+  ),
+  windows: (
+    <>
+      Open Windows Terminal. Click Start, type &quot;Terminal&quot;,
+      and click on Windows Terminal.
+    </>
+  ),
+};
 
 export default function GenerateSSHKeyPage() {
   const router = useRouter();
@@ -93,14 +145,10 @@ export default function GenerateSSHKeyPage() {
         </p>
         <ul className="space-y-1 text-sm">
           <li>
-            <strong className="text-foreground">On {os === "mac" ? "Mac" : os === "linux" ? "Linux" : "Windows"}:</strong>{" "}
-            {os === "mac" ? (
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">/Users/yourname/.ssh/</code>
-            ) : os === "linux" ? (
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">/home/yourname/.ssh/</code>
-            ) : (
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">C:\\Users\\yourname\\.ssh\\</code>
-            )}
+            <strong className="text-foreground">On {OS_DISPLAY_NAMES[os]}:</strong>{" "}
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
+              {SSH_FOLDER_PATHS[os]}
+            </code>
           </li>
           <li className="text-muted-foreground">
             The <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">~</code> symbol is shorthand for your home folder.
@@ -151,20 +199,21 @@ export default function GenerateSSHKeyPage() {
       </div>
 
       <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Step 2: Generate the key</h2>
+        <h2 className="text-xl font-semibold">Step 2: Generate or reuse the key</h2>
         <p className="text-sm text-muted-foreground">
-          Run this command in your <Jargon term="terminal">terminal</Jargon>. You&apos;ll be asked 3 questions—here&apos;s how to answer:
+          Run this command in your <Jargon term="terminal">terminal</Jargon>. It is safe to rerun:
+          if the ACFS key already exists, it reuses it and refreshes the public key file.
         </p>
         <div className="rounded-lg border border-border/50 bg-muted/30 p-3 text-sm">
           <div className="space-y-2">
-            <p><strong className="text-foreground">1. File location:</strong> <span className="text-muted-foreground">Press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd> to accept the default</span></p>
-            <p><strong className="text-foreground">2. Passphrase:</strong> <span className="text-muted-foreground">Press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd> (leave empty)</span></p>
-            <p><strong className="text-foreground">3. Confirm passphrase:</strong> <span className="text-muted-foreground">Press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd> again</span></p>
+            <p><strong className="text-foreground">If the key is missing:</strong> <span className="text-muted-foreground">it creates a new Ed25519 key with an empty passphrase.</span></p>
+            <p><strong className="text-foreground">If the key already exists:</strong> <span className="text-muted-foreground">it does not overwrite your private key.</span></p>
+            <p><strong className="text-foreground">No prompts expected:</strong> <span className="text-muted-foreground">you should not need to answer an overwrite or passphrase question.</span></p>
           </div>
         </div>
         <CommandCard
-          command='ssh-keygen -t ed25519 -C "acfs" -f ~/.ssh/acfs_ed25519'
-          windowsCommand='ssh-keygen -t ed25519 -C "acfs" -f $HOME\\.ssh\\acfs_ed25519'
+          command={GENERATE_SSH_KEY_COMMAND}
+          windowsCommand={GENERATE_SSH_KEY_WINDOWS_COMMAND}
           showCheckbox
           persistKey="generate-ssh-key"
         />
@@ -249,28 +298,11 @@ export default function GenerateSSHKeyPage() {
           <GuideSection title="Detailed Step-by-Step Instructions">
             <div className="space-y-4">
               <GuideStep number={1} title="Open your terminal">
-                {os === "mac" ? (
-                  <>
-                    Open the terminal app you installed (Ghostty or WezTerm).
-                    You can press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">⌘</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Space</kbd>,
-                    type the name, and press Enter.
-                  </>
-                ) : os === "linux" ? (
-                  <>
-                    Open your terminal emulator. On most Linux distributions,
-                    press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Ctrl</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Alt</kbd> + <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">T</kbd>,
-                    or find Terminal in your applications menu.
-                  </>
-                ) : (
-                  <>
-                    Open Windows Terminal. Click Start, type &quot;Terminal&quot;,
-                    and click on Windows Terminal.
-                  </>
-                )}
+                {OPEN_TERMINAL_INSTRUCTIONS[os]}
               </GuideStep>
 
               <GuideStep number={2} title="Copy the command">
-                Look at the gray box above that shows the ssh-keygen command.
+                Look at the gray box above that shows the key command.
                 Click the <strong>copy button</strong> (it looks like two overlapping squares)
                 on the right side of the box. This copies the command to your clipboard.
               </GuideStep>
@@ -286,34 +318,35 @@ export default function GenerateSSHKeyPage() {
                 <p className="mt-2">Then press <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">Enter</kbd> to run it.</p>
               </GuideStep>
 
-              <GuideStep number={4} title="Answer the prompts">
-                The terminal will ask you a few questions. Here&apos;s exactly what you&apos;ll see:
+              <GuideStep number={4} title="Let the command finish">
+                The command handles the file path and empty passphrase for you. It also checks
+                for an existing ACFS key before creating anything new.
 
                 <div className="mt-4 space-y-4">
                   <div>
-                    <p className="mb-2 font-medium text-foreground">First: File location</p>
+                    <p className="mb-2 font-medium text-foreground">If this is your first run</p>
                     <OutputPreview title="You will see:">
-                      <p className="text-[oklch(0.72_0.19_145)]">Enter file in which to save the key (/Users/you/.ssh/acfs_ed25519):</p>
+                      <p className="text-[oklch(0.72_0.19_145)]">Your identification has been saved in /Users/you/.ssh/acfs_ed25519</p>
+                      <p className="text-[oklch(0.72_0.19_145)]">Your public key has been saved in /Users/you/.ssh/acfs_ed25519.pub</p>
                     </OutputPreview>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      <strong className="text-foreground">→ Just press Enter!</strong> The path is already set by our command.
+                      The new key was created without asking you where to save it or what passphrase to use.
                     </p>
                     <div className="mt-2 rounded border border-border/30 bg-muted/20 p-2 text-xs text-muted-foreground">
                       <strong className="text-foreground">What this means:</strong> The path shown (like{" "}
                       <code className="rounded bg-muted px-1 py-0.5 font-mono">/Users/you/.ssh/acfs_ed25519</code>) is where your
                       key files will be saved. The <code className="rounded bg-muted px-1 py-0.5 font-mono">.ssh</code> folder
-                      is a standard location for SSH keys on all computers. Our command already specifies this path, so
-                      just press Enter to confirm it.
+                      is a standard location for SSH keys on all computers.
                     </div>
                   </div>
 
                   <div>
-                    <p className="mb-2 font-medium text-foreground">Second: Passphrase</p>
-                    <OutputPreview title="You will see:">
-                      <p className="text-[oklch(0.72_0.19_145)]">Enter passphrase (empty for no passphrase):</p>
+                    <p className="mb-2 font-medium text-foreground">If you already ran this before</p>
+                    <OutputPreview title="You may see little or no output">
+                      <p className="text-[oklch(0.72_0.19_145)]">The command rebuilds acfs_ed25519.pub from your existing private key.</p>
                     </OutputPreview>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      <strong className="text-foreground">→ Press Enter without typing anything.</strong> Leave it empty.
+                      It should not ask whether to overwrite your existing key.
                     </p>
                     <div className="mt-2 rounded border border-border/30 bg-muted/20 p-2 text-xs text-muted-foreground">
                       <strong className="text-foreground">Why no passphrase?</strong> A passphrase would add an extra password
@@ -322,25 +355,11 @@ export default function GenerateSSHKeyPage() {
                       because it never leaves your computer.
                     </div>
                   </div>
-
-                  <div>
-                    <p className="mb-2 font-medium text-foreground">Third: Confirm passphrase</p>
-                    <OutputPreview title="You will see:">
-                      <p className="text-[oklch(0.72_0.19_145)]">Enter same passphrase again:</p>
-                    </OutputPreview>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      <strong className="text-foreground">→ Press Enter again.</strong> That&apos;s it!
-                    </p>
-                  </div>
                 </div>
-
-                <p className="mt-3 text-xs text-muted-foreground">
-                  <strong>Summary:</strong> Press Enter three times total. The command we provided handles all the important settings.
-                </p>
               </GuideStep>
 
               <GuideStep number={5} title="Success!">
-                When the key is created, you&apos;ll see a confirmation:
+                When a new key is created, you&apos;ll see a confirmation:
                 <div className="mt-3">
                   <OutputPreview title="You will see something like:">
                     <p className="text-[oklch(0.72_0.19_145)]">Your identification has been saved in /Users/you/.ssh/acfs_ed25519</p>
@@ -455,8 +474,9 @@ export default function GenerateSSHKeyPage() {
               <div className="my-2">
                 <CodeBlock code="mkdir -p ~/.ssh && chmod 700 ~/.ssh" variant="compact" />
               </div>
-              <strong>&quot;File already exists&quot;:</strong> You already have a key! You can
-              use your existing key, or type &quot;y&quot; and press Enter to overwrite it.
+              <strong>&quot;File already exists&quot;:</strong> Make sure you copied the full command
+              from Step 2. The ACFS command checks for an existing private key first and should
+              not ask to overwrite it.
             </p>
           </GuideSection>
         </div>

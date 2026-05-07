@@ -175,6 +175,32 @@ test.describe("Wizard Flow", () => {
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
   });
 
+  test("should use idempotent SSH key commands on Mac and Windows", async ({ page }) => {
+    await setupWizardState(page, { os: "mac", completedSteps: [1, 2] });
+    await page.goto("/wizard/generate-ssh-key");
+    await page.waitForLoadState("domcontentloaded");
+
+    await expect(page.getByText(/safe to rerun/i)).toBeVisible();
+    await expect(page.getByText(/No prompts expected/i)).toBeVisible();
+    await expect(page.locator("code").filter({
+      hasText: "ssh-keygen -y -f ~/.ssh/acfs_ed25519",
+    }).first()).toBeVisible();
+    await expect(page.locator("code").filter({
+      hasText: 'ssh-keygen -t ed25519 -C "acfs" -f ~/.ssh/acfs_ed25519 -N ""',
+    }).first()).toBeVisible();
+
+    await setupWizardState(page, { os: "windows", completedSteps: [1, 2] });
+    await page.goto("/wizard/generate-ssh-key");
+    await page.waitForLoadState("domcontentloaded");
+
+    await expect(page.locator("code").filter({
+      hasText: "Test-Path $HOME\\.ssh\\acfs_ed25519",
+    }).first()).toBeVisible();
+    await expect(page.locator("code").filter({
+      hasText: "Set-Content $HOME\\.ssh\\acfs_ed25519.pub",
+    }).first()).toBeVisible();
+  });
+
   test("should complete step 4: Rent VPS", async ({ page }) => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
