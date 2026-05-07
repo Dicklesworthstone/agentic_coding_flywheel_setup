@@ -585,13 +585,17 @@ post_install_assertions() {
 main() {
     log_event "start" "ok" "factory E2E starting"
     require_command awk
+    require_command cp
     require_command curl
     require_command cut
+    require_command find
     require_command getent
     require_command grep
     require_command id
+    require_command md5sum
     require_command od
     require_command ps
+    require_command sed
     require_command tail
     require_command tar
     require_command timeout

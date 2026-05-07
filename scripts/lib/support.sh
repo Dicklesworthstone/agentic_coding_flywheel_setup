@@ -1211,7 +1211,7 @@ redact_bundle() {
         redact_file "$file"
         file_count=$((file_count + 1))
     done < <(find "$bundle_dir" -type f \( \
-        -name '*.json' -o -name '*.log' -o -name '*.txt' \
+        -name '*.json' -o -name '*.jsonl' -o -name '*.log' -o -name '*.txt' \
         -o -name '*.yaml' -o -name '*.yml' -o -name '*.sh' \
         -o -name '*.zshrc' -o -name '.zshrc' \
         -o -name 'os-release' -o -name 'VERSION' \

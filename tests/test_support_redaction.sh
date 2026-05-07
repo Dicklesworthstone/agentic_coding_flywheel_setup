@@ -407,18 +407,22 @@ REDACT=true
 REDACTION_COUNT=0
 mkdir -p "$TEST_DIR/bundle/logs"
 printf 'token=sk-abcdefghijklmnopqrstuvwxyz1234567890\n' > "$TEST_DIR/bundle/state.json"
+printf '%s\n' "{\"message\":\"Generated password for 'ubuntu': abcdefghijklmnopqrstuvwxyz123456\"}" > "$TEST_DIR/bundle/events.jsonl"
 printf 'log: ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn\n' > "$TEST_DIR/bundle/logs/install.log"
 printf 'safe content no secrets here\n' > "$TEST_DIR/bundle/clean.txt"
 redact_bundle "$TEST_DIR/bundle"
 
 state_content=$(cat "$TEST_DIR/bundle/state.json")
+jsonl_content=$(cat "$TEST_DIR/bundle/events.jsonl")
 log_content=$(cat "$TEST_DIR/bundle/logs/install.log")
 assert_contains "Bundle: state.json redacted" "$state_content" "<REDACTED:api_key>"
+assert_contains "Bundle: events.jsonl redacted" "$jsonl_content" "<REDACTED:password>"
+assert_not_contains "Bundle: events.jsonl password removed" "$jsonl_content" "abcdefghijklmnopqrstuvwxyz123456"
 assert_contains "Bundle: install.log redacted" "$log_content" "<REDACTED:github_token>"
-if [[ "$REDACTION_COUNT" -ge 2 ]]; then
-    pass "Bundle: redaction count >= 2"
+if [[ "$REDACTION_COUNT" -ge 3 ]]; then
+    pass "Bundle: redaction count >= 3"
 else
-    fail "Bundle: redaction count >= 2" "Got $REDACTION_COUNT"
+    fail "Bundle: redaction count >= 3" "Got $REDACTION_COUNT"
 fi
 
 # ============================================================
