@@ -51,6 +51,10 @@ on:
         description: "Timeout for post-reboot resume/assertions"
         default: "14400"
         required: true
+      runner:
+        description: "Runner label for this workflow. QEMU needs /dev/kvm; use a KVM-capable larger or self-hosted runner."
+        default: "ubuntu-latest"
+        required: true
   repository_dispatch:
     types:
       - acfs-factory-host-ready
@@ -101,6 +105,11 @@ on:
         default: "14400"
         required: false
         type: string
+      runner:
+        description: "Runner label. QEMU needs /dev/kvm; real-host can use ubuntu-latest."
+        default: "ubuntu-latest"
+        required: false
+        type: string
     secrets:
       ACFS_FACTORY_SSH_TARGET:
         required: true
@@ -114,7 +123,7 @@ on:
 jobs:
   factory-e2e:
     name: Fresh Ubuntu ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '25.10' }} factory install
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || github.event.client_payload.runner || vars.ACFS_FACTORY_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 360
     permissions:
       contents: read
@@ -179,6 +188,29 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-system-x86 qemu-utils cloud-image-utils openssh-client
+
+      - name: Enable KVM access
+        if: steps.config.outputs.enabled == 'true' && steps.config.outputs.backend == 'qemu'
+        run: |
+          if [[ -e /dev/kvm ]]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm || true
+            sudo chmod 666 /dev/kvm || true
+          fi
+
+      - name: Verify KVM-capable runner
+        if: steps.config.outputs.enabled == 'true' && steps.config.outputs.backend == 'qemu'
+        run: |
+          if [[ ! -e /dev/kvm ]]; then
+            echo "::error::QEMU backend requires /dev/kvm. Set repository variable ACFS_FACTORY_RUNNER, workflow input runner, or client_payload.runner to a KVM-capable larger/self-hosted runner; otherwise use backend=real-host."
+            exit 1
+          fi
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            ls -l /dev/kvm || true
+            echo "::error::/dev/kvm exists but is not readable/writable by the workflow user."
+            exit 1
+          fi
 
       - name: Run QEMU factory installer E2E
         if: steps.config.outputs.enabled == 'true' && steps.config.outputs.backend == 'qemu'

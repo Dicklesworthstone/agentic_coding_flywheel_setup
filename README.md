@@ -2403,13 +2403,14 @@ jobs:
 
 ### Factory Installer E2E (`installer-factory-e2e.yml`)
 
-Runs the literal public installer through the authoritative factory harness. The scheduled backend is QEMU/KVM with the official Ubuntu cloud image. The real-host backend runs against a disposable Ubuntu VPS over SSH and is intended for provider-specific sentinel runs.
+Runs the literal public installer through the authoritative factory harness. The QEMU/KVM backend uses the official Ubuntu cloud image and requires a runner with `/dev/kvm`; set the repository variable `ACFS_FACTORY_RUNNER`, the manual `runner` input, or `client_payload.runner` to a KVM-capable larger/self-hosted runner. The real-host backend runs against a disposable Ubuntu VPS over SSH and is intended for provider-specific sentinel runs.
 
 ```yaml
-schedule: "0 8 * * 0" # weekly QEMU/KVM factory canary
+schedule: "0 8 * * 0" # weekly QEMU/KVM factory canary when ACFS_FACTORY_RUNNER has /dev/kvm
 workflow_dispatch:
   inputs:
     backend: qemu|real-host
+    runner: ubuntu-latest
     ref: main
     mode: vibe
     expect_ubuntu: "25.10"
@@ -2420,6 +2421,8 @@ required secrets:
   ACFS_FACTORY_SSH_PRIVATE_KEY: private key for real-host backend
   ACFS_FACTORY_SSH_TARGET: optional fallback root@fresh-host for real-host backend
 ```
+
+Standard GitHub-hosted runners do not provide a contractual nested-virtualization environment. If the QEMU backend runs without `/dev/kvm`, the workflow fails at the KVM preflight with an environment-specific error before invoking the installer.
 
 The target host must be freshly provisioned. By default the harness fails if the `ubuntu` user already exists before install, because the real beginner path must prove ACFS creates that user automatically. The harness also requires `acfs doctor --json` to report zero failures and zero warnings, then separately verifies Agent Mail liveness/systemd service state and the ACFS nightly user timer.
 

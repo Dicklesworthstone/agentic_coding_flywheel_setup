@@ -133,7 +133,7 @@ By default it treats cross-CLI session isolation as expected behavior; strict mo
 
 For the slower OS upgrade/resume path, provision a fresh Ubuntu `24.04` host and run with `--expect-ubuntu 24.04 --expect-final-ubuntu 25.10 --allow-install-reboot`. The harness treats SSH disconnects during installer-driven reboots as expected, reconnects, waits for ACFS resume to finish, then runs the same post-install and idempotency assertions.
 
-The matching GitHub Actions workflow is `.github/workflows/installer-factory-e2e.yml`. Its scheduled/manual default backend is QEMU/KVM with the official Ubuntu cloud image. Use `backend=real-host` for a disposable provider VPS. Configure `ACFS_FACTORY_SSH_PRIVATE_KEY` and either pass `ssh_target` via the `acfs-factory-host-ready` repository dispatch payload or configure `ACFS_FACTORY_SSH_TARGET` as a fallback secret. Do not point the scheduled real-host sentinel at a reused server; the harness intentionally fails when `ubuntu` already exists before install.
+The matching GitHub Actions workflow is `.github/workflows/installer-factory-e2e.yml`. Its scheduled/manual default backend is QEMU/KVM with the official Ubuntu cloud image, but that backend requires `/dev/kvm`; set `ACFS_FACTORY_RUNNER`, the manual `runner` input, or `client_payload.runner` to a KVM-capable larger/self-hosted runner. Use `backend=real-host` for a disposable provider VPS. Configure `ACFS_FACTORY_SSH_PRIVATE_KEY` and either pass `ssh_target` via the `acfs-factory-host-ready` repository dispatch payload or configure `ACFS_FACTORY_SSH_TARGET` as a fallback secret. Do not point the scheduled real-host sentinel at a reused server; the harness intentionally fails when `ubuntu` already exists before install.
 
 ## Writing Tests
 

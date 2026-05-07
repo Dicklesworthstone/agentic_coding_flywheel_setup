@@ -5611,6 +5611,10 @@ EOF
     assert_success
     run grep -F 'effective_ssh_target:-' "$workflow"
     assert_success
+    run grep -F 'ACFS_FACTORY_RUNNER' "$workflow"
+    assert_success
+    run grep -F 'QEMU backend requires /dev/kvm' "$workflow"
+    assert_success
 }
 
 @test "remaining direct system binary resolvers reject pathlike names" {
