@@ -861,6 +861,18 @@ test.describe("Step 9: Run Installer Page", () => {
     await expect(page.locator('text=/don.t close the terminal/i')).toBeVisible();
   });
 
+  test("should not tell fresh root users to switch before the installer creates the user", async ({ page }) => {
+    await page.goto("/wizard/run-installer");
+    await page.waitForLoadState("domcontentloaded");
+
+    const bodyText = await page.locator("body").textContent();
+    expect(bodyText).toContain("Run this command from that root session");
+    expect(bodyText).toContain("user automatically during installation");
+    expect(bodyText).toContain("Otherwise, stay in the root session");
+    expect(bodyText).not.toContain("su - ubuntu");
+    expect(bodyText).not.toContain("no password needed");
+  });
+
   test("should have pin-ref toggle checkbox", async ({ page }) => {
     await page.goto("/wizard/run-installer");
     await page.waitForLoadState("domcontentloaded");

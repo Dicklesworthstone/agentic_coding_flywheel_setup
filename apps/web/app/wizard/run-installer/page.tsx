@@ -196,20 +196,18 @@ export default function RunInstallerPage() {
       <AlertCard variant="info" title="Confirm you're SSH'd into your VPS">
         <div className="space-y-2">
           <p>
-            Your terminal prompt should look like{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">root@vps:~#</code>
-            {" "}(the default after Step 6) or{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{effectiveSSHUsername}@vps:~$</code>.
-            The installer auto-detects which user it&apos;s running as.
+            For a fresh VPS, your terminal prompt should look like{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">root@vps:~#</code>.
+            Run this command from that root session; ACFS creates the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{effectiveSSHUsername}</code>{" "}
+            user automatically during installation.
           </p>
           <p className="text-sm text-muted-foreground">
-            <strong>Trouble running as root?</strong> A few VPS images don&apos;t play well with the
-            installer under the root shell. If the command below fails immediately or exits without
-            output, switch to the{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{effectiveSSHUsername}</code>{" "}
-            user from your current root session with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">su - {effectiveSSHUsername}</code>{" "}
-            (no password needed — root can switch to any user) and re-run the command from there.
+            If you are resuming after a partial install and the installer log explicitly tells you to
+            continue as{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{effectiveSSHUsername}</code>,
+            reconnect as that user and run the resume command from the log. Otherwise, stay in the root
+            session and re-run the command below; it is designed to resume safely.
           </p>
         </div>
       </AlertCard>
@@ -253,7 +251,9 @@ export default function RunInstallerPage() {
             <Checkbox
               id="pin-ref"
               checked={usePinnedRef}
-              onCheckedChange={(checked) => handlePinnedRefToggle(checked === true)}
+              onCheckedChange={(checked) =>
+                handlePinnedRefToggle(checked ? checked !== "indeterminate" : false)
+              }
               className="mt-0.5"
             />
             <div className="flex-1 space-y-1">
