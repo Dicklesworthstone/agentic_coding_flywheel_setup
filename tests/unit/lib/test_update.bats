@@ -5635,6 +5635,14 @@ EOF
     assert_success
     run grep -F 'tests/artifacts/qemu-factory-e2e"' "$workflow"
     assert_failure
+    run grep -F 'tests/artifacts' "$workflow"
+    assert_success
+    refute_output --partial 'path: tests/artifacts'
+    assert_output --partial 'tests/artifacts/qemu-factory-e2e-${{ github.run_id }}-${{ github.run_attempt }}'
+    assert_output --partial 'tests/artifacts/factory-e2e-${{ github.run_id }}-${{ github.run_attempt }}'
+    run grep -F 'if-no-files-found: warn' "$workflow"
+    assert_success
+    assert_output --partial 'if-no-files-found: warn'
 }
 
 @test "remaining direct system binary resolvers reject pathlike names" {

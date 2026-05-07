@@ -282,4 +282,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: factory-installer-e2e
-          path: tests/artifacts
+          path: |
+            tests/artifacts/qemu-factory-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+            tests/artifacts/factory-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn

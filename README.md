@@ -2428,7 +2428,7 @@ Reusable workflow callers may use the QEMU backend without passing SSH secrets. 
 
 If `backend=real-host` is requested without those SSH credentials, the workflow fails during configuration resolution. It must never report a green canary when no disposable host was tested.
 
-Workflow artifact directories include the GitHub run id and attempt. That keeps repeated scheduled/manual runs from reusing an old QEMU overlay disk on KVM-capable self-hosted runners with persistent workspaces.
+Workflow artifact directories and uploads include only the current GitHub run id and attempt. That keeps repeated scheduled/manual runs from reusing or uploading old QEMU overlay disks on KVM-capable self-hosted runners with persistent workspaces.
 
 The target host must be freshly provisioned. By default the harness fails if the `ubuntu` user already exists before install, because the real beginner path must prove ACFS creates that user automatically. The harness also requires `acfs doctor --json` to report zero failures and zero warnings, then separately verifies Agent Mail liveness/systemd service state and the ACFS nightly user timer.
 
