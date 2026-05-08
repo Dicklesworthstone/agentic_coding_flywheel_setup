@@ -89,6 +89,9 @@ jobs:
       - name: Run RCH offload policy linter
         run: bash scripts/tests/lint_rch_offload_policy.sh
 
+      - name: Run RCH offload policy fixture tests
+        run: bash tests/unit/test_rch_offload_policy.sh
+
       - name: Run library globals integration test
         run: bash tests/unit/test_lib_globals.sh
 

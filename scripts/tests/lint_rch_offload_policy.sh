@@ -30,6 +30,69 @@ DEFAULT_TARGETS=(
     "apps/web/components/lessons/agents-md-lesson.tsx"
 )
 
+usage() {
+    cat <<'USAGE'
+Usage: bash scripts/tests/lint_rch_offload_policy.sh [--root DIR] [TARGET...]
+
+Scans agent-facing docs/templates for CPU-heavy Rust commands that should be
+shown with the RCH offload prefix, for example:
+
+  rch exec -- cargo test
+
+Default CI gate:
+  bash scripts/tests/lint_rch_offload_policy.sh
+
+Fixture/test mode:
+  bash scripts/tests/lint_rch_offload_policy.sh --root /tmp/fixtures compliant.md
+
+Suppress only explanatory non-agent examples on the same line:
+  cargo test  # rch-policy: allow
+
+Failure output includes file:line, the offending line, and a suggested fix. The
+checker is static and does not require the rch binary or worker fleet.
+USAGE
+}
+
+SCAN_ROOT="$REPO_ROOT"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --root)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: --root requires a directory argument" >&2
+                exit 2
+            fi
+            SCAN_ROOT="$2"
+            shift 2
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            echo "ERROR: unknown option: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+if [[ "$SCAN_ROOT" != /* ]]; then
+    SCAN_ROOT="$PWD/$SCAN_ROOT"
+fi
+
+if [[ ! -d "$SCAN_ROOT" ]]; then
+    echo "ERROR: scan root missing: $SCAN_ROOT" >&2
+    exit 2
+fi
+
 if [[ $# -gt 0 ]]; then
     TARGETS=("$@")
 else
@@ -63,11 +126,21 @@ requires_rch_offload() {
 }
 
 scan_file() {
-    local relative_path="$1"
-    local file="$REPO_ROOT/$relative_path"
+    local target_path="$1"
+    local display_path="$target_path"
+    local file="$SCAN_ROOT/$target_path"
+
+    if [[ "$target_path" == /* ]]; then
+        file="$target_path"
+        if [[ "$file" == "$SCAN_ROOT"/* ]]; then
+            display_path="${file#"$SCAN_ROOT"/}"
+        else
+            display_path="$file"
+        fi
+    fi
 
     if [[ ! -f "$file" ]]; then
-        echo "ERROR: target file missing: $relative_path"
+        echo "ERROR: target file missing: $display_path"
         violations=$((violations + 1))
         return 0
     fi
@@ -79,8 +152,8 @@ scan_file() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         lineno=$((lineno + 1))
         if requires_rch_offload "$line"; then
-            echo "VIOLATION: $relative_path:$lineno: CPU-heavy Rust command must use RCH"
-            echo "  $line"
+            echo "VIOLATION: $display_path:$lineno: CPU-heavy Rust command must use RCH"
+            echo "  Line: $line"
             echo "  Fix: prefix build/test/check/clippy/run examples with 'rch exec --'."
             echo "  Suppress only explanatory non-agent examples with '$SUPPRESSION_MARKER'."
             echo ""
