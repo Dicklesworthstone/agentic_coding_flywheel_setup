@@ -40,6 +40,13 @@ assert_policy_present() {
     jq -e --arg policy_id "$policy_id" '.violations[] | select(.policy_id == $policy_id)' "$json_file" >/dev/null
 }
 
+assert_policy_in_human_output() {
+    local human_file="$1"
+    local policy_id="$2"
+
+    grep -Fq "$policy_id" "$human_file"
+}
+
 test_valid_agents_policy_passes() {
     local fixture="$ARTIFACT_DIR/valid/AGENTS.md"
     local output="$ARTIFACT_DIR/valid.json"
@@ -170,6 +177,52 @@ Use `main`, Bun, and `bv --robot-triage`.
     pass "detects_missing_agent_mail_reservation_guidance"
 }
 
+test_policy_matrix_reports_expected_policy_ids() {
+    local fixture="$ARTIFACT_DIR/matrix/AGENTS.md"
+    local output="$ARTIFACT_DIR/matrix.json"
+    local human_output="$ARTIFACT_DIR/matrix.human"
+    local policy_id=""
+
+    write_fixture "$fixture" '# AGENTS.md
+
+Agents should edit code carefully before editing files.
+The default branch is master.
+Run `rm -rf /tmp/acfs-build-output` after experiments.
+Use `npm install` before website checks.
+```bash
+bv
+cargo test --all-targets
+```
+'
+
+    if bash "$POLICY_LINT_SH" --json --file "$fixture" > "$output"; then
+        return 1
+    fi
+    if bash "$POLICY_LINT_SH" --file "$fixture" > "$human_output"; then
+        return 1
+    fi
+
+    for policy_id in \
+        "branch.main_not_master" \
+        "filesystem.no_destructive_cleanup" \
+        "toolchain.bun_only" \
+        "beads.robot_bv_only" \
+        "builds.rch_for_cpu_heavy" \
+        "coordination.agent_mail_reservation"
+    do
+        assert_policy_present "$output" "$policy_id" || return 1
+        assert_policy_in_human_output "$human_output" "$policy_id" || return 1
+    done
+
+    jq -e '
+      .status == "fail" and
+      .summary.files_scanned == 1 and
+      ([.violations[].policy_id] | unique | length) == 6
+    ' "$output" >/dev/null || return 1
+
+    pass "policy_matrix_reports_expected_policy_ids"
+}
+
 run_test() {
     local name="$1"
 
@@ -188,6 +241,7 @@ main() {
     run_test test_detects_bare_bv_example
     run_test test_detects_local_cpu_heavy_cargo_example
     run_test test_detects_missing_agent_mail_reservation_guidance
+    run_test test_policy_matrix_reports_expected_policy_ids
 
     echo ""
     echo "Tests passed: $TESTS_PASSED"

@@ -97,7 +97,7 @@ assert_contains() {
     if echo "$actual" | grep -qF "$expected"; then
         pass "$test_name"
     else
-        fail "$test_name" "Expected to contain: $expected"
+        fail "$test_name" "Expected marker/category was not present"
     fi
 }
 
@@ -107,7 +107,7 @@ assert_not_contains() {
     local actual="$2"
     local unexpected="$3"
     if echo "$actual" | grep -qF "$unexpected"; then
-        fail "$test_name" "Should NOT contain: $unexpected"
+        fail "$test_name" "Sensitive fixture value was present in output"
     else
         pass "$test_name"
     fi
@@ -120,7 +120,7 @@ assert_equals() {
     if [[ "$actual" == "$expected" ]]; then
         pass "$test_name"
     else
-        fail "$test_name" "Expected '$expected', got '$actual'"
+        fail "$test_name" "Expected value did not match"
     fi
 }
 

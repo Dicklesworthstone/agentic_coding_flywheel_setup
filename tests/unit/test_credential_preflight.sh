@@ -47,6 +47,13 @@ assert_no_raw_secret() {
     ! grep -Fq "$secret" "$json_file"
 }
 
+assert_file_no_raw_secret() {
+    local file_path="$1"
+    local secret="$2"
+
+    ! grep -Fq "$secret" "$file_path"
+}
+
 test_detects_common_fake_secret_shapes_without_printing_values() {
     local fixture="$ARTIFACT_DIR/common/.zshrc"
     local output="$ARTIFACT_DIR/common.json"
@@ -72,6 +79,60 @@ DATABASE_URL=postgres://acfs:supersecret@db.example.test/app
     jq -e '.safety.raw_secret_values_printed == false and .safety.user_files_mutated == false' "$output" >/dev/null || return 1
 
     pass "detects_common_fake_secret_shapes_without_printing_values"
+}
+
+test_secret_matrix_detects_categories_without_value_leaks() {
+    local fixture="$ARTIFACT_DIR/matrix/.env"
+    local json_output="$ARTIFACT_DIR/matrix.json"
+    local human_output="$ARTIFACT_DIR/matrix.human"
+    local secret=""
+
+    write_fixture "$fixture" 'OPENAI_API_KEY=sk-fakeacfscredentialmatrix000001
+GITHUB_TOKEN=ghp_FAKEACFSCREDENTIALMATRIX0000000001
+GITHUB_FINE=github_pat_FAKEACFSMATRIX_123456789012345678901234
+VAULT_TOKEN=hvs.FAKEACFSCREDENTIALMATRIX001
+SLACK_BOT_TOKEN=xoxb-fake-acfs-credential-matrix
+Authorization: Bearer fakeacfscredentialmatrixbearer001
+SESSION_JWT=eyJfakeacfsmatrix.eyJfakeacfsmatrix.fakeacfsmatrixsig
+DATABASE_URL=postgres://acfs:fake-matrix-password@app.example.invalid/db
+DB_PASSWORD=fake-matrix-password-002
+'
+
+    if bash "$CREDENTIAL_PREFLIGHT_SH" --json --file "$fixture" > "$json_output"; then
+        return 1
+    fi
+    if bash "$CREDENTIAL_PREFLIGHT_SH" --file "$fixture" > "$human_output"; then
+        return 1
+    fi
+
+    for category in api_key github_token github_pat vault_token slack_token bearer_token jwt credential_url generic_secret; do
+        assert_category_present "$json_output" "$category" || return 1
+        grep -Fq "$category" "$human_output" || return 1
+    done
+
+    for secret in \
+        "sk-fakeacfscredentialmatrix000001" \
+        "ghp_FAKEACFSCREDENTIALMATRIX0000000001" \
+        "github_pat_FAKEACFSMATRIX_123456789012345678901234" \
+        "hvs.FAKEACFSCREDENTIALMATRIX001" \
+        "xoxb-fake-acfs-credential-matrix" \
+        "fakeacfscredentialmatrixbearer001" \
+        "eyJfakeacfsmatrix.eyJfakeacfsmatrix.fakeacfsmatrixsig" \
+        "fake-matrix-password"
+    do
+        assert_file_no_raw_secret "$json_output" "$secret" || return 1
+        assert_file_no_raw_secret "$human_output" "$secret" || return 1
+    done
+
+    jq -e '
+      .status == "warn" and
+      .summary.findings >= 9 and
+      .safety.raw_secret_values_printed == false and
+      .safety.raw_snippets_printed == false and
+      .safety.user_files_mutated == false
+    ' "$json_output" >/dev/null || return 1
+
+    pass "secret_matrix_detects_categories_without_value_leaks"
 }
 
 test_detects_private_key_marker() {
@@ -190,6 +251,7 @@ run_test() {
 
 main() {
     run_test test_detects_common_fake_secret_shapes_without_printing_values
+    run_test test_secret_matrix_detects_categories_without_value_leaks
     run_test test_detects_private_key_marker
     run_test test_benign_examples_pass
     run_test test_binary_and_unreadable_files_are_skipped

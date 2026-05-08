@@ -195,6 +195,38 @@ test_manifest_redaction_proof_sanitizes_bad_sources() {
     pass "manifest_redaction_proof_sanitizes_bad_sources"
 }
 
+test_manifest_redaction_proof_absent_sources_are_count_only() {
+    local bundle_dir manifest
+    bundle_dir="$(new_bundle absent-proof)"
+    manifest="$bundle_dir/manifest.json"
+    BUNDLE_FILES=()
+    REDACTION_COUNT=0
+
+    write_manifest "$bundle_dir"
+
+    jq -e '
+      (.diagnostics | keys | length) >= 8 and
+      ([.diagnostics[] | select(
+        .proof_schema_version == 1 and
+        .included == false and
+        .source_status == "missing" and
+        .records.raw_count == 0 and
+        .records.sanitized_count == 0 and
+        .records.raw_values_collected == false and
+        .redaction.raw_values_collected == false and
+        (.redaction.categories | type) == "array"
+      )] | length) == (.diagnostics | keys | length) and
+      (.diagnostics.swarm_timeline.redaction.categories | index("agent_mail_bodies")) and
+      (.diagnostics.resource_profile.redaction.categories | index("wrapper_commands")) and
+      (.diagnostics.environment.redaction.categories | index("hostnames"))
+    ' "$manifest" >/dev/null || return 1
+
+    assert_not_contains "$manifest" "/home/" || return 1
+    assert_not_contains "$manifest" "ghp_" || return 1
+
+    pass "manifest_redaction_proof_absent_sources_are_count_only"
+}
+
 run_test() {
     local name="$1"
     if "$name"; then
@@ -214,6 +246,7 @@ main() {
     run_test test_malformed_optional_json_is_labeled_degraded
     run_test test_unknown_sensitive_fields_fail_closed
     run_test test_manifest_redaction_proof_sanitizes_bad_sources
+    run_test test_manifest_redaction_proof_absent_sources_are_count_only
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $ARTIFACT_DIR"
