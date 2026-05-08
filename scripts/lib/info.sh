@@ -1628,6 +1628,112 @@ info_render_onboard_bar() {
     printf '%s' "$bar"
 }
 
+info_json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+info_swarm_summary_fallback() {
+    local next_action="${1:-Swarm telemetry unavailable}"
+    printf 'unknown\t%s\tunknown\tunknown\tunknown\tunknown\tunknown\tunknown\tunknown\t1\n' "$next_action"
+}
+
+info_collect_swarm_status_json() {
+    local status_script="${ACFS_INFO_SWARM_STATUS_SCRIPT:-${_INFO_SCRIPT_DIR}/swarm_status.sh}"
+    local bash_bin=""
+    local timeout_bin=""
+    local deadline="${ACFS_INFO_SWARM_STATUS_DEADLINE:-2}"
+    local per_tool_timeout="${ACFS_INFO_SWARM_STATUS_TIMEOUT:-0.2}"
+    local output=""
+    local exit_status=0
+
+    [[ -f "$status_script" ]] || return 1
+    bash_bin="$(info_system_binary_path bash 2>/dev/null || true)"
+    [[ -n "$bash_bin" ]] || return 1
+
+    timeout_bin="$(info_system_binary_path timeout 2>/dev/null || true)"
+    set +e
+    if [[ -n "$timeout_bin" ]]; then
+        output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$timeout_bin" "$deadline" "$bash_bin" "$status_script" --json 2>/dev/null)"
+    else
+        output="$(ACFS_SWARM_STATUS_TIMEOUT="$per_tool_timeout" "$bash_bin" "$status_script" --json 2>/dev/null)"
+    fi
+    exit_status=$?
+    set -e
+
+    [[ $exit_status -eq 0 && -n "$output" ]] || return 1
+    printf '%s\n' "$output"
+}
+
+info_get_swarm_summary() {
+    local jq_bin=""
+    local status_json=""
+    local summary=""
+
+    jq_bin="$(info_binary_path jq 2>/dev/null || true)"
+    [[ -n "$jq_bin" ]] || {
+        info_swarm_summary_fallback "jq unavailable; run acfs swarm status --json"
+        return 0
+    }
+
+    status_json="$(info_collect_swarm_status_json 2>/dev/null || true)"
+    [[ -n "$status_json" ]] || {
+        info_swarm_summary_fallback "swarm_status.sh unavailable or timed out"
+        return 0
+    }
+
+    summary="$(printf '%s' "$status_json" | "$jq_bin" -r '
+        def txt($v): if $v == null then "unknown" else ($v | tostring) end;
+        def count_txt($v): if ($v | type) == "number" then ($v | tostring) else "unknown" end;
+        . as $s
+        | ($s.status // "unknown") as $status
+        | ($s.probes.ntm // {}) as $ntm
+        | ($s.probes.beads // {}) as $beads
+        | ($s.probes.agent_mail // {}) as $mail
+        | ($s.probes.rch // {}) as $rch
+        | ($s.host // {}) as $host
+        | ($beads.ready_count // null) as $ready
+        | ($beads.in_progress_count // null) as $in_progress
+        | (if $host.mem_available_kb == null then "unknown mem"
+           else (((($host.mem_available_kb) / 1048576) | floor | tostring) + " GiB mem")
+           end) as $mem_resource
+        | (if $host.disk_available_kb == null then "unknown disk"
+           else (((($host.disk_available_kb) / 1048576) | floor | tostring) + " GiB disk")
+           end) as $disk_resource
+        | ($mem_resource + ", " + $disk_resource) as $resource
+        | (if $status == "fail" then "Run acfs swarm doctor --json"
+           elif (($in_progress | type) == "number" and $in_progress > 0) then "Review active Beads before launching more agents"
+           elif (($ready | type) == "number" and $ready == 0) then "No ready Beads; refine task graph"
+           elif $status == "pass" then "Safe to launch or scale a swarm"
+           else "Review swarm warnings before launching more agents"
+           end) as $next
+        | [
+            $status,
+            $next,
+            count_txt($ntm.tmux_session_count),
+            count_txt($ntm.tmux_window_count),
+            count_txt($ready),
+            count_txt($in_progress),
+            txt($mail.status),
+            txt($rch.status),
+            $resource,
+            (($s.warnings // []) | length | tostring)
+          ] | @tsv
+    ' 2>/dev/null || true)"
+
+    if [[ -z "$summary" ]]; then
+        info_swarm_summary_fallback "swarm telemetry could not be parsed"
+        return 0
+    fi
+
+    printf '%s\n' "$summary"
+}
+
 # ============================================================
 # Terminal Output Renderer
 # ============================================================
@@ -1651,6 +1757,10 @@ info_render_terminal() {
 
     local tools_summary
     tools_summary=$(info_get_installed_tools_summary)
+
+    local swarm_summary swarm_status swarm_next swarm_sessions swarm_windows swarm_ready swarm_in_progress swarm_mail swarm_rch swarm_resource swarm_warnings
+    swarm_summary="$(info_get_swarm_summary)"
+    IFS=$'\t' read -r swarm_status swarm_next swarm_sessions swarm_windows swarm_ready swarm_in_progress swarm_mail swarm_rch swarm_resource swarm_warnings <<< "$swarm_summary"
 
     # Header
     echo -e "${C_CYAN}╭─────────────────────────────────────────────────────────────╮${C_RESET}"
@@ -1691,6 +1801,19 @@ info_render_terminal() {
 
     if [[ -n "$skipped_tools" ]]; then
         echo -e "  ${C_GRAY}○ Skipped:   $skipped_tools${C_RESET}"
+    fi
+    echo ""
+
+    # Swarm Operations section
+    echo -e "${C_BOLD}Swarm Operations${C_RESET}"
+    printf "  %-16s %s\n" "Status:" "$swarm_status"
+    printf "  %-16s sessions=%s windows=%s\n" "NTM/tmux:" "$swarm_sessions" "$swarm_windows"
+    printf "  %-16s ready=%s in_progress=%s\n" "Beads:" "$swarm_ready" "$swarm_in_progress"
+    printf "  %-16s Agent Mail=%s RCH=%s\n" "Coordination:" "$swarm_mail" "$swarm_rch"
+    printf "  %-16s %s\n" "Resources:" "$swarm_resource"
+    printf "  %-16s %s\n" "Next:" "$swarm_next"
+    if [[ "$swarm_warnings" =~ ^[0-9]+$ ]] && (( swarm_warnings > 0 )); then
+        printf "  %-16s %s warning(s)\n" "Warnings:" "$swarm_warnings"
     fi
     echo ""
 
@@ -1769,31 +1892,35 @@ info_render_json() {
     lessons_total=$(info_get_lessons_total)
     next_lesson=$(info_get_next_lesson)
 
-    # Build JSON manually for compatibility (jq might not be available)
-    # Ensure all string values are JSON-escaped so output is always valid JSON.
-    _info_json_escape() {
-        local s="$1"
-        s="${s//\\/\\\\}"      # \ -> \\
-        s="${s//\"/\\\"}"      # " -> \"
-        s="${s//$'\n'/\\n}"    # newline -> \n
-        s="${s//$'\r'/\\r}"    # carriage return -> \r
-        s="${s//$'\t'/\\t}"    # tab -> \t
-        printf '%s' "$s"
-    }
-
     [[ "$lessons_completed" =~ ^[0-9]+$ ]] || lessons_completed=0
     [[ "$lessons_total" =~ ^[0-9]+$ ]] || lessons_total=0
 
     local hostname_json ip_json uptime_json os_version_json os_codename_json
-    hostname_json="$(_info_json_escape "$hostname")"
-    ip_json="$(_info_json_escape "$ip")"
-    uptime_json="$(_info_json_escape "$uptime")"
-    os_version_json="$(_info_json_escape "$os_version")"
-    os_codename_json="$(_info_json_escape "$os_codename")"
+    hostname_json="$(info_json_escape "$hostname")"
+    ip_json="$(info_json_escape "$ip")"
+    uptime_json="$(info_json_escape "$uptime")"
+    os_version_json="$(info_json_escape "$os_version")"
+    os_codename_json="$(info_json_escape "$os_codename")"
 
     local install_date_json next_lesson_json
-    install_date_json="$(_info_json_escape "$install_date")"
-    next_lesson_json="$(_info_json_escape "$next_lesson")"
+    install_date_json="$(info_json_escape "$install_date")"
+    next_lesson_json="$(info_json_escape "$next_lesson")"
+
+    local swarm_summary swarm_status swarm_next swarm_sessions swarm_windows swarm_ready swarm_in_progress swarm_mail swarm_rch swarm_resource swarm_warnings
+    swarm_summary="$(info_get_swarm_summary)"
+    IFS=$'\t' read -r swarm_status swarm_next swarm_sessions swarm_windows swarm_ready swarm_in_progress swarm_mail swarm_rch swarm_resource swarm_warnings <<< "$swarm_summary"
+
+    local swarm_status_json swarm_next_json swarm_sessions_json swarm_windows_json swarm_ready_json swarm_in_progress_json swarm_mail_json swarm_rch_json swarm_resource_json
+    swarm_status_json="$(info_json_escape "$swarm_status")"
+    swarm_next_json="$(info_json_escape "$swarm_next")"
+    swarm_sessions_json="$(info_json_escape "$swarm_sessions")"
+    swarm_windows_json="$(info_json_escape "$swarm_windows")"
+    swarm_ready_json="$(info_json_escape "$swarm_ready")"
+    swarm_in_progress_json="$(info_json_escape "$swarm_in_progress")"
+    swarm_mail_json="$(info_json_escape "$swarm_mail")"
+    swarm_rch_json="$(info_json_escape "$swarm_rch")"
+    swarm_resource_json="$(info_json_escape "$swarm_resource")"
+    [[ "$swarm_warnings" =~ ^[0-9]+$ ]] || swarm_warnings=0
 
     local json_output
     json_output=$(cat <<EOF
@@ -1815,6 +1942,18 @@ info_render_json() {
     "lessons_completed": $lessons_completed,
     "total_lessons": $lessons_total,
     "next_lesson": "$next_lesson_json"
+  },
+  "swarm": {
+    "status": "$swarm_status_json",
+    "next_action": "$swarm_next_json",
+    "tmux_sessions": "$swarm_sessions_json",
+    "tmux_windows": "$swarm_windows_json",
+    "ready_beads": "$swarm_ready_json",
+    "in_progress_beads": "$swarm_in_progress_json",
+    "agent_mail": "$swarm_mail_json",
+    "rch": "$swarm_rch_json",
+    "resources": "$swarm_resource_json",
+    "warning_count": $swarm_warnings
   },
   "quick_commands": [
     {"cmd": "cc", "desc": "Launch Claude Code"},
@@ -1877,6 +2016,21 @@ info_render_html() {
     uptime_html="$(_info_html_escape "$uptime")"
     os_version_html="$(_info_html_escape "$os_version")"
     os_codename_html="$(_info_html_escape "$os_codename")"
+
+    local swarm_summary swarm_status swarm_next swarm_sessions swarm_windows swarm_ready swarm_in_progress swarm_mail swarm_rch swarm_resource swarm_warnings
+    swarm_summary="$(info_get_swarm_summary)"
+    IFS=$'\t' read -r swarm_status swarm_next swarm_sessions swarm_windows swarm_ready swarm_in_progress swarm_mail swarm_rch swarm_resource swarm_warnings <<< "$swarm_summary"
+
+    local swarm_status_html swarm_next_html swarm_sessions_html swarm_windows_html swarm_ready_html swarm_in_progress_html swarm_mail_html swarm_rch_html swarm_resource_html
+    swarm_status_html="$(_info_html_escape "$swarm_status")"
+    swarm_next_html="$(_info_html_escape "$swarm_next")"
+    swarm_sessions_html="$(_info_html_escape "$swarm_sessions")"
+    swarm_windows_html="$(_info_html_escape "$swarm_windows")"
+    swarm_ready_html="$(_info_html_escape "$swarm_ready")"
+    swarm_in_progress_html="$(_info_html_escape "$swarm_in_progress")"
+    swarm_mail_html="$(_info_html_escape "$swarm_mail")"
+    swarm_rch_html="$(_info_html_escape "$swarm_rch")"
+    swarm_resource_html="$(_info_html_escape "$swarm_resource")"
 
     local lessons_completed lessons_total
     lessons_completed=$(info_get_lessons_completed)
@@ -1991,6 +2145,18 @@ EOF
                 <span class="cmd">cod</span><span>Launch Codex CLI</span>
                 <span class="cmd">ntm new X</span><span>Create tmux session</span>
                 <span class="cmd">lazygit</span><span>Visual git interface</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Swarm Operations</h2>
+            <div class="grid">
+                <span class="label">Status</span><span class="value">$swarm_status_html</span>
+                <span class="label">NTM/tmux</span><span>sessions=$swarm_sessions_html windows=$swarm_windows_html</span>
+                <span class="label">Beads</span><span>ready=$swarm_ready_html in_progress=$swarm_in_progress_html</span>
+                <span class="label">Coordination</span><span>Agent Mail=$swarm_mail_html RCH=$swarm_rch_html</span>
+                <span class="label">Resources</span><span>$swarm_resource_html</span>
+                <span class="label">Next</span><span>$swarm_next_html</span>
             </div>
         </div>
 
