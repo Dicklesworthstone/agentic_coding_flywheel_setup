@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 INFO_SH="$REPO_ROOT/scripts/lib/info.sh"
+DASHBOARD_SH="$REPO_ROOT/scripts/lib/dashboard.sh"
 
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -91,6 +92,25 @@ cat <<'"'"'JSON'"'"'
 JSON'
 }
 
+pressure_status_script() {
+    write_swarm_status_script pressure_status '#!/usr/bin/env bash
+cat <<'"'"'JSON'"'"'
+{
+  "schema_version": 1,
+  "status": "warn",
+  "warnings": ["low memory headroom", "rch queue delayed"],
+  "host": {"cpu_count": 8, "mem_available_kb": 1048576, "disk_available_kb": 20971520},
+  "probes": {
+    "ntm": {"status": "pass", "tmux_session_count": 2, "tmux_window_count": 6},
+    "agent_mail": {"status": "pass", "available": true, "healthy": true},
+    "beads": {"status": "pass", "ready_count": 2, "in_progress_count": 0},
+    "bv": {"status": "pass", "robot_ok": true},
+    "rch": {"status": "warn", "status_json_ok": true}
+  }
+}
+JSON'
+}
+
 run_info() {
     local status_script="$1"
     shift
@@ -159,6 +179,52 @@ test_partial_resource_data_is_labeled() {
     pass "partial_resource_data_is_labeled"
 }
 
+test_pressure_json_keeps_dashboard_decision_visible() {
+    local status_script output
+    status_script="$(pressure_status_script)"
+    output="$(run_info "$status_script" --json)"
+    printf '%s\n' "$output" > "$ARTIFACT_DIR/pressure-info.json"
+
+    jq -e '
+      .swarm.status == "warn" and
+      .swarm.resources == "1 GiB mem, 20 GiB disk" and
+      .swarm.warning_count == 2 and
+      .swarm.next_action == "Review swarm warnings before launching more agents"
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "pressure_json_keeps_dashboard_decision_visible"
+}
+
+test_dashboard_generate_writes_swarm_panel() {
+    local status_script output status dashboard_home html_path
+    status_script="$(pressure_status_script)"
+    dashboard_home="$ARTIFACT_DIR/home/.acfs"
+    html_path="$dashboard_home/dashboard/index.html"
+    mkdir -p "$dashboard_home"
+    printf '{"target_home":"%s","target_user":"ubuntu"}\n' "$ARTIFACT_DIR/home" > "$dashboard_home/state.json"
+
+    set +e
+    output="$(env \
+        HOME="$ARTIFACT_DIR/home" \
+        ACFS_HOME="$dashboard_home" \
+        ACFS_INFO_SWARM_STATUS_SCRIPT="$status_script" \
+        ACFS_INFO_SWARM_STATUS_DEADLINE=1 \
+        ACFS_INFO_SWARM_STATUS_TIMEOUT=1 \
+        bash "$DASHBOARD_SH" generate --force 2>&1)"
+    status=$?
+    set -e
+    printf '%s\n' "$output" > "$ARTIFACT_DIR/dashboard-generate.output.txt"
+
+    [[ "$status" -eq 0 ]] || return 1
+    [[ -s "$html_path" ]] || return 1
+    grep -Fq "<h2>Swarm Operations</h2>" "$html_path" || return 1
+    grep -Fq "Agent Mail=pass RCH=warn" "$html_path" || return 1
+    grep -Fq "1 GiB mem, 20 GiB disk" "$html_path" || return 1
+    grep -Fq "Review swarm warnings before launching more agents" "$html_path" || return 1
+
+    pass "dashboard_generate_writes_swarm_panel"
+}
+
 test_missing_collector_is_labeled() {
     local output
     output="$(run_info "$ARTIFACT_DIR/missing-swarm-status.sh" --json)"
@@ -192,6 +258,8 @@ main() {
     run_test test_json_includes_swarm_summary
     run_test test_html_includes_dashboard_panel
     run_test test_partial_resource_data_is_labeled
+    run_test test_pressure_json_keeps_dashboard_decision_visible
+    run_test test_dashboard_generate_writes_swarm_panel
     run_test test_missing_collector_is_labeled
 
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
