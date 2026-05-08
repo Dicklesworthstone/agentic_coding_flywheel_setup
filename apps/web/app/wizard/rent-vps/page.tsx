@@ -3,12 +3,26 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ExternalLink, Check, Server, ChevronDown, Cloud, Heart, Info } from "lucide-react";
+import {
+  AlertTriangle,
+  Calculator,
+  Check,
+  ChevronDown,
+  Cloud,
+  Cpu,
+  ExternalLink,
+  HardDrive,
+  Heart,
+  Info,
+  Server,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AlertCard } from "@/components/alert-card";
 import { TrackedLink } from "@/components/tracked-link";
 import { VPSComparison } from "@/components/wizard/VPSComparison";
 import { cn } from "@/lib/utils";
+import { VPS_PROVIDERS, type VPSPlan } from "@/lib/vpsProviders";
 import { markStepComplete } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { withCurrentSearch } from "@/lib/utils";
@@ -189,6 +203,345 @@ const SPEC_CHECKLIST = [
   { label: "Price", value: "~$40-56/month for 64GB (month-to-month)" },
 ];
 
+type WorkloadId = "light" | "standard" | "heavy";
+type PlanStatus = "pass" | "warn" | "fail";
+
+interface WorkloadProfile {
+  id: WorkloadId;
+  label: string;
+  summary: string;
+  ramPerAgentGB: number;
+  cpuPerAgent: number;
+}
+
+interface RequiredSpecs {
+  ramGB: number;
+  vCPU: number;
+  storageGB: number;
+}
+
+interface EvaluatedProviderPlan {
+  providerName: string;
+  plan: VPSPlan;
+  recommendedAgents: number;
+  safeAgents: number;
+  status: PlanStatus;
+}
+
+const WORKLOAD_PROFILES: WorkloadProfile[] = [
+  {
+    id: "light",
+    label: "Light",
+    summary: "reviews, docs, small edits",
+    ramPerAgentGB: 2,
+    cpuPerAgent: 0.5,
+  },
+  {
+    id: "standard",
+    label: "Standard",
+    summary: "mixed coding and tests",
+    ramPerAgentGB: 3,
+    cpuPerAgent: 1,
+  },
+  {
+    id: "heavy",
+    label: "Heavy",
+    summary: "Rust builds, browsers, large repos",
+    ramPerAgentGB: 4,
+    cpuPerAgent: 2,
+  },
+];
+
+const AGENT_COUNT_PRESETS = [5, 10, 15, 25, 50];
+const RAM_TIERS = [32, 48, 64, 96, 128, 192, 256, 384];
+const CPU_TIERS = [8, 12, 16, 24, 32, 48, 64, 96, 128, 160];
+const STORAGE_TIERS = [250, 400, 640, 800, 1000];
+const COMFORTABLE_STATUSES = new Set<PlanStatus>(["pass"]);
+const PLAN_STATUS_COPY: Record<PlanStatus, { label: string; className: string }> = {
+  pass: {
+    label: "Comfortable",
+    className: "border-[oklch(0.72_0.19_145/0.35)] bg-[oklch(0.72_0.19_145/0.08)] text-[oklch(0.72_0.19_145)]",
+  },
+  warn: {
+    label: "Tight",
+    className: "border-[oklch(0.78_0.16_75/0.35)] bg-[oklch(0.78_0.16_75/0.08)] text-[oklch(0.78_0.16_75)]",
+  },
+  fail: {
+    label: "Undersized",
+    className: "border-destructive/35 bg-destructive/10 text-destructive",
+  },
+};
+
+function roundUpToTier(value: number, tiers: number[]): number {
+  return tiers.find((tier) => tier >= value) ?? tiers[tiers.length - 1];
+}
+
+function calculateRequiredSpecs(
+  agentCount: number,
+  workload: WorkloadProfile,
+  comfortable: boolean
+): RequiredSpecs {
+  const targetSafeAgents = comfortable ? Math.ceil(agentCount / 0.7) : agentCount;
+  const rawRamGB = (targetSafeAgents * workload.ramPerAgentGB + 4) / 0.9;
+  const rawVcpu = targetSafeAgents * workload.cpuPerAgent;
+  const rawStorageGB = 10 + targetSafeAgents * 2;
+
+  return {
+    ramGB: roundUpToTier(rawRamGB, RAM_TIERS),
+    vCPU: roundUpToTier(rawVcpu, CPU_TIERS),
+    storageGB: roundUpToTier(rawStorageGB, STORAGE_TIERS),
+  };
+}
+
+function evaluatePlan(
+  plan: VPSPlan,
+  workload: WorkloadProfile,
+  agentCount: number
+): Pick<EvaluatedProviderPlan, "recommendedAgents" | "safeAgents" | "status"> {
+  const usableRamGB = Math.max(0, plan.ramGB - Math.max(4, plan.ramGB * 0.1));
+  const usableStorageGB = Math.max(0, plan.storageGB - 10);
+  const memoryLimitedAgents = Math.floor(usableRamGB / workload.ramPerAgentGB);
+  const cpuLimitedAgents = Math.floor(plan.vCPU / workload.cpuPerAgent);
+  const diskLimitedAgents = Math.floor(usableStorageGB / 2);
+  const safeAgents = Math.min(memoryLimitedAgents, cpuLimitedAgents, diskLimitedAgents);
+  const recommendedAgents = safeAgents > 0 ? Math.max(1, Math.floor(safeAgents * 0.7)) : 0;
+  const status =
+    agentCount <= recommendedAgents ? "pass" : agentCount <= safeAgents ? "warn" : "fail";
+
+  return { recommendedAgents, safeAgents, status };
+}
+
+function evaluateProviderPlans(
+  workload: WorkloadProfile,
+  agentCount: number
+): EvaluatedProviderPlan[] {
+  return VPS_PROVIDERS.flatMap((provider) =>
+    (["budget", "recommended"] as const).map((tier) => {
+      const plan = provider[tier];
+      return {
+        providerName: provider.name,
+        plan,
+        ...evaluatePlan(plan, workload, agentCount),
+      };
+    })
+  ).sort((a, b) => a.plan.priceUSD - b.plan.priceUSD);
+}
+
+function statusCopy(status: PlanStatus): { label: string; className: string } {
+  return PLAN_STATUS_COPY[status];
+}
+
+function isComfortableStatus(status: PlanStatus | undefined): boolean {
+  return status !== undefined && COMFORTABLE_STATUSES.has(status);
+}
+
+function CapacityPlanner() {
+  const [agentCount, setAgentCount] = useState(10);
+  const [workloadId, setWorkloadId] = useState<WorkloadId>("standard");
+  const workload =
+    WORKLOAD_PROFILES.find((profile) => profile.id === workloadId) ?? WORKLOAD_PROFILES[1];
+  const minimumSpecs = calculateRequiredSpecs(agentCount, workload, false);
+  const recommendedSpecs = calculateRequiredSpecs(agentCount, workload, true);
+  const evaluatedPlans = evaluateProviderPlans(workload, agentCount);
+  const comfortablePlan = evaluatedPlans.find((entry) => entry.status === "pass");
+  const safePlan = evaluatedPlans.find((entry) => entry.status === "warn");
+  const bestListedPlan = comfortablePlan ?? safePlan;
+
+  return (
+    <section
+      data-testid="vps-plan-calculator"
+      className="space-y-5 rounded-xl border border-border/50 bg-card/50 p-4"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <h2 className="flex items-center gap-2 font-semibold text-foreground">
+            <Calculator className="h-5 w-5 text-primary" />
+            Plan calculator
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Capacity uses the same conservative model as <code className="rounded bg-muted px-1">acfs capacity</code>:
+            reserve host headroom, then size RAM, CPU, and disk per active agent.
+          </p>
+        </div>
+        <a
+          href="#recommended-providers"
+          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+        >
+          Compare providers
+          <ChevronDown className="h-4 w-4" />
+        </a>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="space-y-5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="agent-count" className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Users className="h-4 w-4 text-primary" />
+                Target agent count
+              </label>
+              <span className="font-mono text-lg font-semibold text-foreground">{agentCount}</span>
+            </div>
+            <input
+              id="agent-count"
+              type="range"
+              min={5}
+              max={50}
+              step={5}
+              value={agentCount}
+              onChange={(event) => setAgentCount(Number(event.target.value))}
+              className="h-2 w-full cursor-pointer accent-primary"
+              aria-label="Target agent count"
+            />
+            <div className="grid grid-cols-5 gap-2" aria-label="Agent count presets">
+              {AGENT_COUNT_PRESETS.map((count) => (
+                <button
+                  key={count}
+                  type="button"
+                  onClick={() => setAgentCount(count)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                    agentCount === count
+                      ? "border-primary/50 bg-primary/15 text-primary"
+                      : "border-border/50 bg-background/40 text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-foreground">Workload intensity</p>
+            <div className="grid gap-2" role="group" aria-label="Workload intensity">
+              {WORKLOAD_PROFILES.map((profile) => (
+                <button
+                  key={profile.id}
+                  type="button"
+                  onClick={() => setWorkloadId(profile.id)}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors",
+                    workloadId === profile.id
+                      ? "border-primary/50 bg-primary/10"
+                      : "border-border/50 bg-background/40 hover:border-primary/25"
+                  )}
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="font-medium text-foreground">{profile.label}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {profile.ramPerAgentGB}GB / {profile.cpuPerAgent} vCPU
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {profile.summary}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div data-testid="vps-calculator-summary" className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-border/50 bg-background/40 p-3">
+              <p className="text-xs font-medium uppercase text-muted-foreground">Minimum host</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {minimumSpecs.ramGB} GB RAM / {minimumSpecs.vCPU} vCPU
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Enough to try {agentCount} {workload.label.toLowerCase()} agents with little spare room.
+              </p>
+            </div>
+            <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
+              <p className="text-xs font-medium uppercase text-primary">Recommended host</p>
+              <p className="mt-1 text-lg font-semibold text-foreground">
+                {recommendedSpecs.ramGB} GB RAM / {recommendedSpecs.vCPU} vCPU
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Keeps the target inside the 70% comfort band used by the capacity model.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/40 p-2 text-sm">
+              <Server className="h-4 w-4 text-primary" />
+              <span>{recommendedSpecs.ramGB} GB RAM</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/40 p-2 text-sm">
+              <Cpu className="h-4 w-4 text-primary" />
+              <span>{recommendedSpecs.vCPU} vCPU</span>
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-background/40 p-2 text-sm">
+              <HardDrive className="h-4 w-4 text-primary" />
+              <span>{recommendedSpecs.storageGB} GB NVMe</span>
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              "rounded-lg border p-3",
+              bestListedPlan
+                ? statusCopy(bestListedPlan.status).className
+                : "border-destructive/35 bg-destructive/10 text-destructive"
+            )}
+          >
+            <div className="flex items-start gap-2">
+              {isComfortableStatus(bestListedPlan?.status) ? (
+                <Check className="mt-0.5 h-4 w-4 shrink-0" />
+              ) : (
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              )}
+              <div className="space-y-1">
+                <p className="font-medium">
+                  {bestListedPlan
+                    ? `${bestListedPlan.providerName} ${bestListedPlan.plan.name} is the closest listed fit`
+                    : "The listed 48/64 GB VPS plans are undersized for this target"}
+                </p>
+                <p className="text-sm opacity-90">
+                  {bestListedPlan
+                    ? `It supports about ${bestListedPlan.recommendedAgents} comfortable / ${bestListedPlan.safeAgents} safe ${workload.label.toLowerCase()} agents at roughly $${bestListedPlan.plan.priceUSD}/month.`
+                    : "Split the swarm across multiple hosts or choose a larger VPS/dedicated server before launching this many agents."}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {evaluatedPlans.map((entry) => {
+              const copy = statusCopy(entry.status);
+              return (
+                <div
+                  key={`${entry.providerName}-${entry.plan.name}`}
+                  className="flex flex-col gap-2 rounded-lg border border-border/50 bg-background/35 p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {entry.providerName} {entry.plan.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {entry.plan.ramGB} GB RAM, {entry.plan.vCPU} vCPU, ${entry.plan.priceUSD}/mo approx.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={cn("rounded-full border px-2 py-0.5 text-xs font-medium", copy.className)}>
+                      {copy.label}
+                    </span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {entry.recommendedAgents}/{entry.safeAgents}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function RentVPSPage() {
   const router = useRouter();
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
@@ -234,6 +587,8 @@ export default function RentVPSPage() {
         </p>
       </div>
 
+      <CapacityPlanner />
+
       {/* Spec checklist */}
       <div className="rounded-xl border border-border/50 bg-card/50 p-4">
         <h2 className="mb-3 flex items-center gap-2 font-semibold text-foreground">
@@ -274,7 +629,7 @@ export default function RentVPSPage() {
       </AlertCard>
 
       {/* Provider cards */}
-      <div className="space-y-4">
+      <div id="recommended-providers" className="space-y-4 scroll-mt-24">
         <h2 className="font-semibold">Recommended providers</h2>
         <div className="space-y-3">
           {PROVIDERS.map((provider) => (
@@ -337,9 +692,10 @@ export default function RentVPSPage() {
               <p className="font-medium text-foreground mb-2">⚡ This matters a lot!</p>
               <p className="text-sm text-muted-foreground">
                 Each AI coding agent (like Claude Code) uses about 2GB of RAM when running.
-                To get the full power of this approach, you&apos;ll want to run 10-20+ agents
-                simultaneously. That&apos;s 20-40GB just for the agents, plus room for your
-                development tools and databases.
+                To get the full power of this approach, you&apos;ll want enough room for 10-16
+                standard agents on one host, with more capacity for light work or multi-host
+                swarms. That&apos;s significant RAM just for agents, plus room for your development
+                tools and databases.
               </p>
             </div>
             <ul className="space-y-2 text-sm">
@@ -350,7 +706,7 @@ export default function RentVPSPage() {
                 <strong>48GB RAM:</strong> Workable but tight. Run 10+ agents. (~$26-36/month)
               </li>
               <li>
-                <strong>64GB RAM:</strong> Just get this. Run 20+ agents with headroom. (~$40-56/month)
+                <strong>64GB RAM:</strong> Just get this. Run 10-16 standard agents, or around 20 light agents, with headroom. (~$40-56/month)
               </li>
             </ul>
             <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3">

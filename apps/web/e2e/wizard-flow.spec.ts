@@ -235,6 +235,26 @@ test.describe("Wizard Flow", () => {
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
   });
 
+  test("should recommend VPS specs from the plan calculator", async ({ page }) => {
+    await setupWizardState(page, { os: "mac", completedSteps: [1, 2, 3] });
+    await page.goto("/wizard/rent-vps");
+    await page.waitForLoadState("domcontentloaded");
+
+    const calculator = page.getByTestId("vps-plan-calculator");
+    const summary = page.getByTestId("vps-calculator-summary");
+
+    await expect(calculator).toBeVisible();
+    await expect(summary).toContainText("Recommended host");
+    await expect(summary).toContainText("64 GB RAM / 16 vCPU");
+    await expect(summary).toContainText(/OVH VPS-5|Contabo Cloud VPS 50/);
+
+    await calculator.getByRole("button", { name: "25" }).click();
+    await calculator.getByRole("button", { name: /Heavy/i }).click();
+
+    await expect(summary).toContainText("192 GB RAM / 96 vCPU");
+    await expect(summary).toContainText("listed 48/64 GB VPS plans are undersized");
+  });
+
   test("should complete step 5: Create VPS with IP address", async ({ page }) => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");

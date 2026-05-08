@@ -77,13 +77,27 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
     ],
   },
 
-  5: {
+  4: {
     commonIssues: [
       {
         symptom: "Which VPS plan should I pick?",
         solution:
-          "For the agent coding flywheel, pick the cheapest plan with at least 4GB RAM and Ubuntu 24.04. Hetzner's CX22 ($4.50/mo) is the best value.",
+          "Use the plan calculator on this step. For most people, start with a 64GB RAM / 16 vCPU Contabo or OVH plan; use 48GB only for smaller swarms, and choose a larger host or multiple hosts for 25+ heavy agents.",
       },
+      {
+        symptom: "The calculator says my target is undersized",
+        solution:
+          "Lower the agent count, choose a lighter workload, rent a larger server, or split agents across multiple VPS hosts. Avoid launching a large heavy swarm on a 48GB or 64GB single host.",
+      },
+    ],
+    tips: [
+      "Prices are approximate; RAM, vCPU, storage, and region availability matter more than a specific monthly number.",
+      "The provider cards below link to the Contabo and OVH signup guidance already used by the wizard.",
+    ],
+  },
+
+  5: {
+    commonIssues: [
       {
         symptom: "I entered my IP but can't continue",
         solution:
@@ -97,7 +111,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
     ],
     tips: [
       "Copy the IP address directly from your provider's dashboard to avoid typos.",
-      "Make sure you selected Ubuntu 24.04 (not 22.04 or Debian) when creating the VPS.",
+      "Make sure you selected Ubuntu 24.04 or newer, not Debian, when creating the VPS.",
     ],
   },
 
