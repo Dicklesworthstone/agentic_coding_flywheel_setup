@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test';
-import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildAgentReadinessReport,
+  type AgentReadinessReport,
   type AgentReadinessCommandRunner,
   type AgentReadinessFileSystem,
   type CommandRunResult,
@@ -19,6 +24,7 @@ const HOME = '/home/test';
 const PATH = '/bin';
 const REDACTION_SAMPLE = ['opaque', 'credential', 'sample'].join('-');
 const PROVIDERS = ['claude', 'codex', 'gemini'] as const;
+const AUDIT_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'agent-readiness-audit.ts');
 
 class FixtureFileSystem implements AgentReadinessFileSystem {
   private readonly entries: Map<string, FixtureEntry>;
@@ -167,6 +173,86 @@ function reportFor(entries: Record<string, FixtureEntry>) {
   });
 }
 
+function writeRealFile(path: string, content: string, executableFile = false): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
+  if (executableFile) {
+    chmodSync(path, 0o755);
+  }
+}
+
+function createCliFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'acfs-agent-readiness-'));
+  const home = join(root, 'home');
+  const bin = join(root, 'bin');
+  const secret = `${REDACTION_SAMPLE}-cli`;
+
+  mkdirSync(home, { recursive: true });
+  mkdirSync(bin, { recursive: true });
+  for (const command of ['claude', 'codex', 'gemini', 'caam']) {
+    writeRealFile(join(bin, command), `#!/usr/bin/env bash\nprintf '%s 1.2.3\\n' '${command}'\n`, true);
+  }
+
+  writeRealFile(join(home, '.claude', '.credentials.json'), JSON.stringify({
+    claudeAiOauth: { accessToken: secret },
+  }));
+  writeRealFile(join(home, '.codex', 'auth.json'), JSON.stringify({
+    tokens: { access_token: secret },
+  }));
+  writeRealFile(join(home, '.gemini', 'settings.json'), JSON.stringify({
+    selectedAuthType: 'oauth-personal',
+  }));
+  writeRealFile(join(home, '.gemini', 'oauth_creds.json'), JSON.stringify({
+    access_token: secret,
+  }));
+  writeRealFile(join(home, '.config', 'caam', 'config.json'), JSON.stringify({
+    default_profiles: {
+      claude: 'work',
+      codex: 'work',
+      gemini: 'work',
+    },
+  }));
+  for (const provider of PROVIDERS) {
+    writeRealFile(
+      join(home, '.local', 'share', 'caam', 'profiles', provider, 'work', 'profile.json'),
+      JSON.stringify({ name: 'work', provider, auth_mode: 'oauth', token: secret })
+    );
+  }
+
+  return { root, home, bin, secret };
+}
+
+function runAuditCli(
+  fixture: ReturnType<typeof createCliFixture>,
+  args: string[],
+  env: Record<string, string | undefined> = {}
+) {
+  return spawnSync(process.execPath, [
+    AUDIT_SCRIPT,
+    ...args,
+    '--home',
+    fixture.home,
+    '--path',
+    fixture.bin,
+  ], {
+    encoding: 'utf8',
+    env: {
+      HOME: fixture.home,
+      PATH: fixture.bin,
+      ...env,
+    },
+  });
+}
+
+function parseCliJsonReport(stdout: string): AgentReadinessReport {
+  try {
+    return JSON.parse(stdout) as AgentReadinessReport;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`agent readiness CLI emitted invalid JSON: ${detail}`);
+  }
+}
+
 describe('agent readiness audit', () => {
   test('passes authenticated fixture without leaking secret values', () => {
     const report = reportFor(baseEntries());
@@ -181,6 +267,43 @@ describe('agent readiness audit', () => {
     }
     expect(report.tools.find((item) => item.id === 'caam')?.status).toBe('pass');
     expect(JSON.stringify(report)).not.toContain(REDACTION_SAMPLE);
+  });
+
+  test('CLI JSON and human output preserve readiness states without leaking secrets', () => {
+    const fixture = createCliFixture();
+    const envSecret = `${fixture.secret}-env`;
+
+    const jsonRun = runAuditCli(fixture, ['--json', '--no-version'], {
+      OPENAI_API_KEY: envSecret,
+    });
+
+    expect(jsonRun.status).toBe(0);
+    const report = parseCliJsonReport(jsonRun.stdout);
+    expect(report.ok).toBe(true);
+    expect(report.summary).toEqual({ pass: 4, warn: 0, fail: 0, unknown: 0 });
+    expect(report.tools.map((tool) => [tool.id, tool.status])).toEqual([
+      ['claude', 'pass'],
+      ['codex', 'pass'],
+      ['gemini', 'pass'],
+      ['caam', 'pass'],
+    ]);
+    expect(jsonRun.stdout).not.toContain(fixture.secret);
+    expect(jsonRun.stdout).not.toContain(envSecret);
+
+    const humanRun = runAuditCli(fixture, ['--no-version'], {
+      OPENAI_API_KEY: envSecret,
+    });
+
+    expect(humanRun.status).toBe(0);
+    expect(humanRun.stdout).toContain('ACFS agent readiness audit');
+    expect(humanRun.stdout).toContain('Summary: pass=4 warn=0 unknown=0 fail=0');
+    expect(humanRun.stdout).toContain('[PASS] Claude Code (claude)');
+    expect(humanRun.stdout).toContain('[PASS] Codex CLI (codex)');
+    expect(humanRun.stdout).toContain('[PASS] Gemini CLI (gemini)');
+    expect(humanRun.stdout).toContain('[PASS] Coding Agent Account Manager (caam)');
+    expect(humanRun.stdout).not.toContain(fixture.secret);
+    expect(humanRun.stdout).not.toContain(envSecret);
+    expect(fixture.root).toContain('acfs-agent-readiness-');
   });
 
   test('warns when a CLI is present but auth is missing', () => {

@@ -585,6 +585,75 @@ test_preflight_network_skip_mode() {
     fi
 }
 
+test_preflight_network_readiness_matrix() {
+    harness_section "Test: Network readiness matrix covers reachable, offline, and timeout fixtures"
+
+    local artifact_path="$LOG_FILE"
+    local reachable_mock_dir=""
+    local output=""
+    local exit_code=0
+    local dns_status=""
+    local github_status=""
+    local installer_status=""
+
+    reachable_mock_dir="$(create_mock_command curl 0 "200")"
+    create_mock_command host 0 "" >/dev/null
+    harness_info "readiness category=network-reachable selected_recommendation=continue with --network=check artifact=$artifact_path"
+    output=$(run_preflight_with_mocks "$reachable_mock_dir" "--json") || exit_code=$?
+
+    dns_status=$(get_check_status "$output" "DNS: All hosts resolved")
+    github_status=$(get_check_status "$output" "Network: github.com reachable")
+    installer_status=$(get_check_status "$output" "Network: All installer URLs reachable")
+    if [[ "$dns_status" == "pass" && "$github_status" == "pass" && "$installer_status" == "pass" ]]; then
+        harness_pass "Reachable network fixture passes critical live checks"
+    else
+        harness_fail "Reachable network fixture passes critical live checks" "dns=$dns_status github=$github_status installer=$installer_status output=$output"
+    fi
+
+    if [[ "$exit_code" =~ ^[01]$ ]]; then
+        harness_pass "Reachable network fixture completed with a valid exit code"
+    else
+        harness_fail "Reachable network fixture completed with a valid exit code" "exit: $exit_code"
+    fi
+
+    output=""
+    exit_code=0
+    harness_info "readiness category=network-offline selected_recommendation=retry with --network=check when online artifact=$artifact_path"
+    output=$(run_preflight_with_mocks "" "--json" "--network=skip") || exit_code=$?
+
+    dns_status=$(get_check_status "$output" "DNS: resolution checks skipped")
+    github_status=$(get_check_status "$output" "Network: github.com reachability skipped")
+    installer_status=$(get_check_status "$output" "Network: installer URL checks skipped")
+    if [[ "$dns_status" == "warn" && "$github_status" == "warn" && "$installer_status" == "warn" ]]; then
+        harness_pass "Offline network fixture reports advisory skipped checks"
+    else
+        harness_fail "Offline network fixture reports advisory skipped checks" "dns=$dns_status github=$github_status installer=$installer_status output=$output"
+    fi
+
+    if [[ "$exit_code" =~ ^[01]$ ]]; then
+        harness_pass "Offline network fixture completed with a valid exit code"
+    else
+        harness_fail "Offline network fixture completed with a valid exit code" "exit: $exit_code"
+    fi
+
+    create_mock_command curl 28 "000" >/dev/null
+    output=""
+    exit_code=0
+    harness_info "readiness category=network-timeout selected_recommendation=retry and collect acfs support-bundle artifact=$artifact_path"
+    output=$(run_preflight_with_mocks "$reachable_mock_dir" "--json") || exit_code=$?
+
+    github_status=$(get_check_status "$output" "Network: Cannot reach github.com")
+    local timeout_detail=""
+    timeout_detail=$(echo "$output" | jq -r '.checks[] | select(.message == "Network: Cannot reach github.com") | .detail' 2>/dev/null | head -1)
+    if [[ "$github_status" == "fail" && "$timeout_detail" == *"support-bundle"* ]]; then
+        harness_pass "Timeout network fixture fails closed with support-bundle guidance"
+    else
+        harness_fail "Timeout network fixture fails closed with support-bundle guidance" "status=$github_status detail=$timeout_detail output=$output"
+    fi
+
+    harness_assert_eq "1" "$exit_code" "Timeout network fixture should fail preflight"
+}
+
 test_preflight_dns_failure_reports_host() {
     harness_section "Test: DNS failure reports failed host"
 
@@ -688,6 +757,7 @@ main() {
     test_deb822_format_support
     test_network_timeout_settings
     test_preflight_network_skip_mode
+    test_preflight_network_readiness_matrix
     test_preflight_dns_failure_reports_host
     test_preflight_timeout_reports_retry_guidance
     test_preflight_checksum_candidate_mismatch

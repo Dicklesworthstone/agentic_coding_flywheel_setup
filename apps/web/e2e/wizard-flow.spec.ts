@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
 /**
  * Standard timeouts for different scenarios.
@@ -254,6 +254,70 @@ test.describe("Wizard Flow", () => {
 
     await expect(summary).toContainText("192 GB RAM / 96 vCPU");
     await expect(summary).toContainText("listed 48/64 GB VPS plans are undersized");
+  });
+
+  test("should surface provider readiness states for supported, unknown, and unsafe choices", async ({ page }, testInfo) => {
+    await setupWizardState(page, { os: "mac", completedSteps: [1, 2, 3] });
+    await page.goto("/wizard/rent-vps");
+    await page.waitForLoadState("domcontentloaded");
+
+    const readiness = page.getByTestId("provider-readiness-check");
+    const providerSelect = readiness.getByLabel("Provider");
+    const ubuntuSelect = readiness.getByLabel("Ubuntu image");
+    const artifactPath = testInfo.outputPath("provider-readiness-matrix.json");
+    const matrixLog: Array<{
+      readinessCategory: string;
+      selectedRecommendation: string;
+      expectedLabel: string;
+      artifactPath: string;
+    }> = [];
+
+    const recordState = async (
+      readinessCategory: string,
+      selectedRecommendation: string,
+      expectedLabel: string,
+      expectedSummary: RegExp | string
+    ) => {
+      matrixLog.push({
+        readinessCategory,
+        selectedRecommendation,
+        expectedLabel,
+        artifactPath,
+      });
+      await expect(readiness).toContainText(expectedLabel);
+      await expect(readiness).toContainText(expectedSummary);
+    };
+
+    await recordState(
+      "supported",
+      "Contabo Cloud VPS 50",
+      "Supported",
+      "Ready for the selected target."
+    );
+
+    await providerSelect.selectOption("other");
+    await recordState(
+      "unknown",
+      "manual spec comparison",
+      "Unknown",
+      "Not in the ACFS provider table; compare the specs manually."
+    );
+
+    await providerSelect.selectOption("ovh");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-5");
+    await ubuntuSelect.selectOption("20.04");
+    await recordState(
+      "unsafe",
+      "choose Ubuntu 24.04+ before checkout",
+      "Unsupported",
+      /Ubuntu 20\.04 is below the ACFS minimum/
+    );
+
+    await writeFile(artifactPath, JSON.stringify(matrixLog, null, 2));
+    await testInfo.attach("provider-readiness-matrix", {
+      path: artifactPath,
+      contentType: "application/json",
+    });
   });
 
   test("should complete step 5: Create VPS with IP address", async ({ page }) => {

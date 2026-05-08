@@ -3,12 +3,24 @@ import {
   calculateRequiredSpecs,
   getWorkloadProfile,
   validateVPSReadiness,
+  type VPSReadinessCheckId,
+  type VPSReadinessInput,
   type VPSReadinessResult,
+  type VPSReadinessStatus,
 } from "./vpsProviders";
 
 function checkStatus(result: VPSReadinessResult, id: string) {
   return result.checks.find((check) => check.id === id)?.status;
 }
+
+type ProviderReadinessScenario = {
+  category: string;
+  selectedRecommendation: string;
+  artifactPath: string;
+  input: VPSReadinessInput;
+  expectedStatus: VPSReadinessStatus;
+  expectedChecks: Partial<Record<VPSReadinessCheckId, VPSReadinessStatus>>;
+};
 
 describe("VPS capacity sizing", () => {
   test("keeps the wizard calculator aligned with the standard ACFS profile", () => {
@@ -29,6 +41,86 @@ describe("VPS capacity sizing", () => {
 });
 
 describe("validateVPSReadiness", () => {
+  test("covers supported, unknown, and unsafe provider choices as a readiness matrix", () => {
+    const scenarios: ProviderReadinessScenario[] = [
+      {
+        category: "supported",
+        selectedRecommendation: "Contabo Cloud VPS 50",
+        artifactPath: "apps/web/lib/vpsProviders.test.ts#provider-readiness-matrix",
+        input: {
+          providerId: "contabo",
+          planName: "Cloud VPS 50",
+          ubuntuVersion: "25.10",
+          region: "us",
+          targetAgents: 10,
+          workloadId: "standard",
+        },
+        expectedStatus: "supported",
+        expectedChecks: {
+          provider: "supported",
+          plan: "supported",
+          os: "supported",
+          region: "supported",
+          capacity: "supported",
+        },
+      },
+      {
+        category: "unknown",
+        selectedRecommendation: "manual spec comparison",
+        artifactPath: "apps/web/lib/vpsProviders.test.ts#provider-readiness-matrix",
+        input: {
+          providerId: "other",
+          planName: "custom plan",
+          ubuntuVersion: "25.10",
+          region: "not-listed",
+          targetAgents: 10,
+          workloadId: "standard",
+        },
+        expectedStatus: "unknown",
+        expectedChecks: {
+          provider: "unknown",
+          plan: "unknown",
+          os: "unknown",
+          region: "unknown",
+        },
+      },
+      {
+        category: "unsafe",
+        selectedRecommendation: "choose Ubuntu 24.04+ and a larger host",
+        artifactPath: "apps/web/lib/vpsProviders.test.ts#provider-readiness-matrix",
+        input: {
+          providerId: "ovh",
+          planName: "VPS-4",
+          ubuntuVersion: "20.04",
+          region: "us-east",
+          targetAgents: 25,
+          workloadId: "heavy",
+        },
+        expectedStatus: "unsupported",
+        expectedChecks: {
+          provider: "supported",
+          plan: "supported",
+          os: "unsupported",
+          region: "supported",
+          capacity: "unsupported",
+        },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const result = validateVPSReadiness(scenario.input);
+
+      expect(result.status).toBe(scenario.expectedStatus);
+      for (const [checkId, status] of Object.entries(scenario.expectedChecks) as Array<
+        [VPSReadinessCheckId, VPSReadinessStatus]
+      >) {
+        expect(checkStatus(result, checkId)).toBe(status);
+      }
+      expect(scenario.artifactPath).toContain("vpsProviders.test.ts");
+      expect(scenario.selectedRecommendation.length).toBeGreaterThan(0);
+    }
+  });
+
   test("supports a recommended provider plan, Ubuntu image, region, and target", () => {
     const result = validateVPSReadiness({
       providerId: "contabo",
