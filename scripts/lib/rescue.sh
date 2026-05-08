@@ -30,6 +30,15 @@ RESCUE_SUPPORT_AVAILABLE=false
 RESCUE_SUPPORT_LATEST=""
 RESCUE_SUPPORT_REPORT=""
 RESCUE_EXIT_CODE=1
+RESCUE_SUPPORTED_STATE_SCHEMA_VERSION=3
+RESCUE_CHECKPOINT_SCHEMA_VERSION=""
+RESCUE_CHECKPOINT_SUPPORTED_SCHEMA_VERSION="$RESCUE_SUPPORTED_STATE_SCHEMA_VERSION"
+RESCUE_CHECKPOINT_COMPLETED_COUNT=""
+RESCUE_CHECKPOINT_LAST_COMPLETED_PHASE=""
+RESCUE_CHECKPOINT_NEXT_PHASE=""
+RESCUE_CHECKPOINT_CURRENT_PHASE=""
+RESCUE_CHECKPOINT_FAILED_PHASE=""
+RESCUE_CHECKPOINT_AGE_SECONDS=""
 RESCUE_EVIDENCE=()
 RESCUE_NON_ACTIONS=(
     "Leave state files in place."
@@ -296,8 +305,27 @@ rescue_set_decision() {
     esac
 }
 
+rescue_next_phase_after() {
+    local phase_id="${1:-}"
+
+    case "$phase_id" in
+        "") printf 'user_setup\n' ;;
+        user_setup) printf 'filesystem\n' ;;
+        filesystem) printf 'shell_setup\n' ;;
+        shell_setup) printf 'cli_tools\n' ;;
+        cli_tools) printf 'languages\n' ;;
+        languages) printf 'agents\n' ;;
+        agents) printf 'cloud_db\n' ;;
+        cloud_db) printf 'stack\n' ;;
+        stack) printf 'finalize\n' ;;
+        finalize) printf '\n' ;;
+        *) printf '\n' ;;
+    esac
+}
+
 rescue_analyze_state() {
     local state_file="$RESCUE_STATE_FILE"
+    local schema_version=""
     local failed_phase=""
     local failed_step=""
     local failed_error=""
@@ -306,6 +334,8 @@ rescue_analyze_state() {
     local current_step=""
     local completed_finalize=""
     local completed_count=""
+    local last_completed_phase=""
+    local next_phase=""
     local last_updated=""
     local updated_epoch=""
     local now_epoch=""
@@ -332,6 +362,7 @@ rescue_analyze_state() {
     fi
 
     RESCUE_STATE_STATUS="valid"
+    schema_version="$(rescue_json_get "$state_file" '.schema_version // empty')"
     failed_phase="$(rescue_json_get "$state_file" '.failed_phase // empty')"
     failed_step="$(rescue_json_get "$state_file" '.failed_step // empty')"
     failed_error="$(rescue_json_get "$state_file" '.failed_error // empty')"
@@ -340,11 +371,36 @@ rescue_analyze_state() {
     current_step="$(rescue_json_get "$state_file" '.current_step // empty')"
     completed_finalize="$(rescue_json_get "$state_file" '(.completed_phases // []) | index("finalize") != null')"
     completed_count="$(rescue_json_get "$state_file" '(.completed_phases // []) | length')"
+    last_completed_phase="$(rescue_json_get "$state_file" '(.completed_phases // [] | map(select(type == "string")) | .[-1]) // empty')"
+    next_phase="$(rescue_next_phase_after "$last_completed_phase")"
     last_updated="$(rescue_json_get "$state_file" '.last_updated // .updated_at // .last_update // empty')"
 
+    RESCUE_CHECKPOINT_SCHEMA_VERSION="$schema_version"
+    RESCUE_CHECKPOINT_COMPLETED_COUNT="$completed_count"
+    RESCUE_CHECKPOINT_LAST_COMPLETED_PHASE="$last_completed_phase"
+    RESCUE_CHECKPOINT_NEXT_PHASE="$next_phase"
+    RESCUE_CHECKPOINT_CURRENT_PHASE="$current_phase"
+    RESCUE_CHECKPOINT_FAILED_PHASE="$failed_phase"
+
     rescue_add_evidence "State file is valid JSON: $state_file"
+    if [[ -n "$schema_version" && "$schema_version" != "null" ]]; then
+        rescue_add_evidence "State schema version recorded: $schema_version"
+    fi
     if [[ -n "$completed_count" && "$completed_count" != "null" ]]; then
         rescue_add_evidence "Completed phases recorded: $completed_count"
+    fi
+    if [[ -n "$last_completed_phase" && "$last_completed_phase" != "null" ]]; then
+        rescue_add_evidence "Last completed phase recorded: $last_completed_phase"
+    fi
+    if [[ -n "$next_phase" && "$next_phase" != "null" ]]; then
+        rescue_add_evidence "Next phase to attempt: $next_phase"
+    fi
+
+    if [[ "$schema_version" =~ ^[0-9]+$ ]] && (( schema_version > RESCUE_SUPPORTED_STATE_SCHEMA_VERSION )); then
+        RESCUE_STATE_STATUS="future_version"
+        RESCUE_INSTALL_STATUS="unknown"
+        rescue_set_decision "fail" "future_state" "The ACFS state file was written by a newer schema; capture diagnostics before rerunning this older installer." "acfs support-bundle"
+        return 0
     fi
 
     if [[ -n "$failed_phase" && "$failed_phase" != "null" ]]; then
@@ -386,6 +442,7 @@ rescue_analyze_state() {
 
         if [[ -n "$updated_epoch" && -n "$now_epoch" && "$now_epoch" =~ ^[0-9]+$ && "$updated_epoch" =~ ^[0-9]+$ ]]; then
             age_seconds=$((now_epoch - updated_epoch))
+            RESCUE_CHECKPOINT_AGE_SECONDS="$age_seconds"
             rescue_add_evidence "Checkpoint age seconds: $age_seconds"
             if (( age_seconds > RESCUE_STALE_SECONDS )); then
                 rescue_set_decision "warn" "stale_checkpoint" "The installer has a running checkpoint that has not changed recently." "acfs continue --status"
@@ -558,6 +615,14 @@ rescue_render_json() {
         --arg doctor_status "$RESCUE_DOCTOR_STATUS" \
         --arg doctor_path "$RESCUE_DOCTOR_PATH" \
         --arg install_status "$RESCUE_INSTALL_STATUS" \
+        --arg checkpoint_schema_version "$RESCUE_CHECKPOINT_SCHEMA_VERSION" \
+        --argjson checkpoint_supported_schema_version "$RESCUE_CHECKPOINT_SUPPORTED_SCHEMA_VERSION" \
+        --arg checkpoint_completed_count "$RESCUE_CHECKPOINT_COMPLETED_COUNT" \
+        --arg checkpoint_last_completed_phase "$RESCUE_CHECKPOINT_LAST_COMPLETED_PHASE" \
+        --arg checkpoint_next_phase "$RESCUE_CHECKPOINT_NEXT_PHASE" \
+        --arg checkpoint_current_phase "$RESCUE_CHECKPOINT_CURRENT_PHASE" \
+        --arg checkpoint_failed_phase "$RESCUE_CHECKPOINT_FAILED_PHASE" \
+        --arg checkpoint_age_seconds "$RESCUE_CHECKPOINT_AGE_SECONDS" \
         --arg support_command "acfs support-bundle" \
         --argjson support_available "$support_available_json" \
         --arg support_latest "$RESCUE_SUPPORT_LATEST" \
@@ -575,6 +640,16 @@ rescue_render_json() {
                 state: {status: $state_status, path: (if $state_path == "" then null else $state_path end)},
                 summary: {status: $summary_status, path: (if $summary_path == "" then null else $summary_path end)},
                 doctor: {status: $doctor_status, path: (if $doctor_path == "" then null else $doctor_path end)}
+            },
+            checkpoint: {
+                state_schema_version: (if $checkpoint_schema_version == "" then null else ($checkpoint_schema_version | tonumber? // $checkpoint_schema_version) end),
+                supported_state_schema_version: $checkpoint_supported_schema_version,
+                completed_phase_count: (if $checkpoint_completed_count == "" then null else ($checkpoint_completed_count | tonumber? // null) end),
+                last_completed_phase: (if $checkpoint_last_completed_phase == "" then null else $checkpoint_last_completed_phase end),
+                next_phase: (if $checkpoint_next_phase == "" then null else $checkpoint_next_phase end),
+                current_phase: (if $checkpoint_current_phase == "" then null else $checkpoint_current_phase end),
+                failed_phase: (if $checkpoint_failed_phase == "" then null else $checkpoint_failed_phase end),
+                age_seconds: (if $checkpoint_age_seconds == "" then null else ($checkpoint_age_seconds | tonumber? // null) end)
             },
             evidence: $evidence,
             non_actions: $non_actions,

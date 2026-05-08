@@ -82,6 +82,7 @@ test_full_bundle_report_links_present_files_only() {
     write_file "$bundle_dir" "swarm_timeline.json" '{"schema_version":1,"status":"warn","probes":[{"id":"rch","status":"warn","reason":"queue pressure"}]}'
     write_file "$bundle_dir" "provenance.json" '{"schema_version":1,"status":"pass","summary":{"total":3}}'
     write_file "$bundle_dir" "resource_profile.json" '{"schema_version":1,"status":"pass","mode":"dry-run","redaction":{"paths_redacted":true,"raw_paths_collected":false}}'
+    write_file "$bundle_dir" "checkpoint_summary.json" '{"schema_version":1,"status":"warn","severity":"stale_checkpoint","redaction":{"raw_values_collected":false,"raw_paths_collected":false}}'
     write_file "$bundle_dir" "versions.json" '{"bash":"5.2"}'
     write_file "$bundle_dir" "environment.json" '{"shell":"zsh"}'
     write_file "$bundle_dir" "summary.json" '{"schema_version":1,"status":"pass"}'
@@ -94,12 +95,14 @@ test_full_bundle_report_links_present_files_only() {
     assert_contains "$report_file" "[swarm_timeline.json](swarm_timeline.json)" || return 1
     assert_contains "$report_file" "[provenance.json](provenance.json)" || return 1
     assert_contains "$report_file" "[resource_profile.json](resource_profile.json)" || return 1
+    assert_contains "$report_file" "[checkpoint_summary.json](checkpoint_summary.json)" || return 1
     assert_contains "$report_file" "[summary.json](summary.json)" || return 1
     assert_contains "$report_file" "[scenario_2/mock_rehearsal.json](scenario_2/mock_rehearsal.json)" || return 1
     assert_not_contains "$report_file" "[doctor.json](doctor.json)" || return 1
     assert_not_contains "$report_file" "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmn" || return 1
     assert_not_contains "$report_file" "/home/alice/project" || return 1
     jq -e '.files | index("support-report.md")' "$bundle_dir/manifest.json" >/dev/null || return 1
+    jq -e '.diagnostics.checkpoint_summary.included == true and .diagnostics.checkpoint_summary.summary.status == "warn"' "$bundle_dir/manifest.json" >/dev/null || return 1
 
     pass "full_bundle_report_links_present_files_only"
 }

@@ -88,6 +88,7 @@ test_failed_phase_uses_recorded_resume_hint() {
     state_file="$acfs_home/state.json"
     write_json "$state_file" <<'JSON'
 {
+  "schema_version": 3,
   "version": "1.0",
   "mode": "vibe",
   "completed_phases": ["bootstrap"],
@@ -107,6 +108,7 @@ JSON
       .severity == "blocked" and
       .install_status == "failed" and
       .next_command == "curl -fsSL https://acfs.sh | bash -s -- --resume --yes" and
+      .checkpoint.last_completed_phase == "bootstrap" and
       (.evidence[] | select(. == "Failed phase recorded: cli_tools")) and
       (.evidence[] | select(. == "Failed step recorded: install rch"))
     ' <<<"$output" >/dev/null || return 1
@@ -120,6 +122,7 @@ test_stale_checkpoint_points_to_continue_status() {
     state_file="$acfs_home/state.json"
     write_json "$state_file" <<'JSON'
 {
+  "schema_version": 3,
   "version": "1.0",
   "mode": "vibe",
   "completed_phases": ["bootstrap"],
@@ -140,6 +143,8 @@ JSON
       .severity == "stale_checkpoint" and
       .install_status == "running" and
       .next_command == "acfs continue --status" and
+      .checkpoint.current_phase == "languages" and
+      .checkpoint.age_seconds == 4000 and
       (.evidence[] | select(. == "Checkpoint age seconds: 4000"))
     ' <<<"$output" >/dev/null || return 1
 
@@ -168,12 +173,47 @@ test_malformed_checkpoint_fails_closed() {
     pass "malformed_checkpoint_fails_closed"
 }
 
+test_future_checkpoint_schema_fails_closed() {
+    local acfs_home state_file output status
+    acfs_home="$ARTIFACT_DIR/future-schema/.acfs"
+    state_file="$acfs_home/state.json"
+    write_json "$state_file" <<'JSON'
+{
+  "schema_version": 99,
+  "version": "9.9.9",
+  "mode": "vibe",
+  "completed_phases": ["user_setup"],
+  "current_phase": "filesystem",
+  "failed_phase": null,
+  "failed_step": null,
+  "last_updated": 1000
+}
+JSON
+
+    output="$(run_rescue_json future_checkpoint_schema --acfs-home "$acfs_home")"
+    status="$(cat "$ARTIFACT_DIR/future_checkpoint_schema.exit")"
+
+    [[ "$status" -eq 2 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      .severity == "future_state" and
+      .next_command == "acfs support-bundle" and
+      .sources.state.status == "future_version" and
+      .checkpoint.state_schema_version == 99 and
+      .checkpoint.supported_state_schema_version == 3 and
+      (.evidence[] | select(. == "State schema version recorded: 99"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "future_checkpoint_schema_fails_closed"
+}
+
 test_healthy_state_points_to_onboard() {
     local acfs_home state_file output status
     acfs_home="$ARTIFACT_DIR/healthy/.acfs"
     state_file="$acfs_home/state.json"
     write_json "$state_file" <<'JSON'
 {
+  "schema_version": 3,
   "version": "1.0",
   "mode": "vibe",
   "completed_phases": ["bootstrap", "languages", "finalize"],
@@ -193,6 +233,8 @@ JSON
       .severity == "healthy" and
       .install_status == "healthy" and
       .next_command == "onboard" and
+      .checkpoint.last_completed_phase == "finalize" and
+      .checkpoint.next_phase == null and
       (.evidence[] | select(. == "Finalize phase is marked complete."))
     ' <<<"$output" >/dev/null || return 1
 
@@ -291,6 +333,7 @@ main() {
     run_test test_failed_phase_uses_recorded_resume_hint
     run_test test_stale_checkpoint_points_to_continue_status
     run_test test_malformed_checkpoint_fails_closed
+    run_test test_future_checkpoint_schema_fails_closed
     run_test test_healthy_state_points_to_onboard
     run_test test_support_bundle_hint_includes_latest_report
     run_test test_doctor_failure_prefers_support_bundle

@@ -1350,6 +1350,256 @@ support_installer_progress_summary_json() {
     }'
 }
 
+support_checkpoint_summary_json() {
+    local jq_bin="$1"
+    local state_file="$2"
+    local file_status=""
+    local now_epoch="${ACFS_SUPPORT_NOW_EPOCH:-}"
+    local now_epoch_json="null"
+    local stale_seconds="${ACFS_CHECKPOINT_STALE_SECONDS:-3600}"
+    local supported_schema_version=3
+
+    [[ "$now_epoch" =~ ^[0-9]+$ ]] && now_epoch_json="$now_epoch"
+    [[ "$stale_seconds" =~ ^[0-9]+$ ]] || stale_seconds=3600
+
+    file_status="$(support_json_file_status "$state_file" "$jq_bin")"
+    case "$file_status" in
+        missing|empty)
+            "$jq_bin" -n --arg source_status "$file_status" '{
+                schema_version: 1,
+                status: "empty",
+                severity: "needs_state",
+                install_status: "unknown",
+                next_action: "acfs status --json",
+                state: {
+                    source_file: "state.json",
+                    source_status: $source_status,
+                    schema_version: null,
+                    supported_schema_version: 3,
+                    acfs_version: null,
+                    mode: null
+                },
+                checkpoint: {
+                    completed_phase_count: 0,
+                    skipped_phase_count: 0,
+                    last_completed_phase: null,
+                    next_phase: null,
+                    current_phase: null,
+                    current_step_present: false,
+                    failed_phase: null,
+                    failed_step_present: false,
+                    failed_error_present: false,
+                    resume_hint_available: false,
+                    updated_epoch: null,
+                    age_seconds: null
+                },
+                redaction: {
+                    raw_values_collected: false,
+                    raw_paths_collected: false,
+                    paths_redacted: true,
+                    secrets_collected: false,
+                    raw_errors_collected: false,
+                    resume_command_collected: false,
+                    sanitized_records_only: true
+                }
+            }'
+            return 0
+            ;;
+        malformed)
+            "$jq_bin" -n '{
+                schema_version: 1,
+                status: "warn",
+                severity: "malformed_state",
+                install_status: "unknown",
+                next_action: "acfs support-bundle",
+                reason: "installer state JSON is malformed; raw content intentionally not summarized",
+                state: {
+                    source_file: "state.json",
+                    source_status: "malformed",
+                    schema_version: null,
+                    supported_schema_version: 3,
+                    acfs_version: null,
+                    mode: null
+                },
+                checkpoint: {
+                    completed_phase_count: 0,
+                    skipped_phase_count: 0,
+                    last_completed_phase: null,
+                    next_phase: null,
+                    current_phase: null,
+                    current_step_present: false,
+                    failed_phase: null,
+                    failed_step_present: false,
+                    failed_error_present: false,
+                    resume_hint_available: false,
+                    updated_epoch: null,
+                    age_seconds: null
+                },
+                redaction: {
+                    raw_values_collected: false,
+                    raw_paths_collected: false,
+                    paths_redacted: true,
+                    secrets_collected: false,
+                    raw_errors_collected: false,
+                    resume_command_collected: false,
+                    sanitized_records_only: true
+                }
+            }'
+            return 0
+            ;;
+    esac
+
+    "$jq_bin" \
+        --argjson supported_schema "$supported_schema_version" \
+        --argjson now_epoch "$now_epoch_json" \
+        --argjson stale_seconds "$stale_seconds" \
+        '
+          def safe_token:
+            if type == "string" and test("^[A-Za-z0-9_.:-]{1,80}$") then . else null end;
+          def safe_mode:
+            if type == "string" and test("^[A-Za-z0-9_.:-]{1,40}$") then . else null end;
+          def safe_version:
+            if type == "string" and test("^[A-Za-z0-9_.:+-]{1,80}$") then . else null end;
+          def numeric_epoch:
+            if type == "number" and . >= 0 then floor
+            elif type == "string" and test("^[0-9]+$") then tonumber
+            else null end;
+          def phase_after($phase):
+            if $phase == null then "user_setup"
+            elif $phase == "user_setup" then "filesystem"
+            elif $phase == "filesystem" then "shell_setup"
+            elif $phase == "shell_setup" then "cli_tools"
+            elif $phase == "cli_tools" then "languages"
+            elif $phase == "languages" then "agents"
+            elif $phase == "agents" then "cloud_db"
+            elif $phase == "cloud_db" then "stack"
+            elif $phase == "stack" then "finalize"
+            else null end;
+          . as $state
+          | (($state.completed_phases // []) | map(select(type == "string") | safe_token) | map(select(. != null))) as $completed
+          | (($state.skipped_phases // []) | map(select(type == "string") | safe_token) | map(select(. != null))) as $skipped
+          | ($state.schema_version // null) as $state_schema
+          | ($completed[-1] // null) as $last_completed
+          | (if ($state.current_phase | type) == "object" then ($state.current_phase.id // null) else $state.current_phase end | safe_token) as $current_phase
+          | ($state.failed_phase | safe_token) as $failed_phase
+          | ($state.last_updated // $state.updated_at // $state.last_update // null | numeric_epoch) as $updated_epoch
+          | (if $now_epoch != null and $updated_epoch != null then ($now_epoch - $updated_epoch) else null end) as $age_seconds
+          | (if ($state_schema | type) == "number" and $state_schema > $supported_schema then true else false end) as $future_schema
+          | ($current_phase != null and $age_seconds != null and $age_seconds > $stale_seconds) as $stale
+          | {
+              schema_version: 1,
+              status: (
+                if $future_schema then "warn"
+                elif $failed_phase != null then "fail"
+                elif ($completed | index("finalize")) then "pass"
+                elif $stale then "warn"
+                elif $current_phase != null then "warn"
+                elif ($completed | length) > 0 then "warn"
+                else "empty" end
+              ),
+              severity: (
+                if $future_schema then "future_state"
+                elif $failed_phase != null then "blocked"
+                elif ($completed | index("finalize")) then "healthy"
+                elif $stale then "stale_checkpoint"
+                elif $current_phase != null then "install_running"
+                elif ($completed | length) > 0 then "interrupted"
+                else "needs_state" end
+              ),
+              install_status: (
+                if $failed_phase != null then "failed"
+                elif ($completed | index("finalize")) then "healthy"
+                elif $current_phase != null then "running"
+                elif ($completed | length) > 0 then "partial"
+                else "unknown" end
+              ),
+              next_action: (
+                if $future_schema then "acfs support-bundle"
+                elif $failed_phase != null then "acfs rescue --json"
+                elif ($completed | index("finalize")) then "onboard"
+                elif $stale then "acfs continue --status"
+                elif $current_phase != null then "acfs continue"
+                elif ($completed | length) > 0 then "acfs rescue --json"
+                else "acfs status --json" end
+              ),
+              state: {
+                source_file: "state.json",
+                source_status: (if $future_schema then "future_version" else "present" end),
+                schema_version: $state_schema,
+                supported_schema_version: $supported_schema,
+                acfs_version: ($state.version | safe_version),
+                mode: ($state.mode | safe_mode)
+              },
+              checkpoint: {
+                completed_phase_count: ($completed | length),
+                skipped_phase_count: ($skipped | length),
+                last_completed_phase: $last_completed,
+                next_phase: (phase_after($last_completed)),
+                current_phase: $current_phase,
+                current_step_present: (($state.current_step // null) != null),
+                failed_phase: $failed_phase,
+                failed_step_present: (($state.failed_step // null) != null),
+                failed_error_present: (($state.failed_error // null) != null),
+                resume_hint_available: (($state.resume_hint // null) != null),
+                updated_epoch: $updated_epoch,
+                age_seconds: $age_seconds
+              },
+              redaction: {
+                raw_values_collected: false,
+                raw_paths_collected: false,
+                paths_redacted: true,
+                secrets_collected: false,
+                raw_errors_collected: false,
+                resume_command_collected: false,
+                sanitized_records_only: true
+              }
+            }
+        ' "$state_file" 2>/dev/null || "$jq_bin" -n '{
+            schema_version: 1,
+            status: "warn",
+            severity: "summary_failed",
+            install_status: "unknown",
+            next_action: "acfs support-bundle",
+            redaction: {
+                raw_values_collected: false,
+                raw_paths_collected: false,
+                paths_redacted: true,
+                secrets_collected: false,
+                raw_errors_collected: false,
+                resume_command_collected: false,
+                sanitized_records_only: true
+            }
+        }'
+}
+
+# Capture a redacted checkpoint summary without copying raw state values.
+# Usage: capture_checkpoint_summary_json <bundle_dir>
+capture_checkpoint_summary_json() {
+    local bundle_dir="$1"
+    local jq_bin=""
+    local output_file="$bundle_dir/checkpoint_summary.json"
+    local state_file=""
+
+    jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
+    if [[ -z "$jq_bin" ]]; then
+        cat > "$output_file" <<'JSON'
+{"schema_version":1,"status":"warn","severity":"blocked","reason":"jq is required to render checkpoint diagnostics","redaction":{"raw_values_collected":false,"raw_paths_collected":false,"paths_redacted":true}}
+JSON
+        record_bundle_file "checkpoint_summary.json"
+        return 0
+    fi
+
+    state_file="${_SUPPORT_ACFS_HOME:+$_SUPPORT_ACFS_HOME/state.json}"
+    support_checkpoint_summary_json "$jq_bin" "$state_file" > "$output_file" 2>/dev/null || {
+        cat > "$output_file" <<'JSON'
+{"schema_version":1,"status":"warn","severity":"summary_failed","reason":"checkpoint summary rendering failed","redaction":{"raw_values_collected":false,"raw_paths_collected":false,"paths_redacted":true}}
+JSON
+    }
+
+    record_bundle_file "checkpoint_summary.json"
+    return 0
+}
+
 # Capture a redacted local progress summary without copying raw milestone files.
 # Usage: capture_local_progress_json <bundle_dir>
 capture_local_progress_json() {
@@ -2347,6 +2597,7 @@ write_manifest() {
     local provenance_manifest=""
     local resource_profile_manifest=""
     local local_progress_manifest=""
+    local checkpoint_summary_manifest=""
     local swarm_inventory_manifest=""
     local versions_manifest=""
     local environment_manifest=""
@@ -2356,6 +2607,7 @@ write_manifest() {
     provenance_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "provenance.json" "provenance" '["tool_versions","install_sources","local_paths"]' "$jq_bin")"
     resource_profile_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "resource_profile.json" "resource_profile" '["local_paths","wrapper_commands","secret_values"]' "$jq_bin")"
     local_progress_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "local_progress.json" "local_progress" '["local_milestones","wizard_steps","installer_phase_ids","onboard_lesson_numbers"]' "$jq_bin")"
+    checkpoint_summary_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "checkpoint_summary.json" "checkpoint_summary" '["state_schema_version","installer_phase_ids","checkpoint_status"]' "$jq_bin")"
     swarm_inventory_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "swarm_inventory.json" "swarm_inventory" '["hostnames","ip_addresses","ssh_users","ssh_key_paths","provider_ids","repo_paths","home_paths","token_like_notes"]' "$jq_bin")"
     versions_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "versions.json" "versions" '["tool_versions"]' "$jq_bin")"
     environment_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "environment.json" "environment" '["hostnames","home_paths","local_paths"]' "$jq_bin")"
@@ -2376,6 +2628,7 @@ write_manifest() {
         --argjson provenance_manifest "$provenance_manifest" \
         --argjson resource_profile_manifest "$resource_profile_manifest" \
         --argjson local_progress_manifest "$local_progress_manifest" \
+        --argjson checkpoint_summary_manifest "$checkpoint_summary_manifest" \
         --argjson swarm_inventory_manifest "$swarm_inventory_manifest" \
         --argjson versions_manifest "$versions_manifest" \
         --argjson environment_manifest "$environment_manifest" \
@@ -2399,6 +2652,7 @@ write_manifest() {
                 provenance: $provenance_manifest,
                 resource_profile: $resource_profile_manifest,
                 local_progress: $local_progress_manifest,
+                checkpoint_summary: $checkpoint_summary_manifest,
                 swarm_inventory: $swarm_inventory_manifest,
                 versions: $versions_manifest,
                 environment: $environment_manifest
@@ -2524,6 +2778,8 @@ write_support_report_index() {
     support_report_write_link_line "$bundle_dir" "resource_profile.json" "Resource profile" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "local_progress.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "local_progress.json" "Local progress" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "checkpoint_summary.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "checkpoint_summary.json" "Checkpoint summary" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "swarm_inventory.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "swarm_inventory.json" "Swarm inventory" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "versions.json" "$jq_bin")"
@@ -2806,6 +3062,7 @@ main() {
     # --- Capture doctor JSON ---
     log_detail "Running health checks..."
     capture_doctor_json "$bundle_dir" || true
+    capture_checkpoint_summary_json "$bundle_dir" || true
     capture_local_progress_json "$bundle_dir" || true
     capture_swarm_status_json "$bundle_dir" || true
     capture_provenance_json "$bundle_dir" || true
