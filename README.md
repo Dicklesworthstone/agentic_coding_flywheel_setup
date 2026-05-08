@@ -2334,6 +2334,30 @@ jobs:
 
 Docker catches shell and package regressions early. The factory E2E is the authoritative release gate for the real beginner VPS path because it exercises systemd, SSH, login/user-service behavior, and provider image defaults that containers cannot model. A Docker pass is not sufficient release proof by itself.
 
+### Local Release Doctor (`scripts/release-doctor.sh`)
+
+Run the local release gate before tagging or publishing a release candidate:
+
+```bash
+bash scripts/release-doctor.sh --full --network=check
+bash scripts/release-doctor.sh --json --full --network=check > release-doctor.json
+```
+
+For a fast local readiness check while developing:
+
+```bash
+bash scripts/release-doctor.sh --json
+```
+
+The release doctor composes the maintainer checks that are easy to forget:
+- branch policy and clean worktree status
+- `shellcheck install.sh scripts/**/*.sh`
+- manifest/generated/checksum drift via `scripts/check-manifest-drift.sh --json --quiet`
+- verified-installer checksum candidate review with `--network=check`
+- website `type-check`, `lint`, and production build when `apps/web` changed or `--full` is set
+
+The checksum candidate check uses the canonical updater output. If the generated body differs from `checksums.yaml`, review the diff before release; if only the timestamp header differs, leave `checksums.yaml` unchanged. The default `--network=skip` keeps routine runs offline, and `--web=auto` runs website checks only when web files changed unless `--full` or `--web=always` is provided.
+
 ### Website Deployment (`website.yml`)
 
 ```yaml
