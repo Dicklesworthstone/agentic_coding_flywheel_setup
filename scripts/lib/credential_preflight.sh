@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+CRED_PREFLIGHT_SYSTEM_PATH="/usr/bin:/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/sbin"
+PATH="$CRED_PREFLIGHT_SYSTEM_PATH"
+export PATH
+
 CRED_PREFLIGHT_JSON=false
 CRED_PREFLIGHT_ROOT=""
 CRED_PREFLIGHT_HOME="${HOME:-}"
@@ -23,6 +27,7 @@ CRED_PREFLIGHT_EXCLUDES=()
 CRED_PREFLIGHT_FINDINGS=()
 CRED_PREFLIGHT_SKIPPED=()
 CRED_PREFLIGHT_FILES_SCANNED=0
+CRED_PREFLIGHT_JQ_BIN=""
 
 credential_preflight_usage() {
     cat <<'EOF'
@@ -102,23 +107,47 @@ credential_preflight_parse_args() {
 
 credential_preflight_binary_path() {
     local name="${1:-}"
-    local path_value=""
+    local candidate=""
 
     [[ -n "$name" ]] || return 1
     case "$name" in
-        .|..|*/*) return 1 ;;
+        .|..|*/*|*[!A-Za-z0-9._+-]*) return 1 ;;
     esac
 
-    path_value="$(command -v "$name" 2>/dev/null || true)"
-    [[ -n "$path_value" && -x "$path_value" ]] || return 1
-    printf '%s\n' "$path_value"
+    for candidate in \
+        "/usr/bin/$name" \
+        "/bin/$name" \
+        "/usr/local/bin/$name" \
+        "/usr/local/sbin/$name" \
+        "/usr/sbin/$name" \
+        "/sbin/$name"
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
 }
 
 credential_preflight_require_jq() {
-    if ! credential_preflight_binary_path jq >/dev/null 2>&1; then
+    CRED_PREFLIGHT_JQ_BIN="$(credential_preflight_binary_path jq 2>/dev/null || true)"
+    if [[ -z "$CRED_PREFLIGHT_JQ_BIN" ]]; then
         echo "Error: jq is required for acfs credential-preflight" >&2
         return 2
     fi
+}
+
+credential_preflight_jq() {
+    local jq_bin="$CRED_PREFLIGHT_JQ_BIN"
+
+    if [[ -z "$jq_bin" || ! -x "$jq_bin" ]]; then
+        jq_bin="$(credential_preflight_binary_path jq 2>/dev/null || true)"
+        [[ -n "$jq_bin" ]] || return 2
+        CRED_PREFLIGHT_JQ_BIN="$jq_bin"
+    fi
+
+    "$jq_bin" "$@"
 }
 
 credential_preflight_abs_path() {
@@ -253,7 +282,7 @@ credential_preflight_json_array_from_objects() {
     if [[ $# -eq 0 ]]; then
         printf '[]\n'
     else
-        printf '%s\n' "$@" | jq -s .
+        printf '%s\n' "$@" | credential_preflight_jq -s .
     fi
 }
 
@@ -264,7 +293,7 @@ credential_preflight_add_skipped() {
     local reason="$4"
     local object=""
 
-    object="$(jq -n \
+    object="$(credential_preflight_jq -n \
         --arg file "$(credential_preflight_display_path "$root" "$path")" \
         --arg source "$source" \
         --arg reason "$reason" \
@@ -293,7 +322,7 @@ credential_preflight_add_finding() {
     local evidence="$6"
     local object=""
 
-    object="$(jq -n \
+    object="$(credential_preflight_jq -n \
         --arg category "$category" \
         --arg severity "warning" \
         --arg file "$(credential_preflight_display_path "$root" "$path")" \
@@ -508,7 +537,7 @@ credential_preflight_render_json() {
 
     findings_json="$(credential_preflight_json_array_from_objects "${CRED_PREFLIGHT_FINDINGS[@]}")"
     skipped_json="$(credential_preflight_json_array_from_objects "${CRED_PREFLIGHT_SKIPPED[@]}")"
-    categories_json="$(jq -n --argjson findings "$findings_json" '
+    categories_json="$(credential_preflight_jq -n --argjson findings "$findings_json" '
       $findings
       | group_by(.category)
       | map({category: .[0].category, count: length})
@@ -518,7 +547,7 @@ credential_preflight_render_json() {
         status="warn"
     fi
 
-    jq -n \
+    credential_preflight_jq -n \
         --arg generated_at "$CRED_PREFLIGHT_GENERATED_AT" \
         --arg status "$status" \
         --argjson files_scanned "$CRED_PREFLIGHT_FILES_SCANNED" \
@@ -563,7 +592,7 @@ credential_preflight_render_human() {
         "${#CRED_PREFLIGHT_FINDINGS[@]}" \
         "$CRED_PREFLIGHT_FILES_SCANNED"
     for object in "${CRED_PREFLIGHT_FINDINGS[@]}"; do
-        jq -r '"\(.file):\(.line): \(.category) - \(.evidence)\n  Remediation: \(.remediation)"' <<<"$object"
+        credential_preflight_jq -r '"\(.file):\(.line): \(.category) - \(.evidence)\n  Remediation: \(.remediation)"' <<<"$object"
     done
     if [[ ${#CRED_PREFLIGHT_SKIPPED[@]} -gt 0 ]]; then
         printf 'Skipped %d file(s); use --json for reasons.\n' "${#CRED_PREFLIGHT_SKIPPED[@]}"
