@@ -620,7 +620,8 @@ prompt_ssh_key() {
             return 0
         fi
         log_warn "Non-interactive mode detected (no TTY), skipping SSH key prompt"
-        log_detail "You can add your key later with: ssh-copy-id root@<ip>"
+        log_detail "After install, add your key with: ssh-copy-id ${TARGET_USER:-ubuntu}@<ip>"
+        export ACFS_SSH_KEY_WARNING="true"
         return 0
     fi
 
@@ -673,7 +674,8 @@ prompt_ssh_key() {
         else
             log_warn "SSH key setup skipped"
             log_detail "From your local machine, you can add your key later by running:"
-            log_detail "  ssh-copy-id -i ~/.ssh/acfs_ed25519.pub root@<ip>"
+            log_detail "  ssh-copy-id -i ~/.ssh/acfs_ed25519.pub ${TARGET_USER:-ubuntu}@<ip>"
+            export ACFS_SSH_KEY_WARNING="true"
         fi
         return 0
     fi

@@ -359,6 +359,42 @@ EOF
     assert_output --partial "skipping SSH key prompt in --yes mode"
 }
 
+@test "prompt_ssh_key: --yes missing root keys sets final SSH warning" {
+    run env PROJECT_ROOT="$PROJECT_ROOT" BATS_TEST_TMPDIR="$BATS_TEST_TMPDIR" bash -c '
+        set -euo pipefail
+        source "$PROJECT_ROOT/scripts/lib/logging.sh"
+        source "$PROJECT_ROOT/scripts/lib/user.sh"
+        export ACFS_TEST_MODE=1
+        export ACFS_TEST_ROOT_AUTHORIZED_KEYS="$BATS_TEST_TMPDIR/missing_authorized_keys"
+        export TARGET_USER=testuser
+        export YES_MODE=true
+        prompt_ssh_key
+        printf "warning=%s\n" "${ACFS_SSH_KEY_WARNING:-}"
+    '
+    assert_success
+    assert_output --partial "warning=true"
+}
+
+@test "prompt_ssh_key: noninteractive missing root keys sets final SSH warning" {
+    command -v setsid >/dev/null || skip "setsid is required to detach /dev/tty"
+
+    run env PROJECT_ROOT="$PROJECT_ROOT" BATS_TEST_TMPDIR="$BATS_TEST_TMPDIR" setsid bash -c '
+        set -euo pipefail
+        source "$PROJECT_ROOT/scripts/lib/logging.sh"
+        source "$PROJECT_ROOT/scripts/lib/user.sh"
+        export ACFS_TEST_MODE=1
+        export ACFS_TEST_ROOT_AUTHORIZED_KEYS="$BATS_TEST_TMPDIR/missing_authorized_keys"
+        export TARGET_USER=testuser
+        export YES_MODE=false
+        prompt_ssh_key </dev/null
+        printf "warning=%s\n" "${ACFS_SSH_KEY_WARNING:-}"
+    '
+    assert_success
+    assert_output --partial "Non-interactive mode detected"
+    assert_output --partial "ssh-copy-id testuser@<ip>"
+    assert_output --partial "warning=true"
+}
+
 @test "migrate_ssh_keys: fails closed when TARGET_HOME is unresolved" {
     mkdir -p "$HOME/.ssh"
     echo "ssh-rsa TESTKEY" > "$HOME/.ssh/authorized_keys"
