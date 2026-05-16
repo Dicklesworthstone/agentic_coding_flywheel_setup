@@ -505,22 +505,63 @@ EOF
     local current_home
     local target_home
     local state_file
-    local fake_path
-    local original_path="${PATH-}"
+    local sed_path
+    local head_path
     current_home="$(create_temp_dir)"
     target_home="$(create_temp_dir)"
     state_file="$BATS_TEST_TMPDIR/update-state.json"
-    fake_path="$(create_temp_dir)"
+    sed_path="$(command -v sed)"
+    head_path="$(command -v head)"
 
     cat > "$state_file" <<EOF
 {"bin_dir":"$target_home/custom-bin"}
 EOF
 
-    ln -s /usr/bin/sed "$fake_path/sed"
-    ln -s /usr/bin/head "$fake_path/head"
+    update_system_binary_path() {
+        case "${1:-}" in
+            sed) printf '%s\n' "$sed_path" ;;
+            head) printf '%s\n' "$head_path" ;;
+            *) return 1 ;;
+        esac
+    }
 
     export HOME="$current_home"
-    export PATH="$fake_path"
+    export TARGET_USER="acfstestuser"
+    export TARGET_HOME="$target_home"
+    export ACFS_STATE_FILE="$state_file"
+    unset ACFS_BIN_DIR
+    unset ACFS_HOME
+
+    run update_preferred_user_bin_dir
+    assert_success
+    assert_output "$target_home/custom-bin"
+}
+
+@test "update_preferred_user_bin_dir: ignores PATH-poisoned jq" {
+    local current_home
+    local target_home
+    local state_file
+    local fake_path
+    local marker
+    local original_path="${PATH-}"
+    current_home="$(create_temp_dir)"
+    target_home="$(create_temp_dir)"
+    state_file="$BATS_TEST_TMPDIR/update-state-path-poisoned-jq.json"
+    fake_path="$(create_temp_dir)"
+    marker="$BATS_TEST_TMPDIR/update-fake-jq-used"
+
+    cat > "$state_file" <<EOF
+{"bin_dir":"$target_home/custom-bin"}
+EOF
+    cat > "$fake_path/jq" <<EOF
+#!/usr/bin/env bash
+: > "$marker"
+printf '%s\n' "$target_home/poison-bin"
+EOF
+    chmod +x "$fake_path/jq"
+
+    export HOME="$current_home"
+    export PATH="$fake_path:/usr/bin:/bin"
     export TARGET_USER="acfstestuser"
     export TARGET_HOME="$target_home"
     export ACFS_STATE_FILE="$state_file"
@@ -529,6 +570,39 @@ EOF
 
     run update_preferred_user_bin_dir
     PATH="${original_path:-/usr/bin:/bin}"
+    assert_success
+    assert_output "$target_home/custom-bin"
+    [[ ! -e "$marker" ]] || fail "update_preferred_user_bin_dir used PATH-poisoned jq"
+}
+
+@test "update_preferred_user_bin_dir: clamps multiline state bin_dir" {
+    local current_home
+    local target_home
+    local state_file
+    local jq_candidate=""
+
+    for jq_candidate in /usr/bin/jq /bin/jq /usr/local/bin/jq; do
+        [[ -x "$jq_candidate" ]] && break
+        jq_candidate=""
+    done
+    [[ -n "$jq_candidate" ]] || skip "system jq required"
+
+    current_home="$(create_temp_dir)"
+    target_home="$(create_temp_dir)"
+    state_file="$BATS_TEST_TMPDIR/update-state-multiline-bin-dir.json"
+
+    cat > "$state_file" <<EOF
+{"bin_dir":"$target_home/custom-bin\n$target_home/poison-bin"}
+EOF
+
+    export HOME="$current_home"
+    export TARGET_USER="acfstestuser"
+    export TARGET_HOME="$target_home"
+    export ACFS_STATE_FILE="$state_file"
+    unset ACFS_BIN_DIR
+    unset ACFS_HOME
+
+    run update_preferred_user_bin_dir
     assert_success
     assert_output "$target_home/custom-bin"
 }
@@ -4338,6 +4412,43 @@ EOF
     assert_output --partial "REAL_NIGHTLY HOME=$target_home TARGET_HOME=$target_home ACFS_HOME=$target_home/.acfs"
     refute_output --partial "POISON_NIGHTLY"
     [[ ! -e "$marker" ]]
+}
+
+@test "nightly update state readers clamp multiline jq strings" {
+    local nightly="$PROJECT_ROOT/scripts/lib/nightly_update.sh"
+    local jq_candidate=""
+    local state_file
+    local target_home
+
+    for jq_candidate in /usr/bin/jq /bin/jq /usr/local/bin/jq; do
+        [[ -x "$jq_candidate" ]] && break
+        jq_candidate=""
+    done
+    [[ -n "$jq_candidate" ]] || skip "system jq required"
+
+    target_home="$(create_temp_dir)"
+    state_file="$BATS_TEST_TMPDIR/nightly-state-multiline.json"
+    mkdir -p "$target_home/.local/bin"
+    cat > "$state_file" <<EOF
+{"target_home":"$target_home\n/tmp/poisoned-home","bin_dir":"$target_home/.local/bin\n/tmp/poisoned-bin"}
+EOF
+
+    run bash -s -- "$nightly" "$state_file" "$target_home" <<'EOF_NIGHTLY_MULTILINE_STATE'
+script="$1"
+state_file="$2"
+target_home="$3"
+
+eval "$(sed -n '/^sanitize_abs_nonroot_path()/,/^}$/p' "$script")"
+eval "$(sed -n '/^system_binary_path()/,/^}$/p' "$script")"
+eval "$(sed -n '/^read_state_string_from_file()/,/^}$/p' "$script")"
+eval "$(sed -n '/^read_bin_dir_from_state_file()/,/^}$/p' "$script")"
+eval "$(sed -n '/^read_target_home_from_state_file()/,/^}$/p' "$script")"
+
+set -euo pipefail
+[[ "$(read_bin_dir_from_state_file "$state_file")" == "$target_home/.local/bin" ]]
+[[ "$(read_target_home_from_state_file "$state_file")" == "$target_home" ]]
+EOF_NIGHTLY_MULTILINE_STATE
+    assert_success
 }
 
 @test "nightly update honors explicit system state and repairs target runtime home" {

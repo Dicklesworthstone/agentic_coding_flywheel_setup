@@ -146,13 +146,14 @@ read_state_string_from_file() {
     jq_bin="$(system_binary_path jq 2>/dev/null || true)"
     if [[ -n "$jq_bin" && -n "$jq_expr" ]]; then
         value="$("$jq_bin" -r "$jq_expr" "$state_file" 2>/dev/null || true)"
+        value="${value%%$'\n'*}"
     fi
 
     if [[ -z "$value" ]]; then
         sed_bin="$(system_binary_path sed 2>/dev/null || true)"
         head_bin="$(system_binary_path head 2>/dev/null || true)"
         if [[ -n "$sed_bin" && -n "$head_bin" ]]; then
-            value="$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | "$head_bin" -n 1)"
+            value="$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | "$head_bin" -n 1 || true)"
         elif [[ -n "$sed_bin" ]]; then
             value="$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null || true)"
             value="${value%%$'\n'*}"

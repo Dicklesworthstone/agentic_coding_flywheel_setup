@@ -484,11 +484,7 @@ update_preferred_user_bin_dir() {
         "/var/lib/acfs/state.json"; do
         [[ -n "$state_file" && -f "$state_file" ]] || continue
 
-        if command -v jq &>/dev/null; then
-            bin_dir="$(jq -r '.bin_dir // empty' "$state_file" 2>/dev/null || true)"
-        else
-            bin_dir="$(sed -n 's/.*"bin_dir"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$state_file" | head -n 1)"
-        fi
+        bin_dir="$(update_read_state_string_from_file "$state_file" "bin_dir" 2>/dev/null || true)"
 
         bin_dir="$(update_validate_bin_dir_for_home "$bin_dir" "$target_home" 2>/dev/null || true)"
         if [[ -n "$bin_dir" ]]; then
@@ -503,6 +499,38 @@ update_preferred_user_bin_dir() {
     fi
 
     return 1
+}
+
+update_read_state_string_from_file() {
+    local state_file="${1:-}"
+    local key="${2:-}"
+    local value=""
+    local jq_bin=""
+    local sed_bin=""
+    local head_bin=""
+
+    [[ -f "$state_file" ]] || return 1
+    [[ "$key" =~ ^[A-Za-z0-9_-]+$ ]] || return 1
+
+    jq_bin="$(update_system_binary_path jq 2>/dev/null || true)"
+    if [[ -n "$jq_bin" ]]; then
+        value="$("$jq_bin" -r --arg key "$key" '.[$key] // empty' "$state_file" 2>/dev/null || true)"
+        value="${value%%$'\n'*}"
+    fi
+
+    if [[ -z "$value" ]]; then
+        sed_bin="$(update_system_binary_path sed 2>/dev/null || true)"
+        head_bin="$(update_system_binary_path head 2>/dev/null || true)"
+        if [[ -n "$sed_bin" && -n "$head_bin" ]]; then
+            value="$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null | "$head_bin" -n 1 || true)"
+        elif [[ -n "$sed_bin" ]]; then
+            value="$("$sed_bin" -n "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" "$state_file" 2>/dev/null || true)"
+            value="${value%%$'\n'*}"
+        fi
+    fi
+
+    [[ -n "$value" ]] && [[ "$value" != "null" ]] || return 1
+    printf '%s\n' "$value"
 }
 
 update_default_user_bin_dir() {
