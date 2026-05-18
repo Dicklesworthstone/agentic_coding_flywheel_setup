@@ -1508,6 +1508,7 @@ EOF
         esac
         return 0
     }
+    update_run_verified_installer_or_existing_on_transient() { return 0; }
     update_run_verified_installer_with_env() { return 0; }
     update_run_slb_source_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
@@ -1661,6 +1662,7 @@ EOF
         esac
         return 0
     }
+    update_run_verified_installer_or_existing_on_transient() { return 0; }
     update_run_verified_installer_with_env() { return 0; }
     update_run_slb_source_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
@@ -11643,6 +11645,62 @@ EOF
     [[ "$SUCCESS_COUNT" -eq 0 ]]
     [[ "$SKIP_COUNT" -eq 1 ]]
     [[ "$FAIL_COUNT" -eq 0 ]]
+}
+
+@test "update verified installer with target tmpdir fails when installer exits zero but cass is missing" {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    ABORT_ON_FAILURE=false
+    ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    update_run_verified_installer_with_target_tmpdir() {
+        return 0
+    }
+    update_binary_path() {
+        return 1
+    }
+    get_version() {
+        printf 'unknown\n'
+    }
+
+    run update_run_verified_installer_with_target_tmpdir_or_existing_on_transient "CASS" cass cass cass --easy-mode --verify
+
+    assert_failure
+    run grep -F "Failed: CASS - installer completed but cass verification failed" "$UPDATE_LOG_FILE"
+    assert_success
+}
+
+@test "update verified installer fails when installer exits zero but binary is missing" {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    ABORT_ON_FAILURE=false
+    ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    update_run_verified_installer() {
+        return 0
+    }
+    update_binary_path() {
+        return 1
+    }
+    get_version() {
+        printf 'unknown\n'
+    }
+
+    run update_run_verified_installer_or_existing_on_transient "Meta Skill" ms ms ms --easy-mode
+
+    assert_failure
+    run grep -F "Failed: Meta Skill - installer completed but ms verification failed" "$UPDATE_LOG_FILE"
+    assert_success
 }
 
 @test "update PCR installer uses install repair path and verifies doctor state" {

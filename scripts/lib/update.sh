@@ -3937,13 +3937,19 @@ update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() {
 
     log_item "run" "$desc"
     update_run_command_capture_with_retry "$desc" update_run_verified_installer_with_target_tmpdir "$installer_key" "$@" || exit_code=$?
-    if [[ $exit_code -eq 0 ]]; then
-        update_finish_cmd_ok "$desc"
-        return 0
-    fi
 
     existing_path="$(update_binary_path "$binary_name" 2>/dev/null || true)"
     existing_version="$(get_version "$version_tool" 2>/dev/null || true)"
+    if [[ $exit_code -eq 0 ]]; then
+        if [[ -n "$existing_path" && -x "$existing_path" && -n "$existing_version" && "$existing_version" != "unknown" ]]; then
+            update_finish_cmd_ok "$desc"
+            return 0
+        fi
+
+        update_finish_cmd_fail "$desc" "installer completed but ${binary_name} verification failed"
+        return 1
+    fi
+
     if update_is_transient_failure_output "$UPDATE_LAST_COMMAND_OUTPUT" && [[ -n "$existing_path" && -x "$existing_path" && -n "$existing_version" && "$existing_version" != "unknown" ]]; then
         update_finish_cmd_skip "$desc" "upstream temporarily unavailable; existing ${binary_name} ${existing_version} remains installed"
         return 0
@@ -3976,13 +3982,19 @@ update_run_verified_installer_or_existing_on_transient() {
 
     log_item "run" "$desc"
     update_run_command_capture_with_retry "$desc" update_run_verified_installer "$installer_key" "$@" || exit_code=$?
-    if [[ $exit_code -eq 0 ]]; then
-        update_finish_cmd_ok "$desc"
-        return 0
-    fi
 
     existing_path="$(update_binary_path "$binary_name" 2>/dev/null || true)"
     existing_version="$(get_version "$version_tool" 2>/dev/null || true)"
+    if [[ $exit_code -eq 0 ]]; then
+        if [[ -n "$existing_path" && -x "$existing_path" && -n "$existing_version" && "$existing_version" != "unknown" ]]; then
+            update_finish_cmd_ok "$desc"
+            return 0
+        fi
+
+        update_finish_cmd_fail "$desc" "installer completed but ${binary_name} verification failed"
+        return 1
+    fi
+
     if update_is_transient_failure_output "$UPDATE_LAST_COMMAND_OUTPUT" && [[ -n "$existing_path" && -x "$existing_path" && -n "$existing_version" && "$existing_version" != "unknown" ]]; then
         update_finish_cmd_skip "$desc" "upstream temporarily unavailable; existing ${binary_name} ${existing_version} remains installed"
         return 0
