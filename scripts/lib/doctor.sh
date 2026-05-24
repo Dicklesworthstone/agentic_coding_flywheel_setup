@@ -2363,8 +2363,15 @@ check_stack() {
             systemctl_bin="$(_acfs_doctor_system_binary_path systemctl 2>/dev/null || true)"
             local am_uid=""
             local am_runtime_dir=""
+            # Resolve TARGET_USER's UID, not the current process user's, so split-user
+            # installs (running doctor as a different user than the service owner)
+            # check the right systemd user bus. Fall back to current user only when
+            # TARGET_USER is unset or equals the current user. (#281)
             if [[ -n "$id_bin" ]]; then
-                am_uid="$("$id_bin" -u 2>/dev/null || true)"
+                if [[ -n "${TARGET_USER:-}" ]]; then
+                    am_uid="$("$id_bin" -u "$TARGET_USER" 2>/dev/null || true)"
+                fi
+                [[ -z "$am_uid" ]] && am_uid="$("$id_bin" -u 2>/dev/null || true)"
             fi
             [[ -n "$am_uid" ]] && am_runtime_dir="/run/user/$am_uid"
             if [[ -d "$am_runtime_dir" ]]; then
@@ -2373,8 +2380,16 @@ check_stack() {
                     export DBUS_SESSION_BUS_ADDRESS="unix:path=$am_runtime_dir/bus"
                 fi
             fi
-            [[ -n "$systemctl_bin" ]] && "$systemctl_bin" --user show-environment >/dev/null 2>&1 && \
-                ! "$systemctl_bin" --user is-active --quiet agent-mail.service >/dev/null 2>&1
+            # When running doctor as a different user than TARGET_USER, the
+            # current-process `systemctl --user` can't see TARGET_USER's session
+            # bus — `--machine=TARGET_USER@.host` reaches it via systemd-run.
+            local systemctl_user_args=(--user)
+            if [[ -n "$systemctl_bin" ]] && [[ -n "${TARGET_USER:-}" ]] \
+               && [[ "$TARGET_USER" != "$(${id_bin:-id} -un 2>/dev/null || true)" ]]; then
+                systemctl_user_args=(--machine="${TARGET_USER}@.host" --user)
+            fi
+            [[ -n "$systemctl_bin" ]] && "$systemctl_bin" "${systemctl_user_args[@]}" show-environment >/dev/null 2>&1 && \
+                ! "$systemctl_bin" "${systemctl_user_args[@]}" is-active --quiet agent-mail.service >/dev/null 2>&1
         }; then
             check "stack.mcp_agent_mail" "$am_label" "warn" \
                 "HTTP endpoint is healthy but agent-mail.service is inactive; rerun install/update to migrate off the fallback launcher" \
