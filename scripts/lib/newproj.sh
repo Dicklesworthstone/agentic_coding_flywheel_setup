@@ -613,7 +613,10 @@ main() {
             echo -e "${YELLOW}Test mode detected: redirecting to $project_dir${NC}" >&2
         fi
     elif [[ -z "$project_dir" ]]; then
-        project_dir="/data/projects/$project_name"
+        # Honor ACFS_PROJECTS_DIR for parity with the interactive wizard
+        # (newproj_screens/screen_directory.sh::get_default_projects_dir);
+        # fall back to the canonical /data/projects default.
+        project_dir="${ACFS_PROJECTS_DIR:-/data/projects}/$project_name"
     fi
 
     if declare -f normalize_path &>/dev/null; then
