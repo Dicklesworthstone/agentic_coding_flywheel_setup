@@ -5010,7 +5010,7 @@ fi
 version="${tag#v}"
 base_url="https://github.com/supabase/cli/releases/download/${tag}"
 tarball="supabase_linux_${arch}.tar.gz"
-checksums="supabase_${version}_checksums.txt"
+checksums="checksums.txt"
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-supabase.XXXXXX" 2>/dev/null)" || tmp_dir=""
 tmp_tgz="$(mktemp "${TMPDIR:-/tmp}/acfs-supabase.tgz.XXXXXX" 2>/dev/null)" || tmp_tgz=""

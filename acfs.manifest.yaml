@@ -1143,7 +1143,7 @@ modules:
         version="${tag#v}"
         base_url="https://github.com/supabase/cli/releases/download/${tag}"
         tarball="supabase_linux_${arch}.tar.gz"
-        checksums="supabase_${version}_checksums.txt"
+        checksums="checksums.txt"
 
         tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-supabase.XXXXXX")"
         tmp_tgz="$(mktemp "${TMPDIR:-/tmp}/acfs-supabase.tgz.XXXXXX")"

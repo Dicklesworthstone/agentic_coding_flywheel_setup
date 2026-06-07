@@ -5925,7 +5925,7 @@ install_supabase_cli_release() {
     local version="${tag#v}"
     local base_url="https://github.com/supabase/cli/releases/download/${tag}"
     local tarball="supabase_linux_${arch}.tar.gz"
-    local checksums="supabase_${version}_checksums.txt"
+    local checksums="checksums.txt"
 
     local tmp_dir=""
     local tmp_tgz=""
