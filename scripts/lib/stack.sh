@@ -1563,7 +1563,11 @@ EOF
 # Wait for the managed Agent Mail service to become healthy.
 _stack_wait_for_agent_mail_health() {
     local waited=0
-    local max_wait=90
+    # Agent Mail reloads its full message DB on restart; hosts with large
+    # mailboxes (20k+ messages) can take >90s to report readiness after the
+    # update restarts the service. Give it more headroom so the nightly
+    # update does not spuriously report "service setup/readiness failed".
+    local max_wait=240
 
     until _stack_agent_mail_healthy && _stack_agent_mail_readiness; do
         if [[ "$waited" -ge "$max_wait" ]]; then
