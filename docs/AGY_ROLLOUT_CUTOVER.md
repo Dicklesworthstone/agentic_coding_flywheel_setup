@@ -36,9 +36,9 @@ forward path for all new work.
 | **cass (F2)** | ✅ | Indexes agy history; sync presets + disambiguation. |
 | **ntm (F3)** | ✅ | `--agy=N` spawn flag + agy provider (ntm#185); agy session discovery/resume from `conversations/<uuid>.db`. Live-tmux spawn e2e (`4.3`) belongs to the shared harness. |
 | **skills (F7)** | ✅ | je_private_skills_repo migrated + deployed to `~/.claude`,`~/.codex`,`~/.gemini` skills on all 7 machines; clawd + clawdbot skill mirrors migrated. |
-| **dcg (F5)** | see commit | Guard wiring for agy / documented hook surface. |
-| **am (F6)** | see commit | agy program identity + MCP-server registration in agy's mcp_config. |
-| **casr (F9)** | see commit | Antigravity provider — enumerate + resume agy conversations. |
+| **dcg (F5)** | ✅ `4e91659` | `dcg install --agy` writes a PreToolUse hook to `~/.gemini/config/hooks.json`; runtime detection of agy's `toolCall` envelope; emits the `{"decision":"block"}`+exit-0 form agy honors (envelope captured empirically). |
+| **am (F6)** | ✅ `2972f9d5` | agy program identity (`KNOWN_PROGRAM_NAMES` + franken slug); MCP registration to `~/.gemini/config/mcp_config.json` (strace-confirmed agy reads it), token-safe (#148). |
+| **casr (F9)** | ✅ `98ed5b1` | Antigravity provider — enumerate `conversations/<uuid>.db`, resume `agy --conversation <uuid> --model …`; read/resume-only (write deferred by design). |
 | **caam (F10)** | ✅ | agy account detect/switch/backup/restore (token-file authoritative; no OS keyring on Linux). |
 | **agent_flywheel_app** | ✅ | iOS orchestrator recognizes agy; spawns via `--agy=` (not folded into `--gmi`). |
 | **brenner_bot** | ✅ | Default cockpit swarm spawns agy. |
