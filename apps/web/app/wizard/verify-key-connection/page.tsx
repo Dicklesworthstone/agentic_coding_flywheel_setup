@@ -63,7 +63,7 @@ export default function VerifyKeyConnectionPage() {
   const userTarget = formatSshTarget(effectiveUsername, vpsIP);
   const userPrompt = `${effectiveUsername}@`;
   const sshKeyCommand = `ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`;
-  const sshKeyCommandWindows = `ssh -i $HOME\\.ssh\\acfs_ed25519 ${userTarget}`;
+  const sshKeyCommandWindows = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`;
   const userKeyRepairCommand = buildUserKeyRepairCommand(effectiveUsername, vpsIP);
   const rootKeyRepairCommand = buildRootKeyRepairCommand(effectiveUsername, vpsIP);
 

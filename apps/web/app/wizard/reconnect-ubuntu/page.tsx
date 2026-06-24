@@ -69,7 +69,7 @@ export default function ReconnectUbuntuPage() {
   const userTarget = formatSshTarget(effectiveUsername, vpsIP);
   const userPrompt = `${effectiveUsername}@`;
   const sshCommand = `ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`;
-  const sshCommandWindows = `ssh -i $HOME\\.ssh\\acfs_ed25519 ${userTarget}`;
+  const sshCommandWindows = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`;
   const userKeyRepairCommand = buildUserKeyRepairCommand(effectiveUsername, vpsIP);
   const rootKeyRepairCommand = buildRootKeyRepairCommand(effectiveUsername, vpsIP);
 
@@ -143,7 +143,7 @@ export default function ReconnectUbuntuPage() {
               </code>{" "}
               part — or on Windows{" "}
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-                -i $HOME\\.ssh\\acfs_ed25519
+                -i %USERPROFILE%\\.ssh\\acfs_ed25519
               </code>
               ) instead of a password. The installer set this up for you.
             </p>

@@ -182,7 +182,7 @@ describe("buildCommands", () => {
 
     expect(installer?.command).toContain('TARGET_USER="admin"');
     expect(sshUser?.command).toContain("admin@10.20.30.40");
-    expect(sshUser?.windowsCommand).toBe("ssh -i $HOME\\.ssh\\acfs_ed25519 admin@10.20.30.40");
+    expect(sshUser?.windowsCommand).toBe("ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 admin@10.20.30.40");
   });
 
   test("falls back to ubuntu when the username input is invalid", () => {

@@ -98,7 +98,11 @@ function WindowsTerminalSetupContent() {
   const displayIP = vpsIP || "YOUR_VPS_IP";
   const effectiveUsername = sshUsername.trim() || "ubuntu";
   const ubuntuTarget = formatSshTarget(effectiveUsername, displayIP);
-  const sshCommandLine = `ssh -i $HOME\\.ssh\\acfs_ed25519 ${ubuntuTarget}`;
+  // Use %USERPROFILE% (not $HOME): the Windows Terminal profile `commandline`
+  // context does not expand PowerShell's $HOME before launching ssh, so the key
+  // path would be passed literally and OpenSSH would fall back to password auth
+  // (#302). %USERPROFILE% is expanded by Windows in this context.
+  const sshCommandLine = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${ubuntuTarget}`;
 
   const handleCopy = useCallback(async () => {
     const copiedOk = await copyTextToClipboard(sshCommandLine);
@@ -332,7 +336,7 @@ function WindowsTerminalSetupContent() {
                 <p className="text-sm text-muted-foreground">
                   Make sure your SSH key file exists at{" "}
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                    $HOME\.ssh\acfs_ed25519
+                    %USERPROFILE%\.ssh\acfs_ed25519
                   </code>
                   . If you used a different key name, update the command line accordingly.
                 </p>
@@ -348,7 +352,7 @@ function WindowsTerminalSetupContent() {
                 <p className="text-sm text-muted-foreground">
                   This can happen if you rebuilt your VPS. You may need to remove the old key from{" "}
                   <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-                    $HOME\.ssh\known_hosts
+                    %USERPROFILE%\.ssh\known_hosts
                   </code>
                   .
                 </p>

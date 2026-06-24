@@ -146,9 +146,9 @@ export default function StatusCheckPage() {
   const effectiveSSHUsername = sshUsername.trim() || "ubuntu";
   const reconnectTarget = formatSshTarget(effectiveSSHUsername, effectiveVpsIP);
   const reconnectCommand = `ssh -i ~/.ssh/acfs_ed25519 ${reconnectTarget}`;
-  const reconnectWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 ${reconnectTarget}`;
+  const reconnectWindowsCommand = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${reconnectTarget}`;
   const codexTunnelCommand = `ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
-  const codexTunnelWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
+  const codexTunnelWindowsCommand = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
   const reinstallCommand = buildInstallCommand(
     installModeLoaded ? installMode : "vibe",
     acfsRefLoaded ? acfsRef : null,

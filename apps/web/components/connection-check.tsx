@@ -39,7 +39,7 @@ export function ConnectionCheck({
     ? `ssh -i ~/.ssh/acfs_ed25519 ${sshTarget}`
     : `ssh ${sshTarget}`;
   const windowsSshCommand = useIdentityFile
-    ? `ssh -i $HOME\\.ssh\\acfs_ed25519 ${sshTarget}`
+    ? `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${sshTarget}`
     : `ssh ${sshTarget}`;
 
   return (

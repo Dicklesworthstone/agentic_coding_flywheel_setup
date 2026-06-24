@@ -323,7 +323,7 @@ export default function LaunchOnboardingStep() {
               <h3 className="font-medium">Connect to your VPS</h3>
               <CommandCard
                 command={`ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`}
-                windowsCommand={`ssh -i $HOME\\.ssh\\acfs_ed25519 ${userTarget}`}
+                windowsCommand={`ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`}
                 runLocation="local"
               />
               <p className="text-sm text-muted-foreground">Open your terminal and SSH in.</p>
@@ -608,7 +608,7 @@ export default function LaunchOnboardingStep() {
             <h3 className="font-medium">2. Connect to your VPS</h3>
             <CommandCard
               command={`ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`}
-              windowsCommand={`ssh -i $HOME\\.ssh\\acfs_ed25519 ${userTarget}`}
+              windowsCommand={`ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`}
               runLocation="local"
             />
           </div>

@@ -20,7 +20,11 @@ const INSTALL_SCRIPT_BASE_URL =
   "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup";
 const DEFAULT_INSTALL_REF = "main";
 const SSH_KEY_PATH_UNIX = "~/.ssh/acfs_ed25519";
-const SSH_KEY_PATH_WINDOWS = "$HOME\\.ssh\\acfs_ed25519";
+// Use %USERPROFILE% rather than PowerShell's $HOME: the Windows Terminal profile
+// `commandline` context (and cmd.exe) does not expand $HOME before launching ssh,
+// so the key path would be passed literally and OpenSSH would fall back to
+// password auth (#302). %USERPROFILE% is expanded by Windows in these contexts.
+const SSH_KEY_PATH_WINDOWS = "%USERPROFILE%\\.ssh\\acfs_ed25519";
 
 export interface CommandBuilderInputs {
   ip: string;
