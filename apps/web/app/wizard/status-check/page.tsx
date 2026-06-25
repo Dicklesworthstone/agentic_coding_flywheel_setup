@@ -102,8 +102,10 @@ function getAuthCommandDescription(service: Service): string {
       return "Bring Tailscale up and approve this machine";
     case "codex-cli":
       return "Authenticate Codex with device auth";
+    case "antigravity-cli":
+      return "Open Antigravity and complete Google auth";
     case "gemini-cli":
-      return "Set GEMINI_API_KEY for headless Gemini auth";
+      return "Legacy Gemini CLI auth";
     case "vercel":
       return "Start Vercel's device login flow";
     case "supabase":

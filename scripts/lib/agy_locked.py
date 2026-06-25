@@ -129,34 +129,54 @@ if __name__ == "__main__":
 '''
 
 
+def fail_config(message):
+    print(f"agy-locked: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
 def read_json(path, description):
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return {}
+    except UnicodeDecodeError as exc:
+        fail_config(f"{description} is not valid UTF-8: {path}: {exc}")
+    except OSError as exc:
+        fail_config(f"cannot read {description}: {path}: {exc}")
     if not text.strip():
         return {}
     try:
         value = json.loads(text)
     except json.JSONDecodeError as exc:
-        print(f"agy-locked: invalid {description}: {path}: {exc}", file=sys.stderr)
-        raise SystemExit(2)
+        fail_config(f"invalid {description}: {path}: {exc}")
     if not isinstance(value, dict):
-        print(f"agy-locked: {description} must contain a JSON object: {path}", file=sys.stderr)
-        raise SystemExit(2)
+        fail_config(f"{description} must contain a JSON object: {path}")
     return value
 
 
 def write_text_if_changed(path, value, mode=None):
-    path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        current = path.read_text()
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        fail_config(f"cannot create config directory {path.parent}: {exc}")
+    try:
+        current = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         current = None
+    except UnicodeDecodeError:
+        current = None
+    except OSError as exc:
+        fail_config(f"cannot read existing config file {path}: {exc}")
     if current != value:
-        path.write_text(value)
+        try:
+            path.write_text(value, encoding="utf-8")
+        except OSError as exc:
+            fail_config(f"cannot write config file {path}: {exc}")
     if mode is not None:
-        path.chmod(mode)
+        try:
+            path.chmod(mode)
+        except OSError as exc:
+            fail_config(f"cannot set permissions on {path}: {exc}")
 
 
 def write_json_if_changed(path, value):

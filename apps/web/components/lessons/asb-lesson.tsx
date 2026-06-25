@@ -51,7 +51,7 @@ export function AsbLesson() {
         <Paragraph>
           <Highlight>ASB (Agent Settings Backup)</Highlight> is a smart backup tool
           for AI coding agent configuration folders. It backs up settings for Claude Code,
-          Cursor, Codex CLI, Gemini CLI, and other agents to a single versioned archive.
+          Cursor, Codex CLI, Antigravity CLI, and other agents to a single versioned archive.
         </Paragraph>
         <Paragraph>
           When you provision a new machine or recover from a misconfiguration, ASB
@@ -63,7 +63,7 @@ export function AsbLesson() {
             <FeatureCard
               icon={<Save className="h-5 w-5" />}
               title="Multi-Agent Backup"
-              description="Claude, Cursor, Codex, Gemini configs in one archive"
+              description="Claude, Cursor, Codex, Antigravity configs in one archive"
               gradient="from-emerald-500/20 to-green-500/20"
             />
             <FeatureCard
@@ -144,7 +144,7 @@ const AGENTS: AgentConfig[] = [
   { name: 'Claude Code', shortName: 'claude', color: 'text-orange-400', bgColor: 'bg-orange-500', files: ['CLAUDE.md', 'hooks.json', 'settings.json'], sizeMB: 2.4 },
   { name: 'Cursor', shortName: 'cursor', color: 'text-blue-400', bgColor: 'bg-blue-500', files: ['settings.json', 'rules/', 'mcp.json'], sizeMB: 1.8 },
   { name: 'Codex CLI', shortName: 'codex', color: 'text-emerald-400', bgColor: 'bg-emerald-500', files: ['config.yaml', 'instructions.md'], sizeMB: 0.9 },
-  { name: 'Gemini CLI', shortName: 'gemini', color: 'text-violet-400', bgColor: 'bg-violet-500', files: ['settings.json', 'GEMINI.md'], sizeMB: 1.1 },
+  { name: 'Antigravity CLI', shortName: 'agy', color: 'text-violet-400', bgColor: 'bg-violet-500', files: ['settings.json', 'hooks.json', 'AGENTS.md'], sizeMB: 1.1 },
   { name: 'Aider', shortName: 'aider', color: 'text-rose-400', bgColor: 'bg-rose-500', files: ['.aider.conf.yml', 'conventions.md'], sizeMB: 0.6 },
   { name: 'Cline', shortName: 'cline', color: 'text-cyan-400', bgColor: 'bg-cyan-500', files: ['cline_mcp.json', 'rules/'], sizeMB: 1.3 },
 ];

@@ -200,7 +200,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 307,
     whatItDoes:
-      "Blazing-fast search across all your past AI coding agent sessions. Indexes 11 agent formats: Claude Code, Codex, Cursor, Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, Amp. Sub-60ms queries with optional semantic search.",
+      "Blazing-fast search across all your past AI coding agent sessions. Indexes 11 agent formats: Claude Code, Codex, Cursor, Antigravity/Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, Amp. Sub-60ms queries with optional semantic search.",
     whyItsUseful:
       "You've solved this problem before - but which session? CASS lets you search 'how did I fix that React hydration error' and instantly find the exact conversation. Three search modes (lexical, semantic, hybrid), HTML export with encryption, and multi-machine sync via SSH.",
     implementationHighlights: [
@@ -300,7 +300,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whatItDoes:
       "A meta-runner that fans out per-language scanners across 8 languages (JS/TS, Python, Go, Rust, C/C++, Java, Ruby, Swift). Uses ast-grep for AST-based pattern matching with 18 detection categories and 1000+ bug patterns.",
     whyItsUseful:
-      "AI coding agents move 10-100x faster than humans. UBS keeps pace with sub-5-second scans and auto-wires guardrails into Claude Code, Codex, Cursor, Gemini, and Windsurf agents. The --beads-jsonl output creates Beads issues directly from findings.",
+      "AI coding agents move 10-100x faster than humans. UBS keeps pace with sub-5-second scans and auto-wires guardrails into Claude Code, Codex, Cursor, Antigravity, and Windsurf agents. The --beads-jsonl output creates Beads issues directly from findings.",
     implementationHighlights: [
       "Shell meta-runner with per-language modules (ubs-js.sh, ubs-python.sh, etc.)",
       "ast-grep for syntax-aware pattern matching (not regex)",
@@ -656,7 +656,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whatItDoes:
       "Claude Code PreToolUse hook that offloads Rust compilation to remote workers. Intercepts cargo commands, syncs source via rsync + zstd, compiles on server-grade hardware, streams artifacts back.",
     whyItsUseful:
-      "Multi-agent swarms trigger many concurrent builds. RCH intercepts commands before execution and routes them to remote workers with health probes and priority scheduling. Agent detection coordinates builds across Claude Code, Codex, and Gemini sessions.",
+      "Multi-agent swarms trigger many concurrent builds. RCH intercepts commands before execution and routes them to remote workers with health probes and priority scheduling. Agent detection coordinates builds across Claude Code, Codex, and Antigravity sessions.",
     implementationHighlights: [
       "PreToolUse hook intercepts cargo before execution",
       "rsync + zstd with incremental artifact streaming",
@@ -682,7 +682,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
       "PreToolUse hook intercepts cargo automatically",
       "Worker pool with health probes and priorities",
       "Daemon mode with persistent SSH connections",
-      "Agent detection: Claude Code, Codex, Gemini",
+      "Agent detection: Claude Code, Codex, Antigravity",
     ],
     useCases: [
       "Offloading builds during multi-agent sessions",
@@ -700,7 +700,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     category: "core",
     stars: 12,
     whatItDoes:
-      "Manages multiple accounts for Claude Code, Codex CLI, and Gemini CLI with sub-100ms switching. Vault profiles store auth files for instant activation without browser flows. Smart rotation algorithms automatically select the best profile based on cooldown state, health, and usage patterns.",
+      "Manages multiple accounts for Claude Code, Codex CLI, and Antigravity CLI with sub-100ms switching. Vault profiles store auth files for instant activation without browser flows. Smart rotation algorithms automatically select the best profile based on cooldown state, health, and usage patterns.",
     whyItsUseful:
       "When running multiple agents, you'll hit rate limits. CAAM lets you switch accounts instantly - no browser login, no waiting. Profile isolation enables parallel sessions where each agent uses its own credentials. Health scoring (🟢/🟡/🔴) shows which profiles are ready vs. cooling down.",
     implementationHighlights: [
@@ -777,7 +777,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     techStack: ["Rust", "WezTerm API", "SQLite FTS5", "Pattern matching"],
     keyFeatures: [
       "Real-time terminal observation (<50ms latency)",
-      "Multi-agent pattern detection (Claude, Codex, Gemini)",
+      "Multi-agent pattern detection (Claude, Codex, Antigravity)",
       "Robot Mode JSON/TOON API",
       "Event-driven wait-for automation",
       "Explainability via 'wa why' command",

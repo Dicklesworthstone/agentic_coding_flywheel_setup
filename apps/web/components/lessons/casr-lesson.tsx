@@ -48,7 +48,7 @@ export function CasrLesson() {
         <Paragraph>
           <Highlight>CASR (Cross-Agent Session Resumer)</Highlight> converts and resumes
           AI coding sessions across different providers. Start a session in Claude Code,
-          continue it in Codex CLI, and pick it back up in Gemini CLI without losing context.
+          continue it in Codex CLI, and pick it back up in Antigravity CLI without losing context.
         </Paragraph>
         <Paragraph>
           CASR extracts conversation context, code changes, and decisions into a
@@ -61,7 +61,7 @@ export function CasrLesson() {
             <FeatureCard
               icon={<ArrowRightLeft className="h-5 w-5" />}
               title="Provider Agnostic"
-              description="Convert sessions between Claude, Codex, and Gemini"
+              description="Convert sessions between Claude, Codex, and Antigravity"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard

@@ -332,7 +332,7 @@ export const PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS = [
   {
     id: "ssh-root",
     label: "Root SSH reaches the new VPS",
-    command: "ssh root@<target-host>",
+    command: "ssh root@YOUR_VPS_IP",
     runLocation: "local",
     expectedStatus: "pass",
     supportBundleSafe: false,
@@ -340,7 +340,7 @@ export const PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS = [
   {
     id: "installer",
     label: "ACFS installer exits successfully",
-    command: "<install-command>",
+    command: "ACFS_INSTALL_COMMAND_FROM_PACKET",
     runLocation: "vps",
     expectedStatus: "pass",
     supportBundleSafe: true,

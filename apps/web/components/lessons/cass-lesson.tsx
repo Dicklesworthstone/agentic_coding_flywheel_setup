@@ -60,7 +60,7 @@ export function CassLesson() {
       >
         <Paragraph>
           <Highlight>CASS (Coding Agent Session Search)</Highlight> indexes all
-          your past agent conversations—Claude Code, Codex, Gemini, Cursor, and
+          your past agent conversations—Claude Code, Codex, Antigravity, Cursor, and
           more—so you can find solutions to problems you&apos;ve already solved.
         </Paragraph>
         <Paragraph>
@@ -73,7 +73,7 @@ export function CassLesson() {
             <FeatureCard
               icon={<Database className="h-5 w-5" />}
               title="Multi-Agent Index"
-              description="Claude, Codex, Gemini, Cursor, ChatGPT sessions"
+              description="Claude, Codex, Antigravity/Gemini, Cursor, ChatGPT sessions"
               gradient="from-primary/20 to-violet-500/20"
             />
             <FeatureCard

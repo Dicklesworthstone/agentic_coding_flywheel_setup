@@ -1244,7 +1244,7 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
             <SubSection title="Vendor Lock-In: Avoid It">
               <BlockQuote>PSA: you should avoid vendor lock-in for agent coding primitives like task management (e.g., beads) and agent communication (e.g., MCP Agent Mail) so you can use all the agents together, which is more powerful anyway. They want you in a walled garden, but it&apos;s 100% unnecessary.</BlockQuote>
 
-              <P>Beads, Agent Mail, and bv are all CLI tools that work identically regardless of which agent invokes them. A Claude Code agent and a Codex agent and a Gemini agent can all call <code>br ready --json</code> and get the same task list. The practical test: could you swap out every Claude Code agent for Codex or Gemini without changing your AGENTS.md, beads, Agent Mail setup, or workflow? If yes, you&apos;re vendor-neutral.</P>
+              <P>Beads, Agent Mail, and bv are all CLI tools that work identically regardless of which agent invokes them. A Claude Code agent, a Codex agent, and an Antigravity agent can all call <code>br ready --json</code> and get the same task list. The practical test: could you swap out every Claude Code agent for Codex or Antigravity without changing your AGENTS.md, beads, Agent Mail setup, or workflow? If yes, you&apos;re vendor-neutral.</P>
             </SubSection>
 
             <SubSection title="Validation Gates">
@@ -1268,14 +1268,14 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
 
               <CodeBlock language="bash" code={`alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
 alias cod='codex --dangerously-bypass-approvals-and-sandbox'
-agy() { command agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions "$@"; }
-alias gmi='gemini --yolo'  # legacy: Gemini CLI retired 2026-06-18`} />
+alias agy='agy-locked'
+alias gmi='agy-locked'  # legacy shortcut now launches agy`} />
 
               <P>These are configured automatically by the installer. DCG provides the safety net that makes this viable.</P>
             </SubSection>
 
             <SubSection title="Cost">
-              <P>~$500/month for Claude Max and GPT Pro subscriptions (at minimum), plus ~$50/month for a cloud server (OVH, Contabo). Multiple Max accounts may be needed for large swarms; CAAM enables instant switching when hitting rate limits. At scale, token usage for a single intensive session can reach ~20M input tokens, ~3.5M output tokens, ~2.6M reasoning tokens, and ~1.15 billion cached token reads. At full scale: 22 Claude Max accounts, 22 GPT Pro accounts, and 7 Gemini Ultra accounts.</P>
+              <P>~$500/month for Claude Max and GPT Pro subscriptions (at minimum), plus ~$50/month for a cloud server (OVH, Contabo). Multiple Max accounts may be needed for large swarms; CAAM enables instant switching when hitting rate limits. At scale, token usage for a single intensive session can reach ~20M input tokens, ~3.5M output tokens, ~2.6M reasoning tokens, and ~1.15 billion cached token reads. At full scale: 22 Claude Max accounts, 22 GPT Pro accounts, and 7 Google/Antigravity-capable accounts.</P>
             </SubSection>
           </GuideSection>
 

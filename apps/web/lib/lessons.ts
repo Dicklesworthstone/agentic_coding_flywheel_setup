@@ -76,7 +76,7 @@ export const LESSONS: Lesson[] = [
     id: 6,
     slug: "agent-commands",
     title: "Agent Commands",
-    description: "Talk to Claude, Codex, and Gemini",
+    description: "Talk to Claude, Codex, and Antigravity",
     duration: "10 min",
     file: "06_agents_login.md",
   },

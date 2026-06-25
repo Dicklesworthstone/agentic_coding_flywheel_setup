@@ -28,13 +28,13 @@ export const metadata: Metadata = {
     template: "%s | Agent Flywheel",
   },
   description:
-    "Transform a fresh cloud server into a fully-configured agentic coding environment in ~30 minutes. Claude Code, OpenAI Codex, Google Gemini: all pre-configured with 30+ modern developer tools. Free & open-source.",
+    "Transform a fresh cloud server into a fully-configured agentic coding environment in ~30 minutes. Claude Code, OpenAI Codex, Google Antigravity: all pre-configured with 30+ modern developer tools. Free & open-source.",
   keywords: [
     "VPS setup",
     "AI coding",
     "Claude Code",
     "Codex CLI",
-    "Gemini CLI",
+    "Antigravity CLI",
     "developer tools",
     "agentic coding",
     "Agent Flywheel",

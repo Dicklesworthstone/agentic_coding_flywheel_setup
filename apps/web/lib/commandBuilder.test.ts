@@ -8,6 +8,7 @@ import {
   buildTeamProfile,
   buildTeamProfileImportDiff,
   buildShareURL,
+  formatSshTarget,
   formatHandoffRunbookMarkdown,
   formatTeamProfileImportDiffMarkdown,
   formatTeamProfileReviewMarkdown,
@@ -15,6 +16,24 @@ import {
   serializeHandoffRunbookJson,
   serializeTeamProfileJson,
 } from "./commandBuilder";
+
+describe("formatSshTarget", () => {
+  test("formats valid IPv4 and IPv6 SSH targets", () => {
+    expect(formatSshTarget("root", "203.0.113.42")).toBe("root@203.0.113.42");
+    expect(formatSshTarget("ubuntu", "2001:db8::42")).toBe("ubuntu@[2001:db8::42]");
+    expect(formatSshTarget("ubuntu", "[2001:db8::42]")).toBe("ubuntu@[2001:db8::42]");
+    expect(formatSshTarget("ubuntu", "YOUR_VPS_IPV4")).toBe("ubuntu@YOUR_VPS_IPV4");
+  });
+
+  test("does not serialize shell metacharacters into copyable SSH targets", () => {
+    const target = formatSshTarget("bad user;sudo", "203.0.113.42; touch /tmp/acfs-owned");
+
+    expect(target).toBe("ubuntu@YOUR_VPS_IP");
+    expect(target).not.toContain(";");
+    expect(target).not.toContain("touch");
+    expect(target).not.toContain("bad user");
+  });
+});
 
 describe("buildRootKeyRepairCommand", () => {
   test("copies the ACFS public key through root without appending duplicates", () => {
@@ -283,7 +302,7 @@ describe("buildHandoffRunbook", () => {
       id: "repair-user-ssh-key",
       runLocation: "local",
     });
-    expect(runbook.recoveryCommands[0]?.command).toContain("ssh dev-user@<ipv4-target-host>");
+    expect(runbook.recoveryCommands[0]?.command).toContain("ssh dev-user@YOUR_VPS_IPV4");
     expect(runbook.recoveryCommands[0]?.command).not.toContain("ssh root@");
     const rootFallbackRepair = runbook.recoveryCommands.find(
       (command) => command.id === "repair-user-ssh-key-through-root",
@@ -291,13 +310,13 @@ describe("buildHandoffRunbook", () => {
     expect(rootFallbackRepair).toMatchObject({
       runLocation: "local",
     });
-    expect(rootFallbackRepair?.command).toContain("ssh root@<ipv4-target-host>");
+    expect(rootFallbackRepair?.command).toContain("ssh root@YOUR_VPS_IPV4");
     expect(rootFallbackRepair?.command).toContain("/home/dev-user/.ssh/authorized_keys");
     expect(runbook.targetHost.kind).toBe("ipv4");
-    expect(runbook.targetHost.value).toBe("<ipv4-target-host>");
+    expect(runbook.targetHost.value).toBe("YOUR_VPS_IPV4");
     expect(runbook.privacy.rawTargetHostIncluded).toBe(false);
     expect(json).not.toContain("203.0.113.42");
-    expect(json).toContain("<ipv4-target-host>");
+    expect(json).toContain("YOUR_VPS_IPV4");
   });
 
   test("uses a missing host placeholder when wizard state has no valid target", () => {
@@ -310,7 +329,7 @@ describe("buildHandoffRunbook", () => {
     });
 
     expect(runbook.targetHost.kind).toBe("invalid_or_missing");
-    expect(runbook.targetHost.value).toBe("<target-host>");
+    expect(runbook.targetHost.value).toBe("YOUR_VPS_IP");
     expect(runbook.wizardSelections.targetUsername).toBe("ubuntu");
     expect(runbook.wizardSelections.sourceRef).toBe("main");
     expect(runbook.install.command).not.toContain("TARGET_USER=");
@@ -331,7 +350,7 @@ describe("buildHandoffRunbook", () => {
     expect(markdown).toContain("# ACFS Wizard Handoff Runbook");
     expect(markdown).toContain("Schema: `acfs.handoff-runbook.v1`");
     expect(markdown).toContain("Host kind: ipv6");
-    expect(markdown).toContain("ssh root@<ipv6-target-host>");
+    expect(markdown).toContain("ssh root@YOUR_VPS_IPV6");
     expect(markdown).toContain("Copy the ACFS public key through the root fallback");
     expect(markdown).toContain("/home/ubuntu/.ssh/authorized_keys");
     expect(markdown).toContain("acfs support-bundle");
@@ -381,6 +400,9 @@ describe("buildHandoffRunbook", () => {
       expect(runbook.support.bundleCommand).toBe("acfs support-bundle");
       expect(runbook.support.reviewArtifacts).toEqual(["support-report.md", "manifest.json"]);
       expect(runbook.recoveryCommands.map((command) => command.command)).toContain("acfs support-bundle");
+      for (const command of runbook.recoveryCommands) {
+        expect(command.command).not.toMatch(/<[^>]+>/);
+      }
 
       expectSafeHandoffArtifacts([json, markdown, ...runbook.recoveryCommands.map((command) => command.command)], scenario.rawHost);
     }

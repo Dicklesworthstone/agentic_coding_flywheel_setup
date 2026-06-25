@@ -328,7 +328,7 @@ export default function AccountsPage() {
         <ul className="mt-2 list-inside list-disc space-y-1 text-sm">
           <li><strong>Claude Code</strong>: Requires Claude Max ($200/mo)</li>
           <li><strong>Codex CLI</strong>: Requires ChatGPT Pro ($200/mo)</li>
-          <li><strong>Gemini CLI</strong>: Requires Gemini Advanced (~$20/mo)</li>
+          <li><strong>Antigravity CLI</strong>: Requires eligible Google/Gemini access</li>
         </ul>
         <p className="mt-2 text-sm">
           <strong>You don&apos;t need all of them!</strong> Start with one agent (Claude Code is recommended)
@@ -390,7 +390,7 @@ export default function AccountsPage() {
             for AI assistance. These two are all you need to start.
             <br />
             <br />
-            <strong>Recommended (after first project):</strong> Add Codex CLI and Gemini CLI
+            <strong>Recommended (after first project):</strong> Add Codex CLI and Antigravity CLI
             for more AI options with different perspectives.
             <br />
             <br />

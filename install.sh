@@ -4775,6 +4775,12 @@ normalize_user() {
     set_phase "user_setup" "User Normalization"
     log_step "1/9" "Normalizing user account..."
 
+    if declare -f acfs_selection_filters_active >/dev/null 2>&1 && acfs_selection_filters_active && ! should_run_module "users.ubuntu"; then
+        log_detail "Skipping user normalization (users.ubuntu is not selected)"
+        log_success "User normalization skipped"
+        return 0
+    fi
+
     if [[ $EUID -eq 0 ]] && type -t prompt_ssh_key &>/dev/null; then
         if ! prompt_ssh_key; then
             log_warn "SSH key prompt failed or was skipped; continuing"

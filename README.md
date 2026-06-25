@@ -52,7 +52,7 @@ The installer is **idempotent**—if interrupted, simply re-run it. It will auto
 **ACFS** is a complete system for bootstrapping agentic coding environments:
 
 **Why you'd care:**
-- **Zero to Hero:** Takes complete beginners from "I have a laptop" to "I have Claude/Codex/Gemini agents writing code for me on a VPS"
+- **Zero to Hero:** Takes complete beginners from "I have a laptop" to "I have Claude/Codex/Antigravity agents writing code for me on a VPS"
 - **One-Liner Magic:** A single `curl | bash` command installs 30+ tools, configures everything, and sets up three AI coding agents
 - **Vibe Mode:** Pre-configured for maximum velocity—passwordless sudo, dangerous agent flags enabled, optimized shell environment
 - **Battle-Tested Stack:** Includes the complete Dicklesworthstone stack (10 tools + utilities) for agent orchestration, coordination, and safety
@@ -60,7 +60,7 @@ The installer is **idempotent**—if interrupted, simply re-run it. It will auto
 **What you get:**
 - Modern shell (zsh + oh-my-zsh + powerlevel10k)
 - All language runtimes (bun, uv/Python, Rust, Go)
-- Three AI coding agents (Claude Code, Codex CLI, Gemini CLI)
+- Three AI coding agents (Claude Code, Codex CLI, Antigravity CLI)
 - Agent coordination tools (NTM, MCP Agent Mail, SLB)
 - Cloud CLIs (Vault, Wrangler, Supabase, Vercel)
 - And 20+ more developer tools
@@ -909,7 +909,7 @@ acfs services-setup          # Run full setup wizard
 Guides you through:
 - **Claude Code**: API key configuration
 - **Codex CLI**: ChatGPT account login
-- **Gemini CLI**: Google account authentication
+- **Antigravity CLI**: Google account authentication
 - **GitHub CLI**: `gh auth login`
 - **Cloud CLIs**: Wrangler, Supabase, Vercel authentication
 
@@ -2386,7 +2386,7 @@ bash scripts/agent-readiness-audit.sh
 bash scripts/agent-readiness-audit.sh --json
 ```
 
-The audit checks Claude Code, Codex CLI, Gemini CLI, and `caam` without printing token values or auth file contents. It reports CLI presence, version availability, parseable auth/config files, CAAM default profile consistency, and stale CAAM defaults that point at missing profiles.
+The audit checks Claude Code, Codex CLI, Antigravity CLI, and `caam` without printing token values or auth file contents. It reports CLI presence, version availability, parseable auth/config files, CAAM default profile consistency, and stale CAAM defaults that point at missing profiles.
 
 Useful options:
 
@@ -3004,7 +3004,7 @@ Currently, ACFS installs the full suite. Future versions will support:
 
 ### The Problem: The Agentic Coding Barrier
 
-The rise of AI coding agents (Claude Code, Codex CLI, Gemini CLI) has created a new paradigm in software development. These agents can write code, debug issues, and even architect solutions—but only if they have the right environment.
+The rise of AI coding agents (Claude Code, Codex CLI, Antigravity CLI) has created a new paradigm in software development. These agents can write code, debug issues, and even architect solutions—but only if they have the right environment.
 
 **The barrier isn't the agents themselves.** It's the **hours of setup** required to create an environment where agents can actually be productive:
 
@@ -3074,7 +3074,7 @@ ACFS isn't just a collection of tools—it's a **carefully curated system** wher
 ├─────────────────┤         ├─────────────────┤         ├─────────────────┤
 │ • zsh + p10k    │────────▶│ • Claude Code   │────────▶│ • Agent Mail    │
 │ • tmux          │         │ • Codex CLI     │         │ • NTM           │
-│ • Modern CLI    │         │ • Gemini CLI    │         │ • SLB + DCG     │
+│ • Modern CLI    │         │ • Antigravity   │         │ • SLB + DCG     │
 │ • Language VMs  │         │                 │         │ • Beads Viewer  │
 └─────────────────┘         └─────────────────┘         └─────────────────┘
          │                             │                             │

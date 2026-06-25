@@ -623,7 +623,7 @@ export default function WorkflowPage() {
               <Clock className="h-5 w-5 text-[oklch(0.78_0.16_75)] shrink-0 mt-0.5" />
               <span>
                 <strong>Investment:</strong> VPS ($40-56/mo, month-to-month) + Claude Max ($200/mo × 1-5) + ChatGPT Pro ($200/mo × 1-5) +
-                Gemini Advanced ($20/mo). Scale your swarm as you see ROI; start with 1 subscription of each and grow!
+                Google/Antigravity access. Scale your swarm as you see ROI; start with one subscription for each agent family and grow.
               </span>
             </p>
           </Card>
@@ -833,7 +833,7 @@ export default function WorkflowPage() {
           <PhaseIndicator number={3} title="Implementation" color="bg-gradient-to-br from-violet-500 to-purple-600" />
 
           <p className="text-muted-foreground mb-6">
-            This is where the magic happens. You&apos;ll launch multiple Claude Code, Codex, and Gemini agents
+            This is where the magic happens. You&apos;ll launch multiple Claude Code, Codex, and Antigravity agents
             in parallel, each working on different beads while coordinating through MCP Agent Mail.
             Real example: CASS project produced ~11k LOC in 5 hours, 204 commits, 151 tests passing.
           </p>
@@ -849,7 +849,7 @@ export default function WorkflowPage() {
                 description="Create 8 agent panes in your project session"
               />
               <p className="text-xs mt-2">
-                Run 3+ machines with multiple subscriptions (e.g., 5 ChatGPT Pro, 5 Claude Max, 3 Gemini Advanced).
+                Run 3+ machines with multiple subscriptions (e.g., 5 ChatGPT Pro, 5 Claude Max, 3 Google/Antigravity accounts).
               </p>
             </WorkflowStep>
 
@@ -899,7 +899,7 @@ export default function WorkflowPage() {
             </GuideCaution>
             <GuideTip>
               <strong>Agent Roles:</strong> Claude for tasteful code quality, Codex for long autonomous runs
-              (queued prompts), Gemini for reviews. Mix and match based on the task type.
+              (queued prompts), Antigravity for reviews. Mix and match based on the task type.
             </GuideTip>
           </SimplerGuide>
         </CollapsibleSection>

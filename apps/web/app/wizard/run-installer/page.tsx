@@ -79,7 +79,7 @@ const WHAT_IT_INSTALLS = [
   },
   {
     category: "Coding Agents",
-    items: ["Claude Code", "Codex CLI", "Gemini CLI"],
+    items: ["Claude Code", "Codex CLI", "Antigravity CLI"],
   },
   {
     category: "Cloud & Database",
@@ -759,7 +759,7 @@ export default function RunInstallerPage() {
                 Rust, and Go
               </li>
               <li>
-                <strong>AI coding assistants:</strong> Claude Code, Codex, and Gemini CLI
+                <strong>AI coding assistants:</strong> Claude Code, Codex, and Antigravity CLI
               </li>
               <li>
                 <strong>Developer tools:</strong> Git interface, file searchers, and more

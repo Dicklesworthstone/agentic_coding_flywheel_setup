@@ -389,6 +389,45 @@ test_feature_flag_default_unmigrated() {
     fi
 }
 
+test_feature_flag_default_plan_does_not_imply_migration() {
+    local name="Default plan does not migrate unmigrated categories"
+    reset_selection
+
+    unset ACFS_GENERATED_MIGRATED_CATEGORIES
+    unset ACFS_USE_GENERATED_LANG
+    unset ACFS_USE_GENERATED
+
+    if acfs_resolve_selection 2>/dev/null; then
+        if ! acfs_use_generated_for_category "lang"; then
+            test_pass "$name"
+            return
+        fi
+    fi
+
+    test_fail "$name" "Expected legacy for unmigrated category despite default plan membership"
+}
+
+test_feature_flag_filtered_install_bypasses_legacy() {
+    local name="Filtered install uses generated dispatch for unrelated categories"
+    reset_selection
+
+    unset ACFS_GENERATED_MIGRATED_CATEGORIES
+    unset ACFS_USE_GENERATED
+    unset ACFS_USE_GENERATED_LANG
+    ONLY_MODULES=("agents.antigravity")
+
+    if acfs_resolve_selection 2>/dev/null; then
+        if acfs_use_generated_for_category "agents" && \
+           acfs_use_generated_for_category "cloud" && \
+           acfs_use_generated_for_category "stack"; then
+            test_pass "$name"
+            return
+        fi
+    fi
+
+    test_fail "$name" "Expected generated no-op dispatch to suppress unrelated legacy phases"
+}
+
 test_feature_flag_migrated_default() {
     local name="Default: migrated categories use generated"
     reset_selection
@@ -541,6 +580,8 @@ test_legacy_skip_vault
 test_legacy_skip_postgres
 test_legacy_skip_cloud
 test_feature_flag_default_unmigrated
+test_feature_flag_default_plan_does_not_imply_migration
+test_feature_flag_filtered_install_bypasses_legacy
 test_feature_flag_migrated_default
 test_feature_flag_global_disable
 test_feature_flag_per_category_override_enable

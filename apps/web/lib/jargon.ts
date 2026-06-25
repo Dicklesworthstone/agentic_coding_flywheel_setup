@@ -321,7 +321,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     long: "AI agents are programs that combine large AI models (the technology behind ChatGPT, Claude, etc.) with the ability to take actions in the real world: writing and modifying code, creating and editing files, running programs, searching the internet, and more. The word 'agent' emphasizes that these programs have agency; they can decide what to do next based on results, recover when something goes wrong, and pursue multi-step goals. For example, if you ask an AI agent to 'add user authentication to this application,' it might: search the codebase to understand its structure, decide which authentication approach fits best, write the necessary code across potentially multiple files, and can run tests to verify the changes work. It's designed for substantial tasks, not just quick questions. Claude Code asks for your permission before making changes, so you stay in control while it does the detailed work.",
     analogy: "Regular AI is like a brilliant consultant who sits in a chair and answers questions. AI agents are like that same brilliant consultant, but now they can get up, walk around your office, use your computer, look through your files, and actually do work. They still need your guidance on what work to do, but they can execute tasks independently rather than just advising you on how to do them yourself.",
     why: "AI agents are the core of what this setup enables. Once your cloud server is configured with these tools, AI agents can work on your projects: writing code, fixing problems, running tests, and building features. You become like a manager directing a team, deciding priorities and reviewing work, rather than doing every task personally. This doesn't replace understanding what's being built; you're deeply involved in guiding and reviewing. But the agents handle execution.",
-    related: ["agentic", "claude-code", "codex", "gemini-cli"],
+    related: ["agentic", "claude-code", "codex", "antigravity-cli"],
   },
 
   "claude-code": {
@@ -330,7 +330,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     long: "Claude Code is an AI coding assistant made by Anthropic (the company behind Claude). Unlike chatbot interfaces where you copy and paste code back and forth, Claude Code runs directly in your terminal and can read your project files, write new code, edit existing files, run programs to test things, and search the web for information. When you give it a task like 'add a password reset feature,' it explores your project to understand how it's structured, writes the necessary code across potentially multiple files, and can run tests to verify the changes work. It's designed for substantial tasks, not just quick questions. Claude Code asks for your permission before making changes, so you stay in control while it does the detailed work.",
     analogy: "Most AI chatbots are like texting a smart friend for coding advice: they give you suggestions, but you still have to do everything yourself. Claude Code is more like having a developer join a video call where they can see your screen and you can say 'go ahead and make that change.' They understand your project, make the edits directly, and you can review what they did. The difference is between receiving instructions and receiving completed work.",
     why: "Claude Code is one of the primary AI assistants in the Agent Flywheel setup. It's known for producing high-quality code and being able to handle complex, multi-step tasks. When you have substantial work to do (implementing features, fixing complex bugs, restructuring code), Claude Code can often complete it with minimal guidance. The installer sets it up so you can start using it immediately after setup completes.",
-    related: ["ai-agents", "codex", "gemini-cli", "agentic"],
+    related: ["ai-agents", "codex", "antigravity-cli", "agentic"],
   },
 
   codex: {
@@ -339,16 +339,25 @@ export const jargonDictionary: Record<string, JargonTerm> = {
     long: "Codex CLI is OpenAI's terminal-based coding assistant, built on the same AI technology that powers ChatGPT. Like Claude Code, it runs in your terminal and can understand your project, write code, run commands, and help with development tasks. It integrates directly into your workflow, meaning you don't have to copy and paste back and forth. Different AI models have different strengths; some excel at certain types of problems or coding styles. Having Codex available alongside Claude Code gives you options when one approach isn't working or when you want a second opinion on a complex problem.",
     analogy: "If Claude Code is like having one brilliant developer available to help, Codex is like having a second brilliant developer from a different background. They might approach problems differently, have different knowledge, or excel at different types of tasks. Having both available means you can get diverse perspectives and choose the best solution.",
     why: "Having multiple AI assistants gives you flexibility. Sometimes one model produces better results for a particular task, or you want to compare approaches. The Agent Flywheel installs Codex alongside Claude Code so you can easily switch between them or even use them on different parts of a project.",
-    related: ["ai-agents", "claude-code", "gemini-cli"],
+    related: ["ai-agents", "claude-code", "antigravity-cli"],
+  },
+
+  "antigravity-cli": {
+    term: "Antigravity CLI",
+    short: "Google's current terminal coding assistant, launched with agy",
+    long: "Antigravity CLI is Google's current command-line coding agent. In this setup it launches through the `agy` command, with ACFS pinning the model to Gemini 3.1 Pro (High), always-proceed tool permissions, terminal rendering, telemetry off, and the DCG destructive-command guard wired in before each shell command. It replaces the retired Gemini CLI for new work while keeping old Gemini history readable through legacy tooling.",
+    analogy: "If Claude Code and Codex are two senior developers with different instincts, Antigravity is the Google-side third reviewer. It is most useful when you want another model family to inspect a plan, challenge assumptions, or work through a large codebase from a different angle.",
+    why: "Having multiple AI assistants gives you flexibility. Antigravity provides the Google/Gemini model family as the third default agent in the Agent Flywheel setup, so you can compare approaches or assign different agents to parallel work.",
+    related: ["ai-agents", "claude-code", "codex", "gemini-cli"],
   },
 
   "gemini-cli": {
-    term: "Gemini CLI",
-    short: "Google's AI assistant for your terminal",
-    long: "Gemini CLI brings Google's Gemini 3 AI model to your command line, giving you a third AI assistant alongside Claude Code and Codex. Like the others, it runs in your terminal and can help with coding questions, generate code, explain concepts, and assist with development tasks. Gemini 3 is Google's latest AI system, offering capabilities that sometimes differ from what Claude Opus 4.5 or GPT-5.2 provide. Having multiple AI assistants is like having multiple experts with different backgrounds; they might approach problems differently or have different knowledge.",
-    analogy: "If Claude Code and Codex are two brilliant developers on your team, Gemini CLI is a third developer from a completely different company with a different training background. They've read different things, excel at different problems, and sometimes one will have an insight the others miss. Having all three available means you can get diverse perspectives.",
-    why: "Different AI models genuinely have different strengths. Some are better at explaining complex concepts, some at generating creative solutions, some at careful analysis. The Agent Flywheel installs all three major AI assistants so you can choose the best one for each situation, or compare their approaches when facing a tricky problem.",
-    related: ["ai-agents", "claude-code", "codex"],
+    term: "Gemini CLI (legacy)",
+    short: "Google's retired predecessor to Antigravity CLI",
+    long: "Gemini CLI was Google's earlier terminal coding assistant. ACFS keeps legacy references so old session history and docs remain understandable, but new work should use Antigravity CLI through the `agy` command.",
+    analogy: "Gemini CLI is the old doorway into the Google model family. Antigravity is the current doorway for new sessions.",
+    why: "Legacy Gemini references matter for reading old history and migration notes. For new coding-agent work, use Antigravity CLI instead.",
+    related: ["ai-agents", "claude-code", "codex", "antigravity-cli"],
   },
 
   // ═══════════════════════════════════════════════════════════════

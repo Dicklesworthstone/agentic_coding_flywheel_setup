@@ -48,7 +48,7 @@ export function RanoLesson() {
       <Section title="What Is RANO?" icon={<Network className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>RANO</Highlight> is a network observer purpose-built for AI coding CLIs.
-          It intercepts HTTP requests between your local agents (Claude Code, Codex, Gemini CLI)
+          It intercepts HTTP requests between your local agents (Claude Code, Codex, Antigravity CLI)
           and their APIs, logging requests and responses for analysis.
         </Paragraph>
         <Paragraph>

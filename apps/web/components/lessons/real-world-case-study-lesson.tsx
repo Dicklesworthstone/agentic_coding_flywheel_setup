@@ -944,7 +944,7 @@ function SwarmSetupCard() {
             <Bot className="h-5 w-5 text-white" />
           </div>
           <div>
-            <div className="font-semibold text-white text-sm">Gemini CLI</div>
+            <div className="font-semibold text-white text-sm">Antigravity CLI</div>
             <div className="text-xs text-white/50">2 agents (review duty)</div>
           </div>
         </div>
@@ -1200,7 +1200,7 @@ const TIMELINE_EVENTS: TimelineEvent[] = [
     agentIds: ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11"],
     files: ["src/types/index.ts", "src/schemas/bullet.ts", "src/config/defaults.ts"],
     command: "bv --robot-triage  # each agent picks top-priority unblocked bead",
-    detail: "BlueLake takes Zod schemas, RedFox takes CLI scaffolding, GreenCastle takes storage layer. CodBot agents handle infrastructure (CI, Docker, test harness). Gemini agents begin review duty.",
+    detail: "BlueLake takes Zod schemas, RedFox takes CLI scaffolding, GreenCastle takes storage layer. CodBot agents handle infrastructure (CI, Docker, test harness). Antigravity agents begin review duty.",
   },
   {
     id: 3,
@@ -2192,7 +2192,7 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
   const platformGroups = [
     { label: "Claude Code (Opus 4.5)", platform: "cc" as const, agents: SWARM_AGENTS.filter((a) => a.platform === "cc") },
     { label: "Codex CLI (5.1 Max)", platform: "codex" as const, agents: SWARM_AGENTS.filter((a) => a.platform === "codex") },
-    { label: "Gemini CLI (Review)", platform: "gemini" as const, agents: SWARM_AGENTS.filter((a) => a.platform === "gemini") },
+    { label: "Antigravity CLI (Review)", platform: "gemini" as const, agents: SWARM_AGENTS.filter((a) => a.platform === "gemini") },
   ];
 
   const handleAgentToggle = useCallback((agentId: string) => {

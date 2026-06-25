@@ -38,7 +38,7 @@ export function AgentsMdLesson() {
       >
         <Paragraph>
           Every AI agent —{" "}
-          <Highlight>Claude Code, Codex, Gemini</Highlight> — reads AGENTS.md
+          <Highlight>Claude Code, Codex, Antigravity</Highlight> — reads AGENTS.md
           at session start. It&apos;s the{" "}
           <Highlight>&quot;API contract&quot;</Highlight> between you and the
           agents working in your project. Without it, agents guess conventions,

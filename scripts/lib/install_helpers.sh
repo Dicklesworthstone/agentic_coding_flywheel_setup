@@ -502,30 +502,24 @@ acfs_use_generated_for_category() {
         return 0
     fi
 
-    # 3b) ...or for any category that has a module explicitly selected into the
-    # effective plan (e.g. `--only network.ssh_keepalive`). Without this, a
-    # targeted request can select a module whose category is not migrated by
-    # default, and the phase dispatcher would silently never run the generated
-    # installer — the command exits "successfully" but does nothing (#304).
-    # We intentionally gate this on the plan (not the full module set) so a
-    # default install of an unmigrated category still uses the legacy path.
-    acfs_category_in_effective_plan "$category"
+    # 3b) Selection-filtered runs must use generated dispatch for every category.
+    # The top-level installer still enters every phase; legacy phase bodies are
+    # coarse category installers and do not know ACFS_EFFECTIVE_PLAN. Generated
+    # category dispatch is module-aware and no-ops when a category/phase has no
+    # selected modules, so it is the only safe path for --only/--only-phase/--skip.
+    if acfs_selection_filters_active; then
+        return 0
+    fi
+
+    return 1
 }
 
-# Returns 0 (true) if any module of the given category is present in the
-# resolved effective plan (ACFS_EFFECTIVE_PLAN). Used to honor targeted
-# selections of not-yet-migrated generated categories.
-acfs_category_in_effective_plan() {
-    local category="${1:-}"
-    [[ -n "$category" ]] || return 1
-    [[ "${#ACFS_EFFECTIVE_PLAN[@]}" -gt 0 ]] || return 1
-
-    local module=""
-    for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
-        if [[ "${ACFS_MODULE_CATEGORY[$module]:-}" == "$category" ]]; then
-            return 0
-        fi
-    done
+acfs_selection_filters_active() {
+    [[ "${ONLY_MODULES+x}" == "x" && ${#ONLY_MODULES[@]} -gt 0 ]] && return 0
+    [[ "${ONLY_PHASES+x}" == "x" && ${#ONLY_PHASES[@]} -gt 0 ]] && return 0
+    [[ "${SKIP_MODULES+x}" == "x" && ${#SKIP_MODULES[@]} -gt 0 ]] && return 0
+    [[ "${SKIP_TAGS+x}" == "x" && ${#SKIP_TAGS[@]} -gt 0 ]] && return 0
+    [[ "${SKIP_CATEGORIES+x}" == "x" && ${#SKIP_CATEGORIES[@]} -gt 0 ]] && return 0
     return 1
 }
 

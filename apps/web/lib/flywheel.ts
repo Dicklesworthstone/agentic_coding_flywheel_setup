@@ -538,7 +538,7 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-rose-400 to-red-500",
     tagline: "1000+ bug patterns for AI workflows",
     description:
-      "AST-grep patterns detecting 1000+ bug types across 8 languages. 18 detection categories from null safety to security vulnerabilities. Sub-5-second scans. Auto-wires into Claude Code, Codex, Cursor, Gemini, and Windsurf agents.",
+      "AST-grep patterns detecting 1000+ bug types across 8 languages. 18 detection categories from null safety to security vulnerabilities. Sub-5-second scans. Auto-wires into Claude Code, Codex, Cursor, Antigravity, and Windsurf agents.",
     deepDescription:
       "UBS is a meta-runner that fans out per-language scanners (ubs-js.sh, ubs-python.sh, etc.) and merges results into unified output. Uses ast-grep for AST-based pattern matching with 18 detection categories: null safety, async/await bugs, security holes (XSS, injection), memory leaks, type coercion, and more. Supports --beads-jsonl for Beads integration. The installer auto-detects local coding agents and wires guardrails (on-file-write hooks for Claude Code, .cursorrules blocks).",
     connectsTo: ["bv", "br"],
@@ -656,7 +656,7 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-cyan-400 to-sky-500",
     tagline: "Instant search across all agents",
     description:
-      "Unified search for all AI coding sessions. Indexes 11 agent formats: Claude Code, Codex, Cursor, Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, Amp. Tantivy-powered <60ms queries with optional semantic search.",
+      "Unified search for all AI coding sessions. Indexes 11 agent formats: Claude Code, Codex, Cursor, Antigravity/Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory, OpenCode, Amp. Tantivy-powered <60ms queries with optional semantic search.",
     deepDescription:
       "CASS unifies session history from 11 agent formats into a single searchable timeline. Three search modes: lexical (BM25 with edge n-grams), semantic (local MiniLM or hash embedder fallback), and hybrid (RRF fusion). Robot mode with cursor pagination, field selection, and token budgeting. HTML export with optional AES-256-GCM encryption. Multi-machine search via SSH/rsync with interactive setup wizard.",
     connectsTo: ["cm", "ntm", "bv"],
@@ -667,7 +667,7 @@ const _flywheelTools: FlywheelTool[] = [
     },
     stars: 145,
     features: [
-      "11 agent formats: Claude Code, Codex, Cursor, Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory",
+      "11 agent formats: Claude Code, Codex, Cursor, Antigravity/Gemini, ChatGPT, Cline, Aider, Pi-Agent, Factory",
       "Three search modes: lexical (BM25), semantic (MiniLM/hash fallback), hybrid (RRF)",
       "Sub-60ms queries with edge n-gram prefix matching",
       "Aggregations for 99% token reduction (--aggregate agent,workspace)",
@@ -733,7 +733,7 @@ const _flywheelTools: FlywheelTool[] = [
     color: "from-amber-400 to-orange-500",
     tagline: "Instant auth switching",
     description:
-      "Manage multiple accounts for Claude Code, Codex CLI, and Gemini CLI with sub-100ms switching. Smart rotation algorithms, cooldown tracking, health scoring, and vault-based profile isolation for parallel agent sessions.",
+      "Manage multiple accounts for Claude Code, Codex CLI, and Antigravity CLI with sub-100ms switching. Smart rotation algorithms, cooldown tracking, health scoring, and vault-based profile isolation for parallel agent sessions.",
     deepDescription:
       "CAAM enables seamless multi-account workflows for AI coding CLIs. Vault profiles store auth files for instant switching without browser flows. Smart rotation considers cooldown state, health status (healthy/warning/critical), recency, and plan type. Robot mode provides JSON output for agent automation. Features include profile isolation for parallel sessions, background token refresh daemon, and multi-machine vault sync. AES-256-GCM encrypted bundles with Argon2id key derivation for secure export/import.",
     connectsTo: ["ntm", "slb", "mail"],
@@ -745,7 +745,7 @@ const _flywheelTools: FlywheelTool[] = [
     stars: 12,
     features: [
       "Sub-100ms account switching via vault profiles",
-      "3 providers: Claude Code, Codex CLI, Gemini CLI",
+      "3 providers: Claude Code, Codex CLI, Antigravity CLI",
       "Smart rotation: cooldown, health, recency, plan type",
       "Health scoring: healthy (🟢), warning (🟡), critical (🔴)",
       "caam run with automatic failover on rate limits",
@@ -832,7 +832,7 @@ const _flywheelTools: FlywheelTool[] = [
       "Heredoc/inline script scanning (python -c, bash -c, etc.)",
       "Smart context detection: data vs execution contexts",
       "49+ packs: git, filesystem, database, k8s, cloud, cicd",
-      "Agent-specific trust profiles (claude-code, gemini, etc.)",
+      "Agent-specific trust profiles (claude-code, antigravity, etc.)",
       "MCP server mode for direct agent integration",
       "Fail-open design: never blocks on errors/timeouts",
       "Output: text, JSON, SARIF for security tooling",
@@ -997,7 +997,7 @@ as a native tool, not string-parsing.`,
     description:
       "Claude Code PreToolUse hook that offloads cargo builds to remote workers. Intercepts build commands, syncs source via rsync + zstd, compiles on server-grade hardware, and streams artifacts back.",
     deepDescription:
-      "RCH runs as a PreToolUse hook intercepting cargo commands before execution. Workers are managed via `rch workers` with health probes and priority scheduling. The daemon mode maintains persistent SSH connections for low-latency builds. Agent detection (`rch agents`) finds running Claude Code, Codex, and Gemini sessions to coordinate multi-agent builds. Doctor command validates workers, daemon, and hook configuration.",
+      "RCH runs as a PreToolUse hook intercepting cargo commands before execution. Workers are managed via `rch workers` with health probes and priority scheduling. The daemon mode maintains persistent SSH connections for low-latency builds. Agent detection (`rch agents`) finds running Claude Code, Codex, and Antigravity sessions to coordinate multi-agent builds. Doctor command validates workers, daemon, and hook configuration.",
     connectsTo: ["ntm", "ru", "br"],
     connectionDescriptions: {
       ntm: "NTM can spawn agents on same machines RCH uses as workers",
@@ -1010,7 +1010,7 @@ as a native tool, not string-parsing.`,
       "rsync + zstd sync with incremental artifact streaming",
       "Worker pool with health probes and priority scheduling",
       "Daemon mode with persistent SSH connections",
-      "Agent detection for Claude Code, Codex, Gemini CLI",
+      "Agent detection for Claude Code, Codex, Antigravity CLI",
       "Doctor command validates entire configuration",
     ],
     cliCommands: [
@@ -1037,7 +1037,7 @@ as a native tool, not string-parsing.`,
       "A terminal hypervisor that captures pane output in real-time, detects AI agent state transitions via pattern matching, and enables event-driven automation across multi-agent swarms.",
     deepDescription: `WA is a terminal hypervisor - not just an automation tool. It runs a daemon that continuously
 observes WezTerm panes with sub-50ms latency, capturing output deltas and detecting state
-transitions in AI coding agents (Claude Code, Codex, Gemini).
+transitions in AI coding agents (Claude Code, Codex, Antigravity).
 
 The pattern detection engine recognizes agent-specific states: ready for input, thinking,
 rate limited, awaiting approval, idle timeout. When states change, WA can trigger automated
@@ -1877,12 +1877,12 @@ for comprehensive system resource protection.`,
     color: "from-fuchsia-500 to-pink-600",
     tagline: "Resume coding sessions across AI providers",
     description:
-      "Converts session history between Claude, Codex, Gemini, and 14+ providers. Resume work started in one agent using another without losing context.",
+      "Converts session history between Claude, Codex, Antigravity, and 14+ providers. Resume work started in one agent using another without losing context.",
     deepDescription: `When you hit a rate limit on Claude and need to continue in Codex, or want a fresh perspective
-from Gemini on a Claude session, CASR handles the conversion. It normalizes session history
+from Antigravity on a Claude session, CASR handles the conversion. It normalizes session history
 into a canonical model, then generates provider-specific resume contexts.
 
-Supports 14+ providers: Claude Code, Codex CLI, Gemini CLI, Cursor, Aider, Cline, and more.
+Supports 14+ providers: Claude Code, Codex CLI, Antigravity CLI, Cursor, Aider, Cline, and more.
 Session diff and merge allow combining insights from parallel agent sessions.
 
 The conversion preserves tool calls, file edits, and reasoning chains in a format each
@@ -1964,7 +1964,7 @@ your repo has everything needed for a fallback release before you actually need 
 ASB snapshots everything into per-agent git repos. Each backup is a proper git commit
 with full history — you can diff, bisect, and restore any previous state.
 
-Supports Claude Code, Cursor, Codex, Gemini, Aider, Cline, and more. The backup repos
+Supports Claude Code, Cursor, Codex, Antigravity, Aider, Cline, and more. The backup repos
 contain agent-specific settings, MCP configs, hooks, and local preferences.
 
 Handle backup repos like secrets — they may contain tokens, auth state, or sensitive

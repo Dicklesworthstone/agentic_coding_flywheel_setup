@@ -235,7 +235,7 @@ export function SafetyToolsLesson() {
       >
         <Paragraph>
           <Highlight>CAAM</Highlight> enables sub-100ms account switching for
-          subscription-based AI services (Claude Max, Codex CLI, Gemini Ultra).
+          subscription-based AI services (Claude Max, Codex CLI, and Google/Antigravity access).
           Swap OAuth tokens instantly without re-authenticating.
         </Paragraph>
 
@@ -253,7 +253,7 @@ export function SafetyToolsLesson() {
           <CaamFeature
             icon={<Eye className="h-5 w-5" />}
             title="Multi-Tool Support"
-            description="Works with Claude, Codex, and Gemini CLIs"
+            description="Works with Claude, Codex, and Antigravity CLIs"
           />
           <CaamFeature
             icon={<Lock className="h-5 w-5" />}

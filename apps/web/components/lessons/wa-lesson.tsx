@@ -187,7 +187,7 @@ wa robot send 43 "Start next task"`}
             <p className="text-white/80 text-sm mt-1">Task completion, errors, waiting</p>
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
-            <span className="text-violet-400 font-semibold">Gemini CLI</span>
+            <span className="text-violet-400 font-semibold">Antigravity CLI</span>
             <p className="text-white/80 text-sm mt-1">Response completion, quota warnings</p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">

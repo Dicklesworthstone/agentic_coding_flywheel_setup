@@ -72,6 +72,9 @@ describe("provider provisioning packet contract", () => {
 
     expect(commandIds).toEqual(["ssh-root", "installer", "doctor", "support-bundle"]);
     expect(supportSafeCommandIds).toEqual(["installer", "doctor", "support-bundle"]);
+    for (const command of PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS) {
+      expect(command.command).not.toMatch(/<[^>]+>/);
+    }
     expect(artifactIds).toEqual([
       "provider-order-confirmation",
       "installer-log",

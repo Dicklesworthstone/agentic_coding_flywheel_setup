@@ -25,6 +25,11 @@ const SSH_KEY_PATH_UNIX = "~/.ssh/acfs_ed25519";
 // so the key path would be passed literally and OpenSSH would fall back to
 // password auth (#302). %USERPROFILE% is expanded by Windows in these contexts.
 const SSH_KEY_PATH_WINDOWS = "%USERPROFILE%\\.ssh\\acfs_ed25519";
+const SAFE_SSH_HOST_PLACEHOLDERS = new Set([
+  "YOUR_VPS_IP",
+  "YOUR_VPS_IPV4",
+  "YOUR_VPS_IPV6",
+]);
 
 export interface CommandBuilderInputs {
   ip: string;
@@ -380,17 +385,25 @@ function sshKeyPathWindows(): string {
 }
 
 export function formatSshHost(host: string): string {
-  const normalized = host.trim();
+  const normalized = host.trim().replace(/^\[|\]$/g, "");
+  if (SAFE_SSH_HOST_PLACEHOLDERS.has(normalized)) {
+    return normalized;
+  }
+  if (!isValidIP(normalized)) {
+    return "YOUR_VPS_IP";
+  }
   if (normalized.includes(":")) {
     // IPv6 address — strip any existing mismatched brackets and wrap cleanly
-    const bare = normalized.replace(/^\[|\]$/g, "");
-    return `[${bare}]`;
+    return `[${normalized}]`;
   }
   return normalized;
 }
 
 export function formatSshTarget(username: string, host: string): string {
-  return `${username}@${formatSshHost(host)}`;
+  const safeUsername = username.trim() === "root"
+    ? "root"
+    : normalizeSSHUsername(username) ?? "ubuntu";
+  return `${safeUsername}@${formatSshHost(host)}`;
 }
 
 export function buildRootKeyRepairCommand(username: string, host: string): string {
@@ -535,9 +548,9 @@ function classifyTargetHost(host: string): HandoffRunbook["targetHost"]["kind"] 
 
 function redactedTargetHost(host: string): string {
   const kind = classifyTargetHost(host);
-  if (kind === "ipv4") return "<ipv4-target-host>";
-  if (kind === "ipv6") return "<ipv6-target-host>";
-  return "<target-host>";
+  if (kind === "ipv4") return "YOUR_VPS_IPV4";
+  if (kind === "ipv6") return "YOUR_VPS_IPV6";
+  return "YOUR_VPS_IP";
 }
 
 const DEFAULT_TEAM_PROVIDER_SELECTION: VPSReadinessSelection = {

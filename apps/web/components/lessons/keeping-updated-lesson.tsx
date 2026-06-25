@@ -96,7 +96,7 @@ export function KeepingUpdatedLesson() {
           <UpdateItem
             icon={<Bot className="h-4 w-4" />}
             label="Coding agents"
-            description="Claude, Codex, Gemini"
+            description="Claude, Codex, Antigravity"
           />
           <UpdateItem
             icon={<Settings className="h-4 w-4" />}
@@ -233,8 +233,8 @@ claude update --channel latest
 # Codex
 bun install -g --trust @openai/codex@latest
 
-# Gemini
-bun install -g --trust @google/gemini-cli@latest`}
+# Antigravity
+agy update`}
           />
 
           <TroubleshootingCard
@@ -567,7 +567,7 @@ const REPOS: RepoNode[] = [
   { id: "plugins", name: "ZSH Plugins", shortName: "Plugins", versionFrom: "v0.8.1", versionTo: "v0.9.0", category: "shell", dependsOn: ["omz"] },
   { id: "claude", name: "Claude Code", shortName: "Claude", versionFrom: "1.0.47", versionTo: "1.0.48", category: "agent", dependsOn: ["apt"] },
   { id: "codex", name: "OpenAI Codex", shortName: "Codex", versionFrom: "0.1.24", versionTo: "0.1.25", category: "agent", dependsOn: ["apt"] },
-  { id: "gemini", name: "Gemini CLI", shortName: "Gemini", versionFrom: "0.3.8", versionTo: "0.3.9", category: "agent", dependsOn: ["apt"] },
+  { id: "agy", name: "Antigravity CLI", shortName: "agy", versionFrom: "1.0.11", versionTo: "1.0.12", category: "agent", dependsOn: ["apt"] },
   { id: "wrangler", name: "Wrangler", shortName: "Wrnglr", versionFrom: "3.91.0", versionTo: "3.92.0", category: "cloud", dependsOn: ["apt"] },
   { id: "supabase", name: "Supabase CLI", shortName: "Supa", versionFrom: "1.200.3", versionTo: "1.201.0", category: "cloud", dependsOn: ["apt"] },
   { id: "vercel", name: "Vercel CLI", shortName: "Vercel", versionFrom: "37.8.0", versionTo: "37.9.0", category: "cloud", dependsOn: ["apt"] },
@@ -597,7 +597,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "plugins", finalStatus: "updated", delay: 700 },
       { repoId: "claude", finalStatus: "updated", delay: 500 },
       { repoId: "codex", finalStatus: "updated", delay: 600 },
-      { repoId: "gemini", finalStatus: "updated", delay: 700 },
+      { repoId: "agy", finalStatus: "updated", delay: 700 },
       { repoId: "wrangler", finalStatus: "updated", delay: 900 },
       { repoId: "supabase", finalStatus: "updated", delay: 1000 },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
@@ -613,7 +613,7 @@ const SCENARIOS: Scenario[] = [
       "[shell] Pulling zsh-plugins... done",
       "[agents] claude update --channel latest",
       "[agents] codex updated to 0.1.25",
-      "[agents] gemini updated to 0.3.9",
+      "[agents] agy updated to 1.0.12",
       "[cloud] wrangler 3.91.0 -> 3.92.0",
       "[cloud] supabase 1.200.3 -> 1.201.0",
       "[cloud] vercel 37.8.0 -> 37.9.0",
@@ -634,7 +634,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "plugins", finalStatus: "updated", delay: 700 },
       { repoId: "claude", finalStatus: "updated", delay: 500 },
       { repoId: "codex", finalStatus: "updated", delay: 600 },
-      { repoId: "gemini", finalStatus: "updated", delay: 700 },
+      { repoId: "agy", finalStatus: "updated", delay: 700 },
       { repoId: "wrangler", finalStatus: "error", delay: 900, errorMsg: "BREAKING: v4.0.0 requires Node 22+" },
       { repoId: "supabase", finalStatus: "updated", delay: 1000 },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
@@ -668,7 +668,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "plugins", finalStatus: "updated", delay: 700 },
       { repoId: "claude", finalStatus: "updated", delay: 500 },
       { repoId: "codex", finalStatus: "updated", delay: 600 },
-      { repoId: "gemini", finalStatus: "updated", delay: 700 },
+      { repoId: "agy", finalStatus: "updated", delay: 700 },
       { repoId: "wrangler", finalStatus: "updated", delay: 900 },
       { repoId: "supabase", finalStatus: "conflict", delay: 1000, errorMsg: "Needs @supabase/auth@2.x" },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
@@ -702,7 +702,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "plugins", finalStatus: "updated", delay: 900 },
       { repoId: "claude", finalStatus: "updated", delay: 500 },
       { repoId: "codex", finalStatus: "updated", delay: 600 },
-      { repoId: "gemini", finalStatus: "updated", delay: 700 },
+      { repoId: "agy", finalStatus: "updated", delay: 700 },
       { repoId: "wrangler", finalStatus: "updated", delay: 900 },
       { repoId: "supabase", finalStatus: "updated", delay: 1000 },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
@@ -736,7 +736,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "plugins", finalStatus: "updated", delay: 900 },
       { repoId: "claude", finalStatus: "updated", delay: 500 },
       { repoId: "codex", finalStatus: "updated", delay: 600 },
-      { repoId: "gemini", finalStatus: "updated", delay: 700 },
+      { repoId: "agy", finalStatus: "updated", delay: 700 },
       { repoId: "wrangler", finalStatus: "updated", delay: 900 },
       { repoId: "supabase", finalStatus: "updated", delay: 1000 },
       { repoId: "vercel", finalStatus: "updated", delay: 1100 },
@@ -770,7 +770,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "p10k", finalStatus: "updated", delay: 600 },
       { repoId: "plugins", finalStatus: "updated", delay: 650 },
       { repoId: "codex", finalStatus: "updated", delay: 700 },
-      { repoId: "gemini", finalStatus: "updated", delay: 800 },
+      { repoId: "agy", finalStatus: "updated", delay: 800 },
       { repoId: "wrangler", finalStatus: "updated", delay: 1000 },
       { repoId: "supabase", finalStatus: "updated", delay: 1100 },
       { repoId: "vercel", finalStatus: "updated", delay: 1200 },
@@ -783,7 +783,7 @@ const SCENARIOS: Scenario[] = [
       "[apt] 3 packages upgraded across fleet",
       "[fleet] Wave 2/4: Shell + Agents (parallel)",
       "[shell] All shell tools synced",
-      "[agents] Claude, Codex, Gemini updated",
+      "[agents] Claude, Codex, Antigravity updated",
       "[fleet] Health check... all instances green",
       "[fleet] Wave 3/4: Cloud CLIs",
       "[cloud] Wrangler, Supabase, Vercel updated",
@@ -1368,7 +1368,7 @@ function DependencyGraph({ repoStatuses }: { repoStatuses: Record<string, RepoSy
     plugins: { x: 130, y: 130 },
     claude: { x: 210, y: 75 },
     codex: { x: 290, y: 75 },
-    gemini: { x: 370, y: 75 },
+    agy: { x: 370, y: 75 },
     wrangler: { x: 450, y: 75 },
     supabase: { x: 160, y: 130 },
     vercel: { x: 350, y: 130 },
@@ -1517,7 +1517,7 @@ function VersionComparisonPanel({
     plugins: ["zsh-autosuggestions: better history matching", "zsh-syntax-highlighting: new themes"],
     claude: ["Improved tool use reliability", "Faster streaming responses", "New /compact command"],
     codex: ["Multi-file editing support", "Better error recovery", "Sandbox improvements"],
-    gemini: ["Grounding with Search support", "MCP server integration", "Context window expanded"],
+    agy: ["Pinned Gemini 3.1 Pro model", "DCG hook integration", "Terminal settings refreshed"],
     wrangler: ["D1 export support", "Hyperdrive GA", "Pages build caching"],
     supabase: ["Edge Functions v2", "Branching GA", "Realtime improvements"],
     vercel: ["Fluid compute support", "Faster deploys", "Improved DX for monorepos"],

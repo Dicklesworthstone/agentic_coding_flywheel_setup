@@ -40,7 +40,7 @@ const TERMINAL_LINES = [
   { type: "output", text: "▸ Detecting Ubuntu 24.04... ✓" },
   { type: "output", text: "▸ Installing zsh + oh-my-zsh + powerlevel10k..." },
   { type: "output", text: "▸ Installing bun, uv, rust, go..." },
-  { type: "output", text: "▸ Installing Claude Code, Codex CLI, Gemini CLI..." },
+  { type: "output", text: "▸ Installing Claude Code, Codex CLI, Antigravity CLI..." },
   { type: "output", text: "▸ Configuring tmux, ripgrep, lazygit..." },
   { type: "output", text: "▸ Setting up Dicklesworthstone stack..." },
   { type: "success", text: "✓ Setup complete! Run 'onboard' to get started." },
@@ -224,7 +224,7 @@ const FEATURES = [
     description: (
       <>
         <Jargon term="claude-code">Claude Code</Jargon>, <Jargon term="codex">Codex CLI</Jargon>, and{" "}
-        <Jargon term="gemini-cli">Gemini CLI</Jargon>, all configured with optimal settings for coding.
+        <Jargon term="antigravity-cli">Antigravity CLI</Jargon>, all configured with optimal settings for coding.
       </>
     ),
     gradient: "bg-[oklch(0.7_0.2_330)]",
@@ -1014,7 +1014,7 @@ export default function HomePage() {
                 Transform a fresh <Jargon term="cloud-server">cloud server</Jargon> into a fully-configured{" "}
                 <Jargon term="agentic">agentic</Jargon> coding environment.{" "}
                 <Jargon term="claude-code">Claude Code</Jargon>, OpenAI <Jargon term="codex">Codex</Jargon>,{" "}
-                Google <Jargon term="gemini-cli">Gemini</Jargon>: all pre-configured with 30+ modern developer tools.
+                Google <Jargon term="antigravity-cli">Antigravity</Jargon>: all pre-configured with 30+ modern developer tools.
                 All totally free and <Jargon term="open-source">open-source</Jargon>.
               </motion.p>
 
@@ -1081,7 +1081,7 @@ export default function HomePage() {
               <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
                 <ToolBadge name="Claude Code" color="oklch(0.78 0.16 75)" />
                 <ToolBadge name="Codex CLI" color="oklch(0.72 0.19 145)" />
-                <ToolBadge name="Gemini CLI" color="oklch(0.75 0.18 195)" />
+                <ToolBadge name="Antigravity CLI" color="oklch(0.75 0.18 195)" />
                 <ToolBadge name="Bun" color="oklch(0.78 0.16 75)" />
                 <ToolBadge name="Rust" color="oklch(0.65 0.22 25)" />
                 <ToolBadge name="Go" color="oklch(0.75 0.18 195)" />

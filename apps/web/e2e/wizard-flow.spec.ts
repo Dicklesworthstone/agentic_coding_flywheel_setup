@@ -1001,7 +1001,7 @@ test.describe("Step 9: Run Installer Page", () => {
     expect(runbook.schema).toBe("acfs.handoff-runbook.v1");
     expect(runbook.install?.command).toContain("curl -fsSL");
     expect(runbook.support?.bundleCommand).toBe("acfs support-bundle");
-    expect(runbook.targetHost?.value).toBe("<ipv4-target-host>");
+    expect(runbook.targetHost?.value).toBe("YOUR_VPS_IPV4");
     expect(jsonText).not.toContain("192.168.1.100");
 
     const [markdownDownload] = await Promise.all([
@@ -1014,7 +1014,7 @@ test.describe("Step 9: Run Installer Page", () => {
 
     expect(markdownText).toContain("# ACFS Wizard Handoff Runbook");
     expect(markdownText).toContain("acfs support-bundle");
-    expect(markdownText).toContain("ssh root@<ipv4-target-host>");
+    expect(markdownText).toContain("ssh root@YOUR_VPS_IPV4");
     expect(markdownText).not.toContain("192.168.1.100");
   });
 
