@@ -142,10 +142,10 @@ export function AgentsLoginLesson() {
         </div>
 
         <Paragraph>
-          Legacy: <Highlight>gmi</Highlight> (
-          <Highlight>gemini --yolo</Highlight>) is still defined for reading old
-          sessions, but the Gemini CLI it launched retired 2026-06-18 — reach for{" "}
-          <Highlight>agy</Highlight> instead.
+          Legacy: <Highlight>gmi</Highlight> is still defined, but it now launches
+          the same locked Antigravity path as <Highlight>agy</Highlight>. The
+          Gemini CLI retired 2026-06-18, so use <Highlight>agy</Highlight> for
+          new work and treat old Gemini references as history/context only.
         </Paragraph>
       </Section>
 
@@ -186,7 +186,7 @@ export function AgentsLoginLesson() {
           <LoginStep
             agent="Gemini CLI (legacy)"
             command='export GEMINI_API_KEY="your-gemini-api-key"'
-            description="Legacy path for the retired gemini CLI (kept for old ~/.gemini/tmp history). Put the key in ~/.gemini/.env or your shell config, then run gemini."
+            description="Only for intentionally opening the retired gemini binary or old ~/.gemini/tmp material. The gmi shortcut now launches locked agy."
             gradient="from-blue-500/10 to-indigo-500/10"
           />
         </div>

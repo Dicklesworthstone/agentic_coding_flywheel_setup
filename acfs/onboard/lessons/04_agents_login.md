@@ -14,7 +14,7 @@ You have three powerful coding agents installed:
 | Codex CLI | `codex` | `cod` | OpenAI |
 | Antigravity CLI | `agy` | `agy` | Google |
 
-> The Gemini CLI (`gmi`) it replaced retired on 2026-06-18. `gmi` is still defined for reading old `~/.gemini/tmp` history, but use `agy` for all new work.
+> The Gemini CLI retired on 2026-06-18. `gmi` is still defined for muscle memory, but ACFS maps it to the same locked Antigravity launcher as `agy`; use `agy` in new docs and workflows.
 
 ---
 

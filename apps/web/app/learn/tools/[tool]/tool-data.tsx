@@ -153,7 +153,7 @@ const RAW_TOOLS: Record<ToolId, ToolCard> = {
   "gemini-cli": {
     id: "gemini-cli",
     title: "Gemini CLI (legacy)",
-    tagline: "Retired 2026-06-18 - superseded by the Antigravity CLI (agy)",
+    tagline: "Retired 2026-06-18 - legacy gmi now routes to locked agy",
     icon: <Search className="h-8 w-8" aria-hidden="true" />,
     gradient: "from-blue-500/20 via-indigo-500/20 to-blue-500/20",
     glowColor: "rgba(99,102,241,0.4)",

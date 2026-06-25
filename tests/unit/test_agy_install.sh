@@ -58,6 +58,8 @@ check "acfs.zshrc maps gmi to the locked agy launcher" \
   "grep -q \"alias gmi='\\\$HOME/.local/bin/agy-locked'\" acfs/zsh/acfs.zshrc"
 check "uca updates agy instead of gemini-cli" \
   "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q 'agy\" update' && ! grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q '@google/gemini-cli'"
+check "uca re-primes locked Antigravity settings after update" \
+  "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q 'agy-locked\" --acfs-prime-settings'"
 check "agy locked launcher pins the required model" \
   "grep -q 'MODEL = \"Gemini 3.1 Pro (High)\"' scripts/lib/agy_locked.py"
 check "agy locked launcher pins always-proceed tool permission" \

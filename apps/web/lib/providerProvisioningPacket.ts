@@ -408,6 +408,45 @@ const PROVIDER_PACKET_PRESETS: Record<string, ProviderPacketPreset> = {
   },
 };
 
+function collapsePacketText(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function looksSensitivePacketText(value: string): boolean {
+  if (/-----begin [a-z ]*private key-----/i.test(value)) return true;
+  if (/^[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^@\s]+@/i.test(value)) return true;
+  if (/\bbearer\s+\S+/i.test(value)) return true;
+  if (/(?:token|api[_-]?key|secret|password|private[_-]?key|cookie|session|credential|client[_-]?secret|webhook[_-]?secret|vault[_-]?token)/i.test(value)) {
+    return true;
+  }
+  if (/(?:^|[^0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?:[^0-9]|$)/.test(value)) {
+    return true;
+  }
+
+  const compact = value.replace(/[^A-Za-z0-9]/g, "");
+  return compact.length >= 40 && /[A-Za-z]/.test(compact) && /[0-9]/.test(compact);
+}
+
+function safePacketText(value: string | null | undefined, fallback: string, maxLength = 80): string {
+  const collapsed = collapsePacketText(value ?? "");
+  if (!collapsed || looksSensitivePacketText(collapsed)) return fallback;
+  return collapsed.slice(0, maxLength);
+}
+
+function safePacketSlug(value: string | null | undefined, fallback: string): string {
+  const slug = safePacketText(value, fallback, 80)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^[._-]+|[._-]+$/g, "")
+    .slice(0, 64);
+  return slug || fallback;
+}
+
+function safePacketUbuntuVersion(value: string | null | undefined): string {
+  const safe = safePacketText(value, "25.10", 16);
+  return /^[0-9]{2}\.[0-9]{2}$/.test(safe) ? safe : "25.10";
+}
+
 function readinessCheckStatus(
   checks: VPSReadinessCheck[],
   id: VPSReadinessCheck["id"],
@@ -416,7 +455,7 @@ function readinessCheckStatus(
 }
 
 function providerPresetFor(providerId: string): ProviderPacketPreset {
-  const normalizedProviderId = providerId.trim().toLowerCase();
+  const normalizedProviderId = safePacketSlug(providerId, "other");
   const provider = VPS_PROVIDERS.find((entry) => entry.id === normalizedProviderId);
   if (provider) {
     return {
@@ -430,7 +469,9 @@ function providerPresetFor(providerId: string): ProviderPacketPreset {
 
   return PROVIDER_PACKET_PRESETS[normalizedProviderId] ?? {
     id: normalizedProviderId || "other",
-    name: normalizedProviderId === "other" || !normalizedProviderId ? "Other provider" : providerId,
+    name: normalizedProviderId === "other" || !normalizedProviderId
+      ? "Other provider"
+      : safePacketText(providerId, "Other provider"),
     productUrl: "",
     automationLevel: "manual",
     cloudInitMode: "none",
@@ -485,17 +526,21 @@ function buildCloudInit(
 export function buildProviderProvisioningPacket(
   input: ProviderProvisioningPacketInput,
 ): ProviderProvisioningPacket {
-  const rawProviderId = input.providerId.trim();
-  const providerId = rawProviderId.toLowerCase() || "other";
+  const rawProviderId = safePacketText(input.providerId, "other");
+  const providerId = safePacketSlug(rawProviderId, "other");
+  const planName = safePacketText(input.planName, "custom plan");
+  const ubuntuVersion = safePacketUbuntuVersion(input.ubuntuVersion);
+  const regionId = safePacketSlug(input.region, "not-listed");
+  const regionLabel = safePacketText(input.region, "Not listed");
   const preset = providerPresetFor(rawProviderId || providerId);
   const requestedAgents = Number.isFinite(input.targetAgents) ? input.targetAgents : 10;
   const targetAgents = Math.max(1, Math.floor(requestedAgents));
   const targetUsername = normalizeSSHUsername(input.username) ?? "ubuntu";
   const readiness = validateVPSReadiness({
     providerId,
-    planName: input.planName,
-    ubuntuVersion: input.ubuntuVersion,
-    region: input.region,
+    planName,
+    ubuntuVersion,
+    region: regionId,
     targetAgents,
     workloadId: input.workloadId,
   });
@@ -547,13 +592,13 @@ export function buildProviderProvisioningPacket(
       manualStepsRemaining: manualStepsForProvider(preset.id),
     },
     region: {
-      id: input.region || "not-listed",
-      label: input.region || "Not listed",
+      id: regionId,
+      label: regionLabel,
       readinessStatus: regionReadiness === "unsupported" ? "unknown" : regionReadiness,
-      providerSpecificCode: input.region || undefined,
+      providerSpecificCode: regionId === "not-listed" ? undefined : regionId,
     },
     size: {
-      planName: input.planName || "custom plan",
+      planName,
       ramGB: readiness.plan?.ramGB ?? requiredSpecs.ramGB,
       vCPU: readiness.plan?.vCPU ?? requiredSpecs.vCPU,
       storageGB: readiness.plan?.storageGB ?? requiredSpecs.storageGB,
@@ -562,7 +607,7 @@ export function buildProviderProvisioningPacket(
     },
     osImage: {
       distribution: "ubuntu",
-      version: input.ubuntuVersion,
+      version: ubuntuVersion,
       minimumVersion: readiness.provider?.readiness.minimumUbuntu ?? "22.04",
       preferredVersions: readiness.provider?.readiness.preferredUbuntuVersions ?? ["25.10", "24.04"],
       readinessStatus: osReadiness,

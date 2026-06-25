@@ -253,6 +253,28 @@ describe("buildProviderProvisioningPacket", () => {
     expect(json).not.toContain("PRIVATE");
   });
 
+  test("sanitizes free-form provider metadata before support-safe serialization", () => {
+    const packet = buildProviderProvisioningPacket({
+      ...baseInput,
+      providerId: "Linode\napi_token=sk_live_1234567890",
+      planName: "Shared 32 GB password=hunter2",
+      ubuntuVersion: "24.04 bearer abcdef",
+      region: "newark 203.0.113.42",
+      sshPublicKeyFingerprint: "SHA256:fixture",
+    });
+    const json = serializeProviderProvisioningPacketJson(packet);
+
+    expect(packet.provider.id).toBe("other");
+    expect(packet.provider.name).toBe("Other provider");
+    expect(packet.size.planName).toBe("custom plan");
+    expect(packet.osImage.version).toBe("25.10");
+    expect(packet.region.id).toBe("not-listed");
+    expect(json).not.toContain("sk_live_1234567890");
+    expect(json).not.toContain("hunter2");
+    expect(json).not.toContain("bearer abcdef");
+    expect(json).not.toContain("203.0.113.42");
+  });
+
   test("carries ref pins and module profile selectors into the install command", () => {
     const packet = buildProviderProvisioningPacket({
       ...baseInput,

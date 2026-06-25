@@ -354,9 +354,9 @@ export const jargonDictionary: Record<string, JargonTerm> = {
   "gemini-cli": {
     term: "Gemini CLI (legacy)",
     short: "Google's retired predecessor to Antigravity CLI",
-    long: "Gemini CLI was Google's earlier terminal coding assistant. ACFS keeps legacy references so old session history and docs remain understandable, but new work should use Antigravity CLI through the `agy` command.",
+    long: "Gemini CLI was Google's earlier terminal coding assistant. ACFS keeps legacy references so old session history and docs remain understandable, but the `gmi` shortcut now routes to the same locked Antigravity path as `agy`.",
     analogy: "Gemini CLI is the old doorway into the Google model family. Antigravity is the current doorway for new sessions.",
-    why: "Legacy Gemini references matter for reading old history and migration notes. For new coding-agent work, use Antigravity CLI instead.",
+    why: "Legacy Gemini references matter for reading old history and migration notes. For new coding-agent work, use Antigravity CLI through `agy`; `gmi` remains only as a familiar shortcut to that same path.",
     related: ["ai-agents", "claude-code", "codex", "antigravity-cli"],
   },
 

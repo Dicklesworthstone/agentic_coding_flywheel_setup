@@ -1232,7 +1232,7 @@ Benefits for agentic workflows:
 | **Claude Code** | `claude` | `cc` (dangerous mode) |
 | **Codex CLI** | `codex` | `cod` (dangerous mode) |
 | **Antigravity CLI** | `agy` | `agy` (model-pinned, dangerous mode) |
-| **Gemini CLI** (legacy) | `gemini` | `gmi` (retired 2026-06-18; old-history reads only) |
+| **Gemini CLI** (legacy) | `gemini` | `gmi` (retired 2026-06-18; routes to locked `agy`) |
 
 **Vibe Mode Aliases:**
 ```bash

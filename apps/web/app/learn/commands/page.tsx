@@ -133,7 +133,7 @@ const COMMANDS: CommandEntry[] = [
   {
     name: "gmi",
     fullName: "Gemini CLI (legacy)",
-    description: "Retired 2026-06-18 — superseded by `agy`; kept for old sessions",
+    description: "Legacy shortcut retained for old habits; now launches locked `agy`",
     example: 'gmi "explain the repo structure"',
     category: "agents",
     learnMoreHref: "/learn/tools/gemini-cli",
@@ -157,7 +157,7 @@ const COMMANDS: CommandEntry[] = [
   {
     name: "gemini",
     fullName: "Gemini CLI (legacy)",
-    description: "Full command for the retired `gmi`; kept for old sessions",
+    description: "Retired Gemini CLI reference; use `agy` or legacy shortcut `gmi`",
     example: "gemini --help",
     category: "agents",
     learnMoreHref: "/learn/tools/gemini-cli",

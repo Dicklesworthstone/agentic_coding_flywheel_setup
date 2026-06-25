@@ -135,7 +135,7 @@ export const COMMANDS: CommandRef[] = [
   {
     name: "gmi",
     fullName: "Gemini CLI (legacy)",
-    description: "Retired 2026-06-18 — superseded by agy. Kept for old sessions.",
+    description: "Legacy shortcut retained for old habits; now launches locked agy.",
     category: "agents",
     example: 'gmi "review this PR"',
     aliases: ["gemini"],

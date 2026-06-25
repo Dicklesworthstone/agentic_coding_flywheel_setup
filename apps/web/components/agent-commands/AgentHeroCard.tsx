@@ -62,7 +62,7 @@ export const agentPersonalities: Record<
     glowColor: "oklch(0.75 0.18 195)",
     bgGlow: "bg-[oklch(0.75_0.18_195/0.15)]",
     borderHover: "hover:border-[oklch(0.75_0.18_195/0.5)]",
-    tagline: "Gemini CLI — legacy, retired 2026-06-18",
+    tagline: "Legacy gmi shortcut now launches locked agy",
   },
 };
 
@@ -99,7 +99,7 @@ export function AgentHeroCard({
         return;
       }
 
-      const keyNum = parseInt(e.key);
+      const keyNum = parseInt(e.key, 10);
       if (keyNum === index + 1 && keyNum >= 1 && keyNum <= 4) {
         cardRef.current?.focus();
         onKeyboardFocus?.(true);

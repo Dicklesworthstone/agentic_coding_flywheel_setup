@@ -5022,6 +5022,11 @@ update_install_agy_locked_launchers() {
         update_run_in_target_context "" mkdir -p "$target_bin" || return 1
         update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/agy-locked" || return 1
         update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/gmi" || return 1
+        if update_run_in_target_context "" "$target_bin/agy-locked" --acfs-prime-settings; then
+            log_item "fix" "Antigravity locked settings" "model, permissions, and dcg hook primed"
+        else
+            log_item "warn" "Antigravity locked settings" "will be primed on next agy launch"
+        fi
         log_item "fix" "agy locked launchers" "$target_bin/agy-locked, $target_bin/gmi"
         return 0
     done
