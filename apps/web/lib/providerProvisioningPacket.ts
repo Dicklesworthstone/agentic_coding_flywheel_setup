@@ -416,6 +416,13 @@ function looksSensitivePacketText(value: string): boolean {
   if (/-----begin [a-z ]*private key-----/i.test(value)) return true;
   if (/^[a-z][a-z0-9+.-]*:\/\/[^/\s:@]+:[^@\s]+@/i.test(value)) return true;
   if (/\bbearer\s+\S+/i.test(value)) return true;
+  if (/\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9_=-]+\b/i.test(value)) return true;
+  if (/\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})\b/.test(value)) {
+    return true;
+  }
+  if (/\b(?:AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,})\b/.test(value)) {
+    return true;
+  }
   if (/(?:token|api[_-]?key|secret|password|private[_-]?key|cookie|session|credential|client[_-]?secret|webhook[_-]?secret|vault[_-]?token)/i.test(value)) {
     return true;
   }
@@ -443,8 +450,32 @@ function safePacketSlug(value: string | null | undefined, fallback: string): str
 }
 
 function safePacketUbuntuVersion(value: string | null | undefined): string {
-  const safe = safePacketText(value, "25.10", 16);
-  return /^[0-9]{2}\.[0-9]{2}$/.test(safe) ? safe : "25.10";
+  const collapsed = collapsePacketText(value ?? "");
+  if (!collapsed || looksSensitivePacketText(collapsed)) return "25.10";
+  const version = collapsed.match(/\b([0-9]{2}\.[0-9]{2})\b/);
+  return version?.[1] ?? "25.10";
+}
+
+function safeSshPublicKeyFingerprint(value: string | null | undefined): string | undefined {
+  const collapsed = collapsePacketText(value ?? "");
+  if (!collapsed || collapsed.length > 140) return undefined;
+  if (/^SHA256:[A-Za-z0-9+/=]{20,80}$/.test(collapsed)) return collapsed;
+  if (/^MD5:(?:[A-Fa-f0-9]{2}:){15}[A-Fa-f0-9]{2}$/.test(collapsed)) return collapsed;
+  return undefined;
+}
+
+function safeSshPublicKeyMaterial(value: string | null | undefined): string | undefined {
+  const collapsed = collapsePacketText(value ?? "");
+  if (!collapsed || collapsed.length > 8192) return undefined;
+
+  const match = collapsed.match(
+    /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)\s+([A-Za-z0-9+/]+={0,3})(?:\s+(.+))?$/,
+  );
+  if (!match) return undefined;
+
+  const comment = match[3] ?? "";
+  if (comment && looksSensitivePacketText(comment)) return undefined;
+  return collapsed;
 }
 
 function readinessCheckStatus(
@@ -532,6 +563,9 @@ export function buildProviderProvisioningPacket(
   const ubuntuVersion = safePacketUbuntuVersion(input.ubuntuVersion);
   const regionId = safePacketSlug(input.region, "not-listed");
   const regionLabel = safePacketText(input.region, "Not listed");
+  const sshPublicKeyLabel = safePacketText(input.sshPublicKeyLabel, "acfs_ed25519.pub", 120);
+  const sshPublicKeyFingerprint = safeSshPublicKeyFingerprint(input.sshPublicKeyFingerprint);
+  const sshPublicKeyMaterial = safeSshPublicKeyMaterial(input.sshPublicKeyMaterial);
   const preset = providerPresetFor(rawProviderId || providerId);
   const requestedAgents = Number.isFinite(input.targetAgents) ? input.targetAgents : 10;
   const targetAgents = Math.max(1, Math.floor(requestedAgents));
@@ -615,9 +649,9 @@ export function buildProviderProvisioningPacket(
     access: {
       username: targetUsername,
       rootLoginExpected: true,
-      sshPublicKeyLabel: input.sshPublicKeyLabel ?? "acfs_ed25519.pub",
-      sshPublicKeyFingerprint: input.sshPublicKeyFingerprint,
-      sshPublicKeyMaterial: input.sshPublicKeyMaterial,
+      sshPublicKeyLabel,
+      sshPublicKeyFingerprint,
+      sshPublicKeyMaterial,
       sshPrivateKeyIncluded: false,
       sshPrivateKeyPathIncluded: false,
     },

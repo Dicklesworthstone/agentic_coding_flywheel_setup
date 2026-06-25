@@ -229,13 +229,15 @@ describe("buildProviderProvisioningPacket", () => {
   });
 
   test("keeps unknown providers advisory and support-safe", () => {
+    const publicKeyMaterial = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFixturePublicKey acfs";
+    const publicKeyFingerprint = "SHA256:0123456789ABCDEFGHIJKLMNOPQRSTUVWXYabcdefghi";
     const packet = buildProviderProvisioningPacket({
       ...baseInput,
       providerId: "Linode",
       planName: "Shared 32 GB",
       region: "newark",
-      sshPublicKeyFingerprint: "SHA256:fixture",
-      sshPublicKeyMaterial: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFixturePublicKey acfs",
+      sshPublicKeyFingerprint: publicKeyFingerprint,
+      sshPublicKeyMaterial: publicKeyMaterial,
     });
     const json = serializeProviderProvisioningPacketJson(packet);
 
@@ -249,15 +251,28 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.compatibility.readinessStatus).toBe("unknown");
     expect(packet.size.sourcePlan).toBeNull();
     expect(packet.access.sshPrivateKeyIncluded).toBe(false);
+    expect(packet.access.sshPublicKeyFingerprint).toBe(publicKeyFingerprint);
+    expect(packet.access.sshPublicKeyMaterial).toBe(publicKeyMaterial);
     expect(json).not.toContain("203.0.113.42");
     expect(json).not.toContain("PRIVATE");
+  });
+
+  test("normalizes common Ubuntu labels without changing the selected version", () => {
+    const packet = buildProviderProvisioningPacket({
+      ...baseInput,
+      providerId: "contabo",
+      ubuntuVersion: "Ubuntu 24.04 LTS",
+    });
+
+    expect(packet.osImage.version).toBe("24.04");
+    expect(packet.osImage.readinessStatus).toBe("supported");
   });
 
   test("sanitizes free-form provider metadata before support-safe serialization", () => {
     const packet = buildProviderProvisioningPacket({
       ...baseInput,
       providerId: "Linode\napi_token=sk_live_1234567890",
-      planName: "Shared 32 GB password=hunter2",
+      planName: "sk_live_1234567890",
       ubuntuVersion: "24.04 bearer abcdef",
       region: "newark 203.0.113.42",
       sshPublicKeyFingerprint: "SHA256:fixture",
@@ -270,9 +285,26 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.osImage.version).toBe("25.10");
     expect(packet.region.id).toBe("not-listed");
     expect(json).not.toContain("sk_live_1234567890");
-    expect(json).not.toContain("hunter2");
     expect(json).not.toContain("bearer abcdef");
     expect(json).not.toContain("203.0.113.42");
+  });
+
+  test("omits unsafe SSH public key fields from support-safe packets", () => {
+    const packet = buildProviderProvisioningPacket({
+      ...baseInput,
+      sshPublicKeyLabel: "password=hunter2",
+      sshPublicKeyFingerprint: "SHA256:fixture token=abc",
+      sshPublicKeyMaterial: "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n-----END OPENSSH PRIVATE KEY-----",
+    });
+    const json = serializeProviderProvisioningPacketJson(packet);
+
+    expect(packet.access.sshPublicKeyLabel).toBe("acfs_ed25519.pub");
+    expect(packet.access.sshPublicKeyFingerprint).toBeUndefined();
+    expect(packet.access.sshPublicKeyMaterial).toBeUndefined();
+    expect(packet.access.sshPrivateKeyIncluded).toBe(false);
+    expect(json).not.toContain("hunter2");
+    expect(json).not.toContain("token=abc");
+    expect(json).not.toContain("BEGIN OPENSSH PRIVATE KEY");
   });
 
   test("carries ref pins and module profile selectors into the install command", () => {
