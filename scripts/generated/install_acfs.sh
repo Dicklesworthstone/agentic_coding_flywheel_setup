@@ -254,6 +254,25 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
 
     export TARGET_USER TARGET_HOME MODE ACFS_BIN_DIR
     export ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
+
+    # Defensive ownership repair (#306): when running as root, make sure the
+    # target user owns their XDG bin dir before the user-space language
+    # installers (uv/rust/bun) write into it. uv installs via an atomic
+    # mktemp+rename inside ~/.local/bin, so a root-owned ~/.local/bin makes its
+    # mktemp fail with "Permission denied (os error 13)" once the installer is
+    # re-exec'd as the (non-root) target user. The chown is NON-recursive on
+    # purpose — only the two directories themselves, never their contents (never
+    # chown -R ~/.local, which would clobber ownership of unrelated state).
+    if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "${TARGET_USER}" != "root" ]]; then
+        _acfs_repair_mkdir="$(_acfs_system_binary_path mkdir 2>/dev/null || true)"
+        _acfs_repair_chown="$(_acfs_system_binary_path chown 2>/dev/null || true)"
+        if [[ -n "$_acfs_repair_mkdir" ]] && [[ -n "$_acfs_repair_chown" ]]; then
+            if "$_acfs_repair_mkdir" -p "$TARGET_HOME/.local/bin" 2>/dev/null; then
+                "$_acfs_repair_chown" "${TARGET_USER}" "$TARGET_HOME/.local" "$TARGET_HOME/.local/bin" 2>/dev/null || true
+            fi
+        fi
+        unset _acfs_repair_mkdir _acfs_repair_chown
+    fi
 fi
 
 acfs_generated_ensure_selection() {
