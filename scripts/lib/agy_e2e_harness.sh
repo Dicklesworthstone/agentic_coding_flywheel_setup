@@ -130,7 +130,13 @@ agy_e2e_print() {
 agy_e2e_newest_conversation() {
   local dir="${HOME}/.gemini/antigravity-cli/conversations"
   [[ -d "$dir" ]] || return 0
-  local newest; newest="$(ls -t "$dir"/*.db 2>/dev/null | head -1)"
+  local newest=""
+  local candidate=""
+  while IFS= read -r -d '' candidate; do
+    if [[ -z "$newest" || "$candidate" -nt "$newest" ]]; then
+      newest="$candidate"
+    fi
+  done < <(find "$dir" -maxdepth 1 -type f -name '*.db' -print0 2>/dev/null)
   [[ -n "$newest" ]] && basename "$newest" .db
 }
 
