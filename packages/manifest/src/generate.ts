@@ -306,14 +306,24 @@ if [[ "\${BASH_SOURCE[0]}" = "\${0}" ]]; then
     # deliberately non-recursive: only the two directories themselves are
     # touched, never their contents.
     if [[ \$EUID -eq 0 ]] && [[ -n "\${TARGET_USER:-}" ]] && [[ "\${TARGET_USER}" != "root" ]]; then
-        _acfs_repair_mkdir="\$(_acfs_system_binary_path mkdir 2>/dev/null || true)"
-        _acfs_repair_chown="\$(_acfs_system_binary_path chown 2>/dev/null || true)"
-        if [[ -n "\$_acfs_repair_mkdir" ]] && [[ -n "\$_acfs_repair_chown" ]]; then
-            if "\$_acfs_repair_mkdir" -p "\$TARGET_HOME/.local/bin" 2>/dev/null; then
-                "\$_acfs_repair_chown" "\${TARGET_USER}" "\$TARGET_HOME/.local" "\$TARGET_HOME/.local/bin" 2>/dev/null || true
+        # SECURITY: never chown through a symlink. If an untrusted target user
+        # pre-staged ~/.local or ~/.local/bin as a symlink (e.g. -> /etc) before
+        # the root install, a chown that follows it would transfer ownership of
+        # the link target to them (local privilege escalation). chown -h /
+        # nofollow is not portable, so refuse the repair entirely when either
+        # path already exists as a symlink.
+        if [[ -L "\$TARGET_HOME/.local" ]] || [[ -L "\$TARGET_HOME/.local/bin" ]]; then
+            log_warn "Skipping ~/.local ownership repair: \$TARGET_HOME/.local or .local/bin is a symlink (refusing to chown through it)"
+        else
+            _acfs_repair_mkdir="\$(_acfs_system_binary_path mkdir 2>/dev/null || true)"
+            _acfs_repair_chown="\$(_acfs_system_binary_path chown 2>/dev/null || true)"
+            if [[ -n "\$_acfs_repair_mkdir" ]] && [[ -n "\$_acfs_repair_chown" ]]; then
+                if "\$_acfs_repair_mkdir" -p "\$TARGET_HOME/.local/bin" 2>/dev/null; then
+                    "\$_acfs_repair_chown" "\${TARGET_USER}" "\$TARGET_HOME/.local" "\$TARGET_HOME/.local/bin" 2>/dev/null || true
+                fi
             fi
+            unset _acfs_repair_mkdir _acfs_repair_chown
         fi
-        unset _acfs_repair_mkdir _acfs_repair_chown
     fi
 fi
 
