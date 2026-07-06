@@ -78,7 +78,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
     ],
     tips: [
       "Ed25519 keys are shorter and more secure than RSA keys.",
-      "The wizard command creates the key with an empty passphrase on purpose: later steps and coding agents reconnect non-interactively, and a passphrase would make them prompt or fail.",
+      "The wizard command intentionally creates the key with an empty passphrase so later steps can reconnect to your VPS without prompting; adding one would break the command's safe-rerun behavior.",
     ],
   },
 
