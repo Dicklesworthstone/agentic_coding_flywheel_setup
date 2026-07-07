@@ -928,8 +928,19 @@ state_get() {
         # Basic fallback for simple keys (no nested paths)
         # This is a simplified parser - prefer having jq installed
         # Uses sed instead of grep -oP for POSIX compatibility (macOS, BSD)
+        # The state file is jq-pretty-printed (arrays span lines), so flatten
+        # before matching. Array values are returned as one-line JSON with the
+        # element quotes intact so callers can test membership against the
+        # exact quoted element; scalar values are returned unquoted.
         local simple_key="${key#.}"
-        echo "$state" | sed -n "s/.*\"${simple_key}\"[[:space:]]*:[[:space:]]*\([^,}]*\).*/\1/p" | tr -d '"' | head -1
+        local flat array_value
+        flat="$(printf '%s' "$state" | tr '\n\t' '  ')"
+        array_value="$(printf '%s' "$flat" | sed -n "s/.*\"${simple_key}\"[[:space:]]*:[[:space:]]*\(\[[^]]*\]\).*/\1/p")"
+        if [[ -n "$array_value" ]]; then
+            printf '%s\n' "$array_value"
+        else
+            printf '%s' "$flat" | sed -n "s/.*\"${simple_key}\"[[:space:]]*:[[:space:]]*\([^,}]*\).*/\1/p" | tr -d '"' | head -1
+        fi
     fi
 }
 
