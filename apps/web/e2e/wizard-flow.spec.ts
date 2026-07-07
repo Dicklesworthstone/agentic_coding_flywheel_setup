@@ -1385,8 +1385,9 @@ test.describe("Step 13: Launch Onboarding Page", () => {
     await page.goto("/wizard/launch-onboarding");
     await page.waitForLoadState("domcontentloaded");
 
-    // Onboarding command should be visible
-    await expect(page.locator('text="onboard"')).toBeVisible();
+    // Onboarding command should be visible ("onboard" appears in more than
+    // one code snippet on this page, so scope to the first match).
+    await expect(page.locator('text="onboard"').first()).toBeVisible();
   });
 
   test("should be the final step with no next button", async ({ page }) => {
@@ -1432,8 +1433,15 @@ test.describe("Step 13: Launch Onboarding Page", () => {
   });
 
   test("should redirect to status-check when final-step prerequisites are missing", async ({ page }) => {
-    await page.goto("/");
-    await page.evaluate(() => localStorage.clear());
+    // Seed steps 1-12 but leave the doctor check unmarked, so the final step's
+    // own guard (not the generic access guard) is what redirects. Clearing all
+    // state instead would correctly fall back to os-selection via the layout
+    // guard, which is a different code path than this test intends to cover.
+    await setupWizardState(page, {
+      os: "mac",
+      ip: "192.168.1.100",
+      completedSteps: FINAL_STEP_PREREQUISITES,
+    });
 
     await page.goto("/wizard/launch-onboarding");
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/status-check"));
