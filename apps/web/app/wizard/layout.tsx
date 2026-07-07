@@ -17,6 +17,7 @@ import {
   useCompletedSteps,
 } from "@/lib/wizardSteps";
 import { useStepValidation } from "@/lib/hooks/useStepValidation";
+import { getUserOS } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
 
 export default function WizardLayout({
@@ -38,7 +39,7 @@ export default function WizardLayout({
 
   const prevStep = WIZARD_STEPS.find((s) => s.id === currentStep - 1);
   const nextStep = WIZARD_STEPS.find((s) => s.id === currentStep + 1);
-  const [completedSteps] = useCompletedSteps();
+  const [completedSteps, markCompletedStep] = useCompletedSteps();
 
   const { validate, validationErrors, clearErrors } = useStepValidation();
 
@@ -49,7 +50,13 @@ export default function WizardLayout({
   useEffect(() => {
     if (hideSharedStepChrome) return;
 
-    const persistedSteps = getCompletedSteps();
+    let persistedSteps = getCompletedSteps();
+    // A known OS (stored or carried in the ?os= param) IS step 1's outcome:
+    // a shared deep link like /wizard/install-terminal?os=windows must not
+    // bounce to os-selection just because this browser has no stored state.
+    if (!persistedSteps.includes(1) && getUserOS() !== null) {
+      persistedSteps = [...persistedSteps, 1];
+    }
     if (canAccessWizardStep(persistedSteps, currentStep)) {
       return;
     }
@@ -62,8 +69,6 @@ export default function WizardLayout({
     (stepId: number) => {
       const step = WIZARD_STEPS.find((s) => s.id === stepId);
       if (!step) return;
-      const isStepReachable = canAccessWizardStep(completedSteps, stepId);
-      if (!isStepReachable) return;
 
       // Validate the current step before allowing forward navigation.
       // Backward navigation is always allowed (don't block exploration).
@@ -72,10 +77,21 @@ export default function WizardLayout({
         if (!result.valid) return;
       }
 
+      // Advancing to the immediate next step completes the current one: the
+      // mobile Next button has no other way to record progress, and without
+      // this the canAccessWizardStep gate below silently rejects the click.
+      let reachableSteps = completedSteps;
+      if (stepId === currentStep + 1) {
+        markCompletedStep(currentStep);
+        reachableSteps = [...completedSteps, currentStep];
+      }
+
+      if (!canAccessWizardStep(reachableSteps, stepId)) return;
+
       clearErrors();
       router.push(withCurrentSearch(`/wizard/${step.slug}`));
     },
-    [router, currentStep, validate, clearErrors, completedSteps]
+    [router, currentStep, validate, clearErrors, completedSteps, markCompletedStep]
   );
 
   const progress = (currentStep / WIZARD_STEPS.length) * 100;
@@ -187,6 +203,18 @@ export default function WizardLayout({
           {/* Content area */}
           <div className="px-6 py-8 md:px-12 md:py-12">
             <div className="mx-auto max-w-2xl">
+              {/* Step indicator (mobile) — the desktop block below is hidden
+                  on small screens, so without this mobile users get no
+                  "where am I" signal at the top of the page. No HelpPanel
+                  here: its collapsed content would precede the page content
+                  in DOM order and shadow text queries for on-page content. */}
+              {!hideSharedStepChrome && (
+                <div className="mb-4 text-sm text-muted-foreground md:hidden">
+                  <span>Step</span> <span>{currentStep}</span>{" "}
+                  <span>of {WIZARD_STEPS.length}</span>
+                </div>
+              )}
+
               {/* Step title (desktop) */}
               <div className="mb-8 hidden md:block">
                 <div className="mb-2 flex items-center justify-between">

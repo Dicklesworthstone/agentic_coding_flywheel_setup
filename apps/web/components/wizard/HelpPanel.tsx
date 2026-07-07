@@ -38,6 +38,11 @@ interface HelpPanelProps {
 export function HelpPanel({ currentStep }: HelpPanelProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [copied, setCopied] = useState(false);
+  // Mount the dialog body only while open: the panel renders above the page
+  // content, so keeping the help text permanently in the DOM (hidden inside
+  // the closed <dialog>) makes it shadow text queries and selectors that
+  // expect the page's own visible content to come first.
+  const [isOpen, setIsOpen] = useState(false);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -53,6 +58,7 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
   const hasTips = help.tips.length > 0;
 
   const openDialog = useCallback(() => {
+    setIsOpen(true);
     dialogRef.current?.showModal();
   }, []);
 
@@ -98,7 +104,9 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
           // Close on backdrop click
           if (e.target === dialogRef.current) closeDialog();
         }}
+        onClose={() => setIsOpen(false)}
       >
+        {isOpen && (
         <div className="flex max-h-[80vh] flex-col">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
@@ -192,6 +200,7 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
             </section>
           </div>
         </div>
+        )}
       </dialog>
     </>
   );

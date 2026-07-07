@@ -424,9 +424,12 @@ export function useCreateVPSChecklist(): [string[], (items: string[]) => void, b
 
   const setChecklist = useCallback((items: string[]) => {
     const normalized = normalizeStringList(items);
-    if (setCreateVPSChecklist(normalized)) {
-      queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, normalized);
-    }
+    // Update the cache even when persistence fails (private browsing,
+    // blocked storage): unlike OS/IP/steps there is no URL fallback for the
+    // checklist, and dropping the update would leave the checkboxes
+    // permanently unchecked and the step impossible to complete.
+    setCreateVPSChecklist(normalized);
+    queryClient.setQueryData(userPreferencesKeys.createVPSChecklist, normalized);
   }, [queryClient]);
 
   return [data ?? [], setChecklist, status === "success"];
