@@ -143,7 +143,7 @@ export default function ReconnectUbuntuPage() {
               </code>{" "}
               part — or on Windows{" "}
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-                -i %USERPROFILE%\\.ssh\\acfs_ed25519
+                -i %USERPROFILE%\.ssh\acfs_ed25519
               </code>
               ) instead of a password. The installer set this up for you.
             </p>

@@ -135,9 +135,11 @@ export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
       {WIZARD_STEPS.map((step, index) => {
         const isActive = step.id === currentStep;
         const isCompleted = completedSteps.includes(step.id);
-        // Can click if step is completed or if it's the next step after the
-        // highest contiguous completion point.
-        const isClickable = isCompleted || step.id <= highestCompleted + 1;
+        // Must match canAccessWizardStep (the layout's navigation gate):
+        // only steps up to the highest CONTIGUOUS completion point + 1 are
+        // reachable. A completed step beyond a gap would render clickable
+        // here but be silently rejected by the layout's click handler.
+        const isClickable = step.id <= highestCompleted + 1;
         const isLastStep = index === WIZARD_STEPS.length - 1;
 
         return (
@@ -224,7 +226,8 @@ export function StepperMobile({
           const isActive = step.id === currentStep;
           const isCompleted = completedSteps.includes(step.id);
           const showCompletedState = isCompleted && !isActive;
-          const isClickable = isCompleted || step.id <= highestCompleted + 1;
+          // Must match canAccessWizardStep — see the desktop branch above.
+          const isClickable = step.id <= highestCompleted + 1;
 
           return (
             <motion.button
