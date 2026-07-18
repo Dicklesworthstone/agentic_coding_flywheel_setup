@@ -7,8 +7,15 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
+import {
+  isValidIP,
+  normalizeGitRef,
+  normalizeSSHUsername,
+} from "./inputValidation";
 import { safeGetItem, safeGetJSON, safeSetItem, safeSetJSON } from "./utils";
 import type { WorkloadId } from "./vpsProviders";
+
+export { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
 
 export type OperatingSystem = "mac" | "windows" | "linux";
 export type InstallMode = "vibe" | "safe";
@@ -43,9 +50,6 @@ const VPS_IP_QUERY_KEY = "ip";
 const INSTALL_MODE_QUERY_KEY = "mode";
 const SSH_USERNAME_QUERY_KEY = "user";
 const ACFS_REF_QUERY_KEY = "ref";
-const MAX_GIT_REF_LENGTH = 120;
-const GIT_REF_SAFE_PATTERN = /^[A-Za-z0-9._/-]+$/;
-const SSH_USERNAME_PATTERN = /^[a-z_][a-z0-9._-]*$/;
 const USER_PREFERENCES_EVENT = "acfs:user-preferences-updated";
 const WORKLOAD_IDS: readonly WorkloadId[] = ["light", "standard", "heavy"];
 
@@ -138,37 +142,6 @@ function usePreferenceSync(queryKey: readonly string[]) {
       window.removeEventListener("popstate", invalidate);
     };
   }, [queryClient, queryKey]);
-}
-
-/**
- * Normalize and validate a git ref used in generated shell commands.
- * Returns null when invalid/empty.
- */
-export function normalizeGitRef(ref: string | null | undefined): string | null {
-  const value = ref?.trim() ?? "";
-  if (!value) return null;
-  if (value.length > MAX_GIT_REF_LENGTH) return null;
-  if (!GIT_REF_SAFE_PATTERN.test(value)) return null;
-  if (value === "@" || value === "." || value === "..") return null;
-  if (value.startsWith("-")) return null;
-  if (value.startsWith(".")) return null;
-  if (value.endsWith(".")) return null;
-  if (value.startsWith("/") || value.endsWith("/")) return null;
-  if (value.includes("//")) return null;
-  if (value.includes("/.")) return null;
-  if (value.includes("..")) return null;
-  if (value.includes("@{")) return null;
-  if (value === ".lock" || value.endsWith(".lock")) return null;
-  if (value.split("/").includes("master")) return null;
-  return value;
-}
-
-export function normalizeSSHUsername(username: string | null | undefined): string | null {
-  const value = username?.trim() ?? "";
-  if (!value) return null;
-  if (!SSH_USERNAME_PATTERN.test(value)) return null;
-  if (value === "root") return null;
-  return value;
 }
 
 // Query keys for TanStack Query
@@ -283,39 +256,6 @@ export function setVPSReadinessSelection(selection: VPSReadinessSelection): bool
     emitUserPreferencesUpdate();
   }
   return didPersist;
-}
-
-/**
- * Validate an IP address (IPv4 or IPv6).
- *
- * For VPS addresses intended for remote SSH connections, zone IDs (like %eth0)
- * are rejected since they only make sense for local link-local addresses.
- */
-export function isValidIP(ip: string): boolean {
-  const normalized = ip.trim();
-
-  // IPv4 validation
-  const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-  if (ipv4Pattern.test(normalized)) {
-    const parts = normalized.split(".");
-    return parts.every((part) => {
-      const num = parseInt(part, 10);
-      return num >= 0 && num <= 255;
-    });
-  }
-
-  // Reject IPv6 addresses with zone IDs (e.g., %eth0, %br-abc123)
-  // Zone IDs are only meaningful for link-local addresses on local interfaces,
-  // not for remote VPS connections over the internet.
-  if (normalized.includes("%")) {
-    return false;
-  }
-
-  // IPv6 validation (full, compressed, and mixed formats)
-  // Matches: 2001:db8::1, ::1, 2001:db8:85a3::8a2e:370:7334, etc.
-  const ipv6Pattern = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$/;
-
-  return ipv6Pattern.test(normalized);
 }
 
 // --- React Hooks for User Preferences ---

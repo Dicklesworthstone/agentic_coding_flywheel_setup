@@ -1,5 +1,6 @@
 import type { ModuleSelectionInput } from "./moduleSelection";
-import { normalizeGitRef, normalizeSSHUsername, type InstallMode } from "./userPreferences";
+import { normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
+import type { InstallMode } from "./userPreferences";
 import { buildInstallCommand } from "./commandBuilder";
 import {
   calculateRequiredSpecs,

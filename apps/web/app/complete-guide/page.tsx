@@ -15,6 +15,7 @@ import {
   DataTable,
   StatCard,
   CodeBlock,
+  IllustrativeDisclosure,
 } from "@/components/complete-guide/guide-components";
 import { PlanToBeadsViz } from "@/components/complete-guide/plan-to-beads-viz";
 import { AgentMailViz } from "@/components/complete-guide/agent-mail-viz";
@@ -27,6 +28,37 @@ import { PlanEvolutionStudio } from "@/components/complete-guide/plan-evolution-
 import { FlywheelDiagram } from "@/components/complete-guide/flywheel-diagram";
 import { CrashRecoveryViz } from "@/components/complete-guide/crash-recovery-viz";
 import { RecursiveImprovementViz } from "@/components/complete-guide/recursive-improvement-viz";
+import { buildInstallCommand } from "@/lib/commandBuilder";
+import {
+  COMPLETE_GUIDE_MODEL_SOURCES,
+  COMPLETE_GUIDE_MODELS,
+  COMPLETE_GUIDE_REVIEWED_ON,
+  VALIDATION_GATES,
+} from "@/lib/complete-guide";
+import { manifestModules, manifestProvenance } from "@/lib/generated/manifest-modules";
+import { manifestTools } from "@/lib/generated/manifest-tools";
+
+const enabledStackModuleIds = new Set(
+  manifestModules
+    .filter((module) => module.category === "stack" && module.enabledByDefault)
+    .map((module) => module.id),
+);
+const COMPLETE_GUIDE_STACK_TOOLS = manifestTools.filter((tool) =>
+  enabledStackModuleIds.has(tool.moduleId),
+);
+const COMPLETE_GUIDE_STACK_TOOL_COUNT = COMPLETE_GUIDE_STACK_TOOLS.length;
+const COMPLETE_GUIDE_PINNED_INSTALL_REF = `v${manifestProvenance.acfsVersion}`;
+
+const CURRENT_INSTALL_COMMAND = buildInstallCommand("vibe", null);
+const PINNED_INSTALL_COMMAND = buildInstallCommand(
+  "vibe",
+  COMPLETE_GUIDE_PINNED_INSTALL_REF,
+);
+const STACK_TOOL_ROWS = COMPLETE_GUIDE_STACK_TOOLS.map((tool) => [
+  tool.displayName,
+  [tool.cliName, ...tool.cliAliases].filter(Boolean).join(", ") || "—",
+  tool.shortDesc,
+]);
 
 
 export default function CompleteGuidePage() {
@@ -44,13 +76,14 @@ export default function CompleteGuidePage() {
             <P highlight>This is the end-to-end methodology for creating software with frontier AI models, exhaustive markdown planning, beads-based task management, and coordinated agent swarms. Every project follows the same arc, whether it is a small CLI tool or a complex web application. This guide is about moving the hardest thinking into representations that still fit into model context windows. That is the whole game.</P>
 
             <FlywheelDiagram />
+            <IllustrativeDisclosure />
 
             <P>It starts with you. You have an idea for a piece of software. Maybe a web app, maybe a CLI tool, maybe a complex system. Instead of opening an editor and starting to code, you do something that feels counterintuitive: you spend the vast majority of your time planning.</P>
 
             <NumberedList items={[
-              <><strong>You explain what you want to build</strong> to a frontier model like GPT Pro with Extended Reasoning. Your concept, your goals, the user workflows, why it matters. The model produces an initial markdown plan: a comprehensive design document for the entire system.</>,
-              <><strong>You ask competing models to create their own plans.</strong> Claude Opus, Gemini with Deep Think, Grok Heavy. Each one independently designs the same project. They come up with surprisingly different approaches, each with unique strengths and blind spots.</>,
-              <><strong>You synthesize the best ideas from all plans into one.</strong> GPT Pro analyzes the competing plans and produces a &quot;best of all worlds&quot; hybrid that blends the strongest ideas from every model into a single superior document.</>,
+              <><strong>You explain what you want to build</strong> to a frontier planning model such as {COMPLETE_GUIDE_MODELS.primaryPlanner} in {COMPLETE_GUIDE_MODELS.primaryPlannerSurface}. Your concept, your goals, the user workflows, why it matters. The model produces an initial markdown plan: a comprehensive design document for the entire system.</>,
+              <><strong>You ask competing models to create their own plans.</strong> {COMPLETE_GUIDE_MODELS.claudePlanner}, {COMPLETE_GUIDE_MODELS.googlePlanner}, and {COMPLETE_GUIDE_MODELS.xaiPlanner} each independently design the same project. They come up with surprisingly different approaches, each with unique strengths and blind spots.</>,
+              <><strong>You synthesize the best ideas from all plans into one.</strong> {COMPLETE_GUIDE_MODELS.primaryPlanner} analyzes the competing plans and produces a &quot;best of all worlds&quot; hybrid that blends the strongest ideas from every model into a single superior document.</>,
               <><strong>You iterate relentlessly.</strong> Round after round of refinement, each time in a fresh conversation, until the suggestions become incremental. Plans created this way routinely reach 3,000 to 6,000+ lines. They are not slop. They are the result of countless iterations and feedback from many frontier models.</>,
               <><strong>You convert the plan into beads.</strong> Beads are self-contained work units (like Jira or Linear tasks, but optimized for use by coding agents). Each bead carries its own context, reasoning, dependencies, and test obligations. A complex plan might produce 200-500 beads with a full dependency graph.</>,
               <><strong>You polish the beads obsessively.</strong> &quot;Check your beads N times, implement once,&quot; where N is as many as you can stomach. Each polishing round finds things the previous round missed: duplicates, missing dependencies, incomplete context. You run this 4-6+ times until convergence.</>,
@@ -102,6 +135,7 @@ export default function CompleteGuidePage() {
             <BlockQuote>The models are far smarter when reasoning about a plan that is very detailed and fleshed out but still trivially small enough to easily fit within their context window. This is really the key insight behind my obsessive focus on planning and why I spend 80%+ of my time on that part.</BlockQuote>
 
             <ContextHorizonViz />
+            <IllustrativeDisclosure />
 
             <P>A markdown plan, even a massive 6,000-line one, is still vastly smaller than the codebase it describes. When models reason about a plan instead of raw implementation, they can hold the <Hl>whole system in their context window at once</Hl>. Once you start turning that plan into code, the system rapidly becomes too large to understand holistically. You are doing global reasoning while global reasoning is still possible.</P>
 
@@ -126,7 +160,7 @@ export default function CompleteGuidePage() {
             <SubSection title="You Don't Need to Know Everything Upfront">
               <P>The most common objection to spending 85% of your time on planning: &quot;I don&apos;t really know all the requirements at the beginning, and I need the flexibility to change things later.&quot; This is not at all in tension with the methodology. Thorough planning does not mean transcribing requirements you already know. It means using frontier models to <Hl>discover requirements you never would have found on your own</Hl>, iteratively, while changes are still cheap.</P>
 
-              <P>When you paste a rough concept into GPT Pro and ask for a comprehensive plan, the model surfaces dozens of edge cases, architectural considerations, and workflow details you had not thought of. When you show that plan to three competing models, each one finds blind spots the others missed. When you run five rounds of refinement, each round uncovers issues invisible in the previous round. By the time you start implementation, you know far more about your own project than you would have discovered through months of coding and refactoring.</P>
+              <P>When you paste a rough concept into {COMPLETE_GUIDE_MODELS.primaryPlanner} and ask for a comprehensive plan, the model surfaces dozens of edge cases, architectural considerations, and workflow details you had not thought of. When you show that plan to three competing models, each one finds blind spots the others missed. When you run five rounds of refinement, each round uncovers issues invisible in the previous round. By the time you start implementation, you know far more about your own project than you would have discovered through months of coding and refactoring.</P>
 
               <P>This extends even further when adding major features to existing projects. You can point an agent at an entirely separate open-source project, have it study that project&apos;s architecture, and ask it to reimagine the strongest ideas through the lens of your own project&apos;s unique capabilities. Requirements emerge from the research itself. The methodology does not demand omniscience up front; it demands a willingness to let the models do deep, iterative exploration before committing to implementation.</P>
 
@@ -170,9 +204,34 @@ export default function CompleteGuidePage() {
             </SubSection>
 
             <SubSection title="Writing the Initial Plan">
-              <P>You don&apos;t even need to write the initial markdown plan yourself. You can write that with GPT Pro, just explaining what it is you want to make. Claude Opus in the web app is also good for this, but GPT Pro with Extended Reasoning remains the top choice for initial planning. No other model can touch Pro on the web when it&apos;s dealing with input that easily fits into its context window. It&apos;s truly unique. And since you get it on an all-you-can-eat basis with a Pro plan, take full advantage of that.</P>
+              <P>You don&apos;t even need to write the initial markdown plan yourself. As of {COMPLETE_GUIDE_REVIEWED_ON}, the primary recommendation is {COMPLETE_GUIDE_MODELS.primaryPlanner} in {COMPLETE_GUIDE_MODELS.primaryPlannerSurface}. {COMPLETE_GUIDE_MODELS.claudePlanner} is a strong independent planning perspective, while {COMPLETE_GUIDE_MODELS.claudeExecutor} is the default Claude execution model and {COMPLETE_GUIDE_MODELS.claudeFallback} is a reliable fallback. Provider access, quotas, and model names change, so treat this dated recommendation as a starting point rather than an evergreen ranking.</P>
 
-              <P>You usually also specify the tech stack. For a web app, it&apos;s generally TypeScript, Next.js 16, React 19, Tailwind, Supabase, with anything performance-critical in Rust compiled to WASM. For a CLI tool, usually Go or Rust. If the stack isn&apos;t obvious, do a deep research round with GPT Pro or Gemini and have them study all the relevant libraries and make a suggestion taking your goals into account.</P>
+              <P>You usually also specify the tech stack. For a web app, it&apos;s generally TypeScript, Next.js 16, React 19, Tailwind, Supabase, with anything performance-critical in Rust compiled to WASM. For a CLI tool, usually Go or Rust. If the stack isn&apos;t obvious, do a deep research round with {COMPLETE_GUIDE_MODELS.primaryPlanner} or {COMPLETE_GUIDE_MODELS.googlePlanner} and have them study the current libraries and make a suggestion grounded in your goals.</P>
+
+              <DataTable
+                headers={["Role", "Current Recommendation", "Operational Note"]}
+                rows={[
+                  ["Primary planning and synthesis", `${COMPLETE_GUIDE_MODELS.primaryPlanner} in ${COMPLETE_GUIDE_MODELS.primaryPlannerSurface}`, "Use the strongest available reasoning setting; provider limits remain dynamic"],
+                  ["Independent Claude plan", COMPLETE_GUIDE_MODELS.claudePlanner, "Best reserved for ambitious, long-running planning work"],
+                  ["Claude implementation", COMPLETE_GUIDE_MODELS.claudeExecutor, `${COMPLETE_GUIDE_MODELS.claudeFallback} is the dependable fallback`],
+                  ["Google planning perspective", COMPLETE_GUIDE_MODELS.googlePlanner, "Deep Think is experimental and requires Google AI Ultra"],
+                  ["Antigravity CLI", COMPLETE_GUIDE_MODELS.antigravity, "This is the ACFS-pinned agy profile, distinct from the Gemini web-app workflow"],
+                  ["Independent xAI plan", COMPLETE_GUIDE_MODELS.xaiPlanner, "Useful for assumption stress-testing and alternative designs"],
+                ]}
+              />
+
+              <TipBox variant="info">
+                <strong>Primary sources reviewed {COMPLETE_GUIDE_REVIEWED_ON}:</strong>{" "}
+                {COMPLETE_GUIDE_MODEL_SOURCES.map((source, index) => (
+                  <span key={source.provider}>
+                    {index > 0 ? "; " : ""}
+                    <a href={source.href} target="_blank" rel="noopener noreferrer" className="text-[#FF5500] underline underline-offset-4">
+                      {source.provider}
+                    </a>{" "}
+                    ({source.note})
+                  </span>
+                ))}. {COMPLETE_GUIDE_MODELS.restrictedPreview} is intentionally excluded from the general recommendation because its preview is limited to Project Glasswing and is not generally available.
+              </TipBox>
             </SubSection>
 
             <SubSection title="What a First Plan Looks Like">
@@ -191,20 +250,20 @@ export default function CompleteGuidePage() {
             </SubSection>
 
             <SubSection title="Multi-Model Plans">
-              <P>For the best results, ask multiple frontier models to independently create plans for the same project. GPT Pro, Claude Opus, Gemini with Deep Think, Grok Heavy. Each comes up with pretty different plans. Different frontier models have different &quot;tastes&quot; and blind spots. Passing a plan through a gauntlet of different models is the cheapest way to buy architectural robustness.</P>
+              <P>For the best results, ask multiple frontier models to independently create plans for the same project: {COMPLETE_GUIDE_MODELS.primaryPlanner}, {COMPLETE_GUIDE_MODELS.claudePlanner}, {COMPLETE_GUIDE_MODELS.googlePlanner}, and {COMPLETE_GUIDE_MODELS.xaiPlanner}. Each comes up with pretty different plans. Different frontier models have different &quot;tastes&quot; and blind spots. Passing a plan through a gauntlet of different models is the cheapest way to buy architectural robustness.</P>
 
               <P>In the CASS Memory System project, the <a href="https://github.com/Dicklesworthstone/cass_memory_system/tree/main/competing_proposal_plans" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">competing plans are publicly visible</a>. This pattern has been used across at least 10 sessions spanning 7+ projects.</P>
 
-              <P>Then show their competing plans to GPT Pro with this prompt:</P>
+              <P>Then show their competing plans to {COMPLETE_GUIDE_MODELS.primaryPlanner} with this prompt:</P>
 
               <PromptBlock
                 title="Best-of-All-Worlds Synthesis"
                 prompt={`I asked 3 competing LLMs to do the exact same thing and they came up with pretty different plans which you can read below. I want you to REALLY carefully analyze their plans with an open mind and be intellectually honest about what they did that's better than your plan. Then I want you to come up with the best possible revisions to your plan (you should simply update your existing document for your original plan with the revisions) that artfully and skillfully blends the "best of all worlds" to create a true, ultimate, superior hybrid version of the plan that best achieves our stated goals and will work the best in real-world practice to solve the problems we are facing and our overarching goals while ensuring the extreme success of the enterprise as best as possible; you should provide me with a complete series of git-diff style changes to your original plan to turn it into the new, enhanced, much longer and detailed plan that integrates the best of all the plans with every good idea included (you don't need to mention which ideas came from which models in the final revised enhanced plan):`}
-                where="GPT Pro web app with Extended Reasoning"
+                where={`${COMPLETE_GUIDE_MODELS.primaryPlanner} in ${COMPLETE_GUIDE_MODELS.primaryPlannerSurface}`}
                 whyItWorks="Forces the model to be intellectually honest about what competitors did better, then synthesize a hybrid that is stronger than any individual plan. The 'best of all worlds' phrasing appears in 10+ distinct sessions across 7+ projects in the session archive. Under the hood, the prompt's length and specificity are deliberate: by asking for git-diff style changes, complete integration of every good idea, and explicit updating of the existing plan, it prevents the model from writing a vague summary and forces structural engagement with the competing plans' actual content."
               />
 
-              <P>Take GPT Pro&apos;s output (the git-diff style revisions) and paste it into Claude Code or Codex to integrate the revisions in-place:</P>
+              <P>Take {COMPLETE_GUIDE_MODELS.primaryPlanner}&apos;s output (the git-diff style revisions) and paste it into Claude Code or Codex to integrate the revisions in-place:</P>
 
               <PromptBlock
                 title="Integrate Synthesis Revisions"
@@ -216,10 +275,11 @@ export default function CompleteGuidePage() {
               />
 
               <PlanEvolutionStudio />
+              <IllustrativeDisclosure />
             </SubSection>
 
             <SubSection title="Iterative Refinement">
-              <P>Now paste the current plan into a <strong>fresh</strong> GPT Pro conversation with this prompt. The key word is fresh. Fresh conversations prevent the model from anchoring on its own prior output. Repeat 4-5 rounds:</P>
+              <P>Now paste the current plan into a <strong>fresh</strong> {COMPLETE_GUIDE_MODELS.primaryPlanner} conversation with this prompt. The key word is fresh. Fresh conversations prevent the model from anchoring on its own prior output. Repeat 4-5 rounds:</P>
 
               <PromptBlock
                 title="Plan Refinement Prompt"
@@ -228,13 +288,13 @@ export default function CompleteGuidePage() {
 For each proposed change, give me your detailed analysis and rationale/justification for why it would make the project better along with the git-diff style changes relative to the original markdown plan shown below:
 
 <PASTE YOUR EXISTING COMPLETE PLAN HERE>`}
-                where="GPT Pro web app — fresh conversation each round"
+                where={`${COMPLETE_GUIDE_MODELS.primaryPlannerSurface} — fresh conversation each round`}
                 whyItWorks="This has never failed to improve a plan significantly. Each round finds architectural issues, missing features, and robustness improvements that the previous round missed. Under the hood, asking for 'rationale/justification' prevents the model from making arbitrary changes; it has to argue for each revision, which filters out changes that seem clever but do not actually improve the plan. The git-diff format forces precision rather than vague hand-waving about what should be different."
               />
 
               <P>This has never failed to improve a plan significantly. The best part is that you can start a fresh conversation in ChatGPT and do it all again once Claude Code or Codex finishes integrating your last batch of suggested revisions. After four or five rounds of this, you tend to reach a steady-state where the suggestions become very incremental.</P>
 
-              <P>You can still get extra mileage by blending in smart ideas from Gemini with Deep Think enabled, or from Grok Heavy, or Opus in the web app, but you still want to use GPT Pro on the web as the final arbiter of what to take from which model and how to best integrate it.</P>
+              <P>You can still get extra mileage by blending in smart ideas from {COMPLETE_GUIDE_MODELS.googlePlanner}, {COMPLETE_GUIDE_MODELS.xaiPlanner}, or {COMPLETE_GUIDE_MODELS.claudePlanner}, while using {COMPLETE_GUIDE_MODELS.primaryPlanner} as the final synthesis pass. This is a workflow recommendation, not a claim that one model is universally best.</P>
 
               <TipBox>
                 <strong>The &quot;Lie to Them&quot; technique:</strong> Models tend to stop looking for problems after finding ~20-25 issues. If you tell them to find &quot;all&quot; problems, they stop early. The solution: lie to them and give them a huge number, and then they keep cranking until they have uncovered all of them. This works for plan revisions, bead-to-plan cross-references, and any comparison/audit task.
@@ -283,6 +343,7 @@ For each proposed change, give me your detailed analysis and rationale/justifica
             </TipBox>
 
             <PlanToBeadsViz />
+            <IllustrativeDisclosure />
 
             <SubSection title="Beads as Executable Memory">
               <P>The plan is still the best artifact for whole-system thought. But once a swarm is involved, what you need is not a beautiful essay. You need a task graph that carries enough local context for agents to act correctly without repeatedly loading the whole project back into memory. If the beads are weak, the swarm becomes improvisational. If the beads are rich, the swarm becomes almost mechanical.</P>
@@ -354,6 +415,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
             />
 
             <ConvergenceViz />
+            <IllustrativeDisclosure />
 
             <P>From real sessions, polishing involves duplicate detection and merging, quality scoring on WHAT/WHY/HOW criteria, filling empty bead descriptions, correcting dependency links, and cross-referencing beads against the markdown plan to ensure nothing was lost. FrankenSQLite identified 9 exact duplicate pairs and closed them, choosing survivors based on &quot;richer testing specs, better dependency chains, and higher priority.&quot;</P>
 
@@ -507,25 +569,25 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
 
               <PromptBlock
                 title="Step 6: Self-Contained for Cross-Model Review"
-                prompt={`OK now we need to make the proposal self-contained so that we can show it to another model such as GPT Pro and have that model understand absolutely anything that might be relevant to understanding and being able to suggest useful revisions to the proposal or to find flaws in the plans. To that end, I need you to add comprehensive background sections about what <your project> is and how it works, what makes it special/compelling, etc. And then do the same in another background section all about <external project> and what it is and what makes it special/compelling, how it works, etc.`}
+                prompt={`OK now we need to make the proposal self-contained so that we can show it to another frontier model and have that model understand absolutely anything that might be relevant to understanding and being able to suggest useful revisions to the proposal or to find flaws in the plans. To that end, I need you to add comprehensive background sections about what <your project> is and how it works, what makes it special/compelling, etc. And then do the same in another background section all about <external project> and what it is and what makes it special/compelling, how it works, etc.`}
                 where="After the proposal reaches a stable, ambitious state"
                 whyItWorks="Cross-model review only works if every model can fully understand the proposal without access to your project. Adding comprehensive background sections prevents other models from making shallow suggestions based on incomplete understanding. This preparation step is what makes the multi-model feedback loop genuinely useful rather than superficial."
               />
 
               <P>Follow this with another 5x blunder hunt, then de-slopify the document. Now you are ready for multi-model triangulation.</P>
 
-              <P>Send the self-contained proposal to GPT Pro, Claude Opus, Gemini with Deep Think, and Grok Heavy, all with the same prompt asking for improvements in git-diff format:</P>
+              <P>Send the self-contained proposal independently to {COMPLETE_GUIDE_MODELS.primaryPlanner}, {COMPLETE_GUIDE_MODELS.claudePlanner}, {COMPLETE_GUIDE_MODELS.googlePlanner}, and {COMPLETE_GUIDE_MODELS.xaiPlanner}, all with the same prompt asking for improvements in git-diff format:</P>
 
               <PromptBlock
                 title="Step 7: Multi-Model Feedback"
                 prompt={`How can we improve this proposal to make it smarter and better-- to make the most radically innovative and accretive and useful and compelling additions and revisions you can possibly imagine. Give me your proposed changes in the form of git-diff style changes against the file below, which is named PROPOSAL_TO_INTEGRATE_IDEAS_FROM_<EXTERNAL>_INTO_<YOUR_PROJECT>.md:
 
 <the complete proposal document>`}
-                where="GPT Pro, Claude Opus (web), Gemini Deep Think, and Grok Heavy -- all four, independently"
+                where={`${COMPLETE_GUIDE_MODELS.primaryPlanner}, ${COMPLETE_GUIDE_MODELS.claudePlanner}, ${COMPLETE_GUIDE_MODELS.googlePlanner}, and ${COMPLETE_GUIDE_MODELS.xaiPlanner} — all four, independently`}
                 whyItWorks="Each model has different architectural tastes and blind spots. Asking for git-diff format forces precision: the models cannot hand-wave about what should change, they have to show the exact text transformations. This makes the synthesis step tractable."
               />
 
-              <P>Feed the competing feedback from all models into GPT Pro using the &quot;best of all worlds&quot; synthesis prompt from Section 3. Apply the resulting diffs back to the proposal document in Codex or Claude Code, then de-slopify the final result.</P>
+              <P>Feed the competing feedback from all models into {COMPLETE_GUIDE_MODELS.primaryPlanner} using the &quot;best of all worlds&quot; synthesis prompt from Section 3. Apply the resulting diffs back to the proposal document in Codex or Claude Code, then de-slopify the final result.</P>
 
               <DataTable
                 headers={["Step", "Purpose", "Repetitions"]}
@@ -542,7 +604,7 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
                 ]}
               />
 
-              <P>You can see this exact process applied to Asupersync&apos;s NATS integration: the <a href="https://github.com/Dicklesworthstone/asupersync/blob/main/docs/plans/proposal_to_integrate_ideas_from_nats_into_asupersync.md" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">initial proposal</a>, the <a href="https://github.com/Dicklesworthstone/asupersync/blob/main/docs/plans/proposal_to_integrate_ideas_from_nats_into_asupersync__after_feedback.md" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">version after multi-model feedback</a>, and the <a href="https://chatgpt.com/share/69b762f5-f3d8-8002-b6d6-56880395540d" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">full GPT Pro synthesis conversation</a>.</P>
+              <P>You can see this exact process applied to Asupersync&apos;s NATS integration: the <a href="https://github.com/Dicklesworthstone/asupersync/blob/main/docs/plans/proposal_to_integrate_ideas_from_nats_into_asupersync.md" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">initial proposal</a>, the <a href="https://github.com/Dicklesworthstone/asupersync/blob/main/docs/plans/proposal_to_integrate_ideas_from_nats_into_asupersync__after_feedback.md" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">version after multi-model feedback</a>, and the <a href="https://chatgpt.com/share/69b762f5-f3d8-8002-b6d6-56880395540d" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">full historical synthesis conversation</a>.</P>
 
               <P>From here, the proposal feeds into the standard pipeline: convert to beads (Section 4), polish obsessively (Section 5), launch the swarm (Section 7). The research-driven approach adds significant front-end effort but produces proposals with a level of architectural depth and innovation that no amount of greenfield brainstorming can match, because you are standing on the shoulders of a real, battle-tested system while leveraging capabilities that system never had access to.</P>
             </SubSection>
@@ -708,6 +770,7 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`} />
               <BlockQuote>When one agent breaks, it&apos;s not even a problem when all the agents are fungible. Agents become like commodities and can be instantiated and destroyed at will and the only downside is some slowdown and some wasted tokens.</BlockQuote>
 
               <CrashRecoveryViz />
+              <IllustrativeDisclosure />
             </SubSection>
 
             <SubSection title="Prompts Are Deliberately Generic">
@@ -724,10 +787,10 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`} />
               <P>The prompts are the reusable scaffolding that directs the agent&apos;s attention. The beads and AGENTS.md supply the project-specific substance. This separation means you can use the exact same prompt library across every project without modification. The prompt &quot;reread AGENTS.md so it&apos;s still fresh in your mind&quot; followed by &quot;use bv to find the most impactful bead to work on next&quot; works identically whether you are building a CLI tool, a web app, or a protocol library, because the specifics come from the project&apos;s own artifacts, not from the prompt.</P>
             </SubSection>
 
-            <SubSection title="Security Comes Free with Good Planning">
-              <P>Security review is baked into the standard workflow at multiple levels rather than being a separate phase. The cross-agent review prompt explicitly calls out security problems. When models reason about an entire system&apos;s architecture at once (which is what the plan enables), they spot authentication gaps, data exposure risks, and trust boundary violations without being told to look. UBS catches security anti-patterns mechanically: unpinned dependencies, missing input validation, hardcoded secrets, supply chain vulnerabilities. Beads that include comprehensive e2e tests naturally cover authentication and authorization paths.</P>
+            <SubSection title="Security Is Integrated, Not Automatic">
+              <P>Security review belongs in every layer of the standard workflow, but no planning method or scanner makes a system secure by itself. The cross-agent review prompt explicitly calls out security problems. Whole-system planning helps models inspect authentication gaps, data exposure risks, and trust boundaries. UBS adds mechanical checks for selected anti-patterns. End-to-end tests should exercise authentication and authorization paths. Each layer is useful; none replaces an explicit threat model, dependency review, secrets discipline, or domain-appropriate security testing.</P>
 
-              <P>Security vulnerabilities are usually symptoms of incomplete reasoning about the system. If the plan is detailed enough to cover all user workflows, edge cases, and failure modes, security considerations emerge from that completeness rather than requiring a separate checklist. For projects with explicit security requirements (financial, healthcare), add dedicated security review beads.</P>
+              <P>Create dedicated security beads for trust boundaries, abuse cases, authorization matrices, sensitive-data handling, dependency and supply-chain review, and adversarial verification. Financial, healthcare, infrastructure, and other high-impact projects also need qualified human review. Security is a continuing engineering obligation, not a benefit that emerges automatically from a sufficiently detailed plan.</P>
             </SubSection>
           </GuideSection>
 
@@ -751,6 +814,17 @@ ntm send myproject --cc "Focus on the API layer"
 # Open the command palette (battle-tested prompts)
 ntm palette`} />
 
+            <P>The preferred ACFS startup path is to run the queue-aware planner, select a ready bead, and generate a bounded packet for each agent. The packet packages live AGENTS.md, README, Beads, Agent Mail, RCH, UBS, and bounded memory context without claiming work or mutating the repository:</P>
+
+            <CodeBlock language="bash" code={`# Check capacity and queue pressure before launch
+acfs swarm plan --agents 4 --profile balanced --workload standard
+
+# Generate the startup prompt for one selected bead and agent
+acfs swarm packet --bead bd-1234 --agent-name BlueLake --role implementation
+
+# Rehearse larger launches without starting agents or mutating project state
+acfs swarm simulate`} />
+
             <P>NTM is useful but not mandatory. A <strong>mux</strong> is a terminal multiplexer: a layer that lets you manage multiple shell sessions inside one higher-level session manager. In practice, that usually means some combination of tabs, panes, detached sessions, and reconnection to work that is still running on a local or remote machine. tmux is the classic Unix terminal multiplexer, powerful and battle-tested. NTM is built on top of tmux, which is why it is a natural fit for multi-agent work. But tmux is only one mux. WezTerm has its own built-in mux. Zellij is another. The method cares that you have a workable orchestration layer, not that you picked one specific multiplexer.</P>
 
             <P>One common alternative is WezTerm because native scrollback and text selection are more convenient than in tmux. A workable setup:</P>
@@ -762,7 +836,7 @@ ntm palette`} />
               <>In Claude Code, use the project-specific <code>Ctrl-r</code> prompt history search when you want to recall something you used recently</>,
             ]} />
 
-            <P>There is no single correct operator interface. NTM is one good cockpit. WezTerm tabs plus mux is another. <a href="https://github.com/Dicklesworthstone/frankenterm" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">FrankenTerm</a>, which is built on WezTerm, is aimed more explicitly at this style of workflow but is not ready yet. The important thing is that you can launch agents, get prompts into them quickly, monitor them, and keep the coordination layer (AGENTS.md, Agent Mail, beads, bv) intact.</P>
+            <P>There is no single correct operator interface. NTM is one good cockpit. WezTerm tabs plus mux is another. <a href="https://github.com/Dicklesworthstone/frankenterm" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">FrankenTerm</a>, built on WezTerm and shipped as v0.8.0, is aimed explicitly at this style of multi-agent workflow. The important thing is that you can launch agents, get prompts into them quickly, monitor them, and keep the coordination layer (AGENTS.md, Agent Mail, beads, bv) intact.</P>
 
             <P>For concrete setup notes on these operator environments:</P>
 
@@ -782,7 +856,9 @@ Be sure to check your agent mail and to promptly respond if needed to any messag
 
 Don't get stuck in "communication purgatory" where nothing is getting done; be proactive about starting tasks that need to be done, but inform your fellow agents via messages when you do so and mark beads appropriately.
 
-When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to prioritize the best beads to work on next; pick the next one that you can usefully work on and get started. Make sure to acknowledge all communication requests from other agents and that you are aware of all active agents and their names. Use ultrathink.`}
+When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to prioritize the best beads to work on next; pick the next one that you can usefully work on and get started. Make sure to acknowledge all communication requests from other agents and that you are aware of all active agents and their names.
+
+When a Rust build or test is needed, offload it with rch (for example, rch exec -- cargo test --workspace --all-targets) so local compilation does not starve the shared swarm host. Use ultrathink.`}
               where="Every agent in the swarm gets this as their initial prompt"
               whyItWorks="This is the closest thing to a canonical swarm kickoff packet. It front-loads the shared operating context, forces the agent to establish social presence through Agent Mail, and then pivots away from passive waiting toward execution. The line about 'communication purgatory' matters because swarm failure often comes from over-coordination rather than under-coordination. Under the hood, the prompt establishes a control loop: load rules, understand the codebase, join the coordination layer, claim work, keep state synchronized, and use bv whenever local judgment is insufficient. The rch requirement is especially important in real swarms because it externalizes expensive builds and tests, preventing local CPU contention from degrading the entire multi-agent system. That one sentence is operational, not cosmetic. The prompts are deliberately generic; their vagueness is a feature, letting you reuse them for every project while the agent gets specifics from AGENTS.md and the beads."
             />
@@ -807,18 +883,18 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               <DataTable
                 headers={["Phase", "Recommended Model", "Why"]}
                 rows={[
-                  ["Initial plan creation", "GPT Pro (web)", "Extended reasoning, all-you-can-eat pricing"],
-                  ["Plan synthesis", "GPT Pro (web)", "Best at being the 'final arbiter'"],
-                  ["Plan refinement", "GPT Pro + Opus (web)", "Pro reviews, Claude integrates"],
-                  ["Plan → Beads conversion", "Claude Code (Opus)", "Best coding agent for structured creation"],
-                  ["Bead polishing", "Claude Code (Opus)", "Consistent, thorough"],
+                  ["Initial plan creation", `${COMPLETE_GUIDE_MODELS.primaryPlanner} (${COMPLETE_GUIDE_MODELS.primaryPlannerSurface})`, "Strong whole-system reasoning with an explicit dated recommendation"],
+                  ["Plan synthesis", `${COMPLETE_GUIDE_MODELS.primaryPlanner} (${COMPLETE_GUIDE_MODELS.primaryPlannerSurface})`, "Dedicated synthesis pass over independently produced plans"],
+                  ["Plan refinement", `${COMPLETE_GUIDE_MODELS.primaryPlanner} + ${COMPLETE_GUIDE_MODELS.claudePlanner}`, "Independent model families expose different blind spots"],
+                  ["Plan → Beads conversion", `Claude Code (${COMPLETE_GUIDE_MODELS.claudeExecutor})`, "Current execution model for structured repository work"],
+                  ["Bead polishing", `Claude Code (${COMPLETE_GUIDE_MODELS.claudeExecutor})`, "Consistent repository-aware iteration"],
                   ["Implementation", "Claude Code + Codex + Antigravity", "Diverse swarm"],
-                  ["Code review", "Claude Code + Antigravity", "Gemini 3.1 Pro good for review duty"],
-                  ["Final verification", "Codex (GPT)", "Different model catches different things"],
+                  ["Code review", "Claude Code + Antigravity", `${COMPLETE_GUIDE_MODELS.antigravity} supplies an independent review perspective`],
+                  ["Final verification", "Codex", "A different harness and model family catches different failures"],
                 ]}
               />
 
-              <P>Efficiency definitely declines as N grows, but if you have enough tasks in beads and they have Agent Mail and you don&apos;t start them all at the exact same time, you go faster as N grows. The practical limit is around 12 agents on a single project, sometimes higher. Or run 5 agents per project across multiple projects simultaneously. Why the ratio <code>--cc=2 --cod=1 --agy=1</code>? Two Claude sessions because they are great for architecture and complex reasoning; one Codex for fast iteration and testing with complementary strengths; one Antigravity (agy, running Gemini 3.1 Pro) for a different perspective, especially good for docs and review duty.</P>
+              <P>Efficiency declines as N grows, but enough ready beads, Agent Mail coordination, and capacity-aware launch admission can still increase throughput. Treat any fixed agent-count ceiling as a dated case-study observation, not a platform guarantee: run <code>acfs swarm plan</code> against current queue pressure and host capacity. The example ratio <code>--cc=2 --cod=1 --agy=1</code> supplies two Claude execution sessions, one Codex session with complementary strengths, and one Antigravity session pinned to {COMPLETE_GUIDE_MODELS.antigravity} for an independent perspective.</P>
 
               <DataTable
                 headers={["Open Beads", "Claude (cc)", "Codex (cod)", "Antigravity (agy)"]}
@@ -831,9 +907,10 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             </SubSection>
 
             <SubSection title="The Thundering Herd">
-              <P>When you start up like 5 of each kind of agent and have them all collaborate in the same shared workspace, you can hit the classic &quot;thundering herd&quot; problem. The fix: stagger agent starts by 30 seconds minimum, make sure agents mark beads as in-progress quickly, and wait 4 seconds after launch before sending the initial prompt. For Codex specifically: send Enter twice after pasting long prompts (Codex has an input buffer quirk that sometimes swallows the first submit).</P>
+              <P>Launching many agents into one shared workspace can create a classic &quot;thundering herd&quot;: duplicate claims, reservation collisions, and build-queue saturation. Use <code>acfs swarm plan</code> for current admission guidance, generate a bounded <code>acfs swarm packet</code> for each selected bead, stagger launches according to observed readiness, and confirm each agent claims work before adding more. Older anecdotes such as fixed 30-second spacing, waiting four seconds before prompt injection, or submitting a terminal buffer twice were environment-specific workarounds, not evergreen requirements.</P>
 
               <SwarmExecutionViz />
+              <IllustrativeDisclosure />
             </SubSection>
 
             <SubSection title="What the Human Actually Does">
@@ -948,18 +1025,20 @@ caam activate claude backup-2   # Switch instantly`} />
 
               <P>After any substantive code changes, always verify with compiler checks:</P>
 
-              <CodeBlock language="bash" code={`# Rust
-cargo check --all-targets
-cargo clippy --all-targets -- -D warnings
+              <CodeBlock language="bash" code={`# Rust (offload compilation from the shared swarm host)
+rch exec -- cargo check --all-targets
+rch exec -- cargo clippy --all-targets -- -D warnings
 cargo fmt --check
+rch exec -- cargo test
 
 # Go
 go build ./...
 go vet ./...
 
-# TypeScript
-bun typecheck
-bun lint`} />
+# TypeScript / web
+bun run type-check
+bun run lint
+bun run build`} />
             </SubSection>
 
             <SubSection title="UI/UX Polish">
@@ -1103,26 +1182,14 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
           {/* SECTION 9: THE COMPLETE TOOLCHAIN                              */}
           {/* ============================================================= */}
           <GuideSection id="toolchain" number="9" title="The Complete Toolchain">
-            <P>The Flywheel is supported by a stack of 11 purpose-built tools, all free and open-source:</P>
+            <P>The generated ACFS manifest currently defines {COMPLETE_GUIDE_STACK_TOOL_COUNT} default-enabled stack modules, all free and open-source. This list is derived from the same manifest metadata as the installer, so it expands automatically when the stack changes:</P>
 
             <DataTable
               headers={["Tool", "Command", "Purpose"]}
-              rows={[
-                ["NTM", "ntm", "Named Tmux Manager — agent cockpit for spawning, sending, and broadcasting"],
-                ["Agent Mail", "am", "Agent coordination — identities, inbox/outbox, file reservations"],
-                ["UBS", "ubs", "Ultimate Bug Scanner — 1000+ patterns, pre-commit guardrails"],
-                ["Beads", "br", "Issue tracking — dependency-aware, JSONL+SQLite hybrid"],
-                ["Beads Viewer", "bv", "Triage engine — PageRank, betweenness, HITS, robot mode"],
-                ["RCH", "rch", "Remote build offloading — keeps heavy CPU work off the swarm box"],
-                ["CASS", "cass", "Session search — unified agent history indexing"],
-                ["CASS Memory", "cm", "Procedural memory — episodic → working → procedural"],
-                ["CAAM", "caam", "Auth switching — sub-100ms account swap across providers"],
-                ["DCG", "dcg", "Safety guard — blocks destructive git/filesystem operations mechanically"],
-                ["SLB", "slb", "Two-person rule — optional guardrails for dangerous commands"],
-              ]}
+              rows={STACK_TOOL_ROWS}
             />
 
-            <P>Not every tool is used the same way. <code>br</code>, <code>bv</code>, <code>ubs</code>, and <code>rch</code> are ordinary shell commands. Agent Mail is primarily experienced through MCP tools and macros. The installer (<a href="https://agent-flywheel.com" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">agent-flywheel.com</a>) installs all of them with a single <code>curl|bash</code> command.</P>
+            <P>Not every tool is used the same way. <code>br</code>, <code>bv</code>, <code>ubs</code>, and <code>rch</code> are ordinary shell commands. Agent Mail is primarily experienced through MCP tools and macros. The installer (<a href="https://agent-flywheel.com" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">agent-flywheel.com</a>) resolves this generated module graph, its dependency closure, and the selected installation profile.</P>
 
             <SubSection title="The Flywheel Interactions">
               <P>The complete interaction flow from spawn to memory:</P>
@@ -1252,14 +1319,7 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
 
               <DataTable
                 headers={["Gate", "Must Be True Before Advancing"]}
-                rows={[
-                  ["Foundation", "Goals, workflows, stack, architecture direction, AGENTS.md, and best-practices guides exist and are coherent"],
-                  ["Plan", "Markdown plan covers workflows, architecture, sequencing, constraints, testing expectations, and major failure paths"],
-                  ["Translation", "Every material plan element maps to one or more beads, checked in both directions"],
-                  ["Bead", "Beads are self-contained, dependency-correct, rich in context, and explicit about test obligations"],
-                  ["Launch", "Agent Mail, file reservations, bead IDs, bv, AGENTS.md, and staggered startup are all ready"],
-                  ["Ship", "Reviews, tests, UBS, remaining-work beads, and feedback capture into reusable artifacts are complete"],
-                ]}
+                rows={VALIDATION_GATES.map((gate) => [...gate])}
               />
             </SubSection>
 
@@ -1275,7 +1335,9 @@ alias gmi='agy-locked'  # legacy shortcut now launches agy`} />
             </SubSection>
 
             <SubSection title="Cost">
-              <P>~$500/month for Claude Max and GPT Pro subscriptions (at minimum), plus ~$50/month for a cloud server (OVH, Contabo). Multiple Max accounts may be needed for large swarms; CAAM enables instant switching when hitting rate limits. At scale, token usage for a single intensive session can reach ~20M input tokens, ~3.5M output tokens, ~2.6M reasoning tokens, and ~1.15 billion cached token reads. At full scale: 22 Claude Max accounts, 22 GPT Pro accounts, and 7 Google/Antigravity-capable accounts.</P>
+              <P>ACFS and the Flywheel tools are open source; model subscriptions, API usage, and server capacity are separate choices. A starter setup can use one provider account plus a modest VPS, then add capacity only after measured limits justify it. As of {COMPLETE_GUIDE_REVIEWED_ON}, <a href="https://help.openai.com/en/articles/9793128-what-is-chatgpt-pro" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] underline underline-offset-4">{COMPLETE_GUIDE_MODELS.primaryPlannerSurface} is listed at $200/month</a>, subject to provider terms and abuse guardrails. Before purchasing, check the live <a href="https://chatgpt.com/pricing/" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] underline underline-offset-4">OpenAI pricing</a>, <a href="https://claude.com/pricing" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] underline underline-offset-4">Claude pricing</a>, and <a href="https://one.google.com/about/google-ai-plans/" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] underline underline-offset-4">Google AI plans</a> rather than treating any figure here as permanent.</P>
+
+              <P>The larger numbers previously quoted here came from a specific high-scale operator snapshot: about 20M input tokens, 3.5M output tokens, 2.6M reasoning tokens, 1.15B cached-token reads, and a fleet of 22 Claude-capable accounts, 22 ChatGPT Pro accounts, and 7 Google-capable accounts. Those figures are illustrative of one intensive workflow, not a minimum, forecast, benchmark, or purchasing recommendation.</P>
             </SubSection>
           </GuideSection>
 
@@ -1466,6 +1528,7 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`} 
               <P>The recursive pattern operates at increasing levels of ambition. The mistake is trying to build all four layers at once. Start simple and let the need for the next layer emerge naturally.</P>
 
               <RecursiveImprovementViz />
+              <IllustrativeDisclosure />
 
               <NumberedList items={[
                 <><strong>Layer 1: Feedback forms after tool use (start here, no infrastructure needed).</strong> After an agent finishes using a tool, ask it to fill out a structured feedback survey. Feed that to another agent working on the tool itself. This requires nothing beyond two agent sessions and produces immediate improvements.</>,
@@ -1622,9 +1685,12 @@ Output (required): a revised reusable artifact plus a short note describing the 
             <SubSection title="Getting Started">
               <P>The complete system is free and 100% open-source. A beginner with a credit card and a laptop can visit the wizard, follow step-by-step instructions to rent a VPS, paste one <code>curl|bash</code> command, type <code>onboard</code>, and start building with AI agents immediately.</P>
 
-              <CodeBlock language="bash" code={`# 1. Rent a VPS (OVH or Contabo, ~$40-56/month, Ubuntu)
-# 2. SSH in and run the one-liner
-curl -fsSL https://agent-flywheel.com/install.sh | bash
+              <CodeBlock language="bash" code={`# 1. Rent a supported Ubuntu VPS and connect over SSH
+# 2. Install the current main revision (convenient for evaluation)
+${CURRENT_INSTALL_COMMAND}
+
+# Production/reproducible alternative: pin the current ACFS release
+${PINNED_INSTALL_COMMAND}
 
 # 3. Reconnect, then learn the workflow
 onboard
@@ -1635,7 +1701,7 @@ acfs newproj my-first-project --interactive
 # 5. Spawn agents and start building
 ntm spawn my-first-project --cc=2 --cod=1 --agy=1`} />
 
-              <P>You don&apos;t even need to know much at all about computers; you just need the desire to learn and some grit and determination. And about $500/month for the subscriptions, plus another $50 or so for the cloud server.</P>
+              <P>You don&apos;t need to buy a large fleet before learning the workflow. Start with one supported agent provider and a VPS sized for your actual workload, use RCH for Rust compilation where available, and scale only when observed queueing or provider limits justify the expense.</P>
 
               <P>Once you get Claude Code up and running on the cloud server, you basically have an ultra competent friend who can help you with any other problems you encounter. And Jeffrey will personally answer your questions if you reach out on <a href="https://x.com/doodlestein" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">X</a> or on <a href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">GitHub issues</a>.</P>
 
@@ -1675,6 +1741,9 @@ function Hero() {
         <p className="mx-auto mt-10 max-w-3xl text-xl sm:text-2xl text-zinc-400 leading-relaxed font-light">
           A comprehensive guide to creating extraordinary software by orchestrating swarms of AI agents using <Hl>exhaustive markdown plans</Hl>, <Hl>polished beads</Hl>, and the <Hl>Agent Flywheel stack</Hl>. Based on the methodology of Jeffrey Emanuel.
         </p>
+        <p className="mx-auto mt-5 font-mono text-xs uppercase tracking-[0.2em] text-zinc-600">
+          Last reviewed {COMPLETE_GUIDE_REVIEWED_ON}
+        </p>
       </div>
     </section>
   );
@@ -1700,8 +1769,8 @@ function FooterCTA() {
         </h2>
 
         <p className="mx-auto mt-8 max-w-2xl text-lg text-zinc-400 leading-relaxed font-light">
-          One command installs all 11 tools, three AI coding agents, and the complete environment.
-          <br/><strong>30 minutes to fully configured.</strong>
+          One command resolves {COMPLETE_GUIDE_STACK_TOOL_COUNT} default-enabled stack modules, three AI coding agents, and the complete environment.
+          <br/><strong>Guided setup with manifest-backed validation.</strong>
         </p>
 
         <div className="mt-12 flex justify-center">

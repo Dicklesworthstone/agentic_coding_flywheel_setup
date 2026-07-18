@@ -1,4 +1,9 @@
 import { ImageResponse } from "next/og";
+import {
+  COMPLETE_GUIDE_PHASE_COUNT,
+  COMPLETE_GUIDE_PROMPT_COUNT,
+  VALIDATION_GATES,
+} from "@/lib/complete-guide";
 
 export const runtime = "edge";
 export const alt = "The Flywheel Approach to Planning & Beads Creation";
@@ -213,15 +218,15 @@ export default async function Image() {
           <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#f472b6", display: "flex" }} />
-              <span style={{ color: "#cbd5e1", fontSize: 20, fontWeight: 500, display: "flex" }}>27 Core Prompts</span>
+              <span style={{ color: "#cbd5e1", fontSize: 20, fontWeight: 500, display: "flex" }}>{COMPLETE_GUIDE_PROMPT_COUNT} Copyable Prompts</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#a855f7", display: "flex" }} />
-              <span style={{ color: "#cbd5e1", fontSize: 20, fontWeight: 500, display: "flex" }}>8 Validation Gates</span>
+              <span style={{ color: "#cbd5e1", fontSize: 20, fontWeight: 500, display: "flex" }}>{VALIDATION_GATES.length} Validation Gates</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#22d3ee", display: "flex" }} />
-              <span style={{ color: "#cbd5e1", fontSize: 20, fontWeight: 500, display: "flex" }}>13 Phases</span>
+              <span style={{ color: "#cbd5e1", fontSize: 20, fontWeight: 500, display: "flex" }}>{COMPLETE_GUIDE_PHASE_COUNT} Phases</span>
             </div>
           </div>
         </div>

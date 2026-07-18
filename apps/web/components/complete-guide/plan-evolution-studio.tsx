@@ -3,6 +3,7 @@
 import React, { useRef, useState, useCallback } from "react";
 import { motion, useInView, useReducedMotion } from "framer-motion";
 import { CheckCircle2 } from "lucide-react";
+import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 import { cn } from "@/lib/utils";
 
 const EXHIBIT_PANEL_CLASS =
@@ -27,7 +28,7 @@ const PLAN_DIMENSIONS = [
 const PLAN_MODEL_DATA = [
   {
     id: "gpt",
-    label: "GPT Pro",
+    label: COMPLETE_GUIDE_MODELS.primaryPlanner,
     color: "#FF5500",
     role: "Global arbiter",
     strengths: ["System-wide coherence", "Best-of-all-worlds synthesis"],
@@ -36,7 +37,7 @@ const PLAN_MODEL_DATA = [
   },
   {
     id: "claude",
-    label: "Claude Opus",
+    label: COMPLETE_GUIDE_MODELS.claudePlanner,
     color: "#a78bfa",
     role: "Implementation realist",
     strengths: ["Execution detail", "Sharp structural edits"],
@@ -45,7 +46,7 @@ const PLAN_MODEL_DATA = [
   },
   {
     id: "gemini",
-    label: "Gemini",
+    label: COMPLETE_GUIDE_MODELS.googlePlanner,
     color: "#FFBD2E",
     role: "Coverage expander",
     strengths: ["Alternative framings", "Missed edge cases"],
@@ -54,7 +55,7 @@ const PLAN_MODEL_DATA = [
   },
   {
     id: "grok",
-    label: "Grok Heavy",
+    label: COMPLETE_GUIDE_MODELS.xaiPlanner,
     color: "#FFFFFF",
     role: "Assumption stress-test",
     strengths: ["Counterintuitive options", "Pressure-testing assumptions"],

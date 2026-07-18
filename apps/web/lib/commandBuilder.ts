@@ -14,7 +14,7 @@ import {
   type ModuleSelectionInput,
 } from "./moduleSelection";
 import { manifestProvenance, manifestSelectionProfiles } from "./generated/manifest-modules";
-import { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./userPreferences";
+import { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
 
 const INSTALL_SCRIPT_BASE_URL =
   "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup";
@@ -1012,7 +1012,7 @@ function validateTeamProfileForImport(
       "Profiles must set redaction.allowSecretValues to false.",
     ));
   }
-  if (redaction.secretSlotsRequired !== true) {
+  if (!Object.is(redaction.secretSlotsRequired, true)) {
     findings.push(importFinding(
       "team_profile_missing_required_field",
       "redaction.secretSlotsRequired",

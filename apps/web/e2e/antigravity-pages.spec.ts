@@ -112,6 +112,13 @@ test.describe.serial("Antigravity (agy) migration pages", () => {
       await page.goto("/complete-guide");
       await page.waitForLoadState("networkidle");
 
+      await test.step("renders the dated current-model guidance", async () => {
+        await expect(page.getByText("Last reviewed July 17, 2026")).toBeVisible();
+        await expect(page.getByText(/GPT-5\.6 Sol Pro/).first()).toBeVisible();
+        await expect(page.getByText(/Claude Fable 5/).first()).toBeVisible();
+        await expect(page.getByText(/Grok 4\.5/).first()).toBeVisible();
+      });
+
       await test.step("--agy= spawn ratio is present", async () => {
         // The guide renders responsive duplicates (one hidden via CSS); assert the visible one.
         await expect(
@@ -123,6 +130,14 @@ test.describe.serial("Antigravity (agy) migration pages", () => {
         await expect(
           page.getByText(/Antigravity \(agy\)/i).filter({ visible: true }).first(),
         ).toBeVisible();
+      });
+
+      await test.step("renders manifest-backed tooling and canonical install guidance", async () => {
+        await expect(page.getByText(/25 default-enabled stack modules/).first()).toBeVisible();
+        await expect(
+          page.getByText(/raw\.githubusercontent\.com\/Dicklesworthstone/).first(),
+        ).toBeVisible();
+        await expect(page.getByText("Foundation").first()).toBeVisible();
       });
     });
   });

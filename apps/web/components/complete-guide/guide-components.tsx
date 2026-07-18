@@ -27,6 +27,46 @@ import { copyTextToClipboard } from "@/lib/utils";
 
 export { FlywheelDiagram } from "./flywheel-diagram";
 
+const PROMPT_HIGHLIGHT_PATTERN = /(\[[A-Z_]+\]|\b(?:Do we have|Search|Review|Read|Write|Fix|Create|Update|OK|Look|Execute)\b)/g;
+const PROMPT_HIGHLIGHT_KEYWORDS = new Set([
+  "Do we have",
+  "Search",
+  "Review",
+  "Read",
+  "Write",
+  "Fix",
+  "Create",
+  "Update",
+  "OK",
+  "Look",
+  "Execute",
+]);
+
+function renderHighlightedPrompt(text: string): ReactNode[] {
+  return text.split(PROMPT_HIGHLIGHT_PATTERN).map((part, partIndex) => {
+    if (/^\[[A-Z_]+\]$/.test(part)) {
+      return (
+        <span
+          key={partIndex}
+          className="text-white/60 font-medium bg-white/10 px-1 rounded"
+        >
+          {part}
+        </span>
+      );
+    }
+
+    if (PROMPT_HIGHLIGHT_KEYWORDS.has(part)) {
+      return (
+        <span key={partIndex} className="text-[#FF5500] font-medium">
+          {part}
+        </span>
+      );
+    }
+
+    return part;
+  });
+}
+
 // =============================================================================
 // GUIDE SECTION - Anchored sections with gradient headers + scroll reveal
 // =============================================================================
@@ -187,6 +227,19 @@ export function CodeBlock(
   return <SharedCodeBlock {...props} variant="terminal" copyable />;
 }
 
+export function IllustrativeDisclosure() {
+  return (
+    <div className="-mt-7 mb-10 flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm leading-relaxed text-zinc-500">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#FFBD2E]" />
+      <span>
+        Illustrative simulation: scores, percentages, timings, and agent state in
+        this exhibit explain the mechanism; they are not measured benchmarks or
+        performance guarantees.
+      </span>
+    </div>
+  );
+}
+
 // =============================================================================
 // PROMPT BLOCK - Collapsible prompt display with copy + metadata
 // =============================================================================
@@ -221,19 +274,6 @@ export function PromptBlock({
     }, 2000);
   }, [prompt]);
 
-  // Very simple client-side syntax highlighting for structural keywords
-  const highlightPrompt = (text: string) => {
-    const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const keywords = ['Search', 'Review', 'Read', 'Write', 'Fix', 'Create', 'Update', 'Do we have', 'OK', 'Look', 'Execute'];
-    let highlighted = escaped;
-    keywords.forEach(kw => {
-      const regex = new RegExp(`\\b(${kw})\\b`, 'g');
-      highlighted = highlighted.replace(regex, '<span class="text-[#FF5500] font-medium">$1</span>');
-    });
-    highlighted = highlighted.replace(/(\[[A-Z_]+\])/g, '<span class="text-white/60 font-medium bg-white/10 px-1 rounded">$1</span>');
-    return highlighted;
-  };
-
   return (
     <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition-all duration-500 hover:border-[#FF5500]/30 my-12 shadow-xl">
       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
@@ -260,10 +300,9 @@ export function PromptBlock({
 
       {/* Prompt body */}
       <div className="relative z-10 p-6 sm:p-8">
-        <div
-          className="text-[0.95rem] sm:text-[1.05rem] text-zinc-300 whitespace-pre-wrap font-mono font-normal leading-[1.7] overflow-x-auto scrollbar-hide selection:bg-[#FF5500]/20 selection:text-white"
-          dangerouslySetInnerHTML={{ __html: highlightPrompt(prompt) }}
-        />
+        <div className="text-[0.95rem] sm:text-[1.05rem] text-zinc-300 whitespace-pre-wrap font-mono font-normal leading-[1.7] overflow-x-auto scrollbar-hide selection:bg-[#FF5500]/20 selection:text-white">
+          {renderHighlightedPrompt(prompt)}
+        </div>
       </div>
 
       {/* Metadata footer — clean & informative */}
@@ -375,9 +414,9 @@ export function DataTable({
                 key={ri}
                 className="transition-colors duration-300 hover:bg-white/[0.02] hover:bg-gradient-to-r hover:from-[#FF5500]/[0.03] hover:to-transparent group/row"
               >
-                {row.map((cell, ci) => (
-                  <td key={ci} className="px-8 py-6 text-[1.05rem] font-light text-zinc-300 align-top leading-relaxed">
-                    {ci === 0 ? <span className="text-white font-medium group-hover/row:text-[#FF5500] transition-colors">{cell}</span> : cell}
+                {row.map((cell, cellPosition) => (
+                  <td key={cellPosition} className="px-8 py-6 text-[1.05rem] font-light text-zinc-300 align-top leading-relaxed">
+                    {Object.is(cellPosition, 0) ? <span className="text-white font-medium group-hover/row:text-[#FF5500] transition-colors">{cell}</span> : cell}
                   </td>
                 ))}
               </tr>
