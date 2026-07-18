@@ -1897,7 +1897,9 @@ $(gum style --foreground "$ACFS_PINK" --bold "Setting up $label...")"
     fi
     setup_postgres
 
-    # Generate /AGENTS.md with current tool versions
+    # Refresh the canonical agent guide (~/.acfs/docs/flywheel-agent-guide.md)
+    # with current tool versions. Deployment into instruction files stays an
+    # explicit user action (`acfs agents install ...`).
     local agents_script="$SCRIPT_DIR/generate-root-agents-md.sh"
     if [[ -x "$agents_script" ]]; then
         "$agents_script" 2>/dev/null || true

@@ -127,6 +127,14 @@ render_step() {
             fi
             color="$TUI_ERROR"
             ;;
+        skipped)
+            if [[ "$TERM_HAS_UNICODE" == "true" ]]; then
+                icon="${TUI_WARNING}!${TUI_NC}"
+            else
+                icon="[${TUI_WARNING}-${TUI_NC}]"
+            fi
+            color="$TUI_WARNING"
+            ;;
     esac
 
     echo -e "  $icon ${color}$name${TUI_NC}"
@@ -325,8 +333,11 @@ venv/
             else
                 local status=$?
                 if [[ $status -eq 2 ]]; then
+                    # Show a visible "skipped" state instead of quietly
+                    # resetting to pending (GH #315): the user must be able
+                    # to see that beads was requested but not initialized.
                     log_warn "br init skipped (not installed or failed)"
-                    update_step "$step" "pending"
+                    update_step "$step" "skipped"
                     return 0
                 fi
                 update_step "$step" "error"

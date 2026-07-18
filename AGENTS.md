@@ -140,11 +140,10 @@ Whenever you revise, update, or fix anything in ACFS, you MUST also verify with 
 Minimum baseline for every ACFS change:
 
 ```bash
-cargo run --manifest-path /dp/automated_flywheel_setup_checker/Cargo.toml -- \
-  validate --path /data/projects/agentic_coding_flywheel_setup/checksums.yaml
-cargo run --manifest-path /dp/automated_flywheel_setup_checker/Cargo.toml -- list
-cargo run --manifest-path /dp/automated_flywheel_setup_checker/Cargo.toml -- \
-  check --dry-run --local
+# The checker inspects THIS machine's state, so it must run locally (not via rch).
+cargo run --manifest-path /dp/automated_flywheel_setup_checker/Cargo.toml -- validate --path /data/projects/agentic_coding_flywheel_setup/checksums.yaml  # rch-policy: allow
+cargo run --manifest-path /dp/automated_flywheel_setup_checker/Cargo.toml -- list  # rch-policy: allow
+cargo run --manifest-path /dp/automated_flywheel_setup_checker/Cargo.toml -- check --dry-run --local  # rch-policy: allow
 ```
 
 If `automated_flywheel_setup_checker` is installed on PATH, using that binary is fine. If the change touches installer execution, `checksums.yaml`, verified installer metadata, or generated installer scripts, consider the stronger checker modes too:

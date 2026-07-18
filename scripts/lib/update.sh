@@ -6069,10 +6069,10 @@ update_stack() {
 }
 
 # ============================================================
-# Root AGENTS.md Generation
+# Flywheel Agent Guide Generation (~/.acfs/docs/flywheel-agent-guide.md)
 # ============================================================
 update_root_agents_md() {
-    log_section "Root AGENTS.md"
+    log_section "Agent Guide"
 
     local root_agents_generator=""
     root_agents_generator="$(update_binary_path flywheel-update-agents-md 2>/dev/null || true)"
@@ -6111,7 +6111,11 @@ update_root_agents_md() {
 
     root_agents_generator="$(update_binary_path flywheel-update-agents-md 2>/dev/null || true)"
     [[ -n "$root_agents_generator" ]] || root_agents_generator="flywheel-update-agents-md"
-    run_cmd_sudo "Root AGENTS.md" "$root_agents_generator"
+    # Run as the invoking user, NOT via sudo: the generator writes only the
+    # ACFS-owned canonical guide (~/.acfs/docs/flywheel-agent-guide.md), and
+    # tool detection under root's restricted PATH would falsely report
+    # user-local tools (~/.local/bin, ~/go/bin) as missing.
+    run_cmd "Agent guide" "$root_agents_generator"
 }
 
 # ============================================================

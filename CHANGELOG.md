@@ -12,6 +12,13 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 > 427 commits since v0.6.0 (2026-02-02 through 2026-03-21). Internal version bumped to 0.7.0 in [`729822e`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/729822eb).
 
+### Agent Guide (GH #314)
+
+- **ACFS-owned agent guide storage** -- the flywheel agent guide is now generated only under `~/.acfs/docs/flywheel-agent-guide.md`; ACFS no longer automatically writes `/AGENTS.md`, and `/data/projects/AGENTS.md` is seeded from the ACFS-owned template (`~/.acfs/docs/AGENTS.workspace.md`) only when absent and never overwritten
+- **`acfs agents` command** -- `update` regenerates the canonical guide; `install --codex-global | --workspace | --root | --project DIR | --to PATH` explicitly deploys it, creating destinations only when absent and writing a `<dest>.acfs-new` merge candidate on collision; `path` prints the canonical location
+- **Correct user context for tool detection** -- the generator resolves the target user (via `SUDO_USER`/`ACFS_TARGET_USER`) and prepends the user's tool dirs (`~/.local/bin`, `~/go/bin`, ...) to PATH, so `acfs update` run through sudo no longer reports user-local tools as "not installed"; the updater and installer now invoke the generator as the target user instead of root
+- **newproj beads hardening (GH #315)** -- `br init` failures during project creation now surface their reason (stderr no longer discarded) and the TUI shows a visible "skipped" state instead of silently resetting the step
+
 ### Installer & CLI
 
 - **`acfs services` command** for unified daemon management -- start/stop/restart all ACFS background services (Agent Mail, nightly timer, etc.) from one place ([`2d48c4b`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/2d48c4b1))

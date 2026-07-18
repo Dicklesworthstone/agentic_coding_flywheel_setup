@@ -1015,6 +1015,12 @@ print_acfs_help() {
     echo "  continue [options]  View installation/upgrade progress"
     echo "  dashboard <command> Generate/view a static HTML dashboard"
     echo "  newproj <name>      Create new project with git, br, claude settings"
+    echo "  agents <command>    Manage the flywheel agent guide (ACFS-owned)"
+    echo "    update            Regenerate ~/.acfs/docs/flywheel-agent-guide.md"
+    echo "    install <target>  Explicitly deploy the guide (never overwrites):"
+    echo "                      --codex-global | --workspace | --root |"
+    echo "                      --project DIR | --to PATH"
+    echo "    path              Print the canonical guide path"
     echo "  update [options]    Update ACFS tools to latest versions"
     echo "  services-setup      Configure AI agents and cloud services"
     echo "  session <command>   Export/import/share agent sessions"
@@ -4739,6 +4745,46 @@ main() {
 
             echo "Error: newproj.sh not found" >&2
             return 1
+            ;;
+        agents|agent-guide)
+            shift
+            # Manage the ACFS-owned flywheel agent guide. Generation only
+            # touches ~/.acfs/docs/flywheel-agent-guide.md; deployment into a
+            # real instruction file is explicit and non-overwriting.
+            local agents_generator=""
+            agents_generator="$(doctor_binary_path flywheel-update-agents-md 2>/dev/null || true)"
+            [[ -n "$agents_generator" ]] || agents_generator="$(command -v flywheel-update-agents-md 2>/dev/null || true)"
+            if [[ -z "$agents_generator" ]]; then
+                echo "Error: flywheel-update-agents-md not found (re-run the ACFS installer)" >&2
+                return 1
+            fi
+
+            local agents_subcmd="${1:-update}"
+            case "$agents_subcmd" in
+                update|generate|refresh)
+                    [[ $# -gt 0 ]] && shift
+                    "$agents_generator" "$@"
+                    return $?
+                    ;;
+                install|deploy)
+                    [[ $# -gt 0 ]] && shift
+                    "$agents_generator" deploy "$@"
+                    return $?
+                    ;;
+                path)
+                    "$agents_generator" path
+                    return $?
+                    ;;
+                help|-h|--help)
+                    "$agents_generator" --help
+                    return $?
+                    ;;
+                *)
+                    echo "Error: unknown agents subcommand: $agents_subcmd" >&2
+                    echo "Usage: acfs agents [update|install <target>|path|help]" >&2
+                    return 1
+                    ;;
+            esac
             ;;
         services-setup|services|setup)
             shift

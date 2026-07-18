@@ -488,11 +488,17 @@ try_br_init() {
         return 0
     fi
 
-    (cd "$dir" && br init 2>/dev/null)
+    # Capture output so a failure reason is never silently discarded
+    # (GH #315: users saw .beads missing with no explanation).
+    local br_output=""
+    br_output=$(cd "$dir" && br init 2>&1)
     local errno=$?
     if [[ $errno -ne 0 ]]; then
-        log_warn "br init failed in $dir (errno: $errno)" 2>/dev/null || true
-        newproj_tty_printf "%b\n" "${NEWPROJ_YELLOW}Warning: Failed to initialize beads. You can run 'br init' later.${NEWPROJ_NC}"
+        log_warn "br init failed in $dir (errno: $errno): $br_output" 2>/dev/null || true
+        newproj_tty_printf "%b\n" "${NEWPROJ_YELLOW}Warning: Failed to initialize beads (br init exit $errno). You can run 'br init' later.${NEWPROJ_NC}"
+        if [[ -n "$br_output" ]]; then
+            newproj_tty_printf "%b\n" "${NEWPROJ_YELLOW}br init said: $br_output${NEWPROJ_NC}"
+        fi
         return 2
     fi
 

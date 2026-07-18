@@ -7458,14 +7458,20 @@ finalize() {
     try_step "Linking acfs-update command" acfs_link_primary_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
     try_step "Linking global acfs-update command" acfs_link_global_bin_command "$ACFS_HOME/bin/acfs-update" "acfs-update" || return 1
 
-    # Install root AGENTS.md generator (if available) and generate /AGENTS.md once
+    # Install the flywheel agent-guide generator (if available) and generate
+    # the canonical guide once. The guide lives only in ACFS-owned storage
+    # (~/.acfs/docs/flywheel-agent-guide.md); deploying it into /AGENTS.md,
+    # ~/.codex/AGENTS.md, or a project is an explicit user action
+    # (`acfs agents install ...`) and is never done automatically.
     if try_step "Installing flywheel-update-agents-md" install_asset "scripts/generate-root-agents-md.sh" "$ACFS_HOME/bin/flywheel-update-agents-md"; then
         try_step "Setting flywheel-update-agents-md permissions" $SUDO chmod 755 "$ACFS_HOME/bin/flywheel-update-agents-md" || return 1
         try_step "Setting flywheel-update-agents-md ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/bin/flywheel-update-agents-md" || return 1
         try_step "Linking flywheel-update-agents-md command" $SUDO ln -sf "$ACFS_HOME/bin/flywheel-update-agents-md" "/usr/local/bin/flywheel-update-agents-md" || return 1
-        try_step "Generating /AGENTS.md" $SUDO /usr/local/bin/flywheel-update-agents-md || true
+        # Run in the target user's context so user-local tools
+        # (~/.local/bin, ~/go/bin) are detected correctly.
+        try_step "Generating agent guide (~/.acfs/docs)" run_as_target "$ACFS_HOME/bin/flywheel-update-agents-md" || true
     else
-        log_warn "Root AGENTS.md generator not found; skipping /AGENTS.md generation"
+        log_warn "Agent guide generator not found; skipping guide generation"
     fi
 
     # Install services-setup wizard

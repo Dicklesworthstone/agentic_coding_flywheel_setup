@@ -1,37 +1,198 @@
 #!/usr/bin/env bash
-# generate-root-agents-md.sh - Generate /AGENTS.md for Flywheel VPS
+# generate-root-agents-md.sh - Generate the ACFS flywheel agent guide
 #
-# Creates a comprehensive AGENTS.md at /AGENTS.md that documents all
-# installed flywheel tools, common workflows, and agent guidelines.
+# Installed on target machines as `flywheel-update-agents-md`.
+#
+# Generates a comprehensive agent guide documenting installed flywheel
+# tools, common workflows, and agent guidelines. The guide is written ONLY
+# to an ACFS-owned canonical path:
+#
+#   ~/.acfs/docs/flywheel-agent-guide.md
+#
+# ACFS never automatically writes /AGENTS.md, /data/projects/AGENTS.md,
+# ~/.codex/AGENTS.md, or any project's AGENTS.md. Deployment into a real
+# agent-instruction surface is an explicit, optional, non-overwriting step
+# (see `deploy` below), because those files can contain user-authored safety
+# rules that must never be silently replaced.
+#
+# Tool detection always runs in the TARGET USER's context: when invoked via
+# sudo, the target user is resolved from SUDO_USER (override: ACFS_TARGET_USER)
+# and the user's tool directories (~/.local/bin, ~/go/bin, ...) are prepended
+# to PATH so user-local installs are not falsely reported as missing.
 #
 # Usage:
-#   ./scripts/generate-root-agents-md.sh [--output PATH] [--dry-run]
+#   flywheel-update-agents-md [--dry-run] [--output PATH]
+#   flywheel-update-agents-md path
+#   flywheel-update-agents-md deploy (--codex-global | --workspace | --root | --project DIR | --to PATH)
+#
+# Commands:
+#   (default)      Generate/refresh the canonical guide under ~/.acfs/docs/
+#   path           Print the canonical guide path
+#   deploy TARGET  Copy the canonical guide to a real instruction surface.
+#                  Creates the destination only when absent. On collision the
+#                  destination is left untouched and a merge candidate is
+#                  written next to it as <dest>.acfs-new.
 #
 # Options:
-#   --output PATH  Write to PATH instead of /AGENTS.md (default: /AGENTS.md)
-#   --dry-run      Print to stdout instead of writing file
+#   --output PATH  Write the generated guide to PATH instead of the canonical
+#                  location (explicit destinations are honored as-is)
+#   --dry-run      Print the generated guide to stdout instead of writing
+#
+# Deploy targets:
+#   --codex-global   ~/.codex/AGENTS.md   (Codex global instruction scope)
+#   --project DIR    DIR/AGENTS.md        (project-root instruction file)
+#   --workspace      /data/projects/AGENTS.md (workspace-root convention)
+#   --root           /AGENTS.md           (legacy; not auto-discovered by
+#                                          agent harnesses; needs root perms)
+#   --to PATH        arbitrary explicit destination
 #
 # Exit codes:
 #   0  Success
 #   1  Write failed
-#   2  Missing prerequisites
+#   2  Usage error / missing prerequisites
+#   3  Deploy collision (destination exists and differs; candidate written)
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# --- Target-user context resolution ---
+# When run via sudo, root's restricted PATH hides user-local tools
+# (~/.local/bin, ~/go/bin, ...). Resolve the real target user and prepend
+# that user's tool directories so the tool inventory is accurate.
+resolve_target_user() {
+    local user="${ACFS_TARGET_USER:-${SUDO_USER:-}}"
+    if [[ -z "$user" || "$user" == "root" ]]; then
+        user="$(id -un)"
+    fi
+    echo "$user"
+}
 
-OUTPUT="/AGENTS.md"
+resolve_target_home() {
+    local user="$1"
+    local home="${ACFS_TARGET_HOME:-}"
+    if [[ -n "$home" && "$home" == /* && "$home" != "/" ]]; then
+        echo "${home%/}"
+        return 0
+    fi
+    home="$(getent passwd "$user" 2>/dev/null | cut -d: -f6)" || home=""
+    if [[ -z "$home" ]]; then
+        if [[ "$user" == "$(id -un)" ]]; then
+            home="${HOME:-}"
+        fi
+    fi
+    if [[ -z "$home" || "$home" == "/" || "$home" != /* ]]; then
+        echo "ERROR: Unable to resolve home directory for user '$user'" >&2
+        return 2
+    fi
+    echo "${home%/}"
+}
+
+TARGET_USER="$(resolve_target_user)"
+TARGET_HOME="$(resolve_target_home "$TARGET_USER")"
+
+# Prepend the target user's tool directories (mirrors the installer's
+# run_as_target PATH prefix) so `command -v` sees user-local installs even
+# when this script runs as root.
+PATH="$TARGET_HOME/.local/bin:$TARGET_HOME/.acfs/bin:$TARGET_HOME/.cargo/bin:$TARGET_HOME/.bun/bin:$TARGET_HOME/.atuin/bin:$TARGET_HOME/go/bin:$PATH"
+export PATH
+
+CANONICAL_DIR="$TARGET_HOME/.acfs/docs"
+CANONICAL="$CANONICAL_DIR/flywheel-agent-guide.md"
+
+# Fix ownership when running as root so the target user owns the output.
+fix_ownership() {
+    local path="$1"
+    if [[ $EUID -eq 0 && "$TARGET_USER" != "root" ]]; then
+        chown "$TARGET_USER:$TARGET_USER" "$path" 2>/dev/null || true
+    fi
+}
+
+# --- Argument parsing ---
+MODE="generate"
+OUTPUT=""
 DRY_RUN=false
+DEPLOY_DEST=""
+DEPLOY_LABEL=""
+DEPLOY_SCOPE=""
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --output)  OUTPUT="$2"; shift 2 ;;
-        --dry-run) DRY_RUN=true; shift ;;
-        -h|--help) echo "Usage: $0 [--output PATH] [--dry-run]"; exit 0 ;;
-        *) echo "Unknown option: $1" >&2; exit 2 ;;
+usage() {
+    sed -n '/^# Usage:/,/^# Exit codes:/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+parse_deploy_target() {
+    case "${1:-}" in
+        --codex-global)
+            DEPLOY_DEST="$TARGET_HOME/.codex/AGENTS.md"
+            DEPLOY_LABEL="Codex global instructions"
+            DEPLOY_SCOPE="read by Codex for every session of user '$TARGET_USER' (global scope)"
+            return 0 ;;
+        --workspace)
+            DEPLOY_DEST="/data/projects/AGENTS.md"
+            DEPLOY_LABEL="workspace-root AGENTS.md"
+            DEPLOY_SCOPE="a workspace convention; harnesses that walk up from a project root may read it"
+            return 0 ;;
+        --root)
+            DEPLOY_DEST="/AGENTS.md"
+            DEPLOY_LABEL="filesystem-root AGENTS.md (legacy)"
+            DEPLOY_SCOPE="NOT auto-discovered by agent harnesses; legacy location only"
+            return 0 ;;
+        --project)
+            if [[ -z "${2:-}" || ! -d "${2:-}" ]]; then
+                echo "ERROR: --project requires an existing directory" >&2
+                return 2
+            fi
+            DEPLOY_DEST="${2%/}/AGENTS.md"
+            DEPLOY_LABEL="project AGENTS.md"
+            DEPLOY_SCOPE="read by agents working inside ${2%/} (project scope)"
+            return 3 ;;  # consumed two args
+        --to)
+            if [[ -z "${2:-}" ]]; then
+                echo "ERROR: --to requires a destination path" >&2
+                return 2
+            fi
+            DEPLOY_DEST="$2"
+            DEPLOY_LABEL="custom destination"
+            DEPLOY_SCOPE="explicit path chosen by the operator"
+            return 3 ;;  # consumed two args
+        *)
+            echo "ERROR: deploy requires a target: --codex-global | --workspace | --root | --project DIR | --to PATH" >&2
+            return 2 ;;
     esac
-done
+}
+
+case "${1:-}" in
+    path)
+        echo "$CANONICAL"
+        exit 0 ;;
+    deploy)
+        MODE="deploy"
+        shift
+        set +e
+        parse_deploy_target "$@"
+        rc=$?
+        set -e
+        case $rc in
+            0) shift ;;
+            3) shift 2 ;;
+            *) exit 2 ;;
+        esac
+        if [[ $# -gt 0 ]]; then
+            echo "ERROR: unexpected extra arguments: $*" >&2
+            exit 2
+        fi
+        ;;
+esac
+
+if [[ "$MODE" == "generate" ]]; then
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            generate)  shift ;;
+            --output)  OUTPUT="$2"; shift 2 ;;
+            --dry-run) DRY_RUN=true; shift ;;
+            -h|--help) usage; exit 0 ;;
+            *) echo "Unknown option: $1" >&2; exit 2 ;;
+        esac
+    done
+fi
 
 TIMESTAMP=$(date -Iseconds)
 
@@ -88,8 +249,10 @@ cat << 'HEADER'
 
 HEADER
 
-echo "> Auto-generated: $TIMESTAMP"
-echo '> Regenerate: `sudo /data/projects/agentic_coding_flywheel_setup/scripts/generate-root-agents-md.sh`'
+echo "> Auto-generated: $TIMESTAMP (as user: $TARGET_USER)"
+echo '> Canonical source: `~/.acfs/docs/flywheel-agent-guide.md`'
+echo '> Regenerate: `flywheel-update-agents-md` (or `acfs agents update`)'
+echo '> Deploy into an instruction file: `acfs agents install --help`'
 echo ""
 
 cat << 'SECTION1'
@@ -187,21 +350,100 @@ Agents coordinate via **Agent Mail** (MCP server). Key concepts:
 SECTION2
 }
 
+# --- Content comparison that ignores the volatile timestamp line ---
+content_differs() {
+    local a="$1" b="$2"
+    ! diff -q \
+        <(grep -v '^> Auto-generated: ' "$a") \
+        <(grep -v '^> Auto-generated: ' "$b") \
+        > /dev/null 2>&1
+}
+
+write_canonical() {
+    mkdir -p "$CANONICAL_DIR"
+    fix_ownership "$CANONICAL_DIR"
+    local content
+    content=$(generate)
+    printf '%s\n' "$content" > "$CANONICAL"
+    fix_ownership "$CANONICAL"
+    echo "Generated $CANONICAL ($(printf '%s\n' "$content" | wc -l) lines)"
+}
+
+# --- Deploy: explicit, optional, non-overwriting ---
+do_deploy() {
+    # Always refresh the canonical source first; it is the only file ACFS owns
+    # and may freely replace.
+    write_canonical
+
+    echo ""
+    echo "Deploy target: $DEPLOY_LABEL"
+    echo "  Destination: $DEPLOY_DEST"
+    echo "  Scope:       $DEPLOY_SCOPE"
+
+    local dest_dir
+    dest_dir="$(dirname "$DEPLOY_DEST")"
+
+    if [[ -e "$DEPLOY_DEST" ]]; then
+        if ! content_differs "$CANONICAL" "$DEPLOY_DEST"; then
+            echo "  Status:      up to date (content already matches the canonical guide)"
+            return 0
+        fi
+        # Collision: never overwrite. Leave the destination untouched and
+        # write an adjacent candidate for manual merging.
+        local candidate="$DEPLOY_DEST.acfs-new"
+        if ! cp "$CANONICAL" "$candidate" 2>/dev/null; then
+            echo "ERROR: destination exists and differs, and the merge candidate could not be written: $candidate" >&2
+            echo "       (insufficient permissions? re-run this exact deploy command with sudo)" >&2
+            return 1
+        fi
+        fix_ownership "$candidate"
+        echo "  Status:      REFUSED — destination already exists and differs"
+        echo ""
+        echo "  $DEPLOY_DEST was NOT modified (it may contain user-authored rules)."
+        echo "  A merge candidate was written to:"
+        echo "    $candidate"
+        echo "  Review the differences and merge manually:"
+        echo "    diff -u '$DEPLOY_DEST' '$candidate'"
+        return 3
+    fi
+
+    if ! mkdir -p "$dest_dir" 2>/dev/null; then
+        echo "ERROR: cannot create destination directory: $dest_dir" >&2
+        echo "       (insufficient permissions? re-run this exact deploy command with sudo)" >&2
+        return 1
+    fi
+    if ! cp "$CANONICAL" "$DEPLOY_DEST" 2>/dev/null; then
+        echo "ERROR: cannot write destination: $DEPLOY_DEST" >&2
+        echo "       (insufficient permissions? re-run this exact deploy command with sudo)" >&2
+        return 1
+    fi
+    fix_ownership "$DEPLOY_DEST"
+    echo "  Status:      created (destination was absent)"
+    echo ""
+    echo "  Future ACFS updates refresh only the canonical source; re-run this"
+    echo "  deploy command whenever you want to pick up a newer guide."
+    return 0
+}
+
 # --- Output ---
-if $DRY_RUN; then
-    generate
-    exit 0
-fi
-
-content=$(generate)
-
-if [[ "$OUTPUT" == "/AGENTS.md" ]]; then
-    # Writing to root requires sudo
-    echo "$content" | sudo tee "$OUTPUT" > /dev/null
-    sudo chmod 644 "$OUTPUT"
-    sudo chown root:root "$OUTPUT"
-else
-    echo "$content" > "$OUTPUT"
-fi
-
-echo "Generated $OUTPUT ($(echo "$content" | wc -l) lines)"
+case "$MODE" in
+    deploy)
+        do_deploy
+        exit $? ;;
+    generate)
+        if $DRY_RUN; then
+            generate
+            exit 0
+        fi
+        if [[ -n "$OUTPUT" ]]; then
+            # Explicit destination: honored as-is (still no sudo, no magic).
+            mkdir -p "$(dirname "$OUTPUT")"
+            content=$(generate)
+            printf '%s\n' "$content" > "$OUTPUT"
+            fix_ownership "$OUTPUT"
+            echo "Generated $OUTPUT ($(printf '%s\n' "$content" | wc -l) lines)"
+        else
+            write_canonical
+        fi
+        ;;
+esac

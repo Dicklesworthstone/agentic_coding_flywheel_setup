@@ -385,24 +385,6 @@ INSTALL_BASE_FILESYSTEM
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: if curl --help all 2>/dev/null | grep -q -- '--proto'; then (root)"
-    else
-        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
-# Install AGENTS.md template to workspace root for agent guidance
-ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-CURL_ARGS=(-fsSL)
-if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-  CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
-fi
-curl "${CURL_ARGS[@]}" -o /data/projects/AGENTS.md "${ACFS_RAW}/acfs/AGENTS.md" || true
-chown "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" /data/projects/AGENTS.md 2>/dev/null || true
-INSTALL_BASE_FILESYSTEM
-        then
-            log_error "base.filesystem: install command failed: if curl --help all 2>/dev/null | grep -q -- '--proto'; then"
-            return 1
-        fi
-    fi
-    if [[ "${DRY_RUN:-false}" = "true" ]]; then
         log_info "dry-run: install: if [[ -n \"\$explicit_target_home\" ]]; then (root)"
     else
         if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
@@ -578,6 +560,25 @@ fi
 
 mkdir -p "$target_home/.acfs"
 chown -hR "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" "$target_home/.acfs"
+
+# Save the workspace AGENTS.md template into ACFS-owned storage.
+# ACFS may freely refresh this canonical copy on every install/update.
+ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
+CURL_ARGS=(-fsSL)
+if curl --help all 2>/dev/null | grep -q -- '--proto'; then
+  CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+fi
+mkdir -p "$target_home/.acfs/docs"
+curl "${CURL_ARGS[@]}" -o "$target_home/.acfs/docs/AGENTS.workspace.md" "${ACFS_RAW}/acfs/AGENTS.md" || true
+chown -R "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" "$target_home/.acfs/docs" 2>/dev/null || true
+
+# Seed /data/projects/AGENTS.md ONLY when absent. An existing file
+# may contain user-authored rules and is never overwritten; use
+# `acfs agents install` for explicit, non-overwriting deployment.
+if [[ -f "$target_home/.acfs/docs/AGENTS.workspace.md" && ! -e /data/projects/AGENTS.md ]]; then
+  cp "$target_home/.acfs/docs/AGENTS.workspace.md" /data/projects/AGENTS.md
+  chown "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" /data/projects/AGENTS.md 2>/dev/null || true
+fi
 INSTALL_BASE_FILESYSTEM
         then
             log_error "base.filesystem: install command failed: if [[ -n \"\$explicit_target_home\" ]]; then"
@@ -594,17 +595,6 @@ test -d /data/projects
 INSTALL_BASE_FILESYSTEM
         then
             log_error "base.filesystem: verify failed: test -d /data/projects"
-            return 1
-        fi
-    fi
-    if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify: test -f /data/projects/AGENTS.md (root)"
-    else
-        if ! run_as_root_shell <<'INSTALL_BASE_FILESYSTEM'
-test -f /data/projects/AGENTS.md
-INSTALL_BASE_FILESYSTEM
-        then
-            log_error "base.filesystem: verify failed: test -f /data/projects/AGENTS.md"
             return 1
         fi
     fi
@@ -778,6 +768,7 @@ if [[ -z "$target_home" ]] || [[ "$target_home" == "/" ]] || [[ "$target_home" !
   exit 1
 fi
 test -d "$target_home/.acfs"
+test -f "$target_home/.acfs/docs/AGENTS.workspace.md"
 INSTALL_BASE_FILESYSTEM
         then
             log_error "base.filesystem: verify failed: if [[ -n \"\$explicit_target_home\" ]]; then"

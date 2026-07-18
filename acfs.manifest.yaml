@@ -85,15 +85,6 @@ modules:
           mkdir -p /data/projects /data/cache
           chown -h "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" /data /data/projects /data/cache
       - |
-          # Install AGENTS.md template to workspace root for agent guidance
-          ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
-          fi
-          curl "${CURL_ARGS[@]}" -o /data/projects/AGENTS.md "${ACFS_RAW}/acfs/AGENTS.md" || true
-          chown "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" /data/projects/AGENTS.md 2>/dev/null || true
-      - |
           target_home=""
           explicit_target_home="${TARGET_HOME:-}"
           if [[ -n "$explicit_target_home" ]]; then
@@ -134,9 +125,27 @@ modules:
 
           mkdir -p "$target_home/.acfs"
           chown -hR "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" "$target_home/.acfs"
+
+          # Save the workspace AGENTS.md template into ACFS-owned storage.
+          # ACFS may freely refresh this canonical copy on every install/update.
+          ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
+          CURL_ARGS=(-fsSL)
+          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          fi
+          mkdir -p "$target_home/.acfs/docs"
+          curl "${CURL_ARGS[@]}" -o "$target_home/.acfs/docs/AGENTS.workspace.md" "${ACFS_RAW}/acfs/AGENTS.md" || true
+          chown -R "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" "$target_home/.acfs/docs" 2>/dev/null || true
+
+          # Seed /data/projects/AGENTS.md ONLY when absent. An existing file
+          # may contain user-authored rules and is never overwritten; use
+          # `acfs agents install` for explicit, non-overwriting deployment.
+          if [[ -f "$target_home/.acfs/docs/AGENTS.workspace.md" && ! -e /data/projects/AGENTS.md ]]; then
+            cp "$target_home/.acfs/docs/AGENTS.workspace.md" /data/projects/AGENTS.md
+            chown "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" /data/projects/AGENTS.md 2>/dev/null || true
+          fi
     verify:
       - test -d /data/projects
-      - test -f /data/projects/AGENTS.md
       - |
           # Resolve TARGET_HOME using generated helper functions. Doctor
           # injects these helpers for manifest checks that reference
@@ -172,9 +181,10 @@ modules:
             exit 1
           fi
           test -d "$target_home/.acfs"
+          test -f "$target_home/.acfs/docs/AGENTS.workspace.md"
     notes:
       - "~/.acfs created during filesystem phase"
-      - "AGENTS.md template installed to /data/projects for agent guidance"
+      - "Workspace AGENTS.md template stored in ~/.acfs/docs (ACFS-owned); /data/projects/AGENTS.md is seeded only when absent and never overwritten"
 
   # ============================================================
   # PHASE 4: Shell setup (zsh + oh-my-zsh + p10k)
