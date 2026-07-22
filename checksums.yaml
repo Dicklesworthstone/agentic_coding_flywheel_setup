@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-07-22T14:14:47+00:00
+# checksums.yaml - Auto-generated 2026-07-22T19:57:22+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -48,7 +48,7 @@ installers:
 
   claude:
     url: "https://claude.ai/install.sh"
-    sha256: "b3f79015b54c751440a6488f07b1b64f9088742b9052bc1bd356d13108320d2a"
+    sha256: "cde4f1702d3b1695f92b73d26888364e17bca476e17f0fd676484c951d36c125"
 
   cm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/cass_memory_system/main/install.sh"
@@ -124,7 +124,7 @@ installers:
 
   rch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/remote_compilation_helper/main/install.sh"
-    sha256: "ebf95564f497defbec1b60a2f0ec7ac215582eee1ff9f579128922300eb439a7"
+    sha256: "89515445759d490b63acb048ca0a43392f2bca4c5f589b6d404d050a0ce7b904"
 
   ru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/repo_updater/main/install.sh"
