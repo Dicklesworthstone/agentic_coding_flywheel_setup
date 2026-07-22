@@ -5726,7 +5726,7 @@ install_languages_legacy_tools() {
         log_detail "Atuin already installed"
     else
         log_detail "Installing Atuin for $TARGET_USER"
-        try_step "Installing Atuin" acfs_run_verified_upstream_script_as_target "atuin" "sh" "--non-interactive" || return 1
+        try_step "Installing Atuin" acfs_run_verified_upstream_script_as_target_with_env "atuin" "sh" "ATUIN_NO_MODIFY_PATH=1" || return 1
     fi
 
     if [[ -x "$TARGET_HOME/.atuin/bin/atuin" ]]; then
@@ -5772,7 +5772,9 @@ if [[ ! -x "$real_atuin_bin" ]]; then
 fi
 
 if [[ "${1:-}" == "hook" ]]; then
-    echo "atuin wrapper: agent hook integration disabled by ACFS" >&2
+    # atuin wrapper: agent hook integration disabled by ACFS
+    # Drain retained hook payloads so stale agent processes do not see EPIPE.
+    cat >/dev/null || true
     exit 0
 fi
 
@@ -5791,9 +5793,6 @@ _acfs_atuin_agent_context() {
 }
 
 if [[ "${1:-}" == "history" && ( "${2:-}" == "start" || "${2:-}" == "end" ) ]] && _acfs_atuin_agent_context; then
-    if [[ "${2:-}" == "start" ]]; then
-        printf "%s\n" "atuin-agent-history-disabled"
-    fi
     exit 0
 fi
 

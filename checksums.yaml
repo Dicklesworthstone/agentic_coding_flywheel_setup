@@ -15,8 +15,8 @@ installers:
     sha256: "9d4641f388f86041043273eb408c99789c6864691f1ab80b6023bd628f1e0d30"
 
   atuin:
-    url: "https://setup.atuin.sh"
-    sha256: "0b9eaa41b90dcf54a4ef2bc2edc2d9ded0a3c23a4f750afb0c5931dd959a0ea7"
+    url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
+    sha256: "31505fa01e3587163cce0e840d6130b285ac5a0342bd5ae99366735bc493a31a"
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"

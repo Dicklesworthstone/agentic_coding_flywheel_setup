@@ -755,7 +755,7 @@ modules:
     verified_installer:
       tool: atuin
       runner: sh
-      args: ["--", "--non-interactive"]
+      env: ["ATUIN_NO_MODIFY_PATH=1"]
     install:
       - |
           # acfs-summary: install Atuin guard wrapper
@@ -799,7 +799,9 @@ modules:
           fi
 
           if [[ "${1:-}" == "hook" ]]; then
-              echo "atuin wrapper: agent hook integration disabled by ACFS" >&2
+              # atuin wrapper: agent hook integration disabled by ACFS
+              # Drain retained hook payloads so stale agent processes do not see EPIPE.
+              cat >/dev/null || true
               exit 0
           fi
 
@@ -818,9 +820,6 @@ modules:
           }
 
           if [[ "${1:-}" == "history" && ( "${2:-}" == "start" || "${2:-}" == "end" ) ]] && _acfs_atuin_agent_context; then
-              if [[ "${2:-}" == "start" ]]; then
-                  printf "%s\n" "atuin-agent-history-disabled"
-              fi
               exit 0
           fi
 

@@ -411,7 +411,9 @@ if [[ ! -x "$real_atuin_bin" ]]; then
 fi
 
 if [[ "${1:-}" == "hook" ]]; then
-    echo "atuin wrapper: agent hook integration disabled by ACFS" >&2
+    # atuin wrapper: agent hook integration disabled by ACFS
+    # Drain retained hook payloads so stale agent processes do not see EPIPE.
+    cat >/dev/null || true
     exit 0
 fi
 
@@ -430,9 +432,6 @@ _acfs_atuin_agent_context() {
 }
 
 if [[ "${1:-}" == "history" && ( "${2:-}" == "start" || "${2:-}" == "end" ) ]] && _acfs_atuin_agent_context; then
-    if [[ "${2:-}" == "start" ]]; then
-        printf '%s\n' "atuin-agent-history-disabled"
-    fi
     exit 0
 fi
 
@@ -988,7 +987,7 @@ install_atuin() {
     printf -v security_lib_q '%q' "$CLI_TOOLS_SCRIPT_DIR/security.sh"
     printf -v url_q '%q' "$url"
     printf -v expected_sha256_q '%q' "$expected_sha256"
-    if ! _cli_run_as_user "source $security_lib_q; verify_checksum $url_q $expected_sha256_q atuin | sh -s -- --non-interactive"; then
+    if ! _cli_run_as_user "source $security_lib_q; verify_checksum $url_q $expected_sha256_q atuin | env ATUIN_NO_MODIFY_PATH=1 sh"; then
         log_warn "Could not install atuin"
     fi
 

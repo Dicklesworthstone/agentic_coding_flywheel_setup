@@ -1261,7 +1261,11 @@ if [[ ! -x "$real_atuin_bin" ]]; then
 fi
 
 if [[ "${1:-}" == "hook" ]]; then
-    echo "atuin wrapper: agent hook integration disabled by ACFS" >&2
+    # atuin wrapper: agent hook integration disabled by ACFS
+    # A running agent can retain hook configuration after its config file is
+    # repaired. Consume the payload before exiting so the writer never sees
+    # EPIPE while that stale process winds down.
+    cat >/dev/null || true
     exit 0
 fi
 
@@ -1280,9 +1284,6 @@ _acfs_atuin_agent_context() {
 }
 
 if [[ "${1:-}" == "history" && ( "${2:-}" == "start" || "${2:-}" == "end" ) ]] && _acfs_atuin_agent_context; then
-    if [[ "${2:-}" == "start" ]]; then
-        printf '%s\n' "atuin-agent-history-disabled"
-    fi
     exit 0
 fi
 
@@ -1290,6 +1291,69 @@ exec "$real_atuin_bin" "$@"
 ATUIN_ACFS_WRAPPER_TAIL
     } > "$wrapper_path"
     chmod 0755 "$wrapper_path"
+}
+
+update_strip_atuin_agent_hooks_from_config() {
+    local config_path="${1:-}"
+    local current_json=""
+    local cleaned_json=""
+
+    [[ -f "$config_path" ]] || return 0
+    command -v jq >/dev/null 2>&1 || return 1
+
+    current_json="$(cat "$config_path")" || return 1
+    cleaned_json="$(jq '
+        def is_atuin_agent_hook:
+          ((.command? // "") | type) == "string"
+          and ((.command? // "") | test("(^|[[:space:]])([^[:space:]]*/)?atuin[[:space:]]+hook[[:space:]]+(claude-code|codex|pi)([[:space:]]|$)"));
+        if (.hooks | type) == "object" then
+          .hooks |= with_entries(
+            if (.value | type) == "array" then
+              .value |= map(
+                if (.hooks | type) == "array" then
+                  .hooks |= map(select(is_atuin_agent_hook | not))
+                else . end
+              )
+              | .value |= map(select(((.hooks | type) != "array") or ((.hooks | length) > 0)))
+            else . end
+          )
+          | .hooks |= with_entries(select(((.value | type) != "array") or ((.value | length) > 0)))
+        else . end
+    ' "$config_path")" || return 1
+
+    if [[ "$cleaned_json" != "$current_json" ]]; then
+        printf '%s\n' "$cleaned_json" > "$config_path" || return 1
+        log_to_file "Removed Atuin agent hooks from $config_path"
+    fi
+}
+
+update_disable_atuin_agent_integrations() {
+    local target_home="${1:-}"
+    local pi_extension=""
+    local current_pi_extension=""
+    local desired_pi_extension=""
+
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != "/" ]] || return 1
+
+    update_strip_atuin_agent_hooks_from_config "$target_home/.codex/hooks.json" || return 1
+    update_strip_atuin_agent_hooks_from_config "$target_home/.claude/settings.json" || return 1
+
+    pi_extension="$target_home/.pi/agent/extensions/atuin.ts"
+    if [[ -f "$pi_extension" ]]; then
+        current_pi_extension="$(cat "$pi_extension")" || return 1
+        desired_pi_extension="$(cat <<'ATUIN_PI_DISABLED'
+/** Atuin integration intentionally disabled by ACFS. */
+export default function atuinDisabled(): void {
+	// Keep this no-op module so the upstream installer does not recreate hooks.
+}
+ATUIN_PI_DISABLED
+        )"
+        if [[ "$current_pi_extension" == "$desired_pi_extension" ]]; then
+            return 0
+        fi
+        printf '%s\n' "$desired_pi_extension" > "$pi_extension" || return 1
+        log_to_file "Disabled Atuin pi extension: $pi_extension"
+    fi
 }
 
 update_repair_atuin_install() {
@@ -1337,6 +1401,8 @@ update_repair_atuin_install() {
     if [[ -x "$preferred_src" && "$installed_wrapper" != true ]]; then
         return 1
     fi
+
+    update_disable_atuin_agent_integrations "$target_home" || return 1
 
     hash -r 2>/dev/null || true
 
@@ -6268,9 +6334,13 @@ update_zsh_plugins() {
     fi
 }
 
-# Update Atuin - try self-update first, fallback to installer
+# Update Atuin with its dedicated cargo-dist updater, falling back only when
+# older installations do not provide one.
 update_atuin() {
     local atuin_bin=""
+    local atuin_update_bin=""
+    local target_home=""
+    local ver_after=""
     atuin_bin="$(update_tool_binary_path "atuin" 2>/dev/null || true)"
     if [[ -z "$atuin_bin" ]]; then
         log_item "skip" "Atuin" "not installed"
@@ -6280,14 +6350,35 @@ update_atuin() {
     capture_version_before "atuin"
     local needs_reinstall=false
 
-    # Try atuin self-update first (available in newer versions)
-    if "$atuin_bin" --help 2>&1 | grep -q "self-update"; then
+    target_home="$(update_target_home "$(update_target_user)" 2>/dev/null || true)"
+    [[ -n "$target_home" ]] && atuin_update_bin="$target_home/.atuin/bin/atuin-update"
+
+    if [[ -x "$atuin_update_bin" ]]; then
+        if run_cmd_attempt_with_retry "Atuin updater" "$atuin_update_bin"; then
+            if ! update_repair_atuin_install >/dev/null 2>&1; then
+                log_item "fail" "Atuin" "updated, but agent-integration cleanup failed"
+                return 1
+            fi
+            ver_after="$(get_version "atuin")"
+            if [[ -n "$ver_after" && "$ver_after" != "unknown" ]]; then
+                log_to_file "Atuin updater succeeded (version: $ver_after), skipping setup installer"
+            else
+                log_to_file "Atuin updater ran but version check was inconclusive; agent-aware setup fallback remains disabled"
+            fi
+        else
+            log_item "skip" "Atuin" "dedicated updater failed; agent-aware setup fallback is disabled"
+            return 0
+        fi
+    # Compatibility path for releases that exposed self-update on the main CLI.
+    elif "$atuin_bin" --help 2>&1 | grep -q "self-update"; then
         if run_cmd_attempt_with_retry "Atuin self-update" "$atuin_bin" self-update; then
-            update_repair_atuin_install >/dev/null 2>&1 || true
+            if ! update_repair_atuin_install >/dev/null 2>&1; then
+                log_item "fail" "Atuin" "updated, but agent-integration cleanup failed"
+                return 1
+            fi
             # If self-update succeeded, check whether version is now current;
             # skip the heavier reinstall path to avoid a stalling curl download.
-            local ver_after
-            ver_after=$(get_version "atuin")
+            ver_after="$(get_version "atuin")"
             if [[ -n "$ver_after" && "$ver_after" != "unknown" ]]; then
                 log_to_file "Atuin self-update succeeded (version: $ver_after), skipping reinstall"
             else
@@ -6305,7 +6396,11 @@ update_atuin() {
 
     if [[ "$needs_reinstall" == "true" ]]; then
         if update_require_security; then
-            if ! update_run_verified_installer_with_shell_repair "Atuin (reinstall)" "atuin" update_repair_atuin_install --non-interactive; then
+            if declare -p KNOWN_INSTALLERS >/dev/null 2>&1 && [[ "${KNOWN_INSTALLERS[atuin]-}" == "https://setup.atuin.sh" ]]; then
+                log_item "skip" "Atuin" "refusing agent-aware setup installer"
+                return 0
+            fi
+            if ! ATUIN_NO_MODIFY_PATH=1 update_run_verified_installer_with_shell_repair "Atuin (reinstall)" "atuin" update_repair_atuin_install; then
                 :
             fi
         else
@@ -6319,9 +6414,9 @@ update_atuin() {
                     curl_cmd="curl --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL"
                 fi
                 log_to_file "Atuin update (manual; review first):"
-                log_to_file "  ${curl_cmd} https://setup.atuin.sh -o /tmp/atuin.install.sh"
+                log_to_file "  ${curl_cmd} https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh -o /tmp/atuin.install.sh"
                 log_to_file "  sed -n '1,120p' /tmp/atuin.install.sh"
-                log_to_file "  bash /tmp/atuin.install.sh"
+                log_to_file "  ATUIN_NO_MODIFY_PATH=1 bash /tmp/atuin.install.sh"
             fi
             return 0
         fi

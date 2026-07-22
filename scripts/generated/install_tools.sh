@@ -503,7 +503,7 @@ install_tools_atuin() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'sh' '-s' '--' '--non-interactive'; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'env' 'ATUIN_NO_MODIFY_PATH=1' 'sh' '-s'; then
                             install_success=true
                         else
                             log_error "tools.atuin: verify_checksum or installer execution failed"
@@ -580,7 +580,9 @@ if [[ ! -x "$real_atuin_bin" ]]; then
 fi
 
 if [[ "${1:-}" == "hook" ]]; then
-    echo "atuin wrapper: agent hook integration disabled by ACFS" >&2
+    # atuin wrapper: agent hook integration disabled by ACFS
+    # Drain retained hook payloads so stale agent processes do not see EPIPE.
+    cat >/dev/null || true
     exit 0
 fi
 
@@ -599,9 +601,6 @@ _acfs_atuin_agent_context() {
 }
 
 if [[ "${1:-}" == "history" && ( "${2:-}" == "start" || "${2:-}" == "end" ) ]] && _acfs_atuin_agent_context; then
-    if [[ "${2:-}" == "start" ]]; then
-        printf "%s\n" "atuin-agent-history-disabled"
-    fi
     exit 0
 fi
 

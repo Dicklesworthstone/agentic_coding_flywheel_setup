@@ -2571,6 +2571,99 @@ EOF
     [[ "$FAIL_COUNT" -eq 0 ]]
 }
 
+@test "update_atuin: prefers dedicated updater and skips setup installer" {
+    export ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    export ACFS_UPDATE_RETRY_SLEEP_SECONDS=0
+    export ACFS_BIN_DIR="$HOME/.local/bin"
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    YES_MODE=false
+    ABORT_ON_FAILURE=false
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    mkdir -p "$HOME/.atuin/bin" "$HOME/.local/bin"
+    cat > "$HOME/.atuin/bin/atuin" <<'EOF'
+#!/usr/bin/env bash
+echo "atuin 18.17.1"
+EOF
+    cat > "$HOME/.atuin/bin/atuin-update" <<EOF
+#!/usr/bin/env bash
+touch "$HOME/atuin-dedicated-updater-ran"
+EOF
+    chmod +x "$HOME/.atuin/bin/atuin" "$HOME/.atuin/bin/atuin-update"
+
+    update_run_verified_installer() {
+        : > "$HOME/atuin-setup-installer-ran"
+        return 1
+    }
+
+    update_atuin
+
+    [[ -f "$HOME/atuin-dedicated-updater-ran" ]]
+    [[ ! -e "$HOME/atuin-setup-installer-ran" ]]
+    [[ "$FAIL_COUNT" -eq 0 ]]
+}
+
+@test "update_disable_atuin_agent_integrations: removes only Atuin harness hooks" {
+    mkdir -p "$HOME/.codex" "$HOME/.claude" "$HOME/.pi/agent/extensions"
+    cat > "$HOME/.codex/hooks.json" <<'EOF'
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {"type": "command", "command": "dcg --mode strict"},
+          {"type": "command", "command": "atuin hook codex"}
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {"matcher": "^Bash$", "hooks": [{"type": "command", "command": "/home/test/.atuin/bin/atuin hook codex"}]}
+    ]
+  }
+}
+EOF
+    cat > "$HOME/.claude/settings.json" <<'EOF'
+{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "atuin hook claude-code"}]}
+    ],
+    "Notification": [
+      {"hooks": [{"type": "command", "command": "notify-send done"}]}
+    ]
+  }
+}
+EOF
+    cat > "$HOME/.pi/agent/extensions/atuin.ts" <<'EOF'
+import { execFile } from "node:child_process";
+export default function atuin(pi: any): void {
+  pi.on("tool_result", () => execFile("atuin", ["history", "start"]));
+}
+EOF
+
+    run update_disable_atuin_agent_integrations "$HOME"
+    assert_success
+
+    run jq -r '.hooks.PreToolUse[0].hooks[0].command' "$HOME/.codex/hooks.json"
+    assert_success
+    assert_output "dcg --mode strict"
+    run jq -e '[.. | objects | .command? // empty | select(test("atuin[[:space:]]+hook"))] | length == 0' "$HOME/.codex/hooks.json" "$HOME/.claude/settings.json"
+    assert_success
+    run jq -r '.hooks.Notification[0].hooks[0].command' "$HOME/.claude/settings.json"
+    assert_success
+    assert_output "notify-send done"
+    run grep -F "Atuin integration intentionally disabled by ACFS" "$HOME/.pi/agent/extensions/atuin.ts"
+    assert_success
+    run grep -F 'execFile(' "$HOME/.pi/agent/extensions/atuin.ts"
+    assert_failure
+}
+
 @test "update_repair_atuin_install: uses target atuin as shim source when HOME differs" {
     local current_home
     local target_home
@@ -2617,10 +2710,11 @@ EOF
 
     run env CODEX_THREAD_ID=test "$ACFS_BIN_DIR/atuin" history start
     assert_success
-    assert_output "atuin-agent-history-disabled"
+    assert_output ""
 
-    run "$ACFS_BIN_DIR/atuin" hook install claude-code
+    run bash -c 'printf "%*s" 131072 "" | "$1" hook install codex' _ "$ACFS_BIN_DIR/atuin"
     assert_success
+    assert_output ""
 }
 
 @test "update_repair_atuin_install: normalizes custom and local shims" {
@@ -2806,7 +2900,7 @@ EOF
 
     run env CODEX_THREAD_ID=test "$TARGET_HOME/.local/bin/atuin" history start
     assert_success
-    assert_output "atuin-agent-history-disabled"
+    assert_output ""
 }
 
 @test "_cli_target_has_command: ignores current-shell-only PATH entries" {
