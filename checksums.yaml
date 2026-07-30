@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-07-28T09:43:55+00:00
+# checksums.yaml - Auto-generated 2026-07-30T11:15:10+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -60,7 +60,7 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "519c9f90c13d9727379875ca523c479981e82eab32f5980adddea1ec43947d3b"
+    sha256: "b7beaf9a26708f94a64a3c1964a354f1b74c7820f2d96d55b5c78bb625a9a154"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
@@ -68,7 +68,7 @@ installers:
 
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh"
-    sha256: "7b245d3b03487cf5ef81f5872ca18a27b7f94c615fa047c31b4cc8851d4aec16"
+    sha256: "b383bbe1b45347e435b0b92cd67628c33df72bbb1bee313b3b767ce42745cae9"
 
   gemini_patch:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts/main/fix-gemini-cli-ebadf-crash.sh"
@@ -160,7 +160,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "43aff33a967fe40e8c17949d8c85c65bc43f3b5c94742393c957f56ab5ba80f4"
+    sha256: "b67e385074fddc9b99cd152b838fd91046d9fbc261b2c45f448a983ad23b8764"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
