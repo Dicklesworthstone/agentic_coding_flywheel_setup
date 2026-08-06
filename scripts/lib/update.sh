@@ -4698,8 +4698,20 @@ update_acfs_self() {
         if _acfs_try_upstream_derived_dirty_fast_forward "$current_branch" "$local_head" "$remote_head" "$remote_branch"; then
             self_update_completed=true
         else
-            log_item "warn" "ACFS self-update" "tracked files have local modifications; skipping full pull"
-            log_to_file "Self-update skipped: working tree has tracked modifications — refreshing fetched runtime files"
+            # Quantify the staleness and name the fix. A bare "skipping full
+            # pull" is easy to scroll past on a nightly run: one host emitted it
+            # every night for four months while sitting 1022 commits behind,
+            # which silently froze every ACFS-managed service definition on it.
+            local _behind_count=""
+            local _dirty_files=""
+            _behind_count="$(git -C "$ACFS_REPO_ROOT" rev-list --count "HEAD..$remote_head" 2>/dev/null || echo "?")"
+            _dirty_files="$(git -C "$ACFS_REPO_ROOT" status --porcelain --untracked-files=no 2>/dev/null \
+                | awk '{print $2}' | paste -sd, - 2>/dev/null)"
+            log_item "warn" "ACFS self-update" \
+                "BLOCKED: ${_behind_count} commits behind and not updating. Locally modified: ${_dirty_files:-unknown}"
+            log_item "warn" "ACFS self-update" \
+                "fix: cd $ACFS_REPO_ROOT && git stash push -m acfs-local && git pull --ff-only origin $remote_branch"
+            log_to_file "Self-update skipped: ${_behind_count} commits behind; tracked modifications: ${_dirty_files:-unknown}"
             _acfs_refresh_security_from_fetched_remote "$remote_branch" true
             return 0
         fi

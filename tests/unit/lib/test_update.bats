@@ -9152,7 +9152,12 @@ EOF
 
     run update_acfs_self
     assert_success
-    assert_output --partial "warn|ACFS self-update|tracked files have local modifications; skipping full pull"
+    # The dirty-skip warning now quantifies the staleness and names the fix
+    # command, so assert on the parts that carry the meaning rather than the
+    # exact sentence: it must warn, say it is BLOCKED, and list what is dirty.
+    assert_output --partial "warn|ACFS self-update|BLOCKED:"
+    assert_output --partial "Locally modified:"
+    assert_output --partial "git stash push -m acfs-local"
     [[ "$(git -C "$work_repo" rev-parse HEAD)" == "$local_head" ]]
     [[ "$(bash "$work_repo/scripts/lib/doctor.sh")" == "base-acfs-doctor" ]]
     [[ "$(cat "$work_repo/scripts/lib/stack.sh")" == "base-stack-lib" ]]
