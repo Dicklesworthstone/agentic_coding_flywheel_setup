@@ -1450,13 +1450,13 @@ cat > "$unit_file" <<UNIT_EOF
 [Unit]
 Description=MCP Agent Mail Server
 After=network.target
-# Bound the restart loop. Without these, Restart=always + RestartSec=5 can never
-# trip systemd's default start limit (5 starts per 10s), because 5s spacing only
-# yields 2 starts per window. A service that can never start then restarts
-# forever, silently: observed at 75,347 restarts over ~4.4 days on one host.
-# Failing into 'failed' state after 5 attempts makes the fault visible instead.
-StartLimitIntervalSec=300
-StartLimitBurst=5
+# Restarts are rate-limited by exponential backoff in [Service] below rather than
+# by StartLimitBurst. A burst limit would drop the unit into 'failed' and leave
+# it there, which is wrong for the failure this service actually hits: a
+# transient exclusive holder (an interactive 'am' session owning the mailbox
+# activity lock) clears on its own, and the service must come back by itself
+# when it does. Disable the burst limit so backoff is the only governor.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -1475,7 +1475,15 @@ Environment=$http_allow_env
 # the unit SIGTERMs the holder and seizes the root, so it self-heals on start.
 ExecStart=${am_bin_exec} serve-http --no-tui --takeover --host 127.0.0.1 --port 8765 --path ${am_mcp_path_exec}
 Restart=always
+# Exponential backoff (systemd >= 254): 5s, then widening to a 5m ceiling.
+# Flat RestartSec=5 is what turned a permanently-unstartable service into 75,347
+# restarts over ~4.4 days on one host -- 720 spawns an hour, each loading the
+# mailbox DB, for days. Backing off to 5m caps that at ~12/hour while still
+# recovering on its own once the blocker clears. Older systemd ignores the two
+# Restart*Steps/Delay directives and simply keeps the flat 5s behaviour.
 RestartSec=5
+RestartSteps=6
+RestartMaxDelaySec=300
 LimitNOFILE=65536
 
 [Install]
