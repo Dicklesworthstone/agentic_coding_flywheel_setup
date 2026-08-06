@@ -1503,10 +1503,27 @@ fallback_log_file="$storage_root/agent-mail.log"
 
 _stop_agent_mail_pid() {
     local victim_pid="$1"
+    local victim_exe=""
+    local am_real=""
 
     [[ -n "$victim_pid" ]] || return 0
     kill -0 "$victim_pid" 2>/dev/null || return 0
-    ps -p "$victim_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http" || return 0
+
+    # Identify the holder by its RESOLVED EXECUTABLE, not by matching
+    # "$am_bin serve-http" against argv. am is normally reached through the
+    # ~/.local/bin/am symlink, so a holder started by hand shows up in argv as
+    # bare "am" or as the symlink path, while $am_bin is the resolved
+    # mcp_agent_mail/am target. An argv substring match therefore misses exactly
+    # the orphans this function exists to reclaim -- both variants were observed
+    # in the field (one host: argv "am"; another: argv ".local/bin/am").
+    victim_exe="$(readlink -f "/proc/$victim_pid/exe" 2>/dev/null || true)"
+    am_real="$(readlink -f "$am_bin" 2>/dev/null || printf '%s' "$am_bin")"
+    if [[ -n "$victim_exe" ]]; then
+        [[ "$victim_exe" == "$am_real" ]] || return 0
+    else
+        # No /proc (non-Linux): tolerate the symlink path and a bare command name.
+        ps -p "$victim_pid" -o args= 2>/dev/null | grep -Eq '(^|/)am([[:space:]]|$)' || return 0
+    fi
 
     kill "$victim_pid" >/dev/null 2>&1 || true
     for _ in {1..10}; do
