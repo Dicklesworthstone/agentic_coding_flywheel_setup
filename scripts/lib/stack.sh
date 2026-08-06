@@ -1450,6 +1450,13 @@ cat > "$unit_file" <<UNIT_EOF
 [Unit]
 Description=MCP Agent Mail Server
 After=network.target
+# Bound the restart loop. Without these, Restart=always + RestartSec=5 can never
+# trip systemd's default start limit (5 starts per 10s), because 5s spacing only
+# yields 2 starts per window. A service that can never start then restarts
+# forever, silently: observed at 75,347 restarts over ~4.4 days on one host.
+# Failing into 'failed' state after 5 attempts makes the fault visible instead.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -1459,7 +1466,14 @@ Environment=$rust_log_env
 Environment=$storage_root_env
 Environment=$database_url_env
 Environment=$http_allow_env
-ExecStart=${am_bin_exec} serve-http --no-tui --host 127.0.0.1 --port 8765 --path ${am_mcp_path_exec}
+# --takeover makes this unit the deterministic owner of the storage root.
+# Agent Mail otherwise REFUSES to start (exit 1) when any other process is
+# already answering /healthz on this host:port, to avoid restart-fighting. That
+# is correct between peers, but this unit is the managed owner: an unmanaged
+# holder (a hand-run 'am serve-http', or a fallback launch whose PID file was
+# lost) must not be able to lock the service out permanently. With --takeover
+# the unit SIGTERMs the holder and seizes the root, so it self-heals on start.
+ExecStart=${am_bin_exec} serve-http --no-tui --takeover --host 127.0.0.1 --port 8765 --path ${am_mcp_path_exec}
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
@@ -1479,24 +1493,59 @@ fi
 fallback_pid_file="$storage_root/agent-mail.pid"
 fallback_log_file="$storage_root/agent-mail.log"
 
+_stop_agent_mail_pid() {
+    local victim_pid="$1"
+
+    [[ -n "$victim_pid" ]] || return 0
+    kill -0 "$victim_pid" 2>/dev/null || return 0
+    ps -p "$victim_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http" || return 0
+
+    kill "$victim_pid" >/dev/null 2>&1 || true
+    for _ in {1..10}; do
+        if ! kill -0 "$victim_pid" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    kill -9 "$victim_pid" >/dev/null 2>&1 || true
+}
+
+# Report any process listening on 127.0.0.1:8765 that is not the managed unit.
+# The PID file alone is not sufficient: a fallback launch whose PID file was
+# lost, truncated, or written by an earlier storage root leaves a holder that
+# nothing reclaims, and the systemd unit can then never bind. That is how one
+# host reached 75,347 restarts while an orphaned fallback served the port.
+_agent_mail_port_holders() {
+    local holder_pids=""
+
+    if command -v ss >/dev/null 2>&1; then
+        holder_pids="$(ss -ltnpH 'sport = :8765' 2>/dev/null \
+            | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)"
+    fi
+    if [[ -z "$holder_pids" ]] && command -v lsof >/dev/null 2>&1; then
+        holder_pids="$(lsof -nP -iTCP@127.0.0.1:8765 -sTCP:LISTEN -t 2>/dev/null | sort -u)"
+    fi
+
+    printf '%s\n' "$holder_pids"
+}
+
 stop_agent_mail_fallback() {
+    local existing_pid=""
+    local holder_pid=""
+
     if [[ -f "$fallback_pid_file" ]]; then
         existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
-            kill "$existing_pid" >/dev/null 2>&1 || true
-            for _ in {1..10}; do
-                if ! kill -0 "$existing_pid" 2>/dev/null; then
-                    break
-                fi
-                sleep 1
-            done
-            if kill -0 "$existing_pid" 2>/dev/null; then
-                kill -9 "$existing_pid" >/dev/null 2>&1 || true
-            fi
-        fi
+        _stop_agent_mail_pid "$existing_pid"
         rm -f "$fallback_pid_file"
     fi
+
+    # Belt-and-braces: reclaim by port as well, so a stale or missing PID file
+    # cannot strand a holder that would lock the managed unit out forever.
+    while read -r holder_pid; do
+        [[ -n "$holder_pid" ]] || continue
+        [[ "$holder_pid" == "$existing_pid" ]] && continue
+        _stop_agent_mail_pid "$holder_pid"
+    done <<< "$(_agent_mail_port_holders)"
 }
 
 launch_agent_mail_fallback() {
