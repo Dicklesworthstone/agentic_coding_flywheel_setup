@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-08-04T09:45:56+00:00
+# checksums.yaml - Auto-generated 2026-08-06T01:38:43+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -36,7 +36,7 @@ installers:
 
   caam:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh"
-    sha256: "23afba20e7797485ba83945b6fda71d11a4a1c53f0bfdadf800e3f0cdef13e69"
+    sha256: "d4d64d1237af753ff841d0017c20d7079ba16dac7fb107954a9264511fdc5f47"
 
   casr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh"
@@ -44,7 +44,7 @@ installers:
 
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
-    sha256: "c1b0fd72dfabdcf6d0edc59eb1fbc8132a0c5ffc5159f935f3144d450e693276"
+    sha256: "ceb371c5ac476b98272a312aacd652fbb8795e707a767cb3c31e053da09dd035"
 
   claude:
     url: "https://claude.ai/install.sh"
@@ -60,7 +60,7 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "50e81084a9d27a0d4b14a8aed9c3dd90b43b6b700d9a6eff6f2080acb79eacf8"
+    sha256: "bac7861fb88c140e91e3e4148b86759370177409e1e282ebf75d213b73f28d9d"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
@@ -160,7 +160,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "d3f5412d38c99f9d024901843bf98206f0d2c6dbe64df40d0b740e2751ca62c1"
+    sha256: "58bee0cf8814385d5ffc2324e06d63db29de35ce8e740b9cadd2529bff929f50"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
