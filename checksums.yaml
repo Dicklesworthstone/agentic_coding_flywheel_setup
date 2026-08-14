@@ -40,7 +40,7 @@ installers:
 
   casr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh"
-    sha256: "fc9b5199f040a757dec36484cb9dc329fe38872b957273d9e8402379304affe1"
+    sha256: "9758f9a2599610413b84e6901cf739892394c460e861bd58834bba3278a1e383"
 
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
