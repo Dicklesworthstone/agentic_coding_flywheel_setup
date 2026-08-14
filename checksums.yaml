@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-08-13T23:33:37+00:00
+# checksums.yaml - Auto-generated 2026-08-14T19:24:57-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -28,7 +28,7 @@ installers:
 
   bun:
     url: "https://bun.sh/install"
-    sha256: "bab8acfb046aac8c72407bdcce903957665d655d7acaa3e11c7c4616beae68dd"
+    sha256: "04882bf41679d49d9af108657a1e5515bf04fdf2940d12c0d0b1e5d79dc53be8"
 
   bv:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh"
@@ -160,7 +160,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "f1ee4a249799525a330df57643335120150c9102db7483b1d37546cc43af3a16"
+    sha256: "504511fbbbd811aeaba6738abc79408956b6c7da0ca35437b3dcc24a41efc111"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
