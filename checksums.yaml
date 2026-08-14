@@ -20,7 +20,7 @@ installers:
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
-    sha256: "c398f2fbfbb5facaf255fd52cca22bb3ffe90f0a6e4660e4c34213a9c39863aa"
+    sha256: "e80d329a7a58680e8b98a1135b0d97eb0743c11afab264351474e501c239172c"
 
   brenner_bot:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh"
@@ -96,7 +96,7 @@ installers:
 
   ntm:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ntm/main/install.sh"
-    sha256: "3d96be979e6a2f72d91f3894bc01e212bef348b7e7aa88b08cf2160c70c105d8"
+    sha256: "46e25984f382a150f85fa65bb71d109a248d71506f53a2e64337409ac54330b6"
 
   nvm:
     url: "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh"
