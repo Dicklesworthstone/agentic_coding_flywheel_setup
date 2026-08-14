@@ -2590,7 +2590,13 @@ fix_mcp_agent_mail() {
         service_healthy=true
     fi
 
-    if ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$runtime_user" TARGET_HOME="$runtime_home" _stack_configure_agent_mail_service; then
+    am_configure_rc=0
+    ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$runtime_user" TARGET_HOME="$runtime_home" _stack_configure_agent_mail_service || am_configure_rc=$?
+    if [[ "$am_configure_rc" -eq 75 ]]; then
+        # Local opt-out (masked/disabled unit or ACFS_SKIP_AGENT_MAIL=1):
+        # intentionally skipped, never a repair failure (#327).
+        doctor_fix_log INFO "MCP Agent Mail service management skipped by local opt-out"
+    elif [[ "$am_configure_rc" -eq 0 ]]; then
         if ! doctor_fix_record_change_or_rollback \
             "" \
             false \

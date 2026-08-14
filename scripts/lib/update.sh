@@ -5951,8 +5951,22 @@ update_stack() {
                         if update_source_stack_lib; then
                             ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_repair_agent_mail_cli_symlink >/dev/null 2>&1 || true
                         fi
-                        if update_source_stack_lib && \
-                           ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_configure_agent_mail_service && \
+                        am_service_rc=1
+                        if update_source_stack_lib; then
+                            am_service_rc=0
+                            ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_configure_agent_mail_service || am_service_rc=$?
+                        fi
+                        if [[ "$am_service_rc" -eq 75 ]]; then
+                            # Local opt-out (masked/disabled unit or ACFS_SKIP_AGENT_MAIL):
+                            # intentionally skipped, not a failure (#327).
+                            if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
+                                printf "\033[1A\033[2K  ${GREEN}[ok]${NC} %s\n" "MCP Agent Mail (service skipped: local opt-out)"
+                            elif [[ "$QUIET" != "true" ]]; then
+                                printf "  ${GREEN}[ok]${NC} %s\n" "MCP Agent Mail (service skipped: local opt-out)"
+                            fi
+                            log_to_file "Success: MCP Agent Mail (service skipped: local opt-out)"
+                            ((SUCCESS_COUNT += 1))
+                        elif [[ "$am_service_rc" -eq 0 ]] && \
                            ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$target_user" TARGET_HOME="$target_home" _stack_wait_for_agent_mail_health; then
                             if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
                                 printf "\033[1A\033[2K  ${GREEN}[ok]${NC} %s\n" "MCP Agent Mail"

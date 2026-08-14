@@ -10,9 +10,9 @@
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/security.sh]="b9f5716c42944bed447a813cdb8e159bedc3e5844479c573157e0d04122a3f01"
   [scripts/lib/agents.sh]="ae0cec5811a00648983c39ecf27e6ec477f3dd616f65dff3db27c154a4ff7304"
-  [scripts/lib/update.sh]="8553a17c58e4b3f021831a6d7369719a698b2977fb63b41c0782c302f06a479a"
+  [scripts/lib/update.sh]="7a7610e350d2925aa614a01f4053f914e4ecab346192c61cc728c73a23bd7ea5"
   [scripts/lib/doctor.sh]="2881e278b9b48526e67ca66f05394c34ab73d0731529982e7a71cc8353c46b3d"
-  [scripts/lib/doctor_fix.sh]="c6eaa576b621c793246b75147e778c39881f2d6844a0db4f8a153ab591a3444c"
+  [scripts/lib/doctor_fix.sh]="5a6186aaefa18bc253e863f6758091148293753e254b590bad13ad526186b67e"
   [scripts/lib/offline_artifact_pack.sh]="5f6fa7e5a9e115904656a627853b2c7d556183532a3d8fd42a0363bf3570c7eb"
   [scripts/lib/autofix.sh]="0468d4889d304a404f161778ddf393a71fa7657317f88f692a47442760ed78d9"
   [scripts/lib/install_helpers.sh]="d401c94ef9e3d807ecdf8f4512933230ef6e49ee17417abca2a25c4975e9a4a3"
