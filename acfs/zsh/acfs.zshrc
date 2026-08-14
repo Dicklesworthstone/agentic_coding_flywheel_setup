@@ -33,7 +33,11 @@ export PATH="$HOME/go/bin:$PATH"
 # Bun
 export BUN_INSTALL="$HOME/.bun"
 [[ -d "$BUN_INSTALL/bin" ]] && export PATH="$BUN_INSTALL/bin:$PATH"
-[[ -s "$HOME/.bun/_bun" ]] && source "$HOME/.bun/_bun"
+# _bun has a #compdef header, so let compinit autoload it from fpath (same
+# pattern as _acfs below). Sourcing it here would run compinit early — before
+# oh-my-zsh and the fpath additions below — so compinit would run twice per
+# shell and the first pass would scan the wrong fpath.
+[[ -s "$HOME/.bun/_bun" ]] && fpath=("$HOME/.bun" "${fpath[@]}")
 
 # Ensure user-local binaries take precedence (e.g., native Claude install).
 export PATH="$HOME/.local/bin:$PATH"
@@ -91,6 +95,10 @@ fi
 # Load OMZ if installed
 if [[ -f "$ZSH/oh-my-zsh.sh" ]]; then
   source "$ZSH/oh-my-zsh.sh"
+else
+  # No oh-my-zsh (which normally runs compinit): run compinit ourselves so the
+  # fpath-registered completions (_acfs, _bun) still work.
+  autoload -Uz compinit && compinit
 fi
 
 # --- Editor preference ---
