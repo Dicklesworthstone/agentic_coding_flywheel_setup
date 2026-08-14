@@ -1145,7 +1145,18 @@ EOF
 }
 
 # Write and enable the managed Agent Mail user service for the target user.
+#
+# Local opt-outs are respected (issue #327): ACFS_SKIP_AGENT_MAIL=1, a masked
+# unit, or an admin `systemctl --user disable` on a stopped service all make
+# this function return 75 (EX_TEMPFAIL) WITHOUT touching the unit or enabling
+# the service. Callers MUST treat 75 as "intentionally skipped", not failure.
+# A unit whose content differs from the ACFS template (local hardening) is
+# preserved rather than silently regenerated; see the drift logic below.
 _stack_configure_agent_mail_service() {
+    if [[ "${ACFS_SKIP_AGENT_MAIL:-0}" == "1" ]]; then
+        echo "Agent Mail: ACFS_SKIP_AGENT_MAIL=1 set; leaving service untouched" >&2
+        return 75
+    fi
     local service_cmd
     service_cmd="$(cat <<'EOF'
 set -euo pipefail
@@ -1369,6 +1380,19 @@ fi
 storage_root="$HOME/.mcp_agent_mail_git_mailbox_repo"
 unit_dir="$HOME/.config/systemd/user"
 unit_file="$unit_dir/agent-mail.service"
+
+# A masked user unit is a symlink to /dev/null AT the unit path, so writing
+# "through" it silently lands in /dev/null and the nightly enable then fails
+# every morning. Masking is an explicit local opt-out: respect it (issue #327).
+if [[ -L "$unit_file" ]] && [[ "$(readlink "$unit_file" 2>/dev/null)" == "/dev/null" ]]; then
+    echo "Agent Mail: agent-mail.service is masked; respecting local opt-out (run 'systemctl --user unmask agent-mail.service' to let ACFS manage it again)" >&2
+    exit 75
+fi
+# Remember whether the unit predates this run: a freshly created unit reports
+# is-enabled=disabled too, and must still get its first enable below.
+unit_preexisting=false
+[[ -e "$unit_file" ]] && unit_preexisting=true
+
 db_path="$storage_root/storage.sqlite3"
 db_url="sqlite:///${db_path}"
 env_file=""
@@ -1426,8 +1450,10 @@ fi
 # Detect MCP base path: Rust am uses /mcp/, Python mcp_agent_mail uses /api/
 if "$am_bin" --version 2>/dev/null | grep -q '^am '; then
     am_mcp_path="/mcp/"
+    am_is_rust=true
 else
     am_mcp_path="/api/"
+    am_is_rust=false
 fi
 if [[ -n "$cfg_http_path" ]]; then
     am_mcp_path="$(normalize_http_path "$cfg_http_path")"
@@ -1446,7 +1472,21 @@ database_url_env="$(systemd_unit_env_assignment DATABASE_URL "$db_url")" || exit
 http_allow_env="$(systemd_unit_env_assignment HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED true)" || exit 1
 am_bin_exec="$(systemd_unit_exec_command "$am_bin")" || exit 1
 am_mcp_path_exec="$(systemd_unit_exec_arg "$am_mcp_path")" || exit 1
-cat > "$unit_file" <<UNIT_EOF
+
+# Align the service type with am's own `am service install` template (#327):
+# the Rust am implements sd_notify(READY=1), so Type=notify makes startup
+# completion mean "actually serving", with a generous TimeoutStartSec because
+# large mailboxes can take minutes to load. The Python mcp_agent_mail has no
+# sd_notify support and keeps Type=simple. Note the deliberate remaining
+# divergences from am's template: Restart=always + exponential backoff with
+# StartLimitIntervalSec=0 instead of on-failure + StartLimitBurst (rationale
+# in the unit comments below).
+am_type_lines="Type=simple"
+if [[ "$am_is_rust" == "true" ]]; then
+    am_type_lines=$'Type=notify\nNotifyAccess=main\nTimeoutStartSec=300'
+fi
+
+desired_unit="$(cat <<UNIT_EOF
 [Unit]
 Description=MCP Agent Mail Server
 After=network.target
@@ -1459,7 +1499,7 @@ After=network.target
 StartLimitIntervalSec=0
 
 [Service]
-Type=simple
+${am_type_lines}
 WorkingDirectory=$storage_root_unit
 ${env_file_line}
 Environment=$rust_log_env
@@ -1484,11 +1524,62 @@ Restart=always
 RestartSec=5
 RestartSteps=6
 RestartMaxDelaySec=300
+# Give a WAL checkpoint under load time to finish on stop instead of the 90s
+# default escalating to SIGKILL mid-write (SQLite corruption vector).
+TimeoutStopSec=120
 LimitNOFILE=65536
 
 [Install]
 WantedBy=default.target
 UNIT_EOF
+)"
+
+# Drift-aware regeneration (#327): never silently revert an operator's local
+# edits. ACFS records the hash of the unit content it last wrote in a sidecar;
+# a unit that matches neither the current template nor that recorded hash is
+# operator-modified and is preserved (with a logged notice) unless
+# ACFS_FORCE_AGENT_MAIL_UNIT=1 is set, in which case the local version is
+# backed up first.
+unit_hash_file="$unit_dir/.agent-mail.service.acfs-sha256"
+
+_unit_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | awk '{print $1}'
+    else
+        shasum -a 256 | awk '{print $1}'
+    fi
+}
+
+desired_hash="$(printf '%s\n' "$desired_unit" | _unit_sha256)"
+current_hash=""
+[[ -f "$unit_file" ]] && current_hash="$(_unit_sha256 < "$unit_file")"
+last_acfs_hash="$(cat "$unit_hash_file" 2>/dev/null || true)"
+
+write_unit=false
+if [[ ! -e "$unit_file" ]]; then
+    write_unit=true
+elif [[ "$current_hash" == "$desired_hash" ]]; then
+    # Already up to date; adopt ownership below if the sidecar is missing.
+    write_unit=false
+elif [[ "$current_hash" == "$last_acfs_hash" ]]; then
+    # Exactly what ACFS last wrote, unmodified: safe to regenerate.
+    echo "Agent Mail: regenerating agent-mail.service (ACFS template changed)" >&2
+    write_unit=true
+elif [[ "${ACFS_FORCE_AGENT_MAIL_UNIT:-0}" == "1" ]]; then
+    cp -f "$unit_file" "$unit_file.acfs-bak" 2>/dev/null || true
+    echo "Agent Mail: overwriting locally modified agent-mail.service (ACFS_FORCE_AGENT_MAIL_UNIT=1); previous content saved as agent-mail.service.acfs-bak" >&2
+    write_unit=true
+else
+    echo "Agent Mail: agent-mail.service differs from the ACFS template (local modifications); preserving it. Set ACFS_FORCE_AGENT_MAIL_UNIT=1 to regenerate." >&2
+fi
+
+if [[ "$write_unit" == "true" ]]; then
+    printf '%s\n' "$desired_unit" > "$unit_file"
+    printf '%s\n' "$desired_hash" > "$unit_hash_file"
+elif [[ "$current_hash" == "$desired_hash" && "$last_acfs_hash" != "$desired_hash" ]]; then
+    # Up-to-date unit written before the sidecar existed: adopt it.
+    printf '%s\n' "$desired_hash" > "$unit_hash_file"
+fi
 
 runtime_dir="/run/user/$(id -u)"
 if [[ -d "$runtime_dir" ]]; then
@@ -1630,6 +1721,23 @@ agent_mail_readiness_ready() {
 }
 
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    enable_state="$(systemctl --user is-enabled agent-mail.service 2>/dev/null || true)"
+    case "$enable_state" in
+        masked|masked-runtime)
+            echo "Agent Mail: unit is masked; respecting local opt-out (run 'systemctl --user unmask agent-mail.service' to let ACFS manage it again)" >&2
+            exit 75
+            ;;
+        disabled)
+            # Only treat "disabled" as an admin decision when the unit predates
+            # this run AND the service is stopped: a unit we just created also
+            # reports "disabled" until its first enable, and a disabled-but-
+            # running service was clearly not opted out.
+            if [[ "$unit_preexisting" == "true" ]] && ! systemctl --user is-active --quiet agent-mail.service; then
+                echo "Agent Mail: unit is disabled and stopped; respecting admin disable (run 'systemctl --user enable --now agent-mail.service' to re-enable)" >&2
+                exit 75
+            fi
+            ;;
+    esac
     stop_agent_mail_fallback
     systemctl --user daemon-reload >/dev/null 2>&1 || true
     if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
@@ -1652,6 +1760,9 @@ fi
 EOF
 )"
 
+    # _stack_run_as_user builds a fresh environment for the target user, so
+    # forward the force-regenerate opt-in explicitly.
+    service_cmd="export ACFS_FORCE_AGENT_MAIL_UNIT=$(printf %q "${ACFS_FORCE_AGENT_MAIL_UNIT:-0}"); $service_cmd"
     _stack_run_as_user "$service_cmd"
 }
 
@@ -1790,7 +1901,12 @@ install_mcp_agent_mail() {
         return 1
     fi
 
-    if ! _stack_configure_agent_mail_service; then
+    local service_rc=0
+    _stack_configure_agent_mail_service || service_rc=$?
+    if [[ "$service_rc" -eq 75 ]]; then
+        log_detail "${STACK_NAMES[$tool]} installed; managed service skipped by local opt-out"
+        return 0
+    elif [[ "$service_rc" -ne 0 ]]; then
         log_warn "${STACK_NAMES[$tool]} installed but managed service setup failed"
         return 1
     fi
