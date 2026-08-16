@@ -1146,10 +1146,16 @@ EOF
 
 # Write and enable the managed Agent Mail user service for the target user.
 #
-# Local opt-outs are respected (issue #327): ACFS_SKIP_AGENT_MAIL=1, a masked
-# unit, or an admin `systemctl --user disable` on a stopped service all make
-# this function return 75 (EX_TEMPFAIL) WITHOUT touching the unit or enabling
-# the service. Callers MUST treat 75 as "intentionally skipped", not failure.
+# Local opt-outs are respected (issue #327): ACFS_SKIP_AGENT_MAIL=1, a
+# PERSISTENTLY masked unit, or an admin `systemctl --user disable` on a
+# stopped service all make this function return 75 (EX_TEMPFAIL) WITHOUT
+# touching the unit or enabling the service. Callers MUST treat 75 as
+# "intentionally skipped", not failure. A RUNTIME mask (/dev/null symlinks
+# under /run/user/UID/systemd/{user,user.control}) is NOT an opt-out (issue
+# #328): it is leftover machinery state that silently wedges the unit, so it
+# is cleared fully (both locations + daemon-reload + reset-failed) and the
+# function fails loudly (rc 1, with exact remediation commands) if clearing
+# is impossible -- never a half-unmask, never a bogus rc-75 "skip".
 # A unit whose content differs from the ACFS template (local hardening) is
 # preserved rather than silently regenerated; see the drift logic below.
 _stack_configure_agent_mail_service() {
@@ -1581,7 +1587,9 @@ elif [[ "$current_hash" == "$desired_hash" && "$last_acfs_hash" != "$desired_has
     printf '%s\n' "$desired_hash" > "$unit_hash_file"
 fi
 
-runtime_dir="/run/user/$(id -u)"
+# ACFS_AM_RUNTIME_DIR is a sandbox hook for the mask-recovery test harness
+# (tests/unit/test_stack_agent_mail_mask.sh); production always uses /run.
+runtime_dir="${ACFS_AM_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [[ -d "$runtime_dir" ]]; then
     export XDG_RUNTIME_DIR="$runtime_dir"
     if [[ -S "$runtime_dir/bus" ]]; then
@@ -1591,6 +1599,82 @@ fi
 
 fallback_pid_file="$storage_root/agent-mail.pid"
 fallback_log_file="$storage_root/agent-mail.log"
+
+# ---- Mask taxonomy + runtime-mask recovery (issue #328) ---------------------
+# A PERSISTENT mask (unit-path symlink to /dev/null under ~/.config/systemd/
+# user or /etc) is a deliberate operator opt-out and is always respected
+# (issue #327). A RUNTIME mask lives under /run and evaporates on logout: in
+# practice it is residue of an interrupted stop/swap or transient systemd
+# operation, not policy -- and it wedges the unit SILENTLY, because a masked
+# unit reports 'inactive (dead)', never 'failed'. Worse, plain
+# `systemctl --user unmask --runtime` removes only the user/ symlink; when a
+# second /dev/null symlink sits in user.control/ (it becomes the FragmentPath)
+# the unit stays masked until that one is removed directly. Recovery therefore
+# clears BOTH locations, then daemon-reload + reset-failed, and verifies.
+
+runtime_mask_user="$runtime_dir/systemd/user/agent-mail.service"
+runtime_mask_control="$runtime_dir/systemd/user.control/agent-mail.service"
+
+_is_devnull_symlink() {
+    [[ -L "$1" ]] && [[ "$(readlink "$1" 2>/dev/null)" == "/dev/null" ]]
+}
+
+_runtime_mask_present() {
+    _is_devnull_symlink "$runtime_mask_user" || _is_devnull_symlink "$runtime_mask_control"
+}
+
+_persistent_mask_present() {
+    local p
+    for p in \
+        "$unit_file" \
+        "/etc/systemd/user/agent-mail.service" \
+        "/etc/xdg/systemd/user/agent-mail.service" \
+        "/usr/lib/systemd/user/agent-mail.service"; do
+        if _is_devnull_symlink "$p"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+_report_runtime_mask_remediation() {
+    {
+        echo "Agent Mail: a RUNTIME mask on agent-mail.service could not be fully cleared; the service will stay down (silently: a masked unit is 'inactive', never 'failed')."
+        echo "Agent Mail: remediate manually with:"
+        echo "  systemctl --user unmask --runtime agent-mail.service"
+        echo "  rm -f '$runtime_mask_control'"
+        echo "  systemctl --user daemon-reload"
+        echo "  systemctl --user reset-failed agent-mail.service"
+        echo "  systemctl --user start agent-mail.service"
+    } >&2
+}
+
+clear_runtime_mask() {
+    local p
+    echo "Agent Mail: clearing stale runtime mask on agent-mail.service (leftover /run state, not a persistent opt-out)" >&2
+    # From here on systemd's in-memory view must never be left out of sync
+    # with disk, even if this script dies mid-clearance: re-sync on ANY exit
+    # so an interrupted update cannot strand a half-cleared mask.
+    trap 'systemctl --user daemon-reload >/dev/null 2>&1 || true' EXIT
+    systemctl --user unmask --runtime agent-mail.service >/dev/null 2>&1 || true
+    # unmask --runtime only removes the user/ symlink; take the user.control/
+    # one (and any survivor) out directly, but ONLY when it is a /dev/null
+    # mask symlink -- never a real (transient) unit file.
+    for p in "$runtime_mask_user" "$runtime_mask_control"; do
+        if _is_devnull_symlink "$p"; then
+            rm -f "$p" 2>/dev/null || true
+        fi
+    done
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    systemctl --user reset-failed agent-mail.service >/dev/null 2>&1 || true
+    if _runtime_mask_present; then
+        return 1
+    fi
+    case "$(systemctl --user is-enabled agent-mail.service 2>/dev/null || true)" in
+        masked|masked-runtime) return 1 ;;
+    esac
+    return 0
+}
 
 _stop_agent_mail_pid() {
     local victim_pid="$1"
@@ -1724,8 +1808,24 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
     enable_state="$(systemctl --user is-enabled agent-mail.service 2>/dev/null || true)"
     case "$enable_state" in
         masked|masked-runtime)
-            echo "Agent Mail: unit is masked; respecting local opt-out (run 'systemctl --user unmask agent-mail.service' to let ACFS manage it again)" >&2
-            exit 75
+            # Only a PERSISTENT mask is a deliberate opt-out. A runtime mask
+            # (issue #328) is /run residue that would otherwise disable the
+            # service silently forever -- clear it fully or fail loudly, but
+            # never report it as an intentional skip.
+            if _persistent_mask_present; then
+                echo "Agent Mail: unit is masked (persistent); respecting local opt-out (run 'systemctl --user unmask agent-mail.service' to let ACFS manage it again)" >&2
+                exit 75
+            fi
+            if [[ "$enable_state" == "masked" ]] && ! _runtime_mask_present; then
+                # Masked from a unit directory this script does not manage:
+                # treat like any other deliberate mask rather than fight it.
+                echo "Agent Mail: unit is masked outside ACFS-managed locations; respecting local opt-out (run 'systemctl --user unmask agent-mail.service' to let ACFS manage it again)" >&2
+                exit 75
+            fi
+            if ! clear_runtime_mask; then
+                _report_runtime_mask_remediation
+                exit 1
+            fi
             ;;
         disabled)
             # Only treat "disabled" as an admin decision when the unit predates
@@ -1738,6 +1838,15 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
             fi
             ;;
     esac
+    # Belt-and-braces (issue #328): stray /dev/null mask symlinks under /run
+    # can linger even when is-enabled reports a non-masked state (e.g. after a
+    # partial manual unmask). Clear them before touching the service.
+    if ! _persistent_mask_present && _runtime_mask_present; then
+        if ! clear_runtime_mask; then
+            _report_runtime_mask_remediation
+            exit 1
+        fi
+    fi
     stop_agent_mail_fallback
     systemctl --user daemon-reload >/dev/null 2>&1 || true
     if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
@@ -1752,7 +1861,25 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
         sleep 1
         active_waited=$((active_waited + 1))
     done
-    systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
+    # Post-update assertion (issue #328): a masked unit fails SILENTLY -- it
+    # is 'inactive (dead)', not 'failed', and start attempts error out without
+    # marking the unit failed. Assert loudly that the unit both loaded and
+    # became active, so the caller reports a real failure instead of quiet
+    # absence.
+    load_state="$(systemctl --user show agent-mail.service -p LoadState --value 2>/dev/null || true)"
+    if [[ "$load_state" == "masked" ]]; then
+        echo "Agent Mail: post-update check failed: agent-mail.service is still masked after service setup" >&2
+        _report_runtime_mask_remediation
+        exit 1
+    fi
+    if [[ -n "$load_state" && "$load_state" != "loaded" ]]; then
+        echo "Agent Mail: post-update check failed: agent-mail.service LoadState=$load_state (expected 'loaded'); see 'systemctl --user status agent-mail.service'" >&2
+        exit 1
+    fi
+    if ! systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; then
+        echo "Agent Mail: post-update check failed: agent-mail.service did not become active; see 'systemctl --user status agent-mail.service' and 'journalctl --user -u agent-mail.service'" >&2
+        exit 1
+    fi
 else
     echo "Agent Mail: systemctl --user unavailable, using background fallback" >&2
     launch_agent_mail_fallback
