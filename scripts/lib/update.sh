@@ -3902,22 +3902,71 @@ update_run_meta_skill_source_install() {
     update_run_in_target_context "" "$cargo_bin" install --git https://github.com/Dicklesworthstone/meta_skill --force
 }
 
+# Drift-aware SLB preservation (#329): SLB mediates approval for dangerous
+# commands, so a nightly rebuild must never silently replace a binary the
+# operator has audited or pinned. ACFS records the hash of the binary it last
+# built in a sidecar next to it; an installed binary that does not match that
+# recorded hash (including any binary installed before the sidecar existed)
+# is treated as operator-owned and preserved with a logged notice unless
+# ACFS_FORCE_SLB_UPDATE=1 is set, in which case the previous binary is backed
+# up first. A binary that matches the sidecar is exactly what ACFS last wrote
+# and is safe to refresh.
+update_slb_sidecar_path_for() {
+    local slb_path="${1:-}"
+    [[ -n "$slb_path" ]] || return 1
+    printf '%s/.slb.acfs-sha256\n' "${slb_path%/*}"
+}
+
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
 update_run_slb_source_install() {
+    local slb_path=""
+    local sidecar_file=""
+    local current_hash=""
+    local recorded_hash=""
+    local backup_env=""
+
+    slb_path="$(update_binary_path slb 2>/dev/null || true)"
+    if [[ -n "$slb_path" ]]; then
+        sidecar_file="$(update_slb_sidecar_path_for "$slb_path")"
+        current_hash="$(update_sha256_file "$slb_path" 2>/dev/null || true)"
+        recorded_hash="$(cat "$sidecar_file" 2>/dev/null || true)"
+
+        if [[ "${ACFS_FORCE_SLB_UPDATE:-0}" == "1" ]]; then
+            echo "SLB: rebuilding over existing binary at $slb_path (ACFS_FORCE_SLB_UPDATE=1); previous binary saved as slb.acfs-bak" >&2
+            log_to_file "SLB: forced rebuild over existing binary at $slb_path (ACFS_FORCE_SLB_UPDATE=1)"
+            backup_env="ACFS_SLB_BACKUP_EXISTING=1"
+        elif [[ -n "$current_hash" && -n "$recorded_hash" && "$current_hash" == "$recorded_hash" ]]; then
+            # Exactly what ACFS last built, unmodified: safe to refresh.
+            log_to_file "SLB: existing binary at $slb_path matches ACFS sidecar hash; refreshing"
+        else
+            echo "SLB: preserving existing binary at $slb_path (not the binary ACFS last built; possibly operator-audited). Set ACFS_FORCE_SLB_UPDATE=1 to rebuild from source." >&2
+            log_to_file "SLB: preserved existing binary at $slb_path (hash does not match ACFS sidecar; skipping source rebuild)"
+            return 0
+        fi
+    fi
+
     log_to_file "Building SLB from source (upstream installer issue workaround)"
 
     local build_cmd
     build_cmd="$(cat <<'EOF'
 set -euo pipefail
 mkdir -p "$HOME/go/bin"
+if [ "${ACFS_SLB_BACKUP_EXISTING:-0}" = "1" ] && [ -x "$HOME/go/bin/slb" ]; then
+    cp -f "$HOME/go/bin/slb" "$HOME/go/bin/slb.acfs-bak"
+fi
 SLB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/slb_build.XXXXXX")"
 trap '[ -n "$SLB_TMP" ] && rm -rf "$SLB_TMP"' EXIT
 cd "$SLB_TMP"
 git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git .
 go build -o "$HOME/go/bin/slb" ./cmd/slb
+if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$HOME/go/bin/slb" | awk '{print $1}' > "$HOME/go/bin/.slb.acfs-sha256"
+else
+    shasum -a 256 "$HOME/go/bin/slb" | awk '{print $1}' > "$HOME/go/bin/.slb.acfs-sha256"
+fi
 EOF
 )"
-    update_run_in_target_context "" bash -c "$build_cmd"
+    update_run_in_target_context "$backup_env" bash -c "$build_cmd"
 }
 
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
@@ -6034,7 +6083,9 @@ update_stack() {
     # CAAM - always install/update
     run_cmd "CAAM" update_run_verified_installer caam
 
-    # SLB - always install/update (must build from source due to upstream installer bug)
+    # SLB - install when absent; refresh only ACFS-built binaries (#329).
+    # An operator-audited/pinned binary is preserved unless ACFS_FORCE_SLB_UPDATE=1.
+    # (Builds from source due to upstream installer bug.)
     run_cmd "SLB" update_run_slb_source_install
 
     # RU (Repo Updater) - always install/update

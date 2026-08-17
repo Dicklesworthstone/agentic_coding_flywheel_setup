@@ -14143,3 +14143,96 @@ EOF
     run grep -F 'Refusing to manage SSH keys: $authorized_keys is a symlink' "$PROJECT_ROOT/scripts/lib/user.sh"
     assert_success
 }
+
+# ---- SLB preservation (#329) ------------------------------------------------
+
+_slb_test_setup() {
+    # Recorder for target-context invocations (the source build lane).
+    SLB_CTX_CALLS_FILE="$HOME/slb_ctx_calls"
+    : > "$SLB_CTX_CALLS_FILE"
+    update_run_in_target_context() {
+        printf 'env=%s\n' "$1" >> "$SLB_CTX_CALLS_FILE"
+        return 0
+    }
+    log_to_file() { :; }
+}
+
+_slb_install_fixture_binary() {
+    mkdir -p "$HOME/go/bin"
+    printf '%s\n' "$1" > "$HOME/go/bin/slb"
+    chmod +x "$HOME/go/bin/slb"
+    update_binary_path() { printf '%s\n' "$HOME/go/bin/slb"; }
+}
+
+@test "slb source install builds when no binary is installed" {
+    _slb_test_setup
+    update_binary_path() { return 1; }
+
+    run update_run_slb_source_install
+    assert_success
+
+    run cat "$SLB_CTX_CALLS_FILE"
+    assert_output "env="
+}
+
+@test "slb source install preserves an existing binary with no sidecar" {
+    _slb_test_setup
+    _slb_install_fixture_binary "audited-binary-v1"
+
+    run update_run_slb_source_install
+    assert_success
+    assert_output --partial "preserving existing binary"
+    assert_output --partial "ACFS_FORCE_SLB_UPDATE=1"
+
+    # Zero install/build calls.
+    run cat "$SLB_CTX_CALLS_FILE"
+    assert_output ""
+}
+
+@test "slb source install preserves a binary that differs from the sidecar hash" {
+    _slb_test_setup
+    _slb_install_fixture_binary "operator-replaced-binary"
+    printf '%s\n' "0000000000000000000000000000000000000000000000000000000000000000" \
+        > "$HOME/go/bin/.slb.acfs-sha256"
+
+    run update_run_slb_source_install
+    assert_success
+    assert_output --partial "preserving existing binary"
+
+    run cat "$SLB_CTX_CALLS_FILE"
+    assert_output ""
+}
+
+@test "slb source install refreshes a binary that matches the ACFS sidecar hash" {
+    _slb_test_setup
+    _slb_install_fixture_binary "acfs-built-binary"
+    update_sha256_file "$HOME/go/bin/slb" > "$HOME/go/bin/.slb.acfs-sha256"
+
+    run update_run_slb_source_install
+    assert_success
+
+    run cat "$SLB_CTX_CALLS_FILE"
+    assert_output "env="
+}
+
+@test "slb source install force override rebuilds and requests a backup" {
+    _slb_test_setup
+    _slb_install_fixture_binary "audited-binary-v1"
+    export ACFS_FORCE_SLB_UPDATE=1
+
+    run update_run_slb_source_install
+    unset ACFS_FORCE_SLB_UPDATE
+    assert_success
+    assert_output --partial "slb.acfs-bak"
+
+    run cat "$SLB_CTX_CALLS_FILE"
+    assert_output "env=ACFS_SLB_BACKUP_EXISTING=1"
+}
+
+@test "slb build script records the sidecar hash and honors the backup flag" {
+    run grep -F '.slb.acfs-sha256' "$PROJECT_ROOT/scripts/lib/update.sh"
+    assert_success
+
+    run grep -F 'ACFS_SLB_BACKUP_EXISTING' "$PROJECT_ROOT/scripts/lib/update.sh"
+    assert_success
+}

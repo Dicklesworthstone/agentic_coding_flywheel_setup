@@ -141,6 +141,15 @@ ACFS_COMMIT_SHA_FULL=""  # Full SHA for pinning resume scripts (40 chars)
 ACFS_EARLY_CURL_ARGS=(--connect-timeout 30 --max-time 300 -fsSL)
 # Note: ACFS_HOME is set after TARGET_HOME is determined
 ACFS_LOG_DIR="/var/log/acfs"
+
+# Claude Code deletes session transcripts older than cleanupPeriodDays
+# (default 30) from ~/.claude/projects with no warning, destroying history
+# before cass can index it (issue #330). ACFS sets a high explicit value at
+# install time so retention is a visible, user-changeable choice; the value is
+# only written when the key is absent, so a user-chosen value is never
+# overridden. Exposed as a constant so tests exercise the exact merge filter.
+ACFS_CLAUDE_RETENTION_DAYS=99999
+ACFS_CLAUDE_RETENTION_JQ_FILTER="if has(\"cleanupPeriodDays\") then . else .cleanupPeriodDays = $ACFS_CLAUDE_RETENTION_DAYS end"
 _ACFS_BOOTSTRAP_DIR_OWNED=false
 _ACFS_BOOTSTRAP_DIR_CREATED=""
 _ACFS_BOOTSTRAP_DIR_TMP_ROOT=""
@@ -7754,6 +7763,37 @@ CLAUDE_TRUST_EOF
         else
             log_warn "agy-locked launcher not found; Antigravity settings will be primed on first agy launch"
         fi
+    fi
+
+    # Claude Code session retention (fixes #330). Applies to EVERY mode, not
+    # just vibe: the 30-day cleanupPeriodDays default silently deletes session
+    # transcripts before cass can index them. Merge non-destructively: the key
+    # is only written when absent, so an existing user-set value is respected.
+    log_detail "Configuring Claude Code session retention (cleanupPeriodDays)..."
+    local claude_retention_settings_file="$TARGET_HOME/.claude/settings.json"
+    if [[ -f "$claude_retention_settings_file" ]]; then
+        if command -v jq &>/dev/null; then
+            # Same run_as_target jq+mv pipeline as the workspace-trust step so
+            # the temp file is created with target-user ownership (not root).
+            local tmp_retention="${claude_retention_settings_file}.tmp.retention.$$"
+            if run_as_target bash -c "jq \"\$3\" \"\$1\" > \"\$2\" && mv \"\$2\" \"\$1\"" \
+                    _ "$claude_retention_settings_file" "$tmp_retention" "$ACFS_CLAUDE_RETENTION_JQ_FILTER" 2>/dev/null; then
+                log_detail "Claude session retention configured (cleanupPeriodDays kept explicit; default 30-day pruning disabled)"
+            else
+                run_as_target rm -f "$tmp_retention" 2>/dev/null || true
+                log_warn "Could not update ~/.claude/settings.json with cleanupPeriodDays; Claude Code will prune session transcripts after 30 days"
+            fi
+        else
+            log_warn "jq unavailable; skipped setting cleanupPeriodDays (Claude Code will prune session transcripts after 30 days)"
+        fi
+    else
+        run_as_target mkdir -p "$TARGET_HOME/.claude" 2>/dev/null || true
+        run_as_target tee "$claude_retention_settings_file" > /dev/null << CLAUDE_RETENTION_EOF
+{
+  "cleanupPeriodDays": $ACFS_CLAUDE_RETENTION_DAYS
+}
+CLAUDE_RETENTION_EOF
+        log_detail "Claude settings created with explicit session retention (cleanupPeriodDays=$ACFS_CLAUDE_RETENTION_DAYS)"
     fi
 
     # Legacy state file (only if state.sh is unavailable)
