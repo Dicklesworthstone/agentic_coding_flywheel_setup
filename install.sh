@@ -87,6 +87,23 @@ export DEBCONF_NONINTERACTIVE_SEEN=true
 # Configuration
 # ============================================================
 ACFS_VERSION="0.7.0"
+
+# ------------------------------------------------------------
+# Best-effort failure tracking (record-and-continue abort paths).
+# Populated by _run_phase_with_report() and acfs_run_generated_category_phase()
+# so print_summary()/cleanup() can name what failed instead of either
+# silently exiting or silently claiming success. Global (not `local`) so the
+# EXIT trap can read them no matter which call stack was active when the
+# process died.
+# ------------------------------------------------------------
+declare -ag ACFS_PHASE_FAILURES=()
+declare -ag ACFS_MODULE_FAILURES=()
+# Idempotency guard for the EXIT-trap skills/summary fallback (see cleanup()).
+ACFS_SKILLS_AND_SUMMARY_DONE=0
+# Set once the user has confirmed a real install is proceeding (past
+# --help/--print/dry-run/decline-to-install exits). Scopes the EXIT-trap
+# fallback so it never fires for those benign early exits.
+ACFS_INSTALL_RUN_CONFIRMED=0
 # Allow fork installations by overriding these via environment variables
 ACFS_REPO_OWNER="${ACFS_REPO_OWNER:-Dicklesworthstone}"
 ACFS_REPO_NAME="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
@@ -1605,6 +1622,30 @@ cleanup() {
             acfs_notify_install_failure 2>/dev/null || true
         fi
     fi
+
+    # Operator hard requirement: no matter what fails during setup, skills
+    # must still install and onboarding instructions must still be shown.
+    # The normal main() flow now record-and-continues through phase/module
+    # failures so it always reaches install_stack_meta_skill and
+    # print_summary on its own — but if something dies in a way that bypasses
+    # that (an unhandled `set -e` exit, a signal, a bug), this is the last-
+    # resort net. Guarded by ACFS_SKILLS_AND_SUMMARY_DONE so a normal
+    # completion (which sets the flag itself) never runs this twice, and by
+    # ACFS_INSTALL_RUN_CONFIRMED so benign early exits (--help, --print,
+    # dry-run, user declined) never trigger it at all.
+    if [[ "${ACFS_INSTALL_RUN_CONFIRMED:-0}" == "1" ]] && [[ "${ACFS_SKILLS_AND_SUMMARY_DONE:-0}" != "1" ]]; then
+        ACFS_SKILLS_AND_SUMMARY_DONE=1
+        log_error "Installation ended before reaching normal completion; attempting best-effort skills install + onboarding summary anyway."
+        if [[ "${DRY_RUN:-false}" != "true" ]] && type -t install_stack_meta_skill &>/dev/null; then
+            if ! install_stack_meta_skill; then
+                ACFS_MODULE_FAILURES+=("stack.meta_skill (EXIT-trap fallback attempt)")
+            fi
+        fi
+        if type -t print_summary &>/dev/null; then
+            print_summary || true
+        fi
+    fi
+
     acfs_release_install_lock
     # Finalize log file (restore stderr, strip colors, add footer)
     acfs_log_close 2>/dev/null || true
@@ -8074,6 +8115,37 @@ Tip: use --print to see upstream install scripts that will be fetched."
         return 0
     fi
 
+    # Name what failed rather than printing success over a broken run
+    # (record-and-continue abort paths in _run_phase_with_report and
+    # acfs_run_generated_category_phase accumulate into these arrays instead
+    # of aborting, so this may be the first place a failure is surfaced).
+    local -a summary_all_failures=()
+    if [[ ${#ACFS_PHASE_FAILURES[@]} -gt 0 ]]; then
+        summary_all_failures+=("${ACFS_PHASE_FAILURES[@]}")
+    fi
+    if [[ ${#ACFS_MODULE_FAILURES[@]} -gt 0 ]]; then
+        summary_all_failures+=("${ACFS_MODULE_FAILURES[@]}")
+    fi
+    local summary_has_failures=false
+    local failures_section_plain=""
+    local failures_section_gum=""
+    if [[ ${#summary_all_failures[@]} -gt 0 ]]; then
+        summary_has_failures=true
+        local _failure_item
+        local failures_list_plain=""
+        local failures_list_gum=""
+        for _failure_item in "${summary_all_failures[@]}"; do
+            failures_list_plain+="  ✗ ${_failure_item}\n"
+            failures_list_gum+="  ✗ ${_failure_item}
+"
+        done
+        failures_section_plain="${RED}════════════════════════════════════════════════════════════${NC}\n${RED}  ⚠  COMPLETED WITH FAILURES — the following did not install:${NC}\n${RED}════════════════════════════════════════════════════════════${NC}\n${failures_list_plain}${GRAY}Re-run the installer (it resumes) or check the log to retry these.${NC}\n${RED}════════════════════════════════════════════════════════════${NC}\n"
+        failures_section_gum="⚠ COMPLETED WITH FAILURES — the following did not install:
+
+${failures_list_gum}
+Re-run the installer (it resumes) or check the log to retry these."
+    fi
+
     # Build dynamic Tailscale status
     local tailscale_section=""
     if command -v tailscale &>/dev/null; then
@@ -8176,25 +8248,44 @@ ${tailscale_section:+Service Authentication:
 $tailscale_section
 
 }$ssh_key_warning_section$next_steps_content"
+    if [[ "$summary_has_failures" == "true" ]]; then
+        summary_content="${failures_section_gum}
+
+${summary_content}"
+    fi
+
+    local summary_border_color="$ACFS_SUCCESS"
+    local summary_title='🎉 ACFS Installation Complete!'
+    local summary_border_color_plain="$GREEN"
+    local summary_title_plain="🎉 ACFS Installation Complete!"
+    if [[ "$summary_has_failures" == "true" ]]; then
+        summary_border_color="$ACFS_WARNING"
+        summary_title='⚠️  ACFS Installation Finished With Failures'
+        summary_border_color_plain="$RED"
+        summary_title_plain="⚠️  ACFS Installation Finished With Failures"
+    fi
 
     {
         if [[ "$HAS_GUM" == "true" ]]; then
             echo ""
             gum style \
                 --border double \
-                --border-foreground "$ACFS_SUCCESS" \
+                --border-foreground "$summary_border_color" \
                 --padding "1 3" \
                 --margin "1 0" \
                 --align left \
-                "$(gum style --foreground "$ACFS_SUCCESS" --bold '🎉 ACFS Installation Complete!')
+                "$(gum style --foreground "$summary_border_color" --bold "$summary_title")
 
 $summary_content"
         else
             echo ""
-            echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-            echo -e "${GREEN}║            🎉 ACFS Installation Complete!                   ║${NC}"
-            echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
+            echo -e "${summary_border_color_plain}╔════════════════════════════════════════════════════════════╗${NC}"
+            echo -e "${summary_border_color_plain}║ ${summary_title_plain}${NC}"
+            echo -e "${summary_border_color_plain}╠════════════════════════════════════════════════════════════╣${NC}"
             echo ""
+            if [[ "$summary_has_failures" == "true" ]]; then
+                echo -e "$failures_section_plain"
+            fi
             echo -e "Version: ${BLUE}$ACFS_VERSION${NC}"
             echo -e "Mode:    ${BLUE}$MODE${NC}"
             echo ""
@@ -8495,6 +8586,7 @@ main() {
     # before any system-modifying steps (apt/user/upgrade) can run.
     if [[ "$DRY_RUN" == "true" ]]; then
         print_execution_plan || true
+        ACFS_SKILLS_AND_SUMMARY_DONE=1
         print_summary
         exit 0
     fi
@@ -8619,6 +8711,13 @@ main() {
         confirm_or_exit
     fi
 
+    # From here on the user has confirmed a real install: the cleanup() EXIT
+    # trap's best-effort skills/summary fallback is only allowed to engage
+    # past this point, so --help/--print/early-bootstrap-failure/user-decline
+    # exits (all of which happen before this line) never trigger a bogus
+    # "installation complete" summary or an unrequested skills install.
+    ACFS_INSTALL_RUN_CONFIRMED=1
+
     if [[ "$DRY_RUN" != "true" ]]; then
         # Execute phases with state tracking (mjt.5.8)
         # Each run_phase call checks if phase is already completed and skips if so
@@ -8641,6 +8740,11 @@ main() {
                 show_progress_header "$phase_num" 9 "$phase_name" "$installation_start_time" "$phase_id"
             fi
 
+            # Record-and-continue: a failing phase must not abort the run, or
+            # later phases (critically "stack", which installs skills) and the
+            # final print_summary would never be reached. Failures are
+            # accumulated in ACFS_PHASE_FAILURES and named in the summary
+            # instead of silently swallowed.
             if type -t run_phase &>/dev/null; then
                 if ! run_phase "$phase_id" "$phase_display" "$phase_func"; then
                     # Use structured error reporting
@@ -8651,27 +8755,29 @@ main() {
                     fi
                     # Print precise resume hint (bd-31ps.9.1)
                     print_resume_hint "$phase_id" ""
-                    exit 1
+                    ACFS_PHASE_FAILURES+=("$phase_display")
+                    return 1
                 fi
             else
                 # Fallback: direct call with basic error handling
                 if ! "$phase_func"; then
                     log_error "Phase $phase_display failed"
                     print_resume_hint "$phase_id" ""
-                    exit 1
+                    ACFS_PHASE_FAILURES+=("$phase_display")
+                    return 1
                 fi
             fi
         }
 
-        _run_phase_with_report "user_setup" "1/9 User Setup" normalize_user
-        _run_phase_with_report "filesystem" "2/9 Filesystem" setup_filesystem
-        _run_phase_with_report "shell_setup" "3/9 Shell Setup" setup_shell
-        _run_phase_with_report "cli_tools" "4/9 CLI Tools" install_cli_tools
-        _run_phase_with_report "languages" "5/9 Languages" install_languages
-        _run_phase_with_report "agents" "6/9 Coding Agents" install_agents_phase
-        _run_phase_with_report "cloud_db" "7/9 Cloud & DB" install_cloud_db
-        _run_phase_with_report "stack" "8/9 Stack" install_stack_phase
-        _run_phase_with_report "finalize" "9/9 Finalize" finalize
+        _run_phase_with_report "user_setup" "1/9 User Setup" normalize_user || true
+        _run_phase_with_report "filesystem" "2/9 Filesystem" setup_filesystem || true
+        _run_phase_with_report "shell_setup" "3/9 Shell Setup" setup_shell || true
+        _run_phase_with_report "cli_tools" "4/9 CLI Tools" install_cli_tools || true
+        _run_phase_with_report "languages" "5/9 Languages" install_languages || true
+        _run_phase_with_report "agents" "6/9 Coding Agents" install_agents_phase || true
+        _run_phase_with_report "cloud_db" "7/9 Cloud & DB" install_cloud_db || true
+        _run_phase_with_report "stack" "8/9 Stack" install_stack_phase || true
+        _run_phase_with_report "finalize" "9/9 Finalize" finalize || true
 
         # Always update checksums.yaml and VERSION after all phases complete
         # This ensures resume installs get fresh metadata even if finalize was previously completed
@@ -8736,9 +8842,13 @@ main() {
         fi
     fi
 
+    # Normal completion path reached: the phase loop above already gave the
+    # "stack" phase (which installs skills via install_stack_meta_skill) its
+    # chance to run, so the EXIT-trap fallback in cleanup() must not repeat it.
+    ACFS_SKILLS_AND_SUMMARY_DONE=1
     print_summary
 
-    if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]]; then
+    if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]] || [[ ${#ACFS_PHASE_FAILURES[@]} -gt 0 ]] || [[ ${#ACFS_MODULE_FAILURES[@]} -gt 0 ]]; then
         exit 1
     fi
 }

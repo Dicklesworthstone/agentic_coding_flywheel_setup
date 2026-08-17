@@ -1408,11 +1408,13 @@ acfs_run_generated_category_phase() {
 
     if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
         log_error "Manifest index not loaded; cannot run generated category: $category"
-        return 1
+        ACFS_MODULE_FAILURES+=("$category (manifest index not loaded)")
+        return 0
     fi
     if [[ "${ACFS_GENERATED_SOURCED:-false}" != "true" ]]; then
         log_error "Generated installers not sourced; cannot run generated category: $category"
-        return 1
+        ACFS_MODULE_FAILURES+=("$category (generated installers not sourced)")
+        return 0
     fi
 
     local module=""
@@ -1444,13 +1446,13 @@ acfs_run_generated_category_phase() {
         desc="${ACFS_MODULE_DESC[$key]:-$module}"
         if [[ -z "$func" ]]; then
             log_error "Missing generated function for $module"
-            if declare -f progress_finish >/dev/null 2>&1; then progress_finish; fi
-            return 1
+            ACFS_MODULE_FAILURES+=("$module (missing generated function)")
+            continue
         fi
         if ! declare -f "$func" >/dev/null 2>&1; then
             log_error "Generated function not found: $func (module $module)"
-            if declare -f progress_finish >/dev/null 2>&1; then progress_finish; fi
-            return 1
+            ACFS_MODULE_FAILURES+=("$module (generated function not found: $func)")
+            continue
         fi
 
         # Skip-if-installed check (bd-1eop)
@@ -1471,8 +1473,9 @@ acfs_run_generated_category_phase() {
 
         if ! "$func"; then
             log_error "Generated module failed: $module"
-            if declare -f progress_finish >/dev/null 2>&1; then progress_finish; fi
-            return 1
+            ACFS_MODULE_FAILURES+=("$module")
+            ran_any=true
+            continue
         fi
         ran_any=true
     done
