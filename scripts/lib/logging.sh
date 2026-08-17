@@ -443,4 +443,3 @@ if ! declare -f timer_end >/dev/null; then
         log_detail "Completed in ${duration}s"
     }
 fi
-# guard-livefire-ci-proof 1786995731
