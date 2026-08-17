@@ -1655,7 +1655,21 @@ clear_runtime_mask() {
     # From here on systemd's in-memory view must never be left out of sync
     # with disk, even if this script dies mid-clearance: re-sync on ANY exit
     # so an interrupted update cannot strand a half-cleared mask.
-    trap 'systemctl --user daemon-reload >/dev/null 2>&1 || true' EXIT
+    #
+    # COMPOSE with any pre-existing EXIT trap instead of replacing it:
+    # install.sh sources stack.sh into the shell whose own EXIT trap releases
+    # the install lock and finalizes logs, and clobbering it would strand a
+    # stale install lock on every masked-unit install. `trap -p EXIT` prints
+    # `trap -- '<handler>' EXIT`; strip the wrapper and eval-unquote so the
+    # original handler runs after the daemon-reload re-sync.
+    local previous_exit_handler=""
+    previous_exit_handler="$(trap -p EXIT 2>/dev/null || true)"
+    if [[ -n "$previous_exit_handler" ]]; then
+        previous_exit_handler="${previous_exit_handler#trap -- }"
+        previous_exit_handler="${previous_exit_handler% EXIT}"
+        eval "previous_exit_handler=$previous_exit_handler"
+    fi
+    trap 'systemctl --user daemon-reload >/dev/null 2>&1 || true'"${previous_exit_handler:+; }${previous_exit_handler}" EXIT
     systemctl --user unmask --runtime agent-mail.service >/dev/null 2>&1 || true
     # unmask --runtime only removes the user/ symlink; take the user.control/
     # one (and any survivor) out directly, but ONLY when it is a /dev/null
