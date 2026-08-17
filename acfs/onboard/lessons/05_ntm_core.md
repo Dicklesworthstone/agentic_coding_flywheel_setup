@@ -124,11 +124,25 @@ Once inside an NTM session:
 # tasks. ntm send runs a duplicate-check against past agent sessions
 # via cass; on a fresh install with no index, that check is a no-op
 # (ntm warns and continues), but you'll get more useful dedup
-# behavior after this:
-cass index --full
+# behavior after this.
+#
+# `cass index --full` has no bound/limit/since/timeout flag, so on a
+# real, long-lived session history it can run for a very long time.
+# Never run it inline here — it will block the rest of this
+# walkthrough. Kick it off detached instead:
+mkdir -p ~/.cache
+nohup cass index --full --json > ~/.cache/cass-index-full.log 2>&1 &
+disown
+echo "cass index --full is running in the background."
+echo "Check progress any time with: cass health --json   (see index.status)"
+echo "Or: tail -f ~/.cache/cass-index-full.log"
 
-# Create a test session
-ntm spawn test-session --cc=1
+# Create a test session. Pass --no-cass-context so spawn does not
+# stall behind the still-running index above — a concurrent index
+# rebuild holds a lock that CASS context injection can block on
+# (this is what --no-cass-context exists for). Drop the flag once
+# `cass health --json` reports index.status = "fresh".
+ntm spawn test-session --cc=1 --no-cass-context
 
 # List sessions
 ntm list
@@ -142,9 +156,11 @@ ntm attach test-session
 
 > **CASS first run:** `cass --version` works the moment cass is
 > installed, but the search-backed code paths (dedup, context
-> injection) need an initial index. Run `cass index --full` once after
-> install. `cass health` will report `initialized: true` once it
-> finishes.
+> injection) need an initial index. `cass index --full` builds it —
+> but the command has no bound/limit/timeout flag, so always run it
+> backgrounded (see above) rather than waiting on it in the
+> foreground. Poll `cass health --json` for `index.status: "fresh"`
+> instead of waiting for the command to return.
 
 ---
 
