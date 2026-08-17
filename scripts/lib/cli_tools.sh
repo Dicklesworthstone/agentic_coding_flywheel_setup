@@ -503,14 +503,33 @@ _fetch_github_version() {
 
         # Strategy 2: Fallback to GitHub API if HEAD failed or returned no tag
         if [[ -z "$tag" ]]; then
-            local json
+            local json="" api_reachable=false
             if json=$(curl -s --max-time 10 "https://api.github.com/repos/$repo/releases/latest"); then
+                api_reachable=true
                 if command -v jq &>/dev/null; then
                     tag=$(echo "$json" | jq -r '.tag_name // empty')
                 elif command -v python3 &>/dev/null; then
                     tag=$(echo "$json" | python3 -c "import sys, json; print(json.load(sys.stdin).get('tag_name', ''))" 2>/dev/null)
                 else
                     tag=$(echo "$json" | { grep -o '"tag_name": *"[^"]*"' || true; } | head -n1 | cut -d'"' -f4)
+                fi
+            fi
+
+            # Same false-negative shape already fixed in github_api.sh's
+            # github_get_latest_release: every caller of this function
+            # already falls back to a pinned known-good version on failure
+            # (the safe direction — never silently reports "$repo has no
+            # releases"), but until now said nothing about WHY, so an
+            # operator debugging a stubbornly-stale pinned version had no
+            # signal distinguishing "this repo genuinely has no releases"
+            # from "the HEAD probe and the API both came back empty or
+            # unreachable this run" (rate limit, degraded response, network
+            # blip — all indistinguishable from here without saying so).
+            if [[ -z "$tag" || "$tag" == "null" ]] && declare -f log_warn &>/dev/null; then
+                if [[ "$api_reachable" != "true" ]]; then
+                    log_warn "Could not resolve latest release for $repo: HEAD probe and GitHub API request both failed; falling back to the pinned version."
+                else
+                    log_warn "Could not resolve latest release for $repo: HEAD probe failed and the API response carried no tag_name (rate limit or degraded response, not necessarily 'no releases'); falling back to the pinned version."
                 fi
             fi
         fi
