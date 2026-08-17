@@ -422,26 +422,114 @@ ACFS_MUTED="#6c7086"
 export ACFS_COMMIT_DATE=""  # exported for child processes/debugging
 ACFS_COMMIT_AGE=""
 
-# Echo a "?cb=<epoch>" cache-buster ONLY when the ref is mutable.
+# Resolve a ref to its commit SHA ONCE per run, memoized.
 #
-# A commit SHA is immutable: that URL can never serve different bytes, so it is
-# fresh by construction AND fully cacheable. Busting the cache for a SHA is pure
-# downside - it defeats the CDN, forces an origin fetch, and is exactly the
-# pattern that got a client HTTP 429 from raw.githubusercontent.com.
+# WHY THIS EXISTS - it buys three things at once:
 #
-# A branch or tag CAN move, so for those the cache-buster is still earning its
-# keep and is deliberately retained (see the call sites for why staleness there
-# is a correctness problem, not just a freshness preference).
+#   1. Cacheable URLs. A SHA-pinned URL is immutable, so it is fresh BY
+#      CONSTRUCTION and needs no cache-buster. That removes the HTTP 429
+#      exposure that broke a client install, on the DEFAULT path rather than
+#      only when someone pins a SHA by hand.
+#   2. No limiter pressure. Cacheable requests are served by the CDN instead of
+#      forcing an origin fetch every time.
+#   3. RUN CONSISTENCY, which is the subtle one. A long install that fetches
+#      "main" repeatedly can straddle a branch that MOVED mid-run and end up
+#      mixing files from two different commits. Resolving once and reusing the
+#      SHA makes every fetch in the run come from the same tree.
 #
-# NOTE FOR THE NEXT PERSON: the remaining cache-busters are NOT the same bug as
-# the ones removed from the documented install commands. Those appended a
-# timestamp to a URL fetched on every install, which is what tripped the
-# limiter. These fire only on a FALLBACK path, only for a mutable ref. Do not
-# delete them without reading the rationale at each call site.
-acfs_cache_buster_suffix() {
+# Resolution order is deliberate. `git ls-remote` speaks the git protocol on
+# github.com, NOT the api.github.com REST endpoint, so it keeps working when the
+# REST limiter is the thing that is failing - which is precisely the situation
+# on the fallback paths that call this. The REST API is only the second choice.
+#
+# Echoes a 40-char SHA on success, empty on failure. Never fatal: an install
+# must still work when both resolvers are unreachable.
+ACFS_RESOLVED_REF_SHA=""
+ACFS_RESOLVED_REF_INPUT=""
+
+acfs_resolve_ref_sha() {
     local ref="${1:-}"
-    # Full or abbreviated hex SHA -> immutable, no cache-buster needed.
-    if [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+    [[ -n "$ref" ]] || return 0
+
+    # Memoized: resolve at most once per ref per run.
+    if [[ "$ACFS_RESOLVED_REF_INPUT" == "$ref" ]]; then
+        printf '%s' "$ACFS_RESOLVED_REF_SHA"
+        return 0
+    fi
+
+    local sha=""
+
+    # 1. git ls-remote - authoritative and outside the REST limiter.
+    local git_bin=""
+    git_bin="$(acfs_early_system_binary_path git 2>/dev/null || true)"
+    if [[ -n "$git_bin" ]]; then
+        local remote_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}.git"
+        # Grade on the captured text, not on the pipeline's exit status.
+        sha="$("$git_bin" ls-remote "$remote_url" "$ref" 2>/dev/null | awk 'NR==1{print $1}' || true)"
+    fi
+
+    # 2. REST API fallback.
+    if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+        local curl_bin=""
+        curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
+        if [[ -n "$curl_bin" ]]; then
+            local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/commits/${ref}"
+            local resp=""
+            resp="$("$curl_bin" -sf --max-time 10 \
+                -H "Accept: application/vnd.github.sha" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "$api_url" 2>/dev/null || true)"
+            resp="${resp//[$'\r\n\t ']/}"
+            [[ "$resp" =~ ^[0-9a-f]{40}$ ]] && sha="$resp"
+        fi
+    fi
+
+    [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || sha=""
+    ACFS_RESOLVED_REF_INPUT="$ref"
+    ACFS_RESOLVED_REF_SHA="$sha"
+    printf '%s' "$sha"
+}
+
+# The ref to actually put in a URL: the resolved SHA when we have one,
+# otherwise the ref as given.
+acfs_effective_ref() {
+    local ref="${1:-}"
+    local sha=""
+    sha="$(acfs_resolve_ref_sha "$ref")"
+    if [[ -n "$sha" ]]; then
+        printf '%s' "$sha"
+    else
+        printf '%s' "$ref"
+    fi
+}
+
+# Echo a "?cb=<epoch>" cache-buster ONLY when the URL is still mutable.
+#
+# Takes the EFFECTIVE ref (post-resolution). If we resolved to a SHA the URL is
+# immutable - fresh by construction and fully cacheable - so busting the cache
+# would be pure downside: it defeats the CDN, forces an origin fetch, and is
+# exactly the pattern that got a client HTTP 429 from raw.githubusercontent.com.
+#
+# If resolution FAILED we are still on a branch or tag that can move, so the
+# cache-buster is still earning its keep and is deliberately retained. See each
+# call site for why staleness there is a correctness problem rather than a
+# freshness preference.
+#
+# The 40-char test is exact on purpose. An earlier version accepted 7-40 hex
+# chars, which silently misclassified plausible BRANCH names - `deadbeef`,
+# `abc1234` - as immutable SHAs, and the failure mode was stale content on a
+# mutable ref: precisely the correctness problem the cache-buster prevents.
+# Shape is not identity. Trust acfs_resolve_ref_sha, which asks git or the API
+# what the ref actually is, rather than guessing from the string.
+#
+# NOTE FOR THE NEXT PERSON: a cache-buster appearing here is NOT the same bug as
+# the ones removed from the documented install commands in 8433cd3f. Those
+# appended a timestamp to a URL fetched on every install, which tripped the
+# limiter. This one fires only when we could not resolve a SHA. Do not delete it
+# without reading the rationale at the call site.
+acfs_cache_buster_suffix() {
+    local effective_ref="${1:-}"
+    if [[ "$effective_ref" =~ ^[0-9a-f]{40}$ ]]; then
         printf ''
         return 0
     fi
@@ -2659,12 +2747,19 @@ bootstrap_repo_archive() {
     fi
 
     local ref="$ACFS_REF"
-    # GitHub caches archives for up to 5 minutes, so a MUTABLE ref (branch/tag)
-    # still needs a cache-buster to guarantee a fresh download. An immutable
-    # commit SHA does not: that archive can never change, so busting the cache
-    # would only defeat the CDN and invite the rate limiting that broke a client
-    # install. acfs_cache_buster_suffix applies exactly that distinction.
-    local archive_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/archive/${ref}.tar.gz$(acfs_cache_buster_suffix "$ref")"
+    # Resolve the ref to an immutable SHA once per run. On the DEFAULT install
+    # the ref is "main", so without this every fetch is mutable and needs a
+    # cache-buster - leaving the 429 exposure exactly where the clients most
+    # likely to hit it are. Resolving also pins the whole run to ONE commit, so
+    # a long install cannot straddle a branch that moved mid-run and end up
+    # mixing files from two trees.
+    #
+    # GitHub caches archives for up to 5 minutes, so if resolution fails and we
+    # are still on a mutable ref, the cache-buster is retained to guarantee a
+    # fresh download.
+    local effective_ref
+    effective_ref="$(acfs_effective_ref "$ref")"
+    local archive_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/archive/${effective_ref}.tar.gz$(acfs_cache_buster_suffix "$effective_ref")"
     local ref_safe="${ref//[^a-zA-Z0-9._-]/_}"
     local tmp_dir
     local mktemp_bin=""
@@ -3102,7 +3197,9 @@ install_checksums_yaml() {
         # cannot change, so the buster is dropped and the request stays
         # cacheable - which matters most here, since the API failure that got us
         # into this branch is often rate limiting on the same infrastructure.
-        content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml$(acfs_cache_buster_suffix "$ACFS_CHECKSUMS_REF")")" || {
+        local eff_cref
+        eff_cref="$(acfs_effective_ref "$ACFS_CHECKSUMS_REF")"
+        content="$(acfs_fetch_url_content "https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${eff_cref}/checksums.yaml$(acfs_cache_buster_suffix "$eff_cref")")" || {
             log_error "Failed to fetch checksums.yaml from ref '${ACFS_CHECKSUMS_REF}'"
             return 1
         }
@@ -3640,7 +3737,9 @@ acfs_load_upstream_checksums() {
             # mutable ref, where a stale answer would verify against the wrong
             # checksums; an immutable SHA is fresh by construction and stays
             # cacheable so this fallback does not itself trip the limiter.
-            content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml$(acfs_cache_buster_suffix "$ACFS_CHECKSUMS_REF")")" || {
+            local eff_cref
+        eff_cref="$(acfs_effective_ref "$ACFS_CHECKSUMS_REF")"
+        content="$(acfs_fetch_url_content "https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${eff_cref}/checksums.yaml$(acfs_cache_buster_suffix "$eff_cref")")" || {
                 log_error "Failed to fetch checksums.yaml from any source"
                 return 1
             }
