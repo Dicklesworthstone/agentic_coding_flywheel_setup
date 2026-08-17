@@ -1729,10 +1729,10 @@ INSTALL_STACK_CM
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: verify (optional): cm doctor --json (target_user)"
+        log_info "dry-run: verify (optional): timeout 30 cm doctor --json (target_user)"
     else
         if ! run_as_target_shell <<'INSTALL_STACK_CM'
-cm doctor --json
+timeout 30 cm doctor --json
 INSTALL_STACK_CM
         then
             log_warn "Optional verify failed: stack.cm"

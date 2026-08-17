@@ -2213,7 +2213,7 @@ modules:
     install: []
     verify:
       - cm --version
-      - cm doctor --json || true
+      - timeout 30 cm doctor --json || true
 
   - id: stack.caam
     description: Instant auth switching for agent CLIs

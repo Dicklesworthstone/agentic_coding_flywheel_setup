@@ -422,7 +422,7 @@ declare -a MANIFEST_CHECKS=(
     "stack.beads_viewer	bv TUI for Beads tasks	bv --help || bv --version	required	target_user"
     "stack.cass	Unified search across agent session history	cass --help || cass --version	required	target_user"
     "stack.cm.1	Procedural memory for agents (cass-memory)	cm --version	required	target_user"
-    "stack.cm.2	Procedural memory for agents (cass-memory)	cm doctor --json	optional	target_user"
+    "stack.cm.2	Procedural memory for agents (cass-memory)	timeout 30 cm doctor --json	optional	target_user"
     "stack.caam	Instant auth switching for agent CLIs	caam status || caam --help	required	target_user"
     "stack.slb	Two-person rule for dangerous commands (optional guardrails)	export PATH=\"\$HOME/go/bin:\$PATH\" && slb >/dev/null 2>&1 || slb --help >/dev/null 2>&1	optional	target_user"
     "stack.dcg.1	Destructive Command Guard - Claude Code hook blocking dangerous git/fs commands	dcg --version	required	target_user"
