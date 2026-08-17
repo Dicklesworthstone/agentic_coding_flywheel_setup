@@ -366,6 +366,37 @@ _has_gh_auth() {
     [[ -n "$gh_bin" ]] && "$gh_bin" auth status &>/dev/null 2>&1
 }
 
+# Resolve the best available GitHub token, or empty string if there is none.
+#
+# Order: explicit env vars, then the credential `gh auth login` already stored.
+# Echoes the token on stdout; never logs it.
+#
+# Why the gh fallback matters: unauthenticated api.github.com is limited to 60
+# requests/hour/IP. When that quota is spent the API can answer HTTP 200 with an
+# empty body, which callers have historically read as "no releases exist".
+# Measured during a GitHub degradation: the releases endpoint returned an EMPTY
+# ARRAY to an unauthenticated host while an authenticated query from another
+# machine listed six releases. Authenticating is the cheapest way to avoid
+# manufacturing that false emptiness.
+_github_effective_token() {
+    local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    if [[ -n "$token" ]]; then
+        printf '%s' "$token"
+        return 0
+    fi
+
+    local gh_bin=""
+    gh_bin="$(_github_api_binary_path gh 2>/dev/null || true)"
+    [[ -n "$gh_bin" ]] || return 0
+
+    # Grade `gh auth token` on its OWN exit status, captured directly rather
+    # than through a pipe, then only accept non-empty output.
+    local gh_token=""
+    gh_token="$("$gh_bin" auth token 2>/dev/null)" || return 0
+    [[ -n "$gh_token" ]] || return 0
+    printf '%s' "$gh_token"
+}
+
 # ============================================================
 # User-Friendly Messages
 # ============================================================
@@ -489,9 +520,18 @@ github_fetch_with_backoff() {
     fi
     mapfile -t curl_base_args < <(_github_curl_args_for_status_capture "${curl_base_args[@]}")
 
-    # Prepare auth header if token available
+    # Prepare auth header if token available.
+    #
+    # Prefer authenticated calls whenever we can get a token. Unauthenticated
+    # requests are capped at 60/hour per IP, and exhausting that quota is one of
+    # the ways api.github.com returns an EMPTY but HTTP-200 body — which is
+    # indistinguishable from "this repo has no releases" unless we authenticate.
+    # Env vars win; otherwise fall back to the token `gh auth login` already
+    # stored, so a client who authenticated with gh does not silently make
+    # anonymous calls.
     local auth_header=()
-    local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+    local token
+    token="$(_github_effective_token)"
     if [[ -n "$token" ]]; then
         auth_header=(-H "Authorization: token $token")
     fi
@@ -629,22 +669,78 @@ github_api_fetch() {
 # Arguments:
 #   $1 - Repository (e.g., "owner/repo")
 # Returns: Version tag (e.g., "v1.2.3") on stdout, or empty if failed
+# Explain a suspect-empty API result instead of failing mutely.
+#
+# Distinguishes the two shapes we have actually observed during degradation:
+# an empty JSON array, and a rate-limit/error object. Says plainly that this is
+# NOT evidence that no release exists.
+_github_api_warn_suspect_empty() {
+    local repo="$1" body_file="$2"
+    local shape="unrecognized response shape"
+
+    if [[ -s "$body_file" ]]; then
+        local head_bytes=""
+        head_bytes="$(head -c 200 "$body_file" 2>/dev/null || true)"
+        case "$head_bytes" in
+            '[]'*) shape="an EMPTY ARRAY" ;;
+            *'rate limit'*|*'API rate limit'*) shape="a RATE LIMIT error" ;;
+            *'Not Found'*) shape="a NOT FOUND error" ;;
+            '{'*) shape="a JSON object carrying no tag_name" ;;
+        esac
+    else
+        shape="an EMPTY BODY"
+    fi
+
+    local auth_note="unauthenticated (60 req/hour/IP)"
+    if [[ -n "$(_github_effective_token)" ]]; then
+        auth_note="authenticated"
+    fi
+
+    printf 'WARNING: %s returned %s for the latest release (%s).\n' \
+        "$repo" "$shape" "$auth_note" >&2
+    printf '         Treating this as a FAILED LOOKUP, not as "no releases exist".\n' >&2
+    if [[ "$auth_note" == unauthenticated* ]]; then
+        printf '         Run `gh auth login` for authenticated requests; anonymous quota exhaustion produces exactly this.\n' >&2
+    fi
+}
+
 github_get_latest_release() {
     local repo="$1"
     local tmp_response=""
     tmp_response="$(mktemp "${TMPDIR:-/tmp}/gh-release.XXXXXX")" || return 1
 
+    # EMPTINESS IS SUSPECT, NEVER AUTHORITATIVE.
+    #
+    # A successful HTTP fetch that yields no tag_name must NOT be reported as a
+    # successful lookup returning "". During a GitHub degradation the releases
+    # endpoint was measured returning an EMPTY ARRAY to one host while an
+    # authenticated query from another listed six releases fine. Rate-limit
+    # exhaustion (60/hr/IP unauthenticated) produces the same shape. Callers
+    # that treat "" as "no release exists" will happily skip or downgrade an
+    # install on the strength of a transport failure.
+    #
+    # So: parse into a variable, and return non-zero when we cannot positively
+    # identify a tag. An empty result is a FAILED LOOKUP, not an empty answer.
     local status=0
+    local tag=""
     if github_api_fetch "/repos/$repo/releases/latest" "$tmp_response"; then
-        # Use jq for robust parsing if available, fall back to grep/sed
         if command -v jq &>/dev/null; then
-            jq -r '.tag_name // empty' "$tmp_response"
-            status=$?
+            # Capture jq's own exit status directly - not through a pipe.
+            tag="$(jq -r '.tag_name // empty' "$tmp_response" 2>/dev/null)" || tag=""
         else
-            grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$tmp_response" \
+            # Each stage's status here belongs to the LAST command in the
+            # pipeline, so grade on the captured text instead of on `$?`.
+            tag="$(grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' "$tmp_response" 2>/dev/null \
                 | head -1 \
-                | sed 's/.*"\([^"]*\)"$/\1/'
-            status=$?
+                | sed 's/.*"\([^"]*\)"$/\1/')"
+        fi
+
+        if [[ -n "$tag" ]]; then
+            printf '%s\n' "$tag"
+            status=0
+        else
+            _github_api_warn_suspect_empty "$repo" "$tmp_response"
+            status=3
         fi
     else
         status=1
