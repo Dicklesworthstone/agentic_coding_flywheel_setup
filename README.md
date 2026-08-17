@@ -488,6 +488,15 @@ graph TD
 | **Logged** | Colored output with progress indicators |
 | **Modular** | Each category is a separate sourceable script |
 
+### Claude Code Settings Written at Install
+
+The installer provisions a few keys in `~/.claude/settings.json`, always merging non-destructively (a value you have already set is never overridden):
+
+| Key | Value | Mode | Why |
+|-----|-------|------|-----|
+| `cleanupPeriodDays` | `99999` | all modes | Claude Code silently deletes session transcripts older than this (default **30 days**) from `~/.claude/projects` — with no warning or log line. That default destroys history before cass can index it, so ACFS sets an explicit high value; lower it yourself if you actually want pruning. |
+| `skipDangerousModePermissionPrompt` | `true` | vibe only | Avoids interactive workspace-trust prompts for coding agents. |
+
 ### Resume Capability
 
 The installer tracks progress in `~/.acfs/state.json`. If interrupted:
