@@ -101,6 +101,9 @@ jobs:
       - name: Run release doctor governance tests
         run: bash tests/unit/test_release_doctor.sh
 
+      - name: Run retry-classifier parity test
+        run: bash tests/unit/test_retry_classifier_parity.sh
+
       - name: Run Ubuntu upgrade rehearsal tests
         run: bash scripts/tests/ubuntu_upgrade_test.sh
 
