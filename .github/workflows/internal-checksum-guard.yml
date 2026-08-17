@@ -1,0 +1,134 @@
+name: Internal Checksum Guard
+
+# Guards against exactly the class of defect that broke install.sh's own
+# integrity self-check on origin/main for real clients: a commit that edits a
+# hashed source script (scripts/lib/**, scripts/acfs-global,
+# scripts/acfs-update) or acfs.manifest.yaml without regenerating the
+# committed scripts/generated/* artifacts (internal_checksums.sh,
+# manifest_index.sh, etc.) that install.sh checks itself against.
+#
+# Deliberately standalone (not a job inside installer.yml): that workflow
+# bundles a dozen jobs that fail chronically for unrelated reasons, so a red
+# "Installer CI" run carries no signal about generated-artifact drift
+# specifically. This workflow has one job and one meaning: red here means
+# drift, full stop.
+#
+# Runs on every push and pull_request — never on a schedule. A nightly check
+# means clients eat a broken installer for up to a day; this has to be
+# checked before the drift-introducing commit lands, not after.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/**'
+      - 'scripts/acfs-global'
+      - 'scripts/acfs-update'
+      - 'scripts/generated/**'
+      - 'scripts/check-manifest-drift.sh'
+      - 'acfs.manifest.yaml'
+      - 'packages/manifest/**'
+  pull_request:
+    paths:
+      - 'scripts/lib/**'
+      - 'scripts/acfs-global'
+      - 'scripts/acfs-update'
+      - 'scripts/generated/**'
+      - 'scripts/check-manifest-drift.sh'
+      - 'acfs.manifest.yaml'
+      - 'packages/manifest/**'
+
+# Its own concurrency group, deliberately NOT shared with checksum-monitor.yml
+# (whose group has been starving that workflow's runs before they can start).
+# cancel-in-progress: true here is safe and desirable — only the latest push
+# on a ref/PR needs to be checked, so superseded runs should die immediately
+# rather than queue behind each other.
+concurrency:
+  group: internal-checksum-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  internal-checksum-guard:
+    name: Internal Checksum Guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Fail closed on missing prerequisites
+        run: |
+          set -euo pipefail
+          fail=0
+          for bin in bun jq sha256sum; do
+            if ! command -v "$bin" >/dev/null 2>&1; then
+              echo "::error::Required tool '$bin' is unavailable on this runner. That is a FAILURE of this guard, not a skip — a check that silently no-ops when its own prerequisites are missing is the exact vacuous-pass pattern this guard exists to prevent."
+              fail=1
+            fi
+          done
+          for f in scripts/check-manifest-drift.sh acfs.manifest.yaml scripts/generated/internal_checksums.sh scripts/generated/manifest_index.sh; do
+            if [[ ! -f "$f" ]]; then
+              echo "::error::Expected file missing: $f. Treating as FAILURE, not a skip."
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+      - name: Install manifest generator dependencies
+        run: bun install
+        working-directory: packages/manifest
+
+      - name: Check internal checksum + manifest drift (fail closed)
+        run: |
+          set -uo pipefail
+          chmod +x ./scripts/check-manifest-drift.sh
+
+          # check-only mode: hash comparisons + `generate:diff`/`drift-contract`
+          # dry-checks. Never runs a full `bun run generate` write — that only
+          # happens if a human runs --fix locally to produce the fix commit.
+          ./scripts/check-manifest-drift.sh --json > drift.json 2>drift-errors.log
+          drift_exit=$?
+
+          if ! jq empty drift.json 2>/dev/null; then
+            echo "::error::check-manifest-drift.sh did not produce valid JSON (exit $drift_exit) — treating as FAILURE, not a skip."
+            echo "--- stderr ---"
+            cat drift-errors.log >&2 || true
+            echo "--- stdout ---"
+            cat drift.json >&2 || true
+            exit 1
+          fi
+
+          if [[ "$drift_exit" -eq 0 ]]; then
+            echo "✅ No manifest/internal-checksum drift detected."
+            exit 0
+          fi
+
+          echo "::error::Generated artifacts have drifted from their committed sources."
+          echo ""
+          echo "This means install.sh's own integrity self-check would currently FAIL for every real client running the installer against this ref."
+          echo ""
+          echo "What drifted:"
+          jq -r '.reasons[]? | "  - \(.)"' drift.json
+          echo ""
+
+          internal_drifted="$(jq -r '.internal_scripts.drift_files[]?' drift.json)"
+          if [[ -n "$internal_drifted" ]]; then
+            echo "Internal script checksum mismatches (scripts/generated/internal_checksums.sh is stale):"
+            echo "$internal_drifted" | sed 's/^/  - /'
+            echo ""
+          fi
+
+          echo "To fix:"
+          echo "  cd packages/manifest && bun run generate"
+          echo "  cd -"
+          echo "  git add scripts/generated/ apps/web/lib/generated/ 2>/dev/null"
+          echo "  git commit -m 'chore(security): regenerate generated artifacts'"
+          echo ""
+          echo "(Or run ./scripts/check-manifest-drift.sh --fix locally, which does the above and pushes.)"
+
+          exit 1
