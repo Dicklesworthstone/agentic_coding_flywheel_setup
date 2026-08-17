@@ -220,6 +220,42 @@ acfs_is_retryable_curl_exit_code() {
     esac
 }
 
+# Decide whether an HTTP status is worth retrying.
+#
+# curl collapses EVERY HTTP >= 400 into exit code 22, so the exit code alone
+# cannot tell a rate limit from a genuine 404. Retrying on bare 22 would hammer
+# a missing URL forever; refusing to retry 22 - the behaviour before this change
+# - treats a rate limit as PERMANENT, which is backwards, since rate limiting is
+# the most retryable failure there is. A real client install died this way:
+# raw.githubusercontent.com answered 429 and the install never started.
+#
+# Retry: 429 (rate limited), 503 (unavailable), 502/504 (transient gateway).
+# Fatal: 404 and 403 - retrying cannot change the answer.
+acfs_is_retryable_http_status() {
+    local http_status="${1:-0}"
+    case "$http_status" in
+        429|503|502|504) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Seconds to wait per the server's Retry-After header, echoed on stdout.
+# Empty when absent or unusable. Honouring the server's own number is both
+# politer and more effective than guessing, and it is what lifts a 429 soonest.
+# Supports the delta-seconds form; an HTTP-date form is ignored deliberately
+# rather than mis-parsed into a wrong delay.
+acfs_retry_after_seconds() {
+    local headers_file="${1:-}"
+    [[ -s "$headers_file" ]] || return 0
+    local value=""
+    value="$(grep -i '^retry-after:' "$headers_file" 2>/dev/null | tail -1 \
+        | sed 's/^[Rr]etry-[Aa]fter:[[:space:]]*//; s/[[:space:]]*$//' || true)"
+    [[ "$value" =~ ^[0-9]+$ ]] || return 0
+    # Clamp so a hostile or absurd header cannot stall an install indefinitely.
+    (( value > 300 )) && value=300
+    printf '%s' "$value"
+}
+
 # Download URL to a file with retries.
 # Arguments:
 #   $1 - URL
@@ -280,15 +316,51 @@ acfs_download_to_file() {
             sleep "$delay"
         fi
 
-        # Use -o to save to file directly
-        if acfs_curl "$url" -o "$output_path"; then
-            (( attempt > 0 )) && log_info "Succeeded on retry ${attempt} for fetching ${name}"
-            return 0
+        # Capture response headers alongside the body so an HTTP failure can be
+        # classified by STATUS rather than by curl's catch-all exit 22.
+        local hdr_file=""
+        hdr_file="$(mktemp "${TMPDIR:-/tmp}/acfs-hdr.XXXXXX" 2>/dev/null || true)"
+
+        if [[ -n "$hdr_file" ]]; then
+            acfs_curl "$url" -o "$output_path" -D "$hdr_file"
         else
-            status=$?
+            acfs_curl "$url" -o "$output_path"
+        fi
+        status=$?
+
+        if (( status == 0 )); then
+            (( attempt > 0 )) && log_info "Succeeded on retry ${attempt} for fetching ${name}"
+            [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+            return 0
         fi
 
-        if ! acfs_is_retryable_curl_exit_code "$status"; then
+        local retryable=1
+        if acfs_is_retryable_curl_exit_code "$status"; then
+            retryable=0
+        elif (( status == 22 )) && [[ -n "$hdr_file" ]]; then
+            # curl exit 22 == "HTTP >= 400". Read the actual status line to tell
+            # a retryable 429/503 from a fatal 404/403.
+            local http_status=""
+            http_status="$(grep -oE '^HTTP/[0-9.]+ [0-9]{3}' "$hdr_file" 2>/dev/null \
+                | tail -1 | awk '{print $2}' || true)"
+            if [[ -n "$http_status" ]] && acfs_is_retryable_http_status "$http_status"; then
+                retryable=0
+                local server_delay=""
+                server_delay="$(acfs_retry_after_seconds "$hdr_file")"
+                if [[ -n "$server_delay" ]]; then
+                    log_info "HTTP ${http_status} for ${name}; honouring Retry-After: ${server_delay}s"
+                    sleep "$server_delay"
+                else
+                    log_info "HTTP ${http_status} for ${name}; retrying with backoff"
+                fi
+            elif [[ -n "$http_status" ]]; then
+                log_error "HTTP ${http_status} for ${name} is not retryable"
+            fi
+        fi
+
+        [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+
+        if (( retryable != 0 )); then
             return "$status"
         fi
     done
