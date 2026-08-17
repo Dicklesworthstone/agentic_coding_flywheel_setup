@@ -422,6 +422,32 @@ ACFS_MUTED="#6c7086"
 export ACFS_COMMIT_DATE=""  # exported for child processes/debugging
 ACFS_COMMIT_AGE=""
 
+# Echo a "?cb=<epoch>" cache-buster ONLY when the ref is mutable.
+#
+# A commit SHA is immutable: that URL can never serve different bytes, so it is
+# fresh by construction AND fully cacheable. Busting the cache for a SHA is pure
+# downside - it defeats the CDN, forces an origin fetch, and is exactly the
+# pattern that got a client HTTP 429 from raw.githubusercontent.com.
+#
+# A branch or tag CAN move, so for those the cache-buster is still earning its
+# keep and is deliberately retained (see the call sites for why staleness there
+# is a correctness problem, not just a freshness preference).
+#
+# NOTE FOR THE NEXT PERSON: the remaining cache-busters are NOT the same bug as
+# the ones removed from the documented install commands. Those appended a
+# timestamp to a URL fetched on every install, which is what tripped the
+# limiter. These fire only on a FALLBACK path, only for a mutable ref. Do not
+# delete them without reading the rationale at each call site.
+acfs_cache_buster_suffix() {
+    local ref="${1:-}"
+    # Full or abbreviated hex SHA -> immutable, no cache-buster needed.
+    if [[ "$ref" =~ ^[0-9a-f]{7,40}$ ]]; then
+        printf ''
+        return 0
+    fi
+    printf '?cb=%s' "$(date +%s)"
+}
+
 fetch_commit_sha() {
     # Already have it? Skip
     if [[ -n "$ACFS_COMMIT_SHA" && "$ACFS_COMMIT_SHA" != "(unknown)" ]]; then
@@ -2633,11 +2659,12 @@ bootstrap_repo_archive() {
     fi
 
     local ref="$ACFS_REF"
-    # Cache-bust GitHub's CDN to ensure we get the latest archive
-    # GitHub caches archives for up to 5 minutes; this ensures fresh downloads
-    local cache_buster
-    cache_buster="$(date +%s)"
-    local archive_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/archive/${ref}.tar.gz?cb=${cache_buster}"
+    # GitHub caches archives for up to 5 minutes, so a MUTABLE ref (branch/tag)
+    # still needs a cache-buster to guarantee a fresh download. An immutable
+    # commit SHA does not: that archive can never change, so busting the cache
+    # would only defeat the CDN and invite the rate limiting that broke a client
+    # install. acfs_cache_buster_suffix applies exactly that distinction.
+    local archive_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/archive/${ref}.tar.gz$(acfs_cache_buster_suffix "$ref")"
     local ref_safe="${ref//[^a-zA-Z0-9._-]/_}"
     local tmp_dir
     local mktemp_bin=""
@@ -3068,9 +3095,14 @@ install_checksums_yaml() {
     # Otherwise, fetch checksums from the dedicated checksums ref.
     local content=""
     content="$(acfs_fetch_fresh_checksums_via_api)" || {
-        local cb
-        cb="$(date +%s)"
-        content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml?cb=${cb}")" || {
+        # FALLBACK, reached only when the GitHub API call above failed.
+        # A stale checksums.yaml would mean verifying against the wrong
+        # checksums, so for a MUTABLE ref freshness is a correctness
+        # requirement and the cache-buster stays. For an immutable SHA the file
+        # cannot change, so the buster is dropped and the request stays
+        # cacheable - which matters most here, since the API failure that got us
+        # into this branch is often rate limiting on the same infrastructure.
+        content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml$(acfs_cache_buster_suffix "$ACFS_CHECKSUMS_REF")")" || {
             log_error "Failed to fetch checksums.yaml from ref '${ACFS_CHECKSUMS_REF}'"
             return 1
         }
@@ -3604,10 +3636,11 @@ acfs_load_upstream_checksums() {
     else
         # Fetch via GitHub API (bypasses CDN caching entirely)
         content="$(acfs_fetch_fresh_checksums_via_api)" || {
-            # Fallback to raw.githubusercontent.com with cache-bust
-            local cb
-            cb="$(date +%s)"
-            content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml?cb=${cb}")" || {
+            # Fallback to raw.githubusercontent.com. Cache-busted only for a
+            # mutable ref, where a stale answer would verify against the wrong
+            # checksums; an immutable SHA is fresh by construction and stays
+            # cacheable so this fallback does not itself trip the limiter.
+            content="$(acfs_fetch_url_content "$ACFS_CHECKSUMS_RAW/checksums.yaml$(acfs_cache_buster_suffix "$ACFS_CHECKSUMS_REF")")" || {
                 log_error "Failed to fetch checksums.yaml from any source"
                 return 1
             }
