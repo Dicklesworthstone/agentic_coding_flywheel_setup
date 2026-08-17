@@ -58,6 +58,13 @@ fi
 # or override at runtime with ACFS_GENERATED_MIGRATED_CATEGORIES env var (comma-separated).
 ACFS_GENERATED_DEFAULT_CATEGORIES=() # Empty until categories are explicitly migrated.
 
+# Human-meaningful failure category (network, checksum, missing dependency,
+# installer execution, environment setup) set by a generated install_stack_X
+# function on its own failure paths, and read (then cleared) immediately
+# after by acfs_run_generated_category_phase below. Never a raw curl exit
+# code or HTTP status -- see ACFS_MODULE_FAILURES' render site for why.
+ACFS_LAST_MODULE_FAILURE_REASON=""
+
 _acfs_upper() {
     local s="${1:-}"
     # Bash 4+: ${var^^}
@@ -1473,7 +1480,17 @@ acfs_run_generated_category_phase() {
 
         if ! "$func"; then
             log_error "Generated module failed: $module"
-            ACFS_MODULE_FAILURES+=("$module")
+            # $func (the generated install_stack_X function) sets
+            # ACFS_LAST_MODULE_FAILURE_REASON to a human-meaningful category
+            # (network, checksum, missing dependency, installer execution,
+            # environment setup) on each of its own failure paths -- never a
+            # raw curl exit code or HTTP status. Fall back to a generic
+            # label for any failure path that predates this convention or
+            # doesn't set it, so the summary never shows a bare module id
+            # with two very different failures rendering identically.
+            local failure_reason="${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed}"
+            ACFS_MODULE_FAILURES+=("$module ($failure_reason)")
+            ACFS_LAST_MODULE_FAILURE_REASON=""
             ran_any=true
             continue
         fi

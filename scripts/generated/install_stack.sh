@@ -370,6 +370,9 @@ install_stack_ntm() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -383,6 +386,7 @@ install_stack_ntm() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.ntm: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -391,20 +395,28 @@ install_stack_ntm() {
                             install_success=true
                         else
                             log_error "stack.ntm: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.ntm: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.ntm: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.ntm: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.ntm: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -454,6 +466,9 @@ install_stack_mcp_agent_mail() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -467,6 +482,7 @@ install_stack_mcp_agent_mail() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.mcp_agent_mail: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -475,20 +491,28 @@ install_stack_mcp_agent_mail() {
                             install_success=true
                         else
                             log_error "stack.mcp_agent_mail: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.mcp_agent_mail: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.mcp_agent_mail: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.mcp_agent_mail: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.mcp_agent_mail: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -878,6 +902,9 @@ install_stack_meta_skill() {
                     log_error "stack.meta_skill: cargo source install failed for Linux ARM64"
                 fi
             else
+                    # Cleared per attempt so a stale reason from an earlier module can
+                    # never be misattributed to this one.
+                    ACFS_LAST_MODULE_FAILURE_REASON=""
                 if acfs_security_init; then
                     local known_installers_decl=""
                     # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -891,6 +918,7 @@ install_stack_meta_skill() {
                         url="${KNOWN_INSTALLERS[$tool]:-}"
                         if ! expected_sha256="$(get_checksum "$tool")"; then
                             log_error "stack.meta_skill: get_checksum failed for tool '$tool'"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                             expected_sha256=""
                         fi
 
@@ -899,20 +927,28 @@ install_stack_meta_skill() {
                                 install_success=true
                             else
                                 log_error "stack.meta_skill: verify_checksum or installer execution failed"
+                                # verify_checksum sets a specific reason (network/checksum) on
+                                # its own failure paths; only default here when it succeeded
+                                # and the piped installer script itself is what failed.
+                                : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                             fi
                         else
                             if [[ -z "$url" ]]; then
                                 log_error "stack.meta_skill: KNOWN_INSTALLERS[$tool] not found"
+                                ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                             fi
                             if [[ -z "$expected_sha256" ]]; then
                                 log_error "stack.meta_skill: checksum for '$tool' not found"
+                                ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                             fi
                         fi
                     else
                         log_error "stack.meta_skill: KNOWN_INSTALLERS array not available"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                     fi
                 else
                     log_error "stack.meta_skill: acfs_security_init failed - check security.sh and checksums.yaml"
+                    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
                 fi
             fi
 
@@ -973,6 +1009,9 @@ install_stack_automated_plan_reviser() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -986,6 +1025,7 @@ install_stack_automated_plan_reviser() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.automated_plan_reviser: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -994,20 +1034,28 @@ install_stack_automated_plan_reviser() {
                             install_success=true
                         else
                             log_error "stack.automated_plan_reviser: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.automated_plan_reviser: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.automated_plan_reviser: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.automated_plan_reviser: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.automated_plan_reviser: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1077,6 +1125,9 @@ install_stack_jeffreysprompts() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1090,6 +1141,7 @@ install_stack_jeffreysprompts() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.jeffreysprompts: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1098,20 +1150,28 @@ install_stack_jeffreysprompts() {
                             install_success=true
                         else
                             log_error "stack.jeffreysprompts: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.jeffreysprompts: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.jeffreysprompts: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.jeffreysprompts: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.jeffreysprompts: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1181,6 +1241,9 @@ install_stack_process_triage() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1194,6 +1257,7 @@ install_stack_process_triage() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.process_triage: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1202,20 +1266,28 @@ install_stack_process_triage() {
                             install_success=true
                         else
                             log_error "stack.process_triage: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.process_triage: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.process_triage: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.process_triage: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.process_triage: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1285,6 +1357,9 @@ install_stack_ultimate_bug_scanner() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1298,6 +1373,7 @@ install_stack_ultimate_bug_scanner() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.ultimate_bug_scanner: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1306,20 +1382,28 @@ install_stack_ultimate_bug_scanner() {
                             install_success=true
                         else
                             log_error "stack.ultimate_bug_scanner: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.ultimate_bug_scanner: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.ultimate_bug_scanner: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.ultimate_bug_scanner: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.ultimate_bug_scanner: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1379,6 +1463,9 @@ install_stack_beads_rust() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1392,6 +1479,7 @@ install_stack_beads_rust() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.beads_rust: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1400,20 +1488,28 @@ install_stack_beads_rust() {
                             install_success=true
                         else
                             log_error "stack.beads_rust: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.beads_rust: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.beads_rust: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.beads_rust: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.beads_rust: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1473,6 +1569,9 @@ install_stack_beads_viewer() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1486,6 +1585,7 @@ install_stack_beads_viewer() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.beads_viewer: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1494,20 +1594,28 @@ install_stack_beads_viewer() {
                             install_success=true
                         else
                             log_error "stack.beads_viewer: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.beads_viewer: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.beads_viewer: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.beads_viewer: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.beads_viewer: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1578,6 +1686,9 @@ install_stack_cass() {
                 verified_installer_env_ready=false
             fi
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if [[ "$verified_installer_env_ready" = "true" ]] && acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1591,6 +1702,7 @@ install_stack_cass() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.cass: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1599,23 +1711,32 @@ install_stack_cass() {
                             install_success=true
                         else
                             log_error "stack.cass: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.cass: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.cass: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.cass: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 if [[ "$verified_installer_env_ready" != "true" ]]; then
                     log_error "stack.cass: verified installer environment setup failed"
+                    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
                 else
                     log_error "stack.cass: acfs_security_init failed - check security.sh and checksums.yaml"
+                    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
                 fi
             fi
 
@@ -1666,6 +1787,9 @@ install_stack_cm() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1679,6 +1803,7 @@ install_stack_cm() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.cm: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1687,20 +1812,28 @@ install_stack_cm() {
                             install_success=true
                         else
                             log_error "stack.cm: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.cm: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.cm: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.cm: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.cm: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1760,6 +1893,9 @@ install_stack_caam() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1773,6 +1909,7 @@ install_stack_caam() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.caam: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1781,20 +1918,28 @@ install_stack_caam() {
                             install_success=true
                         else
                             log_error "stack.caam: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.caam: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.caam: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.caam: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.caam: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1917,6 +2062,9 @@ install_stack_dcg() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1930,6 +2078,7 @@ install_stack_dcg() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.dcg: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1938,20 +2087,28 @@ install_stack_dcg() {
                             install_success=true
                         else
                             log_error "stack.dcg: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.dcg: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.dcg: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.dcg: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.dcg: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2065,6 +2222,9 @@ install_stack_ru() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2078,6 +2238,7 @@ install_stack_ru() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.ru: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2086,20 +2247,28 @@ install_stack_ru() {
                             install_success=true
                         else
                             log_error "stack.ru: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.ru: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.ru: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.ru: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.ru: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2149,6 +2318,9 @@ install_stack_brenner_bot() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2162,6 +2334,7 @@ install_stack_brenner_bot() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.brenner_bot: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2170,20 +2343,28 @@ install_stack_brenner_bot() {
                             install_success=true
                         else
                             log_error "stack.brenner_bot: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.brenner_bot: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.brenner_bot: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.brenner_bot: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.brenner_bot: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2243,6 +2424,9 @@ install_stack_rch() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2256,6 +2440,7 @@ install_stack_rch() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.rch: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2264,20 +2449,28 @@ install_stack_rch() {
                             install_success=true
                         else
                             log_error "stack.rch: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.rch: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.rch: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.rch: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.rch: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2392,6 +2585,9 @@ install_stack_srps() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2405,6 +2601,7 @@ install_stack_srps() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.srps: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2413,20 +2610,28 @@ install_stack_srps() {
                             install_success=true
                         else
                             log_error "stack.srps: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.srps: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.srps: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.srps: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.srps: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2502,6 +2707,9 @@ install_stack_frankensearch() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+            # Cleared per attempt so a stale reason from an earlier module can
+            # never be misattributed to this one.
+            ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2515,6 +2723,7 @@ install_stack_frankensearch() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.frankensearch: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2595,21 +2804,26 @@ install_stack_frankensearch() {
                                 install_success=true
                             else
                                 log_error "stack.frankensearch: verify_checksum or installer execution failed"
+                                : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                             fi
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.frankensearch: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.frankensearch: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.frankensearch: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.frankensearch: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2669,6 +2883,9 @@ install_stack_storage_ballast_helper() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2682,6 +2899,7 @@ install_stack_storage_ballast_helper() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.storage_ballast_helper: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2690,20 +2908,28 @@ install_stack_storage_ballast_helper() {
                             install_success=true
                         else
                             log_error "stack.storage_ballast_helper: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.storage_ballast_helper: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.storage_ballast_helper: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.storage_ballast_helper: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.storage_ballast_helper: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2763,6 +2989,9 @@ install_stack_cross_agent_session_resumer() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2776,6 +3005,7 @@ install_stack_cross_agent_session_resumer() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.cross_agent_session_resumer: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2784,20 +3014,28 @@ install_stack_cross_agent_session_resumer() {
                             install_success=true
                         else
                             log_error "stack.cross_agent_session_resumer: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.cross_agent_session_resumer: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.cross_agent_session_resumer: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.cross_agent_session_resumer: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.cross_agent_session_resumer: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2857,6 +3095,9 @@ install_stack_doodlestein_self_releaser() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2870,6 +3111,7 @@ install_stack_doodlestein_self_releaser() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.doodlestein_self_releaser: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2878,20 +3120,28 @@ install_stack_doodlestein_self_releaser() {
                             install_success=true
                         else
                             log_error "stack.doodlestein_self_releaser: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.doodlestein_self_releaser: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.doodlestein_self_releaser: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.doodlestein_self_releaser: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.doodlestein_self_releaser: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -2951,6 +3201,9 @@ install_stack_agent_settings_backup() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -2964,6 +3217,7 @@ install_stack_agent_settings_backup() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.agent_settings_backup: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -2972,20 +3226,28 @@ install_stack_agent_settings_backup() {
                             install_success=true
                         else
                             log_error "stack.agent_settings_backup: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.agent_settings_backup: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.agent_settings_backup: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.agent_settings_backup: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.agent_settings_backup: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -3114,6 +3376,9 @@ INSTALL_STACK_PCR_PRE_INSTALL_CHECK
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -3127,6 +3392,7 @@ INSTALL_STACK_PCR_PRE_INSTALL_CHECK
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "stack.pcr: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -3135,20 +3401,28 @@ INSTALL_STACK_PCR_PRE_INSTALL_CHECK
                             install_success=true
                         else
                             log_error "stack.pcr: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "stack.pcr: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "stack.pcr: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "stack.pcr: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "stack.pcr: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback

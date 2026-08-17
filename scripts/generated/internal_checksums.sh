@@ -8,14 +8,14 @@
 # Used by check-manifest-drift.sh to detect unauthorized changes.
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [scripts/lib/security.sh]="70564b9f9ec10f3d93eb896c58bf491da80aef6520025cb02cdb03a52a23662e"
+  [scripts/lib/security.sh]="bf0c8005e0eaf80b9cc55dc14b454271b4e26dc83517612bfc0ecf6eddcf3147"
   [scripts/lib/agents.sh]="ae0cec5811a00648983c39ecf27e6ec477f3dd616f65dff3db27c154a4ff7304"
   [scripts/lib/update.sh]="8db81c0e63ac9f0617560073f8384ee740b1dfa50aaf191aae7e4f10ddb62ed5"
   [scripts/lib/doctor.sh]="2881e278b9b48526e67ca66f05394c34ab73d0731529982e7a71cc8353c46b3d"
   [scripts/lib/doctor_fix.sh]="5a6186aaefa18bc253e863f6758091148293753e254b590bad13ad526186b67e"
   [scripts/lib/offline_artifact_pack.sh]="5f6fa7e5a9e115904656a627853b2c7d556183532a3d8fd42a0363bf3570c7eb"
   [scripts/lib/autofix.sh]="0468d4889d304a404f161778ddf393a71fa7657317f88f692a47442760ed78d9"
-  [scripts/lib/install_helpers.sh]="2ff5d602331fef1b98c70d41201a4dbd61ac51e0f856ec130616bbdf4e8f95df"
+  [scripts/lib/install_helpers.sh]="33a775ef8b94479c08b221a19bd39ec624649f1382254678ab675a999962a7cf"
   [scripts/lib/logging.sh]="890d8e6e44332bede591e462b277a903ae8d8679adebd8cc4fc76face078f6be"
   [scripts/lib/state.sh]="3ce715176330459b2d9ce341f491fd6d4aabf81c54d94e3d76b01a0fb58dc8bf"
   [scripts/lib/session.sh]="8a2ab64a67006c62ac0db8d89ea6d71d160f3f2efd2cb99ffe6ea0857abde3e5"

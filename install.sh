@@ -2702,6 +2702,41 @@ acfs_is_retryable_curl_exit_code() {
     esac
 }
 
+# Decide whether an HTTP status is worth retrying. Mirrors
+# scripts/lib/security.sh's acfs_is_retryable_http_status exactly (7a59cb29)
+# -- duplicated rather than sourced because acfs_curl_with_retry runs inside
+# bootstrap_repo_archive, BEFORE security.sh exists on disk in curl-pipe
+# mode (detect_environment only sources it once bootstrap has already
+# fetched it). This is the exact fetch leg 64a5a6e8 says it closed 429
+# exposure on -- the DEFAULT install path, ref=main, not a pinned SHA --
+# and it was still fatal-on-first-429 until this duplication, because the
+# 7a59cb29 fix landed only in security.sh's separate download helper.
+#
+# curl collapses EVERY HTTP >= 400 into exit code 22, so the exit code alone
+# cannot tell a rate limit from a genuine 404. Retry: 429/503/502/504.
+# Fatal: 404 and 403 -- retrying cannot change the answer.
+acfs_is_retryable_http_status() {
+    local http_status="${1:-0}"
+    case "$http_status" in
+        429|503|502|504) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Seconds to wait per the server's Retry-After header, echoed on stdout.
+# Empty when absent or unusable. Mirrors security.sh's
+# acfs_retry_after_seconds (see the duplication note above).
+acfs_retry_after_seconds() {
+    local headers_file="${1:-}"
+    [[ -s "$headers_file" ]] || return 0
+    local value=""
+    value="$(grep -i '^retry-after:' "$headers_file" 2>/dev/null | tail -1 \
+        | sed 's/^[Rr]etry-[Aa]fter:[[:space:]]*//; s/[[:space:]]*$//' || true)"
+    [[ "$value" =~ ^[0-9]+$ ]] || return 0
+    (( value > 300 )) && value=300
+    printf '%s' "$value"
+}
+
 acfs_curl_with_retry() {
     local url="$1"
     local output_path="$2"
@@ -2725,14 +2760,50 @@ acfs_curl_with_retry() {
             sleep "$delay"
         fi
 
-        if acfs_curl -o "$output_path" "$url"; then
-            return 0
+        # Capture response headers alongside the body so an HTTP failure can
+        # be classified by STATUS rather than by curl's catch-all exit 22.
+        local hdr_file=""
+        hdr_file="$(mktemp "${TMPDIR:-/tmp}/acfs-bootstrap-hdr.XXXXXX" 2>/dev/null || true)"
+
+        if [[ -n "$hdr_file" ]]; then
+            acfs_curl -o "$output_path" -D "$hdr_file" "$url"
         else
-            exit_code=$?
+            acfs_curl -o "$output_path" "$url"
         fi
-        if ! acfs_is_retryable_curl_exit_code "$exit_code"; then
-            return "$exit_code"
+        exit_code=$?
+
+        if (( exit_code == 0 )); then
+            [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+            return 0
         fi
+
+        if acfs_is_retryable_curl_exit_code "$exit_code"; then
+            [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+            continue
+        fi
+
+        if (( exit_code == 22 )) && [[ -n "$hdr_file" && -s "$hdr_file" ]]; then
+            local http_status=""
+            http_status="$(grep -oE '^HTTP/[0-9.]+ [0-9]{3}' "$hdr_file" 2>/dev/null \
+                | tail -1 | awk '{print $2}')" || http_status=""
+            if [[ -n "$http_status" ]] && acfs_is_retryable_http_status "$http_status"; then
+                local server_delay=""
+                server_delay="$(acfs_retry_after_seconds "$hdr_file")"
+                rm -f "$hdr_file" 2>/dev/null
+                if [[ -n "$server_delay" ]]; then
+                    log_detail "HTTP ${http_status}; honouring Retry-After: ${server_delay}s"
+                    sleep "$server_delay"
+                else
+                    log_detail "HTTP ${http_status}; retrying with backoff"
+                fi
+                continue
+            elif [[ -n "$http_status" ]]; then
+                log_detail "HTTP ${http_status} is not retryable"
+            fi
+        fi
+
+        [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+        return "$exit_code"
     done
 
     return 1

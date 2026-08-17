@@ -486,6 +486,9 @@ install_tools_atuin() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -499,6 +502,7 @@ install_tools_atuin() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "tools.atuin: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -507,20 +511,28 @@ install_tools_atuin() {
                             install_success=true
                         else
                             log_error "tools.atuin: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "tools.atuin: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "tools.atuin: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "tools.atuin: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "tools.atuin: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -657,6 +669,9 @@ install_tools_zoxide() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -670,6 +685,7 @@ install_tools_zoxide() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "tools.zoxide: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -678,20 +694,28 @@ install_tools_zoxide() {
                             install_success=true
                         else
                             log_error "tools.zoxide: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "tools.zoxide: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "tools.zoxide: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "tools.zoxide: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "tools.zoxide: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -848,6 +872,9 @@ install_utils_giil() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -861,6 +888,7 @@ install_utils_giil() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "utils.giil: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -869,20 +897,28 @@ install_utils_giil() {
                             install_success=true
                         else
                             log_error "utils.giil: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "utils.giil: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "utils.giil: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "utils.giil: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "utils.giil: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -942,6 +978,9 @@ install_utils_csctf() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -955,6 +994,7 @@ install_utils_csctf() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "utils.csctf: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -963,20 +1003,28 @@ install_utils_csctf() {
                             install_success=true
                         else
                             log_error "utils.csctf: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "utils.csctf: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "utils.csctf: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "utils.csctf: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "utils.csctf: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1036,6 +1084,9 @@ install_utils_xf() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1049,6 +1100,7 @@ install_utils_xf() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "utils.xf: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1057,20 +1109,28 @@ install_utils_xf() {
                             install_success=true
                         else
                             log_error "utils.xf: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "utils.xf: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "utils.xf: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "utils.xf: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "utils.xf: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1130,6 +1190,9 @@ install_utils_toon_rust() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1143,6 +1206,7 @@ install_utils_toon_rust() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "utils.toon_rust: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1151,20 +1215,28 @@ install_utils_toon_rust() {
                             install_success=true
                         else
                             log_error "utils.toon_rust: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "utils.toon_rust: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "utils.toon_rust: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "utils.toon_rust: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "utils.toon_rust: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1224,6 +1296,9 @@ install_utils_rano() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1237,6 +1312,7 @@ install_utils_rano() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "utils.rano: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1245,20 +1321,28 @@ install_utils_rano() {
                             install_success=true
                         else
                             log_error "utils.rano: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "utils.rano: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "utils.rano: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "utils.rano: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "utils.rano: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1318,6 +1402,9 @@ install_utils_mdwb() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1331,6 +1418,7 @@ install_utils_mdwb() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "utils.mdwb: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1339,20 +1427,28 @@ install_utils_mdwb() {
                             install_success=true
                         else
                             log_error "utils.mdwb: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "utils.mdwb: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "utils.mdwb: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "utils.mdwb: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "utils.mdwb: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1412,6 +1508,9 @@ install_utils_s2p() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1425,6 +1524,7 @@ install_utils_s2p() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "utils.s2p: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1433,20 +1533,28 @@ install_utils_s2p() {
                             install_success=true
                         else
                             log_error "utils.s2p: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "utils.s2p: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "utils.s2p: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "utils.s2p: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "utils.s2p: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback

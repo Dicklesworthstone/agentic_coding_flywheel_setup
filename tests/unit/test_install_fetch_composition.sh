@@ -156,9 +156,9 @@ if [[ "$HTTPBIN_OK" == "true" ]]; then
     echo "   rc=$b1_rc elapsed=${b1_elapsed}s"
     sed 's/^/   | /' "$TMPROOT/b1.log"
     b1_retried="false"
-    grep -qi "retry" "$TMPROOT/b1.log" && b1_retried="true"
-    assert "B1. acfs_curl_with_retry on a persistent 429: NO retry attempted (elapsed < 4s, no 'Retry' log line) — this is the composition GAP" \
-        "$([[ "$b1_elapsed" -lt 4 && "$b1_retried" == "false" ]] && echo true || echo false)"
+    grep -qi "retry\|HTTP 429" "$TMPROOT/b1.log" && b1_retried="true"
+    assert "B1. acfs_curl_with_retry on a persistent 429: DOES retry with backoff (elapsed >= 15s, HTTP 429 logged) — this was the composition GAP (still fatal-on-first-429 as of 229a14ee), now closed" \
+        "$([[ "$b1_elapsed" -ge 15 && "$b1_retried" == "true" ]] && echo true || echo false)"
 
     echo
     echo "-- B2: security.sh's verify_checksum() / acfs_download_to_file() -- the"
@@ -185,9 +185,9 @@ if [[ "$HTTPBIN_OK" == "true" ]]; then
     acfs_curl_with_retry "https://httpbin.org/status/503" "$b3_out" > "$TMPROOT/b3.log" 2>&1
     b3_elapsed=$(( $(date +%s) - b3_start ))
     b3_retried="false"
-    grep -qi "retry" "$TMPROOT/b3.log" && b3_retried="true"
-    assert "B3. acfs_curl_with_retry on persistent 503: also NOT retried (same gap, not 429-specific)" \
-        "$([[ "$b3_elapsed" -lt 4 && "$b3_retried" == "false" ]] && echo true || echo false)"
+    grep -qi "retry\|HTTP 503" "$TMPROOT/b3.log" && b3_retried="true"
+    assert "B3. acfs_curl_with_retry on persistent 503: also retried now (fix is not 429-specific)" \
+        "$([[ "$b3_elapsed" -ge 15 && "$b3_retried" == "true" ]] && echo true || echo false)"
 
     b4_log="$TMPROOT/b4.log"
     b4_start=$(date +%s)
@@ -255,8 +255,9 @@ if [[ "$HTTPBIN_OK" == "true" ]]; then
     meta_skill_ran="false"
     grep -q "stack.meta_skill installed" "$category_log" && meta_skill_ran="true"
     ntm_recorded="false"
+    ntm_recorded_reason=""
     for f in "${ACFS_MODULE_FAILURES[@]:-}"; do
-        [[ "$f" == "stack.ntm" ]] && ntm_recorded="true"
+        [[ "$f" == stack.ntm* ]] && { ntm_recorded="true"; ntm_recorded_reason="$f"; }
     done
     retries_happened="false"
     grep -qi "retry" "$category_log" && retries_happened="true"
@@ -290,10 +291,58 @@ if [[ "$HTTPBIN_OK" == "true" ]]; then
     assert "C9. print_summary text does NOT leak the raw HTTP status 429 anywhere" "$([[ "$leaks_raw_http_status" == "false" ]] && echo true || echo false)"
 
     echo
-    echo "   --- verbatim summary failure line(s) shown to the user ---"
+    echo "   --- verbatim summary failure line for the fetch-exhaustion case ---"
     grep -A2 "did not install" "$summary_log" | sed 's/^/   | /'
     echo "   -------------------------------------------------------------"
-    note "C10 (reporting, not pass/fail): the line above is what a real client sees for THIS failure. It names the module ('stack.ntm') but carries no further reason text (no 'network', 'fetch', or 'retries exhausted' wording) — the ACFS_MODULE_FAILURES array only ever stores the bare module id, regardless of failure cause. That is honestly 'not a raw curl code' but it is short of 'names a fetch-exhaustion failure' in the sense of explaining WHY — it names WHICH, not WHY."
+
+    assert "C10. stack.ntm's fetch-exhaustion failure now carries a human-meaningful reason ('network'), not just the bare module id" \
+        "$([[ "$ntm_recorded_reason" == "stack.ntm (network)" ]] && echo true || echo false)"
+
+    # -- C11-C13: a DIFFERENT failure cause (real checksum mismatch, not
+    # fetch exhaustion) must render with a DIFFERENT reason than C10's
+    # network failure. Before this fix both rendered identically as the
+    # bare module id; that collapse is exactly what this proves is gone.
+    #
+    # Deliberately does NOT re-run acfs_run_generated_category_phase: doing
+    # so a second time reinstalls every REAL module in stack/phase 9 (not
+    # just the one under test), which is expensive and was observed to blow
+    # past this test's time budget. Instead this calls the module function
+    # directly and applies install_helpers.sh's own record-and-continue
+    # snippet (mirrored, not reimplemented differently) to the one call —
+    # exercising the exact same reason-capture contract without paying for
+    # a second full category run.
+    install_stack_cass_checksum_probe() {
+        local module_id="stack.cass"
+        log_step "Installing stack.cass (checksum-mismatch probe)"
+        # Real verify_checksum() against a real, reachable URL but the
+        # WRONG expected checksum -- a genuine checksum mismatch, not a
+        # network failure and not a hand-written return 1.
+        if ! verify_checksum "https://httpbin.org/status/200" "0000000000000000000000000000000000000000000000000000000000000000" "stack.cass"; then
+            log_error "stack.cass: verified installer failed"
+            return 1
+        fi
+        log_success "stack.cass installed"
+    }
+
+    ACFS_LAST_MODULE_FAILURE_REASON=""
+    cass_probe_log="$TMPROOT/cass_probe.log"
+    if ! install_stack_cass_checksum_probe > "$cass_probe_log" 2>&1; then
+        cass_failure_reason="${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed}"
+    else
+        cass_failure_reason="<did not fail>"
+    fi
+
+    assert "C11. a genuine checksum-mismatch failure (stack.cass) sets reason 'checksum'" \
+        "$([[ "$cass_failure_reason" == "checksum" ]] && echo true || echo false)"
+    assert "C12. the fetch-exhaustion (network, from C10) and checksum-mismatch (checksum) failures produce DIFFERENT reasons — this is the collapse-of-distinct-states bug now fixed" \
+        "$([[ "$ntm_recorded_reason" == "stack.ntm (network)" && "$cass_failure_reason" == "checksum" ]] && echo true || echo false)"
+
+    leaks_22_v2="false"
+    grep -Eq '(^| )22( |$)|exit code 22|curl.*22\b' "$cass_probe_log" && leaks_22_v2="true"
+    leaks_429_status_v2="false"
+    grep -q "HTTP 429" "$cass_probe_log" && leaks_429_status_v2="true"
+    assert "C13. the checksum-mismatch reason itself is never a raw curl exit code or HTTP status" \
+        "$([[ "$leaks_22_v2" == "false" && "$leaks_429_status_v2" == "false" && "$cass_failure_reason" == "checksum" ]] && echo true || echo false)"
 else
     note "Part C SKIPPED: no network to httpbin.org from this sandbox."
 fi

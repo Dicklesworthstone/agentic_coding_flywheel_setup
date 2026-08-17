@@ -370,6 +370,9 @@ install_lang_bun() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -383,6 +386,7 @@ install_lang_bun() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "lang.bun: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -391,20 +395,28 @@ install_lang_bun() {
                             install_success=true
                         else
                             log_error "lang.bun: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "lang.bun: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "lang.bun: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "lang.bun: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "lang.bun: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -454,6 +466,9 @@ install_lang_uv() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -467,6 +482,7 @@ install_lang_uv() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "lang.uv: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -475,20 +491,28 @@ install_lang_uv() {
                             install_success=true
                         else
                             log_error "lang.uv: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "lang.uv: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "lang.uv: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "lang.uv: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "lang.uv: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -538,6 +562,9 @@ install_lang_rust() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -551,6 +578,7 @@ install_lang_rust() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "lang.rust: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -559,20 +587,28 @@ install_lang_rust() {
                             install_success=true
                         else
                             log_error "lang.rust: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "lang.rust: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "lang.rust: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "lang.rust: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "lang.rust: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -672,6 +708,9 @@ install_lang_nvm() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -685,6 +724,7 @@ install_lang_nvm() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "lang.nvm: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -693,20 +733,28 @@ install_lang_nvm() {
                             install_success=true
                         else
                             log_error "lang.nvm: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "lang.nvm: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "lang.nvm: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "lang.nvm: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "lang.nvm: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback

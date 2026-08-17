@@ -370,6 +370,9 @@ install_agents_claude() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -383,6 +386,7 @@ install_agents_claude() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "agents.claude: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -391,20 +395,28 @@ install_agents_claude() {
                             install_success=true
                         else
                             log_error "agents.claude: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "agents.claude: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "agents.claude: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "agents.claude: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "agents.claude: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1175,6 +1187,9 @@ install_agents_antigravity() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1188,6 +1203,7 @@ install_agents_antigravity() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "agents.antigravity: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1196,20 +1212,28 @@ install_agents_antigravity() {
                             install_success=true
                         else
                             log_error "agents.antigravity: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "agents.antigravity: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "agents.antigravity: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "agents.antigravity: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "agents.antigravity: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback
@@ -1337,6 +1361,9 @@ install_agents_opencode() {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
 
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
             if acfs_security_init; then
                 local known_installers_decl=""
                 # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
@@ -1350,6 +1377,7 @@ install_agents_opencode() {
                     url="${KNOWN_INSTALLERS[$tool]:-}"
                     if ! expected_sha256="$(get_checksum "$tool")"; then
                         log_error "agents.opencode: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         expected_sha256=""
                     fi
 
@@ -1358,20 +1386,28 @@ install_agents_opencode() {
                             install_success=true
                         else
                             log_error "agents.opencode: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
                         fi
                     else
                         if [[ -z "$url" ]]; then
                             log_error "agents.opencode: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                         if [[ -z "$expected_sha256" ]]; then
                             log_error "agents.opencode: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                         fi
                     fi
                 else
                     log_error "agents.opencode: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
                 fi
             else
                 log_error "agents.opencode: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
             fi
 
             # Verified install is required - no fallback

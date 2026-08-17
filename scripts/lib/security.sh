@@ -1030,12 +1030,16 @@ verify_checksum() {
 
     if ! acfs_download_to_file "$url" "$tmp_file" "$name"; then
         log_error "Security Error: Failed to fetch $name"
+        # Human-meaningful category for install_helpers.sh's per-module
+        # failure summary -- never a raw curl exit code or HTTP status.
+        ACFS_LAST_MODULE_FAILURE_REASON="network"
         status=1
     fi
 
     local actual_sha256=""
     if [[ "$status" -eq 0 ]] && ! actual_sha256=$(calculate_file_sha256 "$tmp_file"); then
         log_error "Security Error: Failed to checksum $name"
+        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
         status=1
     fi
 
@@ -1077,6 +1081,7 @@ verify_checksum() {
 
         if [[ -z "$verified_file" ]]; then
             log_error "Security Error: Checksum mismatch for $name"
+            ACFS_LAST_MODULE_FAILURE_REASON="checksum"
             printf "  Expected: %s\n" "$expected_sha256" >&2
             printf "  Actual:   %s\n" "$actual_sha256" >&2
             printf "  URL: %s\n" "$url" >&2
