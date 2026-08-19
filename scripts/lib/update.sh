@@ -2986,11 +2986,14 @@ sync_acfs_deployed() {
     acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
     [[ -n "$acfs_home" ]] || return 0
 
-    # Only sync when the repo is a different directory from ~/.acfs
-    local resolved_repo resolved_home
-    resolved_repo="$(realpath "$ACFS_REPO_ROOT" 2>/dev/null || printf '%s\n' "$ACFS_REPO_ROOT")"
-    resolved_home="$(realpath "$acfs_home" 2>/dev/null || printf '%s\n' "$acfs_home")"
-    [[ "$resolved_repo" != "$resolved_home" ]] || return 0
+    # When the repo IS ~/.acfs (self-managed git-checkout installs), the
+    # identity-path files (scripts/lib, scripts/generated, checksums.yaml,
+    # VERSION, ...) are already fresh from the git pull and are skipped below
+    # by the git-tracked target guard. The REMAPPED pairs, however, still
+    # need deploying on that topology (acfs/onboard/lessons/*.md ->
+    # onboard/lessons/, packages/onboard/onboard.sh -> onboard/onboard.sh,
+    # acfs/zsh/* -> zsh/*), so do not bail out entirely; a per-file
+    # same-path guard below prevents any file from being copied onto itself.
 
     _acfs_deployed_path_is_git_tracked() {
         local deployed_root="$1"
@@ -3055,6 +3058,12 @@ sync_acfs_deployed() {
         else
             source_file="$ACFS_REPO_ROOT/$repo_rel"
             [[ -f "$source_file" ]] || return 0
+            # Never copy a file onto itself (identity pairs when the repo
+            # checkout and ~/.acfs are the same directory).
+            local resolved_source resolved_target
+            resolved_source="$(realpath "$source_file" 2>/dev/null || printf '%s\n' "$source_file")"
+            resolved_target="$(realpath "$deployed_file" 2>/dev/null || printf '%s\n' "$deployed_file")"
+            [[ "$resolved_source" != "$resolved_target" ]] || return 0
         fi
         target_mode_override="$(_acfs_deployed_target_mode_override "$deployed_rel")"
 
