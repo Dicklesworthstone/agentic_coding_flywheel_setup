@@ -61,6 +61,10 @@ import { LangRuntimesLesson } from "./lang-runtimes-lesson";
 import { CloudInfraLesson } from "./cloud-infra-lesson";
 import { SecurityLayersLesson } from "./security-layers-lesson";
 import { AcfsDoctorLesson } from "./acfs-doctor-lesson";
+import { EeLesson } from "./ee-lesson";
+import { FmdLesson } from "./fmd-lesson";
+import { PiLesson } from "./pi-lesson";
+import { PfrLesson } from "./pfr-lesson";
 
 // Render the lesson content for a given slug.
 // This intentionally uses a static switch so ESLint can guarantee components are not created during render.
@@ -188,6 +192,14 @@ export function renderLessonComponent(slug: string): React.ReactNode | null {
       return <SecurityLayersLesson />;
     case "acfs-doctor":
       return <AcfsDoctorLesson />;
+    case "ee":
+      return <EeLesson />;
+    case "fmd":
+      return <FmdLesson />;
+    case "pi":
+      return <PiLesson />;
+    case "pfr":
+      return <PfrLesson />;
     default:
       return null;
   }
@@ -256,4 +268,8 @@ export {
   CloudInfraLesson,
   SecurityLayersLesson,
   AcfsDoctorLesson,
+  EeLesson,
+  FmdLesson,
+  PiLesson,
+  PfrLesson,
 };

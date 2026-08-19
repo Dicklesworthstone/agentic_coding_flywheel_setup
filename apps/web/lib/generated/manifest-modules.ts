@@ -32,8 +32,8 @@ export interface ManifestProvenanceMetadata {
 
 export const manifestProvenance = {
   acfsVersion: "0.7.0",
-  manifestSha256: "8264202677f090aa78fe8d6487d126665810ea78083e259d51025013cd390332",
-  checksumsYamlSha256: "e0cc846cb7c6129db8a53c09a31d82c060c2ce82ab7c881d9b5b40ab038bf695",
+  manifestSha256: "27925cc47c8e5081c5e7027a132fc59a817ad6f5f3aef0d4e049d9a7e1f21fa7",
+  checksumsYamlSha256: "28b1ad698f28038cd7929dd3d71b17d6c65512c0417b0fb16ff90bf0c2b11929",
 } as const satisfies ManifestProvenanceMetadata;
 
 export const manifestModules: ManifestModuleMetadata[] = [
@@ -826,6 +826,66 @@ export const manifestModules: ManifestModuleMetadata[] = [
       "recommended",
       "safety",
       "hooks",
+    ],
+    enabledByDefault: true,
+    optional: true,
+  },
+  {
+    id: "stack.eidetic_engine_cli",
+    description: "Durable, local-first, explainable memory for coding agents (ee)",
+    category: "stack",
+    phase: 9,
+    dependencies: [
+      "lang.rust",
+    ],
+    tags: [
+      "recommended",
+      "memory",
+    ],
+    enabledByDefault: true,
+    optional: true,
+  },
+  {
+    id: "stack.franken_markdown",
+    description: "Pure-Rust Markdown engine rendering self-contained HTML and tagged PDF (fmd)",
+    category: "stack",
+    phase: 9,
+    dependencies: [
+      "lang.rust",
+    ],
+    tags: [
+      "recommended",
+      "docs",
+    ],
+    enabledByDefault: true,
+    optional: true,
+  },
+  {
+    id: "stack.pi_agent_rust",
+    description: "Native single-binary Rust port of the Pi coding agent (pi)",
+    category: "stack",
+    phase: 9,
+    dependencies: [
+      "lang.rust",
+    ],
+    tags: [
+      "recommended",
+      "agent",
+    ],
+    enabledByDefault: true,
+    optional: true,
+  },
+  {
+    id: "stack.power_failure_resumer",
+    description: "Recover crashed coding-agent sessions after a hard power cut (pfr)",
+    category: "stack",
+    phase: 9,
+    dependencies: [
+      "cli.modern",
+    ],
+    tags: [
+      "recommended",
+      "reliability",
     ],
     enabledByDefault: true,
     optional: true,

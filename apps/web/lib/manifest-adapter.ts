@@ -59,6 +59,10 @@ export const shortIdToModuleId: Record<string, string> = {
   dsr: 'stack.doodlestein_self_releaser',
   asb: 'stack.agent_settings_backup',
   pcr: 'stack.pcr',
+  ee: 'stack.eidetic_engine_cli',
+  fmd: 'stack.franken_markdown',
+  pi: 'stack.pi_agent_rust',
+  pfr: 'stack.power_failure_resumer',
 };
 
 // Lookup maps indexed by moduleId for O(1) access

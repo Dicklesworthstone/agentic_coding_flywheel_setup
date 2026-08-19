@@ -350,7 +350,7 @@ acfs_security_init() {
 }
 
 # Category: stack
-# Modules: 25
+# Modules: 29
 
 # Named tmux manager (agent cockpit)
 install_stack_ntm() {
@@ -3508,6 +3508,430 @@ INSTALL_STACK_PCR
     log_success "stack.pcr installed"
 }
 
+# Durable, local-first, explainable memory for coding agents (ee)
+install_stack_eidetic_engine_cli() {
+    local module_id="stack.eidetic_engine_cli"
+    acfs_require_contract "module:${module_id}" || return 1
+    acfs_generated_ensure_selection || return 1
+    if ! should_run_module "${module_id}"; then
+        log_info "Skipping stack.eidetic_engine_cli (not selected)"
+        return 0
+    fi
+    log_step "Installing stack.eidetic_engine_cli"
+
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verified installer: stack.eidetic_engine_cli"
+    else
+        if ! {
+            # Try security-verified install (no unverified fallback; fail closed)
+            local install_success=false
+
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="ee"
+                    local url=""
+                    local expected_sha256=""
+
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "stack.eidetic_engine_cli: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--easy-mode'; then
+                            install_success=true
+                        else
+                            log_error "stack.eidetic_engine_cli: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                        fi
+                    else
+                        if [[ -z "$url" ]]; then
+                            log_error "stack.eidetic_engine_cli: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "stack.eidetic_engine_cli: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                    fi
+                else
+                    log_error "stack.eidetic_engine_cli: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                fi
+            else
+                log_error "stack.eidetic_engine_cli: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+
+            # Verified install is required - no fallback
+            if [[ "$install_success" = "true" ]]; then
+                true
+            else
+                log_error "Verified install failed for stack.eidetic_engine_cli"
+                false
+            fi
+        }; then
+            log_warn "stack.eidetic_engine_cli: verified installer failed"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.eidetic_engine_cli" "verified installer failed"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.eidetic_engine_cli"
+            fi
+            return 0
+        fi
+    fi
+
+    # Verify
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: ee --version || ee --help (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_STACK_EIDETIC_ENGINE_CLI'
+ee --version || ee --help
+INSTALL_STACK_EIDETIC_ENGINE_CLI
+        then
+            log_warn "stack.eidetic_engine_cli: verify failed: ee --version || ee --help"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.eidetic_engine_cli" "verify failed: ee --version || ee --help"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.eidetic_engine_cli"
+            fi
+            return 0
+        fi
+    fi
+
+    log_success "stack.eidetic_engine_cli installed"
+}
+
+# Pure-Rust Markdown engine rendering self-contained HTML and tagged PDF (fmd)
+install_stack_franken_markdown() {
+    local module_id="stack.franken_markdown"
+    acfs_require_contract "module:${module_id}" || return 1
+    acfs_generated_ensure_selection || return 1
+    if ! should_run_module "${module_id}"; then
+        log_info "Skipping stack.franken_markdown (not selected)"
+        return 0
+    fi
+    log_step "Installing stack.franken_markdown"
+
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verified installer: stack.franken_markdown"
+    else
+        if ! {
+            # Try security-verified install (no unverified fallback; fail closed)
+            local install_success=false
+
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="fmd"
+                    local url=""
+                    local expected_sha256=""
+
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "stack.franken_markdown: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--easy-mode'; then
+                            install_success=true
+                        else
+                            log_error "stack.franken_markdown: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                        fi
+                    else
+                        if [[ -z "$url" ]]; then
+                            log_error "stack.franken_markdown: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "stack.franken_markdown: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                    fi
+                else
+                    log_error "stack.franken_markdown: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                fi
+            else
+                log_error "stack.franken_markdown: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+
+            # Verified install is required - no fallback
+            if [[ "$install_success" = "true" ]]; then
+                true
+            else
+                log_error "Verified install failed for stack.franken_markdown"
+                false
+            fi
+        }; then
+            log_warn "stack.franken_markdown: verified installer failed"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.franken_markdown" "verified installer failed"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.franken_markdown"
+            fi
+            return 0
+        fi
+    fi
+
+    # Verify
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: fmd --version || fmd --help (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_STACK_FRANKEN_MARKDOWN'
+fmd --version || fmd --help
+INSTALL_STACK_FRANKEN_MARKDOWN
+        then
+            log_warn "stack.franken_markdown: verify failed: fmd --version || fmd --help"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.franken_markdown" "verify failed: fmd --version || fmd --help"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.franken_markdown"
+            fi
+            return 0
+        fi
+    fi
+
+    log_success "stack.franken_markdown installed"
+}
+
+# Native single-binary Rust port of the Pi coding agent (pi)
+install_stack_pi_agent_rust() {
+    local module_id="stack.pi_agent_rust"
+    acfs_require_contract "module:${module_id}" || return 1
+    acfs_generated_ensure_selection || return 1
+    if ! should_run_module "${module_id}"; then
+        log_info "Skipping stack.pi_agent_rust (not selected)"
+        return 0
+    fi
+    log_step "Installing stack.pi_agent_rust"
+
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verified installer: stack.pi_agent_rust"
+    else
+        if ! {
+            # Try security-verified install (no unverified fallback; fail closed)
+            local install_success=false
+
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="pi"
+                    local url=""
+                    local expected_sha256=""
+
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "stack.pi_agent_rust: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--yes' '--easy-mode'; then
+                            install_success=true
+                        else
+                            log_error "stack.pi_agent_rust: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                        fi
+                    else
+                        if [[ -z "$url" ]]; then
+                            log_error "stack.pi_agent_rust: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "stack.pi_agent_rust: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                    fi
+                else
+                    log_error "stack.pi_agent_rust: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                fi
+            else
+                log_error "stack.pi_agent_rust: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+
+            # Verified install is required - no fallback
+            if [[ "$install_success" = "true" ]]; then
+                true
+            else
+                log_error "Verified install failed for stack.pi_agent_rust"
+                false
+            fi
+        }; then
+            log_warn "stack.pi_agent_rust: verified installer failed"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.pi_agent_rust" "verified installer failed"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.pi_agent_rust"
+            fi
+            return 0
+        fi
+    fi
+
+    # Verify
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: pi --version || pi --help (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_STACK_PI_AGENT_RUST'
+pi --version || pi --help
+INSTALL_STACK_PI_AGENT_RUST
+        then
+            log_warn "stack.pi_agent_rust: verify failed: pi --version || pi --help"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.pi_agent_rust" "verify failed: pi --version || pi --help"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.pi_agent_rust"
+            fi
+            return 0
+        fi
+    fi
+
+    log_success "stack.pi_agent_rust installed"
+}
+
+# Recover crashed coding-agent sessions after a hard power cut (pfr)
+install_stack_power_failure_resumer() {
+    local module_id="stack.power_failure_resumer"
+    acfs_require_contract "module:${module_id}" || return 1
+    acfs_generated_ensure_selection || return 1
+    if ! should_run_module "${module_id}"; then
+        log_info "Skipping stack.power_failure_resumer (not selected)"
+        return 0
+    fi
+    log_step "Installing stack.power_failure_resumer"
+
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verified installer: stack.power_failure_resumer"
+    else
+        if ! {
+            # Try security-verified install (no unverified fallback; fail closed)
+            local install_success=false
+
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="pfr"
+                    local url=""
+                    local expected_sha256=""
+
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "stack.power_failure_resumer: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--easy-mode' '--install-skill'; then
+                            install_success=true
+                        else
+                            log_error "stack.power_failure_resumer: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                        fi
+                    else
+                        if [[ -z "$url" ]]; then
+                            log_error "stack.power_failure_resumer: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "stack.power_failure_resumer: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                    fi
+                else
+                    log_error "stack.power_failure_resumer: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                fi
+            else
+                log_error "stack.power_failure_resumer: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+
+            # Verified install is required - no fallback
+            if [[ "$install_success" = "true" ]]; then
+                true
+            else
+                log_error "Verified install failed for stack.power_failure_resumer"
+                false
+            fi
+        }; then
+            log_warn "stack.power_failure_resumer: verified installer failed"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.power_failure_resumer" "verified installer failed"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.power_failure_resumer"
+            fi
+            return 0
+        fi
+    fi
+
+    # Verify
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: command -v pfr (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_STACK_POWER_FAILURE_RESUMER'
+command -v pfr
+INSTALL_STACK_POWER_FAILURE_RESUMER
+        then
+            log_warn "stack.power_failure_resumer: verify failed: command -v pfr"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "stack.power_failure_resumer" "verify failed: command -v pfr"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "stack.power_failure_resumer"
+            fi
+            return 0
+        fi
+    fi
+
+    log_success "stack.power_failure_resumer installed"
+}
+
 # Install all stack modules
 install_stack() {
     log_section "Installing stack modules"
@@ -3536,6 +3960,10 @@ install_stack() {
     install_stack_doodlestein_self_releaser
     install_stack_agent_settings_backup
     install_stack_pcr
+    install_stack_eidetic_engine_cli
+    install_stack_franken_markdown
+    install_stack_pi_agent_rust
+    install_stack_power_failure_resumer
 }
 
 # Run if executed directly

@@ -2,7 +2,7 @@
 # shellcheck disable=SC1091
 # ============================================================
 # ACFS Installer - Dicklesworthstone Stack Library
-# Installs all 19 Dicklesworthstone tools + utilities
+# Installs all 23 Dicklesworthstone tools + utilities
 # ============================================================
 
 STACK_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,6 +38,10 @@ declare -gA STACK_COMMANDS=(
     [dsr]="dsr"
     [asb]="asb"
     [pcr]="claude-post-compact-reminder"
+    [ee]="ee"
+    [fmd]="fmd"
+    [pi]="pi"
+    [pfr]="pfr"
 )
 
 # Tool display names
@@ -61,6 +65,10 @@ declare -gA STACK_NAMES=(
     [dsr]="DSR (Doodlestein Self-Releaser)"
     [asb]="ASB (Agent Settings Backup)"
     [pcr]="PCR (Post-Compact Reminder)"
+    [ee]="EE (Eidetic Engine)"
+    [fmd]="FMD (Franken Markdown)"
+    [pi]="PI (Pi Agent Rust)"
+    [pfr]="PFR (Power Failure Resumer)"
 )
 
 # ============================================================
@@ -2510,6 +2518,98 @@ install_pcr() {
     return 1
 }
 
+# Install EE (Eidetic Engine)
+# Durable, explainable local memory for coding agents
+install_ee() {
+    local tool="ee"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_verified_installer "$tool" --easy-mode; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install FMD (Franken Markdown)
+# Pure-Rust Markdown to HTML/PDF renderer
+install_fmd() {
+    local tool="fmd"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_verified_installer "$tool" --easy-mode; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install PI (Pi Agent Rust)
+# Native single-binary Rust coding agent
+install_pi() {
+    local tool="pi"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_verified_installer "$tool" --yes --easy-mode; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
+# Install PFR (Power Failure Resumer)
+# Crashed agent-session recovery after a hard power cut
+install_pfr() {
+    local tool="pfr"
+
+    if _stack_is_installed "$tool"; then
+        log_detail "${STACK_NAMES[$tool]} already installed"
+        return 0
+    fi
+
+    log_detail "Installing ${STACK_NAMES[$tool]}..."
+
+    if _stack_run_verified_installer "$tool" --easy-mode --install-skill; then
+        if _stack_is_installed "$tool"; then
+            log_success "${STACK_NAMES[$tool]} installed"
+            return 0
+        fi
+    fi
+
+    log_warn "${STACK_NAMES[$tool]} installation may have failed"
+    return 1
+}
+
 # ============================================================
 # Verification Functions
 # ============================================================
@@ -2522,7 +2622,7 @@ verify_stack() {
 
     log_detail "Verifying Dicklesworthstone stack..."
 
-    for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr; do
+    for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr ee fmd pi pfr; do
         local cmd="${STACK_COMMANDS[$tool]}"
         local name="${STACK_NAMES[$tool]}"
 
@@ -2550,7 +2650,7 @@ verify_stack_help() {
 
     log_detail "Testing stack tools --help..."
 
-    for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr; do
+    for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr ee fmd pi pfr; do
         local cmd="${STACK_COMMANDS[$tool]}"
 
         if _stack_is_installed "$tool"; then
@@ -2573,7 +2673,7 @@ verify_stack_help() {
 get_stack_versions() {
     echo "Dicklesworthstone Stack Versions:"
 
-    for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr; do
+    for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr ee fmd pi pfr; do
         local cmd="${STACK_COMMANDS[$tool]}"
         local name="${STACK_NAMES[$tool]}"
 
@@ -2615,6 +2715,10 @@ install_all_stack() {
     install_dsr
     install_asb
     install_pcr
+    install_ee
+    install_fmd
+    install_pi
+    install_pfr
 
     # Verify installation
     verify_stack

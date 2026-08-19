@@ -2,7 +2,10 @@ import type { ReactNode } from "react";
 import {
   BellRing,
   Bot,
+  Brain,
   Cpu,
+  FileText,
+  Power,
   GitBranch,
   GitMerge,
   GraduationCap,
@@ -48,7 +51,11 @@ export type ToolId =
   | "casr"
   | "dsr"
   | "asb"
-  | "pcr";
+  | "pcr"
+  | "ee"
+  | "fmd"
+  | "pi"
+  | "pfr";
 
 export type ToolCard = {
   id: ToolId;
@@ -87,6 +94,10 @@ const manifestShortIdByToolId: Partial<Record<ToolId, string>> = {
   dsr: "dsr",
   asb: "asb",
   pcr: "pcr",
+  ee: "ee",
+  fmd: "fmd",
+  pi: "pi",
+  pfr: "pfr",
 };
 
 function withCanonicalManifestMetadata(
@@ -435,6 +446,54 @@ const RAW_TOOLS: Record<ToolId, ToolCard> = {
     quickCommand:
       'printf \'{"session_id":"demo","source":"compact"}\\n\' | claude-post-compact-reminder',
     relatedTools: ["dcg", "claude-code", "slb"],
+  },
+  ee: {
+    id: "ee",
+    title: "Eidetic Engine",
+    tagline: "Durable, explainable local memory for coding agents",
+    icon: <Brain className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-violet-500/20 via-purple-500/20 to-violet-500/20",
+    glowColor: "rgba(139,92,246,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/eidetic_engine_cli",
+    docsLabel: "GitHub",
+    quickCommand: 'ee pack "fix the auth bug"',
+    relatedTools: ["cm", "cass", "claude-code"],
+  },
+  fmd: {
+    id: "fmd",
+    title: "Franken Markdown",
+    tagline: "One binary turns Markdown into polished HTML and PDF",
+    icon: <FileText className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-amber-500/20 via-orange-500/20 to-amber-500/20",
+    glowColor: "rgba(245,158,11,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/franken_markdown",
+    docsLabel: "GitHub",
+    quickCommand: "fmd README.md --out README.html",
+    relatedTools: ["dsr", "ms", "ubs"],
+  },
+  pi: {
+    id: "pi",
+    title: "Pi Agent (Rust)",
+    tagline: "Native single-binary coding agent with local model support",
+    icon: <Bot className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-cyan-500/20 via-sky-500/20 to-cyan-500/20",
+    glowColor: "rgba(6,182,212,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/pi_agent_rust",
+    docsLabel: "GitHub",
+    quickCommand: 'pi "refactor this function"',
+    relatedTools: ["claude-code", "codex-cli", "ntm"],
+  },
+  pfr: {
+    id: "pfr",
+    title: "Power Failure Resumer",
+    tagline: "Bring a whole agent fleet back after a blackout",
+    icon: <Power className="h-8 w-8" aria-hidden="true" />,
+    gradient: "from-red-500/20 via-rose-500/20 to-red-500/20",
+    glowColor: "rgba(239,68,68,0.4)",
+    docsUrl: "https://github.com/Dicklesworthstone/power_failure_resumer",
+    docsLabel: "GitHub",
+    quickCommand: "pfr --dry-run",
+    relatedTools: ["casr", "ntm", "claude-code"],
   },
 };
 

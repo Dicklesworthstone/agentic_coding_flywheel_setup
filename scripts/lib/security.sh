@@ -447,6 +447,10 @@ declare -gA KNOWN_INSTALLERS=(
     [dsr]="https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
     [asb]="https://raw.githubusercontent.com/Dicklesworthstone/agent_settings_backup_script/main/install.sh"
     [pcr]="https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
+    [ee]="https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
+    [fmd]="https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh"
+    [pi]="https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
+    [pfr]="https://raw.githubusercontent.com/Dicklesworthstone/power_failure_resumer/main/install.sh"
 )
 declare -ga ACFS_SECURITY_REQUIRED_INSTALLERS=("${!KNOWN_INSTALLERS[@]}")
 

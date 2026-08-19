@@ -3310,6 +3310,39 @@ deep_check_stack_tools() {
         "claude-post-compact-reminder" \
         "Reinstall PCR or verify Claude settings registration" \
         "printf '{\"session_id\":\"doctor\",\"source\":\"compact\"}\n' | claude-post-compact-reminder"
+
+    deep_check_optional_probe \
+        "deep.stack.ee" \
+        "Eidetic Engine operational probe" \
+        "ee" \
+        "Run: ee doctor --json" \
+        "ee doctor --quick" \
+        "ee --version" \
+        "ee --help"
+
+    deep_check_optional_probe \
+        "deep.stack.fmd" \
+        "Franken Markdown operational probe" \
+        "fmd" \
+        "Run: fmd doctor --json" \
+        "fmd doctor --json" \
+        "fmd --version" \
+        "fmd --help"
+
+    deep_check_optional_probe \
+        "deep.stack.pi" \
+        "Pi Agent operational probe" \
+        "pi" \
+        "Run: pi --version" \
+        "pi --version" \
+        "pi --help"
+
+    deep_check_optional_probe \
+        "deep.stack.pfr" \
+        "Power Failure Resumer operational probe" \
+        "pfr" \
+        "Run: pfr --doctor --json" \
+        "pfr --help"
 }
 
 run_deep_checks() {

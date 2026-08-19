@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-08-18T06:30:46-04:00
+# checksums.yaml - Auto-generated 2026-08-19T11:27:36-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -66,6 +66,14 @@ installers:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
     sha256: "aaf8cad08ff3f67b15871293be5718b1217080d1cc8ea2c7eea8d083b0147939"
 
+  ee:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
+    sha256: "ace879b93061a63d5331ebe6b764e402b1d49138800c710edb108e8e3e67f5b1"
+
+  fmd:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh"
+    sha256: "8898c00995df1bd0aa3b6731e03439fe1026165bbe57914b831231d82cb3fcd8"
+
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh"
     sha256: "d0e93d1a680be4534b62a348313664037f794ca60f946928aea88ce71778fbdf"
@@ -113,6 +121,14 @@ installers:
   pcr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh"
     sha256: "70c28ae1bebc8e6ab6123b81829e52f4a1349acccd140637482e9b7c8fe94763"
+
+  pfr:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/power_failure_resumer/main/install.sh"
+    sha256: "ae1c7c9c1d6deb0fa862f2df482791cc90281f1d5c808d64893385b55cac93f4"
+
+  pi:
+    url: "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
+    sha256: "6cd29b72c81a53ec9d503cf5e88fb0b9b9e20b66db4be457a162a168d24ad669"
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"

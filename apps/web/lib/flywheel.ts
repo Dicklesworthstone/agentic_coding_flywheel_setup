@@ -2032,6 +2032,182 @@ script and the Claude settings entry.`,
       'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/post_compact_reminder/main/install-post-compact-reminder.sh" | bash -s -- --yes',
     language: "Bash",
   },
+  {
+    id: "ee",
+    name: "Eidetic Engine",
+    shortName: "EE",
+    href: "https://github.com/Dicklesworthstone/eidetic_engine_cli",
+    icon: "Brain",
+    color: "from-violet-500 to-purple-600",
+    tagline: "Durable, explainable local memory for coding agents",
+    description:
+      "Stores typed durable memories (rules, decisions, failures, conventions) with hybrid BM25 + local vector search, and packs the most relevant ones into a token-budgeted context pack for each task.",
+    deepDescription: `Agents forget everything between sessions. EE gives them durable, local-first memory:
+typed entries with confidence that decays over time, harmful memories demoted, and every
+retrieval explained with a per-item score breakdown and evidence pointer.
+
+'ee pack "<task>"' builds a token-budgeted context pack for the current task, with
+deterministic pack hashes and a versioned JSON contract on every machine-facing command.
+'ee import cass' mines your existing CASS session corpus so real agent history becomes
+searchable evidence. 'ee preflight' offers advisory risk lookup before destructive commands.
+
+Everything runs locally — hybrid BM25 + Model2Vec embeddings, SQLite storage, no cloud,
+no paid API, no required daemon.`,
+    connectsTo: ["cm", "cass"],
+    connectionDescriptions: {
+      cm: "CM extracts cross-session playbooks; EE serves durable typed memories per task",
+      cass: "EE imports the CASS session corpus as evidence for its memories",
+    },
+    stars: 25,
+    features: [
+      "Hybrid BM25 + local vector retrieval with explainable scores",
+      "Typed durable memories with confidence decay",
+      "CASS session import turns agent history into evidence",
+      "Token-budgeted context packs with deterministic hashes",
+      "Advisory pre-flight risk lookup before destructive commands",
+    ],
+    cliCommands: [
+      'ee pack "fix the auth bug"   # Build a context pack for a task',
+      "ee remember                  # Capture a durable rule",
+      "ee doctor --json             # Health check",
+    ],
+    installCommand:
+      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh" | bash -s -- --easy-mode',
+    language: "Rust",
+  },
+  {
+    id: "fmd",
+    name: "Franken Markdown",
+    shortName: "FMD",
+    href: "https://github.com/Dicklesworthstone/franken_markdown",
+    icon: "FileText",
+    color: "from-amber-500 to-orange-600",
+    tagline: "One binary turns Markdown into polished HTML and PDF",
+    description:
+      "A clean-room, pure-Rust Markdown engine that renders self-contained HTML and tagged compact PDF from one AST — no browser, LaTeX, or Node stack required.",
+    deepDescription: `FMD owns the entire rendering pipeline: parser, AST, theme model, HTML emitter,
+syntax highlighter, table layout, typography (Knuth-Plass line breaking, hyphenation,
+kerning), font subsetting, SVG-to-PDF vector drawing, and PDF serialization.
+
+HTML output is fully self-contained — inlined CSS, embedded font subsets, data-URI
+images, and dark mode. PDF output is tagged and compact with real typography. Renders
+are deterministic: the same input and options always produce the same bytes, and
+SOURCE_DATE_EPOCH controls PDF dates for reproducible builds.
+
+Agents get a machine-facing surface too: 'fmd capabilities --json', 'fmd doctor --json',
+and 'fmd --robot-triage' return stable JSON, and 'fmd batch' renders whole directories
+with bounded workers.`,
+    connectsTo: ["dsr", "ms"],
+    connectionDescriptions: {
+      dsr: "Release notes and docs rendered by FMD ship alongside DSR-built artifacts",
+      ms: "Skills and docs authored in Markdown render to shareable HTML/PDF via FMD",
+    },
+    stars: 30,
+    features: [
+      "Self-contained HTML with inlined CSS, fonts, and dark mode",
+      "Tagged compact PDF with real typography from the same AST",
+      "Deterministic renders — same input yields same bytes",
+      "Clean-room syntax highlighting plus Mermaid and SVG fidelity",
+      "WASM/browser package with native parity",
+    ],
+    cliCommands: [
+      "fmd README.md --out README.html   # Self-contained HTML",
+      "fmd README.md --to pdf            # Tagged compact PDF",
+      "fmd batch docs --to both --json   # CI batch rendering",
+    ],
+    installCommand:
+      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh" | bash -s -- --easy-mode',
+    language: "Rust",
+  },
+  {
+    id: "pi",
+    name: "Pi Agent (Rust)",
+    shortName: "PI",
+    href: "https://github.com/Dicklesworthstone/pi_agent_rust",
+    icon: "Bot",
+    color: "from-cyan-500 to-sky-600",
+    tagline: "Native single-binary coding agent with local model support",
+    description:
+      "A from-scratch Rust port of the Pi coding agent: streaming responses with inline thinking, nine built-in tools, and multi-provider support including zero-config local models.",
+    deepDescription: `Pi Agent Rust is a native, single-binary AI coding agent for the terminal. It streams
+model responses with extended thinking inline, ships nine built-in tools (read, write,
+edit, bash, grep, find, ls, plus opt-in subagent and todo), and drives Rust subagents
+defined in plain Markdown.
+
+It supports many providers including fully local ones — ollama, llama.cpp, LM Studio —
+via ~/.pi/agent/models.json, so you can run a coding agent with no API key at all.
+
+Compared to the TypeScript original: native cold start with no Node/Bun bootstrap,
+bounded-resource long sessions (SQLite index + segmented log for fast resume), and a
+capability-gated extension security model with two-stage exec mediation, a per-extension
+trust lifecycle, kill switches, and a tamper-evident risk ledger.`,
+    connectsTo: ["ntm", "caam"],
+    connectionDescriptions: {
+      ntm: "NTM spawns and orchestrates Pi sessions alongside Claude and Codex",
+      caam: "CAAM-style account hygiene applies when Pi points at hosted providers",
+    },
+    stars: 45,
+    features: [
+      "Streaming responses with inline extended thinking",
+      "Nine built-in tools plus Markdown-defined Rust subagents",
+      "Multi-provider support including zero-config local models",
+      "Capability-gated extensions with two-stage exec mediation",
+      "Bounded-resource long sessions with fast SQLite resume",
+    ],
+    cliCommands: [
+      'pi "refactor this function"   # Interactive session',
+      'pi -p "explain" < error.log   # Single-shot scripted mode',
+      "pi --continue                 # Resume the last session",
+    ],
+    installCommand:
+      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh" | bash -s -- --yes --easy-mode',
+    language: "Rust",
+  },
+  {
+    id: "pfr",
+    name: "Power Failure Resumer",
+    shortName: "PFR",
+    href: "https://github.com/Dicklesworthstone/power_failure_resumer",
+    icon: "Power",
+    color: "from-red-500 to-rose-600",
+    tagline: "Bring a whole agent fleet back after a blackout",
+    description:
+      "Detects agent sessions killed by a hard power cut — clustering files whose writes stopped just before boot — and reopens each one with its recorded model and resume command.",
+    deepDescription: `A blackout leaves a forensic signature: every process mid-write stops touching its
+session file at nearly the same wall-clock moment just before boot. PFR scans Codex and
+Claude Code session files, isolates that simultaneous-death pocket, and scores the
+confidence that it was a real crash — with printed reasons.
+
+Sessions you already resumed by hand are skipped (found via ps). Decisions are frozen
+into last-plan.json so discovery and reopening are separate, repeatable steps. Each
+victim reopens in its own terminal tab running its exact resume command on the model it
+was actually using. PFR then polls ps for resume evidence, writes last-report.json, and
+exits non-zero on silent failures.
+
+There is no --version flag — health-check with 'pfr --doctor --json'. It is a local
+workstation tool: headless servers can plan and inspect but not reopen terminal tabs.`,
+    connectsTo: ["casr", "ntm"],
+    connectionDescriptions: {
+      casr: "CASR moves sessions between providers; PFR resurrects them after a crash",
+      ntm: "NTM-spawned panes are excluded by default (override with --include-ntm)",
+    },
+    stars: 15,
+    features: [
+      "Pre-boot mtime crash-cluster detection with scored confidence",
+      "Frozen recovery plans so discovery and reopening are repeatable",
+      "Model-matched resume commands for Codex and Claude Code",
+      "Post-open verification against ps with a JSON report",
+      "Skips sessions already resumed by hand",
+    ],
+    cliCommands: [
+      "pfr --dry-run                # Preview the recovery plan",
+      "pfr -y                       # Reopen every crashed session",
+      "pfr --doctor --json          # Health check",
+    ],
+    installCommand:
+      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/power_failure_resumer/main/install.sh" | bash -s -- --easy-mode',
+    language: "Bash",
+  },
 ];
 
 // Merge basic metadata from manifest (source of truth for names, taglines,

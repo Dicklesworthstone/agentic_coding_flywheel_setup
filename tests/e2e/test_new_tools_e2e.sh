@@ -3,7 +3,7 @@
 #
 # Tests:
 #   - 7 First-class flywheel tools: br, ms, rch, wa, brenner, dcg, ru
-#   - 6 Newly integrated stack tools: fsfs, sbh, casr, dsr, asb, pcr
+#   - 10 Newly integrated stack tools: fsfs, sbh, casr, dsr, asb, pcr, ee, fmd, pi, pfr
 #   - 9 Utility tools: tru, rust_proxy, rano, xf, mdwb, pt, aadc, s2p, caut
 #   - Integration: acfs doctor, flywheel.ts, br primary command
 #
@@ -292,7 +292,7 @@ test_flywheel_tools() {
 
 test_additional_stack_tools() {
     log "INFO" "SECTION" "========================================"
-    log "INFO" "SECTION" "ADDITIONAL STACK TOOLS (6)"
+    log "INFO" "SECTION" "ADDITIONAL STACK TOOLS (10)"
     log "INFO" "SECTION" "========================================"
 
     # frankensearch (fsfs)
@@ -515,6 +515,73 @@ PY
             else
                 skip "pcr_settings_backup" "pcr: no settings backup file found for $pcr_selected_settings"
             fi
+        fi
+    fi
+
+    # eidetic_engine_cli (ee)
+    log "INFO" "ee" "Testing eidetic_engine_cli (ee)..."
+    if test_tool_basic "eidetic_engine_cli" "ee" "false"; then
+        test_tool_probe "ee_probe" "ee" "ee operational probe" "false" \
+            "ee doctor --quick" \
+            "ee --version" \
+            "ee --help"
+    fi
+
+    # franken_markdown (fmd)
+    log "INFO" "fmd" "Testing franken_markdown (fmd)..."
+    if test_tool_basic "franken_markdown" "fmd" "false"; then
+        test_tool_probe "fmd_probe" "fmd" "fmd operational probe" "false" \
+            "fmd doctor --json" \
+            "fmd --version" \
+            "fmd --help"
+
+        # Functional render smoke test: markdown in, non-empty HTML out
+        local fmd_tmp_dir=""
+        if fmd_tmp_dir=$(mktemp -d 2>/dev/null); then
+            printf '# FMD Smoke Test\n\nHello **world**.\n' > "$fmd_tmp_dir/smoke.md"
+            if fmd "$fmd_tmp_dir/smoke.md" --out "$fmd_tmp_dir/smoke.html" >/dev/null 2>&1 \
+                && [[ -s "$fmd_tmp_dir/smoke.html" ]] \
+                && grep -qi "world" "$fmd_tmp_dir/smoke.html"; then
+                pass "fmd_render" "fmd: rendered markdown to non-empty HTML — $(file_details "$fmd_tmp_dir/smoke.html")"
+            else
+                fail "fmd_render" "fmd: markdown → HTML render smoke test failed"
+            fi
+            rm -rf "$fmd_tmp_dir" 2>/dev/null || true
+        else
+            skip "fmd_render" "fmd: could not create temp dir for render smoke test"
+        fi
+    fi
+
+    # pi_agent_rust (pi)
+    log "INFO" "pi" "Testing pi_agent_rust (pi)..."
+    if test_tool_basic "pi_agent_rust" "pi" "false"; then
+        test_tool_probe "pi_probe" "pi" "pi operational probe" "false" \
+            "pi --version" \
+            "pi --help"
+    fi
+
+    # power_failure_resumer (pfr)
+    log "INFO" "pfr" "Testing power_failure_resumer (pfr)..."
+    if ! command -v pfr >/dev/null 2>&1; then
+        skip "pfr_installed" "pfr: not installed — optional tool"
+    else
+        pass "pfr_installed" "pfr: launcher present — $(file_details "$(command -v pfr)")"
+
+        # pfr has no --version; --help must work everywhere
+        if pfr --help >/dev/null 2>&1; then
+            pass "pfr_help" "pfr: --help responded"
+        else
+            fail "pfr_help" "pfr: --help failed"
+        fi
+
+        # --doctor may warn on headless hosts (no terminal emulator); accept
+        # any clean exit but record output for debugging
+        local pfr_doctor_output=""
+        if pfr_doctor_output=$(pfr --doctor --json 2>&1); then
+            pass "pfr_doctor" "pfr: --doctor --json passed"
+            verbose_log "pfr_doctor" "pfr doctor output: ${pfr_doctor_output:0:200}"
+        else
+            skip "pfr_doctor" "pfr: --doctor reported issues (expected on headless hosts without a terminal emulator)"
         fi
     fi
 }

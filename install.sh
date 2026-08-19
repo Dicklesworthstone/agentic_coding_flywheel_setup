@@ -7422,6 +7422,38 @@ UNIT_EOF
         try_step "Installing PCR" acfs_run_verified_upstream_script_as_target "pcr" "bash" --yes || log_warn "PCR installation may have failed"
     fi
 
+    # Eidetic Engine (ee)
+    if binary_installed "ee"; then
+        log_detail "Eidetic Engine already installed"
+    else
+        log_detail "Installing Eidetic Engine"
+        try_step "Installing EE" acfs_run_verified_upstream_script_as_target "ee" "bash" --easy-mode || log_warn "EE installation may have failed"
+    fi
+
+    # Franken Markdown (fmd)
+    if binary_installed "fmd"; then
+        log_detail "Franken Markdown already installed"
+    else
+        log_detail "Installing Franken Markdown"
+        try_step "Installing FMD" acfs_run_verified_upstream_script_as_target "fmd" "bash" --easy-mode || log_warn "FMD installation may have failed"
+    fi
+
+    # Pi Agent Rust (pi)
+    if binary_installed "pi"; then
+        log_detail "Pi Agent already installed"
+    else
+        log_detail "Installing Pi Agent"
+        try_step "Installing PI" acfs_run_verified_upstream_script_as_target "pi" "bash" --yes --easy-mode || log_warn "PI installation may have failed"
+    fi
+
+    # Power Failure Resumer (pfr)
+    if binary_installed "pfr"; then
+        log_detail "Power Failure Resumer already installed"
+    else
+        log_detail "Installing Power Failure Resumer"
+        try_step "Installing PFR" acfs_run_verified_upstream_script_as_target "pfr" "bash" --easy-mode --install-skill || log_warn "PFR installation may have failed"
+    fi
+
     # DCG (Destructive Command Guard)
     if binary_installed "dcg"; then
         log_detail "DCG already installed"

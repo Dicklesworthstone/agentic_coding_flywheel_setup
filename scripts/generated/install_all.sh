@@ -436,6 +436,10 @@ install_all() {
     install_stack_doodlestein_self_releaser
     install_stack_agent_settings_backup
     install_stack_pcr
+    install_stack_eidetic_engine_cli
+    install_stack_franken_markdown
+    install_stack_pi_agent_rust
+    install_stack_power_failure_resumer
     log_section "Category: tools"
     install_utils_giil
     install_utils_csctf

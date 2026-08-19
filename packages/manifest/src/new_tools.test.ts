@@ -1,5 +1,5 @@
 /**
- * Tests: Verify all 9 new Dicklesworthstone tools have complete manifest entries
+ * Tests: Verify all new Dicklesworthstone tools have complete manifest entries
  * Related: bead bd-bd536
  *
  * Parses the real acfs.manifest.yaml and checks each tool has:
@@ -36,7 +36,7 @@ interface ToolExpectation {
   verifyToken?: string;
 }
 
-// The 9 new tools and their expected module IDs
+// The new tools and their expected module IDs
 const NEW_TOOLS: ToolExpectation[] = [
   {
     moduleId: 'stack.rch',
@@ -112,6 +112,38 @@ const NEW_TOOLS: ToolExpectation[] = [
     installedCheckToken: 'claude-post-compact-reminder',
     verifyToken: 'claude-post-compact-reminder',
   },
+  {
+    moduleId: 'stack.eidetic_engine_cli',
+    cli: 'ee',
+    name: 'Eidetic Engine',
+    shortName: 'EE',
+    installerTool: 'ee',
+    href: 'https://github.com/Dicklesworthstone/eidetic_engine_cli',
+  },
+  {
+    moduleId: 'stack.franken_markdown',
+    cli: 'fmd',
+    name: 'Franken Markdown',
+    shortName: 'FMD',
+    installerTool: 'fmd',
+    href: 'https://github.com/Dicklesworthstone/franken_markdown',
+  },
+  {
+    moduleId: 'stack.pi_agent_rust',
+    cli: 'pi',
+    name: 'Pi Agent (Rust)',
+    shortName: 'PI',
+    installerTool: 'pi',
+    href: 'https://github.com/Dicklesworthstone/pi_agent_rust',
+  },
+  {
+    moduleId: 'stack.power_failure_resumer',
+    cli: 'pfr',
+    name: 'Power Failure Resumer',
+    shortName: 'PFR',
+    installerTool: 'pfr',
+    href: 'https://github.com/Dicklesworthstone/power_failure_resumer',
+  },
 ] as const;
 
 interface ChecksumsFile {
@@ -164,7 +196,7 @@ describe('New tool manifest entries', () => {
     checksums = parseYaml(readFileSync(CHECKSUMS_PATH, 'utf-8')) as ChecksumsFile;
   });
 
-  test('all 9 new tools exist in manifest', () => {
+  test('all new tools exist in manifest', () => {
     for (const tool of NEW_TOOLS) {
       expect(moduleIds.has(tool.moduleId)).toBe(true);
     }

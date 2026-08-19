@@ -26,6 +26,16 @@ export const manifestLessonLinks: ManifestLessonLink[] = [
     displayName: "Doodlestein Self-Releaser",
   },
   {
+    moduleId: "stack.eidetic_engine_cli",
+    lessonSlug: "ee",
+    displayName: "Eidetic Engine",
+  },
+  {
+    moduleId: "stack.franken_markdown",
+    lessonSlug: "fmd",
+    displayName: "Franken Markdown",
+  },
+  {
     moduleId: "stack.frankensearch",
     lessonSlug: "fsfs",
     displayName: "FrankenSearch",
@@ -34,6 +44,16 @@ export const manifestLessonLinks: ManifestLessonLink[] = [
     moduleId: "stack.pcr",
     lessonSlug: "pcr",
     displayName: "Post-Compact Reminder",
+  },
+  {
+    moduleId: "stack.pi_agent_rust",
+    lessonSlug: "pi",
+    displayName: "Pi Agent (Rust)",
+  },
+  {
+    moduleId: "stack.power_failure_resumer",
+    lessonSlug: "pfr",
+    displayName: "Power Failure Resumer",
   },
   {
     moduleId: "stack.process_triage",
@@ -57,8 +77,12 @@ export const lessonSlugByModuleId: Record<string, string> = {
   "stack.agent_settings_backup": "asb",
   "stack.cross_agent_session_resumer": "casr",
   "stack.doodlestein_self_releaser": "dsr",
+  "stack.eidetic_engine_cli": "ee",
+  "stack.franken_markdown": "fmd",
   "stack.frankensearch": "fsfs",
   "stack.pcr": "pcr",
+  "stack.pi_agent_rust": "pi",
+  "stack.power_failure_resumer": "pfr",
   "stack.process_triage": "pt",
   "stack.rch": "rch",
   "stack.storage_ballast_helper": "sbh",

@@ -3031,6 +3031,182 @@ modules:
         claude_settings_has_command_hook "$settings" "$pcr_command_pattern" ||
           claude_settings_has_command_hook "$alt_settings" "$pcr_command_pattern"
 
+  - id: stack.eidetic_engine_cli
+    description: Durable, local-first, explainable memory for coding agents (ee)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, memory]
+    web:
+      display_name: "Eidetic Engine"
+      short_name: "EE"
+      tagline: "Durable, explainable local memory for coding agents"
+      icon: "brain"
+      color: "#8B5CF6"
+      href: "https://github.com/Dicklesworthstone/eidetic_engine_cli"
+      features:
+        - "Hybrid BM25 + local vector retrieval with explainable scores"
+        - "Typed durable memories with confidence decay"
+        - "CASS session import turns agent history into evidence"
+        - "Token-budgeted context packs with deterministic hashes"
+      tech_stack: ["Rust", "SQLite", "Frankensearch", "Model2Vec"]
+      use_cases:
+        - "Priming a cold agent session with relevant project memory"
+        - "Capturing and reusing hard-won project rules"
+        - "Advisory pre-flight risk lookup before destructive commands"
+      language: "Rust"
+      stars: 25
+      cli_name: "ee"
+      command_example: "ee pack \"fix the auth bug\""
+      lesson_slug: "ee"
+    dependencies:
+      - lang.rust
+    installed_check:
+      run_as: target_user
+      command: "command -v ee"
+    verified_installer:
+      tool: ee
+      runner: bash
+      args: ["--easy-mode"]
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/eidetic_engine_cli/main/install.sh"
+    install: []
+    verify:
+      - ee --version || ee --help
+
+  - id: stack.franken_markdown
+    description: Pure-Rust Markdown engine rendering self-contained HTML and tagged PDF (fmd)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, docs]
+    web:
+      display_name: "Franken Markdown"
+      short_name: "FMD"
+      tagline: "One binary turns Markdown into polished HTML and PDF"
+      icon: "file-text"
+      color: "#F59E0B"
+      href: "https://github.com/Dicklesworthstone/franken_markdown"
+      features:
+        - "Self-contained HTML with inlined CSS, fonts, and dark mode"
+        - "Tagged compact PDF with real typography from the same AST"
+        - "Deterministic renders — same input yields same bytes"
+        - "Clean-room syntax highlighting plus Mermaid and SVG fidelity"
+      tech_stack: ["Rust", "WASM", "Zero-dependency engine"]
+      use_cases:
+        - "Rendering READMEs to shareable single-file HTML previews"
+        - "Producing reproducible PDF documentation for review"
+        - "Batch-rendering docs directories in CI with JSON output"
+      language: "Rust"
+      stars: 30
+      cli_name: "fmd"
+      command_example: "fmd README.md --out README.html"
+      lesson_slug: "fmd"
+    dependencies:
+      - lang.rust
+    installed_check:
+      run_as: target_user
+      command: "command -v fmd"
+    verified_installer:
+      tool: fmd
+      runner: bash
+      args: ["--easy-mode"]
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh"
+    install: []
+    verify:
+      - fmd --version || fmd --help
+
+  - id: stack.pi_agent_rust
+    description: Native single-binary Rust port of the Pi coding agent (pi)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, agent]
+    web:
+      display_name: "Pi Agent (Rust)"
+      short_name: "PI"
+      tagline: "Native single-binary coding agent with local model support"
+      icon: "bot"
+      color: "#06B6D4"
+      href: "https://github.com/Dicklesworthstone/pi_agent_rust"
+      features:
+        - "Streaming responses with inline extended thinking"
+        - "Nine built-in tools plus Markdown-defined Rust subagents"
+        - "Multi-provider support including zero-config local models"
+        - "Capability-gated extensions with two-stage exec mediation"
+      tech_stack: ["Rust", "Asupersync", "QuickJS", "SQLite"]
+      use_cases:
+        - "Running a coding agent against local models without API keys"
+        - "Single-shot scripted agent runs in pipelines"
+        - "Long sessions with bounded-resource storage and fast resume"
+      language: "Rust"
+      stars: 45
+      cli_name: "pi"
+      command_example: "pi \"refactor this function\""
+      lesson_slug: "pi"
+    dependencies:
+      - lang.rust
+    installed_check:
+      run_as: target_user
+      command: "command -v pi"
+    verified_installer:
+      tool: pi
+      runner: bash
+      args: ["--yes", "--easy-mode"]
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
+    install: []
+    verify:
+      - pi --version || pi --help
+
+  - id: stack.power_failure_resumer
+    description: Recover crashed coding-agent sessions after a hard power cut (pfr)
+    category: stack
+    phase: 9
+    run_as: target_user
+    optional: true
+    enabled_by_default: true
+    tags: [recommended, reliability]
+    web:
+      display_name: "Power Failure Resumer"
+      short_name: "PFR"
+      tagline: "Bring a whole agent fleet back after a blackout"
+      icon: "power"
+      color: "#EF4444"
+      href: "https://github.com/Dicklesworthstone/power_failure_resumer"
+      features:
+        - "Pre-boot mtime crash-cluster detection with scored confidence"
+        - "Frozen recovery plans so discovery and reopening are repeatable"
+        - "Model-matched resume commands for Codex and Claude Code"
+        - "Post-open verification against ps with a JSON report"
+      tech_stack: ["Bash", "Python", "JSON plans"]
+      use_cases:
+        - "Reopening every crashed agent session after a blackout"
+        - "Selectively restoring a subset of sessions from a saved plan"
+        - "Pre-flighting recovery readiness before you need it"
+      language: "Bash"
+      stars: 15
+      cli_name: "pfr"
+      command_example: "pfr --dry-run"
+      lesson_slug: "pfr"
+    dependencies:
+      - cli.modern
+    installed_check:
+      run_as: target_user
+      command: "command -v pfr"
+    verified_installer:
+      tool: pfr
+      runner: bash
+      args: ["--easy-mode", "--install-skill"]
+      url: "https://raw.githubusercontent.com/Dicklesworthstone/power_failure_resumer/main/install.sh"
+    install: []
+    verify:
+      - command -v pfr
+
   # ============================================================
   # PHASE 9B: Utilities (giil, csctf)
   # ============================================================

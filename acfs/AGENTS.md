@@ -475,6 +475,10 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 | `ru status --fetch` | Inspect repo drift before starting a swarm or large maintenance pass |
 | `asb backup --all` | Back up agent settings before risky hook/config experiments |
 | `test -x "$HOME/.local/bin/claude-post-compact-reminder"` | Verify the PCR hook script exists before checking Claude settings |
+| `ee pack "<task>"` | Build a token-budgeted context pack of durable project memory before starting non-trivial work |
+| `fmd README.md --out README.html` | Render Markdown to a polished self-contained HTML (or `--to pdf`) without a browser or LaTeX |
+| `pi -p "<prompt>"` | Run the native Pi coding agent in single-shot scripted mode (supports local models) |
+| `pfr --dry-run` | Preview which crashed agent sessions a power-failure recovery would reopen |
 
 ### When To Reach For Them
 
@@ -487,6 +491,10 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 - `ru`: Before broad repo sweeps, after multi-agent sessions, or when a machine has many stale `/data/projects/*` clones.
 - `asb`: Before editing agent config folders, hook settings, auth files, or shell integrations you may need to restore.
 - `pcr`: When Claude Code keeps forgetting project rules after compaction; PCR is the hook that forces the reminder.
+- `ee`: At the start of non-trivial tasks (`ee pack`), when you learn a durable rule (`ee remember`), or before risky commands (`ee preflight`).
+- `fmd`: When you need a shareable HTML or PDF render of Markdown docs — deterministic output, no browser or LaTeX stack.
+- `pi`: When you want a lightweight native coding agent, especially against local models or in scripted single-shot pipelines.
+- `pfr`: After a hard power cut on a workstation running many agent sessions; it clusters the crash and reopens each victim.
 
 ### Common Gotchas
 
@@ -497,6 +505,10 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 - DSR: It assumes the repo already has sane release automation inputs; DSR is the fallback runner, not magic release design.
 - ASB: Backups may contain sensitive tokens or local auth state. Handle the backup repo like secrets-adjacent material.
 - PCR: It is a Claude Code hook, not a normal interactive CLI. Verify the hook script and Claude settings entry, not just `command -v`.
+- EE: Memory is advisory context, not ground truth. Live AGENTS.md, README, and repo state always win over recalled memories.
+- FMD: The binary is `fmd`; if a shell alias shadows it, call `command fmd`. Renders are deterministic — diffs in output mean input or options changed.
+- PI: `pi` may collide with an existing TypeScript Pi install; the installer preserves the old one as `legacy-pi` and adds an `rpi` launcher.
+- PFR: It has no `--version` flag; health-check with `pfr --doctor --json`. On headless servers without a terminal emulator it can plan but not reopen tabs.
 
 ---
 

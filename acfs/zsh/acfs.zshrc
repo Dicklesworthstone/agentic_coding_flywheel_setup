@@ -622,6 +622,14 @@ command -v dsr &>/dev/null && alias dsrc='dsr check --all'
 # Agent Settings Backup
 command -v asb &>/dev/null && alias asbk='asb backup --all'
 # Post-Compact Reminder (no alias needed, runs as a hook)
+# Eidetic Engine (agent memory)
+command -v ee &>/dev/null && alias eectx='ee pack'
+# Franken Markdown (render md to HTML/PDF)
+command -v fmd &>/dev/null && alias fmdpdf='fmd --to pdf'
+# Pi Agent Rust (resume last session)
+command -v pi &>/dev/null && alias pic='pi --continue'
+# Power Failure Resumer (preview recovery plan)
+command -v pfr &>/dev/null && alias pfrd='pfr --dry-run'
 # Repo Updater
 command -v ru &>/dev/null && alias rusync='ru sync'
 

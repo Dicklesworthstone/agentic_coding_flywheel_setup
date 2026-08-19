@@ -512,6 +512,38 @@ export const LESSONS: Lesson[] = [
     duration: "7 min",
     file: "60_acfs_doctor.md",
   },
+  {
+    id: 61,
+    slug: "ee",
+    title: "EE: Durable Agent Memory",
+    description: "Explainable local memory that packs relevant context for every task",
+    duration: "6 min",
+    file: "61_ee.md",
+  },
+  {
+    id: 62,
+    slug: "fmd",
+    title: "FMD: Markdown to HTML & PDF",
+    description: "Render polished, deterministic HTML and PDF from Markdown with one binary",
+    duration: "5 min",
+    file: "62_fmd.md",
+  },
+  {
+    id: 63,
+    slug: "pi",
+    title: "PI: Native Coding Agent",
+    description: "Single-binary Rust coding agent with local model support",
+    duration: "6 min",
+    file: "63_pi.md",
+  },
+  {
+    id: 64,
+    slug: "pfr",
+    title: "PFR: Power Failure Recovery",
+    description: "Detect and resume crashed agent sessions after a hard power cut",
+    duration: "5 min",
+    file: "64_pfr.md",
+  },
 ];
 
 /**

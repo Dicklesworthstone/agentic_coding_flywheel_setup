@@ -912,6 +912,15 @@ get_version() {
                 version="unknown"
             fi
             ;;
+        pfr)
+            # pfr has no --version flag; report presence only
+            tool_bin="$(update_binary_path "pfr" 2>/dev/null || true)"
+            if [[ -n "$tool_bin" ]]; then
+                version="installed"
+            else
+                version="unknown"
+            fi
+            ;;
         ntm)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
@@ -920,7 +929,7 @@ get_version() {
                 version="unknown"
             fi
             ;;
-        ubs|bv|cass|cm|caam|slb|ru|dcg|apr|pt|xf|jfp|ms|br|rch|giil|csctf|srps|tru|rano|mdwb|s2p|brenner|fsfs|sbh|casr|dsr|asb|aadc|rust_proxy)
+        ubs|bv|cass|cm|caam|slb|ru|dcg|apr|pt|xf|jfp|ms|br|rch|giil|csctf|srps|tru|rano|mdwb|s2p|brenner|fsfs|sbh|casr|dsr|asb|aadc|rust_proxy|ee|fmd|pi)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
                 version=$("$tool_bin" --version 2>/dev/null | head -1 || echo "unknown")
@@ -3445,8 +3454,8 @@ update_sync_known_installer_urls_from_checksums() {
 update_required_checksum_tools() {
     printf '%s\n' \
         antigravity apr asb atuin br brenner_bot bun bv caam casr cass claude cm csctf dcg dsr \
-        fsfs gemini_patch giil jfp mcp_agent_mail mdwb ms ntm nvm ohmyzsh opencode \
-        pcr pt rano rch ru rust s2p sbh slb srps tru ubs uv xf zoxide
+        ee fmd fsfs gemini_patch giil jfp mcp_agent_mail mdwb ms ntm nvm ohmyzsh opencode \
+        pcr pfr pi pt rano rch ru rust s2p sbh slb srps tru ubs uv xf zoxide
 }
 
 update_checksums_file_has_required_metadata() {
@@ -6209,6 +6218,18 @@ update_stack() {
 
     # DSR (Doodlestein Self-Releaser) - always install/update
     run_cmd "DSR" update_run_verified_installer dsr --easy-mode
+
+    # EE (Eidetic Engine) - always install/update
+    run_cmd "EE" update_run_verified_installer ee --easy-mode
+
+    # FMD (Franken Markdown) - always install/update
+    run_cmd "FMD" update_run_verified_installer fmd --easy-mode
+
+    # PI (Pi Agent Rust) - always install/update
+    run_cmd "PI" update_run_verified_installer pi --yes --easy-mode
+
+    # PFR (Power Failure Resumer) - always install/update
+    run_cmd "PFR" update_run_verified_installer pfr --easy-mode --install-skill
 }
 
 # ============================================================
@@ -6727,7 +6748,8 @@ WHAT EACH CATEGORY UPDATES:
   stack:    Dicklesworthstone stack tools (verified upstream installers)
             Installs missing tools and updates existing ones automatically:
             NTM, Agent Mail, Meta Skill, APR, pt, xf, UBS, BV, BR, CASS, CM,
-            CAAM, SLB, RU, DCG, RCH, GIIL, CSCTF, SRPS, TRU, RANO, MDWB, S2P, Brenner Bot
+            CAAM, SLB, RU, DCG, RCH, GIIL, CSCTF, SRPS, TRU, RANO, MDWB, S2P, Brenner Bot,
+            FSFS, SBH, CASR, DSR, ASB, PCR, EE, FMD, PI, PFR
             Exception: JFP requires subscription, only updated if already installed
 
 LOGS:

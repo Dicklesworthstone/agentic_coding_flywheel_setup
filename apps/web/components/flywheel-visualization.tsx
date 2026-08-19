@@ -43,6 +43,7 @@ import {
   Network,
   BoxSelect,
   BarChart3,
+  Power,
 } from "lucide-react";
 import { flywheelTools, flywheelDescription, getAllConnections, type FlywheelTool } from "@/lib/flywheel";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,7 @@ export const flywheelIconMap: Record<
   Network,
   BoxSelect,
   BarChart3,
+  Power,
 };
 
 // =============================================================================
