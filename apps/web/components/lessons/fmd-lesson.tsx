@@ -33,15 +33,15 @@ export function FmdLesson() {
       <Section title="What Is Franken Markdown?" icon={<FileText className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>fmd (Franken Markdown)</Highlight> is a pure-Rust, zero-dependency
-          rendering engine that converts Markdown into polished HTML and PDF. There is no
-          headless browser, no LaTeX toolchain, and no Node runtime &mdash; just a single
-          binary that renders both formats from the same AST.
+          rendering engine that converts Markdown into polished HTML and PDF. It needs no
+          headless browser, LaTeX toolchain, or Node runtime; a single binary renders
+          both formats from the same AST.
         </Paragraph>
         <Paragraph>
           The HTML output is fully self-contained: inlined CSS, embedded font subsets,
           data-URI images, and built-in dark mode. The PDF output is tagged and compact,
-          with real typography. Renders are deterministic &mdash; the same input produces
-          the same bytes, and <Highlight>SOURCE_DATE_EPOCH</Highlight> is honored for
+          with real typography. Renders are deterministic: the same input produces the
+          same bytes, and <Highlight>SOURCE_DATE_EPOCH</Highlight> is honored for
           reproducible builds.
         </Paragraph>
 
@@ -98,8 +98,8 @@ export function FmdLesson() {
         <Paragraph>
           Use <Highlight>fmd</Highlight> for shareable README previews (a single HTML
           file you can email or upload anywhere), reproducible PDF documentation (same
-          input, same bytes &mdash; ideal for signed or archived docs), and CI rendering
-          of docs with machine-readable status output.
+          input, same bytes, so signed or archived docs stay verifiable), and CI
+          rendering of docs with machine-readable status output.
         </Paragraph>
         <CodeBlock code={`# Shareable one-file preview of a README
 fmd README.md --out README.html
@@ -112,8 +112,7 @@ for f in docs/*.md; do fmd render "$f" --to both --json; done`} />
 
         <TipBox>
           Because renders are deterministic, you can diff output bytes in CI to catch
-          unintended documentation changes &mdash; if the bytes changed, the content
-          changed.
+          unintended documentation changes: if the bytes changed, the content changed.
         </TipBox>
       </Section>
     </div>

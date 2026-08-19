@@ -26,8 +26,8 @@ export function PiLesson() {
   return (
     <div className="space-y-8">
       <GoalBanner>
-        Run a native single-binary coding agent &mdash; with or without an API key &mdash;
-        using Pi Agent.
+        Run Pi Agent: a native single-binary coding agent that works with or without an
+        API key.
       </GoalBanner>
 
       {/* Section 1: What Is Pi */}
@@ -40,8 +40,8 @@ export function PiLesson() {
         </Paragraph>
         <Paragraph>
           It is multi-provider, including <Highlight>zero-config local models</Highlight>{' '}
-          via ollama, llama.cpp, and LM Studio &mdash; meaning you can run a full coding
-          agent with no API key at all.
+          via ollama, llama.cpp, and LM Studio, so you can run a full coding agent with
+          no API key at all.
         </Paragraph>
 
         <div className="mt-8">
@@ -49,7 +49,7 @@ export function PiLesson() {
             <FeatureCard
               icon={<Zap className="h-5 w-5" />}
               title="Native Cold Start"
-              description="Single Rust binary — no Node or Bun bootstrap to wait on"
+              description="Single Rust binary; no Node or Bun bootstrap to wait on"
               gradient="from-amber-500/20 to-orange-500/20"
             />
             <FeatureCard
@@ -83,7 +83,7 @@ export function PiLesson() {
             { command: 'pi "refactor this function"', description: 'Run an interactive agent task' },
             { command: 'pi -p "summarize" < error.log', description: 'Pipe input for one-shot print mode' },
             { command: 'pi --continue', description: 'Resume the most recent session' },
-            { command: 'cat ~/.pi/agent/models.json', description: 'Configure local models (ollama, llama.cpp, LM Studio)' },
+            { command: 'cat ~/.pi/agent/models.json', description: 'Inspect the local-model config (ollama, llama.cpp, LM Studio)' },
           ]}
         />
       </Section>
@@ -101,7 +101,7 @@ export function PiLesson() {
 ollama serve
 # ...or llama.cpp / LM Studio
 
-# Then just run pi — zero-config local model discovery
+# Then run pi; local model servers are discovered automatically
 pi "write unit tests for src/parser.rs"
 
 # Custom endpoints live in ~/.pi/agent/models.json`} />

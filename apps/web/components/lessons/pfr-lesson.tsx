@@ -36,7 +36,7 @@ export function PfrLesson() {
           sessions after a hard power cut. Its forensic insight: when the machine dies,
           every crashed session&apos;s file stops changing at nearly the same moment
           before boot. PFR clusters that pocket of last-modified timestamps, then scores
-          each candidate&apos;s confidence as high, medium, or low &mdash; with reasons.
+          each candidate&apos;s confidence as high, medium, or low, with printed reasons.
         </Paragraph>
         <Paragraph>
           Sessions that were already resumed are skipped automatically, so running it
@@ -113,10 +113,9 @@ pfr -y
         </Paragraph>
 
         <TipBox variant="warning">
-          There is no <Highlight>--version</Highlight> flag &mdash; use{' '}
-          <Highlight>pfr --doctor</Highlight> instead. And PFR is a local-workstation
-          tool: on a headless server it can still plan, but it cannot reopen terminal
-          tabs.
+          There is no <Highlight>--version</Highlight> flag; use{' '}
+          <Highlight>pfr --doctor</Highlight> instead. PFR is a local-workstation tool:
+          on a headless server it can still plan, but it cannot reopen terminal tabs.
         </TipBox>
       </Section>
     </div>

@@ -11,7 +11,7 @@ skills:
 
 Ever needed a polished HTML or PDF version of a README without wrestling with browsers, LaTeX, or Node? FMD does it in one command.
 
-**FMD (Franken Markdown)** is a pure-Rust, zero-dependency Markdown engine. From a single AST it renders self-contained HTML (inlined CSS, embedded fonts, data-URI images, dark mode) and tagged, compact PDF. Output is deterministic — the same input always produces the same bytes.
+**FMD (Franken Markdown)** is a pure-Rust, zero-dependency Markdown engine. From a single AST it renders self-contained HTML (inlined CSS, embedded fonts, data-URI images, dark mode) and tagged, compact PDF. Output is deterministic: the same input always produces the same bytes.
 
 ---
 
@@ -33,7 +33,7 @@ Turn a Markdown file into a single self-contained HTML file:
 fmd README.md --out README.html
 ```
 
-The result needs no external assets — CSS, fonts, and images are all embedded, and dark mode is built in.
+The result needs no external assets: CSS, fonts, and images are all embedded, and dark mode is built in.
 
 ---
 
@@ -45,7 +45,7 @@ Produce a tagged, compact PDF from the same document:
 fmd README.md --to pdf
 ```
 
-The `fmdpdf` alias does the same thing. No browser, LaTeX, or Node required — plus syntax highlighting for ~16 languages and Mermaid diagrams.
+The `fmdpdf` alias does the same thing. No browser, LaTeX, or Node is required, and you get syntax highlighting for ~16 languages plus Mermaid diagrams.
 
 ---
 
@@ -55,7 +55,7 @@ Agents constantly produce Markdown that humans need in shareable form. FMD provi
 
 - Deterministic output, so CI can diff rendered artifacts byte-for-byte
 - `fmd render FILE --to both --json` for CI pipelines with machine-readable status
-- Zero runtime dependencies — one binary, no toolchain sprawl
+- Zero runtime dependencies: one binary, no toolchain sprawl
 - Machine-readable introspection for agent workflows
 
 ---

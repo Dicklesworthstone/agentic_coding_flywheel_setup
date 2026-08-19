@@ -46,7 +46,7 @@ When the plan looks right, run it for real:
 pfr -y
 ```
 
-PFR freezes its decisions into last-plan.json, reopens each victim with its recorded model (`cod resume <id>` / `cc --resume <id>`), verifies against `ps`, and writes last-report.json — exiting non-zero on silent failures.
+PFR freezes its decisions into last-plan.json, reopens each victim with its recorded model (`cod resume <id>` / `cc --resume <id>`), verifies against `ps`, and writes last-report.json. It exits non-zero on silent failures.
 
 ---
 
@@ -56,7 +56,7 @@ When you run fleets of agents, one power cut is a mass casualty event. PFR provi
 
 - Automatic crash detection by clustering write timestamps against boot time
 - Confidence scoring with printed reasons, not silent guesses
-- Verified resumes — it checks `ps` instead of assuming success
+- Verified resumes: it checks `ps` instead of assuming success
 - Selective restore when you only want some sessions back
 
 Note: PFR is mainly for local workstations with a terminal emulator (Ghostty). On a headless VPS it can plan and inspect, but not reopen tabs.

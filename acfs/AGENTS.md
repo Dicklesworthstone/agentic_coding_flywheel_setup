@@ -492,7 +492,7 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 - `asb`: Before editing agent config folders, hook settings, auth files, or shell integrations you may need to restore.
 - `pcr`: When Claude Code keeps forgetting project rules after compaction; PCR is the hook that forces the reminder.
 - `ee`: At the start of non-trivial tasks (`ee pack`), when you learn a durable rule (`ee remember`), or before risky commands (`ee preflight`).
-- `fmd`: When you need a shareable HTML or PDF render of Markdown docs — deterministic output, no browser or LaTeX stack.
+- `fmd`: When you need a shareable HTML or PDF render of Markdown docs; output is deterministic and needs no browser or LaTeX stack.
 - `pi`: When you want a lightweight native coding agent, especially against local models or in scripted single-shot pipelines.
 - `pfr`: After a hard power cut on a workstation running many agent sessions; it clusters the crash and reopens each victim.
 
@@ -506,7 +506,7 @@ rg -l -t rust 'unwrap\(' | xargs ast-grep run -l Rust -p '$X.unwrap()' --json
 - ASB: Backups may contain sensitive tokens or local auth state. Handle the backup repo like secrets-adjacent material.
 - PCR: It is a Claude Code hook, not a normal interactive CLI. Verify the hook script and Claude settings entry, not just `command -v`.
 - EE: Memory is advisory context, not ground truth. Live AGENTS.md, README, and repo state always win over recalled memories.
-- FMD: Renders are deterministic — if output bytes changed, the input or options changed. The shipped binary renders single files (`fmd FILE --to both`); loop over files for whole-directory jobs.
+- FMD: Renders are deterministic: if output bytes changed, the input or options changed. The shipped binary renders single files (`fmd FILE --to both`); loop over files for whole-directory jobs.
 - PI: `pi` may collide with an existing TypeScript Pi install; the installer preserves the old one as `legacy-pi` and adds an `rpi` launcher.
 - PFR: It has no `--version` flag; health-check with `pfr --doctor --json`. On headless servers without a terminal emulator it can plan but not reopen tabs.
 

@@ -34,10 +34,10 @@ export function EeLesson() {
       <Section title="What Is Eidetic Engine?" icon={<Brain className="h-5 w-5" />} delay={0.1}>
         <Paragraph>
           <Highlight>ee (Eidetic Engine)</Highlight> is durable, explainable local memory
-          for coding agents. It stores typed memories &mdash; rules, decisions, failures,
-          commands, and conventions &mdash; and retrieves them with hybrid BM25 + local
-          vector search, so an agent starting a new session can instantly recall what
-          past sessions learned the hard way.
+          for coding agents. It stores typed memories (rules, decisions, failures,
+          commands, conventions) and retrieves them with hybrid BM25 + local vector
+          search, so an agent starting a new session can recall what past sessions
+          learned the hard way.
         </Paragraph>
         <Paragraph>
           Everything runs locally: there is no cloud API, and every retrieval comes with
@@ -115,8 +115,8 @@ ee remember "Always run migrations before seeding the test database"
 ee preflight check --cmd "rm -rf build"`} />
 
         <TipBox>
-          Memory is advisory, not authoritative. If a stored memory conflicts with the
-          live AGENTS.md or README, the live project files always win &mdash; use the{' '}
+          Memory is advisory. If a stored memory conflicts with the live AGENTS.md or
+          README, the live project files always win; use the{' '}
           <Highlight>ee curate</Highlight> subcommands to review and prune memories that
           have gone stale.
         </TipBox>

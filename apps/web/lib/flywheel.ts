@@ -2051,8 +2051,8 @@ deterministic pack hashes and a versioned JSON contract on every machine-facing 
 'ee import cass' mines your existing CASS session corpus so real agent history becomes
 searchable evidence. 'ee preflight' offers advisory risk lookup before destructive commands.
 
-Everything runs locally — hybrid BM25 + Model2Vec embeddings, SQLite storage, no cloud,
-no paid API, no required daemon.`,
+Everything runs locally: hybrid BM25 + Model2Vec embeddings and SQLite storage, with no
+cloud dependency, no paid API, and no required daemon.`,
     connectsTo: ["cm", "cass"],
     connectionDescriptions: {
       cm: "CM extracts cross-session playbooks; EE serves durable typed memories per task",
@@ -2084,12 +2084,12 @@ no paid API, no required daemon.`,
     color: "from-amber-500 to-orange-600",
     tagline: "One binary turns Markdown into polished HTML and PDF",
     description:
-      "A clean-room, pure-Rust Markdown engine that renders self-contained HTML and tagged compact PDF from one AST — no browser, LaTeX, or Node stack required.",
+      "A clean-room, pure-Rust Markdown engine that renders self-contained HTML and tagged compact PDF from one AST, with no browser, LaTeX, or Node stack required.",
     deepDescription: `FMD owns the entire rendering pipeline: parser, AST, theme model, HTML emitter,
 syntax highlighter, table layout, typography (Knuth-Plass line breaking, hyphenation,
 kerning), font subsetting, SVG-to-PDF vector drawing, and PDF serialization.
 
-HTML output is fully self-contained — inlined CSS, embedded font subsets, data-URI
+HTML output is fully self-contained: inlined CSS, embedded font subsets, data-URI
 images, and dark mode. PDF output is tagged and compact with real typography. Renders
 are deterministic: the same input and options always produce the same bytes, and
 SOURCE_DATE_EPOCH controls PDF dates for reproducible builds.
@@ -2106,7 +2106,7 @@ machine-readable status for every render in CI.`,
     features: [
       "Self-contained HTML with inlined CSS, fonts, and dark mode",
       "Tagged compact PDF with real typography from the same AST",
-      "Deterministic renders — same input yields same bytes",
+      "Deterministic renders: same input yields same bytes",
       "Clean-room syntax highlighting plus Mermaid and SVG fidelity",
       "WASM/browser package with native parity",
     ],
@@ -2134,7 +2134,7 @@ model responses with extended thinking inline, ships a full built-in toolset (re
 write, edit, hashline_edit, bash, grep, find, ls, plus opt-in subagent and todo), and
 drives Rust subagents defined in plain Markdown.
 
-It supports many providers including fully local ones — ollama, llama.cpp, LM Studio —
+It supports many providers, including fully local ones (ollama, llama.cpp, LM Studio)
 via ~/.pi/agent/models.json, so you can run a coding agent with no API key at all.
 
 Compared to the TypeScript original: native cold start with no Node/Bun bootstrap,
@@ -2172,11 +2172,11 @@ trust lifecycle, kill switches, and a tamper-evident risk ledger.`,
     color: "from-red-500 to-rose-600",
     tagline: "Bring a whole agent fleet back after a blackout",
     description:
-      "Detects agent sessions killed by a hard power cut — clustering files whose writes stopped just before boot — and reopens each one with its recorded model and resume command.",
+      "Detects agent sessions killed by a hard power cut by clustering files whose writes stopped just before boot, then reopens each one with its recorded model and resume command.",
     deepDescription: `A blackout leaves a forensic signature: every process mid-write stops touching its
 session file at nearly the same wall-clock moment just before boot. PFR scans Codex and
 Claude Code session files, isolates that simultaneous-death pocket, and scores the
-confidence that it was a real crash — with printed reasons.
+confidence that it was a real crash, with printed reasons.
 
 Sessions you already resumed by hand are skipped (found via ps). Decisions are frozen
 into last-plan.json so discovery and reopening are separate, repeatable steps. Each
@@ -2184,7 +2184,7 @@ victim reopens in its own terminal tab running its exact resume command on the m
 was actually using. PFR then polls ps for resume evidence, writes last-report.json, and
 exits non-zero on silent failures.
 
-There is no --version flag — health-check with 'pfr --doctor --json'. It is a local
+There is no --version flag; health-check with 'pfr --doctor --json'. It is a local
 workstation tool: headless servers can plan and inspect but not reopen terminal tabs.`,
     connectsTo: ["casr", "ntm"],
     connectionDescriptions: {

@@ -433,7 +433,7 @@ export const manifestTools: ManifestWebTool[] = [
     features: [
       "Self-contained HTML with inlined CSS, fonts, and dark mode",
       "Tagged compact PDF with real typography from the same AST",
-      "Deterministic renders — same input yields same bytes",
+      "Deterministic renders: same input yields same bytes",
       "Clean-room syntax highlighting plus Mermaid and SVG fidelity",
     ],
     techStack: [
