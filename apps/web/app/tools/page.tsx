@@ -41,6 +41,8 @@ import {
   Globe,
   Network,
   Box,
+  Bot,
+  Power,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -83,6 +85,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   save: Save,
   globe: Globe,
   network: Network,
+  bot: Bot,
+  power: Power,
 };
 
 function DynamicIcon({ name, className }: { name: string; className?: string }) {
