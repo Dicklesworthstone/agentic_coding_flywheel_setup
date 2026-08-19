@@ -35,7 +35,7 @@ export function PiLesson() {
         <Paragraph>
           <Highlight>pi (Pi Agent)</Highlight> is a from-scratch Rust port of Mario
           Zechner&apos;s Pi Agent: a native, single-binary coding agent. It streams
-          responses with inline extended thinking, ships 9 built-in tools, and supports
+          responses with inline extended thinking, ships a full built-in toolset, and supports
           Markdown-defined subagents for custom workflows.
         </Paragraph>
         <Paragraph>

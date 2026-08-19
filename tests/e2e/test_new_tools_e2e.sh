@@ -567,21 +567,32 @@ PY
     else
         pass "pfr_installed" "pfr: launcher present — $(file_details "$(command -v pfr)")"
 
-        # pfr has no --version; --help must work everywhere
-        if pfr --help >/dev/null 2>&1; then
+        # pfr has no --version; --help must work everywhere. Wrap in the same
+        # timeout budget the other tool probes get so a wedged pfr cannot
+        # stall the whole suite.
+        local pfr_probe_timeout="${ACFS_E2E_PROBE_TIMEOUT:-20}"
+        local pfr_help_cmd="pfr --help"
+        if command -v timeout >/dev/null 2>&1; then
+            pfr_help_cmd="timeout $pfr_probe_timeout pfr --help"
+        fi
+        if bash -c "$pfr_help_cmd" >/dev/null 2>&1; then
             pass "pfr_help" "pfr: --help responded"
         else
-            fail "pfr_help" "pfr: --help failed"
+            fail "pfr_help" "pfr: --help failed or timed out"
         fi
 
         # --doctor may warn on headless hosts (no terminal emulator); accept
         # any clean exit but record output for debugging
+        local pfr_doctor_cmd="pfr --doctor --json"
+        if command -v timeout >/dev/null 2>&1; then
+            pfr_doctor_cmd="timeout $pfr_probe_timeout pfr --doctor --json"
+        fi
         local pfr_doctor_output=""
-        if pfr_doctor_output=$(pfr --doctor --json 2>&1); then
+        if pfr_doctor_output=$(bash -c "$pfr_doctor_cmd" 2>&1); then
             pass "pfr_doctor" "pfr: --doctor --json passed"
             verbose_log "pfr_doctor" "pfr doctor output: ${pfr_doctor_output:0:200}"
         else
-            skip "pfr_doctor" "pfr: --doctor reported issues (expected on headless hosts without a terminal emulator)"
+            skip "pfr_doctor" "pfr: --doctor reported issues or timed out (expected on headless hosts without a terminal emulator)"
         fi
     fi
 }

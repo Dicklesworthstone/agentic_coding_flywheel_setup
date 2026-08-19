@@ -54,7 +54,7 @@ The `fmdpdf` alias does the same thing. No browser, LaTeX, or Node required — 
 Agents constantly produce Markdown that humans need in shareable form. FMD provides:
 
 - Deterministic output, so CI can diff rendered artifacts byte-for-byte
-- `fmd batch docs --to both --json` for whole-directory CI pipelines
+- `fmd render FILE --to both --json` for CI pipelines with machine-readable status
 - Zero runtime dependencies — one binary, no toolchain sprawl
 - Machine-readable introspection for agent workflows
 
@@ -63,8 +63,8 @@ Agents constantly produce Markdown that humans need in shareable form. FMD provi
 # Common Scenarios
 
 ```bash
-# Render a whole docs directory to HTML and PDF for CI
-fmd batch docs --to both --json
+# Render a doc to both HTML and PDF for CI, with JSON status
+fmd render README.md --to both --json
 
 # Check health and discover what the binary can do
 fmd doctor --json
@@ -81,5 +81,5 @@ fmd --robot-triage
 You've learned:
 1. **fmd FILE --out FILE.html** - Render self-contained HTML
 2. **fmd FILE --to pdf** - Render tagged, compact PDF
-3. **fmd batch** - Deterministic whole-directory rendering for CI
+3. **fmd render FILE --to both --json** - Deterministic CI rendering with JSON status
 4. How one AST yields both HTML and PDF with no browser or LaTeX

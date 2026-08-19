@@ -400,7 +400,7 @@ export const manifestTldrTools: ManifestTldrTool[] = [
     useCases: [
       "Rendering READMEs to shareable single-file HTML previews",
       "Producing reproducible PDF documentation for review",
-      "Batch-rendering docs directories in CI with JSON output",
+      "Rendering docs to HTML and PDF in CI with JSON status output",
     ],
     language: "Rust",
     stars: 30,
@@ -592,7 +592,7 @@ export const manifestTldrTools: ManifestTldrTool[] = [
     href: "https://github.com/Dicklesworthstone/pi_agent_rust",
     features: [
       "Streaming responses with inline extended thinking",
-      "Nine built-in tools plus Markdown-defined Rust subagents",
+      "Full built-in toolset plus Markdown-defined Rust subagents",
       "Multi-provider support including zero-config local models",
       "Capability-gated extensions with two-stage exec mediation",
     ],

@@ -2068,7 +2068,7 @@ no paid API, no required daemon.`,
     ],
     cliCommands: [
       'ee pack "fix the auth bug"   # Build a context pack for a task',
-      "ee remember                  # Capture a durable rule",
+      'ee remember "<rule text>"    # Capture a durable rule',
       "ee doctor --json             # Health check",
     ],
     installCommand:
@@ -2095,8 +2095,8 @@ are deterministic: the same input and options always produce the same bytes, and
 SOURCE_DATE_EPOCH controls PDF dates for reproducible builds.
 
 Agents get a machine-facing surface too: 'fmd capabilities --json', 'fmd doctor --json',
-and 'fmd --robot-triage' return stable JSON, and 'fmd batch' renders whole directories
-with bounded workers.`,
+and 'fmd --robot-triage' return stable JSON, and 'fmd render --to both --json' emits a
+machine-readable status for every render in CI.`,
     connectsTo: ["dsr", "ms"],
     connectionDescriptions: {
       dsr: "Release notes and docs rendered by FMD ship alongside DSR-built artifacts",
@@ -2113,7 +2113,7 @@ with bounded workers.`,
     cliCommands: [
       "fmd README.md --out README.html   # Self-contained HTML",
       "fmd README.md --to pdf            # Tagged compact PDF",
-      "fmd batch docs --to both --json   # CI batch rendering",
+      "fmd render SPEC.md --to both --json   # CI render, JSON status",
     ],
     installCommand:
       'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh" | bash -s -- --easy-mode',
@@ -2128,11 +2128,11 @@ with bounded workers.`,
     color: "from-cyan-500 to-sky-600",
     tagline: "Native single-binary coding agent with local model support",
     description:
-      "A from-scratch Rust port of the Pi coding agent: streaming responses with inline thinking, nine built-in tools, and multi-provider support including zero-config local models.",
+      "A from-scratch Rust port of the Pi coding agent: streaming responses with inline thinking, a full built-in toolset, and multi-provider support including zero-config local models.",
     deepDescription: `Pi Agent Rust is a native, single-binary AI coding agent for the terminal. It streams
-model responses with extended thinking inline, ships nine built-in tools (read, write,
-edit, bash, grep, find, ls, plus opt-in subagent and todo), and drives Rust subagents
-defined in plain Markdown.
+model responses with extended thinking inline, ships a full built-in toolset (read,
+write, edit, hashline_edit, bash, grep, find, ls, plus opt-in subagent and todo), and
+drives Rust subagents defined in plain Markdown.
 
 It supports many providers including fully local ones — ollama, llama.cpp, LM Studio —
 via ~/.pi/agent/models.json, so you can run a coding agent with no API key at all.
@@ -2149,7 +2149,7 @@ trust lifecycle, kill switches, and a tamper-evident risk ledger.`,
     stars: 45,
     features: [
       "Streaming responses with inline extended thinking",
-      "Nine built-in tools plus Markdown-defined Rust subagents",
+      "Full built-in toolset plus Markdown-defined Rust subagents",
       "Multi-provider support including zero-config local models",
       "Capability-gated extensions with two-stage exec mediation",
       "Bounded-resource long sessions with fast SQLite resume",

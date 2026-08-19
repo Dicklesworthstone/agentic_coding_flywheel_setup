@@ -82,10 +82,10 @@ export function EeLesson() {
         <CommandList
           commands={[
             { command: 'ee pack "fix the auth bug"', description: 'Build a token-budgeted context pack for a task' },
-            { command: 'ee remember', description: 'Capture a new rule, decision, or failure' },
+            { command: 'ee remember "<rule text>"', description: 'Capture a new rule, decision, or failure' },
             { command: 'ee search "query"', description: 'Search stored memories' },
-            { command: 'ee why', description: 'Explain why memories were selected' },
-            { command: 'ee curate', description: 'Distill raw memories into procedural rules' },
+            { command: 'ee why <memory-id>', description: 'Explain why a memory was stored or selected' },
+            { command: 'ee curate candidates', description: 'Review proposals that distill memories into rules' },
             { command: 'ee import cass', description: 'Mine past CASS sessions into memories' },
             { command: 'ee preflight check --cmd "rm -rf build"', description: 'Check a risky command against failure memories' },
             { command: 'ee doctor --json', description: 'Verify installation health' },
@@ -109,15 +109,16 @@ export function EeLesson() {
 ee pack "fix the auth bug"
 
 # After discovering something worth keeping
-ee remember
+ee remember "Always run migrations before seeding the test database"
 
 # Before doing anything destructive
 ee preflight check --cmd "rm -rf build"`} />
 
         <TipBox>
           Memory is advisory, not authoritative. If a stored memory conflicts with the
-          live AGENTS.md or README, the live project files always win &mdash; use{' '}
-          <Highlight>ee curate</Highlight> to prune memories that have gone stale.
+          live AGENTS.md or README, the live project files always win &mdash; use the{' '}
+          <Highlight>ee curate</Highlight> subcommands to review and prune memories that
+          have gone stale.
         </TipBox>
       </Section>
 
@@ -128,7 +129,7 @@ ee preflight check --cmd "rm -rf build"`} />
         <Paragraph>
           Every pack is deterministic: the same memories and the same query produce the
           same pack hash, and the JSON schema is versioned. When a selection looks wrong,{' '}
-          <Highlight>ee why</Highlight> shows the per-item score breakdown (lexical match,
+          <Highlight>ee why &lt;memory-id&gt;</Highlight> shows the per-item score breakdown (lexical match,
           vector similarity, confidence, recency) so you can debug retrieval instead of
           guessing.
         </Paragraph>

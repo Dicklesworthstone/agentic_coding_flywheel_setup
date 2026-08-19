@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-08-19T11:27:36-04:00
+# checksums.yaml - Auto-generated 2026-08-19T15:57:57-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -60,7 +60,7 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "bac7861fb88c140e91e3e4148b86759370177409e1e282ebf75d213b73f28d9d"
+    sha256: "3246deaf85999eb568c5472ee9a21317ab625618a00a71e533b032ccbcbe3b17"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
@@ -72,7 +72,7 @@ installers:
 
   fmd:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh"
-    sha256: "8898c00995df1bd0aa3b6731e03439fe1026165bbe57914b831231d82cb3fcd8"
+    sha256: "bfc5e870c0857e3c3e356820006ba73f7516cf96ef6d77bcf2e9d1be18975b8f"
 
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh"

@@ -5669,16 +5669,32 @@ fi
 mkdir -p "${ACFS_PRIMARY_BIN_DIR:-${ACFS_BIN_DIR:-$HOME/.local/bin}}"
 install -m 0755 "$extracted_bin" "${ACFS_PRIMARY_BIN_DIR:-${ACFS_BIN_DIR:-$HOME/.local/bin}}/supabase"
 
-if command -v timeout &>/dev/null; then
-  timeout 5 "${ACFS_PRIMARY_BIN_DIR:-${ACFS_BIN_DIR:-$HOME/.local/bin}}/supabase" --version >/dev/null 2>&1 || {
-    echo "Supabase CLI: installed but failed to run" >&2
-    exit 1
-  }
-else
-  "${ACFS_PRIMARY_BIN_DIR:-${ACFS_BIN_DIR:-$HOME/.local/bin}}/supabase" --version >/dev/null 2>&1 || {
-    echo "Supabase CLI: installed but failed to run" >&2
-    exit 1
-  }
+# Post-install smoke test. The supabase binary is ~115MB, and this is its
+# first exec, so the kernel faults it in from cold page cache. On a host under
+# IO pressure that read can take far longer than a trivial `--version`
+# suggests, so a short timeout reports "installed but failed to run" for an
+# install that is actually fine. Retry with a generous budget before failing.
+supabase_installed_bin="${ACFS_PRIMARY_BIN_DIR:-${ACFS_BIN_DIR:-$HOME/.local/bin}}/supabase"
+supabase_smoke_ok=""
+for supabase_attempt in 1 2 3; do
+  if command -v timeout &>/dev/null; then
+    if timeout 60 "$supabase_installed_bin" --version >/dev/null 2>&1; then
+      supabase_smoke_ok=1
+      break
+    fi
+  else
+    if "$supabase_installed_bin" --version >/dev/null 2>&1; then
+      supabase_smoke_ok=1
+      break
+    fi
+  fi
+  if [[ "$supabase_attempt" -lt 3 ]]; then
+    sleep 2
+  fi
+done
+if [[ -z "$supabase_smoke_ok" ]]; then
+  echo "Supabase CLI: installed but failed to run" >&2
+  exit 1
 fi
 EOF
 }

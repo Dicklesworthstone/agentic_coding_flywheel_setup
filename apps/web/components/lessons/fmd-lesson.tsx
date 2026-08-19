@@ -83,7 +83,7 @@ export function FmdLesson() {
           commands={[
             { command: 'fmd README.md --out README.html', description: 'Render Markdown to self-contained HTML' },
             { command: 'fmd README.md --to pdf', description: 'Render the same file to a tagged, compact PDF' },
-            { command: 'fmd batch docs examples --to both --json', description: 'Batch-render whole directories to HTML and PDF' },
+            { command: 'fmd render SPEC.md --to both --json', description: 'Render to HTML and PDF with machine-readable status' },
             { command: 'fmd doctor --json', description: 'Verify installation health' },
             { command: 'fmd capabilities --json', description: 'List supported features machine-readably' },
             { command: 'fmd --robot-triage', description: 'Agent-friendly triage output' },
@@ -98,8 +98,8 @@ export function FmdLesson() {
         <Paragraph>
           Use <Highlight>fmd</Highlight> for shareable README previews (a single HTML
           file you can email or upload anywhere), reproducible PDF documentation (same
-          input, same bytes &mdash; ideal for signed or archived docs), and CI batch
-          rendering of entire docs directories.
+          input, same bytes &mdash; ideal for signed or archived docs), and CI rendering
+          of docs with machine-readable status output.
         </Paragraph>
         <CodeBlock code={`# Shareable one-file preview of a README
 fmd README.md --out README.html
@@ -107,8 +107,8 @@ fmd README.md --out README.html
 # Reproducible PDF docs (deterministic with SOURCE_DATE_EPOCH)
 SOURCE_DATE_EPOCH=0 fmd SPEC.md --to pdf
 
-# CI: render every doc to both formats with machine-readable output
-fmd batch docs examples --to both --json`} />
+# CI: render each doc to both formats with machine-readable status
+for f in docs/*.md; do fmd render "$f" --to both --json; done`} />
 
         <TipBox>
           Because renders are deterministic, you can diff output bytes in CI to catch
