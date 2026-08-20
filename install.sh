@@ -6284,6 +6284,36 @@ install_agents_phase() {
 # ============================================================
 # Phase 7: Cloud & database tools
 # ============================================================
+
+# Best-effort superuser role + database for the target user, shared by the
+# PGDG and native-fallback install paths.
+acfs_postgres_bootstrap_role() {
+    local runuser_bin=""
+    local postgres_sudo_bin=""
+    local psql_bin=""
+    local createuser_bin=""
+    local createdb_bin=""
+    local grep_bin=""
+    local -a postgres_runner=()
+    runuser_bin="$(acfs_early_system_binary_path runuser 2>/dev/null || true)"
+    postgres_sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
+    psql_bin="$(acfs_early_system_binary_path psql 2>/dev/null || true)"
+    createuser_bin="$(acfs_early_system_binary_path createuser 2>/dev/null || true)"
+    createdb_bin="$(acfs_early_system_binary_path createdb 2>/dev/null || true)"
+    grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
+    if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
+        postgres_runner=("$runuser_bin" -u postgres --)
+    elif [[ -n "$postgres_sudo_bin" ]]; then
+        postgres_runner=("$postgres_sudo_bin" -n -u postgres -H)
+    fi
+    if [[ ${#postgres_runner[@]} -gt 0 && -n "$psql_bin" && -n "$createuser_bin" && -n "$createdb_bin" && -n "$grep_bin" ]]; then
+        "${postgres_runner[@]}" "$psql_bin" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$TARGET_USER'" | "$grep_bin" -q 1 || \
+            "${postgres_runner[@]}" "$createuser_bin" -s "$TARGET_USER" 2>/dev/null || true
+        "${postgres_runner[@]}" "$psql_bin" -tAc "SELECT 1 FROM pg_database WHERE datname='$TARGET_USER'" | "$grep_bin" -q 1 || \
+            "${postgres_runner[@]}" "$createdb_bin" "$TARGET_USER" 2>/dev/null || true
+    fi
+}
+
 install_cloud_db_legacy_db() {
     local codename="$1"
 
@@ -6325,32 +6355,29 @@ install_cloud_db_legacy_db() {
                 fi
 
                 # Best-effort role + db for target user
-                local runuser_bin=""
-                local postgres_sudo_bin=""
-                local psql_bin=""
-                local createuser_bin=""
-                local createdb_bin=""
-                local grep_bin=""
-                local -a postgres_runner=()
-                runuser_bin="$(acfs_early_system_binary_path runuser 2>/dev/null || true)"
-                postgres_sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
-                psql_bin="$(acfs_early_system_binary_path psql 2>/dev/null || true)"
-                createuser_bin="$(acfs_early_system_binary_path createuser 2>/dev/null || true)"
-                createdb_bin="$(acfs_early_system_binary_path createdb 2>/dev/null || true)"
-                grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
-                if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
-                    postgres_runner=("$runuser_bin" -u postgres --)
-                elif [[ -n "$postgres_sudo_bin" ]]; then
-                    postgres_runner=("$postgres_sudo_bin" -n -u postgres -H)
-                fi
-                if [[ ${#postgres_runner[@]} -gt 0 && -n "$psql_bin" && -n "$createuser_bin" && -n "$createdb_bin" && -n "$grep_bin" ]]; then
-                    "${postgres_runner[@]}" "$psql_bin" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$TARGET_USER'" | "$grep_bin" -q 1 || \
-                        "${postgres_runner[@]}" "$createuser_bin" -s "$TARGET_USER" 2>/dev/null || true
-                    "${postgres_runner[@]}" "$psql_bin" -tAc "SELECT 1 FROM pg_database WHERE datname='$TARGET_USER'" | "$grep_bin" -q 1 || \
-                        "${postgres_runner[@]}" "$createdb_bin" "$TARGET_USER" 2>/dev/null || true
-                fi
+                acfs_postgres_bootstrap_role || true
             else
-                log_warn "PostgreSQL: installation failed (optional)"
+                # PGDG's package can be uninstallable on this release even
+                # when the dist exists: noble's postgresql-18 depends on
+                # libicu74, which questing (25.10) no longer ships. Fall back
+                # to Ubuntu's native postgresql metapackage rather than
+                # leaving the machine with no database — doctor accepts any
+                # working psql, and 25.10 fleet hosts already run native 17.
+                log_warn "PostgreSQL 18 via PGDG failed; falling back to Ubuntu-native postgresql"
+                try_step "Removing unusable PGDG apt source" $SUDO rm -f /etc/apt/sources.list.d/pgdg.list || true
+                try_step "Updating apt cache (native PostgreSQL)" $SUDO apt-get update -y || true
+                if try_step "Installing native PostgreSQL" $SUDO apt-get install -y postgresql postgresql-client; then
+                    log_success "PostgreSQL (Ubuntu native) installed"
+                    if command_exists systemctl && [[ -d /run/systemd/system ]]; then
+                        try_step "Enabling PostgreSQL service" $SUDO systemctl enable postgresql || true
+                        try_step "Starting PostgreSQL service" $SUDO systemctl start postgresql || true
+                    elif command_exists service; then
+                        try_step "Starting PostgreSQL service (service)" $SUDO service postgresql start || true
+                    fi
+                    acfs_postgres_bootstrap_role || true
+                else
+                    log_warn "PostgreSQL: installation failed (optional)"
+                fi
             fi
         fi
     fi
