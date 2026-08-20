@@ -6365,12 +6365,18 @@ install_cloud_db_legacy_tools() {
     elif vault_bin="$(binary_path vault 2>/dev/null || true)" && [[ -n "$vault_bin" ]]; then
         log_detail "Vault already installed ($("$vault_bin" --version 2>/dev/null | head -1 || echo 'vault'))"
     else
-        # HashiCorp doesn't always have packages for newest Ubuntu versions.
-        # Check if the current codename is supported, otherwise fall back to noble (24.04 LTS).
+        # HashiCorp doesn't always have packages for newest Ubuntu versions,
+        # and a dist can EXIST while containing no vault package at all
+        # (questing does exactly this, which passes a URL probe and then
+        # fails apt with "Unable to locate package vault"). Probe for the
+        # actual package; fall back to noble (24.04 LTS) when it is absent.
         local vault_codename="$codename"
-        if ! curl -sfI "https://apt.releases.hashicorp.com/dists/${codename}/main/binary-amd64/Packages" >/dev/null 2>&1; then
+        local vault_apt_arch vault_pkg_count
+        vault_apt_arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+        vault_pkg_count="$(curl -fsSL "https://apt.releases.hashicorp.com/dists/${codename}/main/binary-${vault_apt_arch}/Packages" 2>/dev/null | grep -c '^Package: vault$' || true)"
+        if [[ "${vault_pkg_count:-0}" -eq 0 ]]; then
             vault_codename="noble"
-            log_detail "HashiCorp repo unavailable for $codename, using $vault_codename"
+            log_detail "HashiCorp repo has no vault package for $codename, using $vault_codename"
         fi
 
         log_detail "Installing Vault (HashiCorp repo, codename=$vault_codename)"

@@ -1206,7 +1206,13 @@ modules:
           CURL_CHECK_ARGS=(--proto '=https' --proto-redir '=https' -fsSI)
         fi
 
-        if ! curl "${CURL_CHECK_ARGS[@]}" "https://apt.releases.hashicorp.com/dists/${CODENAME}/main/binary-amd64/Packages" >/dev/null 2>&1; then
+        # The dist existing is not enough: HashiCorp publishes interim-release
+        # dists (e.g. questing) that contain no vault package at all, which
+        # passes a URL probe and then fails apt with "Unable to locate package
+        # vault". Probe for the actual package and fall back to the newest LTS.
+        vault_apt_arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+        vault_pkg_count="$(curl "${CURL_ARGS[@]}" "https://apt.releases.hashicorp.com/dists/${CODENAME}/main/binary-${vault_apt_arch}/Packages" 2>/dev/null | grep -c '^Package: vault$' || true)"
+        if [[ "${vault_pkg_count:-0}" -eq 0 ]]; then
           CODENAME="noble"
         fi
 

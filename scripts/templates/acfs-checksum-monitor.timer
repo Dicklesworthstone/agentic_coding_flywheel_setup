@@ -1,0 +1,16 @@
+[Unit]
+Description=ACFS Checksum Monitor Timer (every 15 minutes)
+Documentation=https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup
+
+[Timer]
+# Same cadence the Actions workflow used: minimizes the stale-checksum window.
+OnCalendar=*:0/15
+
+# If the host was asleep/off, run on wake instead of skipping.
+Persistent=true
+
+# Small jitter so the run never lands exactly on the quarter hour.
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

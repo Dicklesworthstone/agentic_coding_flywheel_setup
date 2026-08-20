@@ -1,0 +1,25 @@
+[Unit]
+Description=ACFS Checksum Monitor (local replacement for the Actions workflow)
+Documentation=https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup
+
+# Maintainer-host service: keeps checksums.yaml and generated artifacts in
+# sync with upstream installers, without GitHub Actions. Runs from a
+# dedicated clone (default ~/acfs-monitor); see
+# scripts/checksum-monitor-local.sh for deployment steps and requirements.
+After=default.target
+
+[Service]
+Type=oneshot
+
+# bun lives in ~/.bun/bin, gh/git/jq are system, monitor state in ~/.local/state.
+Environment=PATH=%h/.bun/bin:%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/acfs-monitor/scripts/checksum-monitor-local.sh
+
+# A full verify + regenerate cycle is minutes, not hours.
+TimeoutStartSec=1200
+
+Restart=no
+RemainAfterExit=no
+
+[Install]
+WantedBy=default.target
