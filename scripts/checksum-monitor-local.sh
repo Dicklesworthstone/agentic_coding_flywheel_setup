@@ -167,7 +167,13 @@ if [[ "$mismatches" -gt 0 ]]; then
     fi
     cp "$candidate" checksums.yaml
 
-    git add checksums.yaml scripts/generated/ 2>/dev/null || true
+    # Regenerate in the same run: manifest-modules.ts embeds
+    # checksumsYamlSha256, so skipping this leaves a guaranteed drift for
+    # the next run to clean up (the Actions workflow had that two-step lag).
+    ( cd packages/manifest && bun run generate >>"$LOG_FILE" 2>&1 ) \
+        || fail_closed "regeneration after checksum update failed"
+
+    git add checksums.yaml scripts/generated/ apps/web/lib/generated/ 2>/dev/null || true
     if git diff --cached --quiet; then
         log "no staged changes after regeneration (already current)"
     else
