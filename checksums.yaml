@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-08-20T01:55:48-04:00
+# checksums.yaml - Auto-generated 2026-08-20T04:31:03-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -112,7 +112,7 @@ installers:
 
   ohmyzsh:
     url: "https://install.ohmyz.sh/"
-    sha256: "95118b50d062198597e2b73d3a57b609fd95ca68cdc86faf4460d955f0172b61"
+    sha256: "475bade3920362e6b42a516871632adc1cdec7c6dbb4ad41cd57c59af3839657"
 
   opencode:
     url: "https://opencode.ai/install"
