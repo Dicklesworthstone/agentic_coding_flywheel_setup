@@ -8,3 +8,8 @@ apps/web/.next-*
 **/.next
 **/.next-*
 .git/**
+node_modules_trash_*
+**/node_modules_trash_*
+research_screenshots/**
+storage.sqlite3*
+.beads/**
