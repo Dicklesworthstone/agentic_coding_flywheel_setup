@@ -1170,12 +1170,20 @@ modules:
     verified_installer:
       tool: opencode
       runner: bash
-    install: []
+    install:
+      - |
+        opencode_bin="$HOME/.opencode/bin/opencode"
+        if [[ ! -x "$opencode_bin" ]]; then
+          echo "OpenCode: installer finished but $opencode_bin is not an executable" >&2
+          exit 1
+        fi
+        acfs_link_primary_bin_command "$opencode_bin" "opencode"
     verify:
       - opencode --version || opencode --help
     notes:
       - "Supports GitHub Copilot and OpenAI Codex subscriptions"
       - "Multi-provider agent supporting Claude, GPT, Gemini models"
+      - "Upstream installer hardcodes ~/.opencode/bin; the binary is linked into the configured ACFS bin dir so it is on PATH and detectable on re-runs"
 
   # ============================================================
   # PHASE 8: Cloud & database tools
@@ -1736,6 +1744,30 @@ modules:
             echo $! > "$fallback_pid_file"
           }
 
+          agent_mail_port_holder() {
+            # Whatever is listening on 127.0.0.1:8765 right now (empty when nothing
+            # is, or when no socket-inspection tool is available).
+            if command -v ss >/dev/null 2>&1; then
+              ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+            elif command -v lsof >/dev/null 2>&1; then
+              lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+            fi
+          }
+
+          warn_if_agent_mail_port_taken() {
+            local holder=""
+            if agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+              return 0
+            fi
+            holder="$(agent_mail_port_holder)"
+            [[ -n "$holder" ]] || return 0
+            echo "Agent Mail: 127.0.0.1:8765 is already held by another process that is not Agent Mail:" >&2
+            printf '  %s\n' "$holder" >&2
+            echo "  Agent Mail cannot bind until that port is free. 'cm serve' (CASS Memory) defaults to the same port;" >&2
+            echo "  run it as 'cm serve --port 8766' (or MCP_HTTP_PORT=8766) and re-run this step." >&2
+          }
+          warn_if_agent_mail_port_taken
+
           if [[ "$_systemctl_user_ok" = "true" ]]; then
             stop_agent_mail_fallback
             systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -1789,12 +1821,26 @@ modules:
             return 1
           }
 
+          agent_mail_port_holder() {
+            if command -v ss >/dev/null 2>&1; then
+              ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+            elif command -v lsof >/dev/null 2>&1; then
+              lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+            fi
+          }
+
           waited=0
           max_wait=240
           until agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
                 agent_mail_readiness_ready; do
             if [[ "$waited" -ge "$max_wait" ]]; then
               echo "Agent Mail service did not become ready on 127.0.0.1:8765 after ${max_wait}s" >&2
+              holder="$(agent_mail_port_holder)"
+              if [[ -n "$holder" ]]; then
+                echo "Something else is listening on 127.0.0.1:8765, so Agent Mail cannot bind:" >&2
+                printf '  %s\n' "$holder" >&2
+                echo "If this is 'cm serve' (CASS Memory), restart it with 'cm serve --port 8766' (or MCP_HTTP_PORT=8766)." >&2
+              fi
               exit 1
             fi
             sleep 2
@@ -1846,6 +1892,7 @@ modules:
           agent_mail_readiness_ready
     notes:
       - "Runs the upstream installer with ACFS-owned MCP setup/readiness skips, then writes a managed local service on port 8765"
+      - "Port 127.0.0.1:8765 belongs to the Agent Mail service; cm serve (CASS Memory) defaults to the same port and must be started with --port (e.g. 8766) on an ACFS machine"
       - "Managed service pins storage, database, and MCP path under ~/.mcp_agent_mail_git_mailbox_repo"
       - "If a user systemd manager is available, verification requires agent-mail.service to be active"
       - "Server liveness and readiness are verified after install"
@@ -1929,7 +1976,6 @@ modules:
     verified_installer:
       tool: apr
       runner: bash
-      args: ["--easy-mode"]
     install: []
     verify:
       - apr --help
@@ -3354,7 +3400,7 @@ modules:
       - xf --help || xf --version
 
   - id: utils.toon_rust
-    description: toon_rust (tru) - Token-optimized notation format for LLM context efficiency
+    description: toon_rust (toon) - Token-optimized notation format for LLM context efficiency
     category: tools
     phase: 9
     run_as: target_user
@@ -3380,19 +3426,21 @@ modules:
         - "Preparing code for context-limited models"
       language: "Rust"
       stars: 156
-      cli_name: "tru"
+      cli_name: "toon"
     dependencies:
       - lang.rust
     installed_check:
       run_as: target_user
-      command: "command -v tru"
+      command: "command -v toon"
     verified_installer:
       tool: tru
       runner: bash
       url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
     install: []
     verify:
-      - tru --help || tru --version
+      - toon --help || toon --version
+    notes:
+      - "Installer/checksum key is tru (the toon_rust Cargo package); the binary it installs is named toon"
 
   - id: utils.rano
     description: rano - Network observer for AI CLIs with request/response logging

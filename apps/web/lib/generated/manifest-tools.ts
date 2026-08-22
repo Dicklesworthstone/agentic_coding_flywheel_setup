@@ -1215,7 +1215,7 @@ export const manifestTools: ManifestWebTool[] = [
     displayName: "Token-Optimized Notation",
     shortName: "TRU",
     tagline: "Compress source code for maximum LLM context efficiency",
-    shortDesc: "toon_rust (tru) - Token-optimized notation format for LLM context efficiency",
+    shortDesc: "toon_rust (toon) - Token-optimized notation format for LLM context efficiency",
     icon: "minimize-2",
     color: "#06B6D4",
     href: "https://github.com/Dicklesworthstone/toon_rust",
@@ -1235,7 +1235,7 @@ export const manifestTools: ManifestWebTool[] = [
     ],
     language: "Rust",
     stars: 156,
-    cliName: "tru",
+    cliName: "toon",
     cliAliases: [],
   },
   {

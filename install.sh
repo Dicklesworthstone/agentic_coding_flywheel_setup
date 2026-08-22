@@ -6744,6 +6744,7 @@ binary_path() {
         "$TARGET_HOME/.cargo/bin/$name" \
         "$TARGET_HOME/.bun/bin/$name" \
         "$TARGET_HOME/.atuin/bin/$name" \
+        "$TARGET_HOME/.opencode/bin/$name" \
         "$TARGET_HOME/go/bin/$name" \
         "/usr/local/bin/$name" \
         "/usr/local/sbin/$name" \
@@ -7179,6 +7180,24 @@ UNIT_EOF
                                 rm -f "$fallback_pid_file"
                             fi
                         }
+                        agent_mail_port_holder() {
+                            # Whatever is listening on 127.0.0.1:8765 right now (empty when nothing
+                            # is, or when no socket-inspection tool is available).
+                            if command -v ss >/dev/null 2>&1; then
+                                ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+                            elif command -v lsof >/dev/null 2>&1; then
+                                lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+                            fi
+                        }
+                        am_port_holder=""
+                        if ! agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+                            am_port_holder="$(agent_mail_port_holder)"
+                            if [[ -n "$am_port_holder" ]]; then
+                                log_warn "MCP Agent Mail: 127.0.0.1:8765 is already held by another process that is not Agent Mail:"
+                                log_warn "  $am_port_holder"
+                                log_warn "  'cm serve' (CASS Memory) defaults to the same port; run it as 'cm serve --port 8766' (or MCP_HTTP_PORT=8766)"
+                            fi
+                        fi
                         if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
                             stop_agent_mail_fallback
                             systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -7256,6 +7275,12 @@ UNIT_EOF
                                   am_readiness_ready; do
                                 if [[ "$am_waited" -ge "$am_max_wait" ]]; then
                                     log_error "MCP Agent Mail service did not become ready on http://127.0.0.1:8765 after ${am_max_wait}s"
+                                    am_port_holder="$(agent_mail_port_holder 2>/dev/null || true)"
+                                    if [[ -n "$am_port_holder" ]]; then
+                                        log_error "Something else is listening on 127.0.0.1:8765, so Agent Mail cannot bind:"
+                                        log_error "  $am_port_holder"
+                                        log_error "If this is 'cm serve' (CASS Memory), restart it with 'cm serve --port 8766' (or MCP_HTTP_PORT=8766)"
+                                    fi
                                     break
                                 fi
                                 sleep 2
@@ -7524,7 +7549,7 @@ UNIT_EOF
     fi
 
     # Token-Optimized Notation (tru)
-    if binary_installed "tru"; then
+    if binary_installed "toon"; then
         log_detail "TRU already installed"
     else
         log_detail "Installing TRU"
@@ -7536,7 +7561,7 @@ UNIT_EOF
         log_detail "APR already installed"
     else
         log_detail "Installing APR"
-        try_step "Installing APR" acfs_run_verified_upstream_script_as_target "apr" "bash" --easy-mode || log_warn "APR installation may have failed"
+        try_step "Installing APR" acfs_run_verified_upstream_script_as_target "apr" "bash" || log_warn "APR installation may have failed"
     fi
 
     # Chat Shared Conversation to File (csctf)
@@ -7585,6 +7610,11 @@ UNIT_EOF
     else
         log_detail "Installing OpenCode"
         try_step "Installing OpenCode" acfs_run_verified_upstream_script_as_target "opencode" "bash" || log_warn "OpenCode installation may have failed"
+        # The upstream installer hardcodes ~/.opencode/bin, which is on no PATH ACFS
+        # manages; normalize the binary into the ACFS bin dir like claude/codex.
+        if [[ -x "$TARGET_HOME/.opencode/bin/opencode" ]]; then
+            try_step "Linking opencode into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.opencode/bin/opencode" "opencode" || log_warn "Could not link opencode into $ACFS_BIN_DIR"
+        fi
     fi
 
     # Network Observer (rano)
@@ -7600,7 +7630,7 @@ UNIT_EOF
         log_detail "S2P already installed"
     else
         log_detail "Installing S2P"
-        try_step "Installing S2P" acfs_run_verified_upstream_script_as_target "s2p" "bash" --skip-cass || log_warn "S2P installation may have failed"
+        try_step "Installing S2P" acfs_run_verified_upstream_script_as_target "s2p" "bash" || log_warn "S2P installation may have failed"
     fi
 
     # System Resource Protection Script (srps)

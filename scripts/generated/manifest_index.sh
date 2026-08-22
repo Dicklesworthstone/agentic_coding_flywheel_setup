@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="2728827a822413d0039d7c50fcd899479d621af9852dbb49d91b09072185ecf2"
+ACFS_MANIFEST_SHA256="587500fd279e50ab5ffc5d387a7e65b0427974a36c2f2b6af54260544bcda265"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -594,7 +594,7 @@ declare -gA ACFS_MODULE_DESC=(
   ['utils.giil']="Get Image from Internet Link - download cloud images for visual debugging"
   ['utils.csctf']="Chat Shared Conversation to File - convert AI share links to Markdown/HTML"
   ['utils.xf']="xf - Ultra-fast X/Twitter archive search with Tantivy"
-  ['utils.toon_rust']="toon_rust (tru) - Token-optimized notation format for LLM context efficiency"
+  ['utils.toon_rust']="toon_rust (toon) - Token-optimized notation format for LLM context efficiency"
   ['utils.rano']="rano - Network observer for AI CLIs with request/response logging"
   ['utils.mdwb']="markdown_web_browser (mdwb) - Convert websites to Markdown for LLM consumption"
   ['utils.s2p']="source_to_prompt_tui (s2p) - Code to LLM prompt generator with TUI"
@@ -668,7 +668,7 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK=(
   ['utils.giil']="command -v giil"
   ['utils.csctf']="command -v csctf"
   ['utils.xf']="command -v xf"
-  ['utils.toon_rust']="command -v tru"
+  ['utils.toon_rust']="command -v toon"
   ['utils.rano']="command -v rano"
   ['utils.mdwb']="command -v mdwb"
   ['utils.s2p']="command -v s2p"

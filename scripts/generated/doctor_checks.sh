@@ -446,7 +446,7 @@ declare -a MANIFEST_CHECKS=(
     "utils.giil	Get Image from Internet Link - download cloud images for visual debugging	giil --help || giil --version	optional	target_user"
     "utils.csctf	Chat Shared Conversation to File - convert AI share links to Markdown/HTML	csctf --help || csctf --version	optional	target_user"
     "utils.xf	xf - Ultra-fast X/Twitter archive search with Tantivy	xf --help || xf --version	optional	target_user"
-    "utils.toon_rust	toon_rust (tru) - Token-optimized notation format for LLM context efficiency	tru --help || tru --version	optional	target_user"
+    "utils.toon_rust	toon_rust (toon) - Token-optimized notation format for LLM context efficiency	toon --help || toon --version	optional	target_user"
     "utils.rano	rano - Network observer for AI CLIs with request/response logging	rano --help || rano --version	optional	target_user"
     "utils.mdwb	markdown_web_browser (mdwb) - Convert websites to Markdown for LLM consumption	mdwb --help || mdwb --version	optional	target_user"
     "utils.s2p	source_to_prompt_tui (s2p) - Code to LLM prompt generator with TUI	s2p --help	optional	target_user"

@@ -1427,6 +1427,187 @@ install_agents_opencode() {
             return 0
         fi
     fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: install: if [[ ! -x \"\$opencode_bin\" ]]; then (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_AGENTS_OPENCODE'
+# Generated helper functions used by this child shell.
+acfs_generated_system_binary_path() {
+    local name="${1:-}"
+    local candidate=""
+
+    [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
+
+    for candidate in \
+        "/usr/local/bin/$name" \
+        "/usr/local/sbin/$name" \
+        "/usr/bin/$name" \
+        "/bin/$name" \
+        "/usr/sbin/$name" \
+        "/sbin/$name"
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
+}
+
+# Primary-bin helper functions used by this child shell.
+acfs_child_log_error() {
+    if declare -f log_error >/dev/null 2>&1; then
+        log_error "$@"
+    else
+        echo "[ERROR] $*" >&2
+    fi
+}
+
+acfs_child_primary_bin_dir() {
+    local primary_bin_dir="${ACFS_BIN_DIR:-}"
+    local fallback_home="${HOME:-}"
+
+    if [[ -z "$primary_bin_dir" ]]; then
+        if [[ -z "$fallback_home" ]] || [[ "$fallback_home" == "/" ]] || [[ "$fallback_home" != /* ]]; then
+            acfs_child_log_error "ACFS_BIN_DIR is unset and HOME is not a usable absolute path"
+            return 1
+        fi
+        primary_bin_dir="$fallback_home/.local/bin"
+    fi
+
+    if [[ -z "$primary_bin_dir" ]] || [[ "$primary_bin_dir" == "/" ]] || [[ "$primary_bin_dir" != /* ]]; then
+        acfs_child_log_error "ACFS_BIN_DIR must be an absolute path and cannot be '/' (got: ${primary_bin_dir:-<empty>})"
+        return 1
+    fi
+
+    printf '%s\n' "$primary_bin_dir"
+}
+
+acfs_child_primary_bin_requires_root() {
+    local primary_bin_dir="$1"
+    local target_home="${TARGET_HOME:-${HOME:-}}"
+
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != "/" ]] || return 0
+    case "$primary_bin_dir" in
+        "$target_home"|"$target_home"/*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+acfs_child_run_root_bin_command() {
+    if [[ -z "${1:-}" || "${1:-}" != /* ]]; then
+        acfs_child_log_error "Root primary bin command must be an absolute trusted path (got: ${1:-<empty>})"
+        return 1
+    fi
+
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+        return $?
+    fi
+
+    local sudo_bin=""
+    sudo_bin="$(acfs_generated_system_binary_path sudo 2>/dev/null || true)"
+    if [[ -n "$sudo_bin" ]]; then
+        "$sudo_bin" -n "$@"
+        return $?
+    fi
+
+    acfs_child_log_error "Primary bin dir requires root, but sudo is unavailable: ${ACFS_BIN_DIR:-<unset>}"
+    return 1
+}
+
+acfs_child_primary_bin_tool_path() {
+    local name="${1:-}"
+    local tool_path=""
+
+    tool_path="$(acfs_generated_system_binary_path "$name" 2>/dev/null || true)"
+    if [[ -z "$tool_path" ]]; then
+        acfs_child_log_error "Unable to locate trusted $name for primary bin operation"
+        return 1
+    fi
+
+    printf '%s\n' "$tool_path"
+}
+
+acfs_child_ensure_primary_bin_dir() {
+    local primary_bin_dir="$1"
+    local mkdir_bin=""
+
+    mkdir_bin="$(acfs_child_primary_bin_tool_path mkdir)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$mkdir_bin" -p "$primary_bin_dir"
+        return $?
+    fi
+
+    "$mkdir_bin" -p "$primary_bin_dir"
+}
+
+acfs_link_primary_bin_command() {
+    local source_path="$1"
+    local command_name="$2"
+    local primary_bin_dir=""
+    local dest_path=""
+    local ln_bin=""
+
+    primary_bin_dir="$(acfs_child_primary_bin_dir)" || return 1
+    dest_path="$primary_bin_dir/$command_name"
+    acfs_child_ensure_primary_bin_dir "$primary_bin_dir" || return 1
+    ln_bin="$(acfs_child_primary_bin_tool_path ln)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$ln_bin" -sf "$source_path" "$dest_path"
+        return $?
+    fi
+
+    "$ln_bin" -sf "$source_path" "$dest_path"
+}
+
+acfs_install_executable_into_primary_bin() {
+    local src_path="$1"
+    local command_name="$2"
+    local primary_bin_dir=""
+    local dest_path=""
+    local install_bin=""
+
+    primary_bin_dir="$(acfs_child_primary_bin_dir)" || return 1
+    dest_path="$primary_bin_dir/$command_name"
+    acfs_child_ensure_primary_bin_dir "$primary_bin_dir" || return 1
+    install_bin="$(acfs_child_primary_bin_tool_path install)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$install_bin" -m 0755 "$src_path" "$dest_path"
+        return $?
+    fi
+
+    "$install_bin" -m 0755 "$src_path" "$dest_path"
+}
+
+opencode_bin="$HOME/.opencode/bin/opencode"
+if [[ ! -x "$opencode_bin" ]]; then
+  echo "OpenCode: installer finished but $opencode_bin is not an executable" >&2
+  exit 1
+fi
+acfs_link_primary_bin_command "$opencode_bin" "opencode"
+INSTALL_AGENTS_OPENCODE
+        then
+            log_warn "agents.opencode: install command failed: if [[ ! -x \"\$opencode_bin\" ]]; then"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.opencode" "install command failed: if [[ ! -x \"\$opencode_bin\" ]]; then"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.opencode"
+            fi
+            return 0
+        fi
+    fi
 
     # Verify
     if [[ "${DRY_RUN:-false}" = "true" ]]; then

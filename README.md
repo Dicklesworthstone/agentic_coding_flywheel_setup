@@ -2081,6 +2081,14 @@ ACFS includes integration with **MCP Agent Mail** for multi-agent coordination:
 - **Searchable Threads:** Full-text search across all messages
 - **Git Persistence:** All artifacts stored in git for human auditability
 
+### Port 8765 is reserved for Agent Mail
+
+ACFS runs Agent Mail as a user service bound to `127.0.0.1:8765` and health-checks it there.
+`cm serve` (CASS Memory's MCP HTTP server) defaults to the same address, so on an ACFS machine
+start it on another port (`cm serve --port 8766`, or `MCP_HTTP_PORT=8766 cm serve`); otherwise
+whichever process starts second fails to bind and MCP clients can end up talking to the wrong
+server. If Agent Mail cannot start, the installer reports which process is holding the port.
+
 ### Core Patterns
 
 **1. Register Identity:**

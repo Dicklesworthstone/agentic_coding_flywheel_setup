@@ -1733,6 +1733,7 @@ doctor_binary_path() {
         "$runtime_home/.bun/bin/$name"
         "$runtime_home/.cargo/bin/$name"
         "$runtime_home/.atuin/bin/$name"
+        "$runtime_home/.opencode/bin/$name"
         "$runtime_home/go/bin/$name"
         "$runtime_home/google-cloud-sdk/bin/$name"
         "$runtime_home/bin/$name"
@@ -2660,14 +2661,14 @@ check_utilities() {
 
     section "Utility tools"
 
-    # tru (Token-Optimized Notation)
-    util_bin="$(doctor_binary_path tru 2>/dev/null || true)"
+    # toon (Token-Optimized Notation; toon_rust, installer key tru)
+    util_bin="$(doctor_binary_path toon 2>/dev/null || true)"
     if [[ -n "$util_bin" ]]; then
         local version
         version=$(get_version_line "$util_bin")
-        check "util.tru" "tru ($version)" "pass" "installed"
+        check "util.tru" "toon ($version)" "pass" "installed"
     else
-        check "util.tru" "tru (token notation)" "skip" "not installed (optional)"
+        check "util.tru" "toon (token notation)" "skip" "not installed (optional)"
     fi
 
     # rust_proxy (Transparent Proxy Routing)

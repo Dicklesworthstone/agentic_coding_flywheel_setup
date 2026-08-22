@@ -32,8 +32,13 @@ export interface ManifestProvenanceMetadata {
 
 export const manifestProvenance = {
   acfsVersion: "0.7.0",
+<<<<<<< HEAD
   manifestSha256: "2728827a822413d0039d7c50fcd899479d621af9852dbb49d91b09072185ecf2",
   checksumsYamlSha256: "292d03a1781259f5f4fde859a3ec76ff4affe2f1c7ad8fa76bc2165d09861ba7",
+=======
+  manifestSha256: "587500fd279e50ab5ffc5d387a7e65b0427974a36c2f2b6af54260544bcda265",
+  checksumsYamlSha256: "486cc1a3dcd9fdfaa533f4e0813f78f443049d894a74a0e7c98077050e4a619c",
+>>>>>>> 53e47cf1 (feat(acfs): opencode post-install verify + PATH link; tru->toon; port 8765 docs)
 } as const satisfies ManifestProvenanceMetadata;
 
 export const manifestModules: ManifestModuleMetadata[] = [
@@ -935,7 +940,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
   },
   {
     id: "utils.toon_rust",
-    description: "toon_rust (tru) - Token-optimized notation format for LLM context efficiency",
+    description: "toon_rust (toon) - Token-optimized notation format for LLM context efficiency",
     category: "tools",
     phase: 9,
     dependencies: [

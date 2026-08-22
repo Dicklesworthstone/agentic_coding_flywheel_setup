@@ -374,9 +374,9 @@ export const manifestCommands: ManifestCommand[] = [
     moduleId: "utils.toon_rust",
     displayName: "Token-Optimized Notation",
     moduleCategory: "tools",
-    cliName: "tru",
+    cliName: "toon",
     cliAliases: [],
-    description: "toon_rust (tru) - Token-optimized notation format for LLM context efficiency",
+    description: "toon_rust (toon) - Token-optimized notation format for LLM context efficiency",
     docsUrl: "https://github.com/Dicklesworthstone/toon_rust",
   },
   {

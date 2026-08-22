@@ -728,6 +728,30 @@ launch_agent_mail_fallback() {
   echo $! > "$fallback_pid_file"
 }
 
+agent_mail_port_holder() {
+  # Whatever is listening on 127.0.0.1:8765 right now (empty when nothing
+  # is, or when no socket-inspection tool is available).
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+  fi
+}
+
+warn_if_agent_mail_port_taken() {
+  local holder=""
+  if agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
+    return 0
+  fi
+  holder="$(agent_mail_port_holder)"
+  [[ -n "$holder" ]] || return 0
+  echo "Agent Mail: 127.0.0.1:8765 is already held by another process that is not Agent Mail:" >&2
+  printf '  %s\n' "$holder" >&2
+  echo "  Agent Mail cannot bind until that port is free. 'cm serve' (CASS Memory) defaults to the same port;" >&2
+  echo "  run it as 'cm serve --port 8766' (or MCP_HTTP_PORT=8766) and re-run this step." >&2
+}
+warn_if_agent_mail_port_taken
+
 if [[ "$_systemctl_user_ok" = "true" ]]; then
   stop_agent_mail_fallback
   systemctl --user daemon-reload >/dev/null 2>&1 || true
@@ -790,12 +814,26 @@ agent_mail_readiness_ready() {
   return 1
 }
 
+agent_mail_port_holder() {
+  if command -v ss >/dev/null 2>&1; then
+    ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
+  fi
+}
+
 waited=0
 max_wait=240
 until agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
       agent_mail_readiness_ready; do
   if [[ "$waited" -ge "$max_wait" ]]; then
     echo "Agent Mail service did not become ready on 127.0.0.1:8765 after ${max_wait}s" >&2
+    holder="$(agent_mail_port_holder)"
+    if [[ -n "$holder" ]]; then
+      echo "Something else is listening on 127.0.0.1:8765, so Agent Mail cannot bind:" >&2
+      printf '  %s\n' "$holder" >&2
+      echo "If this is 'cm serve' (CASS Memory), restart it with 'cm serve --port 8766' (or MCP_HTTP_PORT=8766)." >&2
+    fi
     exit 1
   fi
   sleep 2
@@ -1030,7 +1068,7 @@ install_stack_automated_plan_reviser() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--easy-mode'; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
                             install_success=true
                         else
                             log_error "stack.automated_plan_reviser: verify_checksum or installer execution failed"
