@@ -7180,11 +7180,13 @@ UNIT_EOF
                                 rm -f "$fallback_pid_file"
                             fi
                         }
+                        # NOTE: this runs inside the single-quoted target-user shell above: no
+                        # single quotes and no log_* helpers are available here.
                         agent_mail_port_holder() {
                             # Whatever is listening on 127.0.0.1:8765 right now (empty when nothing
                             # is, or when no socket-inspection tool is available).
                             if command -v ss >/dev/null 2>&1; then
-                                ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3
+                                ss -H -ltnp "sport = :8765" 2>/dev/null | head -n 3
                             elif command -v lsof >/dev/null 2>&1; then
                                 lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3
                             fi
@@ -7193,9 +7195,9 @@ UNIT_EOF
                         if ! agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1; then
                             am_port_holder="$(agent_mail_port_holder)"
                             if [[ -n "$am_port_holder" ]]; then
-                                log_warn "MCP Agent Mail: 127.0.0.1:8765 is already held by another process that is not Agent Mail:"
-                                log_warn "  $am_port_holder"
-                                log_warn "  'cm serve' (CASS Memory) defaults to the same port; run it as 'cm serve --port 8766' (or MCP_HTTP_PORT=8766)"
+                                echo "Agent Mail: 127.0.0.1:8765 is already held by another process that is not Agent Mail:" >&2
+                                printf "  %s\n" "$am_port_holder" >&2
+                                echo "  cm serve (CASS Memory) defaults to the same port; run it as: cm serve --port 8766 (or MCP_HTTP_PORT=8766)" >&2
                             fi
                         fi
                         if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
@@ -7275,7 +7277,12 @@ UNIT_EOF
                                   am_readiness_ready; do
                                 if [[ "$am_waited" -ge "$am_max_wait" ]]; then
                                     log_error "MCP Agent Mail service did not become ready on http://127.0.0.1:8765 after ${am_max_wait}s"
-                                    am_port_holder="$(agent_mail_port_holder 2>/dev/null || true)"
+                                    am_port_holder=""
+                                    if command -v ss >/dev/null 2>&1; then
+                                        am_port_holder="$(ss -H -ltnp 'sport = :8765' 2>/dev/null | head -n 3)"
+                                    elif command -v lsof >/dev/null 2>&1; then
+                                        am_port_holder="$(lsof -nP -iTCP:8765 -sTCP:LISTEN 2>/dev/null | tail -n +2 | head -n 3)"
+                                    fi
                                     if [[ -n "$am_port_holder" ]]; then
                                         log_error "Something else is listening on 127.0.0.1:8765, so Agent Mail cannot bind:"
                                         log_error "  $am_port_holder"
