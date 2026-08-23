@@ -860,9 +860,14 @@ check_dns() {
     # Test DNS resolution before HTTP checks
     local test_hosts=(
         "github.com"
-        "archive.ubuntu.com"
         "raw.githubusercontent.com"
     )
+    # Only probe the distro mirror that will actually be used.
+    if command -v pacman &>/dev/null && ! command -v apt-get &>/dev/null; then
+        test_hosts+=("archlinux.org")
+    else
+        test_hosts+=("archive.ubuntu.com")
+    fi
 
     local dns_ok=true
     local failed_hosts=()

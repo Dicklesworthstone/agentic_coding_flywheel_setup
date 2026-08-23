@@ -242,6 +242,9 @@ if [[ "$ACFS_DISTRO_ID" == "omarchy" ]]; then
 fi
 unset _acfs_id_like
 readonly ACFS_DISTRO_ID ACFS_DISTRO_FAMILY ACFS_IS_OMARCHY ACFS_DISTRO_PRETTY
+# Exported so child scripts (preflight.sh, doctor.sh via the smoke test,
+# tailscale.sh) see the same verdict instead of re-deriving it.
+export ACFS_DISTRO_ID ACFS_DISTRO_FAMILY ACFS_IS_OMARCHY
 
 _acfs_early_curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
 _acfs_early_grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
@@ -352,6 +355,15 @@ TARGET_UBUNTU_VERSION_EXPLICIT=false  # true when user passes --target-ubuntu
 # Note: Previously defaulted to "ubuntu" which broke non-ubuntu VPS installs.
 if [[ -z "${TARGET_USER:-}" ]]; then
     if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
+        if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+            # Arch/Omarchy machines are almost always personal workstations with
+            # an existing human account. Fabricating an `ubuntu` user there
+            # would configure the wrong account, so require an explicit choice.
+            printf 'ERROR: Running as root without sudo on an Arch-family system.\n' >&2
+            printf '       Re-run as your normal user (the installer will sudo as needed),\n' >&2
+            printf '       or set TARGET_USER=<your-username> explicitly.\n' >&2
+            exit 1
+        fi
         _ACFS_DETECTED_USER="ubuntu"
     else
         _ACFS_DETECTED_USER="${SUDO_USER:-}"
@@ -2290,7 +2302,11 @@ detect_environment() {
     # Generated manifest installers target Ubuntu/apt. On Arch-family systems
     # route every category through the legacy (pacman-aware) paths instead of
     # refactoring the generator system.
-    if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]] && declare -f acfs_use_generated_category >/dev/null 2>&1; then
+    # acfs_use_generated_for_category is the canonical predicate (used by
+    # acfs_use_generated_for_module / acfs_get_module_installer);
+    # acfs_use_generated_category is its alias. Override both.
+    if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]] && declare -f acfs_use_generated_for_category >/dev/null 2>&1; then
+        acfs_use_generated_for_category() { return 1; }
         acfs_use_generated_category() { return 1; }
     fi
 
@@ -4064,8 +4080,11 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     tmp_avail_kb="$(df -Pk "${TMPDIR:-/tmp}" 2>/dev/null | awk 'NR==2{print $4}')" || true
     if [[ -z "${TMPDIR:-}" ]] && [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
         local acfs_tmpdir="$TARGET_HOME/.cache/acfs/installer-tmp"
-        $SUDO mkdir -p "$acfs_tmpdir" 2>/dev/null || mkdir -p "$acfs_tmpdir" 2>/dev/null || true
-        $SUDO chown "$TARGET_USER:$TARGET_USER" "$acfs_tmpdir" 2>/dev/null || true
+        # Create as the target user so ~/.cache/acfs (which later target-user
+        # writers such as notify/update/doctor-fix share) is not left root-owned.
+        run_as_target mkdir -p "$acfs_tmpdir" 2>/dev/null \
+            || { $SUDO mkdir -p "$acfs_tmpdir" 2>/dev/null || mkdir -p "$acfs_tmpdir" 2>/dev/null || true
+                 $SUDO chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.cache" "$TARGET_HOME/.cache/acfs" "$acfs_tmpdir" 2>/dev/null || true; }
         tmpdir_assignment="TMPDIR=$acfs_tmpdir"
         log_detail "Low space on /tmp ($(( tmp_avail_kb / 1024 ))MB); staging upstream installers in $acfs_tmpdir"
     fi
@@ -4126,6 +4145,12 @@ disable_needrestart_apt_hook() {
     local mkdir_bin=""
     local tee_bin=""
     local -a sudo_cmd=()
+
+    # needrestart is an apt hook; nothing to neutralise on pacman systems, and
+    # creating /etc/needrestart on an Arch box would just be litter.
+    if [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != "ubuntu" ]]; then
+        return 0
+    fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
         if [[ -f "$apt_hook" ]]; then
@@ -4222,6 +4247,32 @@ acfs_chown_tree() {
         fi
         log_detail "acfs_chown_tree: transient file warnings during chown (safe to ignore)"
     }
+}
+
+# Fix ownership of the target user's home directory.
+#
+# The recursive walk exists for cloud images that pre-create /home/ubuntu as
+# root:root. On an Arch/Omarchy workstation the home directory is a real,
+# long-lived personal home: it can be hundreds of GB, contain bind/NFS mounts,
+# and deliberately hold files owned by other users (rootless container storage
+# with subuid maps, shared group dirs). Walking it with `chown -R` is slow and
+# can corrupt those setups, so on Arch-family hosts we only fix the top-level
+# directory when it is already owned by the target user and fall back to the
+# recursive repair solely when the home itself is mis-owned.
+acfs_chown_target_home() {
+    local owner_group="$1"
+    local home="$2"
+
+    if [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" == "arch" ]]; then
+        local current_owner=""
+        current_owner="$(stat -c %U "$home" 2>/dev/null || true)"
+        if [[ "$current_owner" == "${owner_group%%:*}" ]]; then
+            log_detail "Home directory already owned by ${owner_group%%:*}; skipping recursive chown on Arch-family host"
+            return 0
+        fi
+    fi
+
+    acfs_chown_tree "$owner_group" "$home"
 }
 
 confirm_or_exit() {
@@ -5038,7 +5089,43 @@ acfs_arch_pkg_install() {
         sudo_cmd=("$sudo_bin")
     fi
 
+    # Sync the package database once per run before the first install. A stale
+    # sync DB makes pacman 404 on package downloads (very common on a laptop
+    # that hasn't been updated in a few days), which would otherwise abort the
+    # whole install at ensure_base_deps. `-Sy` alone invites partial upgrades
+    # (Arch wiki: "never -Sy then -S"), so the first call is a full `-Syu`,
+    # exactly what Omarchy's own installer does.
+    if [[ "${ACFS_ARCH_DB_SYNCED:-false}" != "true" ]]; then
+        if try_step "Refreshing pacman database and upgrading system (pacman -Syu)" \
+            "${sudo_cmd[@]}" "$pacman_bin" -Syu --noconfirm; then
+            ACFS_ARCH_DB_SYNCED=true
+        else
+            # A failed full upgrade (e.g. a conflict needing manual resolution)
+            # should not block installing the ACFS package set; fall back to a
+            # refresh-only sync so the download URLs are at least current.
+            log_warn "pacman -Syu failed; continuing with a database refresh only"
+            "${sudo_cmd[@]}" "$pacman_bin" -Sy --noconfirm >/dev/null 2>&1 || true
+            ACFS_ARCH_DB_SYNCED=true
+        fi
+    fi
+
     try_step "Installing (pacman): $*" "${sudo_cmd[@]}" "$pacman_bin" -S --needed --noconfirm "$@" || return 1
+}
+
+# Install a package list one-by-one, reporting which packages failed, so one
+# conflicting or unavailable package (e.g. openbsd-netcat vs gnu-netcat) does
+# not take the whole required batch down with it.
+acfs_arch_pkg_install_each() {
+    local -a failed=()
+    local pkg=""
+    for pkg in "$@"; do
+        acfs_arch_pkg_install "$pkg" >/dev/null 2>&1 || failed+=("$pkg")
+    done
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        log_warn "pacman could not install: ${failed[*]}"
+        return 1
+    fi
+    return 0
 }
 
 # Echo the first available AUR helper (yay/paru), if any.
@@ -5269,7 +5356,7 @@ normalize_user() {
     # CRITICAL: useradd -m does NOT change ownership of existing directories (common on VPS)
     # Cloud images often pre-create /home/ubuntu owned by root:root
     if [[ -d "$TARGET_HOME" ]]; then
-        try_step "Setting home directory ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$TARGET_HOME" || return 1
+        try_step "Setting home directory ownership" acfs_chown_target_home "$TARGET_USER:$TARGET_USER" "$TARGET_HOME" || return 1
     fi
 
     # Set up passwordless sudo in vibe mode
@@ -5286,6 +5373,20 @@ normalize_user() {
         try_step "Setting sudoers file permissions" $SUDO chmod 440 "/etc/sudoers.d/$acfs_sudoers_file" || return 1
         if command_exists visudo && ! $SUDO visudo -c -f "/etc/sudoers.d/$acfs_sudoers_file" >/dev/null 2>&1; then
             log_fatal "Invalid sudoers file generated at /etc/sudoers.d/$acfs_sudoers_file"
+        fi
+    elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        # Safe mode on Arch: wheel membership alone grants nothing because the
+        # stock /etc/sudoers ships `%wheel` commented out (Ubuntu's `sudo` group
+        # is enabled by default). Without this the target user would have no
+        # sudo at all. Omarchy already enables %wheel, so this is a no-op there.
+        if ! $SUDO grep -Eqs '^[[:space:]]*%wheel[[:space:]]+ALL=' /etc/sudoers /etc/sudoers.d/* 2>/dev/null; then
+            log_detail "Enabling password-prompted sudo for the wheel group"
+            try_step_eval "Configuring wheel sudo access" \
+                "echo '%wheel ALL=(ALL:ALL) ALL' | $SUDO tee /etc/sudoers.d/90-acfs-wheel > /dev/null" || return 1
+            try_step "Setting sudoers file permissions" $SUDO chmod 440 /etc/sudoers.d/90-acfs-wheel || return 1
+            if command_exists visudo && ! $SUDO visudo -c -f /etc/sudoers.d/90-acfs-wheel >/dev/null 2>&1; then
+                log_fatal "Invalid sudoers file generated at /etc/sudoers.d/90-acfs-wheel"
+            fi
         fi
     fi
 
@@ -5401,7 +5502,7 @@ setup_filesystem() {
     # CRITICAL: Fix home directory ownership FIRST, before any run_as_target calls
     # Some cloud images (e.g., Hetzner) have /home/ubuntu owned by root after user creation
     # If we don't fix this first, all run_as_target mkdir calls below will fail
-    try_step "Fixing home directory ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$TARGET_HOME" || true
+    try_step "Fixing home directory ownership" acfs_chown_target_home "$TARGET_USER:$TARGET_USER" "$TARGET_HOME" || true
 
     # User directories (in TARGET_HOME, not $HOME)
     # CRITICAL: Create these as target user to ensure correct ownership
@@ -5885,9 +5986,27 @@ install_cli_tools() {
     # Required CLI packages. Arch-family installs gh/gum straight from pacman;
     # Ubuntu uses the batch below plus the dedicated GitHub CLI installer.
     if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
-        local -a arch_required_pkgs=(ripgrep tmux fzf direnv jq git-lfs lsof bind openbsd-netcat strace rsync zstd gum github-cli)
+        local -a arch_required_pkgs=(ripgrep tmux fzf direnv jq git-lfs lsof bind strace rsync zstd gum github-cli)
+        # openbsd-netcat conflicts with gnu-netcat; only add it when no `nc`
+        # provider is present so an existing choice never aborts the batch.
+        if ! command_exists nc; then
+            arch_required_pkgs+=(openbsd-netcat)
+        fi
         log_detail "Installing required pacman packages"
-        acfs_arch_pkg_install "${arch_required_pkgs[@]}" || return 1
+        if ! acfs_arch_pkg_install "${arch_required_pkgs[@]}"; then
+            # One bad package (conflict, mirror glitch) must not abort the
+            # whole CLI-tools phase; retry individually and only fail if a
+            # truly required binary is still missing afterwards.
+            log_detail "Batch install failed, trying packages individually"
+            acfs_arch_pkg_install_each "${arch_required_pkgs[@]}" || true
+            local req_bin=""
+            for req_bin in rg tmux fzf jq gh; do
+                if ! binary_installed "$req_bin"; then
+                    log_error "Required tool '$req_bin' could not be installed via pacman"
+                    return 1
+                fi
+            done
+        fi
     else
         log_detail "Installing required apt packages"
         try_step "Installing required apt packages" $SUDO apt-get install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd || return 1
@@ -5930,6 +6049,12 @@ install_cli_tools() {
                 acfs_arch_pkg_install "$pkg" >/dev/null 2>&1 || log_detail "$pkg not available (optional)"
             done
         }
+        # pacman never starts services (unlike docker.io's apt postinst), so
+        # an installed-but-dead docker would make `docker ps` and lazydocker
+        # fail until the user enables it by hand.
+        if pacman -Qq docker &>/dev/null && command_exists systemctl && [[ -d /run/systemd/system ]]; then
+            try_step "Enabling Docker service" $SUDO systemctl enable --now docker.service || log_warn "Docker installed but its service could not be started (optional)"
+        fi
     else
         log_detail "Installing optional apt packages"
         local optional_pkgs=(lsd eza bat fd-find btop dust neovim htop tree ncdu httpie entr mtr pv docker.io docker-compose-plugin cosign)
@@ -6607,7 +6732,10 @@ acfs_arch_install_postgres() {
             pg_runner=("${sudo_cmd[@]}" -u postgres -H --)
         fi
         if [[ ${#pg_runner[@]} -gt 0 ]]; then
-            try_step "Initializing PostgreSQL cluster" "${pg_runner[@]}" initdb -D "$pg_data" \
+            # Explicit locale/encoding: under runuser the env is clean (-> SQL_ASCII
+            # cluster); under sudo it inherits a LANG that may not be generated.
+            # C.UTF-8 is always available on Arch (Arch wiki canonical invocation).
+            try_step "Initializing PostgreSQL cluster" "${pg_runner[@]}" initdb --locale=C.UTF-8 --encoding=UTF8 -D "$pg_data" \
                 || log_warn "PostgreSQL: initdb failed (continuing)"
         else
             log_warn "PostgreSQL: cannot run initdb (no runuser/sudo); skipping cluster init"
@@ -6639,6 +6767,13 @@ acfs_arch_install_postgres() {
 # Vault on Arch-family: prefer a pinned generic Linux binary published in
 # checksums.yaml; otherwise use an AUR helper (vault-bin) when available.
 acfs_arch_install_vault() {
+    # Vault ships in Arch's official `extra` repo; that is the consistent,
+    # signed path and needs neither a pinned binary nor an AUR helper.
+    if acfs_arch_pkg_install vault && binary_installed "vault"; then
+        return 0
+    fi
+    log_detail "Vault: pacman install unavailable; trying pinned binary / AUR fallbacks"
+
     local pinned="" pin_url="" pin_sha256=""
     if pinned="$(acfs_pinned_binary_info vault)"; then
         pin_url="${pinned%% *}"

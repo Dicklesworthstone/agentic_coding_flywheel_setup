@@ -96,9 +96,30 @@ fi
 if [[ -f "$ZSH/oh-my-zsh.sh" ]]; then
   source "$ZSH/oh-my-zsh.sh"
 else
-  # No oh-my-zsh (which normally runs compinit): run compinit ourselves so the
-  # fpath-registered completions (_acfs, _bun) still work.
+  # No oh-my-zsh (Arch/Omarchy installs skip it on purpose). OMZ normally
+  # supplies compinit, history persistence and sane interactive options, so
+  # provide the essentials ourselves. Nothing here overrides a value the
+  # user's own ~/.zshrc (sourced before this loader on Arch) already set.
   autoload -Uz compinit && compinit
+  : "${HISTFILE:=$HOME/.zsh_history}"
+  (( HISTSIZE > 1000 )) || HISTSIZE=50000
+  (( SAVEHIST > 1000 )) || SAVEHIST=50000
+  setopt append_history share_history hist_ignore_dups hist_ignore_space \
+         hist_reduce_blanks extended_history inc_append_history
+  setopt auto_cd interactive_comments
+  # Prompt: keep the user's starship (Omarchy's default) if present and not
+  # already initialised; otherwise fall back to a compact informative prompt
+  # rather than zsh's bare `%m%#`.
+  if command -v starship &>/dev/null; then
+    (( ${+functions[starship_precmd]} )) || eval "$(starship init zsh)"
+  elif [[ -z "${PROMPT:-}" || "$PROMPT" == '%m%# ' ]]; then
+    PROMPT='%F{green}%n@%m%f %F{blue}%~%f %# '
+  fi
+  # mise (Omarchy's runtime manager) must be activated per shell to put its
+  # shims on PATH; skip if the user's rc already did it.
+  if command -v mise &>/dev/null; then
+    (( ${+functions[mise]} )) || eval "$(mise activate zsh)"
+  fi
 fi
 
 # --- Editor preference ---
@@ -249,7 +270,12 @@ export UV_LINK_MODE=copy
 # nvm.sh is also the only thing that puts node on PATH, so it can't just be
 # dropped. Resolve the node bin directly (cheap), then source nvm.sh with
 # --no-use so the `nvm` function still exists without the auto-use cost.
-export NVM_DIR="$HOME/.nvm"
+# nvm 0.40+ installs under $XDG_CONFIG_HOME/nvm when that is set (common on
+# Arch/Omarchy), and the user may have pointed NVM_DIR elsewhere; honour both.
+export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+if [[ ! -s "$NVM_DIR/nvm.sh" && -s "${XDG_CONFIG_HOME:-$HOME/.config}/nvm/nvm.sh" ]]; then
+    export NVM_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nvm"
+fi
 if [[ -s "$NVM_DIR/nvm.sh" ]]; then
     if [[ -z "${NVM_BIN:-}" || ! -x "${NVM_BIN}/node" ]]; then
         # A pinned default alias is a concrete version (v26.0.0); symbolic ones

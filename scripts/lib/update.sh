@@ -727,25 +727,36 @@ update_tool_version_from_path() {
     esac
 }
 
-update_has_nvm_node() {
-    local node_path=""
+# nvm lives in ~/.nvm by default, but nvm 0.40+ uses $XDG_CONFIG_HOME/nvm
+# when that variable is set (common on Arch/Omarchy); install.sh already
+# handles both, so the updater must look in the same places.
+update_nvm_dirs() {
+    printf '%s\n' "${NVM_DIR:-$HOME/.nvm}" "$HOME/.nvm" "${XDG_CONFIG_HOME:-$HOME/.config}/nvm" | awk '!seen[$0]++'
+}
 
-    while IFS= read -r node_path; do
-        [[ -x "$node_path" ]] && return 0
-    done < <(compgen -G "$HOME/.nvm/versions/node/*/bin/node")
+update_has_nvm_node() {
+    local node_path="" nvm_dir=""
+
+    while IFS= read -r nvm_dir; do
+        while IFS= read -r node_path; do
+            [[ -x "$node_path" ]] && return 0
+        done < <(compgen -G "$nvm_dir/versions/node/*/bin/node")
+    done < <(update_nvm_dirs)
 
     return 1
 }
 
 update_nvm_node_bin_dir() {
-    local node_path=""
+    local node_path="" nvm_dir=""
 
-    while IFS= read -r node_path; do
-        if [[ -x "$node_path" ]]; then
-            printf '%s\n' "${node_path%/node}"
-            return 0
-        fi
-    done < <(compgen -G "$HOME/.nvm/versions/node/*/bin/node" | sort -Vr)
+    while IFS= read -r nvm_dir; do
+        while IFS= read -r node_path; do
+            if [[ -x "$node_path" ]]; then
+                printf '%s\n' "${node_path%/node}"
+                return 0
+            fi
+        done < <(compgen -G "$nvm_dir/versions/node/*/bin/node" | sort -Vr)
+    done < <(update_nvm_dirs)
 
     return 1
 }
@@ -757,7 +768,10 @@ update_ensure_gemini_patch_node() {
 
     update_run_verified_installer nvm || return 1
 
-    export NVM_DIR="$HOME/.nvm"
+    export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+    if [[ ! -s "$NVM_DIR/nvm.sh" && -s "${XDG_CONFIG_HOME:-$HOME/.config}/nvm/nvm.sh" ]]; then
+        export NVM_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/nvm"
+    fi
     if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
         echo "nvm.sh not found at $NVM_DIR/nvm.sh" >&2
         return 1
@@ -4881,6 +4895,22 @@ update_apt() {
         return 0
     fi
 
+    # Arch-family (Arch, Omarchy): the system package manager is pacman, and
+    # partial upgrades are unsupported there, so the only correct operation is
+    # a full `-Syu`. Keep it under the same --apt/--no-apt switches.
+    if ! command -v apt-get &>/dev/null && command -v pacman &>/dev/null; then
+        log_section "System Packages (pacman)"
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_item "skip" "pacman -Syu" "dry-run"
+            return 0
+        fi
+        if run_cmd_sudo_with_retry_status "pacman -Syu" pacman -Syu --noconfirm; then
+            log_item "ok" "pacman -Syu" "system packages up to date"
+        fi
+        check_reboot_required
+        return 0
+    fi
+
     log_section "System Packages (apt)"
 
     # Neutralise needrestart before any apt-get call — must happen first so
@@ -5934,10 +5964,13 @@ update_go() {
 
     # Check if it's apt-managed (system install)
     if [[ "$go_path" == "/usr/bin/go" ]] || [[ "$go_path" == "/usr/local/go/bin/go" ]]; then
-        # System install - apt handles it, or manual install
-        if dpkg -l golang-go &>/dev/null 2>&1; then
+        # System install - apt/pacman handles it, or manual install
+        if command -v dpkg &>/dev/null && dpkg -l golang-go &>/dev/null 2>&1; then
             log_item "ok" "Go" "apt-managed (updated via apt upgrade)"
             log_to_file "Go is managed by apt, skipping dedicated update"
+        elif command -v pacman &>/dev/null && pacman -Qq go &>/dev/null; then
+            log_item "ok" "Go" "pacman-managed (updated via pacman -Syu)"
+            log_to_file "Go is managed by pacman, skipping dedicated update"
         else
             log_item "skip" "Go" "manual install, update manually from golang.org"
             log_to_file "Go appears to be manually installed at $go_path"

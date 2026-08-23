@@ -1999,6 +1999,8 @@ check_shell() {
 
     runtime_home="$(doctor_runtime_home)"
     zsh_custom="${ZSH_CUSTOM:-$runtime_home/.oh-my-zsh/custom}"
+    local p10k_dir="$zsh_custom/themes/powerlevel10k"
+    local plugins_dir="$zsh_custom/plugins"
 
     # Arch-family installs intentionally skip Oh My Zsh/p10k/plugins and keep
     # the user's existing prompt setup (e.g. Omarchy's starship). Report these
@@ -2006,7 +2008,7 @@ check_shell() {
     local _acfs_arch_shell_ux="false"
     if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]]; then
         _acfs_arch_shell_ux="true"
-    elif [[ -r /etc/os-release ]] && grep -Eq '^(ID_LIKE=.*arch|ID=(arch|omarchy)\b)' /etc/os-release 2>/dev/null; then
+    elif [[ -r /etc/os-release ]] && grep -Eq '^(ID_LIKE=.*arch|ID="?(arch|omarchy)"?$)' /etc/os-release 2>/dev/null; then
         _acfs_arch_shell_ux="true"
     fi
 
