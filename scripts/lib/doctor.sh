@@ -1640,6 +1640,7 @@ check() {
         pass) ((PASS_COUNT += 1)) ;;
         warn) ((WARN_COUNT += 1)) ;;
         fail) ((FAIL_COUNT += 1)) ;;
+        skip) ((SKIP_COUNT += 1)) ;;
     esac
 
     if [[ "$JSON_MODE" == "true" ]]; then
@@ -1669,6 +1670,12 @@ check() {
                     echo "        $(gum style --foreground "$ACFS_MUTED" "Fix:") $(gum style --foreground "$ACFS_ACCENT" --italic "$fix")"
                 fi
                 ;;
+            skip)
+                echo "  $(gum style --foreground "$ACFS_MUTED" --bold "○ SKIP") $(gum style --foreground "$ACFS_MUTED" "$label")"
+                if [[ -n "$fix" ]]; then
+                    echo "        $(gum style --foreground "$ACFS_MUTED" "Note:") $(gum style --foreground "$ACFS_MUTED" --italic "$fix")"
+                fi
+                ;;
         esac
     else
         case "$status" in
@@ -1685,6 +1692,12 @@ check() {
                 echo -e "  ${RED}✖ FAIL${NC} $label"
                 if [[ -n "$fix" ]]; then
                     echo -e "        Fix: $fix"
+                fi
+                ;;
+            skip)
+                echo -e "  ${CYAN}○ SKIP${NC} $label"
+                if [[ -n "$details" ]]; then
+                    echo -e "        Note: $details"
                 fi
                 ;;
         esac
