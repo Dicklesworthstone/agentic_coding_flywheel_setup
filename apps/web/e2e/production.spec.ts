@@ -111,4 +111,24 @@ test.describe("Production Smoke Tests", () => {
     expect(failedRequests).toEqual([]);
     expect(jsErrors).toEqual([]);
   });
+
+  test("omarchy page loads without errors (WebGL hero is optional)", async ({ page }) => {
+    const { jsErrors, failedRequests } = setupErrorMonitoring(page);
+
+    await page.goto("/omarchy");
+    await waitForPageSettled(page);
+
+    // Hero + install command render regardless of WebGL availability.
+    await expect(page.locator("h1").first()).toBeVisible();
+    await expect(
+      page.getByText("curl -fsSL https://agent-flywheel.com/install | bash").first()
+    ).toBeVisible();
+
+    // Copy button gives visible feedback.
+    await page.getByRole("button", { name: "Copy install command" }).first().click();
+    await expect(page.getByText("Copied").first()).toBeVisible();
+
+    expect(failedRequests).toEqual([]);
+    expect(jsErrors).toEqual([]);
+  });
 });

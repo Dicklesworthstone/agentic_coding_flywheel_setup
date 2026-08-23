@@ -29,11 +29,12 @@ const PALETTE = {
   white: 0xc0caf5,
 } as const;
 
+// Binary names as they land on PATH (see lib/generated/manifest-tools.ts).
 const TOOL_NAMES = [
-  "ntm", "am", "ubs", "bv", "cass", "cm", "caam", "slb", "dcg", "ru",
-  "rch", "fsfs", "pt", "sbh", "casr", "dsr", "asb", "pcr", "ee", "fmd",
-  "pi", "pfr", "giil", "csctf", "xf", "tru", "rano", "mdwb", "s2p",
-  "srps", "apr", "jfp", "brenner", "opencode",
+  "ntm", "am", "br", "bv", "ubs", "cass", "cm", "caam", "slb", "dcg", "ru",
+  "rch", "fsfs", "pt", "sbh", "wa", "casr", "dsr", "asb", "pcr", "ee", "fmd",
+  "pi", "pfr", "giil", "csctf", "xf", "toon", "rano", "mdwb", "s2p",
+  "sysmoni", "apr", "jfp", "brenner", "opencode",
 ] as const;
 
 // Sprite glow colors cycle through the accent hues
