@@ -197,7 +197,7 @@ const TIERS: Record<ToolTier, { label: string; blurb: string; color: string }> =
   },
   thirdParty: {
     label: "Third-party",
-    blurb: "Agents, runtimes, and CLIs the stack works alongside. On Arch, most come from pacman.",
+    blurb: "Agents, runtimes, and CLIs installed around the stack. On Arch, most come from pacman; optional modules are marked.",
     color: TN.amber,
   },
 };
@@ -252,7 +252,7 @@ const TOOLS: ToolEntry[] = [
   { name: "codex", description: "Codex CLI (OpenAI)", tier: "thirdParty" },
   { name: "agy", description: "Antigravity CLI (Google)", tier: "thirdParty" },
   { name: "opencode", description: "OpenCode agent CLI (optional module)", tier: "thirdParty" },
-  { name: "omp", description: "omp: a coding agent with the IDE wired in (optional module)", tier: "thirdParty" },
+  { name: "omp", description: "oh-my-pi: a coding agent with the IDE wired in (optional module)", tier: "thirdParty" },
   { name: "grok", description: "Grok CLI (xAI, optional module)", tier: "thirdParty" },
   { name: "bun", description: "JavaScript runtime and package manager", tier: "thirdParty" },
   { name: "uv", description: "Python package manager", tier: "thirdParty" },
@@ -740,8 +740,8 @@ export default function OmarchyPage() {
               transition={springs.smooth}
             >
               Every name in the storm above is a binary on your PATH after install. ACFS leaves your
-              desktop, shell, and prompt alone; the first two tiers are what it adds, and the third is
-              what it works alongside.
+              desktop, shell, and prompt alone; the first two tiers are the flywheel stack it installs,
+              and the third is the agents, runtimes, and CLIs it sets up around them.
             </motion.p>
 
             {/* Legend */}

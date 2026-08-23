@@ -1466,14 +1466,15 @@ export const tldrPageData = {
   hero: {
     title: "The Agentic Coding Flywheel",
     subtitle: "TL;DR Edition",
-    description:
-      "16 core tools and 13 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
+    description: `${tldrFlywheelTools.filter((t) => t.category === "core").length} core tools and ${tldrFlywheelTools.filter((t) => t.category === "supporting").length} supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.`,
     stats: [
-      { label: "Ecosystem Tools", value: String(_tldrFlywheelTools.length) },
+      { label: "Ecosystem Tools", value: String(tldrFlywheelTools.length) },
       {
+        // Sum over the manifest-merged array so star counts stay as fresh as
+        // the generated data, rounded down to the nearest hundred.
         label: "GitHub Stars",
         value: `${new Intl.NumberFormat("en").format(
-          Math.floor(_tldrFlywheelTools.reduce((sum, t) => sum + (t.stars ?? 0), 0) / 100) * 100,
+          Math.floor(tldrFlywheelTools.reduce((sum, t) => sum + (t.stars ?? 0), 0) / 100) * 100,
         )}+`,
       },
       { label: "Languages", value: "5" },

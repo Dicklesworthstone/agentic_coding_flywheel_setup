@@ -562,7 +562,15 @@ export default function ToolStorm({ className }: { className?: string }) {
       },
       { signal },
     );
-    renderer.domElement.addEventListener("webglcontextrestored", () => start(), { signal });
+    renderer.domElement.addEventListener(
+      "webglcontextrestored",
+      () => {
+        // Reduced motion never starts the loop, so repaint the still frame.
+        if (prefersReducedMotion) composer.render();
+        else start();
+      },
+      { signal },
+    );
 
     const onScroll = () => {
       scrollDive = THREE.MathUtils.clamp(window.scrollY / Math.max(window.innerHeight, 1), 0, 1);
