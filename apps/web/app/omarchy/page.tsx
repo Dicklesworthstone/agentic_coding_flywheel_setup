@@ -24,6 +24,8 @@ import { motion, fadeUp, springs, staggerContainer } from "@/components/motion";
 import StormCanvas from "@/components/omarchy/storm-canvas";
 import { staggerDelay } from "@/lib/hooks/useScrollReveal";
 import CopyCommand from "@/components/omarchy/copy-command";
+import { TldrSynergyDiagram } from "@/components/tldr/tldr-synergy-diagram";
+import { tldrFlywheelTools } from "@/lib/tldr-content";
 
 // Same command the home page shows; /install 302s to the raw install.sh.
 // Without --yes the installer asks one "Proceed?" question on the TTY, which
@@ -141,62 +143,105 @@ const DOCTOR_LINES: ReadonlyArray<{ status: "ok" | "skip"; label: string; note?:
   { status: "ok", label: "ntm · am · bv · br · cass · cm · dcg · ru …" },
 ];
 
+type ToolTier = "cornerstone" | "flywheel" | "thirdParty";
+
 interface ToolEntry {
   name: string;
   description: string;
+  tier: ToolTier;
 }
+
+// Tier presentation: label, colour, and one line on what the tier means.
+const TIERS: Record<ToolTier, { label: string; blurb: string; color: string }> = {
+  cornerstone: {
+    label: "Cornerstone",
+    blurb: "The tools the flywheel turns on. Learn these first.",
+    color: TN.green,
+  },
+  flywheel: {
+    label: "Flywheel",
+    blurb: "Smaller Dicklesworthstone tools that plug into the cornerstones.",
+    color: TN.cyan,
+  },
+  thirdParty: {
+    label: "Third-party",
+    blurb: "Agents, runtimes, and CLIs the stack depends on. On Arch, most come from pacman.",
+    color: TN.amber,
+  },
+};
+
+const TIER_ORDER: ToolTier[] = ["cornerstone", "flywheel", "thirdParty"];
 
 // Every entry is a binary ACFS puts on your PATH. Names come from
 // lib/generated/manifest-tools.ts (cliName) — keep them in sync.
 const TOOLS: ToolEntry[] = [
-  { name: "ntm", description: "Named Tmux Manager: spawn and monitor agent sessions" },
-  { name: "am", description: "MCP Agent Mail: messaging and file reservations between agents" },
-  { name: "br", description: "Beads: local-first issue tracking for agents" },
-  { name: "bv", description: "Beads Viewer: dependency-graph triage for tasks" },
-  { name: "ubs", description: "Ultimate Bug Scanner" },
-  { name: "cass", description: "Coding Agent Session Search" },
-  { name: "cm", description: "CASS Memory System: procedural memory for agents" },
-  { name: "caam", description: "Coding Agent Account Manager: switch agent accounts in under 100ms" },
-  { name: "slb", description: "Simultaneous Launch Button: two-person rule for dangerous commands" },
-  { name: "dcg", description: "Destructive Command Guard" },
-  { name: "ru", description: "Repo Updater" },
-  { name: "rch", description: "Remote Compilation Helper" },
-  { name: "fsfs", description: "FrankenSearch: hybrid lexical and semantic code search" },
-  { name: "pt", description: "Process Triage" },
-  { name: "ms", description: "Meta Skill: skills for writing skills" },
-  { name: "casr", description: "Cross-Agent Session Resumer" },
-  { name: "dsr", description: "Doodlestein Self-Releaser" },
-  { name: "asb", description: "Agent Settings Backup" },
-  { name: "pcr", description: "Post-Compact Reminder" },
-  { name: "ee", description: "Eidetic Engine: durable local memory for agents" },
-  { name: "fmd", description: "Franken Markdown" },
-  { name: "pi", description: "Pi Agent (Rust)" },
-  { name: "pfr", description: "Power Failure Resumer" },
-  { name: "sbh", description: "Storage Ballast Helper: reserve disk to survive full-disk events" },
-  { name: "wa", description: "WezTerm Automata: terminal automation" },
-  { name: "giil", description: "Get Image from Internet Link" },
-  { name: "csctf", description: "Chat Shared Conversation to File" },
-  { name: "xf", description: "X Archive Search" },
-  { name: "toon", description: "Token-Optimized Notation" },
-  { name: "rano", description: "Network Observer" },
-  { name: "mdwb", description: "Markdown Web Browser" },
-  { name: "s2p", description: "Source to Prompt TUI" },
-  { name: "sysmoni", description: "System Resource Protection: live resource monitor" },
-  { name: "apr", description: "Automated Plan Reviser Pro" },
-  { name: "jfp", description: "JeffreysPrompts CLI" },
-  { name: "brenner", description: "Brenner Bot" },
-  { name: "opencode", description: "OpenCode agent CLI" },
-  { name: "claude", description: "Claude Code" },
-  { name: "codex", description: "OpenAI Codex CLI" },
-  { name: "agy", description: "Google Antigravity CLI" },
-  { name: "bun", description: "JavaScript runtime and package manager" },
-  { name: "uv", description: "Python package manager" },
-  { name: "cargo", description: "Rust toolchain (rustup)" },
-  { name: "go", description: "Go toolchain (pacman)" },
-  { name: "gh", description: "GitHub CLI (pacman)" },
-  { name: "gum", description: "Glamorous shell scripts (pacman)" },
-  { name: "tmux", description: "Terminal multiplexer (pacman)" },
+  // Cornerstones: the 10-tool stack from the README, in workflow order.
+  { name: "ntm", description: "Named Tmux Manager: spawn and monitor agent sessions", tier: "cornerstone" },
+  { name: "am", description: "MCP Agent Mail (Rust rewrite): messaging and file reservations between agents", tier: "cornerstone" },
+  { name: "br", description: "beads_rust: local-first issue tracking for agents", tier: "cornerstone" },
+  { name: "bv", description: "Beads Viewer: dependency-graph triage for tasks", tier: "cornerstone" },
+  { name: "cass", description: "Coding Agent Session Search: every past agent session, searchable", tier: "cornerstone" },
+  { name: "cm", description: "CASS Memory System: procedural memory for agents", tier: "cornerstone" },
+  { name: "ubs", description: "Ultimate Bug Scanner: static checks before every commit", tier: "cornerstone" },
+  { name: "dcg", description: "Destructive Command Guard: blocks rm -rf and git reset --hard in agents", tier: "cornerstone" },
+  { name: "slb", description: "Simultaneous Launch Button: two-person rule for dangerous commands", tier: "cornerstone" },
+  { name: "ru", description: "Repo Updater: multi-repo sync and AI-driven commits", tier: "cornerstone" },
+  { name: "rch", description: "Remote Compilation Helper: offload cargo builds to a worker fleet", tier: "cornerstone" },
+  // Flywheel: the rest of the Dicklesworthstone stack.
+  { name: "caam", description: "Coding Agent Account Manager: switch agent accounts in under 100ms", tier: "flywheel" },
+  { name: "fsfs", description: "FrankenSearch: hybrid lexical and semantic code search", tier: "flywheel" },
+  { name: "ee", description: "Eidetic Engine: durable local memory for agents", tier: "flywheel" },
+  { name: "pt", description: "Process Triage: find and kill runaway processes", tier: "flywheel" },
+  { name: "ms", description: "Meta Skill: skill management with MCP integration", tier: "flywheel" },
+  { name: "casr", description: "Cross-Agent Session Resumer: resume a Claude session in Codex, or vice versa", tier: "flywheel" },
+  { name: "dsr", description: "Doodlestein Self-Releaser: local cross-platform release builds", tier: "flywheel" },
+  { name: "asb", description: "Agent Settings Backup: git-versioned agent configs", tier: "flywheel" },
+  { name: "pcr", description: "Post-Compact Reminder: re-inject instructions after context compaction", tier: "flywheel" },
+  { name: "pfr", description: "Power Failure Resumer: restart agent sessions after a reboot", tier: "flywheel" },
+  { name: "sbh", description: "Storage Ballast Helper: reserve disk to survive full-disk events", tier: "flywheel" },
+  { name: "sysmoni", description: "System Resource Protection: deprioritizes background processes so the workstation stays responsive", tier: "flywheel" },
+  { name: "fmd", description: "Franken Markdown: one binary turns Markdown into HTML and PDF", tier: "flywheel" },
+  { name: "pi", description: "Pi Agent: single-binary coding agent with local model support", tier: "flywheel" },
+  { name: "giil", description: "Get Image from Internet Link: pull iCloud and Dropbox shares into the terminal", tier: "flywheel" },
+  { name: "csctf", description: "Chat Shared Conversation to File: archive AI chat share links as Markdown", tier: "flywheel" },
+  { name: "xf", description: "X Archive Search: fast search over X/Twitter data archives", tier: "flywheel" },
+  { name: "toon", description: "Token-Optimized Notation: compress source code for LLM context", tier: "flywheel" },
+  { name: "rano", description: "Network Observer: monitor AI CLI network traffic", tier: "flywheel" },
+  { name: "mdwb", description: "Markdown Web Browser: fetch pages as Markdown for agents", tier: "flywheel" },
+  { name: "s2p", description: "Source to Prompt TUI: pack a repo into one prompt", tier: "flywheel" },
+  { name: "apr", description: "Automated Plan Reviser Pro: multi-pass plan refinement", tier: "flywheel" },
+  { name: "jfp", description: "JeffreysPrompts CLI: curated prompt library", tier: "flywheel" },
+  { name: "brenner", description: "Brenner Bot: hypothesis-driven research sessions", tier: "flywheel" },
+  // Third-party: agents, runtimes, and CLIs the stack depends on.
+  { name: "claude", description: "Claude Code (Anthropic)", tier: "thirdParty" },
+  { name: "codex", description: "Codex CLI (OpenAI)", tier: "thirdParty" },
+  { name: "agy", description: "Antigravity CLI (Google)", tier: "thirdParty" },
+  { name: "opencode", description: "OpenCode agent CLI", tier: "thirdParty" },
+  { name: "bun", description: "JavaScript runtime and package manager", tier: "thirdParty" },
+  { name: "uv", description: "Python package manager", tier: "thirdParty" },
+  { name: "cargo", description: "Rust toolchain (rustup)", tier: "thirdParty" },
+  { name: "go", description: "Go toolchain (pacman)", tier: "thirdParty" },
+  { name: "gh", description: "GitHub CLI (pacman)", tier: "thirdParty" },
+  { name: "tmux", description: "Terminal multiplexer (pacman)", tier: "thirdParty" },
+  { name: "rg", description: "ripgrep (pacman)", tier: "thirdParty" },
+  { name: "fzf", description: "Fuzzy finder (pacman)", tier: "thirdParty" },
+  { name: "atuin", description: "Shell history with search", tier: "thirdParty" },
+  { name: "zoxide", description: "Smarter cd", tier: "thirdParty" },
+  { name: "gum", description: "Glamorous shell scripts (pacman)", tier: "thirdParty" },
 ];
+
+function TierBadge({ tier }: { tier: ToolTier }) {
+  const { label, color } = TIERS[tier];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider"
+      style={{ backgroundColor: `${color}1a`, color, boxShadow: `inset 0 0 0 1px ${color}40` }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: color }} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
 
 function SectionHeading({ eyebrow, title }: { eyebrow?: string; title: string }) {
   return (
@@ -297,7 +342,7 @@ export default function OmarchyPage() {
                 variant="outline"
                 className="border-[#9ece6a]/40 bg-transparent text-[#c0caf5] hover:bg-[#9ece6a]/10 hover:text-[#c0caf5]"
               >
-                <Link href="/tools">
+                <Link href="/tldr">
                   <span className="hidden sm:inline">Tool Stack</span>
                   <span className="sm:hidden">Tools</span>
                   <ChevronRight className="ml-1 h-4 w-4" />
@@ -526,54 +571,164 @@ export default function OmarchyPage() {
           </div>
         </section>
 
-        {/* ======================== TOOL STORM INDEX ======================== */}
+        {/* ===================== HOW THE TOOLS CONNECT ====================== */}
         <section className="mx-auto max-w-7xl px-6 py-24">
-          <SectionHeading eyebrow="the storm, indexed" title="Every tool in the vortex" />
-          <motion.p
-            className="mx-auto mb-12 max-w-2xl text-center text-muted-foreground"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={springs.smooth}
-          >
-            Every name in the storm above is a binary on your PATH after install. ACFS leaves your
-            desktop, shell, and prompt alone; this list is what it adds.
-          </motion.p>
-          <motion.ul
-            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
-            variants={staggerContainer}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-60px" }}
-          >
-            {TOOLS.map((tool) => (
-              <motion.li
-                key={tool.name}
-                className="flex items-baseline gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 transition-colors hover:border-[#9ece6a]/30 hover:bg-card/70"
-                variants={fadeUp}
-              >
-                <code className="shrink-0 font-mono text-sm font-semibold text-[#9ece6a]">
-                  {tool.name}
-                </code>
-                <span className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-                  {tool.description}
-                </span>
-              </motion.li>
-            ))}
-          </motion.ul>
-          <motion.p
-            className="mt-8 text-center text-sm text-muted-foreground"
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            transition={springs.smooth}
-          >
-            Want the long version of each one?{" "}
-            <Link href="/tools" className="inline-flex items-center gap-1 text-primary hover:underline">
-              Browse the tool catalog
-              <ArrowRight className="h-3 w-3" />
-            </Link>
-          </motion.p>
+          <SectionHeading eyebrow="one system, not a pile of binaries" title="How the tools feed each other" />
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
+            <motion.div
+              className="space-y-4 text-muted-foreground"
+              initial={{ opacity: 0, x: -16 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={springs.smooth}
+            >
+              <p>
+                The inner ring is the loop a working session runs through:{" "}
+                <code className="font-mono text-[#9ece6a]">ntm</code> spawns the agents,{" "}
+                <code className="font-mono text-[#9ece6a]">am</code> lets them message each other and
+                reserve files, <code className="font-mono text-[#9ece6a]">bv</code> picks the next
+                task from the Beads graph, <code className="font-mono text-[#9ece6a]">ubs</code> scans
+                the diff before commit, and <code className="font-mono text-[#9ece6a]">cass</code> and{" "}
+                <code className="font-mono text-[#9ece6a]">cm</code> turn every finished session into
+                searchable history and procedural memory for the next one.
+              </p>
+              <p>
+                The outer ring is the support crew: guards (<code className="font-mono">dcg</code>,{" "}
+                <code className="font-mono">slb</code>), repo sync (<code className="font-mono">ru</code>),
+                account switching (<code className="font-mono">caam</code>), and the rest. Builds go through{" "}
+                <code className="font-mono text-[#9ece6a]">rch</code>, which ships cargo work to remote
+                workers so twenty agents compiling at once do not flatten the box. Each tool exists because
+                running many agents at once exposed a specific problem.
+              </p>
+              <p className="text-sm">
+                Every line in the diagram is a real integration: shared IDs, MCP calls, or files one
+                tool writes and another reads. Hover a node to see its connections.
+              </p>
+            </motion.div>
+            <motion.div
+              className="mx-auto w-full max-w-md lg:max-w-none"
+              initial={{ opacity: 0, x: 16 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={springs.smooth}
+            >
+              <TldrSynergyDiagram tools={tldrFlywheelTools} />
+            </motion.div>
+          </div>
+        </section>
+
+        {/* ======================== TOOL STORM INDEX ======================== */}
+        <section className="border-t border-border/30 bg-card/20 py-24">
+          <div className="mx-auto max-w-7xl px-6">
+            <SectionHeading eyebrow="the storm, indexed" title="Every tool in the vortex" />
+            <motion.p
+              className="mx-auto mb-8 max-w-2xl text-center text-muted-foreground"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={springs.smooth}
+            >
+              Every name in the storm above is a binary on your PATH after install. ACFS leaves your
+              desktop, shell, and prompt alone; this list is what it adds.
+            </motion.p>
+
+            {/* Legend */}
+            <motion.ul
+              className="mx-auto mb-12 flex max-w-4xl flex-col gap-3 sm:flex-row sm:justify-center sm:gap-6"
+              initial={{ opacity: 0, y: 12 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={springs.smooth}
+              aria-label="Tool tiers"
+            >
+              {TIER_ORDER.map((tier) => (
+                <li key={tier} className="flex items-start gap-3 sm:max-w-xs">
+                  <TierBadge tier={tier} />
+                  <span className="text-xs leading-relaxed text-muted-foreground">{TIERS[tier].blurb}</span>
+                </li>
+              ))}
+            </motion.ul>
+
+            <div className="space-y-14">
+              {TIER_ORDER.map((tier) => {
+                const tools = TOOLS.filter((tool) => tool.tier === tier);
+                const { label, color } = TIERS[tier];
+                return (
+                  <div key={tier}>
+                    <motion.div
+                      className="mb-5 flex items-center gap-3"
+                      initial={{ opacity: 0 }}
+                      whileInView={{ opacity: 1 }}
+                      viewport={{ once: true }}
+                      transition={springs.smooth}
+                    >
+                      <h3 className="font-mono text-lg font-semibold tracking-tight" style={{ color }}>
+                        {label}
+                      </h3>
+                      <span className="font-mono text-xs text-muted-foreground">{tools.length} tools</span>
+                      <span className="h-px flex-1" style={{ background: `linear-gradient(90deg, ${color}66, transparent)` }} aria-hidden="true" />
+                    </motion.div>
+                    <motion.ul
+                      className={
+                        tier === "cornerstone"
+                          ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+                          : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+                      }
+                      variants={staggerContainer}
+                      initial="hidden"
+                      whileInView="visible"
+                      viewport={{ once: true, margin: "-60px" }}
+                    >
+                      {tools.map((tool) =>
+                        tier === "cornerstone" ? (
+                          <motion.li
+                            key={tool.name}
+                            className="flex flex-col gap-2 rounded-xl border bg-card/60 p-4 transition-colors hover:bg-card"
+                            style={{ borderColor: `${color}40` }}
+                            variants={fadeUp}
+                          >
+                            <code className="font-mono text-xl font-bold" style={{ color }}>
+                              {tool.name}
+                            </code>
+                            <span className="text-xs leading-relaxed text-muted-foreground">
+                              {tool.description}
+                            </span>
+                          </motion.li>
+                        ) : (
+                          <motion.li
+                            key={tool.name}
+                            className="flex items-baseline gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 transition-colors hover:bg-card/70"
+                            variants={fadeUp}
+                          >
+                            <code className="shrink-0 font-mono text-sm font-semibold" style={{ color }}>
+                              {tool.name}
+                            </code>
+                            <span className="min-w-0 text-xs leading-relaxed text-muted-foreground">
+                              {tool.description}
+                            </span>
+                          </motion.li>
+                        ),
+                      )}
+                    </motion.ul>
+                  </div>
+                );
+              })}
+            </div>
+
+            <motion.p
+              className="mt-12 text-center text-sm text-muted-foreground"
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={springs.smooth}
+            >
+              Want the long version of each one?{" "}
+              <Link href="/tldr" className="inline-flex items-center gap-1 text-primary hover:underline">
+                Read the TL;DR
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </motion.p>
+          </div>
         </section>
 
         {/* =========================== FINAL CTA ============================ */}
@@ -643,7 +798,7 @@ export default function OmarchyPage() {
                 <Link href="/learn" className={footerLink}>
                   Learning Hub
                 </Link>
-                <Link href="/tools" className={footerLink}>
+                <Link href="/tldr" className={footerLink}>
                   Tools
                 </Link>
                 <Link href="/tldr" className={footerLink}>

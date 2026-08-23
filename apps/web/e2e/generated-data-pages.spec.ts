@@ -66,13 +66,6 @@ async function waitForPageSettled(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
 }
 
-/** Wait for tools page hydration - stats text indicates client component has mounted */
-async function waitForToolsPageHydrated(page: Page): Promise<void> {
-  await waitForPageSettled(page);
-  // Wait for client component hydration by checking for dynamic content
-  // Use expect with auto-retry for more robustness
-  await expect(page.getByText(/Showing \d+ of \d+ tools/)).toBeVisible({ timeout: 15000 });
-}
 
 test.describe("Flywheel Page (generated data)", () => {
   test("loads without JS errors or failed requests", async ({ page }) => {
@@ -259,65 +252,29 @@ test.describe("Learn Dashboard (generated data)", () => {
   });
 });
 
-test.describe("Tools Status Page (generated data)", () => {
-  test("loads without JS errors or failed requests", async ({ page }) => {
+test.describe("Tools catalog (folded into /tldr)", () => {
+  test("/tools permanently redirects to /tldr", async ({ page }) => {
+    const response = await page.goto("/tools");
+    await waitForPageSettled(page);
+
+    expect(response?.request().redirectedFrom()?.url()).toContain("/tools");
+    expect(new URL(page.url()).pathname).toBe("/tldr");
+  });
+
+  test("/tldr exposes the catalog features: search plus CLI names", async ({ page }) => {
     const { jsErrors, failedRequests } = setupErrorMonitoring(page);
 
-    await page.goto("/tools");
+    await page.goto("/tldr");
     await waitForPageSettled(page);
 
-    // Page has main heading
-    await expect(page.locator("h1").first()).toBeVisible();
-
-    // No errors
-    expect(failedRequests).toEqual([]);
-    expect(jsErrors).toEqual([]);
-  });
-
-  test("renders tool cards from generated manifest data", async ({ page }) => {
-    await page.goto("/tools");
-    await waitForPageSettled(page);
-
-    // Page should have substantial content from manifest tools
-    const textContent = await page.textContent("body");
-    expect(textContent?.length).toBeGreaterThan(1000);
-
-    // Should have multiple tool card elements
-    const elements = page.locator("div, section, article");
-    const count = await elements.count();
-    expect(count).toBeGreaterThan(10);
-  });
-
-  test("displays category filters", async ({ page }) => {
-    await page.goto("/tools");
-    await waitForToolsPageHydrated(page);
-
-    // Check for category filter buttons
-    const allButton = page.getByRole("button", { name: "All" });
-    await expect(allButton).toBeVisible();
-
-    // Page should have filter buttons for categories
-    const buttons = page.locator("button");
-    const buttonCount = await buttons.count();
-    expect(buttonCount).toBeGreaterThan(1);
-  });
-
-  test("has search input element", async ({ page }) => {
-    await page.goto("/tools");
-    await waitForToolsPageHydrated(page);
-
-    // Find search input
     const searchInput = page.locator("input[type='text'], input[placeholder*='earch']");
     await expect(searchInput.first()).toBeVisible();
-  });
 
-  test("stats bar shows tool counts", async ({ page }) => {
-    await page.goto("/tools");
-    await waitForToolsPageHydrated(page);
+    // CLI names from the manifest render as chips on the cards
+    await expect(page.locator("code", { hasText: /^bv$/ }).first()).toBeVisible();
 
-    // Stats bar should show "Showing X of Y tools"
-    const statsText = page.getByText(/Showing \d+ of \d+ tools/);
-    await expect(statsText).toBeVisible();
+    expect(failedRequests).toEqual([]);
+    expect(jsErrors).toEqual([]);
   });
 });
 

@@ -24,6 +24,7 @@ import {
   Cog,
   Image,
   ChevronRight,
+  Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatStarCount, formatStarCountFull } from "@/lib/format-stars";
@@ -286,6 +287,14 @@ export function TldrToolCard({
                         Core
                       </span>
                     )}
+                    {tool.cliName && (
+                      <code
+                        className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-xs text-foreground/80 ring-1 ring-inset ring-white/10"
+                        title="Command name on your PATH"
+                      >
+                        {tool.cliName}
+                      </code>
+                    )}
                   </div>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">{tool.name}</p>
                 </div>
@@ -324,6 +333,16 @@ export function TldrToolCard({
             <p className="mt-3 text-xs leading-relaxed text-foreground/80 sm:mt-4 sm:text-sm">
               {tool.whatItDoes}
             </p>
+
+            {/* Representative command (from the manifest) */}
+            {tool.commandExample && (
+              <div className="mt-3 flex items-center gap-2 overflow-x-auto rounded-lg bg-black/30 px-3 py-2 ring-1 ring-inset ring-white/10">
+                <Terminal className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                <code className="whitespace-nowrap font-mono text-xs text-primary">
+                  {tool.commandExample}
+                </code>
+              </div>
+            )}
           </div>
 
           {/* Full content */}

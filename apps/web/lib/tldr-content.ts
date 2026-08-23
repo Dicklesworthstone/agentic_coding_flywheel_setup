@@ -3,7 +3,7 @@
  * comprehensive descriptions, implementation highlights, and synergies.
  */
 
-import { getManifestTldr } from './manifest-adapter';
+import { getManifestCommand, getManifestTldr } from './manifest-adapter';
 
 export type TldrToolCategory = "core" | "supporting";
 
@@ -16,6 +16,10 @@ export type TldrFlywheelTool = {
   color: string;
   category: TldrToolCategory;
   stars?: number;
+  /** Binary name on PATH after install (from the manifest). */
+  cliName?: string;
+  /** One representative invocation (from the manifest). */
+  commandExample?: string;
   whatItDoes: string;
   whyItsUseful: string;
   implementationHighlights: string[];
@@ -1439,9 +1443,14 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
 export const tldrFlywheelTools: TldrFlywheelTool[] = _tldrFlywheelTools.map(
   (tool) => {
     const gen = getManifestTldr(tool.id);
-    if (!gen) return tool;
+    const cmd = getManifestCommand(tool.id);
+    const cli = cmd
+      ? { cliName: cmd.cliName, commandExample: cmd.commandExample }
+      : {};
+    if (!gen) return { ...tool, ...cli };
     return {
       ...tool,
+      ...cli,
       name: gen.displayName,
       shortName: gen.shortName,
       href: gen.href ?? tool.href,

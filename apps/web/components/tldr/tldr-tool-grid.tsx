@@ -307,6 +307,8 @@ function filterTools(tools: TldrFlywheelTool[], query: string): TldrFlywheelTool
     const searchFields = [
       tool.name,
       tool.shortName,
+      tool.cliName ?? "",
+      tool.commandExample ?? "",
       tool.whatItDoes,
       tool.whyItsUseful,
       ...tool.techStack,

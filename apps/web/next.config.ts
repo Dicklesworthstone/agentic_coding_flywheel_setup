@@ -63,6 +63,13 @@ const nextConfig: NextConfig = {
         destination: "/core-flywheel",
         permanent: true,
       },
+      {
+        // The manifest-generated catalog duplicated /tldr; its useful parts
+        // (search, CLI names, command examples) now live on /tldr.
+        source: "/tools",
+        destination: "/tldr",
+        permanent: true,
+      },
     ];
   },
   images: {
