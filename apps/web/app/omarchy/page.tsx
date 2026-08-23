@@ -182,13 +182,22 @@ export default function OmarchyPage() {
       <section className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-gradient-to-b from-[#0a0e1a] via-[#10121f] to-[#1a1b26]">
         <StormCanvas className="absolute inset-0 h-full w-full" />
 
-        {/* Vignette to keep text legible over the storm */}
+        {/* Readability scrims — solid navy under the text column, clearing
+            toward the storm on the right; vertical fade on small screens */}
         <div
-          className="pointer-events-none absolute inset-0"
+          className="pointer-events-none absolute inset-0 hidden md:block"
           aria-hidden="true"
           style={{
             background:
-              "radial-gradient(ellipse at center, transparent 35%, rgba(10, 14, 26, 0.55) 78%, rgba(10, 14, 26, 0.9) 100%)",
+              "linear-gradient(90deg, rgba(10,14,26,0.96) 0%, rgba(10,14,26,0.88) 30%, rgba(10,14,26,0.45) 52%, rgba(10,14,26,0) 72%)",
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0 md:hidden"
+          aria-hidden="true"
+          style={{
+            background:
+              "linear-gradient(0deg, rgba(10,14,26,0.95) 0%, rgba(10,14,26,0.82) 40%, rgba(10,14,26,0.25) 100%)",
           }}
         />
         {/* Scanlines — terminal flavor, barely-there */}
@@ -201,12 +210,12 @@ export default function OmarchyPage() {
           }}
         />
 
-        <div className="relative z-10 mx-auto max-w-5xl px-6 py-24 text-center">
+        <div className="relative z-10 mx-auto grid min-h-[100svh] w-full max-w-7xl grid-cols-1 items-center px-6 py-20 lg:grid-cols-[minmax(0,42rem)_1fr]">
           <motion.div
             variants={staggerContainer}
             initial="hidden"
             animate="visible"
-            className="flex flex-col items-center"
+            className="flex flex-col items-start"
           >
             <motion.div
               className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#9ece6a]/30 bg-[#9ece6a]/10 px-4 py-1.5 font-mono text-xs tracking-widest text-[#9ece6a]"
@@ -216,18 +225,16 @@ export default function OmarchyPage() {
             </motion.div>
 
             <motion.h1
-              className="mb-6 font-mono text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl"
+              className="mb-6 font-mono text-5xl font-bold leading-[1.06] tracking-tighter sm:text-6xl xl:text-[4.25rem]"
               variants={fadeUp}
             >
-              <span className="text-foreground">The Flywheel,</span>
+              <span className="text-white">The Flywheel,</span>
               <br />
-              <span className="bg-gradient-to-r from-[#9ece6a] via-[#7dcfff] to-[#bb9af7] bg-clip-text text-transparent">
-                native on Omarchy.
-              </span>
+              <span className="text-[#9ece6a]">native on Omarchy.</span>
             </motion.h1>
 
             <motion.p
-              className="mb-8 max-w-2xl text-lg leading-relaxed text-muted-foreground"
+              className="mb-8 max-w-xl text-lg leading-relaxed text-foreground/75"
               variants={fadeUp}
             >
               Same one-liner, same flywheel — auto-detects Arch and Omarchy, keeps your{" "}
