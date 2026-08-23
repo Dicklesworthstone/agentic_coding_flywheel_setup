@@ -69,7 +69,9 @@ run_check "gh" "zsh -ic 'gh --version >/dev/null'" || failed_checks=$((failed_ch
 run_check "jq" "zsh -ic 'jq --version >/dev/null'" || failed_checks=$((failed_checks + 1))
 run_check "sg" "zsh -ic 'sg --version >/dev/null'" || failed_checks=$((failed_checks + 1))
 run_check "codex" "zsh -ic 'codex --version >/dev/null'" || failed_checks=$((failed_checks + 1))
-run_check "gemini" "zsh -ic 'gemini --version >/dev/null'" || failed_checks=$((failed_checks + 1))
+# Gemini CLI retired 2026-06-18; its successor is Antigravity (agy), with the
+# legacy gmi alias routing to the locked agy launcher.
+run_check "agy" "zsh -ic 'command -v agy >/dev/null && command -v gmi >/dev/null'" || failed_checks=$((failed_checks + 1))
 run_check "claude" "zsh -ic 'claude --version >/dev/null'" || failed_checks=$((failed_checks + 1))
 run_check "ru" "zsh -ic 'ru --version >/dev/null'" || failed_checks=$((failed_checks + 1))
 run_check "dcg" "zsh -ic 'dcg --version >/dev/null'" || failed_checks=$((failed_checks + 1))
