@@ -25,7 +25,7 @@ import {
   Moon,
   BookOpen,
   Target,
-  Download,
+  Package,
 } from "lucide-react";
 import { motion, AnimatePresence } from "@/components/motion";
 import { useDrag } from "@use-gesture/react";
@@ -1065,21 +1065,19 @@ export default function HomePage() {
                 variants={fadeUp}
               >
                 <div className="inline-flex shrink-0 rounded-lg bg-primary/10 p-2 text-primary">
-                  <Download className="h-4 w-4" />
+                  <Package className="h-4 w-4" />
                 </div>
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   <span className="font-semibold text-foreground">Using Omarchy or Arch?</span>{" "}
-                  The same one-liner works — the installer auto-detects your distro and preserves your
-                  existing shell setup.{" "}
-                  <a
-                    href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup#omarchy-arch-support"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  The same one-liner works — the installer auto-detects your distro, installs via
+                  pacman, and keeps your existing prompt.{" "}
+                  <Link
+                    href="/omarchy"
                     className="inline-flex items-center gap-1 text-primary hover:underline"
                   >
-                    Read the Arch notes
+                    See the Omarchy page
                     <ArrowRight className="h-3 w-3" />
-                  </a>
+                  </Link>
                 </p>
               </motion.div>
             </motion.div>

@@ -12,7 +12,8 @@ import * as THREE from "three";
  * Performance & a11y guards:
  * - devicePixelRatio capped at 1.5
  * - particle count reduced below 768px viewports
- * - RAF loop pauses while document.hidden
+ * - RAF loop pauses while document.hidden or the hero is scrolled off-screen
+ * - no WebGL available → component renders nothing (CSS gradient hero remains)
  * - prefers-reduced-motion renders a single composed frame, no animation
  * - canvas is decorative (aria-hidden) — all content readable without it
  */
@@ -126,11 +127,21 @@ export default function ToolStorm({ className }: { className?: string }) {
     const isMobile = window.innerWidth < 768;
 
     // --- Renderer / scene / camera -------------------------------------
-    const renderer = new THREE.WebGLRenderer({
-      antialias: !isMobile,
-      alpha: true,
-      powerPreference: "high-performance",
-    });
+    // three throws synchronously when no WebGL context can be created
+    // (webgl.disabled, some VDI/remote-desktop setups, software-only VMs).
+    // The hero's CSS gradient is a perfectly good fallback, so bail quietly
+    // instead of letting the error unmount the whole route.
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: !isMobile,
+        alpha: true,
+        // Mobile GPUs: let the browser pick the power-efficient GPU.
+        powerPreference: isMobile ? "default" : "high-performance",
+      });
+    } catch {
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setClearColor(0x000000, 0);
@@ -150,6 +161,10 @@ export default function ToolStorm({ className }: { className?: string }) {
     camera.position.set(0, 2.4, CAMERA_BASE_Z);
 
     const disposables: Array<{ dispose: () => void }> = [];
+    // One AbortController tears down every listener; also used to ignore
+    // async work (font loading) that resolves after unmount.
+    const controller = new AbortController();
+    const { signal } = controller;
     const stormGroup = new THREE.Group();
     scene.add(stormGroup);
 
@@ -292,6 +307,31 @@ export default function ToolStorm({ className }: { className?: string }) {
       disposables.push(texture, material);
     });
 
+    // The labels are baked onto <canvas> with "JetBrains Mono". With
+    // font-display: swap the webfont is usually not ready on first paint, so
+    // every sprite would be rasterised in the fallback face. Re-bake once the
+    // real font is available (no-op if it already was).
+    if (typeof document.fonts?.load === "function") {
+      document.fonts
+        .load('600 44px "JetBrains Mono"')
+        .then(() => {
+          if (signal.aborted) return;
+          toolSprites.forEach((tool, index) => {
+            const color = SPRITE_COLORS[index % SPRITE_COLORS.length] as string;
+            const { texture, aspect } = makeToolTexture(TOOL_NAMES[index] as string, color);
+            tool.material.map?.dispose();
+            tool.material.map = texture;
+            tool.material.needsUpdate = true;
+            tool.sprite.scale.set(0.5 * aspect, 0.5, 1);
+            disposables.push(texture);
+          });
+          if (prefersReducedMotion) renderer.render(scene, camera);
+        })
+        .catch(() => {
+          /* font unavailable — keep the fallback rasterisation */
+        });
+    }
+
     // --- Interaction state ---------------------------------------------------
     let raf = 0;
     let running = false;
@@ -351,10 +391,7 @@ export default function ToolStorm({ className }: { className?: string }) {
       cancelAnimationFrame(raf);
     };
 
-    // --- Listeners (all via one AbortController for clean teardown) ---------
-    const controller = new AbortController();
-    const { signal } = controller;
-
+    // --- Listeners (all via the shared AbortController for clean teardown) ---
     const onPointerMove = (event: PointerEvent) => {
       if (dragging) {
         angularVel = THREE.MathUtils.clamp(
@@ -366,8 +403,10 @@ export default function ToolStorm({ className }: { className?: string }) {
         return;
       }
       const rect = container.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = ((event.clientY - rect.top) / rect.height) * 2 - 1;
+      // The listener is on window, so clamp: a pointer far below the hero must
+      // not keep pulling the camera further and further off-axis.
+      mouse.x = THREE.MathUtils.clamp(((event.clientX - rect.left) / rect.width) * 2 - 1, -1, 1);
+      mouse.y = THREE.MathUtils.clamp(((event.clientY - rect.top) / rect.height) * 2 - 1, -1, 1);
     };
     const onPointerDown = (event: PointerEvent) => {
       dragging = true;
@@ -385,7 +424,23 @@ export default function ToolStorm({ className }: { className?: string }) {
     container.addEventListener("pointerdown", onPointerDown, { signal });
     window.addEventListener("pointermove", onPointerMove, { signal });
     window.addEventListener("pointerup", onPointerUp, { signal });
+    // touch-action: pan-y hands vertical swipes to the browser, which then
+    // fires pointercancel (never pointerup) — without this `dragging` sticks
+    // and the next touch injects a stale-delta velocity jump.
+    window.addEventListener("pointercancel", onPointerUp, { signal });
     container.addEventListener("pointerleave", onPointerLeave, { signal });
+
+    // Lost GL context (GPU reset, aggressive mobile tab management): stop the
+    // loop and resume when the browser restores it.
+    renderer.domElement.addEventListener(
+      "webglcontextlost",
+      (event) => {
+        event.preventDefault();
+        stop();
+      },
+      { signal },
+    );
+    renderer.domElement.addEventListener("webglcontextrestored", () => start(), { signal });
 
     const onScroll = () => {
       const heroHeight = Math.max(window.innerHeight, 1);
@@ -394,11 +449,23 @@ export default function ToolStorm({ className }: { className?: string }) {
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true, signal });
 
-    const onVisibilityChange = () => {
-      if (document.hidden) stop();
+    // Pause whenever the hero is not being looked at: tab in the background
+    // OR scrolled past. The page is ~5 screens tall; 6000 additive points at
+    // 60fps while the user reads the tool index is pure battery burn.
+    let heroVisible = true;
+    const syncRunning = () => {
+      if (document.hidden || !heroVisible) stop();
       else start();
     };
-    document.addEventListener("visibilitychange", onVisibilityChange, { signal });
+    document.addEventListener("visibilitychange", syncRunning, { signal });
+    const observer = new IntersectionObserver(
+      (entries) => {
+        heroVisible = entries.some((entry) => entry.isIntersecting);
+        syncRunning();
+      },
+      { threshold: 0 },
+    );
+    observer.observe(container);
 
     const onResize = () => {
       const width = container.clientWidth;
@@ -421,6 +488,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     // --- Full teardown --------------------------------------------------------
     return () => {
       stop();
+      observer.disconnect();
       controller.abort();
       for (const disposable of disposables) disposable.dispose();
       scene.clear();

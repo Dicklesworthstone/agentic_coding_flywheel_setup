@@ -9,7 +9,8 @@ export type SocialImageTheme =
   | "tools"
   | "workflow"
   | "security"
-  | "support";
+  | "support"
+  | "omarchy";
 
 export type SocialImageData = {
   badge: string;
@@ -192,6 +193,26 @@ const PALETTES: Record<SocialImageTheme, Palette> = {
     tagBg: "rgba(19,19,46,0.67)",
     tagBorder: "rgba(129,140,248,0.35)",
     tagText: "#c7d2fe",
+  },
+  // Tokyo Night, matching the /omarchy hero (Omarchy's default theme).
+  omarchy: {
+    bgStart: "#0a0e1a",
+    bgMid: "#16182a",
+    bgEnd: "#1a1b26",
+    grid: "#9ece6a",
+    orbA: "rgba(158,206,106,0.18)",
+    orbB: "rgba(187,154,247,0.16)",
+    accent: "#9ece6a",
+    accentSoft: "#7dcfff",
+    titleStart: "#ffffff",
+    titleEnd: "#9ece6a",
+    body: "#a9b1d6",
+    badgeBg: "rgba(158,206,106,0.12)",
+    badgeBorder: "rgba(158,206,106,0.32)",
+    badgeText: "#9ece6a",
+    tagBg: "rgba(26,27,38,0.7)",
+    tagBorder: "rgba(125,207,255,0.35)",
+    tagText: "#7dcfff",
   },
 };
 

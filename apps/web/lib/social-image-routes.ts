@@ -91,6 +91,15 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     theme: "flywheel",
     tags: ["Overview", "Tool Synergy", "Architecture"],
   },
+  "/omarchy": {
+    badge: "Native on Arch",
+    title: "The Flywheel on Omarchy",
+    description:
+      "One command installs the full agentic coding stack on Omarchy and Arch Linux via pacman, keeping your starship prompt and skipping oh-my-zsh.",
+    path: "/omarchy",
+    theme: "omarchy",
+    tags: ["pacman", "starship", "Hyprland"],
+  },
   "/troubleshooting": {
     badge: "Fix Common Failures",
     title: "Troubleshooting Guide",
