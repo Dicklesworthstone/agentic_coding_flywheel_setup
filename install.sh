@@ -6614,14 +6614,26 @@ acfs_arch_install_postgres() {
         fi
     fi
 
+    local service_ok="true"
     if command_exists systemctl && [[ -d /run/systemd/system ]]; then
         try_step "Enabling and starting PostgreSQL service" \
-            "${sudo_cmd[@]}" systemctl enable --now postgresql.service || true
+            "${sudo_cmd[@]}" systemctl enable --now postgresql.service || service_ok="false"
     else
         log_detail "systemd unavailable; skipping PostgreSQL service start"
     fi
 
-    acfs_postgres_bootstrap_role || true
+    acfs_postgres_bootstrap_role || log_warn "PostgreSQL: role bootstrap failed (continuing)"
+
+    # Surface failures instead of reporting success with a dead service.
+    if command_exists systemctl && [[ -d /run/systemd/system ]]; then
+        if ! systemctl is-active --quiet postgresql.service; then
+            log_warn "PostgreSQL: service did not reach active state"
+            return 1
+        fi
+        [[ "$service_ok" == "true" ]] || return 1
+    fi
+
+    return 0
 }
 
 # Vault on Arch-family: prefer a pinned generic Linux binary published in

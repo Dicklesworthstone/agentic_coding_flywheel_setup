@@ -1672,8 +1672,9 @@ check() {
                 ;;
             skip)
                 echo "  $(gum style --foreground "$ACFS_MUTED" --bold "○ SKIP") $(gum style --foreground "$ACFS_MUTED" "$label")"
-                if [[ -n "$fix" ]]; then
-                    echo "        $(gum style --foreground "$ACFS_MUTED" "Note:") $(gum style --foreground "$ACFS_MUTED" --italic "$fix")"
+                local _skip_note="${details:-$fix}"
+                if [[ -n "$_skip_note" ]]; then
+                    echo "        $(gum style --foreground "$ACFS_MUTED" "Note:") $(gum style --foreground "$ACFS_MUTED" --italic "$_skip_note")"
                 fi
                 ;;
         esac
@@ -2009,7 +2010,11 @@ check_shell() {
         _acfs_arch_shell_ux="true"
     fi
 
-    check_command "shell.zsh" "zsh" "zsh" "sudo pacman -S zsh"
+    if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
+        check_command "shell.zsh" "zsh" "zsh" "sudo pacman -S zsh"
+    else
+        check_command "shell.zsh" "zsh" "zsh" "sudo apt install zsh"
+    fi
 
     if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
         check "shell.ohmyzsh" "Oh My Zsh" "skip" "not used on Arch-family; existing prompt preserved"
