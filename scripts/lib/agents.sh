@@ -600,6 +600,7 @@ _agent_find_target_executable() {
         "$target_home/.cargo/bin/$name" \
         "$target_home/.atuin/bin/$name" \
         "$target_home/.opencode/bin/$name" \
+        "$target_home/.grok/bin/$name" \
         "$target_home/go/bin/$name"; do
         if [[ -x "$candidate" ]]; then
             printf '%s\n' "$candidate"

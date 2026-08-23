@@ -8,10 +8,10 @@
 # Used by check-manifest-drift.sh to detect unauthorized changes.
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [scripts/lib/security.sh]="ece51f7a969212819bff265827908cb2ba7b61e1f7eea26c2367864002beffcc"
-  [scripts/lib/agents.sh]="347d5331ceb5f506f7661eb83766534b9e7c055f69cfeaa21d157cb4536824b8"
-  [scripts/lib/update.sh]="67b2f92711ce34402db1a885e70ac54b84180aa259e3377f69ec66eb431bb722"
-  [scripts/lib/doctor.sh]="cfde5d2ad6ce7113b9253dbf0efee3cd0c63fc50a8a644511cedeaca4ed26ce7"
+  [scripts/lib/security.sh]="cc90a64f82398a37c0efe98119363d5dfb6bac4029027a0cfe693a407c631e5c"
+  [scripts/lib/agents.sh]="dad8d3c20003d95bf0bad814e7c157d740ee13f4fabe6cfc50d438c64b95dfee"
+  [scripts/lib/update.sh]="fcfdb5bd1cc064a14436f4ddaad76349bc50700f378d0f4636f8ce1307a4c1e1"
+  [scripts/lib/doctor.sh]="68beca0db96778190918fc5ed0c054de624da58aff275cea2c547c4916503c1e"
   [scripts/lib/doctor_fix.sh]="5a6186aaefa18bc253e863f6758091148293753e254b590bad13ad526186b67e"
   [scripts/lib/offline_artifact_pack.sh]="5f6fa7e5a9e115904656a627853b2c7d556183532a3d8fd42a0363bf3570c7eb"
   [scripts/lib/autofix.sh]="0468d4889d304a404f161778ddf393a71fa7657317f88f692a47442760ed78d9"

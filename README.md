@@ -60,7 +60,7 @@ The installer is **idempotent**—if interrupted, simply re-run it. It will auto
 **What you get:**
 - Modern shell (zsh + oh-my-zsh + powerlevel10k)
 - All language runtimes (bun, uv/Python, Rust, Go)
-- Three AI coding agents (Claude Code, Codex CLI, Antigravity CLI)
+- Three AI coding agents by default (Claude Code, Codex CLI, Antigravity CLI), plus optional OpenCode, oh-my-pi (omp), and Grok CLI
 - Agent coordination tools (NTM, MCP Agent Mail, SLB)
 - Cloud CLIs (Vault, Wrangler, Supabase, Vercel)
 - And 20+ more developer tools
@@ -658,6 +658,8 @@ acfs-update --bootstrap-self-update
 | **Agents** | Claude Code | `claude update --channel latest` |
 | **Agents** | Codex | `bun install -g @latest` |
 | **Agents** | Antigravity | `agy update` (or verified installer with `--force`) |
+| **Agents** | oh-my-pi (omp) | `omp update` (or verified installer with `--force`) |
+| **Agents** | Grok CLI | Re-run verified installer (`GROK_BIN_DIR` pinned to ACFS bin dir) |
 | **Cloud** | Wrangler, Vercel | `bun install -g @latest` |
 | **Cloud** | Supabase | GitHub release tarball (sha256 checksums) |
 | **Stack** | ntm, slb, ubs, dcg, ru, etc. | Re-run upstream installers |
@@ -1282,6 +1284,9 @@ Benefits for agentic workflows:
 | **Codex CLI** | `codex` | `cod` (dangerous mode) |
 | **Antigravity CLI** | `agy` | `agy` (model-pinned, dangerous mode) |
 | **Gemini CLI** (legacy) | `gemini` | `gmi` (retired 2026-06-18; routes to locked `agy`) |
+| **OpenCode** (optional) | `opencode` | — |
+| **oh-my-pi** (optional) | `omp` | — |
+| **Grok CLI** (optional) | `grok` | — |
 
 **Vibe Mode Aliases:**
 ```bash
@@ -1301,7 +1306,7 @@ Claude Code should be installed and updated using its native mechanisms:
 - **Install:** ACFS uses the official native installer (`claude.ai/install.sh`), checksum-verified via `checksums.yaml` (installs to `~/.local/bin/claude`)
 - **Update:** Use `claude update --channel latest` (built-in) or run `acfs update --agents-only`
 
-This ensures proper authentication handling and avoids issues with alternative package manager builds. ACFS updates Codex with Bun global package updates and Antigravity with its native `agy update` path.
+This ensures proper authentication handling and avoids issues with alternative package manager builds. ACFS updates Codex with Bun global package updates, Antigravity with its native `agy update` path, oh-my-pi with its native `omp update` path, and Grok CLI by re-running its checksum-verified installer.
 
 ### Cloud & Database
 
@@ -1893,7 +1898,7 @@ Component update logic with version tracking and logging:
 ```bash
 update_apt()       # apt update/upgrade with lock detection
 update_bun()       # bun upgrade with version tracking
-update_agents()    # Claude, Codex, Antigravity (version before/after)
+update_agents()    # Claude, Codex, Antigravity, omp, Grok (version before/after)
 update_cloud()     # Wrangler, Supabase, Vercel (Supabase uses verified release tarball)
 update_rust()      # rustup update stable
 update_uv()        # uv self update

@@ -909,7 +909,7 @@ get_version() {
                 version="unknown"
             fi
             ;;
-        claude|codex|agy|gemini|wrangler|supabase|vercel)
+        claude|codex|agy|gemini|omp|grok|wrangler|supabase|vercel)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
                 version=$("$tool_bin" --version 2>/dev/null | head -1 || echo "unknown")
@@ -3477,7 +3477,7 @@ update_sync_known_installer_urls_from_checksums() {
 update_required_checksum_tools() {
     printf '%s\n' \
         antigravity apr asb atuin br brenner_bot bun bv caam casr cass claude cm csctf dcg dsr \
-        ee fmd fsfs gemini_patch giil jfp mcp_agent_mail mdwb ms ntm nvm ohmyzsh opencode \
+        ee fmd fsfs gemini_patch giil grok jfp mcp_agent_mail mdwb ms ntm nvm ohmyzsh omp opencode \
         pcr pfr pi pt rano rch ru rust s2p sbh slb srps tru ubs uv xf zoxide
 }
 
@@ -5442,6 +5442,56 @@ update_agents() {
         log_item "skip" "Antigravity CLI" "not installed (use --force to install)"
         update_install_agy_locked_launchers || true
     fi
+
+    # oh-my-pi (omp) is a standalone self-updating native binary; prefer its
+    # native 'omp update', fall back to the verified installer for fresh installs.
+    if update_binary_exists omp; then
+        local omp_bin=""
+        omp_bin="$(update_binary_path omp 2>/dev/null || true)"
+        capture_version_before "omp"
+        run_cmd "oh-my-pi (omp)" update_run_in_target_context "" "$omp_bin" update
+        if capture_version_after "omp"; then
+            update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[omp]}" "${VERSION_AFTER[omp]}"
+        fi
+    elif [[ "$FORCE_MODE" == "true" ]]; then
+        capture_version_before "omp"
+        if update_require_security; then
+            # --binary forces the prebuilt release binary (deterministic even when bun exists)
+            run_cmd "oh-my-pi (install)" update_run_verified_installer omp --binary
+            if capture_version_after "omp"; then
+                update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[omp]}" "${VERSION_AFTER[omp]}"
+            fi
+        else
+            log_item "fail" "oh-my-pi (omp)" "not installed and install unavailable (missing security.sh/checksums.yaml)"
+        fi
+    else
+        log_item "skip" "oh-my-pi (omp)" "not installed (use --force to install)"
+    fi
+
+    # Grok CLI has no documented native self-update; refresh by re-running the
+    # verified installer. GROK_BIN_DIR keeps the binary in the ACFS bin dir
+    # instead of the upstream default ~/.grok/bin.
+    if update_binary_exists grok || [[ "$FORCE_MODE" == "true" ]]; then
+        if update_require_security; then
+            local grok_bin_dir=""
+            grok_bin_dir="$(update_runtime_primary_bin_dir 2>/dev/null || true)"
+            capture_version_before "grok"
+            if [[ -n "$grok_bin_dir" ]]; then
+                run_cmd "Grok CLI" update_run_verified_installer_with_env grok "GROK_BIN_DIR=$grok_bin_dir"
+            else
+                run_cmd "Grok CLI" update_run_verified_installer grok
+            fi
+            if capture_version_after "grok"; then
+                update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[grok]}" "${VERSION_AFTER[grok]}"
+            fi
+        elif update_binary_exists grok; then
+            log_item "fail" "Grok CLI" "update unavailable (missing security.sh/checksums.yaml)"
+        else
+            log_item "fail" "Grok CLI" "not installed and install unavailable (missing security.sh/checksums.yaml)"
+        fi
+    else
+        log_item "skip" "Grok CLI" "not installed (use --force to install)"
+    fi
 }
 
 # Run update_run_verified_installer for Claude with a bounded timeout.
@@ -6729,7 +6779,7 @@ USAGE:
 
 CATEGORY OPTIONS (select what to update):
   --apt-only         Only update system packages (apt)
-  --agents-only      Only update coding agents (Claude, Codex, Antigravity)
+  --agents-only      Only update coding agents (Claude, Codex, Antigravity, omp, Grok)
   --cloud-only       Only update cloud CLIs (Wrangler, Supabase, Vercel, gh, gcloud)
   --shell-only       Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
   --runtime-only     Only update runtimes (Bun, Rust, uv, Go)
@@ -6798,6 +6848,8 @@ WHAT EACH CATEGORY UPDATES:
   agents:   Claude Code (verified installer: curl claude.ai/install.sh | bash -- latest)
             Codex CLI (bun install -g --trust @openai/codex@latest)
             Antigravity CLI (agy update; installs agy-locked and maps gmi to agy)
+            oh-my-pi (omp update; verified installer for fresh installs)
+            Grok CLI (verified installer re-run; kept in the ACFS bin dir)
   cloud:    Wrangler, Vercel (bun install -g --trust <pkg>@latest)
             Supabase CLI (verified GitHub release tarball + sha256 checksums)
             GitHub CLI (gh extension upgrade --all)

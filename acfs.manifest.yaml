@@ -1185,6 +1185,88 @@ modules:
       - "Multi-provider agent supporting Claude, GPT, Gemini models"
       - "Upstream installer hardcodes ~/.opencode/bin; the binary is linked into the configured ACFS bin dir so it is on PATH and detectable on re-runs"
 
+  - id: agents.omp
+    description: oh-my-pi (omp) — community fork of the Pi coding agent
+    category: agents
+    phase: 7
+    run_as: target_user
+    optional: true
+    enabled_by_default: false
+    tags: [optional, agent]
+    dependencies:
+      - base.system
+    installed_check:
+      run_as: target_user
+      command: "command -v omp"
+    # POSIX sh installer; --binary forces the prebuilt release binary so the
+    # install is deterministic even when bun is present (default mode would
+    # otherwise do a `bun install -g` into ~/.bun/bin instead).
+    verified_installer:
+      tool: omp
+      runner: sh
+      args: ["--binary"]
+    install:
+      - |
+        # acfs-summary: ensure omp is on the ACFS bin dir PATH
+        target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+        omp_bin="$HOME/.local/bin/omp"
+        if [[ ! -x "$target_bin/omp" && ! -x "$omp_bin" ]]; then
+          echo "oh-my-pi: installer finished but no omp executable found in $target_bin or $HOME/.local/bin" >&2
+          exit 1
+        fi
+        if [[ ! -x "$target_bin/omp" && -x "$omp_bin" ]]; then
+          acfs_link_primary_bin_command "$omp_bin" "omp"
+        fi
+    verify:
+      - omp --version || omp --help
+    notes:
+      - "Upstream installer honours PI_INSTALL_DIR (default ~/.local/bin); the binary is linked into the configured ACFS bin dir when they differ"
+      - "Self-updates with 'omp update'; acfs update falls back to the verified installer"
+
+  - id: agents.grok
+    description: Grok CLI (xAI coding agent)
+    category: agents
+    phase: 7
+    run_as: target_user
+    optional: true
+    enabled_by_default: false
+    tags: [optional, agent]
+    dependencies:
+      - base.system
+    installed_check:
+      run_as: target_user
+      command: "command -v grok"
+    # GROK_BIN_DIR steers the install away from the upstream default
+    # ~/.grok/bin (which is on no PATH ACFS manages) into ~/.local/bin.
+    verified_installer:
+      tool: grok
+      runner: bash
+      env: ["GROK_BIN_DIR=$TARGET_HOME/.local/bin"]
+    install:
+      - |
+        # acfs-summary: ensure grok is on the ACFS bin dir PATH
+        target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+        if [[ ! -x "$target_bin/grok" ]]; then
+          grok_bin=""
+          for candidate in "$HOME/.local/bin/grok" "$HOME/.grok/bin/grok"; do
+            if [[ -x "$candidate" ]]; then
+              grok_bin="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$grok_bin" ]]; then
+            echo "Grok CLI: installer finished but no grok executable found" >&2
+            exit 1
+          fi
+          acfs_link_primary_bin_command "$grok_bin" "grok"
+        fi
+    verify:
+      - grok --version || grok --help
+    notes:
+      - "Auth is 'grok login' (browser) or GROK_DEPLOYMENT_KEY; GROK_CHANNEL selects stable/alpha/enterprise"
+      - "No documented native self-update; acfs update re-runs the verified installer"
+      - "Upstream installer appends a '# >>> grok installer >>>' PATH block to the login shell rc file"
+
   # ============================================================
   # PHASE 8: Cloud & database tools
   # ============================================================

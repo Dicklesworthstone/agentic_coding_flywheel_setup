@@ -1748,6 +1748,7 @@ doctor_binary_path() {
         "$runtime_home/.cargo/bin/$name"
         "$runtime_home/.atuin/bin/$name"
         "$runtime_home/.opencode/bin/$name"
+        "$runtime_home/.grok/bin/$name"
         "$runtime_home/go/bin/$name"
         "$runtime_home/google-cloud-sdk/bin/$name"
         "$runtime_home/bin/$name"

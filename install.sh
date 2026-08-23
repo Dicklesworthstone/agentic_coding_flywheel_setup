@@ -7252,6 +7252,7 @@ binary_path() {
         "$TARGET_HOME/.bun/bin/$name" \
         "$TARGET_HOME/.atuin/bin/$name" \
         "$TARGET_HOME/.opencode/bin/$name" \
+        "$TARGET_HOME/.grok/bin/$name" \
         "$TARGET_HOME/go/bin/$name" \
         "/usr/local/bin/$name" \
         "/usr/local/sbin/$name" \
@@ -8099,6 +8100,19 @@ UNIT_EOF
         try_step "Installing CSCTF" acfs_run_verified_upstream_script_as_target "csctf" "bash" || log_warn "CSCTF installation may have failed"
     fi
 
+    # Grok CLI (xAI)
+    if binary_installed "grok"; then
+        log_detail "Grok CLI already installed"
+    else
+        log_detail "Installing Grok CLI"
+        # GROK_BIN_DIR steers the upstream installer away from its default
+        # ~/.grok/bin (which is on no PATH ACFS manages) into the ACFS bin dir.
+        try_step "Installing Grok CLI" acfs_run_verified_upstream_script_as_target_with_env "grok" "bash" "GROK_BIN_DIR=$ACFS_BIN_DIR" || log_warn "Grok CLI installation may have failed"
+        if [[ ! -x "$ACFS_BIN_DIR/grok" ]] && [[ -x "$TARGET_HOME/.grok/bin/grok" ]]; then
+            try_step "Linking grok into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.grok/bin/grok" "grok" || log_warn "Could not link grok into $ACFS_BIN_DIR"
+        fi
+    fi
+
     # Get Image from Internet Link (giil)
     if binary_installed "giil"; then
         log_detail "GIIL already installed"
@@ -8129,6 +8143,19 @@ UNIT_EOF
     else
         log_detail "Installing Meta Skill"
         try_step "Installing Meta Skill" acfs_run_verified_upstream_script_as_target "ms" "bash" --easy-mode || log_warn "Meta Skill installation may have failed"
+    fi
+
+    # oh-my-pi (omp)
+    if binary_installed "omp"; then
+        log_detail "oh-my-pi already installed"
+    else
+        log_detail "Installing oh-my-pi"
+        # --binary forces the prebuilt release binary (default ~/.local/bin) so
+        # the install stays deterministic even when bun is present.
+        try_step "Installing oh-my-pi" acfs_run_verified_upstream_script_as_target "omp" "sh" --binary || log_warn "oh-my-pi installation may have failed"
+        if [[ ! -x "$ACFS_BIN_DIR/omp" ]] && [[ -x "$TARGET_HOME/.local/bin/omp" ]]; then
+            try_step "Linking omp into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.local/bin/omp" "omp" || log_warn "Could not link omp into $ACFS_BIN_DIR"
+        fi
     fi
 
     # OpenCode

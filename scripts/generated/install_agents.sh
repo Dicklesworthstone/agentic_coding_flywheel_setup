@@ -350,7 +350,7 @@ acfs_security_init() {
 }
 
 # Category: agents
-# Modules: 5
+# Modules: 7
 
 # Claude Code
 install_agents_claude() {
@@ -1630,6 +1630,594 @@ INSTALL_AGENTS_OPENCODE
     log_success "agents.opencode installed"
 }
 
+# oh-my-pi (omp) — community fork of the Pi coding agent
+install_agents_omp() {
+    local module_id="agents.omp"
+    acfs_require_contract "module:${module_id}" || return 1
+    acfs_generated_ensure_selection || return 1
+    if ! should_run_module "${module_id}"; then
+        log_info "Skipping agents.omp (not selected)"
+        return 0
+    fi
+    log_step "Installing agents.omp"
+
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verified installer: agents.omp"
+    else
+        if ! {
+            # Try security-verified install (no unverified fallback; fail closed)
+            local install_success=false
+
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="omp"
+                    local url=""
+                    local expected_sha256=""
+
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "agents.omp: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'sh' '-s' '--' '--binary'; then
+                            install_success=true
+                        else
+                            log_error "agents.omp: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                        fi
+                    else
+                        if [[ -z "$url" ]]; then
+                            log_error "agents.omp: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "agents.omp: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                    fi
+                else
+                    log_error "agents.omp: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                fi
+            else
+                log_error "agents.omp: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+
+            # Verified install is required - no fallback
+            if [[ "$install_success" = "true" ]]; then
+                true
+            else
+                log_error "Verified install failed for agents.omp"
+                false
+            fi
+        }; then
+            log_warn "agents.omp: verified installer failed"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.omp" "verified installer failed"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.omp"
+            fi
+            return 0
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: install: ensure omp is on the ACFS bin dir PATH (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_AGENTS_OMP'
+# Generated helper functions used by this child shell.
+acfs_generated_system_binary_path() {
+    local name="${1:-}"
+    local candidate=""
+
+    [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
+
+    for candidate in \
+        "/usr/local/bin/$name" \
+        "/usr/local/sbin/$name" \
+        "/usr/bin/$name" \
+        "/bin/$name" \
+        "/usr/sbin/$name" \
+        "/sbin/$name"
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
+}
+
+# Primary-bin helper functions used by this child shell.
+acfs_child_log_error() {
+    if declare -f log_error >/dev/null 2>&1; then
+        log_error "$@"
+    else
+        echo "[ERROR] $*" >&2
+    fi
+}
+
+acfs_child_primary_bin_dir() {
+    local primary_bin_dir="${ACFS_BIN_DIR:-}"
+    local fallback_home="${HOME:-}"
+
+    if [[ -z "$primary_bin_dir" ]]; then
+        if [[ -z "$fallback_home" ]] || [[ "$fallback_home" == "/" ]] || [[ "$fallback_home" != /* ]]; then
+            acfs_child_log_error "ACFS_BIN_DIR is unset and HOME is not a usable absolute path"
+            return 1
+        fi
+        primary_bin_dir="$fallback_home/.local/bin"
+    fi
+
+    if [[ -z "$primary_bin_dir" ]] || [[ "$primary_bin_dir" == "/" ]] || [[ "$primary_bin_dir" != /* ]]; then
+        acfs_child_log_error "ACFS_BIN_DIR must be an absolute path and cannot be '/' (got: ${primary_bin_dir:-<empty>})"
+        return 1
+    fi
+
+    printf '%s\n' "$primary_bin_dir"
+}
+
+acfs_child_primary_bin_requires_root() {
+    local primary_bin_dir="$1"
+    local target_home="${TARGET_HOME:-${HOME:-}}"
+
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != "/" ]] || return 0
+    case "$primary_bin_dir" in
+        "$target_home"|"$target_home"/*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+acfs_child_run_root_bin_command() {
+    if [[ -z "${1:-}" || "${1:-}" != /* ]]; then
+        acfs_child_log_error "Root primary bin command must be an absolute trusted path (got: ${1:-<empty>})"
+        return 1
+    fi
+
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+        return $?
+    fi
+
+    local sudo_bin=""
+    sudo_bin="$(acfs_generated_system_binary_path sudo 2>/dev/null || true)"
+    if [[ -n "$sudo_bin" ]]; then
+        "$sudo_bin" -n "$@"
+        return $?
+    fi
+
+    acfs_child_log_error "Primary bin dir requires root, but sudo is unavailable: ${ACFS_BIN_DIR:-<unset>}"
+    return 1
+}
+
+acfs_child_primary_bin_tool_path() {
+    local name="${1:-}"
+    local tool_path=""
+
+    tool_path="$(acfs_generated_system_binary_path "$name" 2>/dev/null || true)"
+    if [[ -z "$tool_path" ]]; then
+        acfs_child_log_error "Unable to locate trusted $name for primary bin operation"
+        return 1
+    fi
+
+    printf '%s\n' "$tool_path"
+}
+
+acfs_child_ensure_primary_bin_dir() {
+    local primary_bin_dir="$1"
+    local mkdir_bin=""
+
+    mkdir_bin="$(acfs_child_primary_bin_tool_path mkdir)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$mkdir_bin" -p "$primary_bin_dir"
+        return $?
+    fi
+
+    "$mkdir_bin" -p "$primary_bin_dir"
+}
+
+acfs_link_primary_bin_command() {
+    local source_path="$1"
+    local command_name="$2"
+    local primary_bin_dir=""
+    local dest_path=""
+    local ln_bin=""
+
+    primary_bin_dir="$(acfs_child_primary_bin_dir)" || return 1
+    dest_path="$primary_bin_dir/$command_name"
+    acfs_child_ensure_primary_bin_dir "$primary_bin_dir" || return 1
+    ln_bin="$(acfs_child_primary_bin_tool_path ln)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$ln_bin" -sf "$source_path" "$dest_path"
+        return $?
+    fi
+
+    "$ln_bin" -sf "$source_path" "$dest_path"
+}
+
+acfs_install_executable_into_primary_bin() {
+    local src_path="$1"
+    local command_name="$2"
+    local primary_bin_dir=""
+    local dest_path=""
+    local install_bin=""
+
+    primary_bin_dir="$(acfs_child_primary_bin_dir)" || return 1
+    dest_path="$primary_bin_dir/$command_name"
+    acfs_child_ensure_primary_bin_dir "$primary_bin_dir" || return 1
+    install_bin="$(acfs_child_primary_bin_tool_path install)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$install_bin" -m 0755 "$src_path" "$dest_path"
+        return $?
+    fi
+
+    "$install_bin" -m 0755 "$src_path" "$dest_path"
+}
+
+# acfs-summary: ensure omp is on the ACFS bin dir PATH
+target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+omp_bin="$HOME/.local/bin/omp"
+if [[ ! -x "$target_bin/omp" && ! -x "$omp_bin" ]]; then
+  echo "oh-my-pi: installer finished but no omp executable found in $target_bin or $HOME/.local/bin" >&2
+  exit 1
+fi
+if [[ ! -x "$target_bin/omp" && -x "$omp_bin" ]]; then
+  acfs_link_primary_bin_command "$omp_bin" "omp"
+fi
+INSTALL_AGENTS_OMP
+        then
+            log_warn "agents.omp: install command failed: ensure omp is on the ACFS bin dir PATH"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.omp" "install command failed: ensure omp is on the ACFS bin dir PATH"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.omp"
+            fi
+            return 0
+        fi
+    fi
+
+    # Verify
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: omp --version || omp --help (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_AGENTS_OMP'
+omp --version || omp --help
+INSTALL_AGENTS_OMP
+        then
+            log_warn "agents.omp: verify failed: omp --version || omp --help"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.omp" "verify failed: omp --version || omp --help"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.omp"
+            fi
+            return 0
+        fi
+    fi
+
+    log_success "agents.omp installed"
+}
+
+# Grok CLI (xAI coding agent)
+install_agents_grok() {
+    local module_id="agents.grok"
+    acfs_require_contract "module:${module_id}" || return 1
+    acfs_generated_ensure_selection || return 1
+    if ! should_run_module "${module_id}"; then
+        log_info "Skipping agents.grok (not selected)"
+        return 0
+    fi
+    log_step "Installing agents.grok"
+
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verified installer: agents.grok"
+    else
+        if ! {
+            # Try security-verified install (no unverified fallback; fail closed)
+            local install_success=false
+
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="grok"
+                    local url=""
+                    local expected_sha256=""
+
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "agents.grok: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'env' 'GROK_BIN_DIR='"$TARGET_HOME"'/.local/bin' 'bash' '-s'; then
+                            install_success=true
+                        else
+                            log_error "agents.grok: verify_checksum or installer execution failed"
+                            # verify_checksum sets a specific reason (network/checksum) on
+                            # its own failure paths; only default here when it succeeded
+                            # and the piped installer script itself is what failed.
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                        fi
+                    else
+                        if [[ -z "$url" ]]; then
+                            log_error "agents.grok: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "agents.grok: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                    fi
+                else
+                    log_error "agents.grok: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                fi
+            else
+                log_error "agents.grok: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+
+            # Verified install is required - no fallback
+            if [[ "$install_success" = "true" ]]; then
+                true
+            else
+                log_error "Verified install failed for agents.grok"
+                false
+            fi
+        }; then
+            log_warn "agents.grok: verified installer failed"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.grok" "verified installer failed"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.grok"
+            fi
+            return 0
+        fi
+    fi
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: install: ensure grok is on the ACFS bin dir PATH (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_AGENTS_GROK'
+# Generated helper functions used by this child shell.
+acfs_generated_system_binary_path() {
+    local name="${1:-}"
+    local candidate=""
+
+    [[ -n "$name" ]] || return 1
+    case "$name" in
+        .|..)
+            return 1
+            ;;
+        *[!A-Za-z0-9._+-]*)
+            return 1
+            ;;
+    esac
+
+    for candidate in \
+        "/usr/local/bin/$name" \
+        "/usr/local/sbin/$name" \
+        "/usr/bin/$name" \
+        "/bin/$name" \
+        "/usr/sbin/$name" \
+        "/sbin/$name"
+    do
+        [[ -x "$candidate" ]] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+
+    return 1
+}
+
+# Primary-bin helper functions used by this child shell.
+acfs_child_log_error() {
+    if declare -f log_error >/dev/null 2>&1; then
+        log_error "$@"
+    else
+        echo "[ERROR] $*" >&2
+    fi
+}
+
+acfs_child_primary_bin_dir() {
+    local primary_bin_dir="${ACFS_BIN_DIR:-}"
+    local fallback_home="${HOME:-}"
+
+    if [[ -z "$primary_bin_dir" ]]; then
+        if [[ -z "$fallback_home" ]] || [[ "$fallback_home" == "/" ]] || [[ "$fallback_home" != /* ]]; then
+            acfs_child_log_error "ACFS_BIN_DIR is unset and HOME is not a usable absolute path"
+            return 1
+        fi
+        primary_bin_dir="$fallback_home/.local/bin"
+    fi
+
+    if [[ -z "$primary_bin_dir" ]] || [[ "$primary_bin_dir" == "/" ]] || [[ "$primary_bin_dir" != /* ]]; then
+        acfs_child_log_error "ACFS_BIN_DIR must be an absolute path and cannot be '/' (got: ${primary_bin_dir:-<empty>})"
+        return 1
+    fi
+
+    printf '%s\n' "$primary_bin_dir"
+}
+
+acfs_child_primary_bin_requires_root() {
+    local primary_bin_dir="$1"
+    local target_home="${TARGET_HOME:-${HOME:-}}"
+
+    [[ -n "$target_home" && "$target_home" == /* && "$target_home" != "/" ]] || return 0
+    case "$primary_bin_dir" in
+        "$target_home"|"$target_home"/*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+acfs_child_run_root_bin_command() {
+    if [[ -z "${1:-}" || "${1:-}" != /* ]]; then
+        acfs_child_log_error "Root primary bin command must be an absolute trusted path (got: ${1:-<empty>})"
+        return 1
+    fi
+
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+        return $?
+    fi
+
+    local sudo_bin=""
+    sudo_bin="$(acfs_generated_system_binary_path sudo 2>/dev/null || true)"
+    if [[ -n "$sudo_bin" ]]; then
+        "$sudo_bin" -n "$@"
+        return $?
+    fi
+
+    acfs_child_log_error "Primary bin dir requires root, but sudo is unavailable: ${ACFS_BIN_DIR:-<unset>}"
+    return 1
+}
+
+acfs_child_primary_bin_tool_path() {
+    local name="${1:-}"
+    local tool_path=""
+
+    tool_path="$(acfs_generated_system_binary_path "$name" 2>/dev/null || true)"
+    if [[ -z "$tool_path" ]]; then
+        acfs_child_log_error "Unable to locate trusted $name for primary bin operation"
+        return 1
+    fi
+
+    printf '%s\n' "$tool_path"
+}
+
+acfs_child_ensure_primary_bin_dir() {
+    local primary_bin_dir="$1"
+    local mkdir_bin=""
+
+    mkdir_bin="$(acfs_child_primary_bin_tool_path mkdir)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$mkdir_bin" -p "$primary_bin_dir"
+        return $?
+    fi
+
+    "$mkdir_bin" -p "$primary_bin_dir"
+}
+
+acfs_link_primary_bin_command() {
+    local source_path="$1"
+    local command_name="$2"
+    local primary_bin_dir=""
+    local dest_path=""
+    local ln_bin=""
+
+    primary_bin_dir="$(acfs_child_primary_bin_dir)" || return 1
+    dest_path="$primary_bin_dir/$command_name"
+    acfs_child_ensure_primary_bin_dir "$primary_bin_dir" || return 1
+    ln_bin="$(acfs_child_primary_bin_tool_path ln)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$ln_bin" -sf "$source_path" "$dest_path"
+        return $?
+    fi
+
+    "$ln_bin" -sf "$source_path" "$dest_path"
+}
+
+acfs_install_executable_into_primary_bin() {
+    local src_path="$1"
+    local command_name="$2"
+    local primary_bin_dir=""
+    local dest_path=""
+    local install_bin=""
+
+    primary_bin_dir="$(acfs_child_primary_bin_dir)" || return 1
+    dest_path="$primary_bin_dir/$command_name"
+    acfs_child_ensure_primary_bin_dir "$primary_bin_dir" || return 1
+    install_bin="$(acfs_child_primary_bin_tool_path install)" || return 1
+
+    if acfs_child_primary_bin_requires_root "$primary_bin_dir"; then
+        acfs_child_run_root_bin_command "$install_bin" -m 0755 "$src_path" "$dest_path"
+        return $?
+    fi
+
+    "$install_bin" -m 0755 "$src_path" "$dest_path"
+}
+
+# acfs-summary: ensure grok is on the ACFS bin dir PATH
+target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
+if [[ ! -x "$target_bin/grok" ]]; then
+  grok_bin=""
+  for candidate in "$HOME/.local/bin/grok" "$HOME/.grok/bin/grok"; do
+    if [[ -x "$candidate" ]]; then
+      grok_bin="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$grok_bin" ]]; then
+    echo "Grok CLI: installer finished but no grok executable found" >&2
+    exit 1
+  fi
+  acfs_link_primary_bin_command "$grok_bin" "grok"
+fi
+INSTALL_AGENTS_GROK
+        then
+            log_warn "agents.grok: install command failed: ensure grok is on the ACFS bin dir PATH"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.grok" "install command failed: ensure grok is on the ACFS bin dir PATH"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.grok"
+            fi
+            return 0
+        fi
+    fi
+
+    # Verify
+    if [[ "${DRY_RUN:-false}" = "true" ]]; then
+        log_info "dry-run: verify: grok --version || grok --help (target_user)"
+    else
+        if ! run_as_target_shell <<'INSTALL_AGENTS_GROK'
+grok --version || grok --help
+INSTALL_AGENTS_GROK
+        then
+            log_warn "agents.grok: verify failed: grok --version || grok --help"
+            if type -t record_skipped_tool >/dev/null 2>&1; then
+              record_skipped_tool "agents.grok" "verify failed: grok --version || grok --help"
+            elif type -t state_tool_skip >/dev/null 2>&1; then
+              state_tool_skip "agents.grok"
+            fi
+            return 0
+        fi
+    fi
+
+    log_success "agents.grok installed"
+}
+
 # Install all agents modules
 install_agents() {
     log_section "Installing agents modules"
@@ -1638,6 +2226,8 @@ install_agents() {
     install_agents_gemini
     install_agents_antigravity
     install_agents_opencode
+    install_agents_omp
+    install_agents_grok
 }
 
 # Run if executed directly

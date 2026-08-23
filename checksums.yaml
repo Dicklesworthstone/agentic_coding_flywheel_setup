@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-08-23T12:16:16-04:00
+# checksums.yaml - Auto-generated 2026-08-23T16:09:59-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -86,13 +86,17 @@ installers:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/giil/main/install.sh"
     sha256: "7b9f886b42c593288978983490363c2e3d49ef908903fbd4bd9b25a7187fe63a"
 
+  grok:
+    url: "https://x.ai/cli/install.sh"
+    sha256: "43d0943123edade1383a476a4f778674877acee7c1f98a00f094c4a0f7349321"
+
   jfp:
     url: "https://jeffreysprompts.com/install-cli.sh"
     sha256: "6b82c8d88ad7de4524679cd08406117177f3643b34028b611447fb9c69f4fc4e"
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "ffa7e903addfa45b130edcfa16df8e5c45763fc3f9f40df9415f0387fdf90f76"
+    sha256: "64172d1f3b8de6d1aa428d810ec49ee730446433301ac89b9ef714269797e632"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
@@ -113,6 +117,10 @@ installers:
   ohmyzsh:
     url: "https://install.ohmyz.sh/"
     sha256: "5b16896b831243ebd2f409ecd99c3d231385cc706fbc564625057929ebee5e6e"
+
+  omp:
+    url: "https://omp.sh/install.sh"
+    sha256: "1b9a74f608a430977892c972ed071f3fc46bf6d09bbf81c8827a655beaa73df7"
 
   opencode:
     url: "https://opencode.ai/install"

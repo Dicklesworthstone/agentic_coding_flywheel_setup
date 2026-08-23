@@ -32,8 +32,8 @@ export interface ManifestProvenanceMetadata {
 
 export const manifestProvenance = {
   acfsVersion: "0.7.0",
-  manifestSha256: "587500fd279e50ab5ffc5d387a7e65b0427974a36c2f2b6af54260544bcda265",
-  checksumsYamlSha256: "3e910e80cadaf3c84e71f6047b0325a1b0a0343e68df41e3a640c2a08aca850f",
+  manifestSha256: "4adb270ef1e9da3e1c12be7b283ec459407d094feab5fbcece57d2fafce99438",
+  checksumsYamlSha256: "7cd2c1a43c673574e221d411505251636afb9bda0d609ad3f744dbd7132147a2",
 } as const satisfies ManifestProvenanceMetadata;
 
 export const manifestModules: ManifestModuleMetadata[] = [
@@ -368,6 +368,36 @@ export const manifestModules: ManifestModuleMetadata[] = [
   {
     id: "agents.opencode",
     description: "OpenCode (multi-provider agent harness)",
+    category: "agents",
+    phase: 7,
+    dependencies: [
+      "base.system",
+    ],
+    tags: [
+      "optional",
+      "agent",
+    ],
+    enabledByDefault: false,
+    optional: true,
+  },
+  {
+    id: "agents.omp",
+    description: "oh-my-pi (omp) — community fork of the Pi coding agent",
+    category: "agents",
+    phase: 7,
+    dependencies: [
+      "base.system",
+    ],
+    tags: [
+      "optional",
+      "agent",
+    ],
+    enabledByDefault: false,
+    optional: true,
+  },
+  {
+    id: "agents.grok",
+    description: "Grok CLI (xAI coding agent)",
     category: "agents",
     phase: 7,
     dependencies: [
