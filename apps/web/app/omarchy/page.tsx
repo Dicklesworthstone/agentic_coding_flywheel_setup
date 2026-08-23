@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleSlash,
   Database,
+  ExternalLink,
   GitBranch,
   Package,
   RotateCcw,
@@ -26,6 +27,7 @@ import { staggerDelay } from "@/lib/hooks/useScrollReveal";
 import CopyCommand from "@/components/omarchy/copy-command";
 import { TldrSynergyDiagram } from "@/components/tldr/tldr-synergy-diagram";
 import { tldrFlywheelTools } from "@/lib/tldr-content";
+import { manifestTools } from "@/lib/generated/manifest-tools";
 
 // Same command the home page shows; /install 302s to the raw install.sh.
 // Without --yes the installer asks one "Proceed?" question on the TTY, which
@@ -51,7 +53,7 @@ const TN = {
 const STATS = [
   { value: "72", label: "Modules" },
   { value: "3", label: "AI Agents" },
-  { value: "40+", label: "Stack tools" },
+  { value: "35", label: "Flywheel tools" },
   { value: "1", label: "Command" },
 ] as const;
 
@@ -149,6 +151,37 @@ interface ToolEntry {
   name: string;
   description: string;
   tier: ToolTier;
+  /** Project page. Flywheel tools resolve this from the manifest (see toolHref). */
+  href?: string;
+}
+
+// Third-party tools are not in acfs.manifest.yaml's web metadata, so their
+// project pages are listed here.
+const THIRD_PARTY_HREFS: Record<string, string> = {
+  claude: "https://github.com/anthropics/claude-code",
+  codex: "https://github.com/openai/codex",
+  agy: "https://antigravity.google/",
+  opencode: "https://github.com/sst/opencode",
+  omp: "https://omp.sh",
+  bun: "https://github.com/oven-sh/bun",
+  uv: "https://github.com/astral-sh/uv",
+  cargo: "https://github.com/rust-lang/cargo",
+  go: "https://github.com/golang/go",
+  gh: "https://github.com/cli/cli",
+  tmux: "https://github.com/tmux/tmux",
+  rg: "https://github.com/BurntSushi/ripgrep",
+  fzf: "https://github.com/junegunn/fzf",
+  atuin: "https://github.com/atuinsh/atuin",
+  zoxide: "https://github.com/ajeetdsouza/zoxide",
+  gum: "https://github.com/charmbracelet/gum",
+};
+
+/** Project page for a tool: manifest href for flywheel tools, explicit map otherwise. */
+function toolHref(name: string): string | undefined {
+  const fromManifest = manifestTools.find(
+    (tool) => tool.cliName === name || tool.cliAliases.includes(name),
+  )?.href;
+  return fromManifest ?? THIRD_PARTY_HREFS[name];
 }
 
 // Tier presentation: label, colour, and one line on what the tier means.
@@ -160,12 +193,12 @@ const TIERS: Record<ToolTier, { label: string; blurb: string; color: string }> =
   },
   flywheel: {
     label: "Flywheel",
-    blurb: "Smaller Dicklesworthstone tools that plug into the cornerstones.",
+    blurb: "The rest of the Agent Flywheel stack; each one plugs into the cornerstones.",
     color: TN.cyan,
   },
   thirdParty: {
     label: "Third-party",
-    blurb: "Agents, runtimes, and CLIs the stack depends on. On Arch, most come from pacman.",
+    blurb: "Agents, runtimes, and CLIs the stack works alongside. On Arch, most come from pacman.",
     color: TN.amber,
   },
 };
@@ -175,19 +208,19 @@ const TIER_ORDER: ToolTier[] = ["cornerstone", "flywheel", "thirdParty"];
 // Every entry is a binary ACFS puts on your PATH. Names come from
 // lib/generated/manifest-tools.ts (cliName) — keep them in sync.
 const TOOLS: ToolEntry[] = [
-  // Cornerstones: the 10-tool stack from the README, in workflow order.
+  // Cornerstones: the ten tools a working session runs through, in workflow order.
   { name: "ntm", description: "Named Tmux Manager: spawn and monitor agent sessions", tier: "cornerstone" },
   { name: "am", description: "MCP Agent Mail (Rust rewrite): messaging and file reservations between agents", tier: "cornerstone" },
   { name: "br", description: "beads_rust: local-first issue tracking for agents", tier: "cornerstone" },
   { name: "bv", description: "Beads Viewer: dependency-graph triage for tasks", tier: "cornerstone" },
-  { name: "cass", description: "Coding Agent Session Search: every past agent session, searchable", tier: "cornerstone" },
+  { name: "cass", description: "Coding Agent Session Search (CASS): every past agent session, searchable", tier: "cornerstone" },
   { name: "cm", description: "CASS Memory System: procedural memory for agents", tier: "cornerstone" },
   { name: "ubs", description: "Ultimate Bug Scanner: static checks before every commit", tier: "cornerstone" },
   { name: "dcg", description: "Destructive Command Guard: blocks rm -rf and git reset --hard in agents", tier: "cornerstone" },
-  { name: "slb", description: "Simultaneous Launch Button: two-person rule for dangerous commands", tier: "cornerstone" },
   { name: "ru", description: "Repo Updater: multi-repo sync and AI-driven commits", tier: "cornerstone" },
   { name: "rch", description: "Remote Compilation Helper: offload cargo builds to a worker fleet", tier: "cornerstone" },
-  // Flywheel: the rest of the Dicklesworthstone stack.
+  // Flywheel: the rest of the Agent Flywheel stack.
+  { name: "slb", description: "Simultaneous Launch Button: two-person rule for dangerous commands", tier: "flywheel" },
   { name: "caam", description: "Coding Agent Account Manager: switch agent accounts in under 100ms", tier: "flywheel" },
   { name: "fsfs", description: "FrankenSearch: hybrid lexical and semantic code search", tier: "flywheel" },
   { name: "ee", description: "Eidetic Engine: durable local memory for agents", tier: "flywheel" },
@@ -217,6 +250,7 @@ const TOOLS: ToolEntry[] = [
   { name: "codex", description: "Codex CLI (OpenAI)", tier: "thirdParty" },
   { name: "agy", description: "Antigravity CLI (Google)", tier: "thirdParty" },
   { name: "opencode", description: "OpenCode agent CLI", tier: "thirdParty" },
+  { name: "omp", description: "omp: a coding agent with the IDE wired in (omp.sh)", tier: "thirdParty" },
   { name: "bun", description: "JavaScript runtime and package manager", tier: "thirdParty" },
   { name: "uv", description: "Python package manager", tier: "thirdParty" },
   { name: "cargo", description: "Rust toolchain (rustup)", tier: "thirdParty" },
@@ -229,6 +263,71 @@ const TOOLS: ToolEntry[] = [
   { name: "zoxide", description: "Smarter cd", tier: "thirdParty" },
   { name: "gum", description: "Glamorous shell scripts (pacman)", tier: "thirdParty" },
 ];
+
+/**
+ * One tool in the index. Hover/focus lifts the tile, lights the border and a
+ * left accent bar in the tier colour, and brightens the description. The
+ * featured (cornerstone) variant is taller with a larger name.
+ */
+function ToolTile({ tool, featured }: { tool: ToolEntry; featured: boolean }) {
+  const { color, label } = TIERS[tool.tier];
+  const href = tool.href ?? toolHref(tool.name);
+  const layout = featured ? "flex flex-col gap-2 p-4 pr-9" : "flex items-baseline gap-3 py-3 pl-4 pr-9";
+  const body = (
+    <>
+      {/* Accent bar + glow, tier-coloured, revealed on hover/focus */}
+      <span
+        className="pointer-events-none absolute inset-y-0 left-0 w-0.5 origin-bottom scale-y-0 transition-transform duration-300 group-hover:scale-y-100 group-focus-within:scale-y-100"
+        style={{ backgroundColor: color }}
+        aria-hidden="true"
+      />
+      <span
+        className="pointer-events-none absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100"
+        style={{
+          boxShadow: `inset 0 0 0 1px ${color}66, 0 12px 32px -16px ${color}99`,
+          background: `radial-gradient(120% 80% at 0% 0%, ${color}14, transparent 60%)`,
+        }}
+        aria-hidden="true"
+      />
+      <code
+        className={`relative shrink-0 font-mono font-semibold transition-colors ${featured ? "text-xl font-bold" : "text-sm"}`}
+        style={{ color }}
+      >
+        {tool.name}
+      </code>
+      <span className="relative min-w-0 text-xs leading-relaxed text-muted-foreground transition-colors group-hover:text-foreground/90 group-focus-within:text-foreground/90">
+        {tool.description}
+      </span>
+      {href ? (
+        <ExternalLink
+          className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/70 group-focus-within:text-muted-foreground/70"
+          aria-hidden="true"
+        />
+      ) : null}
+    </>
+  );
+  const shell =
+    "group relative block h-full overflow-hidden rounded-xl border border-border/40 bg-card/40 transition-[border-color,background-color,box-shadow] duration-300 hover:bg-card focus-visible:bg-card focus-visible:outline-none";
+  return (
+    <motion.li variants={fadeUp} whileHover={{ y: -3 }} transition={springs.snappy} className="h-full">
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${shell} ${layout}`}
+          aria-label={`${tool.name}: ${tool.description} (${label}). Opens the project page in a new tab.`}
+        >
+          {body}
+        </a>
+      ) : (
+        <div className={`${shell} ${layout}`} aria-label={`${tool.name}: ${tool.description} (${label})`}>
+          {body}
+        </div>
+      )}
+    </motion.li>
+  );
+}
 
 function TierBadge({ tier }: { tier: ToolTier }) {
   const { label, color } = TIERS[tier];
@@ -629,7 +728,8 @@ export default function OmarchyPage() {
               transition={springs.smooth}
             >
               Every name in the storm above is a binary on your PATH after install. ACFS leaves your
-              desktop, shell, and prompt alone; this list is what it adds.
+              desktop, shell, and prompt alone; the first two tiers are what it adds, and the third is
+              what it works alongside.
             </motion.p>
 
             {/* Legend */}
@@ -671,7 +771,7 @@ export default function OmarchyPage() {
                     <motion.ul
                       className={
                         tier === "cornerstone"
-                          ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+                          ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-5"
                           : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
                       }
                       variants={staggerContainer}
@@ -679,36 +779,9 @@ export default function OmarchyPage() {
                       whileInView="visible"
                       viewport={{ once: true, margin: "-60px" }}
                     >
-                      {tools.map((tool) =>
-                        tier === "cornerstone" ? (
-                          <motion.li
-                            key={tool.name}
-                            className="flex flex-col gap-2 rounded-xl border bg-card/60 p-4 transition-colors hover:bg-card"
-                            style={{ borderColor: `${color}40` }}
-                            variants={fadeUp}
-                          >
-                            <code className="font-mono text-xl font-bold" style={{ color }}>
-                              {tool.name}
-                            </code>
-                            <span className="text-xs leading-relaxed text-muted-foreground">
-                              {tool.description}
-                            </span>
-                          </motion.li>
-                        ) : (
-                          <motion.li
-                            key={tool.name}
-                            className="flex items-baseline gap-3 rounded-lg border border-border/40 bg-card/40 px-4 py-3 transition-colors hover:bg-card/70"
-                            variants={fadeUp}
-                          >
-                            <code className="shrink-0 font-mono text-sm font-semibold" style={{ color }}>
-                              {tool.name}
-                            </code>
-                            <span className="min-w-0 text-xs leading-relaxed text-muted-foreground">
-                              {tool.description}
-                            </span>
-                          </motion.li>
-                        ),
-                      )}
+                      {tools.map((tool) => (
+                        <ToolTile key={tool.name} tool={tool} featured={tier === "cornerstone"} />
+                      ))}
                     </motion.ul>
                   </div>
                 );
@@ -747,7 +820,7 @@ export default function OmarchyPage() {
               className="flex flex-col items-center"
             >
               <h2 className="mb-4 font-mono text-3xl font-bold tracking-tight sm:text-4xl">
-                Ride the storm.
+                Get on the Flywheel!
               </h2>
               <p className="mb-8 max-w-xl text-muted-foreground">
                 One command sets up your Arch or Omarchy machine for agentic coding. Re-run it
