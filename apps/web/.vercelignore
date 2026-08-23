@@ -11,3 +11,6 @@ test-results
 node_modules_trash_latest_3
 playwright-report
 node_modules
+
+# session artifact (screenshot path-join bug); do not upload
+undefined
