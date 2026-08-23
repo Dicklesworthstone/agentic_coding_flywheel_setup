@@ -836,7 +836,7 @@ acfs swarm simulate`} />
               <>In Claude Code, use the project-specific <code>Ctrl-r</code> prompt history search when you want to recall something you used recently</>,
             ]} />
 
-            <P>There is no single correct operator interface. NTM is one good cockpit. WezTerm tabs plus mux is another. <a href="https://github.com/Dicklesworthstone/frankenterm" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">FrankenTerm</a>, built on WezTerm and shipped as v0.8.0, is aimed explicitly at this style of multi-agent workflow. The important thing is that you can launch agents, get prompts into them quickly, monitor them, and keep the coordination layer (AGENTS.md, Agent Mail, beads, bv) intact.</P>
+            <P>There is no single correct operator interface. NTM is one good cockpit. WezTerm tabs plus mux is another. <a href="https://github.com/Dicklesworthstone/frankenterm" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">FrankenTerm</a>, built on WezTerm, is aimed explicitly at this style of multi-agent workflow. The important thing is that you can launch agents, get prompts into them quickly, monitor them, and keep the coordination layer (AGENTS.md, Agent Mail, beads, bv) intact.</P>
 
             <P>For concrete setup notes on these operator environments:</P>
 

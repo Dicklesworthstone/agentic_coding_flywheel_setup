@@ -821,7 +821,7 @@ function IsThisForYouSection() {
 const PRICING_ITEMS = [
   { name: "Cloud VPS", price: "$40–56", period: "/month", description: "64GB RAM Ubuntu server (Contabo, OVH)", icon: Server, gradient: "from-sky-400 to-blue-500", note: "64GB RAM for 10+ agents" },
   { name: "Claude Max", price: "$200", period: "/month", description: "Anthropic's Claude Code CLI", icon: Bot, gradient: "from-amber-400 to-orange-500", note: "$400 for power users (2 accounts)" },
-  { name: "ChatGPT Pro", price: "$200", period: "/month", description: "ChatGPT 5.2 Pro for extended thinking planning", icon: Cpu, gradient: "from-emerald-400 to-teal-500", note: "Essential for plan documents" },
+  { name: "ChatGPT Pro", price: "$200", period: "/month", description: "GPT-5.6 Sol Pro for extended thinking planning", icon: Cpu, gradient: "from-emerald-400 to-teal-500", note: "Essential for plan documents" },
 ];
 
 function WhatDoesThisCostSection() {
@@ -1015,7 +1015,7 @@ export default function HomePage() {
                 Transform a fresh <Jargon term="cloud-server">cloud server</Jargon> into a fully-configured{" "}
                 <Jargon term="agentic">agentic</Jargon> coding environment.{" "}
                 <Jargon term="claude-code">Claude Code</Jargon>, OpenAI <Jargon term="codex">Codex</Jargon>,{" "}
-                Google <Jargon term="antigravity-cli">Antigravity</Jargon>: all pre-configured with 30+ modern developer tools.
+                Google <Jargon term="antigravity-cli">Antigravity</Jargon>: all pre-configured with 35+ modern developer tools.
                 All totally free and <Jargon term="open-source">open-source</Jargon>.
               </motion.p>
 
@@ -1054,7 +1054,7 @@ export default function HomePage() {
                 className="mt-10 flex flex-wrap items-center justify-center gap-4 sm:justify-start sm:gap-0 sm:divide-x sm:divide-border/50"
                 variants={fadeUp}
               >
-                <StatBadge value="30+" label="Tools Installed" />
+                <StatBadge value="35+" label="Tools Installed" />
                 <StatBadge value="3" label="AI Agents" />
                 <StatBadge value="~30m" label="Setup Time" />
               </motion.div>

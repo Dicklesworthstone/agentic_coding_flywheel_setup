@@ -520,7 +520,7 @@ const _flywheelTools: FlywheelTool[] = [
       "Product bus for multi-repo coordination",
     ],
     cliCommands: [
-      "mcp-agent-mail serve-http --port 8765",
+      "am serve-http --port 8765",
       "mcp-agent-mail guard install <project> <repo>",
       "mcp-agent-mail share wizard",
       "mcp-agent-mail doctor check --verbose",
@@ -1519,7 +1519,7 @@ Key capabilities:
       "Streaming support",
       "LLM-aware compression",
     ],
-    cliCommands: ["tru compress file.json", "tru expand file.toon", "tru --help"],
+    cliCommands: ["toon compress file.json", "toon expand file.toon", "toon --help"],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh | bash",
     language: "Rust",

@@ -28,6 +28,7 @@ import CopyCommand from "@/components/omarchy/copy-command";
 import { TldrSynergyDiagram } from "@/components/tldr/tldr-synergy-diagram";
 import { tldrFlywheelTools } from "@/lib/tldr-content";
 import { manifestTools } from "@/lib/generated/manifest-tools";
+import { manifestModules } from "@/lib/generated/manifest-modules";
 
 // Same command the home page shows; /install 302s to the raw install.sh.
 // Without --yes the installer asks one "Proceed?" question on the TTY, which
@@ -50,12 +51,9 @@ const TN = {
   red: "#f7768e",
 } as const;
 
-const STATS = [
-  { value: "72", label: "Modules" },
-  { value: "3", label: "AI Agents" },
-  { value: "35", label: "Flywheel tools" },
-  { value: "1", label: "Command" },
-] as const;
+// Counts derive from the manifest and this page's own tool index (STATS is
+// defined after TOOLS below) so they can never silently drift from reality.
+const MODULE_COUNT = manifestModules.length;
 
 const FEATURES = [
   {
@@ -163,6 +161,7 @@ const THIRD_PARTY_HREFS: Record<string, string> = {
   agy: "https://antigravity.google/",
   opencode: "https://github.com/sst/opencode",
   omp: "https://omp.sh",
+  grok: "https://x.ai/cli",
   bun: "https://github.com/oven-sh/bun",
   uv: "https://github.com/astral-sh/uv",
   cargo: "https://github.com/rust-lang/cargo",
@@ -245,12 +244,16 @@ const TOOLS: ToolEntry[] = [
   { name: "apr", description: "Automated Plan Reviser Pro: multi-pass plan refinement", tier: "flywheel" },
   { name: "jfp", description: "JeffreysPrompts CLI: curated prompt library", tier: "flywheel" },
   { name: "brenner", description: "Brenner Bot: hypothesis-driven research sessions", tier: "flywheel" },
+  { name: "aadc", description: "ASCII Art Diagram Corrector: fix malformed ASCII diagrams from AI output", tier: "flywheel" },
+  { name: "caut", description: "Coding Agent Usage Tracker: LLM provider usage and costs across agents", tier: "flywheel" },
+  { name: "rust_proxy", description: "Rust Proxy: transparent proxy routing for network debugging", tier: "flywheel" },
   // Third-party: agents, runtimes, and CLIs the stack depends on.
   { name: "claude", description: "Claude Code (Anthropic)", tier: "thirdParty" },
   { name: "codex", description: "Codex CLI (OpenAI)", tier: "thirdParty" },
   { name: "agy", description: "Antigravity CLI (Google)", tier: "thirdParty" },
-  { name: "opencode", description: "OpenCode agent CLI", tier: "thirdParty" },
-  { name: "omp", description: "omp: a coding agent with the IDE wired in (omp.sh)", tier: "thirdParty" },
+  { name: "opencode", description: "OpenCode agent CLI (optional module)", tier: "thirdParty" },
+  { name: "omp", description: "omp: a coding agent with the IDE wired in (optional module)", tier: "thirdParty" },
+  { name: "grok", description: "Grok CLI (xAI, optional module)", tier: "thirdParty" },
   { name: "bun", description: "JavaScript runtime and package manager", tier: "thirdParty" },
   { name: "uv", description: "Python package manager", tier: "thirdParty" },
   { name: "cargo", description: "Rust toolchain (rustup)", tier: "thirdParty" },
@@ -263,6 +266,15 @@ const TOOLS: ToolEntry[] = [
   { name: "zoxide", description: "Smarter cd", tier: "thirdParty" },
   { name: "gum", description: "Glamorous shell scripts (pacman)", tier: "thirdParty" },
 ];
+
+const FLYWHEEL_TOOL_COUNT = TOOLS.filter((tool) => tool.tier !== "thirdParty").length;
+
+const STATS = [
+  { value: String(MODULE_COUNT), label: "Modules" },
+  { value: "3", label: "AI Agents" },
+  { value: String(FLYWHEEL_TOOL_COUNT), label: "Flywheel tools" },
+  { value: "1", label: "Command" },
+] as const;
 
 /**
  * One tool in the index. Hover/focus lifts the tile, lights the border and a
@@ -481,7 +493,7 @@ export default function OmarchyPage() {
                 The same one-liner as on Ubuntu. The installer detects Arch and Omarchy, installs
                 the system layer with <span className="font-mono text-[#9ece6a]">pacman</span>,
                 keeps your <span className="font-mono text-[#e0af68]">starship</span> prompt, and
-                skips <span className="font-mono">oh-my-zsh</span>. All 72 modules, three coding
+                skips <span className="font-mono">oh-my-zsh</span>. All {MODULE_COUNT} modules, three coding
                 agents, and the full tool stack.
               </motion.p>
 

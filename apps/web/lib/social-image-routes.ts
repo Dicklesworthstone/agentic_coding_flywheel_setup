@@ -92,7 +92,7 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     tags: ["Overview", "Tool Synergy", "Architecture"],
   },
   "/omarchy": {
-    badge: "Omarchy 4 · Arch Family",
+    badge: "Omarchy · Arch Family",
     title: "The Flywheel, Native on Omarchy",
     description:
       "One command installs the full agentic coding stack on Omarchy and Arch: system packages from pacman, your starship prompt left alone, acfs doctor passing clean.",

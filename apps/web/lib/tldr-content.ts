@@ -1469,8 +1469,13 @@ export const tldrPageData = {
     description:
       "16 core tools and 13 supporting utilities that transform multi-agent AI coding workflows. Each tool makes the others more powerful - the more you use it, the faster it spins. While others argue about agentic coding, we're just over here building as fast as we can.",
     stats: [
-      { label: "Ecosystem Tools", value: "29" },
-      { label: "GitHub Stars", value: "3,600+" },
+      { label: "Ecosystem Tools", value: String(_tldrFlywheelTools.length) },
+      {
+        label: "GitHub Stars",
+        value: `${new Intl.NumberFormat("en").format(
+          Math.floor(_tldrFlywheelTools.reduce((sum, t) => sum + (t.stars ?? 0), 0) / 100) * 100,
+        )}+`,
+      },
       { label: "Languages", value: "5" },
     ],
   },
