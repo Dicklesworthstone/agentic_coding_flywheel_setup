@@ -92,13 +92,13 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     tags: ["Overview", "Tool Synergy", "Architecture"],
   },
   "/omarchy": {
-    badge: "Native on Arch",
-    title: "The Flywheel on Omarchy",
+    badge: "Omarchy 4 · Arch Family",
+    title: "The Flywheel, Native on Omarchy",
     description:
-      "One command. The full agentic coding stack on Omarchy and Arch — pacman-native, your prompt untouched.",
+      "One command. The full agentic coding stack on Omarchy and Arch — pacman-native, your starship prompt untouched, doctor-verified with zero failures.",
     path: "/omarchy",
     theme: "omarchy",
-    tags: ["pacman", "starship", "Hyprland"],
+    tags: ["pacman", "starship", "Hyprland", "Flywheel"],
   },
   "/troubleshooting": {
     badge: "Fix Common Failures",

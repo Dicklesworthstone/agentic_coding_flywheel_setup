@@ -3,7 +3,7 @@ import { getStaticRouteSocialData } from "@/lib/social-image-routes";
 
 export const runtime = "edge";
 
-export const alt = "The Flywheel on Omarchy — native on Arch Linux";
+export const alt = "ACFS on Omarchy — The Flywheel, Native on Arch";
 export const size = {
   width: 1200,
   height: 630,
