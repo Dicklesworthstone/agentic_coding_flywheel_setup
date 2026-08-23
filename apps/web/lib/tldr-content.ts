@@ -255,7 +255,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
     whatItDoes:
       "One-command bootstrap that transforms a fresh Ubuntu VPS into a fully-configured agentic coding environment. CLI provides doctor (47+ health checks), update (category-specific), cheatsheet (50+ aliases), and session management.",
     whyItsUseful:
-      "Setting up a new development environment takes hours. ACFS does it in 30 minutes, installing 30+ tools, three AI agents, and all flywheel tooling. Post-install CLI provides `acfs doctor` for health checks and `acfs update` for maintenance.",
+      "Setting up a new development environment takes hours. ACFS does it in 30 minutes, installing 35+ tools, six AI agent CLIs (three by default, three optional), and all flywheel tooling. Post-install CLI provides `acfs doctor` for health checks and `acfs update` for maintenance.",
     implementationHighlights: [
       "Single curl | bash installation with SHA256 verification",
       "Idempotent and resumable installation",

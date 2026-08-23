@@ -11,7 +11,10 @@ import { manifestModules } from "@/lib/generated/manifest-modules";
  * copy cannot drift from the installer; "35+" matches the page's own tool
  * index (cornerstone + flywheel tiers).
  */
-const SHARE_STATS = `${manifestModules.length} modules · 3 AI agents · 35+ tools · 1 command`;
+const AGENT_COUNT = manifestModules.filter(
+  (module) => module.category === "agents" && module.id !== "agents.gemini",
+).length;
+const SHARE_STATS = `${manifestModules.length} modules · ${AGENT_COUNT} agent CLIs · 35+ tools · 1 command`;
 
 export const metadata: Metadata = {
   title: "ACFS on Omarchy: the Flywheel, native on Arch",

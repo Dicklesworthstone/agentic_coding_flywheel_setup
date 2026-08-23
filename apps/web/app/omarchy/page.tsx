@@ -54,6 +54,12 @@ const TN = {
 // Counts derive from the manifest and this page's own tool index (STATS is
 // defined after TOOLS below) so they can never silently drift from reality.
 const MODULE_COUNT = manifestModules.length;
+// Agent harnesses the installer can set up: claude/codex/agy by default,
+// opencode/omp/grok as optional modules. agents.gemini stays excluded — it is
+// the retired legacy CLI kept only for alias compatibility.
+const AGENT_COUNT = manifestModules.filter(
+  (module) => module.category === "agents" && module.id !== "agents.gemini",
+).length;
 
 const FEATURES = [
   {
@@ -271,7 +277,7 @@ const FLYWHEEL_TOOL_COUNT = TOOLS.filter((tool) => tool.tier !== "thirdParty").l
 
 const STATS = [
   { value: String(MODULE_COUNT), label: "Modules" },
-  { value: "3", label: "AI Agents" },
+  { value: String(AGENT_COUNT), label: "Agent CLIs" },
   { value: String(FLYWHEEL_TOOL_COUNT), label: "Flywheel tools" },
   { value: "1", label: "Command" },
 ] as const;
@@ -493,8 +499,8 @@ export default function OmarchyPage() {
                 The same one-liner as on Ubuntu. The installer detects Arch and Omarchy, installs
                 the system layer with <span className="font-mono text-[#9ece6a]">pacman</span>,
                 keeps your <span className="font-mono text-[#e0af68]">starship</span> prompt, and
-                skips <span className="font-mono">oh-my-zsh</span>. All {MODULE_COUNT} modules, three coding
-                agents, and the full tool stack.
+                skips <span className="font-mono">oh-my-zsh</span>. All {MODULE_COUNT} modules,{" "}
+                {AGENT_COUNT} agent CLIs, and the full tool stack.
               </motion.p>
 
               <motion.div className="mb-8 w-full max-w-xl" variants={fadeUp}>
