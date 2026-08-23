@@ -424,6 +424,16 @@ This is defense in depth—HTTPS protects transport, checksums protect content.
 
 ---
 
+## Omarchy (Arch) support
+
+Omarchy (and Arch Linux generally) is supported by the **same one-liner** — no separate command required. The installer auto-detects your distribution and adapts:
+
+- **pacman instead of apt**: system packages and CLI tools install via `pacman`.
+- **Your existing starship config is preserved**: if you already have a customized `starship.toml`, ACFS leaves it alone rather than overwriting it.
+- **No oh-my-zsh / powerlevel10k on Arch**: Arch users typically have an opinionated shell setup already, so the installer skips the oh-my-zsh + powerlevel10k phase instead of clobbering your prompt.
+
+Everything else — language runtimes, AI agents, and the flywheel tool stack — installs identically to Ubuntu.
+
 ## The Installer
 
 The installer is the heart of ACFS—a modular Bash script that transforms a fresh Ubuntu VPS into a fully-configured development environment.

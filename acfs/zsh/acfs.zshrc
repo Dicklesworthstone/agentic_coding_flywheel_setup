@@ -177,12 +177,19 @@ alias proj='cd /data/projects'
 alias dots='cd ~/dotfiles'
 alias p='cd /data/projects'
 
-# --- Ubuntu/Debian convenience ---
-alias update='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
-alias install='sudo apt install'
-# Named aptsearch (not `search`) so it can't shadow the ripgrep `search`
-# alias defined in the modern-CLI block above.
-alias aptsearch='apt search'
+# --- Package manager convenience (distro-aware) ---
+if command -v pacman &>/dev/null; then
+  # Arch-family
+  alias update='sudo pacman -Syu'
+  alias install='sudo pacman -S'
+else
+  # Debian/Ubuntu
+  alias update='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
+  alias install='sudo apt install'
+  # Named aptsearch (not `search`) so it can't shadow the ripgrep `search`
+  # alias defined in the modern-CLI block above.
+  alias aptsearch='apt search'
+fi
 
 # Update agent CLIs
 alias uca='(curl -fsSL https://claude.ai/install.sh | bash -s -- latest) && ("$HOME/.bun/bin/bun" install -g --trust @openai/codex@latest || "$HOME/.bun/bin/bun" install -g --trust @openai/codex) && "$HOME/.local/bin/agy" update && "$HOME/.local/bin/agy-locked" --acfs-prime-settings'

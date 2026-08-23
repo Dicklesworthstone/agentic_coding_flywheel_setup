@@ -1986,35 +1986,51 @@ check_shell() {
     runtime_home="$(doctor_runtime_home)"
     zsh_custom="${ZSH_CUSTOM:-$runtime_home/.oh-my-zsh/custom}"
 
-    check_command "shell.zsh" "zsh" "zsh" "sudo apt install zsh"
+    # Arch-family installs intentionally skip Oh My Zsh/p10k/plugins and keep
+    # the user's existing prompt setup (e.g. Omarchy's starship). Report these
+    # as skipped rather than failing.
+    local _acfs_arch_shell_ux="false"
+    if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]]; then
+        _acfs_arch_shell_ux="true"
+    elif [[ -r /etc/os-release ]] && grep -Eq '^(ID_LIKE=.*arch|ID=(arch|omarchy)\b)' /etc/os-release 2>/dev/null; then
+        _acfs_arch_shell_ux="true"
+    fi
 
-    if [[ -d "$runtime_home/.oh-my-zsh" ]]; then
+    check_command "shell.zsh" "zsh" "zsh" "sudo pacman -S zsh"
+
+    if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
+        check "shell.ohmyzsh" "Oh My Zsh" "skip" "not used on Arch-family; existing prompt preserved"
+    elif [[ -d "$runtime_home/.oh-my-zsh" ]]; then
         check "shell.ohmyzsh" "Oh My Zsh" "pass"
     else
         check "shell.ohmyzsh" "Oh My Zsh" "fail" "not installed" "$(fix_for_module "shell.omz")"
     fi
 
-    local p10k_dir="$zsh_custom/themes/powerlevel10k"
-    if [[ -d "$p10k_dir" ]]; then
+    if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
+        check "shell.p10k" "Powerlevel10k" "skip" "not used on Arch-family"
+    elif [[ -d "$p10k_dir" ]]; then
         check "shell.p10k" "Powerlevel10k" "pass"
     else
         check "shell.p10k" "Powerlevel10k" "warn" "not installed"
     fi
 
-    # Check plugins
-    local plugins_dir="$zsh_custom/plugins"
-    if [[ -d "$plugins_dir/zsh-autosuggestions" ]]; then
-        check "shell.plugins.zsh_autosuggestions" "zsh-autosuggestions" "pass"
+    if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
+        check "shell.plugins.zsh_autosuggestions" "zsh-autosuggestions" "skip" "not used on Arch-family"
+        check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "skip" "not used on Arch-family"
     else
-        check "shell.plugins.zsh_autosuggestions" "zsh-autosuggestions" "warn" "not installed" \
-            "git clone https://github.com/zsh-users/zsh-autosuggestions \${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
-    fi
+        if [[ -d "$plugins_dir/zsh-autosuggestions" ]]; then
+            check "shell.plugins.zsh_autosuggestions" "zsh-autosuggestions" "pass"
+        else
+            check "shell.plugins.zsh_autosuggestions" "zsh-autosuggestions" "warn" "not installed" \
+                "git clone https://github.com/zsh-users/zsh-autosuggestions \${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions"
+        fi
 
-    if [[ -d "$plugins_dir/zsh-syntax-highlighting" ]]; then
-        check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "pass"
-    else
-        check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "warn" "not installed" \
-            "git clone https://github.com/zsh-users/zsh-syntax-highlighting \${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting"
+        if [[ -d "$plugins_dir/zsh-syntax-highlighting" ]]; then
+            check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "pass"
+        else
+            check "shell.plugins.zsh_syntax_highlighting" "zsh-syntax-highlighting" "warn" "not installed" \
+                "git clone https://github.com/zsh-users/zsh-syntax-highlighting \${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting"
+        fi
     fi
 
     # Check modern CLI tools

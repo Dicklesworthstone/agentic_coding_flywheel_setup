@@ -208,6 +208,41 @@ acfs_early_sudo_binary_path() {
     acfs_early_system_binary_path sudo
 }
 
+_acfs_os_release_field() {
+    # Read a single field from /etc/os-release without sourcing it (sourcing
+    # would pollute the shell namespace with NAME/ID/VERSION etc.).
+    local key="${1:-}" line=""
+    [[ -r /etc/os-release ]] || return 0
+    line="$(grep -E "^${key}=" /etc/os-release 2>/dev/null | head -n1 || true)"
+    line="${line#*=}"
+    line="${line%\"}"
+    line="${line#\"}"
+    printf '%s\n' "$line"
+}
+
+# ------------------------------------------------------------
+# Distro detection (runs once, before any package operations).
+# ACFS_DISTRO_FAMILY is "arch" when /etc/os-release reports ID=arch,
+# an ID_LIKE containing arch, or ID=omarchy; everything else defaults
+# to "ubuntu" so historical behavior is preserved on unknown distros.
+# ------------------------------------------------------------
+ACFS_DISTRO_ID="$(_acfs_os_release_field ID)"
+ACFS_DISTRO_PRETTY="$(_acfs_os_release_field PRETTY_NAME)"
+ACFS_IS_OMARCHY=false
+_acfs_id_like="$(_acfs_os_release_field ID_LIKE)"
+if [[ "$ACFS_DISTRO_ID" == "omarchy" ]] \
+   || [[ "$ACFS_DISTRO_ID" == "arch" ]] \
+   || [[ " $_acfs_id_like " == *" arch "* ]]; then
+    ACFS_DISTRO_FAMILY="arch"
+else
+    ACFS_DISTRO_FAMILY="ubuntu"
+fi
+if [[ "$ACFS_DISTRO_ID" == "omarchy" ]]; then
+    ACFS_IS_OMARCHY=true
+fi
+unset _acfs_id_like
+readonly ACFS_DISTRO_ID ACFS_DISTRO_FAMILY ACFS_IS_OMARCHY ACFS_DISTRO_PRETTY
+
 _acfs_early_curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
 _acfs_early_grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
 if [[ -n "$_acfs_early_curl_bin" && -n "$_acfs_early_grep_bin" ]] && "$_acfs_early_curl_bin" --help all 2>/dev/null | "$_acfs_early_grep_bin" -q -- '--proto'; then
@@ -662,18 +697,17 @@ install_gum_early() {
         return 0
     fi
 
-    # Only attempt early gum install on supported Ubuntu systems.
-    # Preflight/ensure_ubuntu will stop execution later, but this prevents
-    # partial modifications (apt repo/key) on unsupported OS versions.
-    if [[ -f /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        source /etc/os-release
-        local version_id="${VERSION_ID:-}"
-        local version_major="${version_id%%.*}"
-        if [[ "${ID:-}" != "ubuntu" ]] || [[ -z "$version_id" ]] || [[ "$version_major" -lt 22 ]]; then
-            return 0
-        fi
-    else
+    # Only attempt early gum install on Ubuntu systems (apt repo/key setup is
+    # Ubuntu-specific). Preflight/ensure_ubuntu will stop execution later on
+    # unsupported OS versions. Arch-family systems get gum via pacman in
+    # install_cli_tools.
+    if [[ "$ACFS_DISTRO_FAMILY" != "ubuntu" ]]; then
+        return 0
+    fi
+    local version_id=""
+    version_id="$(_acfs_os_release_field VERSION_ID)"
+    local version_major="${version_id%%.*}"
+    if [[ -z "$version_id" ]] || [[ "$version_major" -lt 22 ]]; then
         return 0
     fi
 
@@ -2251,6 +2285,13 @@ detect_environment() {
     if [[ -f "$ACFS_LIB_DIR/install_helpers.sh" ]]; then
         # shellcheck source=scripts/lib/install_helpers.sh
         source "$ACFS_LIB_DIR/install_helpers.sh"
+    fi
+
+    # Generated manifest installers target Ubuntu/apt. On Arch-family systems
+    # route every category through the legacy (pacman-aware) paths instead of
+    # refactoring the generator system.
+    if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]] && declare -f acfs_use_generated_category >/dev/null 2>&1; then
+        acfs_use_generated_category() { return 1; }
     fi
 
     if [[ -f "$ACFS_LIB_DIR/user.sh" ]]; then
@@ -4015,7 +4056,25 @@ acfs_run_verified_upstream_script_as_target_with_env() {
         fi
     fi
 
-    if [[ -n "$runner_env_assignment" ]]; then
+    # Upstream installers stage downloads in TMPDIR and some enforce multi-GB
+    # free-space floors. On systems where /tmp is a small tmpfs (common on
+    # Arch/Omarchy laptops), stage on real disk instead.
+    local tmpdir_assignment=""
+    local tmp_avail_kb
+    tmp_avail_kb="$(df -Pk "${TMPDIR:-/tmp}" 2>/dev/null | awk 'NR==2{print $4}')" || true
+    if [[ -z "${TMPDIR:-}" ]] && [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
+        local acfs_tmpdir="$TARGET_HOME/.cache/acfs/installer-tmp"
+        $SUDO mkdir -p "$acfs_tmpdir" 2>/dev/null || mkdir -p "$acfs_tmpdir" 2>/dev/null || true
+        $SUDO chown "$TARGET_USER:$TARGET_USER" "$acfs_tmpdir" 2>/dev/null || true
+        tmpdir_assignment="TMPDIR=$acfs_tmpdir"
+        log_detail "Low space on /tmp ($(( tmp_avail_kb / 1024 ))MB); staging upstream installers in $acfs_tmpdir"
+    fi
+
+    if [[ -n "$runner_env_assignment" && -n "$tmpdir_assignment" ]]; then
+        printf '%s' "$content" | run_as_target env "$runner_env_assignment" "$tmpdir_assignment" "$runner" -s -- "$@"
+    elif [[ -n "$tmpdir_assignment" ]]; then
+        printf '%s' "$content" | run_as_target env "$tmpdir_assignment" "$runner" -s -- "$@"
+    elif [[ -n "$runner_env_assignment" ]]; then
         printf '%s' "$content" | run_as_target env "$runner_env_assignment" "$runner" -s -- "$@"
     else
         printf '%s' "$content" | run_as_target "$runner" -s -- "$@"
@@ -4488,15 +4547,27 @@ validate_target_user() {
 }
 
 ensure_ubuntu() {
+    # Historical name kept for compatibility; accepts Ubuntu 22.04+ and any
+    # Arch-family distro (Arch, Omarchy). ACFS_DISTRO_FAMILY is set at the top
+    # of this script from /etc/os-release.
     if [[ ! -f /etc/os-release ]]; then
-        log_fatal "Cannot detect OS. ACFS supports Ubuntu 22.04+ only."
+        log_fatal "Cannot detect OS. ACFS supports Ubuntu 22.04+ or Arch Linux."
+    fi
+
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        if [[ "$ACFS_IS_OMARCHY" == "true" ]]; then
+            log_detail "OS: ${ACFS_DISTRO_PRETTY:-Omarchy} (Omarchy/Arch family)"
+        else
+            log_detail "OS: ${ACFS_DISTRO_PRETTY:-Arch} (Arch family)"
+        fi
+        return 0
     fi
 
     # shellcheck disable=SC1091
     source /etc/os-release
 
     if [[ "${ID:-}" != "ubuntu" ]]; then
-        log_fatal "Unsupported OS: ${PRETTY_NAME:-${ID:-unknown}}. ACFS supports Ubuntu 22.04+ only."
+        log_fatal "Unsupported OS: ${PRETTY_NAME:-${ID:-unknown}}. ACFS supports Ubuntu 22.04+ or Arch Linux."
     fi
 
     local version_id="${VERSION_ID:-}"
@@ -4934,6 +5005,82 @@ restore_previous_acfs_state_file() {
     fi
 }
 
+# ------------------------------------------------------------
+# Arch-family (pacman) support
+# ------------------------------------------------------------
+
+# Install packages via pacman, mirroring the apt flow's try_step/sudo idioms.
+acfs_arch_pkg_install() {
+    if [[ $# -eq 0 ]]; then
+        return 0
+    fi
+
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log_detail "dry-run: would install (pacman): $*"
+        return 0
+    fi
+
+    local pacman_bin=""
+    pacman_bin="$(acfs_early_system_binary_path pacman 2>/dev/null || true)"
+    if [[ -z "$pacman_bin" ]]; then
+        log_error "pacman not found; cannot install: $*"
+        return 1
+    fi
+
+    local -a sudo_cmd=()
+    if [[ $EUID -ne 0 ]]; then
+        local sudo_bin=""
+        sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
+        if [[ -z "$sudo_bin" ]]; then
+            log_error "sudo not found; cannot install: $*"
+            return 1
+        fi
+        sudo_cmd=("$sudo_bin")
+    fi
+
+    try_step "Installing (pacman): $*" "${sudo_cmd[@]}" "$pacman_bin" -S --needed --noconfirm "$@" || return 1
+}
+
+# Echo the first available AUR helper (yay/paru), if any.
+acfs_arch_aur_helper() {
+    local helper=""
+    for helper in yay paru; do
+        if command_exists "$helper"; then
+            printf '%s\n' "$helper"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Look up binaries.<name>.{url,sha256} in checksums.yaml.
+# Prints "<url> <sha256>" when a pinned generic Linux binary is published.
+acfs_pinned_binary_info() {
+    local name="$1"
+    local yaml_file="${SCRIPT_DIR:-}/checksums.yaml"
+    if [[ -z "${SCRIPT_DIR:-}" ]] || [[ ! -f "$yaml_file" ]]; then
+        return 1
+    fi
+
+    local info=""
+    info="$(awk -v want="$name" '
+        BEGIN { top = ""; found = 0; url = ""; sha = "" }
+        /^[A-Za-z0-9_-]+:$/ { sub(/:$/, ""); top = $0; found = 0; next }
+        top == "binaries" && !found && $0 ~ ("^  " want ":$") { found = 1; next }
+        found && $0 ~ /^  [A-Za-z0-9_-]+:$/ { exit }
+        found && /^[^ #]/ { exit }
+        found && $1 == "url:" { url = $2; gsub(/"/, "", url); next }
+        found && $1 == "sha256:" { sha = $2; gsub(/"/, "", sha); next }
+        END { if (url != "" && sha != "") print url, sha }
+    ' "$yaml_file" 2>/dev/null)" || true
+    if [[ -n "$info" ]]; then
+        printf '%s\n' "$info"
+        return 0
+    fi
+    return 1
+}
+
+
 ensure_base_deps() {
     set_phase "base_deps" "Base Dependencies" 1
     log_step "0/9" "Checking base dependencies..."
@@ -4943,6 +5090,16 @@ ensure_base_deps() {
     if acfs_use_generated_category "base"; then
         log_detail "Using generated installers for base (phase 1)"
         acfs_run_generated_category_phase "base" "1" || return 1
+        return 0
+    fi
+
+    # Arch-family: pacman equivalents of the Ubuntu base package set.
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_detail "dry-run: would install (pacman): curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf"
+            return 0
+        fi
+        acfs_arch_pkg_install curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf || return 1
         return 0
     fi
 
@@ -5102,7 +5259,11 @@ normalize_user() {
     # Ensure the target user has sudo-group membership even on reruns.
     # If user creation succeeded but the first `usermod` attempt failed,
     # reruns should still apply the group change (idempotent).
-    try_step "Ensuring $TARGET_USER is in sudo group" $SUDO usermod -aG sudo "$TARGET_USER" || return 1
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        try_step "Ensuring $TARGET_USER is in wheel group" $SUDO usermod -aG wheel "$TARGET_USER" || return 1
+    else
+        try_step "Ensuring $TARGET_USER is in sudo group" $SUDO usermod -aG sudo "$TARGET_USER" || return 1
+    fi
 
     # Ensure home directory has correct ownership
     # CRITICAL: useradd -m does NOT change ownership of existing directories (common on VPS)
@@ -5114,11 +5275,17 @@ normalize_user() {
     # Set up passwordless sudo in vibe mode
     if [[ "$MODE" == "vibe" ]]; then
         log_detail "Enabling passwordless sudo for $TARGET_USER"
+        # Arch-family uses a distro-neutral drop-in name; Ubuntu keeps the
+        # historical 90-ubuntu-acfs name.
+        local acfs_sudoers_file="90-ubuntu-acfs"
+        if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+            acfs_sudoers_file="90-acfs"
+        fi
         try_step_eval "Configuring passwordless sudo" \
-            "echo '$TARGET_USER ALL=(ALL) NOPASSWD:ALL' | $SUDO tee /etc/sudoers.d/90-ubuntu-acfs > /dev/null" || return 1
-        try_step "Setting sudoers file permissions" $SUDO chmod 440 /etc/sudoers.d/90-ubuntu-acfs || return 1
-        if command_exists visudo && ! $SUDO visudo -c -f /etc/sudoers.d/90-ubuntu-acfs >/dev/null 2>&1; then
-            log_fatal "Invalid sudoers file generated at /etc/sudoers.d/90-ubuntu-acfs"
+            "echo '$TARGET_USER ALL=(ALL) NOPASSWD:ALL' | $SUDO tee /etc/sudoers.d/$acfs_sudoers_file > /dev/null" || return 1
+        try_step "Setting sudoers file permissions" $SUDO chmod 440 "/etc/sudoers.d/$acfs_sudoers_file" || return 1
+        if command_exists visudo && ! $SUDO visudo -c -f "/etc/sudoers.d/$acfs_sudoers_file" >/dev/null 2>&1; then
+            log_fatal "Invalid sudoers file generated at /etc/sudoers.d/$acfs_sudoers_file"
         fi
     fi
 
@@ -5410,15 +5577,22 @@ setup_shell() {
     # Install zsh
     if ! binary_installed "zsh"; then
         log_detail "Installing zsh"
-        try_step "Installing zsh" $SUDO apt-get install -y zsh || return 1
+        if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+            try_step "Installing zsh (pacman)" acfs_arch_pkg_install zsh git || return 1
+        else
+            try_step "Installing zsh" $SUDO apt-get install -y zsh || return 1
+        fi
     fi
 
     # Install Oh My Zsh for target user
+    # (Ubuntu path only; Arch-family systems keep their existing prompt setup.)
     # Check multiple possible locations for existing installation
     local omz_dir="$TARGET_HOME/.oh-my-zsh"
     local omz_installed=false
 
-    if [[ -d "$omz_dir" ]]; then
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        log_detail "Arch-family detected; skipping Oh My Zsh/Powerlevel10k entirely"
+    elif [[ -d "$omz_dir" ]]; then
         omz_installed=true
         log_detail "Oh My Zsh already installed at $omz_dir"
     elif [[ -d "/root/.oh-my-zsh" ]] && [[ "$EUID" -eq 0 ]]; then
@@ -5433,7 +5607,7 @@ setup_shell() {
         log_warn "Oh My Zsh referenced in .zshrc but directory not found; reinstalling"
     fi
 
-    if [[ "$omz_installed" != "true" ]]; then
+    if [[ "$ACFS_DISTRO_FAMILY" != "arch" ]] && [[ "$omz_installed" != "true" ]]; then
         log_detail "Installing Oh My Zsh for $TARGET_USER"
         # Run as target user to install in their home
         try_step "Installing Oh My Zsh" acfs_run_verified_upstream_script_as_target "ohmyzsh" "sh" --unattended || return 1
@@ -5441,7 +5615,7 @@ setup_shell() {
 
     # Install Powerlevel10k theme
     local p10k_dir="$omz_dir/custom/themes/powerlevel10k"
-    if [[ ! -d "$p10k_dir" ]]; then
+    if [[ "$ACFS_DISTRO_FAMILY" != "arch" ]] && [[ ! -d "$p10k_dir" ]]; then
         log_detail "Installing Powerlevel10k theme"
         try_step "Installing Powerlevel10k theme" run_as_target git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir" || return 1
     fi
@@ -5449,12 +5623,12 @@ setup_shell() {
     # Install zsh plugins
     local custom_plugins="$omz_dir/custom/plugins"
 
-    if [[ ! -d "$custom_plugins/zsh-autosuggestions" ]]; then
+    if [[ "$ACFS_DISTRO_FAMILY" != "arch" ]] && [[ ! -d "$custom_plugins/zsh-autosuggestions" ]]; then
         log_detail "Installing zsh-autosuggestions"
         try_step "Installing zsh-autosuggestions" run_as_target git clone https://github.com/zsh-users/zsh-autosuggestions "$custom_plugins/zsh-autosuggestions" || return 1
     fi
 
-    if [[ ! -d "$custom_plugins/zsh-syntax-highlighting" ]]; then
+    if [[ "$ACFS_DISTRO_FAMILY" != "arch" ]] && [[ ! -d "$custom_plugins/zsh-syntax-highlighting" ]]; then
         log_detail "Installing zsh-syntax-highlighting"
         try_step "Installing zsh-syntax-highlighting" run_as_target git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$custom_plugins/zsh-syntax-highlighting" || return 1
     fi
@@ -5464,31 +5638,54 @@ setup_shell() {
     try_step "Installing ACFS zshrc" install_asset "acfs/zsh/acfs.zshrc" "$ACFS_HOME/zsh/acfs.zshrc" || return 1
     try_step "Setting zshrc ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/zsh/acfs.zshrc" || return 1
 
-    # Install pre-configured Powerlevel10k theme settings
+    # Install pre-configured Powerlevel10k theme settings (Ubuntu path only).
     # This prevents the p10k configuration wizard from launching on first login
-    log_detail "Installing Powerlevel10k configuration"
-    try_step "Installing p10k config" install_asset "acfs/zsh/p10k.zsh" "$TARGET_HOME/.p10k.zsh" || return 1
-    try_step "Setting p10k config ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.p10k.zsh" || return 1
-
-    # Create minimal .zshrc loader for target user (backup existing if needed)
-    local user_zshrc="$TARGET_HOME/.zshrc"
-    if [[ -f "$user_zshrc" ]] && ! acfs_zshrc_is_managed_loader "$user_zshrc"; then
-        local backup
-        backup="$user_zshrc.pre-acfs.$(date +%Y%m%d%H%M%S)"
-        if [[ "${ACFS_CI:-false}" == "true" ]]; then
-            log_detail "Existing .zshrc found; backing up to $(basename "$backup")"
-        else
-            log_warn "Existing .zshrc found; backing up to $(basename "$backup")"
-        fi
-        $SUDO cp "$user_zshrc" "$backup"
-        $SUDO chown "$TARGET_USER:$TARGET_USER" "$backup" 2>/dev/null || true
+    if [[ "$ACFS_DISTRO_FAMILY" != "arch" ]]; then
+        log_detail "Installing Powerlevel10k configuration"
+        try_step "Installing p10k config" install_asset "acfs/zsh/p10k.zsh" "$TARGET_HOME/.p10k.zsh" || return 1
+        try_step "Setting p10k config ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.p10k.zsh" || return 1
     fi
 
-    cat > "$user_zshrc" << 'EOF'
+    # Configure ~/.zshrc for the target user.
+    local user_zshrc="$TARGET_HOME/.zshrc"
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        # Arch/Omarchy: NEVER replace an existing ~/.zshrc (users often manage
+        # their own prompt, e.g. starship). Create a minimal file only when
+        # absent, then append a single guarded loader line (idempotent).
+        if [[ ! -f "$user_zshrc" ]]; then
+            cat > "$user_zshrc" << 'EOF'
+# ~/.zshrc: executed by zsh for interactive shells
+EOF
+        fi
+        if ! grep -Fq '.acfs/zsh/acfs.zshrc' "$user_zshrc"; then
+            {
+                echo ""
+                echo "# Added by ACFS"
+                echo '[[ -f "$HOME/.acfs/zsh/acfs.zshrc" ]] && source "$HOME/.acfs/zsh/acfs.zshrc"'
+            } >> "$user_zshrc"
+            log_detail "Appended ACFS loader to $user_zshrc"
+        fi
+        try_step "Setting .zshrc ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$user_zshrc" || return 1
+    else
+        # Ubuntu: create the minimal managed loader (backup existing if needed)
+        if [[ -f "$user_zshrc" ]] && ! acfs_zshrc_is_managed_loader "$user_zshrc"; then
+            local backup
+            backup="$user_zshrc.pre-acfs.$(date +%Y%m%d%H%M%S)"
+            if [[ "${ACFS_CI:-false}" == "true" ]]; then
+                log_detail "Existing .zshrc found; backing up to $(basename "$backup")"
+            else
+                log_warn "Existing .zshrc found; backing up to $(basename "$backup")"
+            fi
+            $SUDO cp "$user_zshrc" "$backup"
+            $SUDO chown "$TARGET_USER:$TARGET_USER" "$backup" 2>/dev/null || true
+        fi
+
+        cat > "$user_zshrc" << 'EOF'
 # ACFS loader
 source "$HOME/.acfs/zsh/acfs.zshrc"
 EOF
-    try_step "Setting .zshrc ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$user_zshrc" || return 1
+        try_step "Setting .zshrc ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$user_zshrc" || return 1
+    fi
 
     # Ensure core user-installed tool paths are present for login shells.
     # This prevents warnings from tools like Claude's installer that check PATH
@@ -5661,6 +5858,15 @@ install_cli_tools() {
     # if curl/gpg weren't available at that point)
     if binary_installed "gum"; then
         log_detail "gum already installed"
+    elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        log_detail "Installing gum for glamorous shell scripts"
+        acfs_arch_pkg_install gum || true
+        if binary_installed "gum"; then
+            HAS_GUM=true
+            log_success "gum installed - enhanced UI now available"
+        else
+            log_detail "gum installation failed (optional, continuing)"
+        fi
     else
         log_detail "Installing gum for glamorous shell scripts"
         try_step "Creating apt keyrings directory" $SUDO mkdir -p /etc/apt/keyrings || true
@@ -5675,14 +5881,30 @@ install_cli_tools() {
         fi
     fi
 
-    log_detail "Installing required apt packages"
-    try_step "Installing required apt packages" $SUDO apt-get install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd || return 1
+
+    # Required CLI packages. Arch-family installs gh/gum straight from pacman;
+    # Ubuntu uses the batch below plus the dedicated GitHub CLI installer.
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        local -a arch_required_pkgs=(ripgrep tmux fzf direnv jq git-lfs lsof bind openbsd-netcat strace rsync zstd gum github-cli)
+        log_detail "Installing required pacman packages"
+        acfs_arch_pkg_install "${arch_required_pkgs[@]}" || return 1
+    else
+        log_detail "Installing required apt packages"
+        try_step "Installing required apt packages" $SUDO apt-get install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd || return 1
+    fi
 
     # GitHub CLI (gh)
     local gh_bin=""
     gh_bin="$(binary_path gh 2>/dev/null || true)"
     if [[ -n "$gh_bin" ]]; then
         log_detail "gh already installed ($("$gh_bin" --version 2>/dev/null | head -1 || echo 'gh'))"
+    elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        # gh came from the required pacman batch above; fail loudly if absent.
+        if binary_installed "gh"; then
+            log_success "gh installed"
+        else
+            log_fatal "Failed to install GitHub CLI (gh)"
+        fi
     else
         if try_step "Installing GitHub CLI" install_github_cli; then
             log_success "gh installed"
@@ -5697,22 +5919,41 @@ install_cli_tools() {
         try_step "Configuring git-lfs" run_as_target git lfs install --skip-repo || true
     fi
 
-    # Install optional apt packages - batch install for speed (14→1 apt-get calls)
-    log_detail "Installing optional apt packages"
-    local optional_pkgs=(lsd eza bat fd-find btop dust neovim htop tree ncdu httpie entr mtr pv docker.io docker-compose-plugin cosign)
-    # First attempt: batch install all at once (fastest path)
-    if ! $SUDO apt-get install -y "${optional_pkgs[@]}" >/dev/null 2>&1; then
-        # Fallback: some packages failed, install individually to get what we can
-        log_detail "Batch install failed, trying packages individually"
-        for pkg in "${optional_pkgs[@]}"; do
-            $SUDO apt-get install -y "$pkg" >/dev/null 2>&1 || log_detail "$pkg not available (optional)"
-        done
+    # Install optional packages - batch install for speed (14→1 package-manager calls)
+    if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        local -a arch_optional_pkgs=(lsd eza bat fd btop dust neovim htop tree ncdu httpie entr mtr pv docker docker-compose cosign lazygit lazydocker)
+        log_detail "Installing optional pacman packages"
+        acfs_arch_pkg_install "${arch_optional_pkgs[@]}" || {
+            log_detail "Batch install failed, trying packages individually"
+            local pkg=""
+            for pkg in "${arch_optional_pkgs[@]}"; do
+                acfs_arch_pkg_install "$pkg" >/dev/null 2>&1 || log_detail "$pkg not available (optional)"
+            done
+        }
+    else
+        log_detail "Installing optional apt packages"
+        local optional_pkgs=(lsd eza bat fd-find btop dust neovim htop tree ncdu httpie entr mtr pv docker.io docker-compose-plugin cosign)
+        # First attempt: batch install all at once (fastest path)
+        if ! $SUDO apt-get install -y "${optional_pkgs[@]}" >/dev/null 2>&1; then
+            # Fallback: some packages failed, install individually to get what we can
+            log_detail "Batch install failed, trying packages individually"
+            for pkg in "${optional_pkgs[@]}"; do
+                $SUDO apt-get install -y "$pkg" >/dev/null 2>&1 || log_detail "$pkg not available (optional)"
+            done
+        fi
     fi
 
     # Robust lazygit install (apt or binary fallback)
     if ! binary_installed "lazygit"; then
         log_detail "Installing lazygit..."
-        if ! $SUDO apt-get install -y lazygit >/dev/null 2>&1; then
+        local pm_installed=false
+        if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+            # pacman first; pinned-tarball fallback below if it fails.
+            acfs_arch_pkg_install lazygit >/dev/null 2>&1 && pm_installed=true
+        elif $SUDO apt-get install -y lazygit >/dev/null 2>&1; then
+            pm_installed=true
+        fi
+        if [[ "$pm_installed" != "true" ]]; then
             local arch=""
             case "$(uname -m)" in
                 x86_64) arch="x86_64" ;;
@@ -5824,6 +6065,11 @@ _target_has_nvm_node() {
     while IFS= read -r node_path; do
         [[ -x "$node_path" ]] && return 0
     done < <(compgen -G "$TARGET_HOME/.nvm/versions/node/*/bin/node")
+    # nvm 0.40+ may live in $HOME/.config/nvm when NVM_DIR was preset in the
+    # login environment (e.g. mise/omarchy dotfiles on Arch-family systems).
+    while IFS= read -r node_path; do
+        [[ -x "$node_path" ]] && return 0
+    done < <(compgen -G "$TARGET_HOME/.config/nvm/versions/node/*/bin/node")
 
     return 1
 }
@@ -5837,6 +6083,12 @@ _target_latest_nvm_node_bin() {
             return 0
         fi
     done < <(compgen -G "$TARGET_HOME/.nvm/versions/node/*/bin/node" | sort -Vr)
+    while IFS= read -r node_path; do
+        if [[ -x "$node_path" ]]; then
+            printf '%s\n' "${node_path%/node}"
+            return 0
+        fi
+    done < <(compgen -G "$TARGET_HOME/.config/nvm/versions/node/*/bin/node" | sort -Vr)
 
     return 1
 }
@@ -5851,7 +6103,12 @@ _ensure_target_nvm_node() {
     try_step "Installing nvm" acfs_run_verified_upstream_script_as_target "nvm" "bash" || return 1
     try_step "Installing Node.js via nvm" run_as_target bash -c '
         set -euo pipefail
-        export NVM_DIR="$HOME/.nvm"
+        export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+        if [[ ! -s "$NVM_DIR/nvm.sh" && -s "$HOME/.config/nvm/nvm.sh" ]]; then
+            # nvm 0.40+ installs to $HOME/.config/nvm when NVM_DIR was preset
+            # in the login environment (e.g. by mise/omarchy dotfiles).
+            export NVM_DIR="$HOME/.config/nvm"
+        fi
         if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
             echo "nvm.sh not found at $NVM_DIR/nvm.sh" >&2
             exit 1
@@ -5887,7 +6144,11 @@ install_languages_legacy_lang() {
     # Go (system-wide)
     if ! binary_installed "go"; then
         log_detail "Installing Go"
-        try_step "Installing Go" $SUDO apt-get install -y golang-go || return 1
+        if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+            try_step "Installing Go (pacman)" acfs_arch_pkg_install go || return 1
+        else
+            try_step "Installing Go" $SUDO apt-get install -y golang-go || return 1
+        fi
     fi
 
     # uv (install as target user)
@@ -6074,14 +6335,18 @@ ATUIN_ACFS_WRAPPER_TAIL
         log_detail "Zoxide already installed"
     else
         log_detail "Installing Zoxide for $TARGET_USER"
-        # Prefer apt (avoids GitHub API rate limits), fall back to upstream script
-        if apt-cache show zoxide &>/dev/null; then
+        # Prefer the distro package (avoids GitHub API rate limits), fall back
+        # to upstream script
+        if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+            if ! try_step "Installing Zoxide (pacman)" acfs_arch_pkg_install zoxide; then
+                log_detail "pacman install failed, falling back to upstream script"
+                try_step "Installing Zoxide (upstream)" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || return 1
+            fi
+        elif apt-cache show zoxide &>/dev/null; then
             try_step "Installing Zoxide (apt)" $SUDO apt-get install -y zoxide || {
                 log_detail "apt install failed, falling back to upstream script"
                 try_step "Installing Zoxide (upstream)" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || return 1
             }
-        else
-            try_step "Installing Zoxide" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || return 1
         fi
     fi
 }
@@ -6314,12 +6579,104 @@ acfs_postgres_bootstrap_role() {
     fi
 }
 
+# PostgreSQL on Arch-family: pacman package + initdb as the postgres user.
+acfs_arch_install_postgres() {
+    if ! acfs_arch_pkg_install postgresql; then
+        return 1
+    fi
+
+    local pg_data="/var/lib/postgres/data"
+    local -a sudo_cmd=()
+    if [[ $EUID -ne 0 ]]; then
+        local sudo_bin=""
+        sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
+        [[ -n "$sudo_bin" ]] && sudo_cmd=("$sudo_bin")
+    fi
+
+    if [[ ! -f "$pg_data/PG_VERSION" ]]; then
+        try_step_eval "Preparing PostgreSQL data directory" \
+            "${sudo_cmd[*]} mkdir -p '$pg_data' && ${sudo_cmd[*]} chown postgres:postgres '$pg_data' && ${sudo_cmd[*]} chmod 700 '$pg_data'" || true
+
+        # initdb refuses to run as root; run as the postgres user.
+        local runuser_bin=""
+        runuser_bin="$(acfs_early_system_binary_path runuser 2>/dev/null || true)"
+        local -a pg_runner=()
+        if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
+            pg_runner=("$runuser_bin" -u postgres --)
+        elif [[ ${#sudo_cmd[@]} -gt 0 ]]; then
+            pg_runner=("${sudo_cmd[@]}" -u postgres -H --)
+        fi
+        if [[ ${#pg_runner[@]} -gt 0 ]]; then
+            try_step "Initializing PostgreSQL cluster" "${pg_runner[@]}" initdb -D "$pg_data" \
+                || log_warn "PostgreSQL: initdb failed (continuing)"
+        else
+            log_warn "PostgreSQL: cannot run initdb (no runuser/sudo); skipping cluster init"
+        fi
+    fi
+
+    if command_exists systemctl && [[ -d /run/systemd/system ]]; then
+        try_step "Enabling and starting PostgreSQL service" \
+            "${sudo_cmd[@]}" systemctl enable --now postgresql.service || true
+    else
+        log_detail "systemd unavailable; skipping PostgreSQL service start"
+    fi
+
+    acfs_postgres_bootstrap_role || true
+}
+
+# Vault on Arch-family: prefer a pinned generic Linux binary published in
+# checksums.yaml; otherwise use an AUR helper (vault-bin) when available.
+acfs_arch_install_vault() {
+    local pinned="" pin_url="" pin_sha256=""
+    if pinned="$(acfs_pinned_binary_info vault)"; then
+        pin_url="${pinned%% *}"
+        pin_sha256="${pinned##* }"
+        local tmp_dir=""
+        tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-vault.XXXXXX" 2>/dev/null)" || tmp_dir=""
+        if [[ -n "$tmp_dir" ]]; then
+            if acfs_download_file_and_verify_sha256 "$pin_url" "$tmp_dir/vault.zip" "$pin_sha256" "Vault (generic Linux)" &&
+               unzip -o -q "$tmp_dir/vault.zip" vault -d "$tmp_dir" && \
+               $SUDO install -m 0755 "$tmp_dir/vault" /usr/local/bin/vault; then
+                rm -rf "$tmp_dir"
+                return 0
+            fi
+            rm -rf "$tmp_dir"
+            log_warn "Vault: pinned binary install failed; falling back to AUR"
+        fi
+    fi
+
+    local aur_helper=""
+    if aur_helper="$(acfs_arch_aur_helper)"; then
+        if try_step "Installing Vault (AUR: $aur_helper)" run_as_target "$aur_helper" -S --needed --noconfirm vault-bin; then
+            return 0
+        fi
+        log_warn "Vault: AUR installation failed (optional)"
+        return 1
+    fi
+
+    log_warn "Vault: no pinned binary in checksums.yaml and no AUR helper found (skipping)"
+    return 1
+}
+
 install_cloud_db_legacy_db() {
     local codename="$1"
 
     # PostgreSQL 18 (via PGDG)
     if [[ "$SKIP_POSTGRES" == "true" ]]; then
         log_detail "Skipping PostgreSQL (--skip-postgres)"
+    elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        # A bare psql client (e.g. from libpq) must not satisfy the server
+        # check on Arch; key off the server package itself.
+        if pacman -Qq postgresql &>/dev/null; then
+            log_detail "PostgreSQL already installed (pacman)"
+        else
+            log_detail "Installing PostgreSQL (pacman)"
+            if acfs_arch_install_postgres; then
+                log_success "PostgreSQL installed"
+            else
+                log_warn "PostgreSQL: installation failed (optional)"
+            fi
+        fi
     elif psql_bin="$(binary_path psql 2>/dev/null || true)" && [[ -n "$psql_bin" ]]; then
         log_detail "PostgreSQL already installed ($("$psql_bin" --version 2>/dev/null | head -1 || echo 'psql'))"
     else
@@ -6391,6 +6748,9 @@ install_cloud_db_legacy_tools() {
         log_detail "Skipping Vault (--skip-vault)"
     elif vault_bin="$(binary_path vault 2>/dev/null || true)" && [[ -n "$vault_bin" ]]; then
         log_detail "Vault already installed ($("$vault_bin" --version 2>/dev/null | head -1 || echo 'vault'))"
+    elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        log_detail "Installing Vault (Arch path)"
+        acfs_arch_install_vault || true
     else
         # HashiCorp doesn't always have packages for newest Ubuntu versions,
         # and a dist can EXIST while containing no vault package at all
@@ -7377,6 +7737,10 @@ UNIT_EOF
     # We install via .deb package directly to avoid this.
     if binary_installed "slb"; then
         log_detail "SLB already installed"
+    elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+        # No .deb/dpkg on Arch-family; use the upstream bash installer.
+        log_detail "Installing SLB (upstream)"
+        try_step "Installing SLB (upstream)" acfs_run_verified_upstream_script_as_target "slb" "bash" || log_warn "SLB installation may have failed"
     else
         log_detail "Installing SLB"
         local slb_version="0.2.0"
@@ -7422,7 +7786,16 @@ UNIT_EOF
         log_detail "FrankenSearch already installed"
     else
         log_detail "Installing FrankenSearch"
-        try_step "Installing FrankenSearch" acfs_run_verified_upstream_script_as_target "fsfs" "bash" --easy-mode || log_warn "FrankenSearch installation may have failed"
+        # Linux releases stopped publishing the full (model-embedded) fsfs
+        # artifact after v1.4.3; the default route 404s and silently falls
+        # back to a lengthy cargo source build. scripts/lib/stack.sh's
+        # _stack_run_fsfs_installer pins the prebuilt -lite tarball with a
+        # checksum; delegate to it when available.
+        if declare -F _stack_run_fsfs_installer >/dev/null 2>&1; then
+            try_step "Installing FrankenSearch" _stack_run_fsfs_installer --easy-mode || log_warn "FrankenSearch installation may have failed"
+        else
+            try_step "Installing FrankenSearch" acfs_run_verified_upstream_script_as_target "fsfs" "bash" --easy-mode || log_warn "FrankenSearch installation may have failed"
+        fi
     fi
 
     # Process Triage (pt)
@@ -8839,19 +9212,36 @@ main() {
         if [[ "$_need_early_apt" == "true" ]]; then
             echo -e "${YELLOW}Installing minimal bootstrap dependencies (curl, jq, git)...${NC}" >&2
             local -a _sudo_cmd=()
-            local apt_get_bin=""
-            apt_get_bin="$(acfs_early_system_binary_path apt-get 2>/dev/null || true)"
-            if [[ -z "$apt_get_bin" ]]; then
-                log_warn "apt-get not found; cannot install bootstrap dependencies"
-            else
-                if [[ $EUID -ne 0 ]]; then
-                    local sudo_bin=""
-                    sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
-                    [[ -n "$sudo_bin" ]] && _sudo_cmd=("$sudo_bin")
+            if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
+                local pacman_bin=""
+                pacman_bin="$(acfs_early_system_binary_path pacman 2>/dev/null || true)"
+                if [[ -z "$pacman_bin" ]]; then
+                    log_warn "pacman not found; cannot install bootstrap dependencies"
+                else
+                    if [[ $EUID -ne 0 ]]; then
+                        local sudo_bin=""
+                        sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
+                        [[ -n "$sudo_bin" ]] && _sudo_cmd=("$sudo_bin")
+                    fi
+                    if [[ $EUID -eq 0 || ${#_sudo_cmd[@]} -gt 0 ]]; then
+                        "${_sudo_cmd[@]}" "$pacman_bin" -S --needed --noconfirm curl jq git 2>/dev/null || true
+                    fi
                 fi
-                if [[ $EUID -eq 0 || ${#_sudo_cmd[@]} -gt 0 ]]; then
-                    "${_sudo_cmd[@]}" "$apt_get_bin" update -qq 2>/dev/null || true
-                    "${_sudo_cmd[@]}" "$apt_get_bin" install -y -qq curl jq git 2>/dev/null || true
+            else
+                local apt_get_bin=""
+                apt_get_bin="$(acfs_early_system_binary_path apt-get 2>/dev/null || true)"
+                if [[ -z "$apt_get_bin" ]]; then
+                    log_warn "apt-get not found; cannot install bootstrap dependencies"
+                else
+                    if [[ $EUID -ne 0 ]]; then
+                        local sudo_bin=""
+                        sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
+                        [[ -n "$sudo_bin" ]] && _sudo_cmd=("$sudo_bin")
+                    fi
+                    if [[ $EUID -eq 0 || ${#_sudo_cmd[@]} -gt 0 ]]; then
+                        "${_sudo_cmd[@]}" "$apt_get_bin" update -qq 2>/dev/null || true
+                        "${_sudo_cmd[@]}" "$apt_get_bin" install -y -qq curl jq git 2>/dev/null || true
+                    fi
                 fi
             fi
         fi

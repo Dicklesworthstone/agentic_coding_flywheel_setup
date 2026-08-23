@@ -25,6 +25,7 @@ import {
   Moon,
   BookOpen,
   Target,
+  Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "@/components/motion";
 import { useDrag } from "@use-gesture/react";
@@ -1056,6 +1057,30 @@ export default function HomePage() {
                 <StatBadge value="30+" label="Tools Installed" />
                 <StatBadge value="3" label="AI Agents" />
                 <StatBadge value="~30m" label="Setup Time" />
+
+              {/* Omarchy / Arch callout */}
+              <motion.div
+                className="mt-8 flex items-start gap-3 rounded-xl border border-border/50 bg-card/50 p-4 backdrop-blur-sm"
+                variants={fadeUp}
+              >
+                <div className="inline-flex shrink-0 rounded-lg bg-primary/10 p-2 text-primary">
+                  <Download className="h-4 w-4" />
+                </div>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  <span className="font-semibold text-foreground">Using Omarchy or Arch?</span>{" "}
+                  The same one-liner works — the installer auto-detects your distro and preserves your
+                  existing shell setup.{" "}
+                  <a
+                    href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup#omarchy-arch-support"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                  >
+                    Read the Arch notes
+                    <ArrowRight className="h-3 w-3" />
+                  </a>
+                </p>
+              </motion.div>
               </motion.div>
             </motion.div>
 

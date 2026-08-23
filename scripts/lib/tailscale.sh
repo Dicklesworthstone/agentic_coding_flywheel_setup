@@ -100,46 +100,64 @@ install_tailscale() {
 
     log_detail "Installing Tailscale..."
 
-    # Get Ubuntu codename for APT repo
-    local codename
-    codename=$(_tailscale_get_codename)
-    log_detail "  Ubuntu codename: $codename"
+    # Arch-family systems install straight from pacman repos; the APT repo
+    # below is Ubuntu-specific.
+    local distro_family="${ACFS_DISTRO_FAMILY:-}"
+    if [[ -z "$distro_family" ]] && [[ -r /etc/os-release ]]; then
+        local _os_id _os_like
+        _os_id="$(grep -E '^ID=' /etc/os-release 2>/dev/null | head -n1 | cut -d= -f2 | tr -d '"' || true)"
+        _os_like="$(grep -E '^ID_LIKE=' /etc/os-release 2>/dev/null | head -n1 | cut -d= -f2 | tr -d '"' || true)"
+        case "$_os_id $_os_like" in *arch*) distro_family="arch" ;; esac
+    fi
 
-    # Add Tailscale signing key
-    log_detail "  Adding Tailscale repository..."
-    if ! (
-        set -o pipefail
-        curl --proto '=https' --proto-redir '=https' -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
-            | $sudo_cmd tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null 2>&1
-    ); then
-        log_warn "Failed to add Tailscale signing key"
-        log_detail "  Trying fallback with generic key..."
-        # Fallback: try without codename-specific key
-        if ! (
-            set -o pipefail
-            curl --proto '=https' --proto-redir '=https' -fsSL "https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg" \
-                | $sudo_cmd tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null 2>&1
-        ); then
-            log_error "Failed to add Tailscale repository key"
+    if [[ "$distro_family" == "arch" ]]; then
+        log_detail "  Installing tailscale package (pacman)..."
+        if ! $sudo_cmd pacman -S --needed --noconfirm tailscale; then
+            log_error "Failed to install tailscale package"
             return 1
         fi
-    fi
+    else
+        # Get Ubuntu codename for APT repo
+        local codename
+        codename=$(_tailscale_get_codename)
+        log_detail "  Ubuntu codename: $codename"
 
-    # Add APT repository
-    echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu ${codename} main" \
-        | $sudo_cmd tee /etc/apt/sources.list.d/tailscale.list >/dev/null
+        # Add Tailscale signing key
+        log_detail "  Adding Tailscale repository..."
+        if ! (
+            set -o pipefail
+            curl --proto '=https' --proto-redir '=https' -fsSL "https://pkgs.tailscale.com/stable/ubuntu/${codename}.noarmor.gpg" \
+                | $sudo_cmd tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null 2>&1
+        ); then
+            log_warn "Failed to add Tailscale signing key"
+            log_detail "  Trying fallback with generic key..."
+            # Fallback: try without codename-specific key
+            if ! (
+                set -o pipefail
+                curl --proto '=https' --proto-redir '=https' -fsSL "https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg" \
+                    | $sudo_cmd tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null 2>&1
+            ); then
+                log_error "Failed to add Tailscale repository key"
+                return 1
+            fi
+        fi
 
-    # Update package list
-    log_detail "  Updating package list..."
-    if ! $sudo_cmd apt-get update -qq 2>/dev/null; then
-        log_warn "apt-get update had issues, continuing anyway..."
-    fi
+        # Add APT repository
+        echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu ${codename} main" \
+            | $sudo_cmd tee /etc/apt/sources.list.d/tailscale.list >/dev/null
 
-    # Install tailscale package
-    log_detail "  Installing tailscale package..."
-    if ! $sudo_cmd apt-get install -y -qq tailscale 2>/dev/null; then
-        log_error "Failed to install tailscale package"
-        return 1
+        # Update package list
+        log_detail "  Updating package list..."
+        if ! $sudo_cmd apt-get update -qq 2>/dev/null; then
+            log_warn "apt-get update had issues, continuing anyway..."
+        fi
+
+        # Install tailscale package
+        log_detail "  Installing tailscale package..."
+        if ! $sudo_cmd apt-get install -y -qq tailscale 2>/dev/null; then
+            log_error "Failed to install tailscale package"
+            return 1
+        fi
     fi
 
     # Enable and start the daemon (if systemd available)

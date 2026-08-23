@@ -393,10 +393,14 @@ _github_effective_token() {
     # than through a pipe, then only accept non-empty output.
     local gh_token=""
     gh_token="$("$gh_bin" auth token 2>/dev/null)" || return 0
-    [[ -n "$gh_token" ]] || return 0
+    # mise shims and other wrappers can print banner lines (e.g. "mise
+    # ~/.config/mise/config.toml tools: gh@2.98.0") on stdout before the real
+    # token; feeding that to curl -H fails instantly with error 43. Accept the
+    # last non-empty line only when it looks like a GitHub token.
+    gh_token="$(printf '%s\n' "$gh_token" | sed '/^[[:space:]]*$/d' | tail -n1)"
+    [[ "$gh_token" =~ ^[A-Za-z0-9_]{20,255}$ ]] || return 0
     printf '%s' "$gh_token"
 }
-
 # ============================================================
 # User-Friendly Messages
 # ============================================================

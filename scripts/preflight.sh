@@ -649,8 +649,12 @@ check_os() {
 
     local pretty_name="${PRETTY_NAME:-${ID:-unknown}}"
 
-    if [[ "${ID:-}" != "ubuntu" ]]; then
-        fail "Operating System: ${pretty_name}" "ACFS supports Ubuntu 22.04+ only"
+    local id_like="${ID_LIKE:-}"
+    if [[ "${ID:-}" == "arch" ]] || [[ "${ID:-}" == "omarchy" ]] || [[ " $id_like " == *" arch "* ]]; then
+        pass "Operating System: ${pretty_name} (Arch family)"
+        return
+    elif [[ "${ID:-}" != "ubuntu" ]]; then
+        fail "Operating System: ${pretty_name}" "ACFS supports Ubuntu 22.04+ or Arch Linux"
         return
     fi
 
