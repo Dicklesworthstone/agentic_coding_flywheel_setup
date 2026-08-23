@@ -5,7 +5,7 @@
 </div>
 
 ![Version](https://img.shields.io/badge/Version-0.7.0-bd93f9?style=for-the-badge)
-![Platform](https://img.shields.io/badge/Platform-Ubuntu%2025.10-6272a4?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-Ubuntu%2022.04%2B%20%7C%20Arch%2FOmarchy-6272a4?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT%2BOpenAI%2FAnthropic%20Rider-blue?style=for-the-badge)
 ![Shell](https://img.shields.io/badge/Shell-Bash-ff79c6?style=for-the-badge)
 
@@ -14,7 +14,7 @@
 </p>
 
 > **From zero to fully-configured agentic coding VPS in 30 minutes.**
-> A complete bootstrapping system that transforms a fresh Ubuntu VPS into a professional AI-powered development environment.
+> A complete bootstrapping system that transforms a fresh Ubuntu or Arch-based machine into a professional AI-powered development environment.
 
 <div align="center" style="margin: 1.2em 0;">
   <table>
@@ -125,7 +125,7 @@ ACFS includes a **step-by-step wizard website** at [agent-flywheel.com](https://
 7. Starting to code with AI agents
 
 ### For Developers
-ACFS is a **one-liner** that transforms any fresh Ubuntu VPS into a fully-configured development environment with modern tooling and three AI coding agents ready to go.
+ACFS is a **one-liner** that transforms any fresh Ubuntu or Arch-based machine into a fully-configured development environment with modern tooling and three AI coding agents ready to go.
 
 ### For Teams
 ACFS provides a **reproducible, idempotent** setup that ensures every team member's VPS environment is identical—eliminating "works on my machine" for agentic workflows.
@@ -434,9 +434,10 @@ Omarchy (and Arch Linux generally) is supported by the **same one-liner** — no
 
 Everything else — language runtimes, AI agents, and the flywheel tool stack — installs identically to Ubuntu.
 
-## The Installer
+---
 
-The installer is the heart of ACFS—a modular Bash script that transforms a fresh Ubuntu VPS into a fully-configured development environment.
+## The Installer
+The installer is the heart of ACFS—a modular Bash script that transforms a fresh Ubuntu or Arch-based machine into a fully-configured development environment.
 
 ### Usage
 
@@ -530,7 +531,7 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_f
 ```
 
 This checks:
-- OS compatibility (Ubuntu 22.04+; installer upgrades to 25.10)
+- OS compatibility (Ubuntu 22.04+ or Arch-family: Arch, Omarchy; installer upgrades Ubuntu to 25.10)
 - Architecture (x86_64 or ARM64)
 - Memory and disk space (minimum 4GB RAM, 10GB free disk)
 - Network connectivity to required URLs
@@ -2657,8 +2658,7 @@ After installation, run `acfs capacity --profile 25-agents --recommend-ntm` on t
 ### Requirements
 
 | Requirement | Minimum | Recommended |
-|-------------|---------|-------------|
-| **OS** | Ubuntu 22.04+ (auto-upgraded) | Ubuntu 25.10 |
+| **OS** | Ubuntu 22.04+ (auto-upgraded) or Arch-family (Arch, Omarchy) | Ubuntu 25.10 |
 | **RAM** | 32GB (tight) | 48-64GB |
 | **Storage** | 250GB NVMe SSD | 300GB+ NVMe SSD |
 | **CPU** | 12 vCPU | 16 vCPU |
@@ -3900,7 +3900,7 @@ This section covers common issues and their solutions. For quick debugging, star
 | Cause | Detection | Fix |
 |-------|-----------|-----|
 | Not running as root | "Permission denied" | `sudo bash` or use `sudo` in curl command |
-| Not Ubuntu | "Unsupported OS" | ACFS only supports Ubuntu 22.04+ |
+| Neither Ubuntu nor Arch-family | "Unsupported OS" | ACFS supports Ubuntu 22.04+, Arch, and Omarchy |
 | No internet | "curl: (6) Could not resolve host" | Check DNS, try `ping google.com` |
 | Old bash | Syntax errors | Upgrade to bash 4+ |
 

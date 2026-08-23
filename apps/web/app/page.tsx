@@ -38,8 +38,8 @@ import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 // Animated terminal lines
 const TERMINAL_LINES = [
   { type: "command", text: "curl -fsSL https://agent-flywheel.com/install | bash" },
-  { type: "output", text: "▸ Detecting Ubuntu 24.04... ✓" },
-  { type: "output", text: "▸ Installing zsh + oh-my-zsh + powerlevel10k..." },
+  { type: "output", text: "▸ Detecting OS... ✓" },
+  { type: "output", text: "▸ Installing zsh + shell prompt..." },
   { type: "output", text: "▸ Installing bun, uv, rust, go..." },
   { type: "output", text: "▸ Installing Claude Code, Codex CLI, Antigravity CLI..." },
   { type: "output", text: "▸ Configuring tmux, ripgrep, lazygit..." },
@@ -1057,6 +1057,7 @@ export default function HomePage() {
                 <StatBadge value="30+" label="Tools Installed" />
                 <StatBadge value="3" label="AI Agents" />
                 <StatBadge value="~30m" label="Setup Time" />
+              </motion.div>
 
               {/* Omarchy / Arch callout */}
               <motion.div
@@ -1080,7 +1081,6 @@ export default function HomePage() {
                     <ArrowRight className="h-3 w-3" />
                   </a>
                 </p>
-              </motion.div>
               </motion.div>
             </motion.div>
 
