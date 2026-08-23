@@ -95,7 +95,7 @@ const STATIC_ROUTE_SOCIAL_DATA: Record<string, SocialImageData> = {
     badge: "Omarchy 4 · Arch Family",
     title: "The Flywheel, Native on Omarchy",
     description:
-      "One command. The full agentic coding stack on Omarchy and Arch — pacman-native, your starship prompt untouched, doctor-verified with zero failures.",
+      "One command installs the full agentic coding stack on Omarchy and Arch: system packages from pacman, your starship prompt left alone, acfs doctor passing clean.",
     path: "/omarchy",
     theme: "omarchy",
     tags: ["pacman", "starship", "Hyprland", "Flywheel"],

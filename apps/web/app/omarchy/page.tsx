@@ -58,42 +58,42 @@ const FEATURES = [
     icon: <Package className="h-6 w-6" />,
     title: "pacman for the system layer",
     description:
-      "Base packages, CLI tools, Go, PostgreSQL, Vault, Tailscale — everything that is a system package comes from the official Arch repos. No apt, no third-party repos bolted onto your box.",
+      "Base packages, CLI tools, Go, PostgreSQL, Vault, and Tailscale all come from the official Arch repos. The installer never adds apt or a third-party repo to your machine.",
     accent: TN.green,
   },
   {
     icon: <Terminal className="h-6 w-6" />,
     title: "Your prompt stays yours",
     description:
-      "An existing ~/.zshrc is never replaced — ACFS appends one guarded loader line. Running starship? It is initialised in the new shell and your config is left exactly where it was.",
+      "ACFS never replaces an existing ~/.zshrc; it appends one guarded loader line. If you use starship, the new shell initialises it and your starship.toml is left where it was.",
     accent: TN.cyan,
   },
   {
     icon: <CircleSlash className="h-6 w-6" />,
-    title: "oh-my-zsh & p10k skipped by design",
+    title: "oh-my-zsh & p10k skipped",
     description:
-      "On Arch the installer deliberately skips oh-my-zsh, powerlevel10k and their plugins. You get zsh with history, completion and the ACFS aliases — no framework takeover.",
+      "On Arch the installer skips oh-my-zsh, powerlevel10k, and their plugins. You get zsh with history, completion, and the ACFS aliases, with nothing else layered onto your shell.",
     accent: TN.purple,
   },
   {
     icon: <ShieldCheck className="h-6 w-6" />,
     title: "Doctor knows the difference",
     description:
-      "acfs doctor understands the Arch layout: oh-my-zsh and friends report as SKIP, not FAIL, so a clean Omarchy install reads green instead of crying wolf.",
+      "acfs doctor knows the Arch layout. The oh-my-zsh checks report SKIP rather than FAIL, so a clean Omarchy install passes instead of showing four false failures.",
     accent: TN.green,
   },
   {
     icon: <Binary className="h-6 w-6" />,
-    title: "Prebuilt binaries over source builds",
+    title: "Prebuilt binaries, no source builds",
     description:
-      "The flywheel tools install from their checksum-verified upstream installers, which ship prebuilt Linux binaries. Same tools, same versions as on Ubuntu — minus the compile time.",
+      "The flywheel tools install from their checksum-verified upstream installers, which ship prebuilt Linux binaries. You get the same tools and versions as on Ubuntu without compiling anything.",
     accent: TN.amber,
   },
   {
     icon: <RotateCcw className="h-6 w-6" />,
     title: "Idempotent resume",
     description:
-      "Interrupted mid-install? Re-run the same command. Phases are checkpointed in ~/.acfs/state.json and already-installed tools are detected and skipped.",
+      "If the install is interrupted, re-run the same command. Phases are checkpointed in ~/.acfs/state.json, and tools that are already installed are skipped.",
     accent: TN.red,
   },
 ] as const;
@@ -103,25 +103,25 @@ const ARCH_CHANGES = [
     icon: <ArrowRightLeft className="h-5 w-5" />,
     title: "apt → pacman package sets",
     description:
-      "Each Ubuntu package batch has a hand-checked Arch equivalent (bind for dnsutils, github-cli for gh, fd for fd-find…). The database is synced once up front.",
+      "Each Ubuntu package batch has a hand-checked Arch equivalent (bind for dnsutils, github-cli for gh, fd for fd-find). The package database is synced once before any installs.",
   },
   {
     icon: <ScrollText className="h-5 w-5" />,
     title: "sudoers drop-in 90-acfs",
     description:
-      "Vibe mode writes passwordless sudo as a single reversible drop-in, validated with visudo — your /etc/sudoers is never edited.",
+      "Vibe mode writes passwordless sudo as a single drop-in file, validated with visudo. /etc/sudoers itself is never edited, so deleting the file reverts it.",
   },
   {
     icon: <Users className="h-5 w-5" />,
-    title: "wheel, not sudo",
+    title: "wheel group, not a sudo group",
     description:
-      "Your user joins wheel the Arch way. The installer configures the account you run it as — it never invents an ubuntu user on your laptop.",
+      "Your user is added to wheel, as Arch expects. The installer configures the account you run it as and does not create an ubuntu user.",
   },
   {
     icon: <Database className="h-5 w-5" />,
     title: "Postgres via pacman + initdb",
     description:
-      "Installed from the official repo, cluster initialised with initdb (UTF-8), service enabled with systemd — no PGDG apt repo.",
+      "Installed from the official repo, cluster initialised with initdb (UTF-8), service enabled with systemd. The PGDG apt repo is not used.",
   },
 ] as const;
 
@@ -149,31 +149,31 @@ interface ToolEntry {
 // Every entry is a binary ACFS puts on your PATH. Names come from
 // lib/generated/manifest-tools.ts (cliName) — keep them in sync.
 const TOOLS: ToolEntry[] = [
-  { name: "ntm", description: "Named Tmux Manager — agent cockpit for multi-agent sessions" },
-  { name: "am", description: "MCP Agent Mail — agents that message and reserve files" },
-  { name: "br", description: "Beads — local-first issue tracking for agents" },
-  { name: "bv", description: "Beads Viewer — graph-theory triage for tasks" },
+  { name: "ntm", description: "Named Tmux Manager: spawn and monitor agent sessions" },
+  { name: "am", description: "MCP Agent Mail: messaging and file reservations between agents" },
+  { name: "br", description: "Beads: local-first issue tracking for agents" },
+  { name: "bv", description: "Beads Viewer: dependency-graph triage for tasks" },
   { name: "ubs", description: "Ultimate Bug Scanner" },
   { name: "cass", description: "Coding Agent Session Search" },
-  { name: "cm", description: "CASS Memory System — procedural memory" },
-  { name: "caam", description: "Coding Agent Account Manager — sub-100ms auth switching" },
-  { name: "slb", description: "Simultaneous Launch Button — two-person rule for dangerous commands" },
+  { name: "cm", description: "CASS Memory System: procedural memory for agents" },
+  { name: "caam", description: "Coding Agent Account Manager: switch agent accounts in under 100ms" },
+  { name: "slb", description: "Simultaneous Launch Button: two-person rule for dangerous commands" },
   { name: "dcg", description: "Destructive Command Guard" },
   { name: "ru", description: "Repo Updater" },
   { name: "rch", description: "Remote Compilation Helper" },
-  { name: "fsfs", description: "FrankenSearch — hybrid code search" },
+  { name: "fsfs", description: "FrankenSearch: hybrid lexical and semantic code search" },
   { name: "pt", description: "Process Triage" },
-  { name: "ms", description: "Meta Skill — skills about skills" },
+  { name: "ms", description: "Meta Skill: skills for writing skills" },
   { name: "casr", description: "Cross-Agent Session Resumer" },
   { name: "dsr", description: "Doodlestein Self-Releaser" },
   { name: "asb", description: "Agent Settings Backup" },
   { name: "pcr", description: "Post-Compact Reminder" },
-  { name: "ee", description: "Eidetic Engine — total recall for repos" },
+  { name: "ee", description: "Eidetic Engine: durable local memory for agents" },
   { name: "fmd", description: "Franken Markdown" },
   { name: "pi", description: "Pi Agent (Rust)" },
   { name: "pfr", description: "Power Failure Resumer" },
-  { name: "sbh", description: "Storage Ballast Helper — disk-pressure defense" },
-  { name: "wa", description: "WezTerm Automata — terminal hypervisor" },
+  { name: "sbh", description: "Storage Ballast Helper: reserve disk to survive full-disk events" },
+  { name: "wa", description: "WezTerm Automata: terminal automation" },
   { name: "giil", description: "Get Image from Internet Link" },
   { name: "csctf", description: "Chat Shared Conversation to File" },
   { name: "xf", description: "X Archive Search" },
@@ -181,7 +181,7 @@ const TOOLS: ToolEntry[] = [
   { name: "rano", description: "Network Observer" },
   { name: "mdwb", description: "Markdown Web Browser" },
   { name: "s2p", description: "Source to Prompt TUI" },
-  { name: "sysmoni", description: "System Resource Protection — live resource monitor" },
+  { name: "sysmoni", description: "System Resource Protection: live resource monitor" },
   { name: "apr", description: "Automated Plan Reviser Pro" },
   { name: "jfp", description: "JeffreysPrompts CLI" },
   { name: "brenner", description: "Brenner Bot" },
@@ -189,8 +189,8 @@ const TOOLS: ToolEntry[] = [
   { name: "claude", description: "Claude Code" },
   { name: "codex", description: "OpenAI Codex CLI" },
   { name: "agy", description: "Google Antigravity CLI" },
-  { name: "bun", description: "The JavaScript runtime" },
-  { name: "uv", description: "Python packaging, fast" },
+  { name: "bun", description: "JavaScript runtime and package manager" },
+  { name: "uv", description: "Python package manager" },
   { name: "cargo", description: "Rust toolchain (rustup)" },
   { name: "go", description: "Go toolchain (pacman)" },
   { name: "gh", description: "GitHub CLI (pacman)" },
@@ -228,13 +228,22 @@ export default function OmarchyPage() {
         <section className="relative flex min-h-[100svh] flex-col overflow-hidden bg-gradient-to-b from-[#0a0e1a] via-[#10121f] to-[#1a1b26] text-[#c0caf5]">
           <StormCanvas className="absolute inset-0 h-full w-full" />
 
-          {/* Vignette to keep text legible over the storm */}
+          {/* Readability scrims — solid navy under the text column, clearing
+              toward the storm on the right; vertical fade on small screens */}
           <div
-            className="pointer-events-none absolute inset-0"
+            className="pointer-events-none absolute inset-0 hidden md:block"
             aria-hidden="true"
             style={{
               background:
-                "radial-gradient(ellipse at center, transparent 35%, rgba(10, 14, 26, 0.55) 78%, rgba(10, 14, 26, 0.9) 100%)",
+                "linear-gradient(90deg, rgba(10,14,26,0.96) 0%, rgba(10,14,26,0.88) 30%, rgba(10,14,26,0.45) 52%, rgba(10,14,26,0) 72%)",
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 md:hidden"
+            aria-hidden="true"
+            style={{
+              background:
+                "linear-gradient(0deg, rgba(10,14,26,0.95) 0%, rgba(10,14,26,0.82) 40%, rgba(10,14,26,0.25) 100%)",
             }}
           />
           {/* Scanlines — terminal flavor, barely-there */}
@@ -297,12 +306,13 @@ export default function OmarchyPage() {
             </div>
           </nav>
 
-          <div className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 items-center px-6 pb-24 pt-8 text-center">
+          {/* Text column sits left on the scrim; the storm owns the right side */}
+          <div className="relative z-10 mx-auto grid w-full max-w-7xl flex-1 grid-cols-1 items-center px-6 pb-24 pt-8 lg:grid-cols-[minmax(0,42rem)_1fr]">
             <motion.div
               variants={staggerContainer}
               initial="hidden"
               animate="visible"
-              className="flex w-full flex-col items-center"
+              className="flex w-full flex-col items-start text-left"
             >
               <motion.div
                 className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#9ece6a]/30 bg-[#9ece6a]/10 px-4 py-1.5 font-mono text-xs tracking-widest text-[#9ece6a]"
@@ -312,28 +322,26 @@ export default function OmarchyPage() {
               </motion.div>
 
               <motion.h1
-                className="mb-6 font-mono text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl"
+                className="mb-6 font-mono text-5xl font-bold leading-[1.06] tracking-tighter sm:text-6xl xl:text-[4.25rem]"
                 variants={fadeUp}
               >
-                <span className="text-[#c0caf5]">The Flywheel,</span>
+                <span className="text-white">The Flywheel,</span>
                 <br />
-                <span className="bg-gradient-to-r from-[#9ece6a] via-[#7dcfff] to-[#bb9af7] bg-clip-text text-transparent">
-                  native on Omarchy.
-                </span>
+                <span className="text-[#9ece6a]">native on Omarchy.</span>
               </motion.h1>
 
               <motion.p
-                className="mb-8 max-w-2xl text-lg leading-relaxed text-[#a9b1d6]"
+                className="mb-8 max-w-xl text-lg leading-relaxed text-[#c0caf5]/85"
                 variants={fadeUp}
               >
-                Same one-liner, same flywheel. The installer detects Arch and Omarchy, installs the
-                system layer with <span className="font-mono text-[#9ece6a]">pacman</span>, keeps
-                your <span className="font-mono text-[#e0af68]">starship</span> prompt, and skips{" "}
-                <span className="font-mono">oh-my-zsh</span>. Seventy-two modules of agentic coding
-                firepower, installed the Arch way.
+                The same one-liner as on Ubuntu. The installer detects Arch and Omarchy, installs
+                the system layer with <span className="font-mono text-[#9ece6a]">pacman</span>,
+                keeps your <span className="font-mono text-[#e0af68]">starship</span> prompt, and
+                skips <span className="font-mono">oh-my-zsh</span>. All 72 modules, three coding
+                agents, and the full tool stack.
               </motion.p>
 
-              <motion.div className="mb-8 w-full max-w-2xl" variants={fadeUp}>
+              <motion.div className="mb-8 w-full max-w-xl" variants={fadeUp}>
                 <CopyCommand command={INSTALL_COMMAND} />
               </motion.div>
 
@@ -364,7 +372,7 @@ export default function OmarchyPage() {
               </motion.div>
 
               <motion.p className="mt-6 font-mono text-xs text-[#a9b1d6]/70" variants={fadeUp}>
-                Run it as your own user — the installer uses sudo when it needs to.
+                Run it as your own user; the installer calls sudo only for the steps that need it.
               </motion.p>
             </motion.div>
           </div>
@@ -395,7 +403,7 @@ export default function OmarchyPage() {
 
         {/* ======================= NATIVE ON ARCH GRID ====================== */}
         <section className="mx-auto max-w-7xl px-6 py-24">
-          <SectionHeading eyebrow="why arch users smile" title="Native on Arch, not ported to it" />
+          <SectionHeading eyebrow="what arch users get" title="Native on Arch" />
           <motion.div
             className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
             variants={staggerContainer}
@@ -426,7 +434,7 @@ export default function OmarchyPage() {
         {/* ===================== WHAT CHANGES ON ARCH ======================= */}
         <section id="what-changes" className="scroll-mt-8 border-y border-border/30 bg-card/20 py-20">
           <div className="mx-auto max-w-7xl px-6">
-            <SectionHeading eyebrow="no hand-waving" title="What actually changes on Arch" />
+            <SectionHeading eyebrow="the details" title="What changes on Arch" />
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {ARCH_CHANGES.map((change, index) => (
                 <motion.div
@@ -492,7 +500,7 @@ export default function OmarchyPage() {
                 </div>
               </div>
               <p className="mt-4 text-center text-xs text-muted-foreground">
-                Representative output — versions and the exact check list depend on your install.
+                Representative output; versions and the exact check list depend on your install.
               </p>
             </motion.div>
 
@@ -528,8 +536,8 @@ export default function OmarchyPage() {
             viewport={{ once: true }}
             transition={springs.smooth}
           >
-            The names swirling above aren&apos;t decoration — each one is a binary on your PATH after
-            install. Your desktop, shell and prompt are yours; this is what ACFS adds.
+            Every name in the storm above is a binary on your PATH after install. ACFS leaves your
+            desktop, shell, and prompt alone; this list is what it adds.
           </motion.p>
           <motion.ul
             className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
@@ -587,8 +595,8 @@ export default function OmarchyPage() {
                 Ride the storm.
               </h2>
               <p className="mb-8 max-w-xl text-muted-foreground">
-                One command turns your Arch or Omarchy machine into a fully-configured agentic
-                coding environment. Re-run it any time — it only ever moves forward.
+                One command sets up your Arch or Omarchy machine for agentic coding. Re-run it
+                any time; it skips whatever is already installed.
               </p>
               <div className="mb-8 w-full max-w-xl">
                 <CopyCommand command={INSTALL_COMMAND} />

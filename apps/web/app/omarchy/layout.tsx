@@ -7,25 +7,25 @@ import type { ReactNode } from "react";
  * framer-motion variants directly.
  */
 export const metadata: Metadata = {
-  title: "ACFS on Omarchy — The Flywheel, Native on Arch",
+  title: "ACFS on Omarchy: the Flywheel, native on Arch",
   description:
-    "The Agentic Coding Flywheel Setup runs natively on Omarchy and Arch Linux: pacman-native packages, your starship prompt untouched, oh-my-zsh skipped by design, doctor-verified with zero failures. One command.",
+    "The Agentic Coding Flywheel Setup runs natively on Omarchy and Arch Linux: system packages from pacman, your starship prompt left alone, oh-my-zsh skipped, and acfs doctor passing clean. One command.",
   alternates: {
     canonical: "/omarchy",
   },
   openGraph: {
-    title: "ACFS on Omarchy — The Flywheel, Native on Arch",
+    title: "ACFS on Omarchy: the Flywheel, native on Arch",
     description:
-      "72 modules · 3 AI agents · 30+ tools · 1 command. The full agentic coding flywheel, native on Arch — no apt, no oh-my-zsh, no compromises.",
+      "72 modules · 3 AI agents · 40+ tools · 1 command. The full agentic coding flywheel on Arch, installed with pacman and without oh-my-zsh.",
     url: "/omarchy",
     siteName: "Agent Flywheel",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ACFS on Omarchy — The Flywheel, Native on Arch",
+    title: "ACFS on Omarchy: the Flywheel, native on Arch",
     description:
-      "72 modules · 3 AI agents · 30+ tools · 1 command. The full agentic coding flywheel, native on Arch.",
+      "72 modules · 3 AI agents · 40+ tools · 1 command. The full agentic coding flywheel, native on Arch.",
   },
 };
 
