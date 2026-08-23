@@ -2694,13 +2694,16 @@ modules:
       - rch --version || rch --help
 
   - id: stack.wezterm_automata
+    # Superseded by FrankenTerm; kept installable for existing users but no
+    # longer part of the default install (it is also the only module that
+    # compiles from source via cargo).
     description: WezTerm Automata (wa) - terminal automation and orchestration for AI agents
     category: stack
     phase: 9
     run_as: target_user
     optional: true
-    enabled_by_default: true
-    tags: [recommended, automation]
+    enabled_by_default: false
+    tags: [optional, automation]
     web:
       display_name: "WezTerm Automata"
       short_name: "WA"

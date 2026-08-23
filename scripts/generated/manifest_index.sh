@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="4adb270ef1e9da3e1c12be7b283ec459407d094feab5fbcece57d2fafce99438"
+ACFS_MANIFEST_SHA256="d74cce21c471d98f370159552079aa7678319cf1b09efb330c4d33d3bcb28403"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -441,7 +441,7 @@ declare -gA ACFS_MODULE_TAGS=(
   ['stack.ru']="recommended"
   ['stack.brenner_bot']="recommended"
   ['stack.rch']="recommended,performance"
-  ['stack.wezterm_automata']="recommended,automation"
+  ['stack.wezterm_automata']="optional,automation"
   ['stack.srps']="recommended,system-health"
   ['stack.frankensearch']="recommended,search"
   ['stack.storage_ballast_helper']="recommended,system-tools"
@@ -518,7 +518,7 @@ declare -gA ACFS_MODULE_DEFAULT=(
   ['stack.ru']="1"
   ['stack.brenner_bot']="1"
   ['stack.rch']="1"
-  ['stack.wezterm_automata']="1"
+  ['stack.wezterm_automata']="0"
   ['stack.srps']="1"
   ['stack.frankensearch']="1"
   ['stack.storage_ballast_helper']="1"
