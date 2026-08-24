@@ -2626,6 +2626,7 @@ test_acfs_undo_command_all_skips_undone_changes() {
     undo_record="$(jq -cn --arg id "$done_id" '{undone:$id,timestamp:"2026-04-15T00:00:00Z",exit_code:0,status:"applied"}')"
     undo_record="$(autofix_add_record_checksum "$undo_record")"
     printf '%s\n' "$undo_record" > "$ACFS_UNDOS_FILE"
+    update_integrity_file >/dev/null 2>&1 || true
 
     local output=""
     output=$(acfs_undo_command --all 2>&1)
@@ -3379,7 +3380,7 @@ test_record_change_change_id_sequence_does_not_collide_after_journal_repair() {
         rec=$(jq -cn \
             --arg id "$cid" \
             --arg ts "2026-08-24T12:00:00Z" \
-            '{id: $id, timestamp: $ts, session_id: "seed_sess", category: "test", description: "seed", undo_command: "true", undo_requires_root: false, reversible: true, severity: "info", files: [], backups: [], post_checksums: [], manual_steps: [], undone: false}')
+            '{id: $id, timestamp: $ts, session_id: "seed_sess", category: "test", description: "seed", undo_command: "true", undo_requires_root: false, reversible: true, severity: "info", files_affected: [], backups: [], post_checksums: [], depends_on: [], manual_steps: [], undone: false}')
         local csum
         csum=$(compute_record_checksum "$rec")
         rec=$(printf '%s' "$rec" | jq -c --arg sum "$csum" '. + {record_checksum: $sum}')

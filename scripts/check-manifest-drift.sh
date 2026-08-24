@@ -1015,26 +1015,53 @@ to sync ACFS_MANIFEST_SHA256 and internal checksums with source files.
 COMMIT_MSG
 )"
 
+FIX_COMMIT_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
+if [[ ! "$FIX_COMMIT_HEAD" =~ ^[0-9a-f]{40}$ ]] \
+    || [[ "$(git rev-parse "${FIX_COMMIT_HEAD}^" 2>/dev/null || true)" != "$FIX_BASE_HEAD" ]] \
+    || [[ "$(git rev-parse HEAD 2>/dev/null || true)" != "$FIX_COMMIT_HEAD" ]]; then
+    log_error "Generated commit does not descend directly from the verified base"
+    exit 2
+fi
+
 while IFS= read -r committed_path; do
     [[ -n "$committed_path" ]] || continue
     if [[ -z "${allowed_generated_paths[$committed_path]+present}" ]]; then
         log_error "Generated commit contains an unexpected path: $committed_path"
         exit 2
     fi
-done < <(git diff-tree --no-commit-id --name-only -r HEAD)
+done < <(git diff-tree --no-commit-id --name-only -r "$FIX_COMMIT_HEAD")
 if ! check_generated_artifact_drift false \
     || [[ "$GENERATED_ARTIFACT_DRIFT_COUNT" -gt 0 ]]; then
     log_error "Generated artifacts are not clean after commit; refusing to push"
     exit 2
 fi
+if ! check_manifest_contract_drift false \
+    || [[ "$MANIFEST_CONTRACT_DRIFT_COUNT" -gt 0 ]]; then
+    log_error "Manifest contract is not clean after commit; refusing to push"
+    exit 2
+fi
+if [[ "$(git rev-parse HEAD 2>/dev/null || true)" != "$FIX_COMMIT_HEAD" ]]; then
+    log_error "HEAD changed after generated commit verification; refusing to push"
+    exit 2
+fi
 
 # Push to main first, then mirror to master for legacy compatibility
-if ! git push origin HEAD:main; then
+if ! git push origin "$FIX_COMMIT_HEAD":main; then
     log_error "Push to main failed; fix committed locally but not pushed"
     exit 2
 fi
-if ! git push origin main:master; then
+REMOTE_MAIN_HEAD="$(git ls-remote --heads origin refs/heads/main 2>/dev/null | awk 'NR == 1 { print $1 }')"
+if [[ "$REMOTE_MAIN_HEAD" != "$FIX_COMMIT_HEAD" ]]; then
+    log_error "Remote main moved after publication; refusing to update the legacy mirror"
+    exit 2
+fi
+if ! git push origin "$FIX_COMMIT_HEAD":master; then
     log_error "Push to master mirror failed after pushing main"
+    exit 2
+fi
+REMOTE_MASTER_HEAD="$(git ls-remote --heads origin refs/heads/master 2>/dev/null | awk 'NR == 1 { print $1 }')"
+if [[ "$REMOTE_MASTER_HEAD" != "$FIX_COMMIT_HEAD" ]]; then
+    log_error "Remote master does not match the generated publication commit"
     exit 2
 fi
 

@@ -261,9 +261,9 @@ report_build_resume_command() {
         resume_cmd="bash -p $local_install"
     else
         if [[ -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
-            install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_COMMIT_SHA_FULL}/install.sh"
+            install_url="https://raw.githubusercontent.com/${ACFS_REPO_OWNER:-Dicklesworthstone}/${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}/${ACFS_COMMIT_SHA_FULL}/install.sh"
         elif [[ -n "${ACFS_REF_INPUT:-}" && "${ACFS_REF_INPUT}" != "main" ]]; then
-            install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF_INPUT}/install.sh"
+            install_url="https://raw.githubusercontent.com/${ACFS_REPO_OWNER:-Dicklesworthstone}/${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}/${ACFS_REF_INPUT}/install.sh"
         elif [[ -n "${ACFS_RAW:-}" ]]; then
             install_url="${ACFS_RAW%/}/install.sh"
         else

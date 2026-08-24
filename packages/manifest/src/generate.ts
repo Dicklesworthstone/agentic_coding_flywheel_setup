@@ -3084,7 +3084,11 @@ async function main(): Promise<void> {
           actualMode = inspected.mode;
         } catch (error) {
           hasDiff = true;
-          console.log(`[DIFF] ${filename} (unsafe output type)`);
+          // Keep the machine-consumed path token exact.  The drift checker
+          // parses `[DIFF] <path>` lines; appending a diagnosis here would turn
+          // the annotation into a fictitious filename.
+          console.log(`[DIFF] ${filename}`);
+          console.log('       Unsafe output type or link topology');
           if (verbose) console.log(`       ${error instanceof Error ? error.message : String(error)}`);
           continue;
         }
