@@ -1,9 +1,24 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   formatPluginDiagnostics,
+  loadPluginPackageFromFile,
+  mergeValidatedPlugins,
   validatePluginPackage,
   type PluginValidationOptions,
 } from './plugin.js';
+import {
+  generateCategoryScript,
+  generateDoctorChecks,
+  generateManifestIndex,
+  generateWebModules,
+  generateWebTools,
+  generateWebCommands,
+  generateWebTldr,
+  generateWebLessonsIndex,
+} from './generate.js';
 import { ModuleSchema } from './schema.js';
 import type { Manifest } from './types.js';
 
@@ -835,5 +850,145 @@ describe('validatePluginPackage', () => {
       code: 'plugin_review_required',
       path: 'modules[0].dependencies',
     }));
+  });
+});
+
+describe('loadPluginPackageFromFile', () => {
+  test('loads and validates a valid JSON plugin file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acfs-plugin-test-'));
+    const pluginPath = join(dir, 'plugin.json');
+    const plugin = validPlugin();
+    writeFileSync(pluginPath, JSON.stringify(plugin, null, 2), 'utf-8');
+
+    const opts = validationOptions();
+    delete opts.expectedPackageSha256;
+    delete opts.packageSha256;
+
+    const result = loadPluginPackageFromFile(pluginPath, opts);
+    expect(result.valid).toBe(true);
+    expect(result.manifestModules.length).toBe(1);
+    expect(result.manifestModules[0].id).toBe('plugin.example_tools.cli');
+  });
+
+  test('fails closed on non-existent or invalid JSON file', () => {
+    const result = loadPluginPackageFromFile('/non/existent/path/plugin.json', validationOptions());
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe('mergeValidatedPlugins', () => {
+  test('merges validated plugin modules into manifest without modifying original', () => {
+    const manifest = firstPartyManifest();
+    const plugin = validPlugin();
+    const validationResult = validatePluginPackage(plugin, validationOptions());
+    expect(validationResult.valid).toBe(true);
+
+    const merged = mergeValidatedPlugins(manifest, [validationResult]);
+    expect(merged.modules.length).toBe(manifest.modules.length + 1);
+    expect(merged.modules.some((m) => m.id === 'plugin.example_tools.cli')).toBe(true);
+    // Original manifest is unmodified
+    expect(manifest.modules.length).toBe(2);
+  });
+
+  test('throws if attempting to merge an invalid plugin result', () => {
+    const manifest = firstPartyManifest();
+    const invalidResult = {
+      valid: false,
+      diagnostics: [
+        {
+          code: 'plugin_missing_required_field' as const,
+          message: 'Invalid plugin',
+          path: '<root>',
+          severity: 'error' as const,
+        },
+      ],
+      manifestModules: [],
+    };
+
+    expect(() => mergeValidatedPlugins(manifest, [invalidResult])).toThrow();
+  });
+});
+
+describe('Installer, doctor, and web metadata generation from validated plugins', () => {
+  test('generates category script with plugin module function and labels', () => {
+    const manifest = firstPartyManifest();
+    const plugin = validPlugin();
+    const validationResult = validatePluginPackage(plugin, validationOptions());
+    expect(validationResult.valid).toBe(true);
+
+    const merged = mergeValidatedPlugins(manifest, [validationResult]);
+    const categoryScript = generateCategoryScript(merged, 'tools');
+
+    expect(categoryScript).toContain('[plugin: example.tools@1.2.3]');
+  });
+
+  test('generates doctor checks with plugin verify command and tab delimiter', () => {
+    const manifest = firstPartyManifest();
+    const plugin = validPlugin();
+    const validationResult = validatePluginPackage(plugin, validationOptions());
+    expect(validationResult.valid).toBe(true);
+
+    const merged = mergeValidatedPlugins(manifest, [validationResult]);
+    const doctorChecks = generateDoctorChecks(merged);
+
+    expect(doctorChecks).toContain('plugin.example_tools.cli\tExample command-line tool.');
+    expect(doctorChecks).toContain('command -v -- example');
+  });
+
+  test('generates manifest index with plugin provenance arrays', () => {
+    const manifest = firstPartyManifest();
+    const plugin = validPlugin();
+    const validationResult = validatePluginPackage(plugin, validationOptions());
+    expect(validationResult.valid).toBe(true);
+
+    const merged = mergeValidatedPlugins(manifest, [validationResult]);
+    const indexScript = generateManifestIndex(merged, 'test-sha256');
+
+    expect(indexScript).toContain("['plugin.example_tools.cli']=\"example.tools\"");
+    expect(indexScript).toContain("['plugin.example_tools.cli']=\"1.2.3\"");
+    expect(indexScript).toContain('ACFS_MODULE_PLUGIN_PACKAGE=(');
+    expect(indexScript).toContain('ACFS_MODULE_PLUGIN_VERSION=(');
+    expect(indexScript).toContain('ACFS_MODULE_PLUGIN_SHA256=(');
+  });
+
+  test('generates web modules and tools with ManifestPluginProvenance', () => {
+    const manifest = firstPartyManifest();
+    const plugin = validPlugin();
+    plugin.capabilities = {
+      allowed: ['verified_installer', 'doctor_check', 'web_metadata'],
+      reviewRequired: ['root_run_as', 'cross_plugin_dependency'],
+      disallowed: ['arbitrary_shell', 'secret_values'],
+    };
+    const modules = plugin.modules as Record<string, unknown>[];
+    modules[0] = {
+      ...modules[0],
+      web: {
+        display_name: 'Example CLI',
+        tagline: 'Example CLI tool',
+        cli_name: 'example',
+        visible: true,
+      },
+    };
+    const validationResult = validatePluginPackage(plugin, validationOptions());
+    expect(validationResult.valid).toBe(true);
+
+    const merged = mergeValidatedPlugins(manifest, [validationResult]);
+    const webModules = generateWebModules(merged, '1.0.0', 'manifest-hash', 'checksums-hash');
+    const webTools = generateWebTools(merged);
+    const webCommands = generateWebCommands(merged);
+
+    expect(webModules).toContain('export interface ManifestPluginProvenance {');
+    expect(webModules).toContain('packageId: "example.tools"');
+    expect(webModules).toContain('version: "1.2.3"');
+
+    expect(webTools).toContain(
+      "import type { ManifestPluginProvenance } from './manifest-modules';"
+    );
+    expect(webTools).toContain('plugin?: ManifestPluginProvenance;');
+    expect(webTools).toContain('packageId: "example.tools"');
+
+    expect(webCommands).toContain('moduleId: "plugin.example_tools.cli"');
+    expect(webCommands).toContain('cliName: "example"');
   });
 });

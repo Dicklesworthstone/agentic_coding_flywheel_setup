@@ -1,6 +1,6 @@
 // ============================================================
-// AUTO-GENERATED FROM acfs.manifest.yaml — DO NOT EDIT
-// Regenerate: bun run generate (from packages/manifest)
+// AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT DIRECTLY
+// To regenerate: bun run --cwd packages/manifest generate
 // ============================================================
 
 export interface ManifestCommand {

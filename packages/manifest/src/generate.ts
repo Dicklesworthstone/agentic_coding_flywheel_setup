@@ -2059,7 +2059,8 @@ export function generateCategoryScript(manifest: Manifest, category: ModuleCateg
   // Generate individual install functions
   for (const module of generatedModules) {
     const funcName = toGeneratedFunctionName(module.id);
-    lines.push(`# ${sanitizeForBashComment(module.description)}`);
+    const pluginComment = module.plugin ? ` [plugin: ${module.plugin.packageId}@${module.plugin.version}]` : '';
+    lines.push(`# ${sanitizeForBashComment(module.description)}${pluginComment}`);
     lines.push(`${funcName}() {`);
     lines.push(`    local module_id="${module.id}"`);
     lines.push('    acfs_require_contract "module:${module_id}" || return 1');
@@ -2343,7 +2344,7 @@ export function generateDoctorChecks(manifest: Manifest): string {
 /**
  * Generate top-level installer script
  */
-function generateTopLevelInstaller(manifest: Manifest): string {
+export function generateTopLevelInstaller(manifest: Manifest): string {
   // Emit the complete canonical category surface, including zero-handler
   // orchestration-owned categories such as users.
   const categories: ModuleCategory[] = [...MODULE_CATEGORIES];
@@ -2410,8 +2411,8 @@ function generateTopLevelInstaller(manifest: Manifest): string {
 // ============================================================
 
 const TS_HEADER = `// ============================================================
-// AUTO-GENERATED FROM acfs.manifest.yaml — DO NOT EDIT
-// Regenerate: bun run generate (from packages/manifest)
+// AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT DIRECTLY
+// To regenerate: bun run --cwd packages/manifest generate
 // ============================================================
 `;
 
@@ -2518,7 +2519,7 @@ function getWebVisibleModules(manifest: Manifest): Module[] {
 /**
  * Generate manifest-modules.ts — full module metadata for web-side planning.
  */
-function generateWebModules(
+export function generateWebModules(
   manifest: Manifest,
   acfsVersion: string,
   manifestSha256: string,
@@ -2622,9 +2623,12 @@ function generateWebModules(
  * Generate manifest-tools.ts — web tool data from manifest web metadata.
  * Pure data file, no React imports, tree-shakable.
  */
-function generateWebTools(manifest: Manifest): string {
+export function generateWebTools(manifest: Manifest): string {
   const modules = getWebVisibleModules(manifest);
   const lines: string[] = [TS_HEADER];
+
+  lines.push("import type { ManifestPluginProvenance } from './manifest-modules';");
+  lines.push('');
 
   // Type definition
   lines.push('export interface ManifestWebTool {');
@@ -2714,7 +2718,7 @@ function generateWebTools(manifest: Manifest): string {
 /**
  * Generate manifest-commands.ts — CLI command references from manifest web metadata.
  */
-function generateWebCommands(manifest: Manifest): string {
+export function generateWebCommands(manifest: Manifest): string {
   const modules = manifest.modules
     .filter((m) => m.web && m.web.visible !== false && m.web.cli_name)
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -2764,7 +2768,7 @@ function generateWebCommands(manifest: Manifest): string {
  * Generate manifest-tldr.ts — TL;DR card data from manifest web metadata.
  * Focused subset for the TL;DR summary page.
  */
-function generateWebTldr(manifest: Manifest): string {
+export function generateWebTldr(manifest: Manifest): string {
   const modules = getWebVisibleModules(manifest);
   const lines: string[] = [TS_HEADER];
 
@@ -2829,7 +2833,7 @@ function generateWebTldr(manifest: Manifest): string {
  * Generate manifest-lessons-index.ts — mapping from module IDs to lesson slugs.
  * Used to link module detail pages to onboarding lessons.
  */
-function generateWebLessonsIndex(manifest: Manifest): string {
+export function generateWebLessonsIndex(manifest: Manifest): string {
   const modules = manifest.modules
     .filter((m) => m.web && m.web.visible !== false && m.web.lesson_slug)
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -2874,7 +2878,7 @@ function generateWebLessonsIndex(manifest: Manifest): string {
 /**
  * Generate manifest-web-index.ts — barrel re-export for all web generated data.
  */
-function generateWebIndex(): string {
+export function generateWebIndex(): string {
   const lines: string[] = [TS_HEADER];
 
   lines.push("export { manifestModules, manifestSelectionProfiles, manifestProvenance } from './manifest-modules';");
@@ -2913,6 +2917,8 @@ Options:
   --verbose      Show more details (with --dry-run: show content previews)
   --validate     Validate manifest and checksums coverage, exit with status
   --diff         Show diff between current and generated files
+  --plugin       Path to a plugin package JSON/YAML file (can be repeated)
+  --plugins-dir  Directory containing plugin package files
   --help         Show this help message
 
 Examples:
@@ -2920,6 +2926,7 @@ Examples:
   bun run generate --dry-run       # Preview generation
   bun run generate --validate      # Check for issues (CI friendly)
   bun run generate --diff          # Show what would change
+  bun run generate --plugin ./pkg.json # Include plugin in generation
 `);
 }
 
@@ -3002,11 +3009,12 @@ async function main(): Promise<void> {
   }
 
   const checksumsBytes = readRegularFileNoFollow(CHECKSUMS_PATH, 'Verified installer checksums');
+  let installers: Record<string, InstallerChecksumEntry> = {};
   try {
     const checksums = parseYaml(checksumsBytes.toString('utf-8')) as {
       installers?: Record<string, InstallerChecksumEntry>;
     };
-    const installers = checksums.installers ?? {};
+    installers = checksums.installers ?? {};
     const checksumValidationErrors = validateVerifiedInstallerChecksums(
       manifest,
       installers
@@ -3027,11 +3035,99 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Discover and validate plugin packages if provided (bd-vv8x5)
+  const pluginPaths: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--plugin' || arg === '--plugins') {
+      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+        pluginPaths.push(args[++i]);
+      }
+    } else if (arg.startsWith('--plugin=') || arg.startsWith('--plugins=')) {
+      pluginPaths.push(arg.split('=', 2)[1]);
+    } else if (arg === '--plugins-dir' || arg === '--plugin-dir') {
+      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+        const dir = args[++i];
+        if (existsSync(dir)) {
+          for (const entry of readdirSync(dir).sort()) {
+            if (entry.endsWith('.json') || entry.endsWith('.yaml') || entry.endsWith('.yml')) {
+              pluginPaths.push(join(dir, entry));
+            }
+          }
+        }
+      }
+    } else if (arg.startsWith('--plugins-dir=') || arg.startsWith('--plugin-dir=')) {
+      const dir = arg.split('=', 2)[1];
+      if (existsSync(dir)) {
+        for (const entry of readdirSync(dir).sort()) {
+          if (entry.endsWith('.json') || entry.endsWith('.yaml') || entry.endsWith('.yml')) {
+            pluginPaths.push(join(dir, entry));
+          }
+        }
+      }
+    }
+  }
+
+  if (process.env.ACFS_PLUGIN_PATHS) {
+    for (const p of process.env.ACFS_PLUGIN_PATHS.split(/[:;,]/)) {
+      const trimmed = p.trim();
+      if (trimmed) pluginPaths.push(trimmed);
+    }
+  }
+  if (process.env.ACFS_PLUGINS_DIR && existsSync(process.env.ACFS_PLUGINS_DIR)) {
+    const dir = process.env.ACFS_PLUGINS_DIR;
+    for (const entry of readdirSync(dir).sort()) {
+      if (entry.endsWith('.json') || entry.endsWith('.yaml') || entry.endsWith('.yml')) {
+        pluginPaths.push(join(dir, entry));
+      }
+    }
+  }
+
+  let effectiveManifest = manifest;
+  if (pluginPaths.length > 0) {
+    const pluginResults: PluginValidationResult[] = [];
+    const existingPluginModuleIds: string[] = [];
+
+    for (const rawPath of pluginPaths) {
+      const resolvedPath = resolve(process.cwd(), rawPath);
+      console.log(`Validating plugin package: ${resolvedPath}`);
+      const result = loadPluginPackageFromFile(resolvedPath, {
+        firstPartyManifest: manifest,
+        installers,
+        existingPluginModuleIds,
+      });
+
+      if (!result.valid) {
+        console.error('');
+        console.error(formatPluginDiagnostics(result));
+        console.error('');
+        process.exit(1);
+      }
+
+      for (const m of result.manifestModules) {
+        existingPluginModuleIds.push(m.id);
+      }
+      pluginResults.push(result);
+      console.log(
+        `✓ Plugin package "${result.package?.packageId ?? rawPath}" validated (${result.manifestModules.length} module(s))`
+      );
+    }
+
+    effectiveManifest = mergeValidatedPlugins(manifest, pluginResults);
+    console.log(
+      `Merged ${pluginResults.length} plugin package(s) (${existingPluginModuleIds.length} total plugin modules)`
+    );
+    console.log('');
+  }
+
   // --validate mode: validation already passed, print success and exit
   if (validateOnly) {
     console.log('✓ Manifest schema valid');
     console.log('✓ Manifest dependency graph valid');
     console.log('✓ Checksums.yaml coverage complete');
+    if (pluginPaths.length > 0) {
+      console.log(`✓ Plugin packages valid (${pluginPaths.length} package(s))`);
+    }
     console.log('');
     console.log('Validation passed.');
     process.exit(0);
@@ -3050,28 +3146,28 @@ async function main(): Promise<void> {
   for (const category of categories) {
     const filename = `install_${category}.sh`;
     const filepath = join(OUTPUT_DIR, filename);
-    const content = generateCategoryScript(manifest, category);
+    const content = generateCategoryScript(effectiveManifest, category);
     filesToGenerate.set(filepath, { content, mode: 0o755 });
   }
 
   // Doctor checks
   {
     const filepath = join(OUTPUT_DIR, 'doctor_checks.sh');
-    const content = generateDoctorChecks(manifest);
+    const content = generateDoctorChecks(effectiveManifest);
     filesToGenerate.set(filepath, { content, mode: 0o755 });
   }
 
   // Top-level installer
   {
     const filepath = join(OUTPUT_DIR, 'install_all.sh');
-    const content = generateTopLevelInstaller(manifest);
+    const content = generateTopLevelInstaller(effectiveManifest);
     filesToGenerate.set(filepath, { content, mode: 0o755 });
   }
 
   // Manifest index
   {
     const filepath = join(OUTPUT_DIR, 'manifest_index.sh');
-    const content = generateManifestIndex(manifest, manifestSha256);
+    const content = generateManifestIndex(effectiveManifest, manifestSha256);
     filesToGenerate.set(filepath, { content, mode: 0o644 });
   }
 
@@ -3089,7 +3185,7 @@ async function main(): Promise<void> {
     const modulesPath = join(WEB_OUTPUT_DIR, 'manifest-modules.ts');
     filesToGenerate.set(modulesPath, {
       content: generateWebModules(
-        manifest,
+        effectiveManifest,
         projectVersion.value,
         manifestSha256,
         computeContentSha256(checksumsBytes),
@@ -3098,16 +3194,16 @@ async function main(): Promise<void> {
     });
 
     const toolsPath = join(WEB_OUTPUT_DIR, 'manifest-tools.ts');
-    filesToGenerate.set(toolsPath, { content: generateWebTools(manifest), mode: 0o644 });
+    filesToGenerate.set(toolsPath, { content: generateWebTools(effectiveManifest), mode: 0o644 });
 
     const commandsPath = join(WEB_OUTPUT_DIR, 'manifest-commands.ts');
-    filesToGenerate.set(commandsPath, { content: generateWebCommands(manifest), mode: 0o644 });
+    filesToGenerate.set(commandsPath, { content: generateWebCommands(effectiveManifest), mode: 0o644 });
 
     const tldrPath = join(WEB_OUTPUT_DIR, 'manifest-tldr.ts');
-    filesToGenerate.set(tldrPath, { content: generateWebTldr(manifest), mode: 0o644 });
+    filesToGenerate.set(tldrPath, { content: generateWebTldr(effectiveManifest), mode: 0o644 });
 
     const lessonsPath = join(WEB_OUTPUT_DIR, 'manifest-lessons-index.ts');
-    filesToGenerate.set(lessonsPath, { content: generateWebLessonsIndex(manifest), mode: 0o644 });
+    filesToGenerate.set(lessonsPath, { content: generateWebLessonsIndex(effectiveManifest), mode: 0o644 });
 
     const indexPath = join(WEB_OUTPUT_DIR, 'manifest-web-index.ts');
     filesToGenerate.set(indexPath, { content: generateWebIndex(), mode: 0o644 });

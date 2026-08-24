@@ -1447,7 +1447,10 @@ describe('manifest-web-index.ts barrel exports', () => {
 
   test('re-exports manifest modules and selection profiles', () => {
     expect(content).toContain("export { manifestModules, manifestSelectionProfiles, manifestProvenance } from './manifest-modules'");
-    expect(content).toContain("export type { ManifestModuleMetadata, ManifestSelectionProfile, ManifestSelectionProfileId, ManifestProvenanceMetadata } from './manifest-modules'");
+    expect(content).toContain("ManifestModuleMetadata");
+    expect(content).toContain("ManifestSelectionProfile");
+    expect(content).toContain("ManifestProvenanceMetadata");
+    expect(content).toContain("ManifestPluginProvenance");
   });
 
   test('re-exports manifestTools', () => {

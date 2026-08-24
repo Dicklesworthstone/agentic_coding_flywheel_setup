@@ -24,8 +24,11 @@ if (!config || typeof config !== "object" || Array.isArray(config)) {
 }
 
 if (Array.isArray(config.include)) {
+  // Next writes generated type includes back to whichever tsconfig it uses.
+  // Strip both the default output and every scoped `.next-<scope>` output so
+  // an accidentally polluted canonical config cannot couple isolated builds.
   config.include = config.include.filter(
-    (entry) => typeof entry !== "string" || !entry.startsWith(".next/"),
+    (entry) => typeof entry !== "string" || !/^\.next(?:-[^/]+)?\//.test(entry),
   );
 }
 
