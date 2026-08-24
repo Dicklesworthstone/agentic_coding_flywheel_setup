@@ -23,6 +23,10 @@ if [[ -n "$TERM" ]] && ! infocmp "$TERM" &>/dev/null; then
 fi
 
 # --- Paths (early) ---
+# Keep PATH free of duplicates: every tmux pane, `exec zsh`, and
+# `source ~/.zshrc` re-runs the prepends below, and without this the PATH
+# grows by six entries each time.
+typeset -U path PATH
 # Each line below PREPENDS, so the LAST prepend ends up first in PATH.
 export PATH="$HOME/.cargo/bin:$PATH"
 
@@ -167,7 +171,8 @@ if command -v rg &>/dev/null; then
   alias rgrep='rg'
   alias search='rg'
 fi
-command -v dust &>/dev/null && alias du='dust'
+# dust is not flag-compatible with du (`du -sh .` printed dust's help), so it
+# is not aliased over du; run `dust` directly.
 command -v btop &>/dev/null && alias top='btop'
 command -v nvim &>/dev/null && alias vim='nvim'
 command -v lazygit &>/dev/null && alias lg='lazygit'
@@ -202,11 +207,15 @@ alias p='cd /data/projects'
 if command -v pacman &>/dev/null; then
   # Arch-family
   alias update='sudo pacman -Syu'
-  alias install='sudo pacman -S'
+  # Named pacinst, not install: an `install` alias shadows /usr/bin/install,
+  # which nearly every upstream README uses (`install -m 0755 tool ~/.local/bin/`).
+  alias pacinst='sudo pacman -S'
 else
   # Debian/Ubuntu
   alias update='sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y'
-  alias install='sudo apt install'
+  # Named aptinst, not install: an `install` alias shadows /usr/bin/install,
+  # which nearly every upstream README uses (`install -m 0755 tool ~/.local/bin/`).
+  alias aptinst='sudo apt install'
   # Named aptsearch (not `search`) so it can't shadow the ripgrep `search`
   # alias defined in the modern-CLI block above.
   alias aptsearch='apt search'
@@ -316,9 +325,6 @@ if [[ "$TERM_PROGRAM" == "vscode" ]]; then
 else
   [[ -f "$HOME/.p10k.zsh" ]] && source "$HOME/.p10k.zsh"
 fi
-
-# --- Local overrides ---
-[[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
 
 # --- Shell editing mode ---
 bindkey -e
@@ -717,3 +723,10 @@ bv() {
     return 1
   fi
 }
+
+# --- Local overrides ---
+# Sourced LAST so ~/.zshrc.local can genuinely override anything above
+# (e.g. `alias cc='claude'` without --dangerously-skip-permissions, or
+# `bindkey -v`). It used to be sourced before the aliases and keybindings,
+# which silently re-armed them on every new shell.
+[[ -f "$HOME/.zshrc.local" ]] && source "$HOME/.zshrc.local"
