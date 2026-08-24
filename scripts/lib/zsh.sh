@@ -225,7 +225,7 @@ install_zsh() {
     fi
 
     log_detail "Installing zsh..."
-    $SUDO apt-get install -y zsh
+    $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y zsh
 
     if ! command -v zsh &>/dev/null; then
         log_error "Failed to install zsh"

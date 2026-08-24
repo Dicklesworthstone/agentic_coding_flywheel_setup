@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ============================================================
 # ACFS Global Wrapper
 # Installed to /usr/local/bin/acfs for system-wide access
@@ -42,8 +42,6 @@ system_binary_path() {
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/sbin/$name" \
         "/sbin/$name"
     do

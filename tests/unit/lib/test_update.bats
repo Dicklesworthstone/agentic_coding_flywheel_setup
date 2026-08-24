@@ -1821,6 +1821,99 @@ EOF
     [[ -n "$(git -C "$work_repo" status --porcelain --untracked-files=no)" ]]
 }
 
+@test "self-update preserves incomplete-bootstrap files without explicit opt-in" {
+    local temp_root
+    local seed_repo
+    local origin_repo
+    local work_repo
+
+    temp_root="$(create_temp_dir)"
+    seed_repo="$temp_root/seed"
+    origin_repo="$temp_root/origin.git"
+    work_repo="$temp_root/work"
+
+    mkdir -p "$seed_repo" "$work_repo"
+    git -C "$seed_repo" init -b main >/dev/null
+    git -C "$seed_repo" config user.email test@example.invalid
+    git -C "$seed_repo" config user.name "ACFS Test"
+    printf "remote-bytes\n" > "$seed_repo/colliding-file"
+    git -C "$seed_repo" add colliding-file
+    git -C "$seed_repo" commit -m base >/dev/null
+    git clone --bare "$seed_repo" "$origin_repo" >/dev/null 2>&1
+
+    git -C "$work_repo" init -b main >/dev/null
+    git -C "$work_repo" remote add origin "$origin_repo"
+    printf "local-bytes\n" > "$work_repo/colliding-file"
+
+    ACFS_REPO_ROOT="$work_repo"
+    UPDATE_LOG_FILE="/dev/null"
+    UPDATE_SELF=true
+    ACFS_SELF_UPDATE_DONE=false
+    BOOTSTRAP_SELF_UPDATE=false
+    DRY_RUN=false
+    NO_COLOR=1
+    RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
+
+    is_expected_acfs_origin_url() { return 0; }
+    log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
+
+    run update_acfs_self
+    assert_success
+    assert_output --partial "skip|ACFS self-update|incomplete git bootstrap detected"
+    [[ "$(cat "$work_repo/colliding-file")" == "local-bytes" ]]
+
+    run git -C "$work_repo" rev-parse HEAD
+    assert_failure
+}
+
+@test "self-update recovers incomplete bootstrap after explicit opt-in" {
+    local temp_root
+    local seed_repo
+    local origin_repo
+    local work_repo
+
+    temp_root="$(create_temp_dir)"
+    seed_repo="$temp_root/seed"
+    origin_repo="$temp_root/origin.git"
+    work_repo="$temp_root/work"
+
+    mkdir -p "$seed_repo" "$work_repo"
+    git -C "$seed_repo" init -b main >/dev/null
+    git -C "$seed_repo" config user.email test@example.invalid
+    git -C "$seed_repo" config user.name "ACFS Test"
+    printf "remote-bytes\n" > "$seed_repo/colliding-file"
+    git -C "$seed_repo" add colliding-file
+    git -C "$seed_repo" commit -m base >/dev/null
+    git clone --bare "$seed_repo" "$origin_repo" >/dev/null 2>&1
+
+    git -C "$work_repo" init -b main >/dev/null
+    git -C "$work_repo" remote add origin "$origin_repo"
+    printf "local-bytes\n" > "$work_repo/colliding-file"
+
+    ACFS_REPO_ROOT="$work_repo"
+    UPDATE_LOG_FILE="/dev/null"
+    UPDATE_SELF=true
+    ACFS_SELF_UPDATE_DONE=false
+    BOOTSTRAP_SELF_UPDATE=true
+    DRY_RUN=false
+    ACFS_VERSION_DISPLAY="vtest"
+    NO_COLOR=1
+    RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
+
+    is_expected_acfs_origin_url() { return 0; }
+    update_refresh_installed_security() { :; }
+    sync_acfs_deployed() { :; }
+    log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
+
+    run update_acfs_self
+    assert_success
+    assert_output --partial "ok|ACFS vtest|already up to date"
+    [[ "$(cat "$work_repo/colliding-file")" == "remote-bytes" ]]
+
+    run git -C "$work_repo" rev-parse --verify HEAD
+    assert_success
+}
+
 @test "apt_lock_is_held: uses plain fuser when accessible" {
     init_stub_dir
     local lockfile="$HOME/dpkg.lock"
@@ -1890,7 +1983,7 @@ EOF
 
     run grep -F 'sudo_bin="$(get_sudo 2>/dev/null || true)"' "$update"
     assert_success
-    run grep -F '_sudo_prefix_ref=("$sudo_bin" -n)' "$update"
+    run grep -F '_sudo_prefix_ref=("$sudo_bin" -n "$env_bin" "PATH=$UPDATE_PRIVILEGED_PATH")' "$update"
     assert_success
     run grep -F 'run_cmd "$desc" "${sudo_cmd[@]}" "$@"' "$update"
     assert_success
@@ -1904,6 +1997,34 @@ EOF
     assert_success
     run grep -F '"${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 dpkg --configure -a' "$update"
     assert_success
+}
+
+@test "update privileged command discovery excludes caller and locally managed paths" {
+    local update="$PROJECT_ROOT/scripts/lib/update.sh"
+    local resolver_body
+
+    [[ "$(sed -n '1p' "$update")" == '#!/bin/bash' ]]
+    resolver_body="$(declare -f update_system_binary_path)"
+    [[ "$resolver_body" == *'/usr/bin/$name'* ]]
+    [[ "$resolver_body" == *'/usr/sbin/$name'* ]]
+    [[ "$resolver_body" != *'/usr/local/bin/$name'* ]]
+    [[ "$resolver_body" != *'/usr/local/sbin/$name'* ]]
+    [[ "$resolver_body" != *'command -v'* ]]
+}
+
+@test "update root PATH setup keeps target-user bins out of privileged execution" {
+    [[ "$EUID" -eq 0 ]] || skip "root-only PATH invariant"
+
+    local poisoned_home="$BATS_TEST_TMPDIR/target-home"
+    mkdir -p "$poisoned_home/.local/bin"
+    HOME="$poisoned_home"
+    ACFS_BIN_DIR="$poisoned_home/.local/bin"
+    PATH="$poisoned_home/.local/bin:/usr/bin:/bin"
+
+    ensure_path
+
+    [[ "$PATH" == "$UPDATE_PRIVILEGED_PATH" ]]
+    [[ "$PATH" != *"$poisoned_home"* ]]
 }
 
 @test "wait_for_apt_lock: uses trusted fuser resolver instead of caller PATH" {
@@ -12103,6 +12224,9 @@ SECURITY
 
     run grep -F 'ExecStartPre=${am_bin_exec} migrate' "$stack_lib"
     assert_failure
+
+    run grep -F -- '--takeover' "$stack_lib"
+    assert_failure
 }
 
 @test "install.sh Agent Mail unit escapes dynamic systemd values" {
@@ -12157,7 +12281,25 @@ SECURITY
     run grep -F 'stop_agent_mail_fallback' "$stack_lib"
     assert_success
 
-    run grep -F 'systemctl --user enable --now agent-mail.service' "$stack_lib"
+    run grep -F 'stop_agent_mail_fallback || exit 1' "$stack_lib"
+    assert_success
+
+    run grep -F 'systemctl --user show agent-mail.service -p MainPID --value' "$stack_lib"
+    assert_success
+
+    run grep -F '[[ "$victim_pid" =~ ^[1-9][0-9]*$ ]] || return 0' "$stack_lib"
+    assert_success
+
+    run grep -F '[[ "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] || return 0' "$stack_lib"
+    assert_success
+
+    run grep -F '[[ "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]] || return 0' "$stack_lib"
+    assert_success
+
+    run grep -F 'kill -9 "$victim_pid"' "$stack_lib"
+    assert_failure
+
+    run grep -F 'systemctl --user restart agent-mail.service' "$stack_lib"
     assert_success
 }
 

@@ -28,20 +28,20 @@ declare -gA ERROR_PATTERNS=(
 
     ['curl: (28) Connection timed out']="Network timeout. This could be:\n  1. Slow/unstable internet connection\n  2. Firewall blocking outbound HTTPS\n  3. Upstream server temporarily down\nTry: curl -v https://google.com --connect-timeout 10"
 
-    ['curl: (35) SSL connect error']="SSL/TLS handshake failed. Possible causes:\n  1. Outdated ca-certificates: sudo apt-get update && sudo apt-get install -y ca-certificates\n  2. System clock wrong: timedatectl status\n  3. Corporate proxy/firewall intercepting HTTPS"
+    ['curl: (35) SSL connect error']="SSL/TLS handshake failed. Possible causes:\n  1. Outdated ca-certificates: sudo apt-get -o DPkg::Lock::Timeout=120 update && sudo apt-get -o DPkg::Lock::Timeout=120 install -y ca-certificates\n  2. System clock wrong: timedatectl status\n  3. Corporate proxy/firewall intercepting HTTPS"
 
     ['Connection refused']="Connection refused by remote server. The service may be:\n  1. Temporarily down - wait and retry\n  2. Blocked by firewall - check outbound rules\n  3. Rate limited - wait 60 seconds"
 
     # APT/package management
-    ['E: Unable to locate package']="Package not found in APT repositories. Try:\n  sudo apt-get update\nIf still failing, the package may not exist for your Ubuntu version."
+    ['E: Unable to locate package']="Package not found in APT repositories. Try:\n  sudo apt-get -o DPkg::Lock::Timeout=120 update\nIf still failing, the package may not exist for your Ubuntu version."
 
     ['E: Could not get lock']="APT lock held by another process. Solutions:\n  1. Wait for other installs to finish\n  2. Check: ps aux | grep -E 'apt|dpkg'\n  3. Check: sudo systemctl status unattended-upgrades --no-pager || true\n  4. Safest fix if stuck: reboot"
 
-    ['dpkg: error processing']="DPKG database corrupted. Try:\n  sudo dpkg --configure -a\n  sudo apt-get install -f"
+    ['dpkg: error processing']="DPKG database corrupted. Try:\n  sudo dpkg --configure -a\n  sudo apt-get -o DPkg::Lock::Timeout=120 install -f"
 
-    ['Unmet dependencies']="Package dependencies cannot be satisfied. Try:\n  sudo apt-get install -f\n  sudo apt-get update && sudo apt-get upgrade"
+    ['Unmet dependencies']="Package dependencies cannot be satisfied. Try:\n  sudo apt-get -o DPkg::Lock::Timeout=120 install -f\n  sudo apt-get -o DPkg::Lock::Timeout=120 update && sudo apt-get -o DPkg::Lock::Timeout=120 upgrade"
 
-    ['Hash Sum mismatch']="APT reported a hash mismatch. Try:\n  sudo apt-get clean\n  sudo apt-get update\nIf it persists, wait a few minutes and retry. If the same mirror keeps failing, reboot or switch Ubuntu mirrors before retrying."
+    ['Hash Sum mismatch']="APT reported a hash mismatch. Try:\n  sudo apt-get clean\n  sudo apt-get -o DPkg::Lock::Timeout=120 update\nIf it persists, wait a few minutes and retry. If the same mirror keeps failing, reboot or switch Ubuntu mirrors before retrying."
 
     # Permission issues
     ['Permission denied']="Permission issue. Ensure you're running with appropriate privileges:\n  1. Run with sudo: sudo bash install.sh\n  2. Or run as root user\n  3. Check file permissions: ls -la"
@@ -89,9 +89,9 @@ declare -gA ERROR_PATTERNS=(
     ['No module named']="Python module not found. Install with:\n  uv pip install <module>\n  Or: pip install <module>"
 
     # Rust/cargo issues
-    ["linker 'cc' not found"]="C compiler not installed. Install build tools:\n  sudo apt-get install -y build-essential"
+    ["linker 'cc' not found"]="C compiler not installed. Install build tools:\n  sudo apt-get -o DPkg::Lock::Timeout=120 install -y build-essential"
 
-    ['Could not compile']="Rust compilation failed. Usually needs:\n  sudo apt-get install -y build-essential pkg-config libssl-dev"
+    ['Could not compile']="Rust compilation failed. Usually needs:\n  sudo apt-get -o DPkg::Lock::Timeout=120 install -y build-essential pkg-config libssl-dev"
 
     # Timeout/hanging
     ['timed out']="Operation timed out. This could be:\n  1. Slow network - retry on stable connection\n  2. Overloaded server - wait and retry\n  3. Firewall blocking - check outbound rules"

@@ -493,7 +493,7 @@ swarm_plan_build_report() {
 
     jq_bin="$(swarm_plan_binary_path jq 2>/dev/null || true)"
     if [[ -z "$jq_bin" ]]; then
-        printf '{"schema_version":1,"status":"fail","exit_code":2,"recommendation":"block","recommended_action":"jq is required for swarm plan JSON evaluation","checks":[{"id":"jq","status":"fail","summary":"jq is required for swarm plan JSON evaluation","details":[],"commands":["sudo apt-get install -y jq"]}],"launch_profile":{"recommended":false,"not_executed":true,"agent_count":null,"label":null,"mix":null,"command":null},"warnings":["jq is required for swarm plan JSON evaluation"],"next_commands":["sudo apt-get install -y jq"],"examples":[]}\n'
+        printf '{"schema_version":1,"status":"fail","exit_code":2,"recommendation":"block","recommended_action":"jq is required for swarm plan JSON evaluation","checks":[{"id":"jq","status":"fail","summary":"jq is required for swarm plan JSON evaluation","details":[],"commands":["sudo apt-get -o DPkg::Lock::Timeout=120 install -y jq"]}],"launch_profile":{"recommended":false,"not_executed":true,"agent_count":null,"label":null,"mix":null,"command":null},"warnings":["jq is required for swarm plan JSON evaluation"],"next_commands":["sudo apt-get -o DPkg::Lock::Timeout=120 install -y jq"],"examples":[]}\n'
         return 0
     fi
 

@@ -618,12 +618,24 @@ _acfs_user_path_export_source() {
     printf '%s\n' '_acfs_primary_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"; export PATH="${_acfs_primary_bin}:$HOME/.local/bin:$HOME/.acfs/bin:$HOME/.cargo/bin:$HOME/.bun/bin:$HOME/.atuin/bin:$HOME/go/bin:$PATH"'
 }
 
+# Shell source for privileged commands. Root execution must never search the
+# target user's bin directories or installation-specific local prefixes.
+_acfs_privileged_path_export_source() {
+    printf '%s\n' 'export PATH="/usr/sbin:/usr/bin:/sbin:/bin"'
+}
+
 _run_shell_with_strict_mode() {
     local cmd="$1"
-    local path_export_source
+    local path_export_source="${2:-}"
     local env_bin=""
     local bash_bin=""
-    path_export_source="$(_acfs_user_path_export_source)"
+    if [[ -z "$path_export_source" ]]; then
+        if [[ "$EUID" -eq 0 ]]; then
+            path_export_source="$(_acfs_privileged_path_export_source)"
+        else
+            path_export_source="$(_acfs_user_path_export_source)"
+        fi
+    fi
 
     env_bin="$(_acfs_system_binary_path env 2>/dev/null || true)"
     [[ -n "$env_bin" ]] || {
@@ -697,8 +709,6 @@ if ! declare -f _acfs_system_binary_path >/dev/null 2>&1; then
         for candidate in \
             "/usr/bin/$name" \
             "/bin/$name" \
-            "/usr/local/bin/$name" \
-            "/usr/local/sbin/$name" \
             "/usr/sbin/$name" \
             "/sbin/$name"
         do
@@ -1178,8 +1188,9 @@ run_as_root_shell() {
     local bash_bin=""
     local sudo_bin=""
 
+    path_export_source="$(_acfs_privileged_path_export_source)"
     if [[ "$EUID" -eq 0 ]]; then
-        _run_shell_with_strict_mode "$cmd"
+        _run_shell_with_strict_mode "$cmd" "$path_export_source"
         return $?
     fi
     env_bin="$(_acfs_system_binary_path env 2>/dev/null || true)"
@@ -1192,8 +1203,6 @@ run_as_root_shell() {
         log_error "Unable to locate bash for root shell command"
         return 1
     }
-    path_export_source="$(_acfs_user_path_export_source)"
-
     # Build env args for passing through sudo
     local -a env_cmd=()
     local -a env_args=()
@@ -1214,24 +1223,6 @@ run_as_root_shell() {
     [[ -n "${ACFS_REF:-}" ]] && env_args+=("ACFS_REF=$ACFS_REF")
 
     env_cmd=("$env_bin" "${env_args[@]}" "ACFS_BASH_BIN=$bash_bin" "UV_NO_CONFIG=1")
-
-    if [[ -n "${SUDO:-}" ]]; then
-        if [[ "$SUDO" == /* && -x "$SUDO" ]]; then
-            sudo_bin="$SUDO"
-        else
-            sudo_bin="$(_acfs_system_binary_path sudo 2>/dev/null || true)"
-        fi
-        [[ -n "$sudo_bin" ]] || {
-            log_error "run_as_root_shell requires root or sudo"
-            return 1
-        }
-        if [[ -n "$cmd" ]]; then
-            "$sudo_bin" -n "${env_cmd[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; eval \"\$1\"" _ "$cmd"
-            return $?
-        fi
-        "$sudo_bin" -n "${env_cmd[@]}" "$bash_bin" -c "$path_export_source; set -euo pipefail; (printf \"%s\\n\" \"set -euo pipefail\"; cat) | \"\$ACFS_BASH_BIN\" -s"
-        return $?
-    fi
 
     sudo_bin="$(_acfs_system_binary_path sudo 2>/dev/null || true)"
     if [[ -n "$sudo_bin" ]]; then

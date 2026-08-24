@@ -370,7 +370,7 @@ ubuntu_get_next_upgrade() {
     # Check if do-release-upgrade is available
     if ! command -v do-release-upgrade &>/dev/null; then
         log_error "do-release-upgrade not found. Installing ubuntu-release-upgrader-core..."
-        apt-get install -y ubuntu-release-upgrader-core &>/dev/null || return 1
+        apt-get -o DPkg::Lock::Timeout=120 install -y ubuntu-release-upgrader-core &>/dev/null || return 1
     fi
 
     # Query available upgrade (check mode, don't actually do it)
@@ -704,7 +704,7 @@ LEGACY_SOURCES
     mv "$sources_file" "$disabled_file"
 
     # Update apt to use the new sources
-    apt-get update -qq 2>/dev/null || true
+    apt-get -o DPkg::Lock::Timeout=120 update -qq 2>/dev/null || true
 
     log_success "DEB822 workaround applied - using legacy sources format"
     return 0
@@ -737,7 +737,7 @@ ubuntu_cleanup_deb822_workaround() {
 
     if [[ -f "$disabled_file" ]]; then
         if mv "$disabled_file" "$sources_file" 2>/dev/null; then
-            apt-get update -qq 2>/dev/null || true
+            apt-get -o DPkg::Lock::Timeout=120 update -qq 2>/dev/null || true
             log_warn "Restored ubuntu.sources from backup (upgrade may have failed before writing new sources)"
         else
             log_warn "Failed to restore ubuntu.sources from backup at $disabled_file"
@@ -755,7 +755,7 @@ ubuntu_prepare_upgrade() {
 
     # Update package lists
     log_detail "Updating package lists..."
-    if ! apt-get update -y; then
+    if ! apt-get -o DPkg::Lock::Timeout=120 update -y; then
         log_error "apt-get update failed"
         return 1
     fi
@@ -763,7 +763,7 @@ ubuntu_prepare_upgrade() {
     # Upgrade existing packages
     log_detail "Upgrading installed packages..."
     export DEBIAN_FRONTEND=noninteractive
-    if ! apt-get dist-upgrade -y \
+    if ! apt-get -o DPkg::Lock::Timeout=120 dist-upgrade -y \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold"; then
         log_error "apt-get dist-upgrade failed"
@@ -771,8 +771,8 @@ ubuntu_prepare_upgrade() {
     fi
 
     # Clean up
-    apt-get autoremove -y &>/dev/null || true
-    apt-get autoclean -y &>/dev/null || true
+    apt-get -o DPkg::Lock::Timeout=120 autoremove -y &>/dev/null || true
+    apt-get -o DPkg::Lock::Timeout=120 autoclean -y &>/dev/null || true
 
     log_success "System prepared for upgrade"
     return 0
@@ -1855,10 +1855,10 @@ ubuntu_emergency_cleanup() {
     log_warn "Attempting emergency disk cleanup..."
 
     # Clear apt cache
-    apt-get clean 2>/dev/null || true
+    apt-get -o DPkg::Lock::Timeout=120 clean 2>/dev/null || true
 
     # Remove old kernels (keep current)
-    apt-get autoremove -y 2>/dev/null || true
+    apt-get -o DPkg::Lock::Timeout=120 autoremove -y 2>/dev/null || true
 
     # Clear old journal logs
     journalctl --vacuum-size=100M 2>/dev/null || true
@@ -1926,7 +1926,7 @@ ubuntu_fix_dpkg() {
     dpkg --configure -a 2>/dev/null || true
 
     # Fix broken dependencies
-    apt-get -f install -y 2>/dev/null || true
+    apt-get -o DPkg::Lock::Timeout=120 -f install -y 2>/dev/null || true
 
     log_success "dpkg state fixed"
     return 0
@@ -1948,7 +1948,7 @@ ubuntu_recover_failed_upgrade() {
         fi
         # Remove the temp legacy file if it exists
         rm -f "/etc/apt/sources.list.d/ubuntu-acfs-temp.list"
-        apt-get update -qq 2>/dev/null || true
+        apt-get -o DPkg::Lock::Timeout=120 update -qq 2>/dev/null || true
     fi
 
     # Try fixing dpkg first
@@ -1963,7 +1963,7 @@ ubuntu_recover_failed_upgrade() {
 
     # Try dist-upgrade to complete any partial upgrade
     export DEBIAN_FRONTEND=noninteractive
-    if apt-get dist-upgrade -y \
+    if apt-get -o DPkg::Lock::Timeout=120 dist-upgrade -y \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold" 2>/dev/null; then
         log_success "Recovery dist-upgrade succeeded"
@@ -2034,7 +2034,7 @@ ubuntu_upgrade_with_fallback() {
     ubuntu_create_diagnostic_dump
 
     # Check if system is still functional
-    if apt-get update &>/dev/null; then
+    if apt-get -o DPkg::Lock::Timeout=120 update &>/dev/null; then
         log_warn "System is functional. Continuing ACFS on current Ubuntu version."
         log_warn "Some features may not work optimally on older Ubuntu."
 

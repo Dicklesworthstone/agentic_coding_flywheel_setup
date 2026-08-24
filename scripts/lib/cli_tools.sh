@@ -665,13 +665,13 @@ install_apt_cli_tools() {
     log_detail "Installing apt-based CLI tools..."
 
     # Update package list
-    $sudo_cmd apt-get update -y >/dev/null 2>&1 || true
+    $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 update -y >/dev/null 2>&1 || true
 
     # Install core packages (these should always be available)
     for pkg in "${APT_CLI_TOOLS[@]}"; do
         if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
             log_detail "Installing $pkg..."
-            $sudo_cmd apt-get install -y "$pkg" >/dev/null 2>&1 || log_warn "Could not install $pkg via apt"
+            $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y "$pkg" >/dev/null 2>&1 || log_warn "Could not install $pkg via apt"
         fi
     done
 
@@ -679,7 +679,7 @@ install_apt_cli_tools() {
     for pkg in "${APT_CLI_TOOLS_OPTIONAL[@]}"; do
         if ! dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
             log_detail "Installing $pkg (optional)..."
-            $sudo_cmd apt-get install -y "$pkg" >/dev/null 2>&1 || true
+            $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y "$pkg" >/dev/null 2>&1 || true
         fi
     done
 
@@ -798,8 +798,8 @@ install_gum_cli_tool() {
     $sudo_cmd mkdir -p /etc/apt/keyrings
     curl --proto '=https' --proto-redir '=https' -fsSL https://repo.charm.sh/apt/gpg.key | $sudo_cmd gpg --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null || true
     printf 'Types: deb\nURIs: https://repo.charm.sh/apt/\nSuites: *\nComponents: *\nSigned-By: /etc/apt/keyrings/charm.gpg\n' | $sudo_cmd tee /etc/apt/sources.list.d/charm.sources > /dev/null
-    $sudo_cmd apt-get update -y >/dev/null 2>&1 || true
-    $sudo_cmd apt-get install -y gum >/dev/null 2>&1 || log_warn "Could not install gum"
+    $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 update -y >/dev/null 2>&1 || true
+    $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y gum >/dev/null 2>&1 || log_warn "Could not install gum"
 
     if _cli_command_exists gum; then
         log_success "gum installed"
@@ -819,7 +819,7 @@ install_lazygit() {
     log_detail "Installing lazygit..."
 
     # Try apt first (available in newer Ubuntu)
-    if $sudo_cmd apt-get install -y lazygit >/dev/null 2>&1; then
+    if $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y lazygit >/dev/null 2>&1; then
         log_success "lazygit installed via apt"
         return 0
     fi
@@ -1037,7 +1037,7 @@ install_docker() {
         log_detail "Docker already installed"
     else
         log_detail "Installing Docker..."
-        $sudo_cmd apt-get install -y docker.io docker-compose-plugin >/dev/null 2>&1 || log_warn "Could not install Docker"
+        $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y docker.io docker-compose-plugin >/dev/null 2>&1 || log_warn "Could not install Docker"
     fi
 
     # Add target user to docker group

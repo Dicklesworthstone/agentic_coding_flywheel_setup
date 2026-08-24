@@ -1015,6 +1015,39 @@ test_fix_path_ordering_removes_new_file_when_record_change_fails() {
     return 0
 }
 
+test_fix_path_ordering_refuses_existing_file_when_backup_fails() (
+    setup_test_env
+
+    local zshrc="$HOME/.zshrc"
+    local before_contents="# Existing user configuration"
+    printf '%s\n' "$before_contents" > "$zshrc"
+
+    create_backup() {
+        return 1
+    }
+
+    if fix_path_ordering "path.ordering" >/dev/null 2>&1; then
+        echo "  fix_path_ordering unexpectedly mutated without a recovery backup"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$(cat "$zshrc")" != "$before_contents" ]]; then
+        echo "  Existing .zshrc changed after backup creation failed"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ $FIX_FAILED -ne 1 ]]; then
+        echo "  FIX_FAILED should be 1 after backup failure, got $FIX_FAILED"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
 # ============================================================
 # Test: fix_config_copy
 # ============================================================
@@ -1959,6 +1992,40 @@ test_fix_acfs_sourcing_removes_new_file_when_record_change_fails() {
     return 0
 }
 
+test_fix_acfs_sourcing_refuses_existing_file_when_backup_fails() (
+    setup_test_env
+
+    local zshrc="$HOME/.zshrc"
+    local before_contents="# Existing user configuration"
+    printf '%s\n' "$before_contents" > "$zshrc"
+    printf '# ACFS zsh config\n' > "$HOME/.acfs/zsh/acfs.zshrc"
+
+    create_backup() {
+        return 1
+    }
+
+    if fix_acfs_sourcing "shell.acfs_sourced" >/dev/null 2>&1; then
+        echo "  fix_acfs_sourcing unexpectedly mutated without a recovery backup"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$(cat "$zshrc")" != "$before_contents" ]]; then
+        echo "  Existing .zshrc changed after ACFS sourcing backup failed"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ $FIX_FAILED -ne 1 ]]; then
+        echo "  FIX_FAILED should be 1 after backup failure, got $FIX_FAILED"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
 test_fix_stack_install_applies_and_records_change() {
     setup_test_env
     export PATH="$HOME/.local/bin:$PATH"
@@ -2785,7 +2852,7 @@ EOF
     return 0
 }
 
-test_fix_ssh_keepalive_restores_file_when_backup_and_record_change_fail() {
+test_fix_ssh_keepalive_refuses_mutation_when_backup_fails() {
     setup_test_env
     local original_resolver=""
     local temp_bin=""
@@ -2794,10 +2861,8 @@ test_fix_ssh_keepalive_restores_file_when_backup_and_record_change_fail() {
     printf 'Port 22\n' > "$DOCTOR_FIX_SSHD_CONFIG"
     local original_content=""
     local original_create_backup=""
-    local original_record_change=""
     original_content="$(cat "$DOCTOR_FIX_SSHD_CONFIG")"
     original_create_backup="$(declare -f create_backup)"
-    original_record_change="$(declare -f record_change)"
 
     start_autofix_session >/dev/null || {
         echo "  Failed to start autofix session"
@@ -2806,7 +2871,6 @@ test_fix_ssh_keepalive_restores_file_when_backup_and_record_change_fail() {
     }
 
     create_backup() { return 1; }
-    record_change() { return 1; }
     original_resolver="$(declare -f doctor_fix_system_binary_path)"
     temp_bin="$ACFS_STATE_DIR/bin"
     mkdir -p "$temp_bin"
@@ -2832,8 +2896,7 @@ EOF
     if fix_ssh_keepalive "network.ssh_keepalive" >/dev/null 2>&1; then
         eval "$original_resolver"
         eval "$original_create_backup"
-        eval "$original_record_change"
-        echo "  fix_ssh_keepalive unexpectedly succeeded when backup and journaling failed"
+        echo "  fix_ssh_keepalive unexpectedly succeeded when backup creation failed"
         end_autofix_session >/dev/null 2>&1 || true
         cleanup_test_env
         return 1
@@ -2841,24 +2904,23 @@ EOF
 
     eval "$original_resolver"
     eval "$original_create_backup"
-    eval "$original_record_change"
 
     if [[ "$(cat "$DOCTOR_FIX_SSHD_CONFIG")" != "$original_content" ]]; then
-        echo "  fix_ssh_keepalive did not restore sshd_config after fallback rollback"
+        echo "  fix_ssh_keepalive changed sshd_config without a recovery backup"
         end_autofix_session >/dev/null 2>&1 || true
         cleanup_test_env
         return 1
     fi
 
     if grep -q 'ClientAliveInterval 60' "$DOCTOR_FIX_SSHD_CONFIG"; then
-        echo "  fix_ssh_keepalive left keepalive settings behind after rollback"
+        echo "  fix_ssh_keepalive left keepalive settings behind after backup failure"
         end_autofix_session >/dev/null 2>&1 || true
         cleanup_test_env
         return 1
     fi
 
     if [[ $FIX_FAILED -ne 1 ]]; then
-        echo "  FIX_FAILED should be 1 after keepalive journaling failure, got $FIX_FAILED"
+        echo "  FIX_FAILED should be 1 after keepalive backup failure, got $FIX_FAILED"
         end_autofix_session >/dev/null 2>&1 || true
         cleanup_test_env
         return 1
@@ -3070,6 +3132,480 @@ EOF
     return 0
 }
 
+test_agent_mail_fix_stop_fallback_recognizes_bare_am_argv() {
+    setup_test_env
+    export PATH="$HOME/.local/bin:$PATH"
+
+    mkdir -p "$HOME/.mcp_agent_mail_git_mailbox_repo" "$HOME/mcp_agent_mail"
+    cat > "$HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$HOME/mcp_agent_mail/am"
+
+    local fallback_pid_file="$HOME/.mcp_agent_mail_git_mailbox_repo/agent-mail.pid"
+    echo "4242" > "$fallback_pid_file"
+
+    systemctl() { return 1; }
+    kill() {
+        if [[ "${1:-}" == "-0" ]]; then
+            if [[ "${2:-}" == "4242" && ! -f "$HOME/.terminated" ]]; then
+                return 0
+            fi
+            return 1
+        fi
+        if [[ "${1:-}" == "4242" ]]; then
+            : > "$HOME/.terminated"
+            return 0
+        fi
+        return 1
+    }
+    ps() {
+        printf '%s\n' 'am serve-http --host 127.0.0.1 --port 8765'
+    }
+
+    if ! agent_mail_fix_stop_fallback; then
+        echo "  bare am fallback owner should be stopped gracefully"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ! -f "$HOME/.terminated" ]]; then
+        echo "  bare am fallback owner was mistaken for a stale PID"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -f "$fallback_pid_file" ]]; then
+        echo "  Fallback PID file should be removed after graceful termination"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    unset -f systemctl kill ps
+    cleanup_test_env
+    return 0
+}
+
+test_agent_mail_fix_stop_fallback_requires_exact_server_role() {
+    setup_test_env
+    export PATH="$HOME/.local/bin:$PATH"
+
+    mkdir -p "$HOME/.mcp_agent_mail_git_mailbox_repo" "$HOME/mcp_agent_mail"
+    cat > "$HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$HOME/mcp_agent_mail/am"
+
+    local fallback_pid_file="$HOME/.mcp_agent_mail_git_mailbox_repo/agent-mail.pid"
+    local MOCK_AM_ARGS="am doctor health"
+    echo "-1" > "$fallback_pid_file"
+
+    systemctl() { return 1; }
+    kill() {
+        : > "$HOME/.kill-called"
+        if [[ "${1:-}" == "-0" ]]; then
+            return 0
+        fi
+        : > "$HOME/.signalled"
+        return 0
+    }
+    ps() {
+        printf '%s\n' "$MOCK_AM_ARGS"
+    }
+
+    if ! agent_mail_fix_stop_fallback; then
+        echo "  malformed PID evidence should be discarded without signalling"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -f "$HOME/.kill-called" ]]; then
+        echo "  malformed PID evidence reached the kill builtin"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    echo "4242" > "$fallback_pid_file"
+    if ! agent_mail_fix_stop_fallback; then
+        echo "  unrelated am command should be treated as stale PID evidence"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -f "$HOME/.signalled" ]]; then
+        echo "  unrelated am command was signalled"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    echo "4242" > "$fallback_pid_file"
+    MOCK_AM_ARGS="am serve-http --host 127.0.0.1 --port 8766"
+    if ! agent_mail_fix_stop_fallback; then
+        echo "  Agent Mail server on another port should be treated as stale PID evidence"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -f "$HOME/.signalled" ]]; then
+        echo "  Agent Mail server on another port was signalled"
+        unset -f systemctl kill ps
+        cleanup_test_env
+        return 1
+    fi
+
+    unset -f systemctl kill ps
+    cleanup_test_env
+    return 0
+}
+
+test_agent_mail_fix_stop_fallback_leaves_systemd_main_pid_to_supervisor() {
+    setup_test_env
+    export PATH="$HOME/.local/bin:$PATH"
+
+    mkdir -p "$HOME/.mcp_agent_mail_git_mailbox_repo"
+    cat > "$HOME/.local/bin/am" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$HOME/.local/bin/am"
+
+    local fallback_pid_file="$HOME/.mcp_agent_mail_git_mailbox_repo/agent-mail.pid"
+    echo "4242" > "$fallback_pid_file"
+
+    systemctl() {
+        if [[ "${1:-}" == "--user" && "${2:-}" == "show-environment" ]]; then
+            return 0
+        fi
+        if [[ "${1:-}" == "--user" && "${2:-}" == "show" && "${3:-}" == "agent-mail.service" ]]; then
+            printf '%s\n' '4242'
+            return 0
+        fi
+        return 1
+    }
+    kill() {
+        if [[ "${1:-}" != "-0" ]]; then
+            : > "$HOME/.signalled"
+        fi
+        return 0
+    }
+
+    if ! agent_mail_fix_stop_fallback; then
+        echo "  agent_mail_fix_stop_fallback should leave the systemd owner to its supervisor"
+        unset -f systemctl kill
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -f "$fallback_pid_file" ]]; then
+        echo "  Stale fallback PID file should be removed for the systemd-owned MainPID"
+        unset -f systemctl kill
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -f "$HOME/.signalled" ]]; then
+        echo "  systemd-owned Agent Mail process was signalled directly"
+        unset -f systemctl kill
+        cleanup_test_env
+        return 1
+    fi
+
+    unset -f systemctl kill
+    cleanup_test_env
+    return 0
+}
+
+test_agent_mail_fix_stop_fallback_refuses_hard_kill() {
+    setup_test_env
+    export PATH="$HOME/.local/bin:$PATH"
+
+    mkdir -p "$HOME/.mcp_agent_mail_git_mailbox_repo"
+    cat > "$HOME/.local/bin/am" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$HOME/.local/bin/am"
+
+    local fallback_pid_file="$HOME/.mcp_agent_mail_git_mailbox_repo/agent-mail.pid"
+    echo "4242" > "$fallback_pid_file"
+
+    kill() {
+        if [[ "${1:-}" == "-0" && "${2:-}" == "4242" ]]; then
+            return 0
+        fi
+        if [[ "${1:-}" == "-9" ]]; then
+            : > "$HOME/.hard-killed"
+            return 0
+        fi
+        return 0
+    }
+    ps() {
+        printf '%s\n' "$HOME/.local/bin/am serve-http --host 127.0.0.1 --port 8765"
+    }
+    sleep() { :; }
+
+    if agent_mail_fix_stop_fallback >/dev/null 2>&1; then
+        echo "  agent_mail_fix_stop_fallback should fail while the owner remains live"
+        unset -f kill ps sleep
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -f "$HOME/.hard-killed" ]]; then
+        echo "  Live Agent Mail owner was hard-killed"
+        unset -f kill ps sleep
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ! -f "$fallback_pid_file" ]]; then
+        echo "  PID evidence should remain when graceful stop fails"
+        unset -f kill ps sleep
+        cleanup_test_env
+        return 1
+    fi
+
+    unset -f kill ps sleep
+    cleanup_test_env
+    return 0
+}
+
+test_agent_mail_fix_safe_to_mutate_requires_drain_attestation() {
+    setup_test_env
+    local fake_am="$HOME/fake-am"
+
+    cat > "$fake_am" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"safe_to_mutate":false}'
+EOF
+    chmod +x "$fake_am"
+
+    local drain_rc=0
+    agent_mail_fix_safe_to_mutate "$fake_am" || drain_rc=$?
+    if [[ "$drain_rc" -ne 1 ]]; then
+        echo "  Explicit safe_to_mutate=false drain result did not return the live-owner status"
+        cleanup_test_env
+        return 1
+    fi
+
+    cat > "$fake_am" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"message":"reported safe_to_mutate true","result":{"safe_to_mutate":true}}'
+EOF
+    chmod +x "$fake_am"
+
+    drain_rc=0
+    agent_mail_fix_safe_to_mutate "$fake_am" || drain_rc=$?
+    if [[ "$drain_rc" -ne 2 ]]; then
+        echo "  Nested safe_to_mutate value was not rejected as malformed drain attestation"
+        cleanup_test_env
+        return 1
+    fi
+
+    cat > "$fake_am" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"safe_to_mutate":true}'
+EOF
+    chmod +x "$fake_am"
+
+    if ! agent_mail_fix_safe_to_mutate "$fake_am"; then
+        echo "  Explicit safe_to_mutate=true drain result was rejected"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_fix_mcp_agent_mail_stops_after_failed_database_repair() (
+    setup_test_env
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    export TARGET_USER="$(id -un)"
+    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/mcp_agent_mail"
+    export PATH="$TARGET_HOME/.local/bin:$PATH"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version)
+        printf '%s\n' 'am 1.0.0'
+        ;;
+    doctor)
+        case "${2:-}" in
+            drain)
+                printf '%s\n' '{"safe_to_mutate":true}'
+                ;;
+            repair)
+                exit 17
+                ;;
+            fix)
+                : > "$HOME/.doctor-fix-ran-after-repair-failure"
+                ;;
+            *)
+                exit 0
+                ;;
+        esac
+        ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/am"
+    ln -s "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
+
+    doctor_fix_runtime_home() { printf '%s\n' "$TARGET_HOME"; }
+    doctor_fix_runtime_user() { printf '%s\n' "$TARGET_USER"; }
+    doctor_fix_agent_mail_bin() { printf '%s\n' "$TARGET_HOME/mcp_agent_mail/am"; }
+    doctor_fix_source_stack_lib() { return 0; }
+    _stack_configure_agent_mail_service() { return 75; }
+    doctor_fix_system_curl() { return 0; }
+    agent_mail_fix_readiness_ready() { return 0; }
+    agent_mail_fix_doctor_healthy() { return 0; }
+
+    FIX_FAILED=0
+    if fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
+        echo "  fix_mcp_agent_mail reported success after database repair failed"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -f "$HOME/.doctor-fix-ran-after-repair-failure" ]]; then
+        echo "  doctor fix ran after database repair failed"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$FIX_FAILED" -ne 1 ]]; then
+        echo "  failed database repair was not counted exactly once"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
+test_fix_mcp_agent_mail_does_not_mask_service_failure_with_healthy_process() (
+    setup_test_env
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    export TARGET_USER="$(id -un)"
+    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/mcp_agent_mail"
+    export PATH="$TARGET_HOME/.local/bin:$PATH"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version)
+        printf '%s\n' 'am 1.0.0'
+        ;;
+    doctor)
+        case "${2:-}" in
+            drain)
+                printf '%s\n' '{"safe_to_mutate":false}'
+                ;;
+            *)
+                exit 0
+                ;;
+        esac
+        ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/am"
+    ln -s "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
+
+    doctor_fix_runtime_home() { printf '%s\n' "$TARGET_HOME"; }
+    doctor_fix_runtime_user() { printf '%s\n' "$TARGET_USER"; }
+    doctor_fix_agent_mail_bin() { printf '%s\n' "$TARGET_HOME/mcp_agent_mail/am"; }
+    doctor_fix_source_stack_lib() { return 0; }
+    _stack_configure_agent_mail_service() { return 1; }
+    doctor_fix_system_curl() { return 0; }
+    agent_mail_fix_readiness_ready() { return 0; }
+    agent_mail_fix_doctor_healthy() { return 0; }
+
+    FIX_FAILED=0
+    if fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
+        echo "  fix_mcp_agent_mail masked a service-management failure with old-process health"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$FIX_FAILED" -ne 1 ]]; then
+        echo "  service-management failure was not counted exactly once"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
+test_fix_mcp_agent_mail_requires_fresh_health_after_service_restart() (
+    setup_test_env
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    export TARGET_USER="$(id -un)"
+    mkdir -p "$TARGET_HOME/.local/bin" "$TARGET_HOME/mcp_agent_mail"
+    export PATH="$TARGET_HOME/.local/bin:$PATH"
+
+    cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --version)
+        printf '%s\n' 'am 1.0.0'
+        ;;
+    doctor)
+        case "${2:-}" in
+            drain)
+                printf '%s\n' '{"safe_to_mutate":false}'
+                ;;
+            *)
+                exit 0
+                ;;
+        esac
+        ;;
+esac
+EOF
+    chmod +x "$TARGET_HOME/mcp_agent_mail/am"
+    ln -s "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
+
+    doctor_fix_runtime_home() { printf '%s\n' "$TARGET_HOME"; }
+    doctor_fix_runtime_user() { printf '%s\n' "$TARGET_USER"; }
+    doctor_fix_agent_mail_bin() { printf '%s\n' "$TARGET_HOME/mcp_agent_mail/am"; }
+    doctor_fix_source_stack_lib() { return 0; }
+    _stack_configure_agent_mail_service() { return 0; }
+    doctor_fix_record_change_or_rollback() { return 0; }
+    doctor_fix_system_curl() { return 0; }
+    agent_mail_fix_readiness_ready() { return 0; }
+    agent_mail_fix_wait_for_health() { return 1; }
+    agent_mail_fix_doctor_healthy() { return 0; }
+
+    FIX_FAILED=0
+    FIX_APPLIED=0
+    FIXES_APPLIED=()
+    if fix_mcp_agent_mail "fix.stack.mcp_agent_mail" >/dev/null 2>&1; then
+        echo "  fix_mcp_agent_mail reused stale pre-restart health after readiness failed"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$FIX_FAILED" -ne 1 ]]; then
+        echo "  failed post-restart readiness was not counted exactly once"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
 test_agent_mail_fix_write_unit_prefers_target_install_over_current_shell_am() {
     setup_test_env
 
@@ -3254,6 +3790,9 @@ case "${1:-}" in
         ;;
     doctor)
         case "${2:-}" in
+            drain)
+                echo '{"safe_to_mutate":true}'
+                ;;
             repair|fix)
                 exit 0
                 ;;
@@ -3358,6 +3897,9 @@ case "${1:-}" in
         ;;
     doctor)
         case "${2:-}" in
+            drain)
+                echo '{"safe_to_mutate":true}'
+                ;;
             repair|fix)
                 exit 0
                 ;;
@@ -3489,6 +4031,8 @@ test_fix_mcp_agent_mail_dry_run_reports_symlink_and_repair() {
 exit 0
 EOF
     chmod +x "$TARGET_HOME/.local/bin/am"
+    local original_cli_checksum=""
+    original_cli_checksum="$(calculate_backup_checksum "$TARGET_HOME/.local/bin/am")"
 
     cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
 #!/usr/bin/env bash
@@ -3520,8 +4064,22 @@ EOF
         return 1
     fi
 
-    if ! printf '%s\n' "${FIXES_DRY_RUN[@]}" | grep -Fq 'fix.stack.mcp_agent_mail|Repair MCP Agent Mail and apply upstream doctor fixes'; then
+    if ! printf '%s\n' "${FIXES_DRY_RUN[@]}" | grep -Fq 'fix.stack.mcp_agent_mail|Inspect MCP Agent Mail drain state, repair only when safe_to_mutate=true'; then
         echo "  dry-run stopped after symlink repair and did not report the main Agent Mail repair"
+        DOCTOR_FIX_DRY_RUN=false
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$(calculate_backup_checksum "$TARGET_HOME/.local/bin/am")" != "$original_cli_checksum" ]]; then
+        echo "  dry-run modified the existing Agent Mail CLI entry"
+        DOCTOR_FIX_DRY_RUN=false
+        cleanup_test_env
+        return 1
+    fi
+
+    if find "$ACFS_BACKUPS_DIR" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+        echo "  dry-run created an autofix backup"
         DOCTOR_FIX_DRY_RUN=false
         cleanup_test_env
         return 1
@@ -3550,6 +4108,8 @@ test_fix_mcp_agent_mail_fails_when_symlink_repair_fails() {
 exit 0
 EOF
     chmod +x "$TARGET_HOME/.local/bin/am"
+    local original_cli_checksum=""
+    original_cli_checksum="$(calculate_backup_checksum "$TARGET_HOME/.local/bin/am")"
 
     cat > "$TARGET_HOME/mcp_agent_mail/am" <<'EOF'
 #!/usr/bin/env bash
@@ -3565,6 +4125,7 @@ EOF
     chmod +x "$TARGET_HOME/mcp_agent_mail/am"
 
     _stack_repair_agent_mail_cli_symlink() {
+        ln -sfn "$TARGET_HOME/mcp_agent_mail/am" "$TARGET_HOME/.local/bin/am"
         return 1
     }
 
@@ -3576,6 +4137,13 @@ EOF
 
     if [[ -s "$ACFS_CHANGES_FILE" ]]; then
         echo "  fix_mcp_agent_mail should not record changes when symlink repair fails before repair work starts"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -L "$TARGET_HOME/.local/bin/am" ]] ||
+       [[ "$(calculate_backup_checksum "$TARGET_HOME/.local/bin/am")" != "$original_cli_checksum" ]]; then
+        echo "  fix_mcp_agent_mail did not restore the original CLI after a partial symlink repair"
         cleanup_test_env
         return 1
     fi
@@ -3824,6 +4392,7 @@ main() {
     run_test test_fix_path_ordering_dry_run
     run_test test_fix_path_ordering_restores_file_when_record_change_fails
     run_test test_fix_path_ordering_removes_new_file_when_record_change_fails
+    run_test test_fix_path_ordering_refuses_existing_file_when_backup_fails
 
     # fix_config_copy tests
     run_test test_fix_config_copy_applies
@@ -3853,6 +4422,7 @@ main() {
     run_test test_fix_acfs_sourcing_missing_acfs_config
     run_test test_fix_acfs_sourcing_dry_run
     run_test test_fix_acfs_sourcing_removes_new_file_when_record_change_fails
+    run_test test_fix_acfs_sourcing_refuses_existing_file_when_backup_fails
     run_test test_fix_stack_install_applies_and_records_change
     run_test test_fix_stack_install_uses_target_runtime_home
     run_test test_fix_stack_install_runs_from_target_runtime_home
@@ -3871,10 +4441,18 @@ main() {
     run_test test_fix_ssh_server_records_change_when_enabling_service
     run_test test_fix_ssh_server_fails_when_service_enable_fails
     run_test test_fix_ssh_keepalive_applies_and_records_change
-    run_test test_fix_ssh_keepalive_restores_file_when_backup_and_record_change_fail
+    run_test test_fix_ssh_keepalive_refuses_mutation_when_backup_fails
     run_test test_fix_dcg_hook_uninstalls_when_record_change_fails
     run_test test_dcg_hook_already_installed_detects_hook_wiring
     run_test test_agent_mail_fix_stop_fallback_cleans_up_matching_pid
+    run_test test_agent_mail_fix_stop_fallback_recognizes_bare_am_argv
+    run_test test_agent_mail_fix_stop_fallback_requires_exact_server_role
+    run_test test_agent_mail_fix_stop_fallback_leaves_systemd_main_pid_to_supervisor
+    run_test test_agent_mail_fix_stop_fallback_refuses_hard_kill
+    run_test test_agent_mail_fix_safe_to_mutate_requires_drain_attestation
+    run_test test_fix_mcp_agent_mail_stops_after_failed_database_repair
+    run_test test_fix_mcp_agent_mail_does_not_mask_service_failure_with_healthy_process
+    run_test test_fix_mcp_agent_mail_requires_fresh_health_after_service_restart
     run_test test_agent_mail_fix_write_unit_prefers_target_install_over_current_shell_am
     run_test test_agent_mail_fix_write_unit_escapes_systemd_values
     run_test test_fix_mcp_agent_mail_repairs_missing_symlink_without_using_current_shell_am

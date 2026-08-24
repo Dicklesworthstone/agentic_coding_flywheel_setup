@@ -669,9 +669,9 @@ install_go() {
     log_detail "Installing Go via apt..."
 
     # Update package list and install
-    $sudo_cmd apt-get update -y >/dev/null 2>&1 || true
+    $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 update -y >/dev/null 2>&1 || true
 
-    if $sudo_cmd apt-get install -y golang-go >/dev/null 2>&1; then
+    if $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y golang-go >/dev/null 2>&1; then
         local version
         version=$(go version 2>/dev/null | cut -d' ' -f3 || echo "unknown")
         log_success "Go $version installed"

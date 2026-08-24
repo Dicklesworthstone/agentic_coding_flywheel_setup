@@ -970,13 +970,16 @@ update_path_entries() {
                 log_info "[UPGRADE] Adding PATH entry to $config"
 
                 # Create backup
-                backup=$(create_backup "$edit_config" "upgrade-path-entry")
-                if [[ -z "$backup" ]]; then
+                if ! backup=$(create_backup "$edit_config" "upgrade-path-entry") || [[ -z "$backup" ]]; then
                     log_error "[UPGRADE] Failed to back up $config before PATH update"
                     return 1
                 fi
                 files_json="$(autofix_existing_shell_config_files_json "$config" "$edit_config" 2>/dev/null || printf '[]\n')"
                 restore_command="$(autofix_backup_restore_command "$backup" 2>/dev/null || true)"
+                if [[ -z "$restore_command" ]]; then
+                    log_error "[UPGRADE] Failed to build a restore command for $config"
+                    return 1
+                fi
 
                 # Repair exact legacy ACFS lines in place; otherwise append a fresh block.
                 if grep -Fxq "$legacy_acfs_path_line" "$edit_config" 2>/dev/null; then
@@ -1022,7 +1025,7 @@ update_path_entries() {
                 if ! record_change \
                     "acfs" \
                     "Added PATH entry to $config" \
-                    "${restore_command:-# Restore $config from its backup manually if needed}" \
+                    "$restore_command" \
                     false \
                     "info" \
                     "$files_json" \
@@ -1102,11 +1105,12 @@ upgrade_existing_installation() {
     rollback_start_index=${#ACFS_CHANGE_ORDER[@]}
 
     # Step 1: Backup current config (for safety)
-    if [[ -d "$acfs_home" ]]; then
-        config_backup=$(create_backup "$acfs_home/config" "upgrade-config-backup")
-        if [[ -n "$config_backup" ]]; then
-            log_info "[UPGRADE] Config backed up: $(echo "$config_backup" | jq -r '.backup' 2>/dev/null || echo "$config_backup")"
+    if autofix_path_exists "$acfs_home/config"; then
+        if ! config_backup=$(create_backup "$acfs_home/config" "upgrade-config-backup") || [[ -z "$config_backup" ]]; then
+            log_error "[UPGRADE] Failed to create the pre-upgrade ACFS config backup"
+            return 1
         fi
+        log_info "[UPGRADE] Config backed up: $(echo "$config_backup" | jq -r '.backup' 2>/dev/null || echo "$config_backup")"
     fi
 
     # Step 2: Check for migration requirements
@@ -1125,8 +1129,7 @@ upgrade_existing_installation() {
     upgrade_files_json="$(jq -cn --arg path "$version_file" '[$path]')"
     if autofix_path_exists "$version_file"; then
         version_file_existed=true
-        version_backup="$(create_backup "$version_file" "upgrade-version-file")"
-        if [[ -z "$version_backup" ]]; then
+        if ! version_backup="$(create_backup "$version_file" "upgrade-version-file")" || [[ -z "$version_backup" ]]; then
             log_error "[UPGRADE] Failed to back up version file before upgrade: $version_file"
             if ! autofix_existing_rollback_and_drop_changes_since "$rollback_start_index"; then
                 log_error "[UPGRADE] Failed to roll back upgrade changes after version backup failure"
@@ -1167,8 +1170,7 @@ upgrade_existing_installation() {
 
     # Step 4: Update PATH entries if needed
     local path_update_status=0
-    update_path_entries
-    path_update_status=$?
+    update_path_entries || path_update_status=$?
     if (( path_update_status != 0 )); then
         local rollback_ok=false
         local restore_ok=false
@@ -1424,15 +1426,18 @@ clean_shell_configs() {
             # Check if config has ACFS-related content
             if grep -qE '# ACFS|\.acfs|acfs_' "$edit_config" 2>/dev/null; then
                 # Backup config first
-                config_backup=$(create_backup "$edit_config" "clean-shell-config")
-
-                if [[ -z "$config_backup" ]]; then
+                if ! config_backup=$(create_backup "$edit_config" "clean-shell-config") || [[ -z "$config_backup" ]]; then
                     log_error "[CLEAN] Failed to back up shell config before cleanup: $config"
                     failed=1
                     continue
                 fi
 
                 restore_command="$(autofix_backup_restore_command "$config_backup" 2>/dev/null || true)"
+                if [[ -z "$restore_command" ]]; then
+                    log_error "[CLEAN] Failed to build a restore command for $config"
+                    failed=1
+                    continue
+                fi
                 files_json="$(autofix_existing_shell_config_files_json "$config" "$edit_config" 2>/dev/null || printf '[]\n')"
                 log_info "[CLEAN] Cleaning ACFS entries from $config"
 
@@ -1484,7 +1489,7 @@ clean_shell_configs() {
                 if ! record_change \
                     "acfs" \
                     "Cleaned ACFS entries from $config" \
-                    "${restore_command:-# Restore $config from its backup manually if needed}" \
+                    "$restore_command" \
                     false \
                     "info" \
                     "$files_json" \
@@ -1682,8 +1687,7 @@ clean_reinstall() {
 
     # Step 4: Clean shell configs
     local clean_shell_status=0
-    clean_shell_configs
-    clean_shell_status=$?
+    clean_shell_configs || clean_shell_status=$?
     if (( clean_shell_status != 0 )); then
         local cleanup_rollback_ok=false
         local restore_ok=false

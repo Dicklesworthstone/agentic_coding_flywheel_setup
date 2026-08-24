@@ -82,6 +82,37 @@ cleanup_test_env() {
     rm -rf "/tmp/test_undo_"* 2>/dev/null || true
 }
 
+make_test_change_record() {
+    local change_id="${1:-chg_001}"
+    local description="${2:-test change}"
+    local backups_json="${3:-[]}"
+    local depends_on_json="${4:-[]}"
+    local record=""
+
+    record="$(jq -cn \
+        --arg id "$change_id" \
+        --arg desc "$description" \
+        --argjson backups "$backups_json" \
+        --argjson deps "$depends_on_json" \
+        '{
+          id: $id,
+          timestamp: "2026-04-15T00:00:00Z",
+          category: "test",
+          description: $desc,
+          undo_command: "true",
+          undo_requires_root: false,
+          severity: "info",
+          files_affected: [],
+          post_checksums: [],
+          backups: $backups,
+          depends_on: $deps,
+          session_id: "test_sess",
+          reversible: true,
+          undone: false
+        }')" || return 1
+    autofix_add_record_checksum "$record"
+}
+
 # ============================================================
 # Test Functions
 # ============================================================
@@ -595,24 +626,93 @@ test_backup_creation_cleans_up_after_checksum_failure() {
     return 0
 }
 
+test_directory_checksum_propagates_walker_failure() {
+    setup_test_env
+
+    local test_dir="/tmp/test_backup_checksum_walker_$$"
+    local fake_python="/tmp/test_backup_checksum_python_$$"
+    mkdir -p "$test_dir"
+    printf 'content\n' > "$test_dir/file.txt"
+    cat > "$fake_python" <<'EOF'
+#!/usr/bin/env bash
+exit 7
+EOF
+    chmod +x "$fake_python"
+
+    if (
+        autofix_system_binary_path() {
+            if [[ "${1:-}" == "python3" ]]; then
+                printf '%s\n' "$fake_python"
+                return 0
+            fi
+            return 1
+        }
+        calculate_backup_checksum "$test_dir"
+    ) >/dev/null 2>&1; then
+        echo "  Directory checksum hid a walker/read failure"
+        rm -f "$fake_python"
+        rm -rf "$test_dir"
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$fake_python"
+    rm -rf "$test_dir"
+    cleanup_test_env
+    return 0
+}
+
+test_directory_checksum_tracks_symlink_targets_and_empty_directories() {
+    setup_test_env
+
+    local test_dir="/tmp/test_backup_checksum_shape_$$"
+    mkdir -p "$test_dir/empty"
+    ln -s "first-target" "$test_dir/link"
+
+    local first_checksum=""
+    local second_checksum=""
+    local third_checksum=""
+    first_checksum="$(calculate_backup_checksum "$test_dir")" || {
+        echo "  Failed to checksum directory fixture"
+        rm -rf "$test_dir"
+        cleanup_test_env
+        return 1
+    }
+
+    rm -f "$test_dir/link"
+    ln -s "second-target" "$test_dir/link"
+    second_checksum="$(calculate_backup_checksum "$test_dir")" || true
+    mkdir -p "$test_dir/second-empty"
+    third_checksum="$(calculate_backup_checksum "$test_dir")" || true
+
+    if [[ -z "$second_checksum" || -z "$third_checksum" || \
+          "$first_checksum" == "$second_checksum" || "$second_checksum" == "$third_checksum" ]]; then
+        echo "  Directory checksum did not cover symlink targets and empty-directory structure"
+        rm -rf "$test_dir"
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -rf "$test_dir"
+    cleanup_test_env
+    return 0
+}
+
 # Test: Failed backup copy cleans up partial backup artifacts and fsyncs the backup parent
 test_backup_creation_cleans_up_after_copy_failure() {
     setup_test_env
 
     local test_file="/tmp/test_backup_copy_fail_${$}"
     local fsync_log="$ACFS_STATE_DIR/fsync.log"
-    local original_cp original_fsync_directory
+    local original_autofix_copy_backup_path original_fsync_directory
     printf 'content\n' > "$test_file"
 
-    original_cp="$(declare -f cp 2>/dev/null || true)"
+    original_autofix_copy_backup_path="$(declare -f autofix_copy_backup_path)"
     original_fsync_directory="$(declare -f fsync_directory)"
-    cp() {
-        local last="${!#}"
-        if [[ "$last" == "$ACFS_BACKUPS_DIR/"* ]]; then
-            : > "$last"
-            return 1
-        fi
-        command cp "$@"
+    autofix_copy_backup_path() {
+        local backup_path="$3"
+        : > "$backup_path"
+        return 1
     }
     fsync_directory() {
         printf 'dir:%s\n' "$1" >> "$fsync_log"
@@ -624,11 +724,7 @@ test_backup_creation_cleans_up_after_copy_failure() {
     local backup_result exit_code=0
     backup_result=$(create_backup "$test_file" "test" 2>/dev/null) || exit_code=$?
 
-    if [[ -n "$original_cp" ]]; then
-        eval "$original_cp"
-    else
-        unset -f cp
-    fi
+    eval "$original_autofix_copy_backup_path"
     eval "$original_fsync_directory"
 
     if [[ "$exit_code" -eq 0 ]]; then
@@ -669,9 +765,11 @@ test_state_integrity_accepts_broken_symlink_backup() {
 
     ACFS_SESSION_ID="test_sess"
 
-    local backup_json
+    local backup_json record
     backup_json=$(create_backup "$test_link" "test")
-    printf '{"id":"chg_001","description":"broken symlink backup","backups":[%s]}\n' "$backup_json" > "$ACFS_CHANGES_FILE"
+    record="$(make_test_change_record "chg_001" "broken symlink backup" "[$backup_json]")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
 
     if ! verify_state_integrity >/dev/null 2>&1; then
         echo "  Broken symlink backup was rejected by state integrity"
@@ -697,13 +795,15 @@ test_state_integrity_detects_type_drifted_symlink_backup() {
 
     ACFS_SESSION_ID="test_sess"
 
-    local backup_json backup_path
+    local backup_json backup_path record
     backup_json=$(create_backup "$test_link" "test")
     backup_path=$(echo "$backup_json" | jq -r '.backup')
 
+    record="$(make_test_change_record "chg_001" "drifted symlink backup" "[$backup_json]")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
     rm -f "$backup_path"
     printf 'symlink:%s' "$missing_target" > "$backup_path"
-    printf '{"id":"chg_001","description":"drifted symlink backup","backups":[%s]}\n' "$backup_json" > "$ACFS_CHANGES_FILE"
 
     if verify_state_integrity >/dev/null 2>&1; then
         echo "  Type-drifted symlink backup passed integrity verification"
@@ -727,12 +827,14 @@ test_state_integrity_detects_corrupt_directory_backup() {
 
     ACFS_SESSION_ID="test_sess"
 
-    local backup_json backup_path
+    local backup_json backup_path record
     backup_json=$(create_backup "$test_dir" "test")
     backup_path=$(echo "$backup_json" | jq -r '.backup')
 
+    record="$(make_test_change_record "chg_001" "dir backup" "[$backup_json]")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
     printf 'corrupted\n' > "$backup_path/file.txt"
-    printf '{"id":"chg_001","description":"dir backup","backups":[%s]}\n' "$backup_json" > "$ACFS_CHANGES_FILE"
 
     if verify_state_integrity >/dev/null 2>&1; then
         echo "  Corrupt directory backup was accepted"
@@ -755,13 +857,17 @@ test_state_integrity_ignores_missing_backup_for_undone_change() {
 
     ACFS_SESSION_ID="test_sess"
 
-    local backup_json backup_path
+    local backup_json backup_path record undo_record
     backup_json=$(create_backup "$test_file" "test")
     backup_path=$(echo "$backup_json" | jq -r '.backup')
 
-    printf '{"id":"chg_001","description":"undone backup","backups":[%s]}\n' "$backup_json" > "$ACFS_CHANGES_FILE"
-    printf '{"undone":"chg_001","timestamp":"2026-04-15T00:00:00Z","exit_code":0}\n' > "$ACFS_UNDOS_FILE"
+    record="$(make_test_change_record "chg_001" "undone backup" "[$backup_json]")"
+    undo_record='{"undone":"chg_001","timestamp":"2026-04-15T00:00:00Z","exit_code":0,"status":"applied"}'
+    undo_record="$(autofix_add_record_checksum "$undo_record")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+    printf '%s\n' "$undo_record" > "$ACFS_UNDOS_FILE"
     rm -f "$backup_path"
+    update_integrity_file >/dev/null 2>&1
 
     if ! verify_state_integrity >/dev/null 2>&1; then
         echo "  Missing backup for undone change should not fail integrity"
@@ -786,13 +892,15 @@ test_state_integrity_checks_all_active_backups() {
 
     ACFS_SESSION_ID="test_sess"
 
-    local backup_json_a backup_json_b backup_path_b
+    local backup_json_a backup_json_b backup_path_b record
     backup_json_a=$(create_backup "$file_a" "test")
     backup_json_b=$(create_backup "$file_b" "test")
     backup_path_b=$(echo "$backup_json_b" | jq -r '.backup')
 
+    record="$(make_test_change_record "chg_001" "multi backup" "[$backup_json_a,$backup_json_b]")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
     printf 'corrupted\n' > "$backup_path_b"
-    printf '{"id":"chg_001","description":"multi backup","backups":[%s,%s]}\n' "$backup_json_a" "$backup_json_b" > "$ACFS_CHANGES_FILE"
 
     if verify_state_integrity >/dev/null 2>&1; then
         echo "  Corruption in second active backup was not detected"
@@ -820,6 +928,84 @@ test_backup_nonexistent_file() {
         return 1
     fi
 
+    cleanup_test_env
+    return 0
+}
+
+test_backup_restore_command_rejects_unsafe_metadata() {
+    setup_test_env
+    ACFS_SESSION_ID="test_sess"
+
+    local original_file="/tmp/test_restore_metadata_$$"
+    local backup_json=""
+    local restore_command=""
+    printf 'original\n' > "$original_file"
+    backup_json="$(create_backup "$original_file" "restore-metadata")"
+
+    restore_command="$(autofix_backup_restore_command "$backup_json" 2>/dev/null || true)"
+    if [[ -z "$restore_command" ]]; then
+        echo "  Valid backup metadata did not produce a restore command"
+        rm -f "$original_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    local unsafe_json=""
+    unsafe_json="$(printf '%s' "$backup_json" | jq -c '.original = "/"')"
+    if autofix_backup_restore_command "$unsafe_json" >/dev/null 2>&1; then
+        echo "  Restore command accepted the filesystem root as its target"
+        rm -f "$original_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    unsafe_json="$(printf '%s' "$backup_json" | jq -c '.original = "/tmp/.."')"
+    if autofix_backup_restore_command "$unsafe_json" >/dev/null 2>&1; then
+        echo "  Restore command accepted a root alias containing a parent segment"
+        rm -f "$original_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    unsafe_json="$(printf '%s' "$backup_json" | jq -c --arg dir "$ACFS_BACKUPS_DIR" '.original = ($dir | split("/backups")[0])')"
+    if autofix_backup_restore_command "$unsafe_json" >/dev/null 2>&1; then
+        echo "  Restore command accepted an ancestor of the backup store as its target"
+        rm -f "$original_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    unsafe_json="$(printf '%s' "$backup_json" | jq -c --arg path "$original_file" '.backup = $path')"
+    if autofix_backup_restore_command "$unsafe_json" >/dev/null 2>&1; then
+        echo "  Restore command accepted a backup outside the owned backup store"
+        rm -f "$original_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    if create_backup "$ACFS_STATE_DIR" "recursive-state" >/dev/null 2>&1; then
+        echo "  Backup creation accepted an ancestor of its own backup store"
+        rm -f "$original_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    local external_file="/tmp/test_external_backup_cleanup_$$"
+    printf 'preserve\n' > "$external_file"
+    if autofix_cleanup_failed_backup_path "$external_file" >/dev/null 2>&1; then
+        echo "  Failed-backup cleanup accepted a path outside the backup store"
+        rm -f "$original_file" "$external_file"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "$(cat "$external_file")" != "preserve" ]]; then
+        echo "  Failed-backup cleanup modified an external path"
+        rm -f "$original_file" "$external_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$original_file" "$external_file"
     cleanup_test_env
     return 0
 }
@@ -860,8 +1046,12 @@ test_state_integrity() {
     setup_test_env
 
     # Create valid records
-    echo '{"id":"chg_001","description":"test1"}' > "$ACFS_CHANGES_FILE"
-    echo '{"id":"chg_002","description":"test2"}' >> "$ACFS_CHANGES_FILE"
+    local record1 record2
+    record1="$(make_test_change_record "chg_001" "test1")"
+    record2="$(make_test_change_record "chg_002" "test2")"
+    printf '%s\n' "$record1" > "$ACFS_CHANGES_FILE"
+    printf '%s\n' "$record2" >> "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
 
     if ! verify_state_integrity 2>/dev/null; then
         echo "  Valid state rejected"
@@ -887,9 +1077,12 @@ test_state_repair() {
     setup_test_env
 
     # Create file with mix of valid and invalid lines
-    echo '{"id":"chg_001","description":"test1"}' > "$ACFS_CHANGES_FILE"
-    echo 'invalid json line' >> "$ACFS_CHANGES_FILE"
-    echo '{"id":"chg_002","description":"test2"}' >> "$ACFS_CHANGES_FILE"
+    local record1 record2
+    record1="$(make_test_change_record "chg_001" "test1")"
+    record2="$(make_test_change_record "chg_002" "test2")"
+    printf '%s\n' "$record1" > "$ACFS_CHANGES_FILE"
+    printf '%s\n' 'invalid json line' >> "$ACFS_CHANGES_FILE"
+    printf '%s\n' "$record2" >> "$ACFS_CHANGES_FILE"
 
     # Repair should succeed
     repair_state_files 2>/dev/null
@@ -914,17 +1107,162 @@ test_state_repair() {
     return 0
 }
 
+test_state_integrity_rejects_missing_record_checksum() {
+    setup_test_env
+
+    printf '%s\n' '{"id":"chg_001","description":"untrusted"}' > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
+    if verify_state_integrity >/dev/null 2>&1; then
+        echo "  Integrity verification accepted a change record without a checksum"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_state_integrity_rejects_checksummed_malformed_change_schema() {
+    setup_test_env
+
+    local record=""
+    record="$(make_test_change_record "chg_001" "malformed inventory")"
+    record="$(printf '%s' "$record" | jq -c 'del(.record_checksum) | .backups = "not-an-array"')"
+    record="$(autofix_add_record_checksum "$record")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
+
+    if verify_state_integrity >/dev/null 2>&1; then
+        echo "  Integrity verification accepted checksummed malformed change metadata"
+        cleanup_test_env
+        return 1
+    fi
+    if repair_state_files >/dev/null 2>&1; then
+        echo "  State repair falsely blessed unrecoverable semantic journal corruption"
+        cleanup_test_env
+        return 1
+    fi
+    if ! grep -Fqx "$record" "$ACFS_CHANGES_FILE"; then
+        echo "  State repair discarded the malformed record instead of failing closed"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_state_integrity_rejects_checksummed_malformed_undo_schema() {
+    setup_test_env
+
+    local change_record=""
+    local undo_record=""
+    change_record="$(make_test_change_record "chg_001" "malformed undo state")"
+    undo_record='{"undone":"chg_001","timestamp":"2026-04-15T00:00:00Z","status":"unknown"}'
+    undo_record="$(autofix_add_record_checksum "$undo_record")"
+    printf '%s\n' "$change_record" > "$ACFS_CHANGES_FILE"
+    printf '%s\n' "$undo_record" > "$ACFS_UNDOS_FILE"
+    update_integrity_file >/dev/null 2>&1
+
+    if verify_state_integrity >/dev/null 2>&1; then
+        echo "  Integrity verification accepted a checksummed unknown undo status"
+        cleanup_test_env
+        return 1
+    fi
+    if autofix_change_undo_status "chg_001" >/dev/null 2>&1; then
+        echo "  Undo status reader coerced malformed journal state into an actionable status"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_state_integrity_rejects_duplicate_change_ids() {
+    setup_test_env
+
+    local record1=""
+    local record2=""
+    record1="$(make_test_change_record "chg_001" "first record")"
+    record2="$(make_test_change_record "chg_001" "duplicate record")"
+    printf '%s\n%s\n' "$record1" "$record2" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1
+
+    if verify_state_integrity >/dev/null 2>&1; then
+        echo "  Integrity verification accepted ambiguous duplicate change IDs"
+        cleanup_test_env
+        return 1
+    fi
+    if autofix_active_backup_paths >/dev/null 2>&1; then
+        echo "  Active-backup inventory accepted ambiguous duplicate change IDs"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_state_repair_reconciles_checkpoint_without_losing_valid_records() {
+    setup_test_env
+
+    if ! update_integrity_file >/dev/null 2>&1; then
+        echo "  Failed to create baseline integrity checkpoint"
+        cleanup_test_env
+        return 1
+    fi
+
+    local record
+    record="$(make_test_change_record "chg_001" "valid after checkpoint")"
+    printf '%s\n' "$record" >> "$ACFS_CHANGES_FILE"
+
+    if verify_state_integrity >/dev/null 2>&1; then
+        echo "  Journal drift was not detected against the integrity checkpoint"
+        cleanup_test_env
+        return 1
+    fi
+    if ! repair_state_files >/dev/null 2>&1 || ! verify_state_integrity >/dev/null 2>&1; then
+        echo "  State repair did not reconcile a valid checksummed journal"
+        cleanup_test_env
+        return 1
+    fi
+    if ! grep -Fqx "$record" "$ACFS_CHANGES_FILE"; then
+        echo "  State repair lost the valid record while reconciling the checkpoint"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_state_repair_replaces_malformed_checkpoint() {
+    setup_test_env
+
+    printf '%s\n' '{"backup_file_count":"not-a-number"}' > "$ACFS_INTEGRITY_FILE"
+    if verify_state_integrity >/dev/null 2>&1; then
+        echo "  Malformed integrity checkpoint was accepted"
+        cleanup_test_env
+        return 1
+    fi
+    if ! repair_state_files >/dev/null 2>&1 || ! verify_state_integrity >/dev/null 2>&1; then
+        echo "  State repair did not replace a malformed integrity checkpoint"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
 test_state_repair_preserves_all_valid_checksummed_records() {
     setup_test_env
 
-    local record1 record2 checksum1 checksum2 line_count
-    record1='{"id":"chg_001","description":"test1"}'
-    checksum1=$(compute_record_checksum "$record1")
-    record1=$(echo "$record1" | jq -c --arg checksum "$checksum1" '.record_checksum = $checksum')
+    local record1 record2 line_count
+    record1="$(make_test_change_record "chg_001" "test1")"
 
-    record2='{"id":"chg_002","description":"test2"}'
-    checksum2=$(compute_record_checksum "$record2")
-    record2=$(echo "$record2" | jq -c --arg checksum "$checksum2" '.record_checksum = $checksum')
+    record2="$(make_test_change_record "chg_002" "test2")"
 
     printf '%s\n' "$record1" > "$ACFS_CHANGES_FILE"
     printf '%s\n' 'invalid json line' >> "$ACFS_CHANGES_FILE"
@@ -1045,9 +1383,14 @@ test_autofix_resolve_current_home_ignores_path_poisoned_identity_shims() {
     current_user="$(command id -un 2>/dev/null || command whoami 2>/dev/null || true)"
     if [[ "$current_user" == "root" ]]; then
         current_home="/root"
-    else
-        current_home="$(command getent passwd "$current_user" | cut -d: -f6)"
+    elif command -v getent &>/dev/null; then
+        current_home="$(command getent passwd "$current_user" 2>/dev/null | cut -d: -f6)"
+    elif command -v dscl &>/dev/null; then
+        current_home="$(dscl . -read "/Users/$current_user" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+    elif command -v python3 &>/dev/null; then
+        current_home="$(python3 -c "import pwd; print(pwd.getpwnam('$current_user').pw_dir)" 2>/dev/null || true)"
     fi
+    [[ -z "$current_home" ]] && current_home="$HOME"
     current_home="${current_home%/}"
 
     poisoned_home="$(mktemp -d)"
@@ -1096,6 +1439,49 @@ EOF
     return 0
 }
 
+test_autofix_passwd_python_fallback_passes_username_as_argv() {
+    local fake_python="/tmp/test_autofix_passwd_python_$$"
+    local marker_file="/tmp/test_autofix_passwd_args_$$"
+    cat > "$fake_python" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$marker_file"
+printf '/tmp/acfs-python-home\n'
+EOF
+    chmod +x "$fake_python"
+
+    local result=""
+    if ! result="$({
+        autofix_system_binary_path() {
+            case "${1:-}" in
+                python3) printf '%s\n' "$fake_python" ;;
+                *) return 1 ;;
+            esac
+        }
+        autofix_getent_passwd_entry "acfs-python-fixture"
+    })"; then
+        echo "  Python passwd fallback failed"
+        rm -f "$fake_python" "$marker_file"
+        return 1
+    fi
+
+    if [[ "$result" != 'acfs-python-fixture:*:::acfs-python-fixture:/tmp/acfs-python-home:/bin/zsh' ]] || \
+       [[ "$(sed -n '3p' "$marker_file")" != 'acfs-python-fixture' ]] || \
+       grep -Fq 'acfs-python-fixture' <(sed -n '2p' "$marker_file"); then
+        echo "  Python passwd fallback interpolated the username into source instead of passing argv"
+        rm -f "$fake_python" "$marker_file"
+        return 1
+    fi
+
+    if autofix_getent_passwd_entry "bad'user" >/dev/null 2>&1; then
+        echo "  Invalid username was accepted by passwd lookup"
+        rm -f "$fake_python" "$marker_file"
+        return 1
+    fi
+
+    rm -f "$fake_python" "$marker_file"
+    return 0
+}
+
 # Test: Init fails closed if integrity repair fails
 test_init_autofix_state_fails_when_repair_fails() {
     setup_test_env
@@ -1121,6 +1507,99 @@ test_init_autofix_state_fails_when_repair_fails() {
 
     unset _ACFS_AUTOFIX_SOURCED
     source "$REPO_ROOT/scripts/lib/autofix.sh"
+    cleanup_test_env
+    return 0
+}
+
+test_init_autofix_state_rejects_symlinked_state_paths() {
+    local test_root="/tmp/test_autofix_state_symlink_$$"
+    local state_target="$test_root/target"
+    local state_link="$test_root/state"
+    mkdir -p "$state_target"
+    ln -s "$state_target" "$state_link"
+
+    export ACFS_STATE_DIR="$state_link"
+    export ACFS_CHANGES_FILE="$state_link/changes.jsonl"
+    export ACFS_UNDOS_FILE="$state_link/undos.jsonl"
+    export ACFS_BACKUPS_DIR="$state_link/backups"
+    export ACFS_LOCK_FILE="$state_link/.lock"
+    export ACFS_INTEGRITY_FILE="$state_link/.integrity"
+    ACFS_AUTOFIX_INITIALIZED=false
+
+    if init_autofix_state >/dev/null 2>&1; then
+        echo "  init_autofix_state accepted a symlinked state directory"
+        rm -f "$state_link"
+        rm -rf "$test_root"
+        return 1
+    fi
+    if [[ -e "$state_target/changes.jsonl" || -e "$state_target/undos.jsonl" || -e "$state_target/backups" ]]; then
+        echo "  Symlinked state initialization touched files outside the owned layout"
+        rm -f "$state_link"
+        rm -rf "$test_root"
+        return 1
+    fi
+
+    rm -f "$state_link"
+    rm -rf "$test_root"
+    return 0
+}
+
+test_init_autofix_state_rejects_symlinked_state_parent() {
+    local test_root="/tmp/test_autofix_state_parent_symlink_$$"
+    local state_target="$test_root/target"
+    local state_parent_link="$test_root/home/.acfs"
+    local state_dir="$state_parent_link/autofix"
+    mkdir -p "$state_target" "$test_root/home"
+    ln -s "$state_target" "$state_parent_link"
+
+    export ACFS_STATE_DIR="$state_dir"
+    export ACFS_CHANGES_FILE="$state_dir/changes.jsonl"
+    export ACFS_UNDOS_FILE="$state_dir/undos.jsonl"
+    export ACFS_BACKUPS_DIR="$state_dir/backups"
+    export ACFS_LOCK_FILE="$state_dir/.lock"
+    export ACFS_INTEGRITY_FILE="$state_dir/.integrity"
+    ACFS_AUTOFIX_INITIALIZED=false
+
+    if init_autofix_state >/dev/null 2>&1; then
+        echo "  init_autofix_state accepted a symlinked state parent"
+        rm -f "$state_parent_link"
+        rm -rf "$test_root"
+        return 1
+    fi
+    if [[ -e "$state_target/autofix" ]]; then
+        echo "  Symlinked parent initialization created state outside the trusted layout"
+        rm -f "$state_parent_link"
+        rm -rf "$test_root"
+        return 1
+    fi
+
+    rm -f "$state_parent_link"
+    rm -rf "$test_root"
+    return 0
+}
+
+test_init_autofix_state_rejects_symlinked_journal() {
+    setup_test_env
+
+    local victim_file="/tmp/test_autofix_journal_victim_$$"
+    printf 'preserve me\n' > "$victim_file"
+    rm -f "$ACFS_CHANGES_FILE"
+    ln -s "$victim_file" "$ACFS_CHANGES_FILE"
+
+    if init_autofix_state >/dev/null 2>&1; then
+        echo "  init_autofix_state accepted a symlinked changes journal"
+        rm -f "$ACFS_CHANGES_FILE" "$victim_file"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "$(cat "$victim_file")" != "preserve me" ]]; then
+        echo "  Symlinked journal initialization modified its external target"
+        rm -f "$ACFS_CHANGES_FILE" "$victim_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$ACFS_CHANGES_FILE" "$victim_file"
     cleanup_test_env
     return 0
 }
@@ -1161,6 +1640,36 @@ test_session_management() {
     return 0
 }
 
+test_session_lock_preserves_caller_descriptors() {
+    setup_test_env
+
+    local caller_fd_file="/tmp/test_autofix_caller_fd_$$"
+    exec 201>"$caller_fd_file"
+    printf 'before\n' >&201
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session with a caller-owned descriptor open"
+        exec 201>&-
+        cleanup_test_env
+        return 1
+    fi
+    printf 'during\n' >&201
+    end_autofix_session >/dev/null 2>&1 || true
+    printf 'after\n' >&201
+    exec 201>&-
+
+    if [[ "$(cat "$caller_fd_file")" != $'before\nduring\nafter' ]]; then
+        echo "  Auto-fix lock allocation clobbered a caller-owned descriptor"
+        rm -f "$caller_fd_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$caller_fd_file"
+    cleanup_test_env
+    return 0
+}
+
 # Test: Session start fails closed if session marker cannot be persisted
 test_start_autofix_session_releases_lock_when_session_marker_write_fails() {
     setup_test_env
@@ -1191,12 +1700,12 @@ test_start_autofix_session_releases_lock_when_session_marker_write_fails() {
     }
     if ! flock -n 201; then
         echo "  Failed start left the autofix lock held"
-        eval "exec 201>&-"
+        exec 201>&-
         cleanup_test_env
         return 1
     fi
     flock -u 201 2>/dev/null || true
-    eval "exec 201>&-"
+    exec 201>&-
 
     cleanup_test_env
     return 0
@@ -1294,7 +1803,7 @@ test_start_autofix_session_clears_session_id_when_lock_is_held() {
     }
     if ! flock -n 201; then
         echo "  Failed to pre-acquire autofix lock for contention test"
-        eval "exec 201>&-"
+        exec 201>&-
         cleanup_test_env
         return 1
     fi
@@ -1302,13 +1811,13 @@ test_start_autofix_session_clears_session_id_when_lock_is_held() {
     if start_autofix_session >/dev/null 2>&1; then
         echo "  start_autofix_session unexpectedly succeeded while the autofix lock was held"
         flock -u 201 2>/dev/null || true
-        eval "exec 201>&-"
+        exec 201>&-
         cleanup_test_env
         return 1
     fi
 
     flock -u 201 2>/dev/null || true
-    eval "exec 201>&-"
+    exec 201>&-
 
     if [[ -n "${ACFS_SESSION_ID:-}" ]]; then
         echo "  Failed start left a transient session ID behind"
@@ -1362,12 +1871,12 @@ test_end_autofix_session_preserves_marker_when_integrity_update_fails() {
     }
     if ! flock -n 201; then
         echo "  Failed session finalization left the autofix lock held"
-        eval "exec 201>&-"
+        exec 201>&-
         cleanup_test_env
         return 1
     fi
     flock -u 201 2>/dev/null || true
-    eval "exec 201>&-"
+    exec 201>&-
 
     cleanup_test_env
     return 0
@@ -1666,6 +2175,124 @@ test_undo_change() {
     return 0
 }
 
+test_undo_change_never_executes_checksum_invalid_record_with_force() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local marker_file="/tmp/test_untrusted_undo_marker_$$"
+    local change_id=""
+    local tampered_record=""
+    change_id="$(record_change "test" "Untrusted undo" "true" false info '[]' '[]' '[]')"
+    tampered_record="$(printf '%s' "${ACFS_CHANGE_RECORDS[$change_id]}" | jq -c --arg command "printf compromised > '$marker_file'" '.undo_command = $command')"
+    ACFS_CHANGE_RECORDS["$change_id"]="$tampered_record"
+
+    if undo_change "$change_id" true true >/dev/null 2>&1; then
+        echo "  Forced undo accepted a checksum-invalid executable record"
+        rm -f "$marker_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -e "$marker_file" ]]; then
+        echo "  Forced undo executed an untrusted journal command"
+        rm -f "$marker_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+test_undo_change_rejects_checksummed_malformed_record() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local marker_file="/tmp/test_malformed_undo_marker_$$"
+    local change_id=""
+    local malformed_record=""
+    change_id="$(record_change "test" "Malformed undo" "true" false info '[]' '[]' '[]')"
+    malformed_record="$(printf '%s' "${ACFS_CHANGE_RECORDS[$change_id]}" | jq -c 'del(.record_checksum) | .undo_requires_root = "yes"')"
+    malformed_record="$(autofix_add_record_checksum "$malformed_record")"
+    malformed_record="$(printf '%s' "$malformed_record" | jq -c --arg command "printf compromised > '$marker_file'" 'del(.record_checksum) | .undo_command = $command')"
+    malformed_record="$(autofix_add_record_checksum "$malformed_record")"
+    ACFS_CHANGE_RECORDS["$change_id"]="$malformed_record"
+
+    if undo_change "$change_id" true true >/dev/null 2>&1; then
+        echo "  Undo accepted malformed executable metadata with a valid checksum"
+        rm -f "$marker_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+    if [[ -e "$marker_file" ]]; then
+        echo "  Undo executed a checksummed but malformed record"
+        rm -f "$marker_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+test_undo_change_never_forces_missing_recovery_backup() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local test_file="/tmp/test_missing_recovery_backup_$$"
+    local backup_json=""
+    local backup_path=""
+    local restore_command=""
+    local change_id=""
+    printf 'before fix\n' > "$test_file"
+    backup_json="$(create_backup "$test_file" "missing-recovery")"
+    backup_path="$(printf '%s' "$backup_json" | jq -r '.backup')"
+    restore_command="$(autofix_backup_restore_command "$backup_json")"
+    printf 'after fix\n' > "$test_file"
+    change_id="$(record_change "test" "Missing recovery backup" "$restore_command" false info "$(autofix_files_json "$test_file")" "[$backup_json]" '[]')"
+
+    rm -f "$backup_path"
+    if undo_change "$change_id" true true >/dev/null 2>&1; then
+        echo "  Forced undo accepted a missing recovery backup"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+    if [[ "$(cat "$test_file")" != "after fix" ]]; then
+        echo "  Failed forced undo damaged the current target without a recovery backup"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
 test_undo_change_fails_when_append_atomic_fails() {
     setup_test_env
 
@@ -1860,8 +2487,12 @@ test_undo_change_marks_failed_when_executor_missing_after_pending() {
     local change_id original_autofix_system_binary_path status=0 undo_status="" undo_line_count=0
     change_id="$(cat "$output_file")"
     original_autofix_system_binary_path="$(declare -f autofix_system_binary_path)"
+    eval "${original_autofix_system_binary_path/autofix_system_binary_path/original_autofix_system_binary_path}"
     autofix_system_binary_path() {
-        return 1
+        case "${1:-}" in
+            bash|env) return 1 ;;
+            *) original_autofix_system_binary_path "$@" ;;
+        esac
     }
 
     if undo_change "$change_id" true true >/dev/null 2>&1; then
@@ -1871,6 +2502,7 @@ test_undo_change_marks_failed_when_executor_missing_after_pending() {
     fi
 
     eval "$original_autofix_system_binary_path"
+    unset -f original_autofix_system_binary_path
 
     if [[ $status -eq 0 ]]; then
         echo "  undo_change succeeded even though bash lookup failed"
@@ -1986,7 +2618,10 @@ test_acfs_undo_command_all_skips_undone_changes() {
     active_id=$(record_change "test" "Still active" "rm -f '$active_marker'" "false" "info" '[]' '[]' '[]' 2>/dev/null)
     end_autofix_session 2>/dev/null || true
 
-    printf '{"undone":"%s","timestamp":"2026-04-15T00:00:00Z","exit_code":0}\n' "$done_id" > "$ACFS_UNDOS_FILE"
+    local undo_record=""
+    undo_record="$(jq -cn --arg id "$done_id" '{undone:$id,timestamp:"2026-04-15T00:00:00Z",exit_code:0,status:"applied"}')"
+    undo_record="$(autofix_add_record_checksum "$undo_record")"
+    printf '%s\n' "$undo_record" > "$ACFS_UNDOS_FILE"
 
     local output=""
     output=$(acfs_undo_command --all 2>&1)
@@ -2030,7 +2665,10 @@ test_acfs_undo_command_list_marks_pending_changes() {
     change_id=$(record_change "test" "Pending undo change" "echo pending" "false" "info" '[]' '[]' '[]' 2>/dev/null)
     end_autofix_session 2>/dev/null || true
 
-    printf '{"undone":"%s","timestamp":"2026-04-15T00:00:00Z","status":"pending"}\n' "$change_id" > "$ACFS_UNDOS_FILE"
+    local undo_record=""
+    undo_record="$(jq -cn --arg id "$change_id" '{undone:$id,timestamp:"2026-04-15T00:00:00Z",status:"pending"}')"
+    undo_record="$(autofix_add_record_checksum "$undo_record")"
+    printf '%s\n' "$undo_record" > "$ACFS_UNDOS_FILE"
 
     local output=""
     output=$(acfs_undo_command --list 2>&1)
@@ -2156,6 +2794,12 @@ test_init_autofix_state() {
         return 1
     fi
 
+    if [[ ! -f "$ACFS_INTEGRITY_FILE" ]]; then
+        echo "  Initial integrity checkpoint not created"
+        cleanup_test_env
+        return 1
+    fi
+
     cleanup_test_env
     return 0
 }
@@ -2221,10 +2865,19 @@ test_cleanup_old_backups_removes_directory_entries() {
     printf 'nested\n' > "$old_backup_dir/file.txt"
     printf 'flat\n' > "$old_backup_file"
 
-    touch -d '40 days ago' "$old_backup_dir/file.txt" "$old_backup_file"
-    touch -d '40 days ago' "$old_backup_dir"
+    if touch -d '40 days ago' "$old_backup_file" 2>/dev/null; then
+        touch -d '40 days ago' "$old_backup_dir/file.txt" "$old_backup_file" "$old_backup_dir"
+    elif command -v python3 &>/dev/null; then
+        python3 -c "import os, time; t = time.time() - 40*86400; os.utime('$old_backup_dir/file.txt', (t, t)); os.utime('$old_backup_file', (t, t)); os.utime('$old_backup_dir', (t, t))" 2>/dev/null || true
+    else
+        touch -t 202001010000 "$old_backup_dir/file.txt" "$old_backup_file" "$old_backup_dir" 2>/dev/null || true
+    fi
 
-    cleanup_old_backups 30 >/dev/null 2>&1
+    if ! cleanup_old_backups 30 >/dev/null 2>&1; then
+        echo "  Cleanup failed for old unreferenced backup entries"
+        cleanup_test_env
+        return 1
+    fi
 
     if [[ -e "$old_backup_dir" ]] || [[ -e "$old_backup_file" ]]; then
         echo "  Old backup entries were not fully removed"
@@ -2245,13 +2898,25 @@ test_cleanup_old_backups_preserves_active_referenced_backups() {
 
     ACFS_SESSION_ID="test_sess"
 
-    local backup_json backup_path
+    local backup_json backup_path record
     backup_json=$(create_backup "$test_file" "test")
     backup_path=$(echo "$backup_json" | jq -r '.backup')
-    printf '{"id":"chg_001","description":"active backup","backups":[%s]}\n' "$backup_json" > "$ACFS_CHANGES_FILE"
-    touch -d '40 days ago' "$backup_path"
+    record="$(make_test_change_record "chg_001" "active backup" "[$backup_json]")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+    if touch -d '40 days ago' "$backup_path" 2>/dev/null; then
+        :
+    elif command -v python3 &>/dev/null; then
+        python3 -c "import os, time; t = time.time() - 40*86400; os.utime('$backup_path', (t, t))" 2>/dev/null || true
+    else
+        touch -t 202001010000 "$backup_path" 2>/dev/null || true
+    fi
 
-    cleanup_old_backups 30 >/dev/null 2>&1
+    if ! cleanup_old_backups 30 >/dev/null 2>&1; then
+        echo "  Cleanup failed while preserving an active referenced backup"
+        rm -f "$test_file"
+        cleanup_test_env
+        return 1
+    fi
 
     if [[ ! -e "$backup_path" ]]; then
         echo "  Active referenced backup was removed"
@@ -2261,6 +2926,56 @@ test_cleanup_old_backups_preserves_active_referenced_backups() {
     fi
 
     rm -f "$test_file"
+    cleanup_test_env
+    return 0
+}
+
+test_cleanup_old_backups_fails_closed_on_untrusted_inventory() {
+    setup_test_env
+
+    local old_backup="$ACFS_BACKUPS_DIR/old-untrusted.backup"
+    local record=""
+    printf 'preserve\n' > "$old_backup"
+    touch -t 202001010000 "$old_backup" 2>/dev/null || true
+
+    record="$(make_test_change_record "chg_001" "malformed backup inventory")"
+    record="$(printf '%s' "$record" | jq -c 'del(.record_checksum) | .backups = "not-an-array"')"
+    record="$(autofix_add_record_checksum "$record")"
+    printf '%s\n' "$record" > "$ACFS_CHANGES_FILE"
+
+    if cleanup_old_backups 30 >/dev/null 2>&1; then
+        echo "  Cleanup accepted an untrustworthy active-backup inventory"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ ! -f "$old_backup" ]]; then
+        echo "  Cleanup removed a backup despite untrustworthy journal metadata"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_cleanup_old_backups_rejects_invalid_retention() {
+    setup_test_env
+
+    local old_backup="$ACFS_BACKUPS_DIR/old-invalid-retention.backup"
+    printf 'preserve\n' > "$old_backup"
+    touch -t 202001010000 "$old_backup" 2>/dev/null || true
+
+    if cleanup_old_backups 0 >/dev/null 2>&1; then
+        echo "  Cleanup accepted a zero-day destructive retention window"
+        cleanup_test_env
+        return 1
+    fi
+    if [[ ! -f "$old_backup" ]]; then
+        echo "  Invalid retention cleanup modified the backup store"
+        cleanup_test_env
+        return 1
+    fi
+
     cleanup_test_env
     return 0
 }
@@ -2376,6 +3091,381 @@ test_handle_existing_installation_preserves_outer_session() {
     return 1
 }
 
+# Test: record_change computes post_checksums for affected files
+test_record_change_computes_post_checksums() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local test_file="/tmp/test_post_chk_$$"
+    printf 'initial content\n' > "$test_file"
+
+    local backup_json
+    backup_json=$(create_backup "$test_file" "test")
+
+    printf 'modified post fix content\n' > "$test_file"
+
+    local change_id
+    change_id=$(record_change "test" "Post checksum test" "cat > $test_file <<'EOF'\ninitial content\nEOF" false info "[\"$test_file\"]" "[$backup_json]")
+
+    local recorded_post_sum
+    recorded_post_sum=$(jq -r --arg id "$change_id" 'select(.id == $id) | .post_checksums[0].checksum // empty' "$ACFS_CHANGES_FILE")
+
+    local expected_sum
+    expected_sum=$(calculate_backup_checksum "$test_file")
+
+    if [[ -z "$recorded_post_sum" || "$recorded_post_sum" != "$expected_sum" ]]; then
+        echo "  Post checksum not recorded correctly: got '$recorded_post_sum', expected '$expected_sum'"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+test_record_change_fails_when_post_checksum_is_unavailable() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local test_file="/tmp/test_post_checksum_failure_$$"
+    printf 'post-fix content\n' > "$test_file"
+
+    if (
+        calculate_backup_checksum() { return 1; }
+        record_change "test" "Missing post checksum" "printf restored > '$test_file'" false info "[\"$test_file\"]" '[]'
+    ) >/dev/null 2>&1; then
+        echo "  record_change accepted an affected path without a post-fix checksum"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -s "$ACFS_CHANGES_FILE" ]]; then
+        echo "  Failed post-fix snapshot left a journal record behind"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+test_undo_change_refuses_incomplete_post_snapshot_without_force() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local test_file="/tmp/test_post_snapshot_missing_$$"
+    printf 'post-fix content\n' > "$test_file"
+
+    local change_id=""
+    change_id=$(record_change "test" "Incomplete post snapshot" "printf 'restored content\\n' > '$test_file'" false info "[\"$test_file\"]" '[]')
+
+    local incomplete_record=""
+    local incomplete_checksum=""
+    incomplete_record=$(printf '%s' "${ACFS_CHANGE_RECORDS[$change_id]}" | jq -c 'del(.post_checksums, .record_checksum)')
+    incomplete_checksum=$(compute_record_checksum "$incomplete_record")
+    incomplete_record=$(printf '%s' "$incomplete_record" | jq -c --arg sum "$incomplete_checksum" '.record_checksum = $sum')
+    ACFS_CHANGE_RECORDS["$change_id"]="$incomplete_record"
+    printf '%s\n' "$incomplete_record" > "$ACFS_CHANGES_FILE"
+
+    if undo_change "$change_id" false >/dev/null 2>&1; then
+        echo "  undo_change accepted an incomplete anti-clobber snapshot without --force"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ "$(cat "$test_file")" != "post-fix content" ]]; then
+        echo "  Incomplete snapshot undo modified the affected file"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+# Test: undo_change refuses to clobber modified target file without --force
+test_undo_change_refuses_to_clobber_modified_target_file_without_force() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local test_file="/tmp/test_post_clobber_$$"
+    printf 'initial content\n' > "$test_file"
+
+    local backup_json
+    backup_json=$(create_backup "$test_file" "test")
+
+    printf 'fix modified content\n' > "$test_file"
+
+    local change_id
+    change_id=$(record_change "test" "Clobber protection test" "printf 'initial content\n' > '$test_file'" false info "[\"$test_file\"]" "[$backup_json]")
+
+    # User subsequently modifies file
+    printf 'user subsequent edit\n' > "$test_file"
+
+    # Attempt undo without force - must fail
+    if undo_change "$change_id" false >/dev/null 2>&1; then
+        echo "  undo_change unexpectedly succeeded without --force when target file had user edits"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    # Target file should not have been overwritten
+    local current_content
+    current_content=$(cat "$test_file")
+    if [[ "$current_content" != "user subsequent edit" ]]; then
+        echo "  Target file was modified despite rejected undo"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+# Test: undo_change overrides modified target file with --force
+test_undo_change_overrides_modified_target_file_with_force() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local test_file="/tmp/test_post_force_$$"
+    printf 'initial content\n' > "$test_file"
+
+    local backup_json
+    backup_json=$(create_backup "$test_file" "test")
+
+    printf 'fix modified content\n' > "$test_file"
+
+    local change_id
+    change_id=$(record_change "test" "Force override test" "printf 'initial content\n' > '$test_file'" false info "[\"$test_file\"]" "[$backup_json]")
+
+    # User subsequently modifies file
+    printf 'user subsequent edit\n' > "$test_file"
+
+    # Attempt undo with force - must succeed
+    if ! undo_change "$change_id" true >/dev/null 2>&1; then
+        echo "  undo_change failed with --force"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    local current_content
+    current_content=$(cat "$test_file")
+    if [[ "$current_content" != "initial content" ]]; then
+        echo "  Target file was not restored to initial content after forced undo"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+# Test: undo_change refuses when target file deleted without --force
+test_undo_change_refuses_when_missing_target_file_without_force() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local test_file="/tmp/test_post_deleted_$$"
+    printf 'initial content\n' > "$test_file"
+
+    local backup_json
+    backup_json=$(create_backup "$test_file" "test")
+
+    printf 'fix modified content\n' > "$test_file"
+
+    local change_id
+    change_id=$(record_change "test" "Deleted target protection test" "printf 'initial content\n' > '$test_file'" false info "[\"$test_file\"]" "[$backup_json]")
+
+    # User deleted target file
+    rm -f "$test_file"
+
+    # Undo without force should fail
+    if undo_change "$change_id" false >/dev/null 2>&1; then
+        echo "  undo_change unexpectedly succeeded without --force when target file was deleted"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    # Undo with force should succeed
+    if ! undo_change "$change_id" true >/dev/null 2>&1; then
+        echo "  undo_change failed with --force on deleted target file"
+        rm -f "$test_file"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+# Test: Change ID generation avoids collisions after journal repair
+test_record_change_change_id_sequence_does_not_collide_after_journal_repair() {
+    setup_test_env
+
+    # Seed changes.jsonl with 5 changes
+    local i
+    for i in 1 2 3 4 5; do
+        local cid="chg_$(printf '%04d' "$i")"
+        local rec
+        rec=$(jq -cn --arg id "$cid" '{id: $id, description: "seed", undone: false}')
+        local csum
+        csum=$(compute_record_checksum "$rec")
+        rec=$(printf '%s' "$rec" | jq -c --arg sum "$csum" '. + {record_checksum: $sum}')
+        printf '%s\n' "$rec" >> "$ACFS_CHANGES_FILE"
+    done
+
+    # Remove chg_0003 from changes.jsonl (leaving 4 lines total, with max ID chg_0005)
+    local temp_f
+    temp_f=$(mktemp)
+    grep -v '"id":"chg_0003"' "$ACFS_CHANGES_FILE" > "$temp_f"
+    mv "$temp_f" "$ACFS_CHANGES_FILE"
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local new_id
+    new_id=$(record_change "test" "Collision test" "echo undo" false info '[]' '[]' '[]')
+
+    if [[ "$new_id" != "chg_0006" ]]; then
+        echo "  Expected next change ID chg_0006, got '$new_id' (collision with chg_0005 or line-count bug)"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
+# Test: verify_backup_integrity rejects missing or null checksum
+test_verify_backup_integrity_rejects_missing_checksum() {
+    setup_test_env
+
+    local test_file="/tmp/test_backup_sum_$$"
+    printf 'data\n' > "$test_file"
+
+    local bad_backup_json
+    bad_backup_json=$(jq -cn --arg f "$test_file" '{backup: $f, original: $f, path_type: "file", checksum: null}')
+
+    if verify_backup_integrity "$bad_backup_json" >/dev/null 2>&1; then
+        echo "  verify_backup_integrity unexpectedly passed for null checksum"
+        rm -f "$test_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    bad_backup_json=$(jq -cn --arg f "$test_file" '{backup: $f, original: $f, path_type: "file", checksum: ""}')
+    if verify_backup_integrity "$bad_backup_json" >/dev/null 2>&1; then
+        echo "  verify_backup_integrity unexpectedly passed for empty checksum"
+        rm -f "$test_file"
+        cleanup_test_env
+        return 1
+    fi
+
+    rm -f "$test_file"
+    cleanup_test_env
+    return 0
+}
+
+# Test: undo_change runs under sanitized environment
+test_undo_change_runs_under_sanitized_environment() {
+    setup_test_env
+
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  Failed to start session"
+        cleanup_test_env
+        return 1
+    fi
+
+    local marker_file="/tmp/test_undo_env_marker_$$"
+    local change_id
+    change_id=$(record_change "test" "Sanitized env test" "printf '%s:%s:%s' \"\${BASH_ENV:-unset}\" \"\${ENV:-unset}\" \"\${LD_PRELOAD:-unset}\" > \"$marker_file\"" false info '[]' '[]' '[]')
+
+    BASH_ENV="/evil/env" ENV="/evil/env" LD_PRELOAD="/evil/preload.so" undo_change "$change_id" true true >/dev/null 2>&1 || true
+
+    local marker_content=""
+    [[ -f "$marker_file" ]] && marker_content=$(cat "$marker_file")
+    rm -f "$marker_file"
+
+    if [[ "$marker_content" != "unset:unset:unset" ]]; then
+        echo "  undo_change leaked startup or dynamic-loader environment: got '$marker_content'"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    end_autofix_session >/dev/null 2>&1 || true
+    cleanup_test_env
+    return 0
+}
+
 # ============================================================
 # Main Test Runner
 # ============================================================
@@ -2401,8 +3491,11 @@ main() {
     run_test test_backup_creation_fsyncs_file_parent_directory
     run_test test_backup_creation_cleans_up_after_sync_failure
     run_test test_backup_creation_cleans_up_after_checksum_failure
+    run_test test_directory_checksum_propagates_walker_failure
+    run_test test_directory_checksum_tracks_symlink_targets_and_empty_directories
     run_test test_backup_creation_cleans_up_after_copy_failure
     run_test test_backup_nonexistent_file
+    run_test test_backup_restore_command_rejects_unsafe_metadata
     run_test test_record_checksum
     run_test test_state_integrity
     run_test test_state_integrity_accepts_broken_symlink_backup
@@ -2410,15 +3503,26 @@ main() {
     run_test test_state_integrity_detects_corrupt_directory_backup
     run_test test_state_integrity_ignores_missing_backup_for_undone_change
     run_test test_state_integrity_checks_all_active_backups
+    run_test test_state_integrity_rejects_missing_record_checksum
+    run_test test_state_integrity_rejects_checksummed_malformed_change_schema
+    run_test test_state_integrity_rejects_checksummed_malformed_undo_schema
+    run_test test_state_integrity_rejects_duplicate_change_ids
     run_test test_state_repair
     run_test test_state_repair_preserves_all_valid_checksummed_records
+    run_test test_state_repair_reconciles_checkpoint_without_losing_valid_records
+    run_test test_state_repair_replaces_malformed_checkpoint
     run_test test_state_repair_fails_when_changes_rewrite_cannot_replace_file
     run_test test_autofix_globals_are_initialized_under_set_u
     run_test test_autofix_refresh_state_paths_falls_back_to_tmp_when_runtime_home_unresolved
     run_test test_autofix_resolve_current_home_ignores_path_poisoned_identity_shims
+    run_test test_autofix_passwd_python_fallback_passes_username_as_argv
     run_test test_init_autofix_state
     run_test test_init_autofix_state_fails_when_repair_fails
+    run_test test_init_autofix_state_rejects_symlinked_state_paths
+    run_test test_init_autofix_state_rejects_symlinked_state_parent
+    run_test test_init_autofix_state_rejects_symlinked_journal
     run_test test_session_management
+    run_test test_session_lock_preserves_caller_descriptors
     run_test test_start_autofix_session_releases_lock_when_session_marker_write_fails
     run_test test_start_autofix_session_ignores_reused_pid_in_orphaned_marker
     run_test test_start_autofix_session_clears_stale_session_marker
@@ -2429,12 +3533,24 @@ main() {
     run_test test_record_change_fails_when_append_atomic_fails
     run_test test_autofix_files_json_escapes_special_paths
     run_test test_record_change_normalizes_single_backup_object
+    run_test test_record_change_computes_post_checksums
+    run_test test_record_change_fails_when_post_checksum_is_unavailable
+    run_test test_undo_change_refuses_incomplete_post_snapshot_without_force
+    run_test test_record_change_change_id_sequence_does_not_collide_after_journal_repair
+    run_test test_verify_backup_integrity_rejects_missing_checksum
     run_test test_multiple_changes_order
     run_test test_undo_change
+    run_test test_undo_change_never_executes_checksum_invalid_record_with_force
+    run_test test_undo_change_rejects_checksummed_malformed_record
+    run_test test_undo_change_never_forces_missing_recovery_backup
     run_test test_undo_change_fails_when_append_atomic_fails
     run_test test_undo_change_leaves_pending_state_when_completion_persist_fails
     run_test test_undo_change_marks_failed_when_executor_missing_after_pending
     run_test test_undo_change_rejects_manual_non_reversible_change
+    run_test test_undo_change_refuses_to_clobber_modified_target_file_without_force
+    run_test test_undo_change_overrides_modified_target_file_with_force
+    run_test test_undo_change_refuses_when_missing_target_file_without_force
+    run_test test_undo_change_runs_under_sanitized_environment
     run_test test_acfs_undo_command_category_handles_quotes
     run_test test_acfs_undo_command_all_skips_undone_changes
     run_test test_acfs_undo_command_list_marks_pending_changes
@@ -2442,6 +3558,8 @@ main() {
     run_test test_update_integrity_file
     run_test test_cleanup_old_backups_removes_directory_entries
     run_test test_cleanup_old_backups_preserves_active_referenced_backups
+    run_test test_cleanup_old_backups_fails_closed_on_untrusted_inventory
+    run_test test_cleanup_old_backups_rejects_invalid_retention
     run_test test_handle_existing_installation_manages_session_for_upgrade
     run_test test_handle_existing_installation_preserves_outer_session
 

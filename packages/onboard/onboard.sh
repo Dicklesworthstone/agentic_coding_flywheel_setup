@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 #
 # onboard - ACFS Interactive Onboarding TUI
 #
@@ -17,12 +17,18 @@
 _ONBOARD_WAS_SOURCED=false
 _ONBOARD_ORIGINAL_HOME=""
 _ONBOARD_ORIGINAL_HOME_WAS_SET=false
+_ONBOARD_ORIGINAL_PATH=""
+_ONBOARD_ORIGINAL_PATH_WAS_SET=false
 _ONBOARD_RESTORE_ERREXIT=false
 _ONBOARD_RESTORE_NOUNSET=false
 _ONBOARD_RESTORE_PIPEFAIL=false
 if [[ -v HOME ]]; then
     _ONBOARD_ORIGINAL_HOME="$HOME"
     _ONBOARD_ORIGINAL_HOME_WAS_SET=true
+fi
+if [[ -v PATH ]]; then
+    _ONBOARD_ORIGINAL_PATH="$PATH"
+    _ONBOARD_ORIGINAL_PATH_WAS_SET=true
 fi
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     _ONBOARD_WAS_SOURCED=true
@@ -34,6 +40,13 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
 fi
 
 set -euo pipefail
+
+# Root execution must not resolve helpers from target-user or locally managed
+# prefixes. User-scoped tools are located explicitly by onboard_runtime_binary_path.
+readonly _ONBOARD_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+if [[ "$EUID" -eq 0 ]]; then
+    export PATH="$_ONBOARD_PRIVILEGED_PATH"
+fi
 
 # Resolve the physical script path so installed symlinks (e.g. ~/.local/bin/onboard)
 # still map back to the real ~/.acfs/onboard tree.
@@ -122,8 +135,6 @@ onboard_system_binary_path() {
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/sbin/$name" \
         "/sbin/$name"
     do
@@ -813,13 +824,30 @@ MENU_SEPARATOR="─────────────────────�
 # ─────────────────────────────────────────────────────────────────────────────
 # Signal Handling — clean exit on Ctrl+C / SIGTERM
 # ─────────────────────────────────────────────────────────────────────────────
+_ONBOARD_ACTIVE_PROGRESS_LOCK=""
+
+_onboard_release_active_progress_lock() {
+    if [[ -n "${_ONBOARD_ACTIVE_PROGRESS_LOCK:-}" ]] \
+        && declare -F onboard_release_progress_lock >/dev/null 2>&1; then
+        onboard_release_progress_lock "$_ONBOARD_ACTIVE_PROGRESS_LOCK"
+    fi
+    _ONBOARD_ACTIVE_PROGRESS_LOCK=""
+}
+
 _onboard_cleanup() {
+    local exit_code="${1:-130}"
+    _onboard_release_active_progress_lock
     printf '\033[?25h' 2>/dev/null   # Restore cursor visibility
     stty echo 2>/dev/null || true    # Re-enable echo if gum disabled it
     printf '\n' 2>/dev/null || true  # Clean newline so shell prompt isn't mangled
-    exit 130                         # Standard SIGINT exit code
+    exit "$exit_code"
 }
-trap _onboard_cleanup INT TERM HUP
+if [[ "$_ONBOARD_WAS_SOURCED" != "true" ]]; then
+    trap '_onboard_cleanup 130' INT
+    trap '_onboard_cleanup 143' TERM
+    trap '_onboard_cleanup 129' HUP
+    trap _onboard_release_active_progress_lock EXIT
+fi
 
 # Source gum_ui library if available for consistent theming
 for candidate in \
@@ -888,6 +916,53 @@ get_lesson_index_by_number() {
     return 1
 }
 
+canonical_lesson_number() {
+    local val="${1:-}"
+    [[ -n "$val" ]] || return 1
+    # If val is a valid array index, resolve to that lesson's number
+    if [[ "$val" =~ ^[0-9]+$ ]] && (( val >= 0 && val < ${#LESSON_NUMBERS[@]} )); then
+        printf '%s\n' "${LESSON_NUMBERS[$val]}"
+        return 0
+    fi
+    # Check if val is a known lesson number
+    if [[ -n "${LESSON_INDEX_BY_NUMBER[$val]+x}" ]]; then
+        printf '%s\n' "$val"
+        return 0
+    fi
+    return 1
+}
+
+canonical_lesson_index() {
+    local val="${1:-}"
+    [[ -n "$val" ]] || return 1
+    # If val is already a valid array index, return it
+    if [[ "$val" =~ ^[0-9]+$ ]] && (( val >= 0 && val < NUM_LESSONS )); then
+        printf '%s\n' "$val"
+        return 0
+    fi
+    # Check if val is a known lesson number
+    if [[ -n "${LESSON_INDEX_BY_NUMBER[$val]+x}" ]]; then
+        printf '%s\n' "${LESSON_INDEX_BY_NUMBER[$val]}"
+        return 0
+    fi
+    return 1
+}
+
+get_current_index() {
+    local current_num
+    current_num="$(get_current 2>/dev/null || printf '0')"
+    local idx
+    idx="$(get_lesson_index_by_number "$current_num" || true)"
+    if [[ -n "$idx" ]]; then
+        printf '%s\n' "$idx"
+    else
+        # Version-2 progress stores stable lesson numbers, not array indexes.
+        # If a lesson was removed or renamed, never reinterpret its old number
+        # as a different lesson's current index.
+        get_next_incomplete
+    fi
+}
+
 discover_lessons() {
     LESSON_TITLES=()
     LESSON_FILES=()
@@ -906,12 +981,24 @@ discover_lessons() {
         local lesson_number
         local lesson_index
         basename=$(basename "$file")
-        LESSON_FILES+=("$basename")
 
         lesson_number="$(extract_lesson_number "$basename" || true)"
         if [[ -z "$lesson_number" ]]; then
             lesson_number="$(( ${#LESSON_FILES[@]} ))"
         fi
+
+        if [[ -n "${LESSON_INDEX_BY_NUMBER[$lesson_number]+x}" ]]; then
+            local prev_idx="${LESSON_INDEX_BY_NUMBER[$lesson_number]}"
+            local prev_file="${LESSON_FILES[$prev_idx]}"
+            echo -e "${YELLOW:-}Warning: duplicate lesson number ${lesson_number} in ${basename} (already assigned to ${prev_file}); assigning unique fallback number.${NC:-}" >&2
+            local fallback_num="${#LESSON_FILES[@]}"
+            while [[ -n "${LESSON_INDEX_BY_NUMBER[$fallback_num]+x}" ]]; do
+                ((fallback_num += 100))
+            done
+            lesson_number="$fallback_num"
+        fi
+
+        LESSON_FILES+=("$basename")
         LESSON_NUMBERS+=("$lesson_number")
         lesson_index=$(( ${#LESSON_FILES[@]} - 1 ))
         LESSON_INDEX_BY_NUMBER["$lesson_number"]="$lesson_index"
@@ -1277,8 +1364,19 @@ progress_file_is_valid() {
 
     if command -v jq &>/dev/null; then
         jq -e '
+            (type == "object") and
             (.completed? | type == "array") and
-            ((.current? | type == "number") or (.current? == null))
+            ([.completed[]? | select(
+                (type != "number") or (floor != .) or (. < 0)
+            )] | length == 0) and
+            (
+                (.current? == null) or
+                ((.current | type) == "number" and (.current | floor) == .current and .current >= 0)
+            ) and
+            (
+                (.version? == null) or
+                ((.version | type) == "number" and (.version | floor) == .version and .version >= 1)
+            )
         ' "$PROGRESS_FILE" >/dev/null 2>&1
         return $?
     fi
@@ -1286,7 +1384,7 @@ progress_file_is_valid() {
     local compact
     compact="$(compact_progress_json || true)"
     [[ -n "$compact" ]] || return 1
-    [[ "$compact" == *'"completed":['* ]] || return 1
+    [[ "$compact" =~ \"completed\":\[([0-9]+(,[0-9]+)*)?\] ]] || return 1
     # Accept null like the jq branch does, or a valid file written while jq
     # was installed gets flagged malformed and needlessly backed up/reset.
     [[ "$compact" =~ \"current\":(null|[0-9]+) ]] || return 1
@@ -1294,11 +1392,106 @@ progress_file_is_valid() {
     return 0
 }
 
+onboard_acquire_progress_lock() {
+    local lock_fd_var="$1"
+    local progress_dir
+    progress_dir="$(dirname "$PROGRESS_FILE")"
+    mkdir -p "$progress_dir" 2>/dev/null || true
+
+    if [[ "${_ONBOARD_DISABLE_FLOCK:-false}" != "true" ]] && command -v flock &>/dev/null; then
+        local fd
+        [[ ! -L "$PROGRESS_LOCK_FILE" ]] || return 1
+        exec {fd}>>"$PROGRESS_LOCK_FILE" || return 1
+        if flock -x -w 5 "$fd" 2>/dev/null; then
+            printf -v "$lock_fd_var" '%s' "$fd"
+            _ONBOARD_ACTIVE_PROGRESS_LOCK="$fd"
+            return 0
+        else
+            { exec {fd}>&-; } 2>/dev/null || true
+            return 1
+        fi
+    fi
+
+    # Fallback for systems without flock (e.g. macOS / Darwin without util-linux)
+    local lock_dir="${PROGRESS_LOCK_FILE}.d"
+    [[ ! -L "$lock_dir" ]] || return 1
+    local count=0
+    while ! mkdir "$lock_dir" 2>/dev/null; do
+        [[ ! -L "$lock_dir" ]] || return 1
+        if [[ -d "$lock_dir" ]]; then
+            local lock_pid_file="$lock_dir/pid"
+            if [[ -f "$lock_pid_file" ]]; then
+                local lock_pid
+                lock_pid="$(cat "$lock_pid_file" 2>/dev/null || true)"
+                if [[ "$lock_pid" =~ ^[1-9][0-9]*$ ]] && ! kill -0 "$lock_pid" 2>/dev/null; then
+                    if onboard_remove_owned_progress_lock "$lock_dir" "$lock_pid"; then
+                        continue
+                    fi
+                fi
+            fi
+        fi
+        sleep 0.1 2>/dev/null || sleep 1 2>/dev/null || true
+        ((count++))
+        if (( count >= 50 )); then
+            return 1
+        fi
+    done
+
+    local current_pid="${BASHPID:-$$}"
+    if ! printf '%s\n' "$current_pid" > "$lock_dir/pid" 2>/dev/null; then
+        # We created the directory, but ownership was never published. Only an
+        # empty directory can be removed safely here; otherwise fail closed.
+        rmdir -- "$lock_dir" 2>/dev/null || true
+        return 1
+    fi
+    printf -v "$lock_fd_var" '%s' "dir:$current_pid"
+    _ONBOARD_ACTIVE_PROGRESS_LOCK="dir:$current_pid"
+    return 0
+}
+
+onboard_remove_owned_progress_lock() {
+    local lock_dir="$1"
+    local expected_pid="$2"
+    local lock_pid_file="$lock_dir/pid"
+    local current_pid
+
+    [[ "$expected_pid" =~ ^[1-9][0-9]*$ ]] || return 1
+    [[ -d "$lock_dir" && ! -L "$lock_dir" ]] || return 1
+    [[ -f "$lock_pid_file" ]] || return 1
+    current_pid="$(cat "$lock_pid_file" 2>/dev/null || true)"
+    [[ -n "$current_pid" && "$current_pid" == "$expected_pid" ]] || return 1
+
+    rm -f -- "$lock_pid_file" 2>/dev/null || return 1
+    rmdir -- "$lock_dir" 2>/dev/null
+}
+
+onboard_release_progress_lock() {
+    local lock_handle="${1:-}"
+    if [[ "$lock_handle" =~ ^[0-9]+$ ]]; then
+        { exec {lock_handle}>&-; } 2>/dev/null || true
+    elif [[ "$lock_handle" =~ ^dir:([0-9]+)$ ]]; then
+        local handle_pid="${BASH_REMATCH[1]}"
+        local lock_dir="${PROGRESS_LOCK_FILE}.d"
+        local lock_pid_file="$lock_dir/pid"
+        if [[ -f "$lock_pid_file" ]]; then
+            local lock_pid
+            lock_pid="$(cat "$lock_pid_file" 2>/dev/null || true)"
+            if [[ "$lock_pid" == "$handle_pid" ]]; then
+                onboard_remove_owned_progress_lock "$lock_dir" "$handle_pid" || true
+            fi
+        fi
+    fi
+    if [[ "${_ONBOARD_ACTIVE_PROGRESS_LOCK:-}" == "$lock_handle" ]]; then
+        _ONBOARD_ACTIVE_PROGRESS_LOCK=""
+    fi
+}
+
 write_default_progress_file() {
     local started_at="$1"
     local last_accessed="$2"
     local progress_dir
     local tmp
+    local initial_current="${LESSON_NUMBERS[0]:-0}"
 
     progress_dir="$(dirname "$PROGRESS_FILE")"
     mkdir -p "$progress_dir" 2>/dev/null || true
@@ -1308,15 +1501,8 @@ write_default_progress_file() {
         return 1
     }
 
-    if cat > "$tmp" <<EOF
-{
-  "completed": [],
-  "current": 0,
-  "started_at": "$started_at",
-  "last_accessed": "$last_accessed"
-}
-EOF
-    then
+    if printf '{"version":2,"completed":[],"current":%s,"started_at":"%s","last_accessed":"%s"}\n' \
+        "$initial_current" "$started_at" "$last_accessed" > "$tmp"; then
         mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
             rm -f -- "$tmp" 2>/dev/null || true
             echo -e "${RED}Error: could not initialize progress (mv failed).${NC}" >&2
@@ -1338,7 +1524,7 @@ get_progress_started_at() {
     compact="$(compact_progress_json || true)"
     if [[ -n "$compact" ]]; then
         started_at=$(printf '%s' "$compact" | sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p')
-        if [[ -n "$started_at" ]]; then
+        if [[ "$started_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
             printf '%s\n' "$started_at"
             return 0
         fi
@@ -1348,14 +1534,17 @@ get_progress_started_at() {
 }
 
 build_completed_csv() {
-    local new_lesson="${1-}"
+    # Callers must pass an already-canonical lesson number. Re-running the
+    # index-or-number resolver here can reinterpret a valid lesson number as an
+    # array index when the catalog is long enough (for example, 33 -> 42).
+    local new_lesson_number="${1-}"
     local existing_csv
     local entry
     local i
     local -a ordered=()
     local -A seen=()
 
-    existing_csv=$(get_completed | tr -d '[:space:]')
+    existing_csv="$(get_completed | tr -d '[:space:]')"
     if [[ -n "$existing_csv" ]]; then
         IFS=',' read -r -a ordered <<< "$existing_csv"
         for entry in "${ordered[@]}"; do
@@ -1364,15 +1553,21 @@ build_completed_csv() {
         done
     fi
 
-    if [[ -n "$new_lesson" ]] && [[ "$new_lesson" =~ ^[0-9]+$ ]]; then
-        seen["$new_lesson"]=1
+    if [[ "$new_lesson_number" =~ ^[0-9]+$ ]]; then
+        seen["$new_lesson_number"]=1
     fi
 
     ordered=()
     for (( i = 0; i < NUM_LESSONS; i++ )); do
-        if [[ -n "${seen[$i]+x}" ]]; then
-            ordered+=("$i")
+        local l_num="${LESSON_NUMBERS[$i]}"
+        if [[ -n "${seen[$l_num]+x}" ]]; then
+            ordered+=("$l_num")
+            unset "seen[$l_num]"
         fi
+    done
+
+    for entry in "${!seen[@]}"; do
+        ordered+=("$entry")
     done
 
     (
@@ -1383,7 +1578,7 @@ build_completed_csv() {
 
 get_next_incomplete_from_csv() {
     local completed_csv
-    completed_csv=$(printf '%s' "$1" | tr -d '[:space:]')
+    completed_csv="$(printf '%s' "$1" | tr -d '[:space:]')"
 
     if (( NUM_LESSONS == 0 )); then
         echo "0"
@@ -1392,13 +1587,14 @@ get_next_incomplete_from_csv() {
 
     local i
     for (( i = 0; i < NUM_LESSONS; i++ )); do
-        if [[ ",$completed_csv," != *",$i,"* ]]; then
-            echo "$i"
+        local l_num="${LESSON_NUMBERS[$i]}"
+        if [[ ",$completed_csv," != *",$l_num,"* ]]; then
+            echo "$l_num"
             return 0
         fi
     done
 
-    echo "$((NUM_LESSONS - 1))"
+    echo "${LESSON_NUMBERS[$((NUM_LESSONS - 1))]:-0}"
 }
 
 write_progress_without_jq() {
@@ -1420,7 +1616,7 @@ write_progress_without_jq() {
     now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     started_at="$(get_progress_started_at)"
 
-    if printf '{"completed":[%s],"current":%s,"started_at":"%s","last_accessed":"%s"}\n' \
+    if printf '{"version":2,"completed":[%s],"current":%s,"started_at":"%s","last_accessed":"%s"}\n' \
         "$completed_csv" "$current_lesson" "$started_at" "$now" > "$tmp"; then
         mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
             rm -f -- "$tmp" 2>/dev/null || true
@@ -1436,52 +1632,129 @@ write_progress_without_jq() {
     return 0
 }
 
-# Initialize progress file if it doesn't exist
+onboard_progress_backup_path() {
+    local timestamp
+    local base
+    local candidate
+    local suffix=0
+
+    timestamp="$(date +%Y%m%d_%H%M%S)"
+    base="${PROGRESS_FILE}.backup.${timestamp}.${BASHPID:-$$}"
+    candidate="$base"
+    while [[ -e "$candidate" || -L "$candidate" ]]; do
+        ((suffix += 1))
+        candidate="${base}.${suffix}"
+    done
+    printf '%s\n' "$candidate"
+}
+
+migrate_legacy_progress() {
+    [[ -f "$PROGRESS_FILE" ]] || return 0
+
+    if command -v jq &>/dev/null; then
+        if jq -e '(.version? // 1) >= 2' "$PROGRESS_FILE" >/dev/null 2>&1; then
+            return 0
+        fi
+    else
+        local compact
+        compact="$(compact_progress_json || true)"
+        if [[ "$compact" =~ \"version\":([2-9]|[1-9][0-9]+)([,}]) ]]; then
+            return 0
+        fi
+    fi
+
+    local -a migrated_completed=()
+    local existing_csv
+    existing_csv="$(get_completed | tr -d '[:space:]')"
+    if [[ -n "$existing_csv" ]]; then
+        local -a raw_entries=()
+        IFS=',' read -r -a raw_entries <<< "$existing_csv"
+        for entry in "${raw_entries[@]}"; do
+            [[ "$entry" =~ ^[0-9]+$ ]] || continue
+            if (( entry >= 0 && entry < ${#LESSON_NUMBERS[@]} )); then
+                migrated_completed+=("${LESSON_NUMBERS[$entry]}")
+            else
+                migrated_completed+=("$entry")
+            fi
+        done
+    fi
+
+    local legacy_current
+    legacy_current="$(get_current)"
+    local migrated_current="${LESSON_NUMBERS[0]:-0}"
+    if [[ "$legacy_current" =~ ^[0-9]+$ ]]; then
+        if (( legacy_current >= 0 && legacy_current < ${#LESSON_NUMBERS[@]} )); then
+            migrated_current="${LESSON_NUMBERS[$legacy_current]}"
+        elif [[ -n "${LESSON_INDEX_BY_NUMBER[$legacy_current]+x}" ]]; then
+            migrated_current="$legacy_current"
+        fi
+    fi
+
+    local comp_csv
+    comp_csv="$(IFS=','; echo "${migrated_completed[*]}")"
+    write_progress_without_jq "$comp_csv" "$migrated_current"
+}
+
 init_progress() {
     local dir
-    local lock_fd
+    local lock_handle
     local now
-    dir=$(dirname "$PROGRESS_FILE")
+    dir="$(dirname "$PROGRESS_FILE")"
     mkdir -p "$dir"
 
-    exec {lock_fd}>"$PROGRESS_LOCK_FILE"
-    if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
+    if ! onboard_acquire_progress_lock lock_handle; then
         echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
-        { exec {lock_fd}>&-; } 2>/dev/null || true
         return 1
     fi
 
     if ! progress_file_is_valid; then
-        if [[ -f "$PROGRESS_FILE" ]]; then
+        if [[ -e "$PROGRESS_FILE" || -L "$PROGRESS_FILE" ]]; then
+            if [[ ! -f "$PROGRESS_FILE" && ! -L "$PROGRESS_FILE" ]]; then
+                echo -e "${RED}Error: progress path exists but is not a regular file or symlink.${NC}" >&2
+                onboard_release_progress_lock "$lock_handle"
+                return 1
+            fi
             local backup
-            backup="${PROGRESS_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+            backup="$(onboard_progress_backup_path)"
             if mv "$PROGRESS_FILE" "$backup" 2>/dev/null; then
                 echo -e "${YELLOW}Warning: repaired malformed progress file (backup: $backup).${NC}" >&2
             else
                 echo -e "${RED}Error: could not back up malformed progress file.${NC}" >&2
-                { exec {lock_fd}>&-; } 2>/dev/null || true
+                onboard_release_progress_lock "$lock_handle"
                 return 1
             fi
         fi
 
         now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
         if ! write_default_progress_file "$now" "$now"; then
-            { exec {lock_fd}>&-; } 2>/dev/null || true
+            onboard_release_progress_lock "$lock_handle"
+            return 1
+        fi
+    else
+        if ! migrate_legacy_progress; then
+            echo -e "${RED}Error: could not migrate legacy progress file.${NC}" >&2
+            onboard_release_progress_lock "$lock_handle"
             return 1
         fi
     fi
 
-    { exec {lock_fd}>&-; } 2>/dev/null || true
+    onboard_release_progress_lock "$lock_handle"
 }
 
-# Get list of completed lessons
+onboard_restore_failed_reset_backup() {
+    local backup_path="${1:-}"
+
+    [[ -n "$backup_path" ]] || return 0
+    [[ -e "$backup_path" || -L "$backup_path" ]] || return 1
+    [[ ! -e "$PROGRESS_FILE" && ! -L "$PROGRESS_FILE" ]] || return 1
+    mv -- "$backup_path" "$PROGRESS_FILE" 2>/dev/null
+}
+
 get_completed() {
     if [[ -f "$PROGRESS_FILE" ]]; then
-        # Parse JSON with jq if available, otherwise use sed (POSIX-compatible)
         if command -v jq &>/dev/null; then
             jq -r '.completed | @csv' "$PROGRESS_FILE" 2>/dev/null | tr -d '"' || echo ""
         else
-            # Handle both pretty-printed jq output and compact JSON.
             local compact
             compact="$(compact_progress_json || true)"
             printf '%s\n' "$compact" | sed -n 's/.*"completed":\[\([^]]*\)\].*/\1/p'
@@ -1491,20 +1764,20 @@ get_completed() {
     fi
 }
 
-# Check if a lesson is completed
 is_completed() {
-    local lesson=$1
+    local lesson="${1:-}"
+    local lesson_number
+    lesson_number="$(canonical_lesson_number "$lesson" || printf '%s' "$lesson")"
+    [[ -n "$lesson_number" ]] || return 1
     local completed
-    completed=$(get_completed | tr -d ' ')
-    [[ "$completed" =~ (^|,)$lesson(,|$) ]]
+    completed="$(get_completed | tr -d ' ')"
+    [[ "$completed" =~ (^|,)$lesson_number(,|$) ]]
 }
 
-# Get current lesson
 get_current() {
     if [[ -f "$PROGRESS_FILE" ]] && command -v jq &>/dev/null; then
         jq -r '.current // 0' "$PROGRESS_FILE" 2>/dev/null || echo "0"
     else
-        # Handle both pretty-printed jq output and compact JSON.
         local result
         local compact
         compact="$(compact_progress_json || true)"
@@ -1513,7 +1786,6 @@ get_current() {
     fi
 }
 
-# Get the next recommended lesson index (first incomplete, 0 to NUM_LESSONS-1).
 get_next_incomplete() {
     if (( NUM_LESSONS == 0 )); then
         echo "0"
@@ -1521,14 +1793,12 @@ get_next_incomplete() {
     fi
 
     local i
-    # Use C-style for loop since brace expansion {0..N} is evaluated at parse time
     for (( i = 0; i < NUM_LESSONS; i++ )); do
         if ! is_completed "$i"; then
             echo "$i"
             return 0
         fi
     done
-    # All lessons complete - return the last lesson index
     echo "$((NUM_LESSONS - 1))"
 }
 
@@ -1547,217 +1817,202 @@ all_lessons_complete() {
     return 0
 }
 
-# Mark a lesson as completed
-# Uses file locking to prevent race conditions with concurrent calls.
 mark_completed() {
     local lesson=$1
+    local lesson_number
+    local lesson_idx
+    lesson_number="$(canonical_lesson_number "$lesson" || true)"
+    lesson_idx="$(canonical_lesson_index "$lesson" || true)"
+    [[ -n "$lesson_number" && -n "$lesson_idx" ]] || return 1
+
+    local lock_handle
+    if ! onboard_acquire_progress_lock lock_handle; then
+        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
+        return 1
+    fi
 
     if command -v jq &>/dev/null; then
-        local tmp
-        local progress_dir
-        local lock_fd
+        local tmp progress_dir
         progress_dir="$(dirname "$PROGRESS_FILE")"
         mkdir -p "$progress_dir" 2>/dev/null || true
 
-        # Acquire exclusive lock (wait up to 5 seconds)
-        exec {lock_fd}>"$PROGRESS_LOCK_FILE"
-        if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
-            echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
-            { exec {lock_fd}>&-; } 2>/dev/null || true
-            return 1
-        fi
-
         tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
             echo -e "${RED}Error: could not save progress (mktemp failed).${NC}" >&2
-            { exec {lock_fd}>&-; } 2>/dev/null || true
+            onboard_release_progress_lock "$lock_handle"
             return 1
         }
 
-        if jq --argjson lesson "$lesson" --argjson num_lessons "$NUM_LESSONS" '
+        local lesson_numbers_json
+        lesson_numbers_json=$(printf '%s\n' "${LESSON_NUMBERS[@]}" | jq -R . | jq -s 'map(tonumber)')
+
+        if jq --argjson lesson "$lesson_number" --argjson all_lessons "$lesson_numbers_json" '
+            .version = 2 |
             .completed = (.completed + [$lesson] | unique | sort) |
             . as $o |
             .current = (
-                [range(0;$num_lessons) as $i | select(($o.completed | index($i)) == null) | $i] | first // (if $num_lessons > 0 then ($num_lessons - 1) else 0 end)
+                [$all_lessons[] as $l | select(($o.completed | index($l)) == null) | $l] | first // (if ($all_lessons | length) > 0 then ($all_lessons | last) else 0 end)
             ) |
             .last_accessed = (now | todateiso8601)
         ' "$PROGRESS_FILE" > "$tmp"; then
             mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
                 rm -f -- "$tmp" 2>/dev/null || true
                 echo -e "${RED}Error: could not save progress (mv failed).${NC}" >&2
-                { exec {lock_fd}>&-; } 2>/dev/null || true
+                onboard_release_progress_lock "$lock_handle"
                 return 1
             }
         else
             rm -f -- "$tmp" 2>/dev/null || true
             echo -e "${RED}Error: could not save progress.${NC}" >&2
-            { exec {lock_fd}>&-; } 2>/dev/null || true
+            onboard_release_progress_lock "$lock_handle"
             return 1
         fi
 
-        # Release lock
-        { exec {lock_fd}>&-; } 2>/dev/null || true
-        local lesson_number
-        lesson_number="$(get_lesson_number "$lesson" 2>/dev/null || printf '%d' "$((10#$lesson + 1))")"
-        local_progress_record_onboard_lesson "completed" "$lesson" "$lesson_number" 2>/dev/null || true
+        onboard_release_progress_lock "$lock_handle"
+        local_progress_record_onboard_lesson "completed" "$lesson_idx" "$lesson_number" 2>/dev/null || true
         return 0
     fi
 
     local progress_dir
-    local lock_fd
     local completed_csv
     local next_current
     progress_dir="$(dirname "$PROGRESS_FILE")"
     mkdir -p "$progress_dir" 2>/dev/null || true
 
-    exec {lock_fd}>"$PROGRESS_LOCK_FILE"
-    if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
-        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
-        { exec {lock_fd}>&-; } 2>/dev/null || true
-        return 1
-    fi
-
-    completed_csv="$(build_completed_csv "$lesson")"
+    completed_csv="$(build_completed_csv "$lesson_number")"
     next_current="$(get_next_incomplete_from_csv "$completed_csv")"
     if ! write_progress_without_jq "$completed_csv" "$next_current"; then
-        { exec {lock_fd}>&-; } 2>/dev/null || true
+        onboard_release_progress_lock "$lock_handle"
         return 1
     fi
 
-    { exec {lock_fd}>&-; } 2>/dev/null || true
-    local lesson_number
-    lesson_number="$(get_lesson_number "$lesson" 2>/dev/null || printf '%d' "$((10#$lesson + 1))")"
-    local_progress_record_onboard_lesson "completed" "$lesson" "$lesson_number" 2>/dev/null || true
+    onboard_release_progress_lock "$lock_handle"
+    local_progress_record_onboard_lesson "completed" "$lesson_idx" "$lesson_number" 2>/dev/null || true
     return 0
 }
 
-# Update current lesson without marking complete
-# Uses file locking to prevent race conditions with concurrent calls.
 set_current() {
     local lesson=$1
+    local lesson_number
+    local lesson_idx
+    lesson_number="$(canonical_lesson_number "$lesson" || true)"
+    lesson_idx="$(canonical_lesson_index "$lesson" || true)"
+    [[ -n "$lesson_number" && -n "$lesson_idx" ]] || return 1
+
+    local lock_handle
+    if ! onboard_acquire_progress_lock lock_handle; then
+        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
+        return 1
+    fi
 
     if command -v jq &>/dev/null; then
-        local tmp
-        local progress_dir
-        local lock_fd
+        local tmp progress_dir
         progress_dir="$(dirname "$PROGRESS_FILE")"
         mkdir -p "$progress_dir" 2>/dev/null || true
 
-        # Acquire exclusive lock (wait up to 5 seconds)
-        exec {lock_fd}>"$PROGRESS_LOCK_FILE"
-        if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
-            echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
-            { exec {lock_fd}>&-; } 2>/dev/null || true
-            return 1
-        fi
-
         tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
             echo -e "${RED}Error: could not update progress (mktemp failed).${NC}" >&2
-            { exec {lock_fd}>&-; } 2>/dev/null || true
+            onboard_release_progress_lock "$lock_handle"
             return 1
         }
 
-        if jq --argjson lesson "$lesson" '
+        if jq --argjson lesson "$lesson_number" '
+            .version = 2 |
             .current = $lesson |
             .last_accessed = (now | todateiso8601)
         ' "$PROGRESS_FILE" > "$tmp"; then
             mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
                 rm -f -- "$tmp" 2>/dev/null || true
                 echo -e "${RED}Error: could not update progress (mv failed).${NC}" >&2
-                { exec {lock_fd}>&-; } 2>/dev/null || true
+                onboard_release_progress_lock "$lock_handle"
                 return 1
             }
         else
             rm -f -- "$tmp" 2>/dev/null || true
             echo -e "${RED}Error: could not update progress.${NC}" >&2
-            { exec {lock_fd}>&-; } 2>/dev/null || true
+            onboard_release_progress_lock "$lock_handle"
             return 1
         fi
 
-        # Release lock
-        { exec {lock_fd}>&-; } 2>/dev/null || true
+        onboard_release_progress_lock "$lock_handle"
         return 0
     fi
 
     local progress_dir
-    local lock_fd
     local completed_csv
     progress_dir="$(dirname "$PROGRESS_FILE")"
     mkdir -p "$progress_dir" 2>/dev/null || true
 
-    exec {lock_fd}>"$PROGRESS_LOCK_FILE"
-    if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
-        echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
-        { exec {lock_fd}>&-; } 2>/dev/null || true
-        return 1
-    fi
-
     completed_csv="$(build_completed_csv)"
-    if ! write_progress_without_jq "$completed_csv" "$lesson"; then
-        { exec {lock_fd}>&-; } 2>/dev/null || true
+    if ! write_progress_without_jq "$completed_csv" "$lesson_number"; then
+        onboard_release_progress_lock "$lock_handle"
         return 1
     fi
 
-    { exec {lock_fd}>&-; } 2>/dev/null || true
+    onboard_release_progress_lock "$lock_handle"
     return 0
 }
 
-# Reset progress
-# Uses file locking to prevent race conditions with concurrent calls.
 reset_progress() {
     local progress_dir
-    local lock_fd
+    local lock_handle
+    local backup=""
     progress_dir="$(dirname "$PROGRESS_FILE")"
     mkdir -p "$progress_dir" 2>/dev/null || true
 
-    # Acquire exclusive lock (wait up to 5 seconds)
-    exec {lock_fd}>"$PROGRESS_LOCK_FILE"
-    if ! flock -x -w 5 "$lock_fd" 2>/dev/null; then
+    if ! onboard_acquire_progress_lock lock_handle; then
         echo -e "${RED}Error: could not acquire progress lock.${NC}" >&2
-        { exec {lock_fd}>&-; } 2>/dev/null || true
         return 1
     fi
 
-    if [[ -f "$PROGRESS_FILE" ]]; then
-        local backup
-        backup="${PROGRESS_FILE}.backup.$(date +%Y%m%d_%H%M%S)"
+    if [[ -e "$PROGRESS_FILE" || -L "$PROGRESS_FILE" ]]; then
+        if [[ ! -f "$PROGRESS_FILE" && ! -L "$PROGRESS_FILE" ]]; then
+            echo -e "${RED}Error: progress path exists but is not a regular file or symlink; reset refused.${NC}" >&2
+            onboard_release_progress_lock "$lock_handle"
+            return 1
+        fi
+        backup="$(onboard_progress_backup_path)"
         if mv "$PROGRESS_FILE" "$backup" 2>/dev/null; then
             echo -e "${DIM}Backed up previous progress to: $backup${NC}"
         else
-            echo -e "${YELLOW}Warning: could not back up progress file; continuing.${NC}"
+            echo -e "${RED}Error: could not preserve the existing progress file; reset refused.${NC}" >&2
+            onboard_release_progress_lock "$lock_handle"
+            return 1
         fi
     fi
-    local now
+    local now initial_current tmp
     now="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    local tmp
+    initial_current="${LESSON_NUMBERS[0]:-0}"
+
     tmp=$(mktemp "${progress_dir}/.acfs_onboard.XXXXXX" 2>/dev/null) || {
         echo -e "${RED}Error: could not reset progress (mktemp failed).${NC}" >&2
-        { exec {lock_fd}>&-; } 2>/dev/null || true
+        if ! onboard_restore_failed_reset_backup "$backup"; then
+            echo -e "${RED}Error: previous progress remains at backup path: $backup${NC}" >&2
+        fi
+        onboard_release_progress_lock "$lock_handle"
         return 1
     }
-    if cat > "$tmp" <<EOF
-{
-  "completed": [],
-  "current": 0,
-  "started_at": "$now",
-  "last_accessed": "$now"
-}
-EOF
-    then
+    if printf '{"version":2,"completed":[],"current":%s,"started_at":"%s","last_accessed":"%s"}\n' \
+        "$initial_current" "$now" "$now" > "$tmp"; then
         mv -- "$tmp" "$PROGRESS_FILE" 2>/dev/null || {
             rm -f -- "$tmp" 2>/dev/null || true
             echo -e "${RED}Error: could not reset progress (mv failed).${NC}" >&2
-            { exec {lock_fd}>&-; } 2>/dev/null || true
+            if ! onboard_restore_failed_reset_backup "$backup"; then
+                echo -e "${RED}Error: previous progress remains at backup path: $backup${NC}" >&2
+            fi
+            onboard_release_progress_lock "$lock_handle"
             return 1
         }
     else
         rm -f -- "$tmp" 2>/dev/null || true
         echo -e "${RED}Error: could not reset progress (write failed).${NC}" >&2
-        { exec {lock_fd}>&-; } 2>/dev/null || true
+        if ! onboard_restore_failed_reset_backup "$backup"; then
+            echo -e "${RED}Error: previous progress remains at backup path: $backup${NC}" >&2
+        fi
+        onboard_release_progress_lock "$lock_handle"
         return 1
     fi
 
-    # Release lock
-    { exec {lock_fd}>&-; } 2>/dev/null || true
+    onboard_release_progress_lock "$lock_handle"
     local_progress_record_onboard_event "progress_reset" "reset" 0 "$NUM_LESSONS" 2>/dev/null || true
     echo -e "${GREEN}Progress reset!${NC}"
     return 0
@@ -2250,16 +2505,16 @@ format_lesson() {
     local current
     current=$(get_current)
 
+    local lesson_number
+    lesson_number="$(get_lesson_number "$idx" || printf '%d' "$((idx + 1))")"
+
     if is_completed "$idx"; then
         status="${GREEN}✓${NC}"
-    elif [[ "$idx" == "$current" ]]; then
+    elif [[ "$lesson_number" == "$current" ]]; then
         status="${YELLOW}●${NC}"
     else
         status="${DIM}○${NC}"
     fi
-
-    local lesson_number
-    lesson_number="$(get_lesson_number "$idx" || printf '%d' "$((idx + 1))")"
 
     printf "%s [%s] %s" "$status" "$lesson_number" "$title"
 }
@@ -2273,15 +2528,15 @@ show_menu_gum() {
     local -a items=()
     for (( i = 0; i < NUM_LESSONS; i++ )); do
         local status=""
+        local lesson_number
+        lesson_number="$(get_lesson_number "$i" || printf '%d' "$((i + 1))")"
         if is_completed "$i"; then
             status="✓"
-        elif [[ "$i" == "$current" ]]; then
+        elif [[ "$lesson_number" == "$current" ]]; then
             status="●"
         else
             status="○"
         fi
-        local lesson_number
-        lesson_number="$(get_lesson_number "$i" || printf '%d' "$((i + 1))")"
         items+=("${status} [${lesson_number}] ${LESSON_TITLES[$i]}")
     done
     if (( NUM_LESSONS > 0 )); then
@@ -2392,13 +2647,21 @@ render_markdown() {
         bat --paging=never --style=plain --language=markdown "$file"
     else
         # Basic markdown rendering with sed
+        local c_magenta c_cyan c_yellow c_bold c_dim c_reset
+        c_magenta="$(printf '\033[1;35m')"
+        c_cyan="$(printf '\033[36m')"
+        c_yellow="$(printf '\033[1;33m')"
+        c_bold="$(printf '\033[1m')"
+        c_dim="$(printf '\033[90m')"
+        c_reset="$(printf '\033[0m')"
+
         sed \
-            -e "s/^# \(.*\)$/$(printf '\033[1;35m')\\1$(printf '\033[0m')/" \
-            -e "s/^## \(.*\)$/$(printf '\033[1;36m')\\1$(printf '\033[0m')/" \
-            -e "s/^### \(.*\)$/$(printf '\033[1;33m')\\1$(printf '\033[0m')/" \
-            -e "s/\*\*\([^*]*\)\*\*/$(printf '\033[1m')\\1$(printf '\033[0m')/g" \
-            -e "s/\`\([^\`]*\)\`/$(printf '\033[36m')\\1$(printf '\033[0m')/g" \
-            -e "s/^---$/$(printf '\033[90m')────────────────────────────────────────$(printf '\033[0m')/" \
+            -e "s/^# \(.*\)$/${c_magenta}\\1${c_reset}/" \
+            -e "s/^## \(.*\)$/${c_cyan}\\1${c_reset}/" \
+            -e "s/^### \(.*\)$/${c_yellow}\\1${c_reset}/" \
+            -e "s/\*\*\([^*]*\)\*\*/${c_bold}\\1${c_reset}/g" \
+            -e 's/`\([^`]*\)`/'"${c_cyan}"'\1'"${c_reset}"'/g' \
+            -e "s/^---$/${c_dim}────────────────────────────────────────${c_reset}/" \
             -e "s/^- /  • /" \
             "$file"
     fi
@@ -2419,7 +2682,7 @@ show_celebration() {
         if all_lessons_complete; then
             summaries="Key concepts from ${title}|You have completed the full onboarding curriculum"
         else
-            next_idx=$(get_current)
+            next_idx="$(get_current_index)"
             if [[ ! "$next_idx" =~ ^[0-9]+$ ]] || (( next_idx < 0 || next_idx >= NUM_LESSONS )); then
                 next_idx=$(get_next_incomplete)
             fi
@@ -2653,7 +2916,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                     show_completion_certificate
                     return 0
                 fi
-                next_idx=$(get_current)
+                next_idx="$(get_current_index)"
                 if [[ ! "$next_idx" =~ ^[0-9]+$ ]] || (( next_idx < 0 || next_idx >= NUM_LESSONS )); then
                     next_idx=$(get_next_incomplete)
                 fi
@@ -2721,7 +2984,7 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
                         show_completion_certificate
                         return 0
                     fi
-                    next_idx=$(get_current)
+                    next_idx="$(get_current_index)"
                     if [[ ! "$next_idx" =~ ^[0-9]+$ ]] || (( next_idx < 0 || next_idx >= NUM_LESSONS )); then
                         next_idx=$(get_next_incomplete)
                     fi
@@ -2783,21 +3046,23 @@ $(gum style --foreground "$ACFS_PRIMARY" "$bar") $(gum style --foreground "$ACFS
 
         # Lesson list with styled status
         echo ""
+        local current_lesson_num
+        current_lesson_num="$(get_current)"
         for (( i = 0; i < NUM_LESSONS; i++ )); do
             local status_icon
             local status_color
+            local lesson_number
+            lesson_number="$(get_lesson_number "$i" || printf '%d' "$((i + 1))")"
             if is_completed "$i"; then
                 status_icon="✓"
                 status_color="$ACFS_SUCCESS"
-            elif [[ "$i" == "$(get_current)" ]]; then
+            elif [[ "$lesson_number" == "$current_lesson_num" ]]; then
                 status_icon="●"
                 status_color="$ACFS_PRIMARY"
             else
                 status_icon="○"
                 status_color="$ACFS_MUTED"
             fi
-            local lesson_number
-            lesson_number="$(get_lesson_number "$i" || printf '%d' "$((i + 1))")"
             echo "  $(gum style --foreground "$status_color" "$status_icon") $(gum style --foreground "$ACFS_TEAL" "[${lesson_number}]") ${LESSON_TITLES[$i]}"
         done
 
@@ -3054,6 +3319,13 @@ onboard_restore_shell_options_if_sourced() {
         export HOME
     else
         unset HOME
+    fi
+
+    if [[ "$_ONBOARD_ORIGINAL_PATH_WAS_SET" == "true" ]]; then
+        PATH="$_ONBOARD_ORIGINAL_PATH"
+        export PATH
+    else
+        unset PATH
     fi
 
     [[ "$_ONBOARD_RESTORE_ERREXIT" == "true" ]] || set +e

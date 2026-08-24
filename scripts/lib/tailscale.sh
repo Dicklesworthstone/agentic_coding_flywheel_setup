@@ -148,13 +148,13 @@ install_tailscale() {
 
         # Update package list
         log_detail "  Updating package list..."
-        if ! $sudo_cmd apt-get update -qq 2>/dev/null; then
+        if ! $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 update -qq 2>/dev/null; then
             log_warn "apt-get update had issues, continuing anyway..."
         fi
 
         # Install tailscale package
         log_detail "  Installing tailscale package..."
-        if ! $sudo_cmd apt-get install -y -qq tailscale 2>/dev/null; then
+        if ! $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y -qq tailscale 2>/dev/null; then
             log_error "Failed to install tailscale package"
             return 1
         fi
@@ -303,8 +303,8 @@ upgrade_tailscale() {
     old_version=$(tailscale version 2>/dev/null | head -1 || echo "unknown")
 
     # Update and upgrade via apt
-    $sudo_cmd apt-get update -qq 2>/dev/null || true
-    if $sudo_cmd apt-get install -y -qq tailscale 2>/dev/null; then
+    $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 update -qq 2>/dev/null || true
+    if $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y -qq tailscale 2>/dev/null; then
         local new_version
         new_version=$(tailscale version 2>/dev/null | head -1 || echo "unknown")
         if [[ "$old_version" != "$new_version" ]]; then

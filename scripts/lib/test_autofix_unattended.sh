@@ -36,11 +36,62 @@ setup_autofix_state_dir() {
     : > "$ACFS_UNDOS_FILE"
 }
 
+write_checksummed_test_record() {
+    local target_file="$1"
+    local record_json="$2"
+    local checksummed_record=""
+
+    checksummed_record="$(autofix_add_record_checksum "$record_json")" || return 1
+    printf '%s\n' "$checksummed_record" > "$target_file"
+}
+
+append_checksummed_test_record() {
+    local target_file="$1"
+    local record_json="$2"
+    local checksummed_record=""
+
+    checksummed_record="$(autofix_add_record_checksum "$record_json")" || return 1
+    printf '%s\n' "$checksummed_record" >> "$target_file"
+}
+
+make_test_change_record() {
+    local change_id="${1:-chg_0001}"
+    local description="${2:-Stopped unattended-upgrades service}"
+    local session_id="${3:-sess_fixture}"
+
+    jq -cn \
+        --arg id "$change_id" \
+        --arg desc "$description" \
+        --arg session "$session_id" \
+        '{
+          id: $id,
+          timestamp: "2026-04-15T00:00:00Z",
+          category: "unattended",
+          description: $desc,
+          undo_command: "true",
+          undo_requires_root: true,
+          severity: "warning",
+          files_affected: [],
+          post_checksums: [],
+          backups: [],
+          depends_on: [],
+          session_id: $session,
+          reversible: true,
+          undone: false
+        }'
+}
+
 cleanup_test_dir() {
     local test_dir="$1"
     if [[ -d "$test_dir" ]]; then
         rm -rf "$test_dir"
     fi
+}
+
+use_autofix_unattended_command_stubs() {
+    _autofix_unattended_binary_path() {
+        printf '%s\n' "${1:-}"
+    }
 }
 
 test_pass() {
@@ -93,7 +144,7 @@ test_check_valid_status() {
     status=$(echo "$result" | jq -r '.status')
 
     case "$status" in
-        none|active|locks_held|processes_running)
+        none|active|locks_held|processes_running|inspection_unavailable)
             test_pass "check_valid_status ($status)"
             ;;
         *)
@@ -151,6 +202,7 @@ test_fix_manages_session_and_records_changes() {
     setup_autofix_state_dir "$state_dir"
 
     if ! (
+        use_autofix_unattended_command_stubs
         sudo() { "$@"; }
         autofix_unattended_upgrades_check() {
             jq -n \
@@ -167,9 +219,7 @@ test_fix_manages_session_and_records_changes() {
             return 0
         }
         pgrep() { return 1; }
-        # Treat any real host lock file as actively held so the fixture never
-        # mutates /var/lib/dpkg/* or other system apt locks.
-        fuser() { return 0; }
+        fuser() { return 1; }
         dpkg() { return 0; }
         apt-get() { return 0; }
 
@@ -202,11 +252,12 @@ test_restore_manages_session_and_persists_marker() {
     mkdir -p "$test_dir"
     setup_autofix_state_dir "$state_dir"
 
-    cat > "$ACFS_CHANGES_FILE" <<'EOF'
-{"id":"chg_0001","category":"unattended","description":"Stopped unattended-upgrades service","session_id":"sess_fixture"}
-EOF
+    write_checksummed_test_record "$ACFS_CHANGES_FILE" \
+        "$(make_test_change_record)"
+    update_integrity_file >/dev/null 2>&1
 
     if ! (
+        use_autofix_unattended_command_stubs
         sudo() { "$@"; }
         systemctl() {
             case "${1:-}" in
@@ -245,19 +296,18 @@ test_restore_fails_closed_on_unresolved_session_marker() {
     mkdir -p "$test_dir"
     setup_autofix_state_dir "$state_dir"
 
-    cat > "$ACFS_CHANGES_FILE" <<'EOF'
-{"id":"chg_0001","category":"unattended","description":"Stopped unattended-upgrades service","session_id":"sess_fixture"}
-EOF
-
-    cat > "$ACFS_UNDOS_FILE" <<'EOF'
-{"auto_restored":"unattended-upgrades","timestamp":"2026-04-16T00:00:00Z"}
-EOF
+    write_checksummed_test_record "$ACFS_CHANGES_FILE" \
+        "$(make_test_change_record)"
+    write_checksummed_test_record "$ACFS_UNDOS_FILE" \
+        '{"undone":"chg_0001","auto_restored":"unattended-upgrades","timestamp":"2026-04-16T00:00:00Z","exit_code":0,"status":"applied"}'
+    update_integrity_file >/dev/null 2>&1
 
     cat > "$ACFS_STATE_DIR/.session" <<'EOF'
 {"id":"sess_stale","start":"2026-04-16T00:00:00Z","pid":123}
 EOF
 
     if (
+        use_autofix_unattended_command_stubs
         sudo() { "$@"; }
         systemctl() {
             case "${1:-}" in
@@ -307,6 +357,7 @@ test_stop_service_rolls_back_when_record_change_fails() {
     setup_autofix_state_dir "$state_dir"
 
     if (
+        use_autofix_unattended_command_stubs
         sudo() { "$@"; }
         # shellcheck disable=SC2123
         PATH="/definitely-missing-for-this-test"
@@ -359,41 +410,224 @@ test_stop_service_rolls_back_when_record_change_fails() {
     test_pass "stop_service_rolls_back_when_record_change_fails"
 }
 
-test_kill_stuck_processes_does_not_record_failed_kill() {
-    local test_dir="/tmp/test_autofix_unattended_kill_failure_$$"
+test_live_package_owner_fails_closed_without_mutation() {
+    local test_dir="/tmp/test_autofix_unattended_live_owner_$$"
     local state_dir="$test_dir/state"
+    local mutation_sentinel="$test_dir/mutated"
     mkdir -p "$test_dir"
     setup_autofix_state_dir "$state_dir"
 
     if (
         sudo() { "$@"; }
-        pgrep() {
-            if [[ "${1:-}" == "-x" ]]; then
-                echo "123"
-                return 0
-            fi
-            return 1
+        autofix_unattended_upgrades_check() {
+            jq -n \
+                --arg status "processes_running" \
+                --arg details "test fixture" \
+                '{status: $status, details: $details, held_locks: [], apt_pids: "123"}'
         }
-
-        pkill() {
+        _autofix_stop_unattended_service() { return 0; }
+        _autofix_wait_for_apt_processes() { return 1; }
+        autofix_unattended_upgrades_restore() { return 0; }
+        _autofix_reconfigure_dpkg() {
+            : > "$mutation_sentinel"
+            return 0
+        }
+        _autofix_update_apt() {
+            : > "$mutation_sentinel"
             return 0
         }
 
-        _autofix_kill_stuck_processes
+        autofix_unattended_upgrades_fix "fix"
     ) >/dev/null 2>&1; then
         cleanup_test_dir "$test_dir"
-        test_fail "kill_stuck_processes_does_not_record_failed_kill" "kill helper unexpectedly succeeded while processes still appeared alive"
+        test_fail "live_package_owner_fails_closed_without_mutation" "repair unexpectedly succeeded while a live owner remained"
         return
     fi
 
-    if [[ -s "$ACFS_CHANGES_FILE" ]]; then
+    if [[ -e "$mutation_sentinel" ]]; then
         cleanup_test_dir "$test_dir"
-        test_fail "kill_stuck_processes_does_not_record_failed_kill" "failed kill still wrote a change record"
+        test_fail "live_package_owner_fails_closed_without_mutation" "repair mutated package state while a live owner remained"
         return
     fi
 
     cleanup_test_dir "$test_dir"
-    test_pass "kill_stuck_processes_does_not_record_failed_kill"
+    test_pass "live_package_owner_fails_closed_without_mutation"
+}
+
+test_service_stop_failure_blocks_package_mutation() {
+    local mutation_sentinel="/tmp/test_autofix_unattended_stop_failure_$$"
+
+    if (
+        use_autofix_unattended_command_stubs
+        autofix_unattended_upgrades_check() {
+            jq -n \
+                --arg status "active" \
+                --arg details "test fixture" \
+                '{status: $status, details: $details, held_locks: [], apt_pids: ""}'
+        }
+        autofix_ensure_session() { return 0; }
+        autofix_finalize_managed_session() { return 0; }
+        _autofix_stop_unattended_service() { return 1; }
+        _autofix_wait_for_apt_processes() {
+            : > "$mutation_sentinel"
+            return 0
+        }
+        _autofix_reconfigure_dpkg() {
+            : > "$mutation_sentinel"
+            return 0
+        }
+        _autofix_update_apt() {
+            : > "$mutation_sentinel"
+            return 0
+        }
+
+        autofix_unattended_upgrades_fix "fix"
+    ) >/dev/null 2>&1; then
+        test_fail "service_stop_failure_blocks_package_mutation" "repair unexpectedly succeeded after service stop failure"
+        return
+    fi
+
+    if [[ -e "$mutation_sentinel" ]]; then
+        test_fail "service_stop_failure_blocks_package_mutation" "package mutation path ran after service stop failure"
+        return
+    fi
+
+    test_pass "service_stop_failure_blocks_package_mutation"
+}
+
+test_package_owner_detection_includes_aptitude_and_lock_holders() {
+    if ! (
+        use_autofix_unattended_command_stubs
+        detection_mode="named"
+        pgrep() {
+            [[ "$detection_mode" == "named" && "$*" == *"aptitude"* ]]
+        }
+        fuser() {
+            [[ "$detection_mode" == "lock" && "${1:-}" == "/var/lib/dpkg/lock" ]]
+        }
+
+        _autofix_package_owner_running || exit 1
+        detection_mode="lock"
+        _autofix_package_owner_running || exit 2
+        detection_mode="none"
+        ! _autofix_package_owner_running || exit 3
+    ); then
+        test_fail "package_owner_detection_includes_aptitude_and_lock_holders" "package-owner detection did not distinguish named, lock-held, and idle states"
+        return
+    fi
+
+    test_pass "package_owner_detection_includes_aptitude_and_lock_holders"
+}
+
+test_package_owner_detection_fails_closed_without_probes() {
+    if ! (
+        _autofix_unattended_binary_path() { return 1; }
+        _autofix_package_owner_running
+    ); then
+        test_fail "package_owner_detection_fails_closed_without_probes" "missing ownership probes were treated as proof that package state was idle"
+        return
+    fi
+
+    test_pass "package_owner_detection_fails_closed_without_probes"
+}
+
+test_update_apt_failure_propagates() {
+    if (
+        use_autofix_unattended_command_stubs
+        sudo() { "$@"; }
+        apt-get() { return 1; }
+
+        _autofix_update_apt
+    ) >/dev/null 2>&1; then
+        test_fail "update_apt_failure_propagates" "failed apt-get update was reported as successful"
+        return
+    fi
+
+    test_pass "update_apt_failure_propagates"
+}
+
+test_restore_skips_compact_existing_marker() {
+    local test_dir="/tmp/test_autofix_unattended_restore_idempotent_$$"
+    local state_dir="$test_dir/state"
+    local sentinel="$test_dir/systemctl-started"
+    mkdir -p "$test_dir"
+    setup_autofix_state_dir "$state_dir"
+
+    write_checksummed_test_record "$ACFS_CHANGES_FILE" \
+        "$(make_test_change_record)"
+    write_checksummed_test_record "$ACFS_UNDOS_FILE" \
+        '{"undone":"chg_0001","auto_restored":"unattended-upgrades","timestamp":"2026-04-16T00:00:00Z","exit_code":0,"status":"applied"}'
+    update_integrity_file >/dev/null 2>&1
+
+    if ! (
+        use_autofix_unattended_command_stubs
+        sudo() { "$@"; }
+        systemctl() {
+            : > "$sentinel"
+            return 0
+        }
+
+        autofix_unattended_upgrades_restore
+    ) >/dev/null 2>&1; then
+        cleanup_test_dir "$test_dir"
+        test_fail "restore_skips_compact_existing_marker" "restore rejected a valid existing marker"
+        return
+    fi
+
+    if [[ -e "$sentinel" ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "restore_skips_compact_existing_marker" "restore restarted the service despite an existing compact JSON marker"
+        return
+    fi
+
+    cleanup_test_dir "$test_dir"
+    test_pass "restore_skips_compact_existing_marker"
+}
+
+test_restore_does_not_reuse_marker_for_older_change() {
+    local test_dir="/tmp/test_autofix_unattended_restore_newer_$$"
+    local state_dir="$test_dir/state"
+    local sentinel="$test_dir/systemctl-started"
+    mkdir -p "$test_dir"
+    setup_autofix_state_dir "$state_dir"
+
+    write_checksummed_test_record "$ACFS_CHANGES_FILE" \
+        "$(make_test_change_record "chg_0001" "First unattended stop" "sess_first")"
+    append_checksummed_test_record "$ACFS_CHANGES_FILE" \
+        "$(make_test_change_record "chg_0002" "Later unattended stop" "sess_second")"
+    write_checksummed_test_record "$ACFS_UNDOS_FILE" \
+        '{"undone":"chg_0001","auto_restored":"unattended-upgrades","timestamp":"2026-04-16T00:00:00Z","exit_code":0,"status":"applied"}'
+    update_integrity_file >/dev/null 2>&1
+
+    if ! (
+        use_autofix_unattended_command_stubs
+        sudo() { "$@"; }
+        systemctl() {
+            : > "$sentinel"
+            return 0
+        }
+
+        autofix_unattended_upgrades_restore
+    ) >/dev/null 2>&1; then
+        cleanup_test_dir "$test_dir"
+        test_fail "restore_does_not_reuse_marker_for_older_change" "restore rejected the later unattended stop"
+        return
+    fi
+
+    if [[ ! -e "$sentinel" ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "restore_does_not_reuse_marker_for_older_change" "older restore marker suppressed the later restore"
+        return
+    fi
+    if ! jq -e -s 'any(.[]; .undone == "chg_0002" and .status == "applied" and .auto_restored == "unattended-upgrades")' \
+        "$ACFS_UNDOS_FILE" >/dev/null 2>&1; then
+        cleanup_test_dir "$test_dir"
+        test_fail "restore_does_not_reuse_marker_for_older_change" "later change was not recorded as restored"
+        return
+    fi
+
+    cleanup_test_dir "$test_dir"
+    test_pass "restore_does_not_reuse_marker_for_older_change"
 }
 
 # Test: CLI modes work
@@ -457,7 +691,13 @@ main() {
     test_restore_manages_session_and_persists_marker
     test_restore_fails_closed_on_unresolved_session_marker
     test_stop_service_rolls_back_when_record_change_fails
-    test_kill_stuck_processes_does_not_record_failed_kill
+    test_live_package_owner_fails_closed_without_mutation
+    test_service_stop_failure_blocks_package_mutation
+    test_package_owner_detection_includes_aptitude_and_lock_holders
+    test_package_owner_detection_fails_closed_without_probes
+    test_update_apt_failure_propagates
+    test_restore_skips_compact_existing_marker
+    test_restore_does_not_reuse_marker_for_older_change
     test_cli_modes
     test_lock_file_constants
 

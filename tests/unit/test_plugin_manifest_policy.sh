@@ -37,7 +37,7 @@ test_schema_and_required_fields_are_defined() {
     require_text "acfs.plugin-package.v1" || return 1
     require_text "schemaVersion" || return 1
     require_text "packageId" || return 1
-    require_text "provenance.pluginSha256" || return 1
+    require_text "independently trusted digest" || return 1
     require_text "capabilities.allowed" || return 1
     require_text "capabilities.reviewRequired" || return 1
     require_text "capabilities.disallowed" || return 1

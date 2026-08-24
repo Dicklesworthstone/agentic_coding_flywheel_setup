@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # ACFS - Agentic Coding Flywheel Setup
@@ -42,6 +42,14 @@
 
 set -euo pipefail
 
+# Early PATH setup: sanitize PATH to OS-owned system directories to prevent
+# untrusted caller or locally managed prefixes from hijacking installer tools.
+# /usr/local and Homebrew are intentionally excluded from privileged bootstrap
+# resolution because their ownership/mode is installation-specific.
+_ACFS_EARLY_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+export PATH="$_ACFS_EARLY_PATH"
+unset _ACFS_EARLY_PATH
+
 # ============================================================
 # Bash version guard (must run before any bash 4+ syntax below)
 # ------------------------------------------------------------
@@ -64,7 +72,10 @@ if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || {
     else
         _acfs_can_reexec=false
     fi
-    if [ "$_acfs_can_reexec" = true ]; then
+    # Homebrew prefixes are commonly owned by the interactive user. Never
+    # execute a Homebrew Bash with root authority merely because the caller ran
+    # this unsupported macOS path through sudo.
+    if [ "$_acfs_can_reexec" = true ] && [ "${EUID:-1}" -ne 0 ]; then
         for _acfs_newer_bash in \
             /opt/homebrew/bin/bash \
             /usr/local/bin/bash \
@@ -166,21 +177,6 @@ ACFS_CLAUDE_RETENTION_JQ_FILTER="if has(\"cleanupPeriodDays\") then . else .clea
 _ACFS_BOOTSTRAP_DIR_OWNED=false
 _ACFS_BOOTSTRAP_DIR_CREATED=""
 _ACFS_BOOTSTRAP_DIR_TMP_ROOT=""
-# SCRIPT_DIR is empty when running via curl|bash (stdin; no file on disk)
-SCRIPT_DIR=""
-if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
-
-# Early PATH setup: ensure ~/.local/bin is available for native installers
-# when HOME is present, without assuming stripped environments already set it.
-_ACFS_EARLY_PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
-if [[ -n "${HOME:-}" ]]; then
-    export PATH="$HOME/.local/bin:$_ACFS_EARLY_PATH"
-else
-    export PATH="$_ACFS_EARLY_PATH"
-fi
-unset _ACFS_EARLY_PATH
 
 acfs_early_system_binary_path() {
     local name="${1:-}"
@@ -197,8 +193,6 @@ acfs_early_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -212,12 +206,23 @@ acfs_early_system_binary_path() {
     return 1
 }
 
-acfs_early_sudo_binary_path() {
-    if [[ -n "${SUDO:-}" && "$SUDO" == /* && -x "$SUDO" ]]; then
-        printf '%s\n' "$SUDO"
-        return 0
-    fi
+# SCRIPT_DIR is empty when running via curl|bash (stdin; no file on disk)
+SCRIPT_DIR=""
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)" || {
+        _dirname_bin="$(acfs_early_system_binary_path dirname 2>/dev/null || true)"
+        if [[ -n "$_dirname_bin" ]]; then
+            SCRIPT_DIR="$(cd "$("$_dirname_bin" "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+        fi
+        unset _dirname_bin
+    }
+fi
 
+acfs_early_sudo_binary_path() {
+    # SUDO is an internal execution variable initialized by ensure_root(). Do
+    # not accept an inherited value here: this helper runs before ensure_root()
+    # during bootstrap, and an executable path supplied by the caller must not
+    # be allowed to impersonate the privileged command runner.
     acfs_early_system_binary_path sudo
 }
 
@@ -807,8 +812,8 @@ EOF
     # Step 3: Update apt (this can be slow on fresh systems)
     # Disable fancy progress to prevent terminal cursor issues
     echo -e "\033[0;90m      ↳ Updating package lists (may take 30-60s on fresh systems)...\033[0m" >&2
-    if ! DEBIAN_FRONTEND=noninteractive "$timeout_bin" 120 "${sudo_cmd[@]}" "$apt_get_bin" update -y \
-        -o Dpkg::Progress-Fancy="0" -o APT::Color="0" >/dev/null 2>&1; then
+    if ! DEBIAN_FRONTEND=noninteractive "$timeout_bin" 300 "${sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 \
+        update -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" >/dev/null 2>&1; then
         # Reset terminal line position in case apt left cursor in bad state
         echo -e "\r\033[K\033[0;33m      ⚠ apt-get update slow/failed (skipping gum, will retry later)\033[0m" >&2
         return 0
@@ -819,8 +824,8 @@ EOF
     # terminal cursor position issues when apt-get fails or times out
     echo -e "\033[0;90m      ↳ Installing gum package...\033[0m" >&2
     local apt_output
-    if apt_output=$(DEBIAN_FRONTEND=noninteractive "$timeout_bin" 60 "${sudo_cmd[@]}" "$apt_get_bin" install -y \
-        -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum 2>&1); then
+    if apt_output=$(DEBIAN_FRONTEND=noninteractive "$timeout_bin" 300 "${sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 \
+        install -y -o Dpkg::Progress-Fancy="0" -o APT::Color="0" gum 2>&1); then
         HAS_GUM=true
         # Reset terminal line position and show success
         echo -e "\r\033[K\033[0;32m    ✓ gum installed - enhanced UI enabled!\033[0m" >&2
@@ -2702,7 +2707,11 @@ run_autofix_checks() {
     # Check for unattended-upgrades issues
     if type autofix_unattended_upgrades_needs_fix &>/dev/null; then
         if autofix_unattended_upgrades_needs_fix 2>/dev/null; then
-            handle_autofix "unattended_upgrades" "unattended-upgrades service may cause apt lock conflicts"
+            # A running package manager is a live owner, not damage to repair.
+            # The installer's apt calls use DPkg::Lock::Timeout and will wait
+            # cooperatively without stopping services, killing processes, or
+            # unlinking lock files behind the owner's back.
+            log_warn "[PRE-FLIGHT] apt/dpkg activity detected; installer package steps will wait up to 120 seconds for the lock"
         fi
     fi
 
@@ -2851,9 +2860,14 @@ acfs_is_retryable_http_status() {
 acfs_retry_after_seconds() {
     local headers_file="${1:-}"
     [[ -s "$headers_file" ]] || return 0
+    local grep_bin="" tail_bin="" sed_bin=""
+    grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
+    tail_bin="$(acfs_early_system_binary_path tail 2>/dev/null || true)"
+    sed_bin="$(acfs_early_system_binary_path sed 2>/dev/null || true)"
+    [[ -n "$grep_bin" && -n "$tail_bin" && -n "$sed_bin" ]] || return 0
     local value=""
-    value="$(grep -i '^retry-after:' "$headers_file" 2>/dev/null | tail -1 \
-        | sed 's/^[Rr]etry-[Aa]fter:[[:space:]]*//; s/[[:space:]]*$//' || true)"
+    value="$("$grep_bin" -i '^retry-after:' "$headers_file" 2>/dev/null | "$tail_bin" -1 \
+        | "$sed_bin" 's/^[Rr]etry-[Aa]fter:[[:space:]]*//; s/[[:space:]]*$//' || true)"
     [[ "$value" =~ ^[0-9]+$ ]] || return 0
     (( value > 300 )) && value=300
     printf '%s' "$value"
@@ -2875,22 +2889,33 @@ acfs_curl_with_retry() {
         max_attempts="${#ACFS_CURL_RETRY_DELAYS[@]}"
     fi
 
+    local mktemp_bin="" rm_bin="" grep_bin="" tail_bin="" awk_bin=""
+    mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
+    rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
+    grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
+    tail_bin="$(acfs_early_system_binary_path tail 2>/dev/null || true)"
+    awk_bin="$(acfs_early_system_binary_path awk 2>/dev/null || true)"
+    if [[ -z "$mktemp_bin" || -z "$rm_bin" || -z "$grep_bin" || -z "$tail_bin" || -z "$awk_bin" ]]; then
+        log_error "Unable to resolve trusted system tools for bootstrap download retry"
+        return 1
+    fi
+
     local retries=$((max_attempts - 1))
     for ((attempt=0; attempt<max_attempts; attempt++)); do
         # Capture response headers alongside the body so an HTTP failure can
         # be classified by STATUS rather than by curl's catch-all exit 22.
         local hdr_file=""
-        hdr_file="$(mktemp "${TMPDIR:-/tmp}/acfs-bootstrap-hdr.XXXXXX" 2>/dev/null || true)"
+        hdr_file="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-bootstrap-hdr.XXXXXX" 2>/dev/null || true)"
 
+        exit_code=0
         if [[ -n "$hdr_file" ]]; then
-            acfs_curl -o "$output_path" -D "$hdr_file" "$url"
+            acfs_curl -o "$output_path" -D "$hdr_file" "$url" || exit_code=$?
         else
-            acfs_curl -o "$output_path" "$url"
+            acfs_curl -o "$output_path" "$url" || exit_code=$?
         fi
-        exit_code=$?
 
         if (( exit_code == 0 )); then
-            [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+            [[ -n "$hdr_file" ]] && "$rm_bin" -f "$hdr_file" 2>/dev/null || true
             return 0
         fi
 
@@ -2900,8 +2925,8 @@ acfs_curl_with_retry() {
         if acfs_is_retryable_curl_exit_code "$exit_code"; then
             retryable=0
         elif (( exit_code == 22 )) && [[ -n "$hdr_file" && -s "$hdr_file" ]]; then
-            http_status="$(grep -oE '^HTTP/[0-9.]+ [0-9]{3}' "$hdr_file" 2>/dev/null \
-                | tail -1 | awk '{print $2}')" || http_status=""
+            http_status="$("$grep_bin" -oE '^HTTP/[0-9.]+ [0-9]{3}' "$hdr_file" 2>/dev/null \
+                | "$tail_bin" -1 | "$awk_bin" '{print $2}')" || http_status=""
             if [[ -n "$http_status" ]] && acfs_is_retryable_http_status "$http_status"; then
                 server_delay="$(acfs_retry_after_seconds "$hdr_file")"
                 retryable=0
@@ -2910,7 +2935,7 @@ acfs_curl_with_retry() {
             fi
         fi
 
-        [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
+        [[ -n "$hdr_file" ]] && "$rm_bin" -f "$hdr_file" 2>/dev/null || true
         if (( retryable != 0 )); then
             return "$exit_code"
         fi
@@ -3579,7 +3604,10 @@ run_as_target() {
     fi
 
     if [[ -z "$user_home" ]]; then
-        user_home="$(acfs_home_for_user "$user" || true)"
+        user_home="$(acfs_home_for_user "$user" "$explicit_user_home_for_repair" || true)"
+    fi
+    if [[ -z "$user_home" && -n "$explicit_user_home_for_repair" ]]; then
+        user_home="$explicit_user_home_for_repair"
     fi
     if [[ -z "$user_home" ]] || [[ "$user_home" == "/" ]] || [[ "$user_home" != /* ]]; then
         log_error "Invalid TARGET_HOME for '$user': ${user_home:-<empty>} (must be an absolute path and cannot be '/')"
@@ -4520,10 +4548,6 @@ init_target_paths() {
 
     # Export for generated installers (run via subshells).
     export TARGET_USER TARGET_HOME ACFS_HOME ACFS_STATE_FILE ACFS_BIN_DIR
-
-    # Add target user's bin directories to PATH early so that tools installed
-    # later (like Claude Code) see the correct PATH and don't warn about it.
-    export PATH="$ACFS_BIN_DIR:$TARGET_HOME/.local/bin:$TARGET_HOME/.acfs/bin:$TARGET_HOME/.cargo/bin:$TARGET_HOME/.bun/bin:$TARGET_HOME/.atuin/bin:$TARGET_HOME/go/bin:$PATH"
 }
 
 acfs_primary_bin_dir_uses_root() {
@@ -4540,46 +4564,84 @@ acfs_primary_bin_dir_uses_root() {
     esac
 }
 
-acfs_ensure_primary_bin_dir() {
-    if acfs_primary_bin_dir_uses_root; then
-        "$SUDO" mkdir -p "$ACFS_BIN_DIR"
+_acfs_primary_bin_tool_path() {
+    local name="${1:-}"
+    local tool_path=""
+
+    tool_path="$(acfs_early_system_binary_path "$name" 2>/dev/null || true)"
+    if [[ -z "$tool_path" ]]; then
+        log_error "Unable to locate trusted $name for primary bin operation"
+        return 1
+    fi
+
+    printf '%s\n' "$tool_path"
+}
+
+_acfs_run_root_bin_command() {
+    local sudo_bin=""
+
+    if [[ -z "${1:-}" || "${1:-}" != /* ]]; then
+        log_error "Root primary bin command must be an absolute trusted path (got: ${1:-<empty>})"
+        return 1
+    fi
+
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
         return $?
     fi
 
-    run_as_target mkdir -p "$ACFS_BIN_DIR"
+    sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
+    if [[ -n "$sudo_bin" ]]; then
+        "$sudo_bin" -n "$@"
+        return $?
+    fi
+
+    log_error "Primary bin dir requires root, but sudo is unavailable: ${ACFS_BIN_DIR:-<unset>}"
+    return 1
+}
+
+acfs_ensure_primary_bin_dir() {
+    local mkdir_bin=""
+    mkdir_bin="$(_acfs_primary_bin_tool_path mkdir)" || return 1
+
+    if acfs_primary_bin_dir_uses_root; then
+        _acfs_run_root_bin_command "$mkdir_bin" -p "$ACFS_BIN_DIR"
+        return $?
+    fi
+
+    run_as_target "$mkdir_bin" -p "$ACFS_BIN_DIR"
 }
 
 acfs_link_primary_bin_command() {
     local source_path="$1"
     local command_name="$2"
     local dest_path="$ACFS_BIN_DIR/$command_name"
+    local ln_bin=""
 
     acfs_ensure_primary_bin_dir || return 1
+    ln_bin="$(_acfs_primary_bin_tool_path ln)" || return 1
 
     if acfs_primary_bin_dir_uses_root; then
-        "$SUDO" ln -sf "$source_path" "$dest_path"
+        _acfs_run_root_bin_command "$ln_bin" -sf "$source_path" "$dest_path"
         return $?
     fi
 
-    run_as_target ln -sf "$source_path" "$dest_path"
+    run_as_target "$ln_bin" -sf "$source_path" "$dest_path"
 }
 
 acfs_link_global_bin_command() {
     local source_path="$1"
     local command_name="$2"
     local dest_path="/usr/local/bin/$command_name"
+    local ln_bin=""
 
     if [[ -e "$dest_path" && ! -L "$dest_path" ]]; then
         log_error "Refusing to replace existing non-symlink global command: $dest_path"
         return 1
     fi
 
-    if [[ -n "$SUDO" ]]; then
-        "$SUDO" ln -sf "$source_path" "$dest_path"
-        return $?
-    fi
-
-    ln -sf "$source_path" "$dest_path"
+    ln_bin="$(_acfs_primary_bin_tool_path ln)" || return 1
+    _acfs_run_root_bin_command "$ln_bin" -sf "$source_path" "$dest_path"
 }
 
 configure_acfs_nightly_timer() {
@@ -4643,21 +4705,17 @@ acfs_install_executable_into_primary_bin() {
     local src_path="$1"
     local command_name="$2"
     local dest_path="$ACFS_BIN_DIR/$command_name"
+    local install_bin=""
 
     acfs_ensure_primary_bin_dir || return 1
+    install_bin="$(_acfs_primary_bin_tool_path install)" || return 1
 
     if acfs_primary_bin_dir_uses_root; then
-        "$SUDO" install -m 0755 "$src_path" "$dest_path"
+        _acfs_run_root_bin_command "$install_bin" -m 0755 "$src_path" "$dest_path"
         return $?
     fi
 
-    if [[ $EUID -eq 0 ]]; then
-        "$SUDO" install -m 0755 "$src_path" "$dest_path" || return 1
-        "$SUDO" chown "$TARGET_USER:$TARGET_USER" "$dest_path"
-        return $?
-    fi
-
-    run_as_target install -m 0755 "$src_path" "$dest_path"
+    run_as_target "$install_bin" -m 0755 "$src_path" "$dest_path"
 }
 
 validate_target_user() {
@@ -4766,12 +4824,12 @@ run_ubuntu_upgrade_phase() {
         if [[ -z "$apt_get_bin" ]]; then
             log_warn "apt-get not found; cannot install jq for upgrade state tracking"
         elif [[ $EUID -eq 0 ]]; then
-            "$apt_get_bin" update -qq && "$apt_get_bin" install -y jq >/dev/null 2>&1 || true
+            "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -qq && "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y jq >/dev/null 2>&1 || true
         else
             local sudo_bin=""
             sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
             if [[ -n "$sudo_bin" ]]; then
-                "$sudo_bin" -n "$apt_get_bin" update -qq && "$sudo_bin" -n "$apt_get_bin" install -y jq >/dev/null 2>&1 || true
+                "$sudo_bin" -n "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -qq && "$sudo_bin" -n "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y jq >/dev/null 2>&1 || true
             fi
         fi
     fi
@@ -5298,7 +5356,7 @@ ensure_base_deps() {
             sudo_prefix="$SUDO "
         fi
 
-        log_detail "dry-run: would run: ${sudo_prefix}apt-get update -y"
+        log_detail "dry-run: would run: ${sudo_prefix}apt-get -o DPkg::Lock::Timeout=120 update -y"
         log_detail "dry-run: would install: curl git ca-certificates unzip tar xz-utils jq build-essential sudo gnupg libssl-dev pkg-config"
         return 0
     fi
@@ -5319,10 +5377,10 @@ ensure_base_deps() {
     fi
 
     log_detail "Updating apt package index"
-    try_step "Updating apt package index" "${sudo_cmd[@]}" "$apt_get_bin" update -y || return 1
+    try_step "Updating apt package index" "${sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -y || return 1
 
     log_detail "Installing base packages"
-    try_step "Installing base packages" "${sudo_cmd[@]}" "$apt_get_bin" install -y curl git ca-certificates unzip tar xz-utils jq build-essential sudo gnupg libssl-dev pkg-config || return 1
+    try_step "Installing base packages" "${sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y curl git ca-certificates unzip tar xz-utils jq build-essential sudo gnupg libssl-dev pkg-config || return 1
 }
 
 # ============================================================
@@ -5863,7 +5921,7 @@ setup_shell() {
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
             try_step "Installing zsh (pacman)" acfs_arch_pkg_install zsh git || return 1
         else
-            try_step "Installing zsh" $SUDO apt-get install -y zsh || return 1
+            try_step "Installing zsh" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y zsh || return 1
         fi
     fi
 
@@ -6072,7 +6130,7 @@ install_github_cli() {
     log_detail "Installing GitHub CLI (gh)"
 
     # First try default apt repos (often available on Ubuntu 24.04+/25.x).
-    if $SUDO apt-get install -y gh >/dev/null 2>&1; then
+    if $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y gh >/dev/null 2>&1; then
         return 0
     fi
 
@@ -6095,8 +6153,8 @@ install_github_cli() {
         return 1
     fi
 
-    $SUDO apt-get update -y >/dev/null 2>&1 || true
-    if ! $SUDO apt-get install -y gh >/dev/null 2>&1; then
+    $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y >/dev/null 2>&1 || true
+    if ! $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y gh >/dev/null 2>&1; then
         return 1
     fi
     return 0
@@ -6145,6 +6203,10 @@ install_cli_tools() {
                 fi
             fi
         fi
+        if [[ "$cli_phase_rc" -ne 0 ]]; then
+            log_warn "CLI tools phase finished with generated-module failures (see summary); the phase will be retried on resume"
+            return 1
+        fi
         log_success "CLI tools installed"
         return 0
     fi
@@ -6167,8 +6229,8 @@ install_cli_tools() {
         try_step "Creating apt keyrings directory" $SUDO mkdir -p /etc/apt/keyrings || true
         try_step_eval "Adding Charm apt key" "set -o pipefail; if curl --help all 2>/dev/null | grep -q -- '--proto'; then curl --proto '=https' --proto-redir '=https' -fsSL https://repo.charm.sh/apt/gpg.key; else curl -fsSL https://repo.charm.sh/apt/gpg.key; fi | $SUDO gpg --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null" || true
         try_step_eval "Adding Charm apt repo" "printf 'Types: deb\nURIs: https://repo.charm.sh/apt/\nSuites: *\nComponents: *\nSigned-By: /etc/apt/keyrings/charm.gpg\n' | $SUDO tee /etc/apt/sources.list.d/charm.sources > /dev/null" || true
-        try_step "Updating apt cache" $SUDO apt-get update -y || true
-        if try_step "Installing gum" $SUDO apt-get install -y gum 2>/dev/null; then
+        try_step "Updating apt cache" $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y || true
+        if try_step "Installing gum" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y gum 2>/dev/null; then
             HAS_GUM=true
             log_success "gum installed - enhanced UI now available"
         else
@@ -6203,7 +6265,7 @@ install_cli_tools() {
         fi
     else
         log_detail "Installing required apt packages"
-        try_step "Installing required apt packages" $SUDO apt-get install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd || return 1
+        try_step "Installing required apt packages" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd || return 1
     fi
 
     # GitHub CLI (gh)
@@ -6253,11 +6315,11 @@ install_cli_tools() {
         log_detail "Installing optional apt packages"
         local optional_pkgs=(lsd eza bat fd-find btop dust neovim htop tree ncdu httpie entr mtr pv docker.io docker-compose-plugin cosign)
         # First attempt: batch install all at once (fastest path)
-        if ! $SUDO apt-get install -y "${optional_pkgs[@]}" >/dev/null 2>&1; then
+        if ! $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y "${optional_pkgs[@]}" >/dev/null 2>&1; then
             # Fallback: some packages failed, install individually to get what we can
             log_detail "Batch install failed, trying packages individually"
             for pkg in "${optional_pkgs[@]}"; do
-                $SUDO apt-get install -y "$pkg" >/dev/null 2>&1 || log_detail "$pkg not available (optional)"
+                $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y "$pkg" >/dev/null 2>&1 || log_detail "$pkg not available (optional)"
             done
         fi
     fi
@@ -6269,7 +6331,7 @@ install_cli_tools() {
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
             # pacman first; pinned-tarball fallback below if it fails.
             acfs_arch_pkg_install lazygit >/dev/null 2>&1 && pm_installed=true
-        elif $SUDO apt-get install -y lazygit >/dev/null 2>&1; then
+        elif $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y lazygit >/dev/null 2>&1; then
             pm_installed=true
         fi
         if [[ "$pm_installed" != "true" ]]; then
@@ -6470,7 +6532,7 @@ install_languages_legacy_lang() {
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
             try_step "Installing Go (pacman)" acfs_arch_pkg_install go || return 1
         else
-            try_step "Installing Go" $SUDO apt-get install -y golang-go || return 1
+            try_step "Installing Go" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y golang-go || return 1
         fi
     fi
 
@@ -6672,7 +6734,7 @@ ATUIN_ACFS_WRAPPER_TAIL
                 try_step "Installing Zoxide (upstream)" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || return 1
             fi
         elif apt-cache show zoxide &>/dev/null; then
-            try_step "Installing Zoxide (apt)" $SUDO apt-get install -y zoxide || {
+            try_step "Installing Zoxide (apt)" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y zoxide || {
                 log_detail "apt install failed, falling back to upstream script"
                 try_step "Installing Zoxide (upstream)" acfs_run_verified_upstream_script_as_target "zoxide" "sh" || return 1
             }
@@ -6862,12 +6924,20 @@ install_agents_phase() {
     local codex_bin_local="$ACFS_BIN_DIR/codex"
     if [[ -x "$TARGET_HOME/.bun/bin/codex" ]] && [[ ! -x "$codex_bin_local" ]]; then
         local codex_wrapper_tmp=""
-        codex_wrapper_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-codex-wrapper.XXXXXX")" || true
+        local mktemp_bin="" chmod_bin="" rm_bin=""
+        mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
+        chmod_bin="$(acfs_early_system_binary_path chmod 2>/dev/null || true)"
+        rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
+        if [[ -n "$mktemp_bin" && -n "$chmod_bin" && -n "$rm_bin" ]]; then
+            codex_wrapper_tmp="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-codex-wrapper.XXXXXX" 2>/dev/null)" || true
+        else
+            log_warn "Skipping Codex wrapper: trusted system file tools are unavailable"
+        fi
         if [[ -n "$codex_wrapper_tmp" ]]; then
             printf '%s\n' '#!/bin/bash' "exec \"$TARGET_HOME/.bun/bin/bun\" \"$TARGET_HOME/.bun/bin/codex\" \"\$@\"" > "$codex_wrapper_tmp"
-            chmod 0755 "$codex_wrapper_tmp" || true
+            "$chmod_bin" 0755 "$codex_wrapper_tmp" || true
             try_step "Creating Codex bun wrapper" acfs_install_executable_into_primary_bin "$codex_wrapper_tmp" "codex" || true
-            rm -f "$codex_wrapper_tmp" 2>/dev/null || true
+            "$rm_bin" -f "$codex_wrapper_tmp" 2>/dev/null || true
         fi
     fi
 
@@ -7068,9 +7138,9 @@ install_cloud_db_legacy_db() {
         else
             try_step_eval "Adding PostgreSQL apt repo" "echo 'deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${pgdg_codename}-pgdg main' | $SUDO tee /etc/apt/sources.list.d/pgdg.list > /dev/null" || true
 
-            try_step "Updating apt cache for PostgreSQL" $SUDO apt-get update -y || log_warn "PostgreSQL: apt-get update failed (continuing)"
+            try_step "Updating apt cache for PostgreSQL" $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y || log_warn "PostgreSQL: apt-get update failed (continuing)"
 
-            if try_step "Installing PostgreSQL 18" $SUDO apt-get install -y postgresql-18 postgresql-client-18; then
+            if try_step "Installing PostgreSQL 18" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18 postgresql-client-18; then
                 log_success "PostgreSQL 18 installed"
 
                 # Best-effort service start (GitHub Actions containers may not have systemd)
@@ -7095,8 +7165,8 @@ install_cloud_db_legacy_db() {
                 # working psql, and 25.10 fleet hosts already run native 17.
                 log_warn "PostgreSQL 18 via PGDG failed; falling back to Ubuntu-native postgresql"
                 try_step "Removing unusable PGDG apt source" $SUDO rm -f /etc/apt/sources.list.d/pgdg.list || true
-                try_step "Updating apt cache (native PostgreSQL)" $SUDO apt-get update -y || true
-                if try_step "Installing native PostgreSQL" $SUDO apt-get install -y postgresql postgresql-client; then
+                try_step "Updating apt cache (native PostgreSQL)" $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y || true
+                if try_step "Installing native PostgreSQL" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y postgresql postgresql-client; then
                     log_success "PostgreSQL (Ubuntu native) installed"
                     if command_exists systemctl && [[ -d /run/systemd/system ]]; then
                         try_step "Enabling PostgreSQL service" $SUDO systemctl enable postgresql || true
@@ -7147,8 +7217,8 @@ install_cloud_db_legacy_tools() {
         else
             try_step_eval "Adding HashiCorp apt repo" "echo 'deb [signed-by=/etc/apt/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com ${vault_codename} main' | $SUDO tee /etc/apt/sources.list.d/hashicorp.list > /dev/null" || true
 
-            try_step "Updating apt cache for Vault" $SUDO apt-get update -y || log_warn "Vault: apt-get update failed (continuing)"
-            if try_step "Installing Vault" $SUDO apt-get install -y vault; then
+            try_step "Updating apt cache for Vault" $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y || log_warn "Vault: apt-get update failed (continuing)"
+            if try_step "Installing Vault" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y vault; then
                 log_success "Vault installed"
             else
                 log_warn "Vault: installation failed (optional)"
@@ -7328,9 +7398,16 @@ install_cloud_db_legacy_cloud() {
                         if [[ "$cli" == "wrangler" ]] && ! command -v node &>/dev/null; then
                             local shim_dir="$ACFS_BIN_DIR"
                             local wrangler_wrapper_tmp=""
+                            local mktemp_bin="" chmod_bin="" rm_bin="" grep_bin=""
+                            mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
+                            chmod_bin="$(acfs_early_system_binary_path chmod 2>/dev/null || true)"
+                            rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
+                            grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
                             acfs_ensure_primary_bin_dir 2>/dev/null || true
-                            if [[ ! -f "$shim_dir/wrangler" ]] || grep -q 'bun x wrangler' "$shim_dir/wrangler" 2>/dev/null; then
-                                wrangler_wrapper_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-wrangler-wrapper.XXXXXX")" || true
+                            if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$rm_bin" || -z "$grep_bin" ]]; then
+                                log_warn "Skipping Wrangler wrapper: trusted system file tools are unavailable"
+                            elif [[ ! -f "$shim_dir/wrangler" ]] || "$grep_bin" -q 'bun x wrangler' "$shim_dir/wrangler" 2>/dev/null; then
+                                wrangler_wrapper_tmp="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-wrangler-wrapper.XXXXXX" 2>/dev/null)" || true
                                 if [[ -n "$wrangler_wrapper_tmp" ]]; then
                                     cat > "$wrangler_wrapper_tmp" <<WRANGLER_SHIM
 #!/usr/bin/env bash
@@ -7338,11 +7415,11 @@ install_cloud_db_legacy_cloud() {
 # Created by ACFS installer (issue #152).
 exec "$TARGET_HOME/.bun/bin/bun" x wrangler@latest "\$@"
 WRANGLER_SHIM
-                                    chmod 0755 "$wrangler_wrapper_tmp" || true
+                                    "$chmod_bin" 0755 "$wrangler_wrapper_tmp" || true
                                     if acfs_install_executable_into_primary_bin "$wrangler_wrapper_tmp" "wrangler"; then
                                         log_detail "Created bun-based wrangler shim at $shim_dir/wrangler (node not found)"
                                     fi
-                                    rm -f "$wrangler_wrapper_tmp" 2>/dev/null || true
+                                    "$rm_bin" -f "$wrangler_wrapper_tmp" 2>/dev/null || true
                                 fi
                             fi
                         fi
@@ -7914,10 +7991,36 @@ UNIT_EOF
                         fallback_pid_file="$storage_root/agent-mail.pid"
                         fallback_log_file="$storage_root/agent-mail.log"
                         stop_agent_mail_fallback() {
+                            local existing_pid=""
+                            local managed_pid=""
+                            local victim_args=""
+                            local victim_exe=""
+                            local am_real=""
+                            local owner_matches=false
                             if [[ -f "$fallback_pid_file" ]]; then
                                 existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-                                if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-                                   ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+                                if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+                                    managed_pid="$(systemctl --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
+                                fi
+                                if [[ "$managed_pid" =~ ^[1-9][0-9]*$ ]] && [[ "$existing_pid" == "$managed_pid" ]]; then
+                                    echo "Agent Mail: PID $existing_pid belongs to agent-mail.service; leaving it to the supervisor" >&2
+                                    rm -f "$fallback_pid_file"
+                                    return 0
+                                fi
+                                if [[ "$existing_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$existing_pid" 2>/dev/null; then
+                                    victim_args="$(ps -p "$existing_pid" -o args= 2>/dev/null || true)"
+                                    victim_exe="$(readlink -f "/proc/$existing_pid/exe" 2>/dev/null || true)"
+                                    am_real="$(readlink -f "$am_bin" 2>/dev/null || printf "%s" "$am_bin")"
+                                    if [[ ! "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] ||
+                                       [[ ! "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]]; then
+                                        owner_matches=false
+                                    elif [[ -n "$victim_exe" ]]; then
+                                        [[ "$victim_exe" == "$am_real" ]] && owner_matches=true
+                                    elif [[ "$victim_args" =~ (^|/)am([[:space:]]|$) ]]; then
+                                        owner_matches=true
+                                    fi
+                                fi
+                                if [[ "$owner_matches" == "true" ]]; then
                                     kill "$existing_pid" >/dev/null 2>&1 || true
                                     for _ in {1..10}; do
                                         if ! kill -0 "$existing_pid" 2>/dev/null; then
@@ -7926,7 +8029,8 @@ UNIT_EOF
                                         sleep 1
                                     done
                                     if kill -0 "$existing_pid" 2>/dev/null; then
-                                        kill -9 "$existing_pid" >/dev/null 2>&1 || true
+                                        echo "Agent Mail: fallback PID $existing_pid did not stop after SIGTERM; refusing a hard kill" >&2
+                                        return 1
                                     fi
                                 fi
                                 rm -f "$fallback_pid_file"
@@ -7953,11 +8057,10 @@ UNIT_EOF
                             fi
                         fi
                         if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
-                            stop_agent_mail_fallback
+                            stop_agent_mail_fallback || exit 1
                             systemctl --user daemon-reload >/dev/null 2>&1 || true
-                            if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
-                                systemctl --user restart agent-mail.service >/dev/null 2>&1
-                            fi
+                            systemctl --user enable agent-mail.service >/dev/null 2>&1 || exit 1
+                            systemctl --user restart agent-mail.service >/dev/null 2>&1 || exit 1
                             active_waited=0
                             active_max_wait=30
                             until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do
@@ -7969,37 +8072,22 @@ UNIT_EOF
                             done
                             systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1
                         else
-                            existing_pid=""
                             if agent_mail_service_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
                                agent_mail_readiness_ready; then
                                 :
-                            elif [[ -f "$fallback_pid_file" ]]; then
-                                existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-                                if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-                                   ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
-                                    kill "$existing_pid" >/dev/null 2>&1 || true
-                                    for _ in {1..10}; do
-                                        if ! kill -0 "$existing_pid" 2>/dev/null; then
-                                            break
-                                        fi
-                                        sleep 1
-                                    done
-                                    if kill -0 "$existing_pid" 2>/dev/null; then
-                                        kill -9 "$existing_pid" >/dev/null 2>&1 || true
-                                    fi
-                                    rm -f "$fallback_pid_file"
-                                else
-                                    rm -f "$fallback_pid_file"
+                            else
+                                if [[ -f "$fallback_pid_file" ]]; then
+                                    stop_agent_mail_fallback || exit 1
                                 fi
+                                nohup env \
+                                    RUST_LOG=info \
+                                    STORAGE_ROOT="$storage_root" \
+                                    DATABASE_URL="$db_url" \
+                                    HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
+                                    "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
+                                    >>"$fallback_log_file" 2>&1 < /dev/null &
+                                echo $! > "$fallback_pid_file"
                             fi
-                            nohup env \
-                                RUST_LOG=info \
-                                STORAGE_ROOT="$storage_root" \
-                                DATABASE_URL="$db_url" \
-                                HTTP_ALLOW_LOCALHOST_UNAUTHENTICATED=true \
-                                "$am_bin" serve-http --no-tui --host 127.0.0.1 --port 8765 --path "$am_mcp_path" \
-                                >>"$fallback_log_file" 2>&1 < /dev/null &
-                            echo $! > "$fallback_pid_file"
                         fi
                     '; then
                         local am_waited=0
@@ -8838,7 +8926,10 @@ EOF
         $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_STATE_FILE"
     fi
 
-    log_success "Installation complete!"
+    # This phase can run after an earlier phase failed because main deliberately
+    # records failures and continues. Reserve the overall success claim for
+    # acfs_report_success_if_clean(), after every phase and the smoke test.
+    log_success "Finalization complete"
 }
 
 # ============================================================
@@ -9688,8 +9779,9 @@ main() {
     # Early dependency bootstrap (issue #152, #180): on a truly fresh Ubuntu,
     # jq and curl may be missing. Install them before anything else so that
     # later phases (state management, JSON parsing, gum install) don't fail.
-    # Also covers the case where sudo is available but $SUDO isn't set yet.
-    if [[ $EUID -eq 0 ]] || [[ -n "${SUDO:-}" ]] || acfs_early_sudo_binary_path &>/dev/null; then
+    # The privileged runner must come from the trusted system resolver; never
+    # treat an inherited SUDO value as evidence that elevation is available.
+    if [[ $EUID -eq 0 ]] || acfs_early_sudo_binary_path &>/dev/null; then
         local _need_early_apt=false
         acfs_early_system_binary_path curl &>/dev/null || _need_early_apt=true
         acfs_early_system_binary_path jq &>/dev/null   || _need_early_apt=true
@@ -9724,8 +9816,8 @@ main() {
                         [[ -n "$sudo_bin" ]] && _sudo_cmd=("$sudo_bin")
                     fi
                     if [[ $EUID -eq 0 || ${#_sudo_cmd[@]} -gt 0 ]]; then
-                        "${_sudo_cmd[@]}" "$apt_get_bin" update -qq 2>/dev/null || true
-                        "${_sudo_cmd[@]}" "$apt_get_bin" install -y -qq curl jq git 2>/dev/null || true
+                        "${_sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -qq 2>/dev/null || true
+                        "${_sudo_cmd[@]}" "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y -qq curl jq git 2>/dev/null || true
                     fi
                 fi
             fi

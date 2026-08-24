@@ -1,10 +1,18 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ============================================================
 # ACFS Update - Update All Components
 # Updates system packages, agents, cloud CLIs, and stack tools
 # ============================================================
 
 set -euo pipefail
+
+# Privileged updater execution must never search target-user or locally managed
+# prefixes. Target-user commands receive their own explicit PATH later through
+# update_run_in_target_context().
+UPDATE_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+if [[ "$EUID" -eq 0 ]]; then
+    export PATH="$UPDATE_PRIVILEGED_PATH"
+fi
 
 # Prevent interactive prompts during apt operations.
 # NEEDRESTART_* suppress the post-upgrade "which services to restart?" TUI on
@@ -19,8 +27,6 @@ ACFS_VERSION="${ACFS_VERSION:-0.1.0}"
 ACFS_REPO_OWNER="${ACFS_REPO_OWNER:-Dicklesworthstone}"
 ACFS_REPO_NAME="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
 ACFS_CHECKSUMS_REF="${ACFS_CHECKSUMS_REF:-main}"
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 _update_initial_existing_home() {
     local home_candidate="${1:-}"
@@ -51,8 +57,6 @@ _update_early_system_binary_path() {
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/sbin/$name" \
         "/sbin/$name"
     do
@@ -62,6 +66,21 @@ _update_early_system_binary_path() {
     done
     return 1
 }
+
+SCRIPT_DIR=""
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
+    SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)" || {
+        _update_dirname_bin="$(_update_early_system_binary_path dirname 2>/dev/null || true)"
+        if [[ -n "$_update_dirname_bin" ]]; then
+            SCRIPT_DIR="$(cd "$("$_update_dirname_bin" "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
+        fi
+        unset _update_dirname_bin
+    }
+fi
+if [[ -z "$SCRIPT_DIR" ]]; then
+    printf 'ERROR: unable to resolve the acfs-update script directory\n' >&2
+    return 1 2>/dev/null || exit 1
+fi
 
 _update_early_current_user() {
     local current_user=""
@@ -357,6 +376,11 @@ ensure_path() {
     local seen_path=":$current_path:"
     local sanitized_primary_bin=""
     local _primary_bin=""
+
+    if [[ "$EUID" -eq 0 ]]; then
+        export PATH="$UPDATE_PRIVILEGED_PATH"
+        return 0
+    fi
 
     sanitized_primary_bin="$(update_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "${HOME:-}" 2>/dev/null || true)"
     _primary_bin="${sanitized_primary_bin:-$HOME/.local/bin}"
@@ -859,15 +883,10 @@ update_ensure_jq_available() {
     # Pass noninteractive env inline: sudo strips DEBIAN_FRONTEND/NEEDRESTART_*
     # from the caller's environment by default, so exports alone won't reach apt.
     local _apt_env=(env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1)
-    if [[ $EUID -eq 0 ]]; then
-        "${_apt_env[@]}" apt-get update -qq 2>/dev/null \
-            && "${_apt_env[@]}" apt-get install -y -qq jq 2>/dev/null || true
-    else
-        local -a sudo_cmd=()
-        if update_sudo_prefix sudo_cmd; then
-            "${sudo_cmd[@]}" "${_apt_env[@]}" apt-get update -qq 2>/dev/null \
-                && "${sudo_cmd[@]}" "${_apt_env[@]}" apt-get install -y -qq jq 2>/dev/null || true
-        fi
+    local -a sudo_cmd=()
+    if update_sudo_prefix sudo_cmd; then
+        "${sudo_cmd[@]}" "${_apt_env[@]}" apt-get update -qq 2>/dev/null \
+            && "${sudo_cmd[@]}" "${_apt_env[@]}" apt-get install -y -qq jq 2>/dev/null || true
     fi
 
     if ! cmd_exists jq; then
@@ -2126,16 +2145,21 @@ get_sudo() {
 
 update_sudo_prefix() {
     local -n _sudo_prefix_ref="$1"
+    local env_bin=""
     _sudo_prefix_ref=()
 
+    env_bin="$(update_system_binary_path env 2>/dev/null || true)"
+    [[ -n "$env_bin" ]] || return 1
+
     if [[ $EUID -eq 0 ]]; then
+        _sudo_prefix_ref=("$env_bin" "PATH=$UPDATE_PRIVILEGED_PATH")
         return 0
     fi
 
     local sudo_bin=""
     sudo_bin="$(get_sudo 2>/dev/null || true)"
     [[ -n "$sudo_bin" ]] || return 1
-    _sudo_prefix_ref=("$sudo_bin" -n)
+    _sudo_prefix_ref=("$sudo_bin" -n "$env_bin" "PATH=$UPDATE_PRIVILEGED_PATH")
 }
 
 update_sudo_display() {
@@ -2201,8 +2225,6 @@ update_system_binary_path() {
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/sbin/$name" \
         "/sbin/$name"
     do
@@ -4481,6 +4503,10 @@ update_acfs_self() {
 
     # Recovery for orphaned git init (issue #200)
     if [[ -d "$ACFS_REPO_ROOT/.git" ]] && ! git -C "$ACFS_REPO_ROOT" rev-parse HEAD &>/dev/null; then
+        if [[ "$BOOTSTRAP_SELF_UPDATE" != "true" ]]; then
+            log_item "skip" "ACFS self-update" "incomplete git bootstrap detected; skipping to avoid replacing local files (use --bootstrap-self-update to opt in)"
+            return 0
+        fi
         if [[ "$DRY_RUN" == "true" ]]; then
             log_item "ok" "ACFS self-update" "would recover incomplete git bootstrap"
             return 0
@@ -6739,7 +6765,8 @@ SKIP OPTIONS (exclude categories from update):
 
 BEHAVIOR OPTIONS:
   --bootstrap-self-update
-                     Convert a non-git ACFS install into a git checkout before self-update
+                     Convert a non-git or incomplete ACFS install into a git checkout,
+                     replacing repository files; copy or commit local edits first
   --force            Force reinstallation even if already up to date
   --dry-run          Preview changes without making them
   --yes, -y          Non-interactive mode, skip all prompts
@@ -6774,7 +6801,7 @@ EXAMPLES:
   # Automated CI/cron mode
   acfs-update --yes --quiet
 
-  # Explicitly convert a tarball install into a git checkout for self-updates
+  # Explicitly convert a non-git or incomplete install into a git checkout
   acfs-update --bootstrap-self-update
 
   # Strict mode: stop on first error
@@ -6783,7 +6810,8 @@ EXAMPLES:
 WHAT EACH CATEGORY UPDATES:
   self:     ACFS itself (git pull) - runs FIRST to ensure latest update logic
             If update.sh changes, automatically re-executes with new version
-            Tarball/non-git installs skip this unless --bootstrap-self-update is used
+            Non-git/incomplete installs skip this unless --bootstrap-self-update is used;
+            that opt-in replaces repository files, so preserve local edits first
   apt:      System packages via apt update && apt upgrade && apt autoremove
   shell:    Oh-My-Zsh, Powerlevel10k, zsh plugins (git pull)
             Atuin, Zoxide (reinstall from upstream)

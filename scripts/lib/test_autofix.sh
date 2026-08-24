@@ -29,6 +29,33 @@ test_fail() {
     ((++TESTS_FAILED))
 }
 
+make_test_change_record() {
+    local change_id="${1:-chg_001}"
+    local description="${2:-test change}"
+    local record=""
+
+    record="$(jq -cn \
+        --arg id "$change_id" \
+        --arg desc "$description" \
+        '{
+          id: $id,
+          timestamp: "2026-04-15T00:00:00Z",
+          category: "test",
+          description: $desc,
+          undo_command: "true",
+          undo_requires_root: false,
+          severity: "info",
+          files_affected: [],
+          post_checksums: [],
+          backups: [],
+          depends_on: [],
+          session_id: "test_sess",
+          reversible: true,
+          undone: false
+        }')" || return 1
+    autofix_add_record_checksum "$record"
+}
+
 # Safe cleanup function - removes only specific test files
 cleanup_test_files() {
     local test_id="$1"
@@ -122,20 +149,30 @@ test_state_integrity_valid() {
     ACFS_STATE_DIR="$test_dir"
     ACFS_CHANGES_FILE="$test_dir/changes.jsonl"
     ACFS_UNDOS_FILE="$test_dir/undos.jsonl"
+    ACFS_BACKUPS_DIR="$test_dir/backups"
+    ACFS_LOCK_FILE="$test_dir/.lock"
+    ACFS_INTEGRITY_FILE="$test_dir/.integrity"
+    mkdir -p "$ACFS_BACKUPS_DIR"
     
     # Create valid records
-    echo '{"id":"chg_001","description":"test1"}' > "$ACFS_CHANGES_FILE"
-    echo '{"id":"chg_002","description":"test2"}' >> "$ACFS_CHANGES_FILE"
+    local record1 record2
+    record1="$(make_test_change_record "chg_001" "test1")"
+    record2="$(make_test_change_record "chg_002" "test2")"
+    printf '%s\n' "$record1" > "$ACFS_CHANGES_FILE"
+    printf '%s\n' "$record2" >> "$ACFS_CHANGES_FILE"
     touch "$ACFS_UNDOS_FILE"
+    update_integrity_file >/dev/null 2>&1
     
     if ! verify_state_integrity 2>/dev/null; then
         test_fail "state_integrity_valid" "Valid state rejected"
-        rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE"
+        rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE" "$ACFS_INTEGRITY_FILE" "$ACFS_LOCK_FILE"
+        rmdir "$ACFS_BACKUPS_DIR" 2>/dev/null || true
         rmdir "$test_dir" 2>/dev/null || true
         return
     fi
     
-    rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE"
+    rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE" "$ACFS_INTEGRITY_FILE" "$ACFS_LOCK_FILE"
+    rmdir "$ACFS_BACKUPS_DIR" 2>/dev/null || true
     rmdir "$test_dir" 2>/dev/null || true
     test_pass "state_integrity_valid"
 }
@@ -149,19 +186,26 @@ test_state_integrity_invalid() {
     ACFS_STATE_DIR="$test_dir"
     ACFS_CHANGES_FILE="$test_dir/changes.jsonl"
     ACFS_UNDOS_FILE="$test_dir/undos.jsonl"
+    ACFS_BACKUPS_DIR="$test_dir/backups"
+    ACFS_LOCK_FILE="$test_dir/.lock"
+    ACFS_INTEGRITY_FILE="$test_dir/.integrity"
+    mkdir -p "$ACFS_BACKUPS_DIR"
     
     # Create invalid JSON
     echo 'not valid json' > "$ACFS_CHANGES_FILE"
     touch "$ACFS_UNDOS_FILE"
+    update_integrity_file >/dev/null 2>&1
     
     if verify_state_integrity 2>/dev/null; then
         test_fail "state_integrity_invalid" "Invalid state accepted"
-        rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE"
+        rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE" "$ACFS_INTEGRITY_FILE" "$ACFS_LOCK_FILE"
+        rmdir "$ACFS_BACKUPS_DIR" 2>/dev/null || true
         rmdir "$test_dir" 2>/dev/null || true
         return
     fi
     
-    rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE"
+    rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE" "$ACFS_INTEGRITY_FILE" "$ACFS_LOCK_FILE"
+    rmdir "$ACFS_BACKUPS_DIR" 2>/dev/null || true
     rmdir "$test_dir" 2>/dev/null || true
     test_pass "state_integrity_invalid"
 }
@@ -175,11 +219,18 @@ test_state_repair() {
     ACFS_STATE_DIR="$test_dir"
     ACFS_CHANGES_FILE="$test_dir/changes.jsonl"
     ACFS_UNDOS_FILE="$test_dir/undos.jsonl"
+    ACFS_BACKUPS_DIR="$test_dir/backups"
+    ACFS_LOCK_FILE="$test_dir/.lock"
+    ACFS_INTEGRITY_FILE="$test_dir/.integrity"
+    mkdir -p "$ACFS_BACKUPS_DIR"
     
     # Create mixed valid/invalid records
-    echo '{"id":"chg_001","description":"valid"}' > "$ACFS_CHANGES_FILE"
-    echo 'invalid json line' >> "$ACFS_CHANGES_FILE"
-    echo '{"id":"chg_002","description":"also valid"}' >> "$ACFS_CHANGES_FILE"
+    local record1 record2
+    record1="$(make_test_change_record "chg_001" "valid")"
+    record2="$(make_test_change_record "chg_002" "also valid")"
+    printf '%s\n' "$record1" > "$ACFS_CHANGES_FILE"
+    printf '%s\n' 'invalid json line' >> "$ACFS_CHANGES_FILE"
+    printf '%s\n' "$record2" >> "$ACFS_CHANGES_FILE"
     touch "$ACFS_UNDOS_FILE"
     
     repair_state_files 2>/dev/null
@@ -189,12 +240,14 @@ test_state_repair() {
     valid_count=$(grep -c '^{' "$ACFS_CHANGES_FILE" || echo 0)
     if [[ "$valid_count" -ne 2 ]]; then
         test_fail "state_repair" "Expected 2 valid lines, got $valid_count"
-        rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE"
+        rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE" "$ACFS_INTEGRITY_FILE" "$ACFS_LOCK_FILE"
+        rmdir "$ACFS_BACKUPS_DIR" 2>/dev/null || true
         rmdir "$test_dir" 2>/dev/null || true
         return
     fi
     
-    rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE"
+    rm -f "$ACFS_CHANGES_FILE" "$ACFS_UNDOS_FILE" "$ACFS_INTEGRITY_FILE" "$ACFS_LOCK_FILE"
+    rmdir "$ACFS_BACKUPS_DIR" 2>/dev/null || true
     rmdir "$test_dir" 2>/dev/null || true
     test_pass "state_repair"
 }

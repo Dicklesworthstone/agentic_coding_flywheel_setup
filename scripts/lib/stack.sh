@@ -1520,14 +1520,11 @@ Environment=$rust_log_env
 Environment=$storage_root_env
 Environment=$database_url_env
 Environment=$http_allow_env
-# --takeover makes this unit the deterministic owner of the storage root.
-# Agent Mail otherwise REFUSES to start (exit 1) when any other process is
-# already answering /healthz on this host:port, to avoid restart-fighting. That
-# is correct between peers, but this unit is the managed owner: an unmanaged
-# holder (a hand-run 'am serve-http', or a fallback launch whose PID file was
-# lost) must not be able to lock the service out permanently. With --takeover
-# the unit SIGTERMs the holder and seizes the root, so it self-heals on start.
-ExecStart=${am_bin_exec} serve-http --no-tui --takeover --host 127.0.0.1 --port 8765 --path ${am_mcp_path_exec}
+# Do not use am's --takeover flag here: it may escalate to SIGKILL when a live
+# mailbox owner does not stop. A supervisor restart already stops this unit's
+# own MainPID gracefully. Any different live owner must be drained explicitly;
+# startup then fails closed instead of seizing a mailbox from another process.
+ExecStart=${am_bin_exec} serve-http --no-tui --host 127.0.0.1 --port 8765 --path ${am_mcp_path_exec}
 Restart=always
 # Exponential backoff (systemd >= 254): 5s, then widening to a 5m ceiling.
 # Flat RestartSec=5 is what turned a permanently-unstartable service into 75,347
@@ -1700,11 +1697,21 @@ clear_runtime_mask() {
 
 _stop_agent_mail_pid() {
     local victim_pid="$1"
+    local victim_args=""
     local victim_exe=""
     local am_real=""
+    local managed_pid=""
 
-    [[ -n "$victim_pid" ]] || return 0
+    [[ "$victim_pid" =~ ^[1-9][0-9]*$ ]] || return 0
     kill -0 "$victim_pid" 2>/dev/null || return 0
+
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+        managed_pid="$(systemctl --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
+        if [[ "$managed_pid" =~ ^[1-9][0-9]*$ ]] && [[ "$victim_pid" == "$managed_pid" ]]; then
+            echo "Agent Mail: PID $victim_pid belongs to agent-mail.service; leaving it to the supervisor" >&2
+            return 0
+        fi
+    fi
 
     # Identify the holder by its RESOLVED EXECUTABLE, not by matching
     # "$am_bin serve-http" against argv. am is normally reached through the
@@ -1713,13 +1720,17 @@ _stop_agent_mail_pid() {
     # mcp_agent_mail/am target. An argv substring match therefore misses exactly
     # the orphans this function exists to reclaim -- both variants were observed
     # in the field (one host: argv "am"; another: argv ".local/bin/am").
+    victim_args="$(ps -p "$victim_pid" -o args= 2>/dev/null || true)"
+    [[ "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] || return 0
+    [[ "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]] || return 0
+
     victim_exe="$(readlink -f "/proc/$victim_pid/exe" 2>/dev/null || true)"
     am_real="$(readlink -f "$am_bin" 2>/dev/null || printf '%s' "$am_bin")"
     if [[ -n "$victim_exe" ]]; then
         [[ "$victim_exe" == "$am_real" ]] || return 0
     else
         # No /proc (non-Linux): tolerate the symlink path and a bare command name.
-        ps -p "$victim_pid" -o args= 2>/dev/null | grep -Eq '(^|/)am([[:space:]]|$)' || return 0
+        [[ "$victim_args" =~ (^|/)am([[:space:]]|$) ]] || return 0
     fi
 
     kill "$victim_pid" >/dev/null 2>&1 || true
@@ -1729,45 +1740,18 @@ _stop_agent_mail_pid() {
         fi
         sleep 1
     done
-    kill -9 "$victim_pid" >/dev/null 2>&1 || true
-}
-
-# Report any process listening on 127.0.0.1:8765 that is not the managed unit.
-# The PID file alone is not sufficient: a fallback launch whose PID file was
-# lost, truncated, or written by an earlier storage root leaves a holder that
-# nothing reclaims, and the systemd unit can then never bind. That is how one
-# host reached 75,347 restarts while an orphaned fallback served the port.
-_agent_mail_port_holders() {
-    local holder_pids=""
-
-    if command -v ss >/dev/null 2>&1; then
-        holder_pids="$(ss -ltnpH 'sport = :8765' 2>/dev/null \
-            | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)"
-    fi
-    if [[ -z "$holder_pids" ]] && command -v lsof >/dev/null 2>&1; then
-        holder_pids="$(lsof -nP -iTCP@127.0.0.1:8765 -sTCP:LISTEN -t 2>/dev/null | sort -u)"
-    fi
-
-    printf '%s\n' "$holder_pids"
+    echo "Agent Mail: fallback PID $victim_pid did not stop after SIGTERM; refusing a hard kill" >&2
+    return 1
 }
 
 stop_agent_mail_fallback() {
     local existing_pid=""
-    local holder_pid=""
 
     if [[ -f "$fallback_pid_file" ]]; then
         existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-        _stop_agent_mail_pid "$existing_pid"
+        _stop_agent_mail_pid "$existing_pid" || return 1
         rm -f "$fallback_pid_file"
     fi
-
-    # Belt-and-braces: reclaim by port as well, so a stale or missing PID file
-    # cannot strand a holder that would lock the managed unit out forever.
-    while read -r holder_pid; do
-        [[ -n "$holder_pid" ]] || continue
-        [[ "$holder_pid" == "$existing_pid" ]] && continue
-        _stop_agent_mail_pid "$holder_pid"
-    done <<< "$(_agent_mail_port_holders)"
 }
 
 launch_agent_mail_fallback() {
@@ -1779,13 +1763,7 @@ launch_agent_mail_fallback() {
     fi
 
     if [[ -f "$fallback_pid_file" ]]; then
-        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
-            stop_agent_mail_fallback
-        else
-            rm -f "$fallback_pid_file"
-        fi
+        stop_agent_mail_fallback || return 1
     fi
 
     nohup env \
@@ -1869,11 +1847,10 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/d
             exit 1
         fi
     fi
-    stop_agent_mail_fallback
+    stop_agent_mail_fallback || exit 1
     systemctl --user daemon-reload >/dev/null 2>&1 || true
-    if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
-        systemctl --user restart agent-mail.service >/dev/null 2>&1
-    fi
+    systemctl --user enable agent-mail.service >/dev/null 2>&1 || exit 1
+    systemctl --user restart agent-mail.service >/dev/null 2>&1 || exit 1
     active_waited=0
     active_max_wait=30
     until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do

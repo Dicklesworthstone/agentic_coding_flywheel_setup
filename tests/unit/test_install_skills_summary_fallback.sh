@@ -328,6 +328,21 @@ run_test_3() {
     assert "D5. canonical resume keeps repeated --only selectors" "$([[ "$resume_hint" == *"--only stack.ntm"* && "$resume_hint" == *"--only stack.mcp_agent_mail"* ]] && echo true || echo false)"
     assert "D6. canonical resume keeps phase, skip, and dependency selectors" "$([[ "$resume_hint" == *"--only-phase 9"* && "$resume_hint" == *"--skip stack.cass"* && "$resume_hint" == *"--no-deps"* ]] && echo true || echo false)"
 
+    local generated_categories=""
+    local cli_phase_rc=0
+    acfs_use_generated_category() { return 0; }
+    acfs_run_generated_category_phase() {
+        generated_categories+="${generated_categories:+ }$1"
+        [[ "$1" != "cli" ]]
+    }
+    install_cli_tools || cli_phase_rc=$?
+    assert "D7. generated CLI failure propagates from install_cli_tools" "$([[ $cli_phase_rc -ne 0 ]] && echo true || echo false)"
+    assert "D8. generated CLI failure does not prevent later categories from running" "$([[ "$generated_categories" == "cli network tools" ]] && echo true || echo false)"
+
+    local finalize_body=""
+    finalize_body="$(declare -f finalize)"
+    assert "D9. finalize does not emit an overall success claim before terminal status is known" "$([[ "$finalize_body" != *'Installation complete!'* && "$finalize_body" == *'Finalization complete'* ]] && echo true || echo false)"
+
     ONLY_MODULES=()
     ONLY_PHASES=()
     SKIP_MODULES=()

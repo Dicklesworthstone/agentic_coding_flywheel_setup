@@ -361,7 +361,7 @@ swarm_doctor_build_report() {
 
     jq_bin="$(swarm_doctor_binary_path jq 2>/dev/null || true)"
     if [[ -z "$jq_bin" ]]; then
-        printf '{"schema_version":1,"status":"fail","exit_code":2,"summary":{"failed":1,"warnings":0,"passed":0},"checks":[{"id":"jq","status":"fail","summary":"jq is required for swarm doctor JSON evaluation","details":[],"commands":["sudo apt-get install -y jq"]}],"next_commands":["sudo apt-get install -y jq"]}\n'
+        printf '{"schema_version":1,"status":"fail","exit_code":2,"summary":{"failed":1,"warnings":0,"passed":0},"checks":[{"id":"jq","status":"fail","summary":"jq is required for swarm doctor JSON evaluation","details":[],"commands":["sudo apt-get -o DPkg::Lock::Timeout=120 install -y jq"]}],"next_commands":["sudo apt-get -o DPkg::Lock::Timeout=120 install -y jq"]}\n'
         return 0
     fi
 

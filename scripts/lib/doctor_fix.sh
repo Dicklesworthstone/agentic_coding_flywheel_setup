@@ -90,8 +90,6 @@ doctor_fix_system_binary_path() {
     for candidate in \
         "/usr/bin/$name" \
         "/bin/$name" \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/sbin/$name" \
         "/sbin/$name"
     do
@@ -101,6 +99,25 @@ doctor_fix_system_binary_path() {
     done
 
     return 1
+}
+
+# Lifecycle helpers normally run as the target user and may legitimately use
+# that user's installed tools. When doctor --fix itself has root authority,
+# however, never resolve support commands through the user-augmented doctor
+# PATH: an executable in ~/.local/bin must not inherit root merely because a
+# fallback Agent Mail process needs to be inspected or started.
+doctor_fix_lifecycle_binary_path() {
+    local name="${1:-}"
+    local resolved=""
+
+    if [[ $EUID -eq 0 ]]; then
+        doctor_fix_system_binary_path "$name"
+        return
+    fi
+
+    resolved="$(command -v -- "$name" 2>/dev/null || true)"
+    [[ -n "$resolved" ]] || return 1
+    printf '%s\n' "$resolved"
 }
 
 doctor_fix_root_prefix() {
@@ -1106,10 +1123,25 @@ fix_path_ordering() {
     local backup_json=""
     local restore_command=""
     if [[ -f "$target_file" ]]; then
-        backup_json=$(create_backup "$target_file" "path-ordering")
+        if ! backup_json=$(create_backup "$target_file" "path-ordering"); then
+            doctor_fix_log ERROR "Failed to back up $target_file before changing PATH ordering"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
         restore_command="$(autofix_backup_restore_command "$backup_json" 2>/dev/null || true)"
+        if [[ -z "$restore_command" ]]; then
+            doctor_fix_log ERROR "Failed to build a restore command for $target_file"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
     else
-        restore_command="if [[ -f '$target_file' ]]; then sed -i '/$marker/,+1d' '$target_file' && if ! grep -q '[^[:space:]]' '$target_file'; then rm -f '$target_file'; fi; fi"
+        restore_command="$(doctor_fix_build_remove_path_rollback \
+            "$target_file" \
+            "$(doctor_fix_nearest_existing_parent "$target_file")")" || {
+            doctor_fix_log ERROR "Failed to build rollback command for new file $target_file"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        }
     fi
 
     if [[ "$marker_present" == "true" ]]; then
@@ -1130,16 +1162,19 @@ fix_path_ordering() {
         echo "$export_line"
     } >> "$target_file"; then
         doctor_fix_log ERROR "Failed to append PATH ordering to $target_file"
+        if ! doctor_fix_run_rollback_command "$restore_command" false; then
+            doctor_fix_log ERROR "Failed to restore $target_file after the append failure"
+        fi
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
 
     # Record change
     if ! doctor_fix_record_change_or_rollback \
-        "${restore_command:-if [[ -f '$target_file' ]]; then sed -i '/$marker/,+1d' '$target_file'; fi}" \
+        "$restore_command" \
         false \
         "path" "Added PATH ordering to $target_file" \
-        "${restore_command:-if [[ -f '$target_file' ]]; then sed -i '/$marker/,+1d' '$target_file'; fi}" \
+        "$restore_command" \
         false "info" "$(doctor_fix_files_json "$target_file")" "$(doctor_fix_backups_json_array "${backup_json:-[]}")" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
@@ -1501,10 +1536,25 @@ fix_acfs_sourcing() {
     local backup_json=""
     local restore_command=""
     if [[ -f "$zshrc" ]]; then
-        backup_json=$(create_backup "$zshrc" "acfs-sourcing")
+        if ! backup_json=$(create_backup "$zshrc" "acfs-sourcing"); then
+            doctor_fix_log ERROR "Failed to back up $zshrc before adding ACFS sourcing"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
         restore_command="$(autofix_backup_restore_command "$backup_json" 2>/dev/null || true)"
+        if [[ -z "$restore_command" ]]; then
+            doctor_fix_log ERROR "Failed to build a restore command for $zshrc"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
     else
-        restore_command="if [[ -f '$zshrc' ]]; then sed -i '/$marker/,+1d' '$zshrc' && if ! grep -q '[^[:space:]]' '$zshrc'; then rm -f '$zshrc'; fi; fi"
+        restore_command="$(doctor_fix_build_remove_path_rollback \
+            "$zshrc" \
+            "$(doctor_fix_nearest_existing_parent "$zshrc")")" || {
+            doctor_fix_log ERROR "Failed to build rollback command for new file $zshrc"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        }
     fi
 
     # Append sourcing line
@@ -1514,16 +1564,19 @@ fix_acfs_sourcing() {
         echo "$source_line"
     } >> "$zshrc"; then
         doctor_fix_log ERROR "Failed to append ACFS sourcing to $zshrc"
+        if ! doctor_fix_run_rollback_command "$restore_command" false; then
+            doctor_fix_log ERROR "Failed to restore $zshrc after the append failure"
+        fi
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
 
     # Record change
     if ! doctor_fix_record_change_or_rollback \
-        "${restore_command:-if [[ -f '$zshrc' ]]; then sed -i '/$marker/,+1d' '$zshrc'; fi}" \
+        "$restore_command" \
         false \
         "config" "Added ACFS sourcing to .zshrc" \
-        "${restore_command:-if [[ -f '$zshrc' ]]; then sed -i '/$marker/,+1d' '$zshrc'; fi}" \
+        "$restore_command" \
         false "info" "$(doctor_fix_files_json "$zshrc")" "$(doctor_fix_backups_json_array "${backup_json:-[]}")" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
@@ -1923,6 +1976,7 @@ fix_verified_install() {
 fix_ssh_server() {
     local check_id="$1"
     local apt_get_bin=""
+    local env_bin=""
     local root_display=""
     local sshd_bin=""
     local systemctl_bin=""
@@ -1980,12 +2034,13 @@ fix_ssh_server() {
 
     # Not installed - install it
     if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-        FIXES_DRY_RUN+=("fix.ssh.server|Install openssh-server|/etc/ssh/sshd_config|${root_display}apt-get install -y openssh-server")
+        FIXES_DRY_RUN+=("fix.ssh.server|Install openssh-server|/etc/ssh/sshd_config|${root_display}apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server")
         doctor_fix_log DRY "Install openssh-server"
         return 0
     fi
 
     apt_get_bin="$(doctor_fix_system_binary_path apt-get 2>/dev/null || true)"
+    env_bin="$(doctor_fix_system_binary_path env 2>/dev/null || true)"
     if [[ -z "$apt_get_bin" ]]; then
         doctor_fix_log ERROR "apt-get not found; cannot install openssh-server"
         FIX_FAILED=$((FIX_FAILED + 1))
@@ -1996,13 +2051,18 @@ fix_ssh_server() {
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
+    if [[ -z "$env_bin" ]]; then
+        doctor_fix_log ERROR "env not found; cannot set the noninteractive package environment"
+        FIX_FAILED=$((FIX_FAILED + 1))
+        return 1
+    fi
     if ! doctor_fix_root_prefix root_cmd; then
         doctor_fix_log ERROR "Cannot install openssh-server without root or passwordless sudo"
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
 
-    if "${root_cmd[@]}" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 "$apt_get_bin" install -y openssh-server 2>/dev/null; then
+    if "${root_cmd[@]}" "$env_bin" DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y openssh-server 2>/dev/null; then
         if ! ("${root_cmd[@]}" "$systemctl_bin" enable --now ssh 2>/dev/null || "${root_cmd[@]}" "$systemctl_bin" enable --now sshd 2>/dev/null); then
             doctor_fix_log ERROR "Installed openssh-server but failed to enable/start SSH service"
             FIX_FAILED=$((FIX_FAILED + 1))
@@ -2039,7 +2099,6 @@ fix_ssh_keepalive() {
     local check_id="$1"
     local sshd_config="${DOCTOR_FIX_SSHD_CONFIG:-/etc/ssh/sshd_config}"
     local marker="# ACFS: SSH keepalive settings (added by doctor --fix)"
-    local fallback_restore_command=""
     local root_display=""
     local systemctl_bin=""
     local tee_bin=""
@@ -2052,7 +2111,7 @@ fix_ssh_keepalive() {
     # Guard: sshd_config must exist
     if [[ ! -f "$sshd_config" ]]; then
         doctor_fix_log WARN "sshd_config not found, install openssh-server first"
-        FIXES_MANUAL+=("$check_id|Install openssh-server first|${root_display}apt-get install -y openssh-server")
+        FIXES_MANUAL+=("$check_id|Install openssh-server first|${root_display}apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server")
         FIX_MANUAL=$((FIX_MANUAL + 1))
         return 1
     fi
@@ -2083,12 +2142,18 @@ fix_ssh_keepalive() {
     # Create backup
     local backup_json=""
     local restore_command=""
-    printf -v fallback_restore_command \
-        "sed -i '/%s/,+2d' %q" \
-        "$marker" "$sshd_config"
     if [[ -f "$sshd_config" ]]; then
-        backup_json=$(create_backup "$sshd_config" "ssh-keepalive")
+        if ! backup_json=$(create_backup "$sshd_config" "ssh-keepalive"); then
+            doctor_fix_log ERROR "Failed to back up $sshd_config before adding SSH keepalive settings"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
         restore_command="$(autofix_backup_restore_command "$backup_json" 2>/dev/null || true)"
+        if [[ -z "$restore_command" ]]; then
+            doctor_fix_log ERROR "Failed to build a restore command for $sshd_config"
+            FIX_FAILED=$((FIX_FAILED + 1))
+            return 1
+        fi
     fi
 
     # Apply settings
@@ -2099,6 +2164,9 @@ fix_ssh_keepalive() {
         echo "ClientAliveCountMax 3"
     } | "${root_cmd[@]}" "$tee_bin" -a "$sshd_config" > /dev/null; then
         doctor_fix_log ERROR "Failed to append SSH keepalive settings to $sshd_config"
+        if ! doctor_fix_run_rollback_command "$restore_command" true; then
+            doctor_fix_log ERROR "Failed to restore $sshd_config after the append failure"
+        fi
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -2116,10 +2184,10 @@ fix_ssh_keepalive() {
     fi
 
     if ! doctor_fix_record_change_or_rollback \
-        "${restore_command:-$fallback_restore_command}; $reload_rollback" \
+        "$restore_command; $reload_rollback" \
         true \
         "config" "Configured SSH keepalive in $sshd_config" \
-        "${restore_command:-$fallback_restore_command}; $reload_rollback" \
+        "$restore_command; $reload_rollback" \
         true "info" "$(doctor_fix_files_json "$sshd_config")" "$(doctor_fix_backups_json_array "${backup_json:-[]}")" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
@@ -2359,7 +2427,8 @@ agent_mail_fix_launch_fallback() {
     local fallback_log_file="$storage_root/agent-mail.log"
     local am_bin=""
     local db_url=""
-    local existing_pid=""
+    local env_bin=""
+    local nohup_bin=""
 
     am_bin="$(doctor_fix_agent_mail_bin 2>/dev/null || true)"
     [[ -n "$am_bin" ]] || return 1
@@ -2370,22 +2439,23 @@ agent_mail_fix_launch_fallback() {
     am_mcp_path="$(doctor_fix_agent_mail_mcp_path "$am_bin" 2>/dev/null || true)"
     [[ -n "$am_mcp_path" ]] || return 1
 
+    env_bin="$(doctor_fix_lifecycle_binary_path env 2>/dev/null || true)"
+    nohup_bin="$(doctor_fix_lifecycle_binary_path nohup 2>/dev/null || true)"
+    if [[ -z "$env_bin" || -z "$nohup_bin" ]]; then
+        doctor_fix_log ERROR "Cannot launch the Agent Mail fallback because env or nohup is unavailable"
+        return 1
+    fi
+
     if doctor_fix_system_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
        agent_mail_fix_readiness_ready; then
         return 0
     fi
 
     if [[ -f "$fallback_pid_file" ]]; then
-        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
-            agent_mail_fix_stop_fallback
-        else
-            rm -f "$fallback_pid_file"
-        fi
+        agent_mail_fix_stop_fallback || return 1
     fi
 
-    nohup env \
+    "$nohup_bin" "$env_bin" \
         RUST_LOG=info \
         STORAGE_ROOT="$storage_root" \
         DATABASE_URL="$db_url" \
@@ -2400,27 +2470,87 @@ agent_mail_fix_stop_fallback() {
     local fallback_pid_file="$storage_root/agent-mail.pid"
     local am_bin=""
     local existing_pid=""
+    local managed_pid=""
+    local victim_args=""
+    local victim_exe=""
+    local am_real=""
+    local owner_matches=false
+    local ps_bin=""
+    local readlink_bin=""
+    local rm_bin=""
+    local sleep_bin=""
+    local systemctl_bin=""
 
     am_bin="$(doctor_fix_agent_mail_bin 2>/dev/null || true)"
     [[ -n "$am_bin" ]] || return 1
 
+    ps_bin="$(doctor_fix_lifecycle_binary_path ps 2>/dev/null || true)"
+    readlink_bin="$(doctor_fix_lifecycle_binary_path readlink 2>/dev/null || true)"
+    rm_bin="$(doctor_fix_lifecycle_binary_path rm 2>/dev/null || true)"
+    sleep_bin="$(doctor_fix_lifecycle_binary_path sleep 2>/dev/null || true)"
+    systemctl_bin="$(doctor_fix_lifecycle_binary_path systemctl 2>/dev/null || true)"
+    if [[ -z "$ps_bin" || -z "$readlink_bin" || -z "$rm_bin" || -z "$sleep_bin" ]]; then
+        doctor_fix_log ERROR "Cannot inspect the Agent Mail fallback because required system tools are unavailable"
+        return 1
+    fi
+
     if [[ -f "$fallback_pid_file" ]]; then
-        existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-        if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-           ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+        IFS= read -r existing_pid < "$fallback_pid_file" || existing_pid=""
+        if [[ -n "$systemctl_bin" ]] && "$systemctl_bin" --user show-environment >/dev/null 2>&1; then
+            managed_pid="$("$systemctl_bin" --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
+        fi
+        if [[ "$managed_pid" =~ ^[1-9][0-9]*$ ]] && [[ "$existing_pid" == "$managed_pid" ]]; then
+            doctor_fix_log INFO "Agent Mail PID $existing_pid belongs to agent-mail.service; leaving it to the supervisor"
+            "$rm_bin" -f -- "$fallback_pid_file"
+            return 0
+        fi
+        if [[ "$existing_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$existing_pid" 2>/dev/null; then
+            victim_args="$("$ps_bin" -p "$existing_pid" -o args= 2>/dev/null || true)"
+            victim_exe="$("$readlink_bin" -f "/proc/$existing_pid/exe" 2>/dev/null || true)"
+            am_real="$("$readlink_bin" -f "$am_bin" 2>/dev/null || printf '%s' "$am_bin")"
+            if [[ ! "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] ||
+               [[ ! "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]]; then
+                owner_matches=false
+            elif [[ -n "$victim_exe" ]]; then
+                [[ "$victim_exe" == "$am_real" ]] && owner_matches=true
+            elif [[ "$victim_args" =~ (^|/)am([[:space:]]|$) ]]; then
+                owner_matches=true
+            fi
+        fi
+        if [[ "$owner_matches" == "true" ]]; then
             kill "$existing_pid" >/dev/null 2>&1 || true
             for _ in {1..10}; do
                 if ! kill -0 "$existing_pid" 2>/dev/null; then
                     break
                 fi
-                sleep 1
+                "$sleep_bin" 1
             done
             if kill -0 "$existing_pid" 2>/dev/null; then
-                kill -9 "$existing_pid" >/dev/null 2>&1 || true
+                doctor_fix_log ERROR "Agent Mail fallback PID $existing_pid did not stop after SIGTERM; refusing a hard kill"
+                return 1
             fi
         fi
-        rm -f "$fallback_pid_file"
+        "$rm_bin" -f -- "$fallback_pid_file"
     fi
+}
+
+agent_mail_fix_safe_to_mutate() {
+    local am_bin="$1"
+    local drain_json=""
+    local jq_bin=""
+
+    drain_json="$("$am_bin" doctor drain --json 2>/dev/null)" || return 2
+    jq_bin="$(doctor_fix_system_binary_path jq 2>/dev/null || true)"
+    [[ -n "$jq_bin" ]] || return 2
+    if ! printf '%s\n' "$drain_json" | "$jq_bin" -e \
+        'type == "object" and (.safe_to_mutate | type == "boolean")' >/dev/null 2>&1; then
+        return 2
+    fi
+    if printf '%s\n' "$drain_json" | "$jq_bin" -e \
+        '.safe_to_mutate == true' >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
 }
 
 fix_mcp_agent_mail() {
@@ -2428,6 +2558,11 @@ fix_mcp_agent_mail() {
     local fixed_any=false
     local service_healthy=false
     local doctor_healthy=false
+    local mutation_failed=false
+    local repair_succeeded=false
+    local drain_rc=0
+    local am_configure_rc=0
+    local project_path=""
     local runtime_home=""
     local runtime_user=""
     local am_src=""
@@ -2455,27 +2590,47 @@ fix_mcp_agent_mail() {
         resolved_am_target="$(doctor_fix_resolve_path_target "$resolved_am_cli" 2>/dev/null || true)"
         am_src_target="$(doctor_fix_resolve_path_target "$am_src" 2>/dev/null || true)"
         if [[ -z "$resolved_am_target" || "$resolved_am_target" != "$am_src_target" ]]; then
-            local symlink_backup_json='[]'
-            local symlink_restore_command="rm -f '$am_dst'"
-            if [[ -e "$am_dst" || -L "$am_dst" ]]; then
-                symlink_backup_json="$(create_backup "$am_dst" "doctor-fix-agent-mail-symlink" 2>/dev/null || echo '[]')"
-                symlink_restore_command="$(autofix_backup_restore_command "$symlink_backup_json" 2>/dev/null || true)"
-                if [[ -z "$symlink_restore_command" || "$symlink_backup_json" == '[]' ]]; then
-                    doctor_fix_log ERROR "Failed to back up existing am entry before repairing CLI symlink"
-                    FIX_FAILED=$((FIX_FAILED + 1))
-                    return 1
-                fi
-            fi
-
             if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
                 FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail.symlink|Ensure am symlink points at installed Rust CLI|$am_dst|ln -sf $am_src $am_dst")
                 doctor_fix_log DRY "Ensure am symlink points at $am_src"
-            elif ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$runtime_user" TARGET_HOME="$runtime_home" _stack_repair_agent_mail_cli_symlink; then
+            else
+                local symlink_backup_json='[]'
+                local symlink_restore_command=""
+                if [[ -e "$am_dst" || -L "$am_dst" ]]; then
+                    symlink_backup_json="$(create_backup "$am_dst" "doctor-fix-agent-mail-symlink" 2>/dev/null || echo '[]')"
+                    symlink_restore_command="$(autofix_backup_restore_command "$symlink_backup_json" 2>/dev/null || true)"
+                    if [[ -z "$symlink_restore_command" || "$symlink_backup_json" == '[]' ]]; then
+                        doctor_fix_log ERROR "Failed to back up existing am entry before repairing CLI symlink"
+                        FIX_FAILED=$((FIX_FAILED + 1))
+                        return 1
+                    fi
+                else
+                    symlink_restore_command="$(doctor_fix_build_remove_path_rollback \
+                        "$am_dst" \
+                        "$(doctor_fix_nearest_existing_parent "$am_dst")")" || {
+                        doctor_fix_log ERROR "Failed to build rollback command for new Agent Mail CLI symlink"
+                        FIX_FAILED=$((FIX_FAILED + 1))
+                        return 1
+                    }
+                fi
+
+                if ! ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$runtime_user" TARGET_HOME="$runtime_home" _stack_repair_agent_mail_cli_symlink; then
+                    doctor_fix_log ERROR "Failed to repair Agent Mail CLI symlink"
+                    if ! doctor_fix_run_rollback_command "$symlink_restore_command" false; then
+                        doctor_fix_log ERROR "Failed to restore the prior Agent Mail CLI entry"
+                    fi
+                    FIX_FAILED=$((FIX_FAILED + 1))
+                    return 1
+                fi
+
                 hash -r
                 resolved_am_cli="$(doctor_fix_agent_mail_cli_path 2>/dev/null || true)"
                 resolved_am_target="$(doctor_fix_resolve_path_target "$resolved_am_cli" 2>/dev/null || true)"
                 if [[ -z "$resolved_am_target" || "$resolved_am_target" != "$am_src_target" ]]; then
                     doctor_fix_log ERROR "Agent Mail CLI symlink repair completed but am still resolves away from $am_src"
+                    if ! doctor_fix_run_rollback_command "$symlink_restore_command" false; then
+                        doctor_fix_log ERROR "Failed to restore the prior Agent Mail CLI entry"
+                    fi
                     FIX_FAILED=$((FIX_FAILED + 1))
                     return 1
                 fi
@@ -2495,10 +2650,6 @@ fix_mcp_agent_mail() {
                 FIXES_APPLIED+=("fix.stack.mcp_agent_mail.symlink|Ensured am resolves to installed Rust CLI")
                 FIX_APPLIED=$((FIX_APPLIED + 1))
                 fixed_any=true
-            else
-                doctor_fix_log ERROR "Failed to repair Agent Mail CLI symlink"
-                FIX_FAILED=$((FIX_FAILED + 1))
-                return 1
             fi
         fi
     fi
@@ -2556,8 +2707,8 @@ fix_mcp_agent_mail() {
             return 1
         fi
     elif [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-        FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail|Repair MCP Agent Mail and apply upstream doctor fixes|$runtime_home/.mcp_agent_mail_git_mailbox_repo|am doctor repair --yes && am doctor fix --yes")
-        doctor_fix_log DRY "Repair MCP Agent Mail database, apply upstream doctor fixes, and restart the service"
+        FIXES_DRY_RUN+=("fix.stack.mcp_agent_mail|Inspect MCP Agent Mail drain state, repair only when safe_to_mutate=true, then reconcile the user service|$runtime_home/.mcp_agent_mail_git_mailbox_repo|am doctor drain --json; if safe: am doctor repair --yes; am doctor fix --yes")
+        doctor_fix_log DRY "Inspect MCP Agent Mail drain state, repair only when safe to mutate, and reconcile the user service"
         return 0
     fi
 
@@ -2568,42 +2719,62 @@ fix_mcp_agent_mail() {
         return 1
     }
 
-    if "$am_bin" doctor repair --yes >/dev/null 2>&1; then
-        if ! doctor_fix_record_change_or_rollback \
-            "" \
-            false \
-            "repair" "Ran MCP Agent Mail database repair" \
-            "# Manual rollback required: restore Agent Mail storage from backup if needed" \
-            false "info" "$(doctor_fix_files_json "$storage_root")" "[]" "[]"; then
-            FIX_FAILED=$((FIX_FAILED + 1))
-            return 1
+    agent_mail_fix_safe_to_mutate "$am_bin" || drain_rc=$?
+    if [[ "$drain_rc" -eq 0 ]]; then
+        if "$am_bin" doctor repair --yes >/dev/null 2>&1; then
+            if ! doctor_fix_record_change_or_rollback \
+                "" \
+                false \
+                "repair" "Ran MCP Agent Mail database repair" \
+                "# Manual rollback required: restore Agent Mail storage from backup if needed" \
+                false "info" "$(doctor_fix_files_json "$storage_root")" "[]" "[]"; then
+                FIX_FAILED=$((FIX_FAILED + 1))
+                return 1
+            fi
+
+            doctor_fix_log INFO "Ran MCP Agent Mail database repair"
+            FIXES_APPLIED+=("fix.stack.mcp_agent_mail.repair|Ran MCP Agent Mail database repair")
+            FIX_APPLIED=$((FIX_APPLIED + 1))
+            fixed_any=true
+            repair_succeeded=true
+        else
+            doctor_fix_log WARN "MCP Agent Mail database repair did not complete cleanly"
+            mutation_failed=true
         fi
 
-        doctor_fix_log INFO "Ran MCP Agent Mail database repair"
-        FIXES_APPLIED+=("fix.stack.mcp_agent_mail.repair|Ran MCP Agent Mail database repair")
-        FIX_APPLIED=$((FIX_APPLIED + 1))
-        fixed_any=true
-    else
-        doctor_fix_log WARN "MCP Agent Mail database repair did not complete cleanly"
-    fi
+        if [[ "$repair_succeeded" == "true" ]]; then
+            drain_rc=0
+            agent_mail_fix_safe_to_mutate "$am_bin" || drain_rc=$?
+            if [[ "$drain_rc" -eq 0 ]]; then
+                if "$am_bin" doctor fix --yes >/dev/null 2>&1; then
+                    if ! doctor_fix_record_change_or_rollback \
+                        "" \
+                        false \
+                        "repair" "Applied MCP Agent Mail doctor fixes" \
+                        "# Manual rollback required: restore Agent Mail storage/config from backup if needed" \
+                        false "info" "$(doctor_fix_files_json "$storage_root")" "[]" "[]"; then
+                        FIX_FAILED=$((FIX_FAILED + 1))
+                        return 1
+                    fi
 
-    if "$am_bin" doctor fix --yes >/dev/null 2>&1; then
-        if ! doctor_fix_record_change_or_rollback \
-            "" \
-            false \
-            "repair" "Applied MCP Agent Mail doctor fixes" \
-            "# Manual rollback required: restore Agent Mail storage/config from backup if needed" \
-            false "info" "$(doctor_fix_files_json "$storage_root")" "[]" "[]"; then
-            FIX_FAILED=$((FIX_FAILED + 1))
-            return 1
+                    doctor_fix_log INFO "Applied MCP Agent Mail doctor fixes"
+                    FIXES_APPLIED+=("fix.stack.mcp_agent_mail.fix|Applied MCP Agent Mail doctor fixes")
+                    FIX_APPLIED=$((FIX_APPLIED + 1))
+                    fixed_any=true
+                else
+                    doctor_fix_log WARN "MCP Agent Mail doctor fix did not complete cleanly"
+                    mutation_failed=true
+                fi
+            elif [[ "$drain_rc" -eq 1 ]]; then
+                doctor_fix_log INFO "MCP Agent Mail acquired a live owner after repair; skipping doctor fix until a new supervised drain is safe"
+            else
+                doctor_fix_log WARN "Could not renew the MCP Agent Mail drain attestation after repair; skipping doctor fix"
+            fi
         fi
-
-        doctor_fix_log INFO "Applied MCP Agent Mail doctor fixes"
-        FIXES_APPLIED+=("fix.stack.mcp_agent_mail.fix|Applied MCP Agent Mail doctor fixes")
-        FIX_APPLIED=$((FIX_APPLIED + 1))
-        fixed_any=true
+    elif [[ "$drain_rc" -eq 1 ]]; then
+        doctor_fix_log INFO "MCP Agent Mail has a live mailbox owner; skipping mutating doctor repair until a supervised drain reports safe_to_mutate=true"
     else
-        doctor_fix_log WARN "MCP Agent Mail doctor fix did not complete cleanly"
+        doctor_fix_log WARN "Could not obtain a trustworthy MCP Agent Mail drain attestation; skipping mutating doctor repair"
     fi
 
     if doctor_fix_system_curl -fsS --max-time 5 http://127.0.0.1:8765/health/liveness >/dev/null 2>&1 && \
@@ -2611,7 +2782,6 @@ fix_mcp_agent_mail() {
         service_healthy=true
     fi
 
-    am_configure_rc=0
     ACFS_STACK_TRUST_TARGET_HOME=true TARGET_USER="$runtime_user" TARGET_HOME="$runtime_home" _stack_configure_agent_mail_service || am_configure_rc=$?
     if [[ "$am_configure_rc" -eq 75 ]]; then
         # Local opt-out (masked/disabled unit or ACFS_SKIP_AGENT_MAIL=1):
@@ -2633,17 +2803,24 @@ fix_mcp_agent_mail() {
         FIX_APPLIED=$((FIX_APPLIED + 1))
         fixed_any=true
 
+        # The unit was restarted, so the pre-restart probe is stale. Require a
+        # fresh readiness result before allowing the overall repair to pass.
+        service_healthy=false
         if agent_mail_fix_wait_for_health; then
             doctor_fix_log INFO "Agent Mail service is healthy after restart"
             service_healthy=true
         else
             doctor_fix_log WARN "Agent Mail service did not reach readiness after repair"
         fi
-    elif [[ "$service_healthy" != "true" ]]; then
-        doctor_fix_log WARN "Failed to rewrite MCP Agent Mail user service unit"
+    else
+        # A still-responsive old process does not prove that the requested unit
+        # rewrite/restart succeeded. Preserve this as a repair failure so stale
+        # or broken service configuration cannot be reported as fixed.
+        doctor_fix_log WARN "Failed to rewrite or restart the MCP Agent Mail user service unit"
+        mutation_failed=true
     fi
 
-    if [[ "$service_healthy" == "true" ]] && agent_mail_fix_doctor_healthy; then
+    if [[ "$mutation_failed" != "true" && "$service_healthy" == "true" ]] && agent_mail_fix_doctor_healthy; then
         project_path="$(git rev-parse --show-toplevel 2>/dev/null || true)"
         if [[ -n "$project_path" ]]; then
             if agent_mail_fix_doctor_healthy "$project_path"; then

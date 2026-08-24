@@ -491,9 +491,9 @@ install_postgresql() {
 
     # Update and install
     log_detail "Installing PostgreSQL $pg_version packages..."
-    $sudo_cmd apt-get update -y >/dev/null 2>&1 || true
+    $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 update -y >/dev/null 2>&1 || true
 
-    if $sudo_cmd apt-get install -y "postgresql-${pg_version}" "postgresql-client-${pg_version}" >/dev/null 2>&1; then
+    if $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y "postgresql-${pg_version}" "postgresql-client-${pg_version}" >/dev/null 2>&1; then
         log_success "PostgreSQL $pg_version installed"
 
         # Start and enable service
@@ -576,9 +576,9 @@ install_vault() {
         $sudo_cmd tee /etc/apt/sources.list.d/hashicorp.list > /dev/null
 
     # Update and install
-    $sudo_cmd apt-get update -y >/dev/null 2>&1 || true
+    $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 update -y >/dev/null 2>&1 || true
 
-    if $sudo_cmd apt-get install -y vault >/dev/null 2>&1; then
+    if $sudo_cmd apt-get -o DPkg::Lock::Timeout=120 install -y vault >/dev/null 2>&1; then
         log_success "Vault installed"
         return 0
     else

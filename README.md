@@ -228,7 +228,7 @@ flowchart TB
 │                     GENERATED OUTPUTS (REFERENCE)                          │
 │  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐   │
 │  │ scripts/generated/ │  │ doctor_checks.sh   │  │ install_all.sh     │   │
-│  │ 11 Category Scripts│  │ Verification Logic │  │ Master Installer   │   │
+│  │ 11 Category Scripts│  │ Verification Logic │  │ Top-Level Installer│   │
 │  └────────────────────┘  └────────────────────┘  └────────────────────┘   │
 └───────────────────────────────────────────────────────────────────────────┘
                     │
@@ -330,7 +330,7 @@ The TypeScript generator (`packages/manifest/src/generate.ts`) reads the manifes
    - Tab-delimited format (to safely handle `||` in shell commands)
    - Reports pass/fail/skip for each module
 
-3. **Master Installer** (`scripts/generated/install_all.sh`)
+3. **Top-Level Installer** (`scripts/generated/install_all.sh`)
    - Sources all category scripts
    - Runs them in dependency order
    - Single entry point for running the generated installers
@@ -645,8 +645,10 @@ acfs-update --dry-run        # Preview changes without making them
 acfs-update --yes --quiet --no-self-update
                              # Automated mode that avoids changing the ACFS tree itself
 acfs-update --bootstrap-self-update
-                             # Explicitly convert a non-git ACFS install into a git checkout
+                             # Explicitly convert a non-git or incomplete install into a git checkout
 ```
+
+`--bootstrap-self-update` replaces ACFS repository files with `origin/main`. Copy local files elsewhere or commit local edits before opting in. Routine updates leave non-git and incomplete Git installs untouched.
 
 ### What Gets Updated
 
@@ -3823,7 +3825,7 @@ Downloads retry on a fixed schedule rather than exponential backoff: `retry_with
 
 ### APT Lock Handling
 
-The most common installation failure on a fresh VPS is APT lock contention: `unattended-upgrades` runs for a few minutes after first boot. The installer does not wait for the lock; the affected step fails with the apt error, the phase is recorded as failed, and re-running the installer resumes from that phase once the lock is free. `acfs update` does wait (up to 120 seconds) before its apt operations, and `acfs doctor --fix` can disable stuck unattended-upgrades runs.
+The most common installation failure on a fresh VPS is APT lock contention: `unattended-upgrades` runs for a few minutes after first boot. To prevent transient lock errors, the installer passes `-o DPkg::Lock::Timeout=120` to `apt-get` calls so it waits up to 120 seconds for unattended-upgrades to finish. `acfs update` similarly waits (up to 120 seconds) before its apt operations, and `acfs doctor --fix` can disable stuck unattended-upgrades runs.
 
 ### Graceful Degradation
 

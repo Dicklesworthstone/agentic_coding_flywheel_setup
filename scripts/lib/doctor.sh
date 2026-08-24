@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1091
 # ============================================================
 # ACFS Doctor - System Health Check
@@ -8,6 +8,13 @@
 # ============================================================
 
 ACFS_VERSION="${ACFS_VERSION:-0.1.0}"
+
+# A direct root invocation must not resolve or source target-user code before
+# the target identity is known and privileges are dropped below.
+readonly _ACFS_DOCTOR_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+if [[ "$EUID" -eq 0 ]]; then
+    export PATH="$_ACFS_DOCTOR_PRIVILEGED_PATH"
+fi
 
 _acfs_doctor_sanitize_abs_nonroot_path() {
     local path_value="${1:-}"
@@ -44,8 +51,6 @@ _acfs_doctor_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -264,6 +269,11 @@ ensure_path() {
     local seen_path=":$current_path:"
     local primary_home="${TARGET_HOME:-${_acfs_doctor_current_home:-/root}}"
     local primary_bin_dir="${ACFS_BIN_DIR:-$primary_home/.local/bin}"
+
+    if [[ "$EUID" -eq 0 ]]; then
+        export PATH="$_ACFS_DOCTOR_PRIVILEGED_PATH"
+        return 0
+    fi
 
     primary_bin_dir="$(_acfs_doctor_validate_bin_dir_for_home "$primary_bin_dir" "$primary_home" 2>/dev/null || true)"
     [[ -n "$primary_bin_dir" ]] || primary_bin_dir="$primary_home/.local/bin"
@@ -496,10 +506,6 @@ _acfs_doctor_source_first() {
     return 0
 }
 
-# Source output formatting library (for TOON support)
-_acfs_doctor_source_first "output.sh" || true
-_acfs_doctor_source_first "progress.sh" || true
-
 if ! type -t log_error >/dev/null 2>&1; then
     log_step() { echo "[*] $*" >&2; }
     log_section() { echo "" >&2; echo "=== $* ===" >&2; }
@@ -728,6 +734,48 @@ else
 fi
 export ACFS_HOME
 
+_acfs_doctor_reexec_as_target_if_root() {
+    [[ "${BASH_SOURCE[0]}" == "${0}" ]] || return 0
+    [[ "$EUID" -eq 0 ]] || return 0
+    [[ "${TARGET_USER:-root}" != "root" ]] || return 0
+
+    local runuser_bin=""
+    local env_bin=""
+    local bash_bin=""
+    local target_bin=""
+    local target_path=""
+
+    if [[ -z "${TARGET_HOME:-}" || "$TARGET_HOME" != /* || "$TARGET_HOME" == "/" || ! -d "$TARGET_HOME" ]]; then
+        printf 'Error: refusing to source target-user doctor helpers as root without a verified TARGET_HOME\n' >&2
+        exit 1
+    fi
+
+    runuser_bin="$(_acfs_doctor_system_binary_path runuser 2>/dev/null || true)"
+    env_bin="$(_acfs_doctor_system_binary_path env 2>/dev/null || true)"
+    bash_bin="$(_acfs_doctor_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$runuser_bin" || -z "$env_bin" || -z "$bash_bin" ]]; then
+        printf 'Error: refusing to source target-user doctor helpers as root because runuser/env/bash is unavailable\n' >&2
+        exit 1
+    fi
+
+    target_bin="$(_acfs_doctor_validate_bin_dir_for_home "${ACFS_BIN_DIR:-}" "$TARGET_HOME" 2>/dev/null || true)"
+    [[ -n "$target_bin" ]] || target_bin="$TARGET_HOME/.local/bin"
+    target_path="$target_bin:$TARGET_HOME/.local/bin:$TARGET_HOME/.acfs/bin:$TARGET_HOME/.cargo/bin:$TARGET_HOME/.bun/bin:$TARGET_HOME/.atuin/bin:$TARGET_HOME/go/bin:$TARGET_HOME/google-cloud-sdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+
+    exec "$runuser_bin" -u "$TARGET_USER" -- "$env_bin" \
+        HOME="$TARGET_HOME" \
+        TARGET_USER="$TARGET_USER" \
+        TARGET_HOME="$TARGET_HOME" \
+        ACFS_HOME="${ACFS_HOME:-}" \
+        ACFS_STATE_FILE="${ACFS_STATE_FILE:-}" \
+        ACFS_SYSTEM_STATE_FILE="${ACFS_SYSTEM_STATE_FILE:-}" \
+        ACFS_BIN_DIR="$target_bin" \
+        PATH="$target_path" \
+        "$bash_bin" "${BASH_SOURCE[0]}" "$@"
+}
+
+_acfs_doctor_reexec_as_target_if_root "$@"
+
 unset _acfs_doctor_trusted_acfs_home
 unset _acfs_doctor_script_acfs_home
 unset _acfs_doctor_state_files
@@ -743,6 +791,10 @@ if command -v gum &>/dev/null; then
     HAS_GUM=true
 fi
 
+# Helper libraries may be installed beneath the target user's home. Keep every
+# source operation below the direct-root re-exec boundary above.
+_acfs_doctor_source_first "output.sh" || true
+_acfs_doctor_source_first "progress.sh" || true
 _acfs_doctor_source_first "gum_ui.sh" || true
 
 # Source doctor_fix after target-home resolution so its autofix state and
@@ -2090,16 +2142,16 @@ check_core_tools() {
     check_command "tool.go" "Go" "go" "sudo apt install golang-go"
     check_command "tool.tmux" "tmux" "tmux" "sudo apt install tmux"
     check_command "tool.rg" "ripgrep" "rg" "sudo apt install ripgrep"
-    check_command "tool.gh" "GitHub CLI (gh)" "gh" "sudo apt-get install -y gh"
-    check_command "tool.git_lfs" "Git LFS" "git-lfs" "sudo apt-get install -y git-lfs"
-    check_command "tool.rsync" "rsync" "rsync" "sudo apt-get install -y rsync"
-    check_command "tool.strace" "strace" "strace" "sudo apt-get install -y strace"
-    check_command "tool.lsof" "lsof" "lsof" "sudo apt-get install -y lsof"
-    check_command "tool.zstd" "zstd" "zstd" "sudo apt-get install -y zstd"
+    check_command "tool.gh" "GitHub CLI (gh)" "gh" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y gh"
+    check_command "tool.git_lfs" "Git LFS" "git-lfs" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y git-lfs"
+    check_command "tool.rsync" "rsync" "rsync" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y rsync"
+    check_command "tool.strace" "strace" "strace" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y strace"
+    check_command "tool.lsof" "lsof" "lsof" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y lsof"
+    check_command "tool.zstd" "zstd" "zstd" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y zstd"
     check_optional_command "tool.cosign" "cosign" "cosign" \
         "COSIGN_VERSION=v2.4.1 && curl -fsSL https://github.com/sigstore/cosign/releases/download/\${COSIGN_VERSION}/cosign-linux-amd64 -o /tmp/cosign && sudo install /tmp/cosign /usr/local/bin/cosign"
-    check_command "tool.dig" "dig (dnsutils)" "dig" "sudo apt-get install -y dnsutils"
-    check_command "tool.nc" "nc (netcat-openbsd)" "nc" "sudo apt-get install -y netcat-openbsd"
+    check_command "tool.dig" "dig (dnsutils)" "dig" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y dnsutils"
+    check_command "tool.nc" "nc (netcat-openbsd)" "nc" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y netcat-openbsd"
     check_command "tool.sg" "ast-grep" "sg" "cargo install ast-grep --locked"
 
     blank_line
@@ -2301,7 +2353,7 @@ check_cloud() {
             check "network.ssh_server" "SSH server (not installed)" "pass" "ok in CI"
         else
             check "network.ssh_server" "SSH server" "warn" "not installed" \
-                "sudo apt-get install -y openssh-server && sudo systemctl enable --now ssh"
+                "sudo apt-get -o DPkg::Lock::Timeout=120 install -y openssh-server && sudo systemctl enable --now ssh"
         fi
     fi
 
@@ -2481,7 +2533,7 @@ check_stack() {
                 "$am_install_fix"
         elif [[ "$DEEP_MODE" == "true" ]]; then
             local am_global_doctor_json am_project_doctor_json am_project_path am_details
-            local am_repair_fix='Run: am doctor repair --yes && am doctor fix --yes'
+            local am_repair_fix='Run: am doctor drain --json; follow its supervisor stop instructions, re-run drain, then run am doctor repair --yes && am doctor fix --yes only when safe_to_mutate=true'
 
             # `am doctor check` validates live mailbox/archive state, not just the
             # ACFS install surface. Keep it in --deep so normal installer canaries

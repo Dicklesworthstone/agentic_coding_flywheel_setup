@@ -53,8 +53,6 @@ use_spy_sudo() {
         for candidate in \
             "/usr/bin/$name" \
             "/bin/$name" \
-            "/usr/local/bin/$name" \
-            "/usr/local/sbin/$name" \
             "/usr/sbin/$name" \
             "/sbin/$name"
         do
@@ -65,6 +63,16 @@ use_spy_sudo() {
 
         return 1
     }
+}
+
+@test "system binary resolver excludes locally managed prefixes" {
+    local resolver_body
+    resolver_body="$(declare -f _acfs_system_binary_path)"
+
+    [[ "$resolver_body" == *'/usr/bin/$name'* ]]
+    [[ "$resolver_body" == *'/usr/sbin/$name'* ]]
+    [[ "$resolver_body" != *'/usr/local/bin/$name'* ]]
+    [[ "$resolver_body" != *'/usr/local/sbin/$name'* ]]
 }
 
 @test "acfs_flag_bool: parses boolean values" {
@@ -222,7 +230,7 @@ EOF
     local fake_sudo="$BATS_TEST_TMPDIR/fake-sudo"
     export CAPTURE_FILE="$BATS_TEST_TMPDIR/root-shell-sudo-argv.txt"
     export ACFS_BIN_DIR="\$(printf pwn > '$marker')"
-    export SUDO="$fake_sudo"
+    export FAKE_DISCOVERED_SUDO="$fake_sudo"
 
     cat > "$fake_sudo" <<'EOF'
 #!/usr/bin/env bash
@@ -233,6 +241,15 @@ fi
 exec "$@"
 EOF
     chmod +x "$fake_sudo"
+
+    _acfs_system_binary_path() {
+        case "${1:-}" in
+            sudo) printf '%s\n' "$FAKE_DISCOVERED_SUDO" ;;
+            env) printf '/usr/bin/env\n' ;;
+            bash) printf '/bin/bash\n' ;;
+            *) return 1 ;;
+        esac
+    }
 
     run run_as_root_shell "printf 'root-ok\n'"
     assert_success
@@ -254,6 +271,8 @@ EOF
     done
 
     [[ "$wrapper" == *'eval "$1"'* ]] || fail "Expected sudo shell wrapper to eval argv command, got: $wrapper"
+    [[ "$wrapper" == *'export PATH="/usr/sbin:/usr/bin:/sbin:/bin"'* ]] || fail "Expected a system-only root PATH, got: $wrapper"
+    [[ "$wrapper" != *'_acfs_primary_bin'* ]] || fail "Root wrapper included target-user PATH setup: $wrapper"
     [[ "$wrapper" != *"root-ok"* ]] || fail "Command was embedded in sudo shell wrapper: $wrapper"
     [[ "$command_arg" == "printf 'root-ok\n'" ]] || fail "Expected command as argv data, got: $command_arg"
 }
@@ -264,33 +283,7 @@ EOF
     local fake_sudo="$BATS_TEST_TMPDIR/fake-sudo-stdin"
     local out
     export CAPTURE_FILE="$BATS_TEST_TMPDIR/root-shell-sudo-stdin-argv.txt"
-    export SUDO="$fake_sudo"
-
-    cat > "$fake_sudo" <<'EOF'
-#!/usr/bin/env bash
-printf '%s\n' "$@" > "$CAPTURE_FILE"
-if [[ "${1:-}" == "-n" ]]; then
-    shift
-fi
-exec "$@"
-EOF
-    chmod +x "$fake_sudo"
-
-    out="$(printf "printf 'stdin-ok\\n'\n" | run_as_root_shell)"
-    [[ "$out" == "stdin-ok" ]] || fail "Expected stdin-ok, got: $out"
-
-    local -a argv=()
-    mapfile -t argv < "$CAPTURE_FILE"
-    [[ "${argv[0]:-}" == "-n" ]] || fail "Expected noninteractive sudo (-n), got: ${argv[*]}"
-}
-
-@test "run_as_root_shell: discovered sudo path is noninteractive" {
-    [[ "$EUID" -ne 0 ]] || skip "sudo path is bypassed when tests run as root"
-
-    local fake_sudo="$BATS_TEST_TMPDIR/fake-discovered-sudo"
-    export CAPTURE_FILE="$BATS_TEST_TMPDIR/root-shell-discovered-sudo-argv.txt"
     export FAKE_DISCOVERED_SUDO="$fake_sudo"
-    unset SUDO
 
     cat > "$fake_sudo" <<'EOF'
 #!/usr/bin/env bash
@@ -306,7 +299,51 @@ EOF
         case "${1:-}" in
             sudo) printf '%s\n' "$FAKE_DISCOVERED_SUDO" ;;
             env) printf '/usr/bin/env\n' ;;
-            bash) printf '/usr/bin/bash\n' ;;
+            bash) printf '/bin/bash\n' ;;
+            *) return 1 ;;
+        esac
+    }
+
+    out="$(printf "printf 'stdin-ok\\n'\n" | run_as_root_shell)"
+    [[ "$out" == "stdin-ok" ]] || fail "Expected stdin-ok, got: $out"
+
+    local -a argv=()
+    mapfile -t argv < "$CAPTURE_FILE"
+    [[ "${argv[0]:-}" == "-n" ]] || fail "Expected noninteractive sudo (-n), got: ${argv[*]}"
+}
+
+@test "run_as_root_shell: discovered sudo path is noninteractive" {
+    [[ "$EUID" -ne 0 ]] || skip "sudo path is bypassed when tests run as root"
+
+    local fake_sudo="$BATS_TEST_TMPDIR/fake-discovered-sudo"
+    local inherited_sudo="$BATS_TEST_TMPDIR/inherited-sudo"
+    local inherited_sudo_marker="$BATS_TEST_TMPDIR/inherited-sudo-ran"
+    export CAPTURE_FILE="$BATS_TEST_TMPDIR/root-shell-discovered-sudo-argv.txt"
+    export FAKE_DISCOVERED_SUDO="$fake_sudo"
+    export INHERITED_SUDO_MARKER="$inherited_sudo_marker"
+    export SUDO="$inherited_sudo"
+
+    cat > "$fake_sudo" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$CAPTURE_FILE"
+if [[ "${1:-}" == "-n" ]]; then
+    shift
+fi
+exec "$@"
+EOF
+    chmod +x "$fake_sudo"
+    cat > "$inherited_sudo" <<'EOF'
+#!/usr/bin/env bash
+printf 'unexpected\n' > "$INHERITED_SUDO_MARKER"
+exit 99
+EOF
+    chmod +x "$inherited_sudo"
+
+    _acfs_system_binary_path() {
+        case "${1:-}" in
+            sudo) printf '%s\n' "$FAKE_DISCOVERED_SUDO" ;;
+            env) printf '/usr/bin/env\n' ;;
+            bash) printf '/bin/bash\n' ;;
             *) return 1 ;;
         esac
     }
@@ -314,6 +351,7 @@ EOF
     run run_as_root_shell "printf 'discovered-ok\n'"
     assert_success
     assert_output "discovered-ok"
+    [[ ! -e "$inherited_sudo_marker" ]] || fail "run_as_root_shell trusted inherited SUDO"
 
     local -a argv=()
     mapfile -t argv < "$CAPTURE_FILE"

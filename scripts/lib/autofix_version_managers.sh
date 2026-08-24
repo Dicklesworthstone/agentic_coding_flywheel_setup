@@ -175,9 +175,15 @@ autofix_nvm_fix() {
     log_info "[AUTO-FIX:nvm] Starting nvm fix (mode=$mode)"
 
     local check_result
-    check_result=$(autofix_nvm_check)
+    if ! check_result=$(autofix_nvm_check); then
+        log_error "[AUTO-FIX:nvm] Failed to inspect the existing nvm installation"
+        return 2
+    fi
     local status
-    status=$(echo "$check_result" | jq -r '.status')
+    if ! status=$(echo "$check_result" | jq -er '.status | strings'); then
+        log_error "[AUTO-FIX:nvm] Inspection returned malformed status data"
+        return 2
+    fi
 
     if [[ "$status" == "none" ]]; then
         log_info "[AUTO-FIX:nvm] No nvm installation detected"
@@ -223,9 +229,7 @@ autofix_nvm_fix() {
 
         if [[ -d "$nvm_dir" ]]; then
             local backup_info
-            backup_info=$(create_backup "$nvm_dir" "nvm-directory")
-
-            if [[ -z "$backup_info" ]]; then
+            if ! backup_info=$(create_backup "$nvm_dir" "nvm-directory") || [[ -z "$backup_info" ]]; then
                 log_error "[AUTO-FIX:nvm] Failed to create backup of $nvm_dir"
                 partial_failure=1
                 continue
@@ -282,8 +286,7 @@ autofix_nvm_fix() {
 
         # Create backup of config file
         local config_backup
-        config_backup=$(create_backup "$config" "shell-config")
-        if [[ -n "$config_backup" ]]; then
+        if config_backup=$(create_backup "$config" "shell-config") && [[ -n "$config_backup" ]]; then
             local config_backup_path
             local restore_command=""
             config_backup_path=$(echo "$config_backup" | jq -r '.backup')
@@ -471,9 +474,15 @@ autofix_pyenv_fix() {
     log_info "[AUTO-FIX:pyenv] Starting pyenv fix (mode=$mode)"
 
     local check_result
-    check_result=$(autofix_pyenv_check)
+    if ! check_result=$(autofix_pyenv_check); then
+        log_error "[AUTO-FIX:pyenv] Failed to inspect the existing pyenv installation"
+        return 2
+    fi
     local status
-    status=$(echo "$check_result" | jq -r '.status')
+    if ! status=$(echo "$check_result" | jq -er '.status | strings'); then
+        log_error "[AUTO-FIX:pyenv] Inspection returned malformed status data"
+        return 2
+    fi
 
     if [[ "$status" == "none" ]]; then
         log_info "[AUTO-FIX:pyenv] No pyenv installation detected"
@@ -519,9 +528,7 @@ autofix_pyenv_fix() {
 
         if [[ -d "$pyenv_root" ]]; then
             local backup_info
-            backup_info=$(create_backup "$pyenv_root" "pyenv-directory")
-
-            if [[ -z "$backup_info" ]]; then
+            if ! backup_info=$(create_backup "$pyenv_root" "pyenv-directory") || [[ -z "$backup_info" ]]; then
                 log_error "[AUTO-FIX:pyenv] Failed to create backup of $pyenv_root"
                 partial_failure=1
                 continue
@@ -577,8 +584,7 @@ autofix_pyenv_fix() {
         log_info "[AUTO-FIX:pyenv] Cleaning pyenv references from $config"
 
         local config_backup
-        config_backup=$(create_backup "$config" "shell-config")
-        if [[ -n "$config_backup" ]]; then
+        if config_backup=$(create_backup "$config" "shell-config") && [[ -n "$config_backup" ]]; then
             local config_backup_path
             local restore_command=""
             config_backup_path=$(echo "$config_backup" | jq -r '.backup')
@@ -697,8 +703,7 @@ autofix_version_managers_fix() {
 
     # Fix nvm
     local nvm_result=0
-    autofix_nvm_fix "$mode"
-    nvm_result=$?
+    autofix_nvm_fix "$mode" || nvm_result=$?
     if [[ $nvm_result -ne 0 ]]; then
         if [[ $nvm_result -eq 2 ]]; then
             log_error "[AUTO-FIX] nvm fix failed critically"
@@ -711,8 +716,7 @@ autofix_version_managers_fix() {
 
     # Fix pyenv
     local pyenv_result=0
-    autofix_pyenv_fix "$mode"
-    pyenv_result=$?
+    autofix_pyenv_fix "$mode" || pyenv_result=$?
     if [[ $pyenv_result -ne 0 ]]; then
         if [[ $pyenv_result -eq 2 ]]; then
             log_error "[AUTO-FIX] pyenv fix failed critically"
