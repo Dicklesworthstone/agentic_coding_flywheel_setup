@@ -172,9 +172,18 @@ def write_text_if_changed(path, value, mode=None):
     except OSError as exc:
         fail_config(f"cannot read existing config file {path}: {exc}")
     if current != value:
+        # Write-then-rename so a launcher killed mid-write (tmux pane closed
+        # while the finally-block re-pins the model) can never leave a
+        # truncated settings.json that fails every later agy/gmi start.
+        tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}")
         try:
-            path.write_text(value, encoding="utf-8")
+            tmp_path.write_text(value, encoding="utf-8")
+            os.replace(tmp_path, path)
         except OSError as exc:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
             fail_config(f"cannot write config file {path}: {exc}")
     if mode is not None:
         try:
