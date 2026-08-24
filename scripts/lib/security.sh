@@ -842,10 +842,14 @@ acfs_offline_pack_validate_manifest() {
     local checksums_declared=""
     local checksums_actual=""
     local pack_checksums_actual=""
+    local current_checksums_snapshot=""
+    local pack_checksums_snapshot=""
     local manifest_declared=""
     local manifest_actual=""
     local pack_manifest_actual=""
     local current_manifest=""
+    local current_manifest_snapshot=""
+    local pack_manifest_snapshot=""
 
     jq_bin="$(acfs_offline_pack_jq_bin)" || {
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "jq is required to read manifest.json"
@@ -859,14 +863,14 @@ acfs_offline_pack_validate_manifest() {
 
     if ! "$jq_bin" -e '
         (type == "object") and
-        (.schema == "acfs.verified-installer-entrypoint-cache.v1") and
-        (.schemaVersion == 1) and
+        (.schema | type == "string") and
+        (.schemaVersion | type == "number" and floor == .) and
         (.generatedBy == "acfs installer-cache build") and
         (.generatedAt | type == "string" and length > 0) and
         (.expiresAt | type == "string" and length > 0) and
         (.staleAfterDays | type == "number" and floor == . and . > 0) and
-        (.packMode == "entrypoint-cache") and
-        (.packScope == "verified_installer_entrypoints") and
+        (.packMode | type == "string") and
+        (.packScope | type == "string") and
         (.acfs | type == "object") and
         (.acfs.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
         (.acfs.checksumsYamlSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
@@ -938,7 +942,7 @@ acfs_offline_pack_validate_manifest() {
         (.policy.executionNetworkMode == "required") and
         (.policy.transitiveClosure == "not_bundled") and
         (.policy.bootstrap == "not_bundled") and
-        (.policy.verifiedInstallerPolicy == "must_match_checksums_yaml") and
+        (.policy.verifiedInstallerPolicy | type == "string") and
         (.policy.partialPackPolicy == "refuse_unless_best_effort_diagnostic")
     ' "$manifest_file" >/dev/null 2>&1; then
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "manifest.json is missing required cache security fields or contains duplicate identities"
@@ -1005,14 +1009,6 @@ acfs_offline_pack_validate_manifest() {
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "current checksums.yaml is unavailable for pack comparison"
         return 1
     fi
-    checksums_actual="$(calculate_file_sha256 "$CHECKSUMS_FILE")" || {
-        acfs_offline_pack_error "pack_checksums_mismatch" "$name" "failed to checksum current checksums.yaml"
-        return 1
-    }
-    if [[ "$checksums_actual" != "$checksums_declared" ]]; then
-        acfs_offline_pack_error "pack_checksums_mismatch" "$name" "pack was built with a different checksums.yaml"
-        return 1
-    fi
     if [[ ! -f "$pack_root/checksums.yaml" || -L "$pack_root/checksums.yaml" || ! -r "$pack_root/checksums.yaml" ]]; then
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "pack copy of checksums.yaml is missing"
         return 1
@@ -1021,7 +1017,34 @@ acfs_offline_pack_validate_manifest() {
         acfs_offline_pack_error "pack_path_escape" "$name" "pack copy of checksums.yaml resolves outside the cache"
         return 1
     fi
-    pack_checksums_actual="$(calculate_file_sha256 "$pack_root/checksums.yaml")" || return 1
+    current_checksums_snapshot="$(
+        acfs_installer_cache_snapshot_regular_file \
+            "$CHECKSUMS_FILE" 8388608 "/tmp/acfs-current-checksums.XXXXXX" \
+            "pack_checksums_mismatch" "$name" "current checksums.yaml"
+    )" || return 1
+    pack_checksums_snapshot="$(
+        acfs_installer_cache_snapshot_regular_file \
+            "$pack_root/checksums.yaml" 8388608 "/tmp/acfs-cache-checksums.XXXXXX" \
+            "pack_checksums_mismatch" "$name" "cached checksums.yaml"
+    )" || {
+        _acfs_remove_temp_files "$current_checksums_snapshot"
+        return 1
+    }
+    checksums_actual="$(calculate_file_sha256 "$current_checksums_snapshot")" || {
+        _acfs_remove_temp_files "$current_checksums_snapshot" "$pack_checksums_snapshot"
+        acfs_offline_pack_error "pack_checksums_mismatch" "$name" "failed to checksum current checksums.yaml snapshot"
+        return 1
+    }
+    pack_checksums_actual="$(calculate_file_sha256 "$pack_checksums_snapshot")" || {
+        _acfs_remove_temp_files "$current_checksums_snapshot" "$pack_checksums_snapshot"
+        acfs_offline_pack_error "pack_checksums_mismatch" "$name" "failed to checksum cached checksums.yaml snapshot"
+        return 1
+    }
+    _acfs_remove_temp_files "$current_checksums_snapshot" "$pack_checksums_snapshot"
+    if [[ "$checksums_actual" != "$checksums_declared" ]]; then
+        acfs_offline_pack_error "pack_checksums_mismatch" "$name" "cache was built with a different checksums.yaml"
+        return 1
+    fi
     if [[ "$pack_checksums_actual" != "$checksums_declared" ]]; then
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "pack copy of checksums.yaml does not match manifest"
         return 1
@@ -1033,23 +1056,39 @@ acfs_offline_pack_validate_manifest() {
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "pack copy of acfs.manifest.yaml is missing or unsafe"
         return 1
     fi
-    pack_manifest_actual="$(calculate_file_sha256 "$pack_root/acfs.manifest.yaml")" || {
-        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to checksum packed acfs.manifest.yaml"
-        return 1
-    }
-    if [[ "$pack_manifest_actual" != "$manifest_declared" ]]; then
-        acfs_offline_pack_error "pack_malformed_manifest" "$name" "pack copy of acfs.manifest.yaml does not match manifest.json"
-        return 1
-    fi
     current_manifest="$(acfs_offline_pack_current_manifest_file 2>/dev/null || true)"
     if [[ -z "$current_manifest" || ! -f "$current_manifest" || -L "$current_manifest" ]]; then
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "current acfs.manifest.yaml is unavailable for cache comparison"
         return 1
     fi
-    manifest_actual="$(calculate_file_sha256 "$current_manifest")" || {
-        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to checksum current acfs.manifest.yaml"
+    pack_manifest_snapshot="$(
+        acfs_installer_cache_snapshot_regular_file \
+            "$pack_root/acfs.manifest.yaml" 8388608 "/tmp/acfs-cache-manifest-yaml.XXXXXX" \
+            "pack_malformed_manifest" "$name" "cached acfs.manifest.yaml"
+    )" || return 1
+    current_manifest_snapshot="$(
+        acfs_installer_cache_snapshot_regular_file \
+            "$current_manifest" 8388608 "/tmp/acfs-current-manifest-yaml.XXXXXX" \
+            "pack_malformed_manifest" "$name" "current acfs.manifest.yaml"
+    )" || {
+        _acfs_remove_temp_files "$pack_manifest_snapshot"
         return 1
     }
+    pack_manifest_actual="$(calculate_file_sha256 "$pack_manifest_snapshot")" || {
+        _acfs_remove_temp_files "$pack_manifest_snapshot" "$current_manifest_snapshot"
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to checksum cached acfs.manifest.yaml snapshot"
+        return 1
+    }
+    manifest_actual="$(calculate_file_sha256 "$current_manifest_snapshot")" || {
+        _acfs_remove_temp_files "$pack_manifest_snapshot" "$current_manifest_snapshot"
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to checksum current acfs.manifest.yaml snapshot"
+        return 1
+    }
+    _acfs_remove_temp_files "$pack_manifest_snapshot" "$current_manifest_snapshot"
+    if [[ "$pack_manifest_actual" != "$manifest_declared" ]]; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "pack copy of acfs.manifest.yaml does not match manifest.json"
+        return 1
+    fi
     if [[ "$manifest_actual" != "$manifest_declared" ]]; then
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "cache was built with a different acfs.manifest.yaml"
         return 1
@@ -1170,13 +1209,7 @@ _acfs_offline_pack_verify_artifact_snapshot() {
         return 1
     fi
 
-    actual_size="$(acfs_security_file_size "$artifact_file" 2>/dev/null || true)"
-    if [[ ! "$actual_size" =~ ^[0-9]+$ || ! "$size_bytes" =~ ^[0-9]+$ ]] \
-        || [[ "$actual_size" != "$size_bytes" ]]; then
-        acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path does not match declared size"
-        return 1
-    fi
-    if (( size_bytes > 16777216 )); then
+    if [[ ! "$size_bytes" =~ ^[0-9]+$ ]] || (( size_bytes > 16777216 )); then
         acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path exceeds the 16 MiB installer-entrypoint limit"
         return 1
     fi

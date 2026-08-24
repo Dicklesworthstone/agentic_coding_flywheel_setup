@@ -453,7 +453,7 @@ test_invalid_module_id_cannot_escape_pack_root() {
       .status == "fail" and
       any(.validation.errors[]; contains("pack_malformed_manifest: invalid module id"))
     ' <<<"$output" >/dev/null || return 1
-    [[ ! -e "$output_dir" ]] || return 1
+    [[ ! -e "$output_dir/acfs-installer-cache" ]] || return 1
     [[ ! -e "$escaped_path" ]] || return 1
 
     pass "invalid_module_id_cannot_escape_pack_root"

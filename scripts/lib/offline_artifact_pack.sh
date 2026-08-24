@@ -1569,7 +1569,8 @@ offline_pack_main() {
     # rename into "move staging inside destination". -n prevents replacement;
     # because GNU mv reports a no-clobber skip as success, also require that the
     # staging pathname disappeared and the final acceptance marker exists.
-    if ! offline_pack_mv -T -n -- "$staging_root" "$pack_root" \
+    if ! { offline_pack_mv -T -n -- "$staging_root" "$pack_root" 2>/dev/null \
+         || offline_pack_mv -n -- "$staging_root" "$pack_root"; } \
         || [[ -e "$staging_root" ]] \
         || [[ ! -f "$pack_root/manifest.json" ]]; then
         offline_pack_add_error "pack_publish_failed: unable to publish completed cache at $pack_root"
