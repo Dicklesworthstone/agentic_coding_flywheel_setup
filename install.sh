@@ -5417,7 +5417,10 @@ acfs_load_upstream_checksums() {
     fi
 
     if [[ -n "$checksums_file" ]]; then
-        content="$(cat "$checksums_file")"
+        if ! content="$(<"$checksums_file")"; then
+            log_error "Failed to read checksums.yaml from selected source: $checksums_file"
+            return 1
+        fi
     else
         if [[ "$installer_cache_requested" == "true" ]]; then
             log_error "Verified installer cache requires readable source-tree checksums.yaml; refusing live metadata fetch"
@@ -5491,8 +5494,22 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     # free-space floors. On systems where /tmp is a small tmpfs (common on
     # Arch/Omarchy laptops), stage on real disk instead.
     local tmpdir_assignment=""
-    local tmp_avail_kb
-    tmp_avail_kb="$(df -Pk /tmp 2>/dev/null | awk 'NR==2{print $4}')" || true
+    local tmp_avail_kb=""
+    local df_bin=""
+    local awk_bin=""
+    df_bin="$(acfs_early_system_binary_path df 2>/dev/null || true)"
+    awk_bin="$(acfs_early_system_binary_path awk 2>/dev/null || true)"
+    if [[ -z "$df_bin" || -z "$awk_bin" ]]; then
+        log_error "Trusted df/awk are required for installer TMPDIR capacity checks"
+        _acfs_remove_temp_files "$staged_installer"
+        return 1
+    fi
+    if ! tmp_avail_kb="$("$df_bin" -Pk /tmp 2>/dev/null | "$awk_bin" 'NR==2{print $4}')" \
+        || [[ ! "$tmp_avail_kb" =~ ^[0-9]+$ ]]; then
+        log_error "Unable to determine available space for installer TMPDIR"
+        _acfs_remove_temp_files "$staged_installer"
+        return 1
+    fi
     if [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
         local acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
         local acfs_tmpdir=""

@@ -514,9 +514,16 @@ offline_pack_file_size() {
 offline_pack_parse_positive_int() {
     local value="$1"
     local label="$2"
+    local maximum="${3:-}"
 
     if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
         echo "Error: $label must be a positive integer" >&2
+        return 2
+    fi
+    if [[ -n "$maximum" ]] \
+        && { ((${#value} > ${#maximum})) \
+            || { ((${#value} == ${#maximum})) && [[ "$value" > "$maximum" ]]; }; }; then
+        echo "Error: $label must be no greater than $maximum" >&2
         return 2
     fi
 }
@@ -612,7 +619,7 @@ offline_pack_parse_args() {
                     echo "Error: --timeout requires seconds" >&2
                     return 2
                 fi
-                offline_pack_parse_positive_int "$2" "--timeout" || return 2
+                offline_pack_parse_positive_int "$2" "--timeout" 3600 || return 2
                 OFFLINE_PACK_TIMEOUT_SECONDS="$2"
                 shift 2
                 ;;
@@ -621,7 +628,7 @@ offline_pack_parse_args() {
                     echo "Error: --expires-days requires days" >&2
                     return 2
                 fi
-                offline_pack_parse_positive_int "$2" "--expires-days" || return 2
+                offline_pack_parse_positive_int "$2" "--expires-days" 3650 || return 2
                 OFFLINE_PACK_EXPIRES_DAYS="$2"
                 shift 2
                 ;;
@@ -642,7 +649,10 @@ offline_pack_resolve_inputs() {
     if [[ -z "$OFFLINE_PACK_SOURCE_ROOT" ]]; then
         OFFLINE_PACK_SOURCE_ROOT="$(offline_pack_script_root)"
     else
-        OFFLINE_PACK_SOURCE_ROOT="$(cd "$OFFLINE_PACK_SOURCE_ROOT" && pwd -P)"
+        OFFLINE_PACK_SOURCE_ROOT="$(cd "$OFFLINE_PACK_SOURCE_ROOT" 2>/dev/null && pwd -P)" || {
+            offline_pack_add_error "pack_source_missing: source root is not a readable directory"
+            return 1
+        }
     fi
 
     if [[ -z "$OFFLINE_PACK_CHECKSUMS_FILE" ]]; then
@@ -676,6 +686,11 @@ offline_pack_resolve_inputs() {
             return 1
             ;;
     esac
+
+    if [[ ! "$OFFLINE_PACK_UBUNTU_VERSION" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        offline_pack_add_error "pack_ubuntu_unsupported: --ubuntu-version must use MAJOR.MINOR digits"
+        return 1
+    fi
 
     if [[ "$OFFLINE_PACK_DRY_RUN" != "true" && -z "$OFFLINE_PACK_OUTPUT_DIR" ]]; then
         offline_pack_add_error "pack_output_required: --output is required unless --dry-run is set"
@@ -817,11 +832,12 @@ offline_pack_load_checksums() {
 offline_pack_load_manifest_modules() {
     local file="$1"
     local module_id=""
+    local has_verified_installer=""
     local tool=""
     local runner=""
     local args_raw=""
 
-    while IFS=$'\t' read -r module_id tool runner args_raw; do
+    while IFS=$'\t' read -r module_id has_verified_installer tool runner args_raw; do
         [[ -n "$module_id" ]] || continue
 
         # Keep the standalone Bash reader on the same security boundary as the
@@ -838,7 +854,11 @@ offline_pack_load_manifest_modules() {
         fi
 
         OFFLINE_PACK_MODULE_KNOWN["$module_id"]=1
-        if [[ -n "$tool" ]]; then
+        if [[ "$has_verified_installer" == "1" ]]; then
+            if [[ -z "$tool" ]]; then
+                offline_pack_add_error "pack_malformed_manifest: verified_installer tool is missing for $module_id"
+                continue
+            fi
             if ! offline_pack_installer_key_is_valid "$tool"; then
                 offline_pack_add_error "pack_malformed_manifest: invalid verified_installer tool for $module_id"
                 continue
@@ -851,6 +871,8 @@ offline_pack_load_manifest_modules() {
             OFFLINE_PACK_MODULE_RUNNER["$module_id"]="$runner"
             OFFLINE_PACK_MODULE_ARGS_RAW["$module_id"]="$args_raw"
             OFFLINE_PACK_VERIFIED_MODULES+=("$module_id")
+        elif [[ "$has_verified_installer" != "0" ]]; then
+            offline_pack_add_error "pack_malformed_manifest: unable to classify verified_installer metadata for $module_id"
         fi
     done < <(
         offline_pack_awk '
@@ -863,7 +885,7 @@ offline_pack_load_manifest_modules() {
             }
             function emit() {
                 if (id != "") {
-                    print id "\t" tool "\t" runner "\t" args
+                    print id "\t" has_vi "\t" tool "\t" runner "\t" args
                 }
             }
             /^  - id:[ \t]*/ {
@@ -872,10 +894,12 @@ offline_pack_load_manifest_modules() {
                 tool = ""
                 runner = ""
                 args = ""
+                has_vi = 0
                 in_vi = 0
                 next
             }
-            id != "" && /^    verified_installer:[ \t]*$/ {
+            id != "" && /^    verified_installer:/ {
+                has_vi = 1
                 in_vi = 1
                 next
             }
@@ -889,6 +913,10 @@ offline_pack_load_manifest_modules() {
             }
             in_vi && /^      args:[ \t]*/ {
                 args = trim(substr($0, index($0, ":") + 1))
+                next
+            }
+            id != "" && /^    [A-Za-z_][A-Za-z0-9_]*:/ {
+                in_vi = 0
                 next
             }
             END { emit() }
@@ -910,6 +938,11 @@ offline_pack_select_modules() {
         OFFLINE_PACK_SELECTED_MODULES=("${OFFLINE_PACK_VERIFIED_MODULES[@]}")
     else
         OFFLINE_PACK_SELECTED_MODULES=("${OFFLINE_PACK_MODULE_ARGS[@]}")
+    fi
+
+    if (( ${#OFFLINE_PACK_SELECTED_MODULES[@]} == 0 )); then
+        offline_pack_add_error "pack_unbundled_required_module: no verified_installer modules were selected"
+        return 1
     fi
 
     for module_id in "${OFFLINE_PACK_SELECTED_MODULES[@]}"; do
@@ -952,12 +985,16 @@ offline_pack_iso_now() {
 offline_pack_iso_expires() {
     local days="${OFFLINE_PACK_EXPIRES_DAYS:-7}"
     local result=""
+    local python_bin=""
     result="$(offline_pack_date -u -d "$days days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
     if [[ -z "$result" ]]; then
         result="$(offline_pack_date -u -v+"${days}"d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
     fi
-    if [[ -z "$result" ]] && command -v python3 &>/dev/null; then
-        result="$(python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=$days)).strftime('%Y-%m-%dT%H:%M:%SZ'))" 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        python_bin="$(offline_pack_system_binary_path python3 2>/dev/null || true)"
+    fi
+    if [[ -z "$result" && -n "$python_bin" ]]; then
+        result="$("$python_bin" -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=$days)).strftime('%Y-%m-%dT%H:%M:%SZ'))" 2>/dev/null || true)"
     fi
     printf '%s\n' "$result"
 }
@@ -1489,8 +1526,12 @@ offline_pack_main() {
     }
 
     offline_pack_require_jq
-    generated_at="$(offline_pack_iso_now)"
-    expires_at="$(offline_pack_iso_expires)"
+    generated_at="$(offline_pack_iso_now 2>/dev/null || true)"
+    expires_at="$(offline_pack_iso_expires 2>/dev/null || true)"
+    if [[ ! "$generated_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] \
+        || [[ ! "$expires_at" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+        offline_pack_add_error "pack_timestamp_invalid: unable to produce bounded UTC cache timestamps"
+    fi
 
     offline_pack_resolve_inputs || true
     if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
