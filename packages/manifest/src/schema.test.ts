@@ -144,6 +144,7 @@ describe('ModuleSchema', () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       id: 'plugin.example_tools.cli',
+      category: 'tools',
       plugin: {
         packageId: 'example.tools',
         version: '1.2.3',
@@ -159,6 +160,7 @@ describe('ModuleSchema', () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       id: 'plugin.example_tools.cli',
+      category: 'tools',
       plugin: {
         packageId: 'example.tools',
         version: '1.2.3',
@@ -177,6 +179,20 @@ describe('ModuleSchema', () => {
       id: 'cloud.aws.s3',
     });
     expect(result.success).toBe(true);
+  });
+
+  test('rejects categories outside the canonical generator set', () => {
+    expect(ModuleSchema.safeParse({
+      ...validMinimalModule,
+      category: 'weird',
+    }).success).toBe(false);
+  });
+
+  test('rejects an unknown ID-derived category when category is omitted', () => {
+    expect(ModuleSchema.safeParse({
+      ...validMinimalModule,
+      id: 'weird.module',
+    }).success).toBe(false);
   });
 
   test('rejects empty description', () => {
@@ -354,14 +370,14 @@ describe('ModuleSchema', () => {
       verified_installer: {
         tool: 'bun',
         runner: 'bash',
-        args: ['-s', '--'],
+        args: ['--', '--yes'],
       },
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.verified_installer?.tool).toBe('bun');
       expect(result.data.verified_installer?.runner).toBe('bash');
-      expect(result.data.verified_installer?.args).toEqual(['-s', '--']);
+      expect(result.data.verified_installer?.args).toEqual(['--', '--yes']);
     }
   });
 
@@ -445,6 +461,113 @@ describe('ModuleSchema', () => {
       },
     });
     expect(result.success).toBe(false);
+  });
+
+  test('allows only security-reviewed verified_installer environment contracts', () => {
+    const allowedContracts = [
+      { tool: 'atuin', entry: 'ATUIN_NO_MODIFY_PATH=1' },
+      { tool: 'mcp_agent_mail', entry: 'AM_INSTALL_SKIP_MCP_SETUP=1' },
+      { tool: 'mcp_agent_mail', entry: 'AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1' },
+      { tool: 'ru', entry: 'RU_NON_INTERACTIVE=1' },
+      { tool: 's2p', entry: 'RU_NON_INTERACTIVE=1' },
+      { tool: 'grok', entry: 'GROK_BIN_DIR=$TARGET_HOME/.local/bin' },
+      { tool: 'cass', entry: 'TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXX' },
+    ];
+
+    for (const { tool, entry } of allowedContracts) {
+      const result = ModuleSchema.safeParse({
+        ...validMinimalModule,
+        install: [],
+        verified_installer: {
+          tool,
+          runner: 'bash',
+          env: [entry],
+        },
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  test('rejects startup hooks, unsafe values, duplicate env names, and detached runners', () => {
+    const rejectedEnvironments = [
+      ['BASH_ENV=/tmp/attacker.sh'],
+      ['PATH=/tmp/attacker'],
+      ['RU_NON_INTERACTIVE=0'],
+      ['TMPDIR=$TARGET_HOME/../../tmp/cass.XXXXXX'],
+      ['RU_NON_INTERACTIVE=1', 'RU_NON_INTERACTIVE=1'],
+    ];
+
+    for (const env of rejectedEnvironments) {
+      const result = ModuleSchema.safeParse({
+        ...validMinimalModule,
+        install: [],
+        verified_installer: { tool: 'ru', runner: 'bash', env },
+      });
+      expect(result.success).toBe(false);
+    }
+
+    expect(ModuleSchema.safeParse({
+      ...validMinimalModule,
+      install: [],
+      verified_installer: {
+        tool: 'ru',
+        runner: 'bash',
+        env: ['AM_INSTALL_SKIP_MCP_SETUP=1'],
+      },
+    }).success).toBe(false);
+
+    for (const { tool, env } of [
+      { tool: 'cass', env: ['TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXY'] },
+      { tool: 'cass', env: ['TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/other.XXXXXX'] },
+      { tool: 'cass', env: ['TMPDIR=$TARGET_HOME/.cache/acfs/../installer-tmp/cass.XXXXXX'] },
+      { tool: 'grok', env: ['GROK_BIN_DIR=$TARGET_HOME/.grok/bin'] },
+      { tool: 'grok', env: ['RU_NON_INTERACTIVE=1'] },
+      { tool: 'mcp_agent_mail', env: ['ATUIN_NO_MODIFY_PATH=1'] },
+    ]) {
+      expect(ModuleSchema.safeParse({
+        ...validMinimalModule,
+        install: [],
+        verified_installer: { tool, runner: 'bash', env },
+      }).success).toBe(false);
+    }
+
+    expect(ModuleSchema.safeParse({
+      ...validMinimalModule,
+      install: [],
+      verified_installer: { tool: 'ru', runner: 'bash', run_in_tmux: true },
+    }).success).toBe(false);
+    expect(ModuleSchema.safeParse({
+      ...validMinimalModule,
+      run_as: 'root',
+      install: [],
+      verified_installer: { tool: 'ru', runner: 'bash' },
+    }).success).toBe(false);
+  });
+
+  test('rejects interpreter options before a verified installer file', () => {
+    for (const args of [
+      ['-s', '--'],
+      ['-c', 'source /tmp/attacker', '--'],
+      ['--rcfile', '/tmp/attacker', '--'],
+      ['--init-file', '/tmp/attacker', '--'],
+      ['-O', 'extdebug', '--'],
+    ]) {
+      expect(ModuleSchema.safeParse({
+        ...validMinimalModule,
+        install: [],
+        verified_installer: { tool: 'ru', runner: 'bash', args },
+      }).success).toBe(false);
+    }
+
+    expect(ModuleSchema.safeParse({
+      ...validMinimalModule,
+      install: [],
+      verified_installer: {
+        tool: 'ru',
+        runner: 'bash',
+        args: ['--', '--easy-mode'],
+      },
+    }).success).toBe(true);
   });
 
   test('rejects verified_installer with python runner (security)', () => {

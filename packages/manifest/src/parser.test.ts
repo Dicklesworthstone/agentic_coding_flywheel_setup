@@ -215,7 +215,6 @@ modules:
       tool: bun
       url: https://bun.sh/install
       runner: bash
-      env: ["BUN_INSTALL=1"]
       args: []
     verify:
       - bun --version
@@ -226,7 +225,7 @@ modules:
     expect(result.data?.modules[0].verified_installer?.tool).toBe('bun');
     expect(result.data?.modules[0].verified_installer?.url).toBe('https://bun.sh/install');
     expect(result.data?.modules[0].verified_installer?.runner).toBe('bash');
-    expect(result.data?.modules[0].verified_installer?.env).toEqual(['BUN_INSTALL=1']);
+    expect(result.data?.modules[0].verified_installer?.env).toBeUndefined();
   });
 
   test('rejects invalid verified_installer runner', () => {
@@ -336,11 +335,11 @@ defaults:
   workspace_root: /data
   mode: vibe
 modules:
-  - id: a.same
+  - id: tools.same
     description: First
     install: ["true"]
     verify: ["true"]
-  - id: a.same
+  - id: tools.same
     description: Second
     install: ["true"]
     verify: ["true"]
@@ -364,11 +363,11 @@ defaults:
   workspace_root: /data
   mode: vibe
 modules:
-  - id: a.one
+  - id: tools.one
     description: A
     install: ["true"]
     verify: ["true"]
-    dependencies: ["nonexistent.module"]
+    dependencies: ["tools.nonexistent"]
 `;
     const parseResult = parseManifestString(yaml);
     expect(parseResult.success).toBe(true);
@@ -391,16 +390,16 @@ defaults:
   workspace_root: /data
   mode: vibe
 modules:
-  - id: a.one
+  - id: tools.one
     description: A
     install: ["true"]
     verify: ["true"]
-    dependencies: ["b.two"]
-  - id: b.two
+    dependencies: ["tools.two"]
+  - id: tools.two
     description: B
     install: ["true"]
     verify: ["true"]
-    dependencies: ["a.one"]
+    dependencies: ["tools.one"]
 `;
     const parseResult = parseManifestString(yaml);
     expect(parseResult.success).toBe(true);
@@ -421,13 +420,13 @@ defaults:
   workspace_root: /data
   mode: vibe
 modules:
-  - id: early.module
+  - id: base.early
     description: Early module (phase 1)
     phase: 1
     install: ["true"]
     verify: ["true"]
-    dependencies: ["late.module"]
-  - id: late.module
+    dependencies: ["base.late"]
+  - id: base.late
     description: Late module (phase 5)
     phase: 5
     install: ["true"]

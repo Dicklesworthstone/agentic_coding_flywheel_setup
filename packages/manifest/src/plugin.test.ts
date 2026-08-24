@@ -295,6 +295,20 @@ describe('validatePluginPackage', () => {
     expect(codes).toContain('plugin_generated_function_collision');
   });
 
+  test('does not claim a function collision with orchestration-owned modules', () => {
+    const plugin = validPlugin();
+    const modules = plugin.modules as Record<string, unknown>[];
+    modules[0] = { ...modules[0], id: 'lang.bun' };
+    const manifest = firstPartyManifest();
+    const bun = manifest.modules.find((module) => module.id === 'lang.bun');
+    if (!bun) throw new Error('test fixture missing lang.bun');
+    bun.generated = false;
+
+    const codes = diagnosticCodes(plugin, validationOptions({ firstPartyManifest: manifest }));
+    expect(codes).toContain('plugin_module_collision');
+    expect(codes).not.toContain('plugin_generated_function_collision');
+  });
+
   test('detects generated function collisions with already loaded plugins', () => {
     const result = validatePluginPackage(
       validPlugin(),
@@ -305,6 +319,14 @@ describe('validatePluginPackage', () => {
       code: 'plugin_generated_function_collision',
       moduleId: 'plugin.example_tools.cli',
     }));
+  });
+
+  test('rejects categories outside the shared canonical category set', () => {
+    const plugin = validPlugin();
+    const modules = plugin.modules as Record<string, unknown>[];
+    modules[0] = { ...modules[0], category: 'tooling' };
+
+    expect(diagnosticCodes(plugin)).toContain('plugin_missing_required_field');
   });
 
   test('reuses one-shot existing plugin iterables across all validation passes', () => {

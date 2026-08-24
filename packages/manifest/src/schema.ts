@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod';
+import { MODULE_CATEGORIES } from './types.js';
 
 // The manifest is executable configuration. Keep authored object boundaries
 // strict so a misspelled field cannot be silently stripped before generation.
@@ -28,6 +29,7 @@ export const ManifestDefaultsSchema = z
  * Schema for a single module
  */
 const RunAsSchema = z.enum(['target_user', 'root', 'current']);
+const ModuleCategorySchema = z.enum(MODULE_CATEGORIES);
 const ShellCommandSchema = z
   .string()
   .min(1, 'Shell command cannot be empty')
@@ -41,6 +43,20 @@ const ShellCommandSchema = z
 const VerifiedInstallerRunnerSchema = z.enum(['bash', 'sh'], {
   error: 'verified_installer.runner must be "bash" or "sh" (security: runner allowlist)',
 });
+
+function isAllowedVerifiedInstallerEnv(tool: string, entry: string): boolean {
+  if (tool === 'atuin') return entry === 'ATUIN_NO_MODIFY_PATH=1';
+  if (tool === 'mcp_agent_mail') {
+    return entry === 'AM_INSTALL_SKIP_MCP_SETUP=1'
+      || entry === 'AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1';
+  }
+  if (tool === 'grok') return entry === 'GROK_BIN_DIR=$TARGET_HOME/.local/bin';
+  if (tool === 'ru' || tool === 's2p') return entry === 'RU_NON_INTERACTIVE=1';
+  if (tool === 'cass') {
+    return entry === 'TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/cass.XXXXXX';
+  }
+  return false;
+}
 
 const VerifiedInstallerSchema = z
   .strictObject({
@@ -74,15 +90,52 @@ const VerifiedInstallerSchema = z
       .array(
         z
           .string()
+          .max(240, 'Verified installer env entries must be at most 240 characters')
           .regex(
             /^[A-Za-z_][A-Za-z0-9_]*=.*$/,
             'Verified installer env entries must be KEY=value assignments'
           )
       )
+      .superRefine((entries, context) => {
+        const names = new Set<string>();
+        entries.forEach((entry, index) => {
+          const name = entry.slice(0, entry.indexOf('='));
+          if (names.has(name)) {
+            context.addIssue({
+              code: 'custom',
+              path: [index],
+              message: `Duplicate verified installer env variable: ${name}`,
+            });
+          }
+          names.add(name);
+        });
+      })
       .default([]),
-    args: z.array(z.string()).default([]),
-    // Run installer in detached tmux session (prevents blocking for long-running services)
-    run_in_tmux: z.boolean().default(false),
+    args: z
+      .array(z.string().max(1024, 'Verified installer args must be at most 1024 characters'))
+      .max(128, 'Verified installer args must contain at most 128 entries')
+      .superRefine((args, context) => {
+        const separatorIndex = args.indexOf('--');
+        if (separatorIndex > 0) {
+          context.addIssue({
+            code: 'custom',
+            path: [separatorIndex - 1],
+            message: 'Runner options are forbidden; when present, "--" must be the first arg',
+          });
+        }
+      })
+      .default([]),
+  })
+  .superRefine((installer, context) => {
+    installer.env.forEach((entry, index) => {
+      if (!isAllowedVerifiedInstallerEnv(installer.tool, entry)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['env', index],
+          message: 'Verified installer env entry is not allowed for this tool',
+        });
+      }
+    });
   })
   .refine((installer) => installer.fallback_url === undefined, {
     path: ['fallback_url'],
@@ -249,13 +302,7 @@ export const ModuleSchema = z
     // SECURITY: Category is used in generated script filenames (install_<category>.sh)
     // and function names (install_<category>). Must be validated to prevent path traversal
     // or command injection in generated scripts.
-    category: z
-      .string()
-      .regex(
-        /^[a-z][a-z0-9_]*$/,
-        'Category must be lowercase alphanumeric with underscores (e.g., "shell", "lang_tools")'
-      )
-      .optional(),
+    category: ModuleCategorySchema.optional(),
 
     // Execution context
     run_as: RunAsSchema.default('target_user'),
@@ -321,7 +368,25 @@ export const ModuleSchema = z
       message:
         'Module must define verified_installer or install commands (or set generated: false).',
     }
-  );
+  )
+  .refine(
+    (module) => module.verified_installer === undefined || module.run_as === 'target_user',
+    {
+      path: ['run_as'],
+      message: 'Modules with verified_installer must run as target_user through the clean runner boundary.',
+    }
+  )
+  .superRefine((module, context) => {
+    const idCategory = module.id.split('.', 1)[0];
+    if (module.category === undefined
+      && !MODULE_CATEGORIES.some((category) => category === idCategory)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['id'],
+        message: `Module ID without an explicit category must begin with a canonical category (${MODULE_CATEGORIES.join(', ')})`,
+      });
+    }
+  });
 
 /**
  * Schema for the complete manifest

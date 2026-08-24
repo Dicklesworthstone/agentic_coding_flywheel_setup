@@ -27,7 +27,6 @@ function stackModule(repo: string, tool: string, id = `stack.${tool}`): Module {
       runner: 'bash',
       args: [],
       env: [],
-      run_in_tmux: false,
     },
     optional: false,
     enabled_by_default: true,
@@ -90,6 +89,78 @@ function release(
 }
 
 describe('stack provenance report', () => {
+  test('rejects semantically invalid manifests before reporting', async () => {
+    const module = stackModule('ultimate_bug_scanner', 'ubs', 'stack.duplicate');
+    const manifest = manifestFor([module, { ...module }]);
+    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner' } });
+
+    await expect(buildStackProvenanceReport({
+      manifest,
+      currentChecksums: current,
+      network: 'skip',
+    })).rejects.toThrow('Manifest semantic validation failed');
+  });
+
+  test('rejects generator-level function-name collisions before reporting', async () => {
+    const manifest = manifestFor([
+      stackModule('one', 'one', 'foo.bar_baz'),
+      stackModule('two', 'two', 'foo_bar.baz'),
+    ]);
+
+    await expect(buildStackProvenanceReport({
+      manifest,
+      currentChecksums: checksums({
+        one: { repo: 'one' },
+        two: { repo: 'two' },
+      }),
+      network: 'skip',
+    })).rejects.toThrow('FUNCTION_NAME_COLLISION');
+  });
+
+  test('reports non-GitHub stack provenance as explicit unknown without fetching', async () => {
+    const module = stackModule('jeffreysprompts', 'jp', 'stack.jeffreysprompts');
+    if (module.web) module.web.href = 'https://jeffreysprompts.com';
+    let fetchCalls = 0;
+    const current = checksums({ jp: { repo: 'jeffreysprompts' } });
+
+    const report = await buildStackProvenanceReport({
+      manifest: manifestFor([module]),
+      currentChecksums: current,
+      candidateChecksums: current,
+      network: 'check',
+      fetcher: async () => {
+        fetchCalls += 1;
+        throw new Error('unexpected release fetch');
+      },
+    });
+
+    expect(report.tools).toHaveLength(1);
+    expect(report.tools[0]).toMatchObject({
+      moduleId: 'stack.jeffreysprompts',
+      repositoryResolution: 'unsupported_href',
+      sourceHref: 'https://jeffreysprompts.com',
+      release: { status: 'unknown', relation: 'unknown' },
+    });
+    expect(report.tools[0].repo).toBeUndefined();
+    expect(fetchCalls).toBe(0);
+  });
+
+  test('includes stack modules whose category is derived from their ID', async () => {
+    const module = stackModule('ultimate_bug_scanner', 'ubs', 'stack.ultimate_bug_scanner');
+    module.category = undefined;
+    const current = checksums({ ubs: { repo: 'ultimate_bug_scanner' } });
+
+    const report = await buildStackProvenanceReport({
+      manifest: manifestFor([module]),
+      currentChecksums: current,
+      network: 'skip',
+    });
+
+    expect(report.tools.map((tool) => tool.moduleId)).toEqual([
+      'stack.ultimate_bug_scanner',
+    ]);
+  });
+
   test('flags newer rch release as mandatory checksum review', async () => {
     const manifest = manifestFor([
       stackModule('remote_compilation_helper', 'rch', 'stack.rch'),

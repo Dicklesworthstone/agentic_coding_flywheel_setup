@@ -1,7 +1,14 @@
 import { z } from 'zod';
 import { ModuleWebMetadataSchema } from './schema.js';
 import type { InstallerChecksumEntry } from './validate.js';
-import type { Manifest, Module, ModuleCategory, RunAs } from './types.js';
+import {
+  MODULE_CATEGORIES,
+  type Manifest,
+  type Module,
+  type ModuleCategory,
+  type RunAs,
+} from './types.js';
+import { isValidCategory, toGeneratedFunctionName } from './utils.js';
 
 const PLUGIN_SCHEMA = 'acfs.plugin-package.v1';
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -30,21 +37,7 @@ const INTRINSICALLY_REVIEW_REQUIRED_CAPABILITIES = new Set([
   'root_run_as',
   'cross_plugin_dependency',
 ]);
-const ALLOWED_CATEGORIES = new Set<ModuleCategory>([
-  'base',
-  'users',
-  'filesystem',
-  'shell',
-  'cli',
-  'network',
-  'lang',
-  'tools',
-  'db',
-  'cloud',
-  'agents',
-  'stack',
-  'acfs',
-]);
+const ALLOWED_CATEGORIES = new Set<ModuleCategory>(MODULE_CATEGORIES);
 const ALLOWED_TOP_LEVEL_FIELDS = new Set([
   'schema',
   'schemaVersion',
@@ -342,10 +335,6 @@ function packageSlug(packageId: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
-}
-
-function toFunctionName(moduleId: string): string {
-  return `install_${moduleId.replace(/\./g, '_')}`;
 }
 
 function diagnosticPath(path: PropertyKey[]): string {
@@ -1031,7 +1020,7 @@ function validateModuleIds(
 
 function validateCategories(plugin: PluginPackage, diagnostics: PluginDiagnostic[]): void {
   plugin.modules.forEach((module, index) => {
-    if (!ALLOWED_CATEGORIES.has(module.category as ModuleCategory)) {
+    if (!isValidCategory(module.category)) {
       addDiagnostic(diagnostics, {
         code: 'plugin_missing_required_field',
         message: `Plugin module "${module.id}" category "${module.category}" is not a known ACFS category`,
@@ -1158,17 +1147,23 @@ function validateGeneratedFunctionCollisions(
   const functionOwners = new Map<string, string>();
 
   for (const module of options.firstPartyManifest.modules) {
-    functionOwners.set(toFunctionName(module.id), module.id);
+    if (module.generated === false) {
+      continue;
+    }
+    functionOwners.set(toGeneratedFunctionName(module.id), module.id);
   }
   for (const moduleId of options.existingPluginModuleIds ?? []) {
-    const functionName = toFunctionName(moduleId);
+    const functionName = toGeneratedFunctionName(moduleId);
     if (!functionOwners.has(functionName)) {
       functionOwners.set(functionName, moduleId);
     }
   }
 
   plugin.modules.forEach((module, index) => {
-    const functionName = toFunctionName(module.id);
+    if (module.install.kind !== 'verified_installer') {
+      return;
+    }
+    const functionName = toGeneratedFunctionName(module.id);
     const existingOwner = functionOwners.get(functionName);
     if (existingOwner) {
       addDiagnostic(diagnostics, {
@@ -1255,6 +1250,11 @@ function toManifestModule(
   module: PluginModule,
   packageSha256: string
 ): Module {
+  if (!isValidCategory(module.category)) {
+    throw new Error(
+      `Plugin module "${module.id}" has invalid category "${module.category}" after validation`
+    );
+  }
   const install = module.install as Record<string, unknown>;
   const kind = module.install.kind;
   const verifiedInstaller =

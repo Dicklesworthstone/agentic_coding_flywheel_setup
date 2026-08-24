@@ -3,32 +3,33 @@
  * Helper functions for working with manifest data
  */
 
-import type { Manifest, Module, ModuleCategory } from './types.js';
+import {
+  MODULE_CATEGORIES,
+  type Manifest,
+  type Module,
+  type ModuleCategory,
+} from './types.js';
 
 /**
  * Valid module categories (must match ModuleCategory type in types.ts)
  */
-const VALID_CATEGORIES = new Set<string>([
-  'base',
-  'users',
-  'filesystem',
-  'shell',
-  'cli',
-  'network',
-  'lang',
-  'tools',
-  'db',
-  'cloud',
-  'agents',
-  'stack',
-  'acfs',
-]);
+const VALID_CATEGORIES = new Set<string>(MODULE_CATEGORIES);
 
 /**
  * Check if a string is a valid ModuleCategory
  */
 export function isValidCategory(category: string): category is ModuleCategory {
   return VALID_CATEGORIES.has(category);
+}
+
+/**
+ * Map a module ID into the private generated-function namespace. Generated
+ * installers are sourced beside legacy libraries, so a generic install_*
+ * name can otherwise be overwritten after generation and silently dispatch
+ * a different implementation.
+ */
+export function toGeneratedFunctionName(moduleId: string): string {
+  return `acfs_generated_install_${moduleId.replace(/\./g, '_')}`;
 }
 
 /**

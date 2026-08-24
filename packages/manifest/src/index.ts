@@ -3,7 +3,8 @@
  * TypeScript library for parsing and working with ACFS manifest files
  */
 
-// Export types
+// Export runtime category authority and types
+export { MODULE_CATEGORIES } from './types.js';
 export type {
   Manifest,
   ManifestDefaults,
@@ -47,6 +48,7 @@ export {
 // Export utility functions
 export {
   isValidCategory,
+  toGeneratedFunctionName,
   getModuleCategory,
   resolveModuleCategory,
   getModulesByCategory,

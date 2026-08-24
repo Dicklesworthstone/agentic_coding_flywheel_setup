@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/bin/bash -p
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    builtin printf '%s\n' 'ERROR: install_all.sh is a source-only generated harness; run install.sh' >&2
+    exit 2
+fi
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -12,8 +16,16 @@ set -euo pipefail
 # this script's directory.
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
-# Resolve relative helper paths first.
-ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the script itself before deriving any trusted sibling path. Bash
+# preserves the lexical symlink invocation in BASH_SOURCE, so dirname alone
+# would let an attacker-selected sibling lib directory become the trust root.
+if [[ ! -x /usr/bin/readlink ]]     || ! ACFS_GENERATED_SCRIPT_PATH="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null)"     || [[ -z "$ACFS_GENERATED_SCRIPT_PATH" ]]     || [[ ! -f "$ACFS_GENERATED_SCRIPT_PATH" ]]; then
+    printf '[ERROR] Unable to canonicalize generated installer path
+' >&2
+    return 1 2>/dev/null || exit 1
+fi
+ACFS_GENERATED_SCRIPT_DIR="${ACFS_GENERATED_SCRIPT_PATH%/*}"
+[[ -n "$ACFS_GENERATED_SCRIPT_DIR" ]] || ACFS_GENERATED_SCRIPT_DIR="/"
 
 # Ensure logging functions available
 if [[ -f "$ACFS_GENERATED_SCRIPT_DIR/../lib/logging.sh" ]]; then
@@ -31,7 +43,15 @@ fi
 
 # Source install helpers (run_as_*_shell, selection helpers)
 if [[ -f "$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    # This marker is process-minted control state, never caller configuration.
+    # Discard any inherited value before deciding whether this script owns the
+    # helper security boundary or is being sourced by install.sh.
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
+    if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+        ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE=1
+    fi
     source "$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh"
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
 fi
 
 acfs_generated_system_binary_path() {
@@ -166,7 +186,7 @@ acfs_generated_default_home_for_new_user() {
 # When running a generated installer directly (not sourced by install.sh),
 # set sane defaults and derive ACFS paths from the script location so
 # contract validation passes and local assets are discoverable.
-if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     # Match install.sh defaults
     if [[ -z "${TARGET_USER:-}" ]]; then
         if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
@@ -239,9 +259,14 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
         exit 1
     fi
 
-    # Derive "bootstrap" paths from the repo layout (scripts/generated/.. -> repo root).
-    if [[ -z "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
-        ACFS_BOOTSTRAP_DIR="$(cd "$ACFS_GENERATED_SCRIPT_DIR/../.." && pwd)"
+    # Internal path/checksum authority is process-minted in direct mode. Never
+    # accept caller-provided ACFS_* path overrides or CHECKSUMS_FILE here.
+    unset ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR
+    unset ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML CHECKSUMS_FILE
+    unset ACFS_MANIFEST_INDEX_LOADED ACFS_GENERATED_SELECTION_READY
+    if ! ACFS_BOOTSTRAP_DIR="$(/usr/bin/readlink -f -- "$ACFS_GENERATED_SCRIPT_DIR/../.." 2>/dev/null)"         || [[ -z "$ACFS_BOOTSTRAP_DIR" ]]         || [[ "$ACFS_BOOTSTRAP_DIR" == "/" ]]         || [[ ! -d "$ACFS_BOOTSTRAP_DIR" ]]; then
+        log_error "Unable to derive generated installer repository root"
+        exit 1
     fi
 
     ACFS_BIN_DIR="${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}"
@@ -249,43 +274,15 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
         log_error "ACFS_BIN_DIR must be an absolute path and cannot be '/' (got: ${ACFS_BIN_DIR:-<empty>})"
         exit 1
     fi
-    ACFS_LIB_DIR="${ACFS_LIB_DIR:-$ACFS_BOOTSTRAP_DIR/scripts/lib}"
-    ACFS_GENERATED_DIR="${ACFS_GENERATED_DIR:-$ACFS_BOOTSTRAP_DIR/scripts/generated}"
-    ACFS_ASSETS_DIR="${ACFS_ASSETS_DIR:-$ACFS_BOOTSTRAP_DIR/acfs}"
-    ACFS_CHECKSUMS_YAML="${ACFS_CHECKSUMS_YAML:-$ACFS_BOOTSTRAP_DIR/checksums.yaml}"
-    ACFS_MANIFEST_YAML="${ACFS_MANIFEST_YAML:-$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml}"
+    ACFS_LIB_DIR="$ACFS_BOOTSTRAP_DIR/scripts/lib"
+    ACFS_GENERATED_DIR="$ACFS_BOOTSTRAP_DIR/scripts/generated"
+    ACFS_ASSETS_DIR="$ACFS_BOOTSTRAP_DIR/acfs"
+    ACFS_CHECKSUMS_YAML="$ACFS_BOOTSTRAP_DIR/checksums.yaml"
+    ACFS_MANIFEST_YAML="$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml"
 
     export TARGET_USER TARGET_HOME MODE ACFS_BIN_DIR
     export ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
 
-    # Defensive ownership repair (#306): when running as root, make sure the
-    # target user owns their XDG bin dir before the user-space language
-    # installers (uv/rust/bun) write into it. uv installs via an atomic
-    # mktemp+rename inside ~/.local/bin, so a root-owned ~/.local/bin makes its
-    # mktemp fail with "Permission denied (os error 13)" once the installer is
-    # re-exec'd as the (non-root) target user. The ownership repair is
-    # deliberately non-recursive: only the two directories themselves are
-    # touched, never their contents.
-    if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "${TARGET_USER}" != "root" ]]; then
-        # SECURITY: never chown through a symlink. If an untrusted target user
-        # pre-staged ~/.local or ~/.local/bin as a symlink (e.g. -> /etc) before
-        # the root install, a chown that follows it would transfer ownership of
-        # the link target to them (local privilege escalation). chown -h /
-        # nofollow is not portable, so refuse the repair entirely when either
-        # path already exists as a symlink.
-        if [[ -L "$TARGET_HOME/.local" ]] || [[ -L "$TARGET_HOME/.local/bin" ]]; then
-            log_warn "Skipping ~/.local ownership repair: $TARGET_HOME/.local or .local/bin is a symlink (refusing to chown through it)"
-        else
-            _acfs_repair_mkdir="$(_acfs_system_binary_path mkdir 2>/dev/null || true)"
-            _acfs_repair_chown="$(_acfs_system_binary_path chown 2>/dev/null || true)"
-            if [[ -n "$_acfs_repair_mkdir" ]] && [[ -n "$_acfs_repair_chown" ]]; then
-                if "$_acfs_repair_mkdir" -p "$TARGET_HOME/.local/bin" 2>/dev/null; then
-                    "$_acfs_repair_chown" "${TARGET_USER}" "$TARGET_HOME/.local" "$TARGET_HOME/.local/bin" 2>/dev/null || true
-                fi
-            fi
-            unset _acfs_repair_mkdir _acfs_repair_chown
-        fi
-    fi
 fi
 
 acfs_generated_ensure_selection() {
@@ -359,114 +356,111 @@ source "$ACFS_GENERATED_SCRIPT_DIR/install_users.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_filesystem.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_shell.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_cli.sh"
-source "$ACFS_GENERATED_SCRIPT_DIR/install_tools.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_network.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_lang.sh"
-source "$ACFS_GENERATED_SCRIPT_DIR/install_agents.sh"
+source "$ACFS_GENERATED_SCRIPT_DIR/install_tools.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_db.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_cloud.sh"
+source "$ACFS_GENERATED_SCRIPT_DIR/install_agents.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_stack.sh"
 source "$ACFS_GENERATED_SCRIPT_DIR/install_acfs.sh"
 
 # Install all modules in global dependency order
-install_all() {
+acfs_generated_install_all() {
     log_section "ACFS Full Installation"
 
-    log_section "Category: base"
-    install_base_system
-    log_section "Category: users"
-    install_users_ubuntu
-    log_section "Category: filesystem"
-    install_base_filesystem
-    log_section "Category: shell"
-    install_shell_zsh
-    install_shell_omz
-    log_section "Category: cli"
-    install_cli_modern
-    log_section "Category: tools"
-    install_tools_lazygit
-    install_tools_lazydocker
-    log_section "Category: network"
-    install_network_tailscale
-    install_network_ssh_keepalive
-    log_section "Category: lang"
-    install_lang_bun
-    install_lang_uv
-    install_lang_rust
-    install_lang_go
-    install_lang_nvm
-    log_section "Category: tools"
-    install_tools_atuin
-    install_tools_zoxide
-    install_tools_ast_grep
-    log_section "Category: agents"
-    install_agents_claude
-    install_agents_codex
-    install_agents_gemini
-    install_agents_antigravity
-    install_agents_opencode
-    install_agents_omp
-    install_agents_grok
-    log_section "Category: tools"
-    install_tools_vault
-    log_section "Category: db"
-    install_db_postgres18
-    log_section "Category: cloud"
-    install_cloud_wrangler
-    install_cloud_supabase
-    install_cloud_vercel
-    log_section "Category: stack"
-    install_stack_ntm
-    install_stack_mcp_agent_mail
-    install_stack_meta_skill
-    install_stack_automated_plan_reviser
-    install_stack_jeffreysprompts
-    install_stack_process_triage
-    install_stack_ultimate_bug_scanner
-    install_stack_beads_rust
-    install_stack_beads_viewer
-    install_stack_cass
-    install_stack_cm
-    install_stack_caam
-    install_stack_slb
-    install_stack_dcg
-    install_stack_ru
-    install_stack_brenner_bot
-    install_stack_rch
-    install_stack_wezterm_automata
-    install_stack_srps
-    install_stack_frankensearch
-    install_stack_storage_ballast_helper
-    install_stack_cross_agent_session_resumer
-    install_stack_doodlestein_self_releaser
-    install_stack_agent_settings_backup
-    install_stack_pcr
-    install_stack_eidetic_engine_cli
-    install_stack_franken_markdown
-    install_stack_pi_agent_rust
-    install_stack_power_failure_resumer
-    log_section "Category: tools"
-    install_utils_giil
-    install_utils_csctf
-    install_utils_xf
-    install_utils_toon_rust
-    install_utils_rano
-    install_utils_mdwb
-    install_utils_s2p
-    install_utils_rust_proxy
-    install_utils_aadc
-    install_utils_caut
-    log_section "Category: acfs"
-    install_acfs_workspace
-    install_acfs_onboard
-    install_acfs_update
-    install_acfs_nightly
-    install_acfs_doctor
+    log_info "Orchestrator-owned modules are not run by acfs_generated_install_all: users.ubuntu"
 
-    log_success "All modules installed!"
+    log_section "Category: base"
+    acfs_generated_install_base_system
+    log_section "Category: filesystem"
+    acfs_generated_install_base_filesystem
+    log_section "Category: shell"
+    acfs_generated_install_shell_zsh
+    acfs_generated_install_shell_omz
+    log_section "Category: cli"
+    acfs_generated_install_cli_modern
+    log_section "Category: tools"
+    acfs_generated_install_tools_lazygit
+    acfs_generated_install_tools_lazydocker
+    log_section "Category: network"
+    acfs_generated_install_network_tailscale
+    acfs_generated_install_network_ssh_keepalive
+    log_section "Category: lang"
+    acfs_generated_install_lang_bun
+    acfs_generated_install_lang_uv
+    acfs_generated_install_lang_rust
+    acfs_generated_install_lang_go
+    acfs_generated_install_lang_nvm
+    log_section "Category: tools"
+    acfs_generated_install_tools_atuin
+    acfs_generated_install_tools_zoxide
+    acfs_generated_install_tools_ast_grep
+    log_section "Category: agents"
+    acfs_generated_install_agents_claude
+    acfs_generated_install_agents_codex
+    acfs_generated_install_agents_gemini
+    acfs_generated_install_agents_antigravity
+    acfs_generated_install_agents_opencode
+    acfs_generated_install_agents_omp
+    acfs_generated_install_agents_grok
+    log_section "Category: tools"
+    acfs_generated_install_tools_vault
+    log_section "Category: db"
+    acfs_generated_install_db_postgres18
+    log_section "Category: cloud"
+    acfs_generated_install_cloud_wrangler
+    acfs_generated_install_cloud_supabase
+    acfs_generated_install_cloud_vercel
+    log_section "Category: stack"
+    acfs_generated_install_stack_ntm
+    acfs_generated_install_stack_mcp_agent_mail
+    acfs_generated_install_stack_meta_skill
+    acfs_generated_install_stack_automated_plan_reviser
+    acfs_generated_install_stack_jeffreysprompts
+    acfs_generated_install_stack_process_triage
+    acfs_generated_install_stack_ultimate_bug_scanner
+    acfs_generated_install_stack_beads_rust
+    acfs_generated_install_stack_beads_viewer
+    acfs_generated_install_stack_cass
+    acfs_generated_install_stack_cm
+    acfs_generated_install_stack_caam
+    acfs_generated_install_stack_slb
+    acfs_generated_install_stack_dcg
+    acfs_generated_install_stack_ru
+    acfs_generated_install_stack_brenner_bot
+    acfs_generated_install_stack_rch
+    acfs_generated_install_stack_wezterm_automata
+    acfs_generated_install_stack_srps
+    acfs_generated_install_stack_frankensearch
+    acfs_generated_install_stack_storage_ballast_helper
+    acfs_generated_install_stack_cross_agent_session_resumer
+    acfs_generated_install_stack_doodlestein_self_releaser
+    acfs_generated_install_stack_agent_settings_backup
+    acfs_generated_install_stack_pcr
+    acfs_generated_install_stack_eidetic_engine_cli
+    acfs_generated_install_stack_franken_markdown
+    acfs_generated_install_stack_pi_agent_rust
+    acfs_generated_install_stack_power_failure_resumer
+    log_section "Category: tools"
+    acfs_generated_install_utils_giil
+    acfs_generated_install_utils_csctf
+    acfs_generated_install_utils_xf
+    acfs_generated_install_utils_toon_rust
+    acfs_generated_install_utils_rano
+    acfs_generated_install_utils_mdwb
+    acfs_generated_install_utils_s2p
+    acfs_generated_install_utils_rust_proxy
+    acfs_generated_install_utils_aadc
+    acfs_generated_install_utils_caut
+    log_section "Category: acfs"
+    acfs_generated_install_acfs_workspace
+    acfs_generated_install_acfs_onboard
+    acfs_generated_install_acfs_update
+    acfs_generated_install_acfs_nightly
+    acfs_generated_install_acfs_doctor
+
+    log_success "All generated modules installed!"
 }
 
-# Run if executed directly
-if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
-    install_all
-fi
+# Source-only generated harness.

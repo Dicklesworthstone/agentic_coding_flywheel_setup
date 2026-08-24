@@ -129,9 +129,9 @@ modules:
           # Save the workspace AGENTS.md template into ACFS-owned storage.
           # ACFS may freely refresh this canonical copy on every install/update.
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           mkdir -p "$target_home/.acfs/docs"
           curl "${CURL_ARGS[@]}" -o "$target_home/.acfs/docs/AGENTS.workspace.md" "${ACFS_RAW}/acfs/AGENTS.md" || true
@@ -245,18 +245,18 @@ modules:
         # Install ACFS zshrc
         ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
         mkdir -p ~/.acfs/zsh
-        CURL_ARGS=(-fsSL)
-        if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+        CURL_ARGS=(-q -fsSL)
+        if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
         fi
         curl "${CURL_ARGS[@]}" -o ~/.acfs/zsh/acfs.zshrc "${ACFS_RAW}/acfs/zsh/acfs.zshrc"
       - |
         # Install ACFS shell completions (zsh)
         ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
         mkdir -p ~/.acfs/completions
-        CURL_ARGS=(-fsSL)
-        if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+        CURL_ARGS=(-q -fsSL)
+        if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
         fi
         curl "${CURL_ARGS[@]}" -o ~/.acfs/completions/_acfs "${ACFS_RAW}/scripts/completions/_acfs"
         # Also install bash completions for users who switch shells
@@ -264,9 +264,9 @@ modules:
       - |
         # Install pre-configured Powerlevel10k settings (prevents config wizard on first login)
         ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-        CURL_ARGS=(-fsSL)
-        if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+        CURL_ARGS=(-q -fsSL)
+        if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
         fi
         curl "${CURL_ARGS[@]}" -o ~/.p10k.zsh "${ACFS_RAW}/acfs/zsh/p10k.zsh"
       - |
@@ -490,7 +490,7 @@ modules:
         TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/acfs_install.XXXXXX")"
         trap 'rm -f "$TMP_FILE"' EXIT
         
-        curl -fsSL "$LG_URL" -o "$TMP_FILE"
+        curl -q -fsSL "$LG_URL" -o "$TMP_FILE"
         echo "$LG_SHA $TMP_FILE" | sha256sum -c - || { echo "Checksum failed"; rm "$TMP_FILE"; exit 1; }
         
         tar -xzf "$TMP_FILE" -C /usr/local/bin lazygit
@@ -526,7 +526,7 @@ modules:
         TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/acfs_install.XXXXXX")"
         trap 'rm -f "$TMP_FILE"' EXIT
         
-        curl -fsSL "$LD_URL" -o "$TMP_FILE"
+        curl -q -fsSL "$LD_URL" -o "$TMP_FILE"
         echo "$LD_SHA $TMP_FILE" | sha256sum -c - || { echo "Checksum failed"; rm "$TMP_FILE"; exit 1; }
         
         tar -xzf "$TMP_FILE" -C /usr/local/bin lazydocker
@@ -557,9 +557,9 @@ modules:
         case "$DISTRO_CODENAME" in
           oracular|plucky|questing) DISTRO_CODENAME="noble" ;;
         esac
-        CURL_ARGS=(-fsSL)
-        if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+        CURL_ARGS=(-q -fsSL)
+        if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
         fi
         curl "${CURL_ARGS[@]}" "https://pkgs.tailscale.com/stable/ubuntu/${DISTRO_CODENAME}.noarmor.gpg" \
           | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
@@ -684,7 +684,7 @@ modules:
     verified_installer:
       tool: rust
       runner: sh
-      args: ["-s", "--", "-y", "--default-toolchain", "nightly"]
+      args: ["--", "-y", "--default-toolchain", "nightly"]
     install: []
     verify:
       - ~/.cargo/bin/cargo --version
@@ -1289,11 +1289,11 @@ modules:
         # Fall back to noble (24.04 LTS) if the current codename isn't supported.
         CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
 
-        CURL_ARGS=(-fsSL)
-        CURL_CHECK_ARGS=(-fsSI)
-        if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
-          CURL_CHECK_ARGS=(--proto '=https' --proto-redir '=https' -fsSI)
+        CURL_ARGS=(-q -fsSL)
+        CURL_CHECK_ARGS=(-q -fsSI)
+        if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
+          CURL_CHECK_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSI)
         fi
 
         # The dist existing is not enough: HashiCorp publishes interim-release
@@ -1332,9 +1332,9 @@ modules:
     install:
       - |
         mkdir -p /etc/apt/keyrings
-        CURL_ARGS=(-fsSL)
-        if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+        CURL_ARGS=(-q -fsSL)
+        if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
         fi
         curl "${CURL_ARGS[@]}" https://www.postgresql.org/media/keys/ACCC4CF8.asc \
           | gpg --batch --yes --dearmor -o /etc/apt/keyrings/postgresql.gpg
@@ -1410,9 +1410,9 @@ modules:
             ;;
         esac
 
-        CURL_ARGS=(-fsSL)
-        if command -v curl >/dev/null 2>&1 && curl --help all 2>/dev/null | grep -q -- '--proto'; then
-          CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+        CURL_ARGS=(-q -fsSL)
+        if command -v curl >/dev/null 2>&1 && curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+          CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
         fi
 
         release_url="$(curl "${CURL_ARGS[@]}" -o /dev/null -w '%{url_effective}\n' "https://github.com/supabase/cli/releases/latest" 2>/dev/null | tail -n1)" || true
@@ -3926,7 +3926,6 @@ modules:
     run_as: target_user
     optional: false
     enabled_by_default: true
-    generated: false
     tags: [orchestration]
     notes:
       - "Install onboard script to the configured ACFS bin dir"
@@ -3941,9 +3940,9 @@ modules:
           cp "packages/onboard/onboard.sh" "$onboard_tmp"
         else
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           curl "${CURL_ARGS[@]}" "${ACFS_RAW}/packages/onboard/onboard.sh" -o "$onboard_tmp"
         fi
@@ -3961,7 +3960,6 @@ modules:
     run_as: target_user
     optional: false
     enabled_by_default: true
-    generated: false
     tags: [orchestration]
     notes:
       - "Install acfs-update script to the configured ACFS bin dir"
@@ -3975,9 +3973,9 @@ modules:
           cp "scripts/lib/nightly_update.sh" ~/.acfs/scripts/nightly-update.sh
         else
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           curl "${CURL_ARGS[@]}" "${ACFS_RAW}/scripts/lib/nightly_update.sh" -o ~/.acfs/scripts/nightly-update.sh
         fi
@@ -3991,9 +3989,9 @@ modules:
           cp "scripts/acfs-update" "$update_tmp"
         else
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           curl "${CURL_ARGS[@]}" "${ACFS_RAW}/scripts/acfs-update" -o "$update_tmp"
         fi
@@ -4011,7 +4009,6 @@ modules:
     run_as: target_user
     optional: true
     enabled_by_default: true
-    generated: false
     tags: [orchestration, maintenance]
     dependencies:
       - acfs.update
@@ -4028,9 +4025,9 @@ modules:
           cp "scripts/lib/nightly_update.sh" ~/.acfs/scripts/nightly-update.sh
         else
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           curl "${CURL_ARGS[@]}" "${ACFS_RAW}/scripts/lib/nightly_update.sh" -o ~/.acfs/scripts/nightly-update.sh
         fi
@@ -4043,9 +4040,9 @@ modules:
           cp "scripts/templates/acfs-nightly-update.timer" ~/.config/systemd/user/acfs-nightly-update.timer
         else
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           curl "${CURL_ARGS[@]}" "${ACFS_RAW}/scripts/templates/acfs-nightly-update.timer" -o ~/.config/systemd/user/acfs-nightly-update.timer
         fi
@@ -4057,9 +4054,9 @@ modules:
           cp "scripts/templates/acfs-nightly-update.service" ~/.config/systemd/user/acfs-nightly-update.service
         else
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           curl "${CURL_ARGS[@]}" "${ACFS_RAW}/scripts/templates/acfs-nightly-update.service" -o ~/.config/systemd/user/acfs-nightly-update.service
         fi
@@ -4083,7 +4080,6 @@ modules:
     run_as: target_user
     optional: false
     enabled_by_default: true
-    generated: false
     tags: [orchestration]
     notes:
       - "Install acfs script to the configured ACFS bin dir"
@@ -4098,9 +4094,9 @@ modules:
           cp "scripts/lib/doctor.sh" "$doctor_tmp"
         else
           ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-          CURL_ARGS=(-fsSL)
-          if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+          CURL_ARGS=(-q -fsSL)
+          if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+            CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
           fi
           curl "${CURL_ARGS[@]}" "${ACFS_RAW}/scripts/lib/doctor.sh" -o "$doctor_tmp"
         fi

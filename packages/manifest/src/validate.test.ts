@@ -9,7 +9,7 @@ import {
   detectDependencyCycles,
   validatePhaseOrdering,
   validateFunctionNameUniqueness,
-  validateReservedNames,
+  validateOrchestrationOwnership,
   validateManifest,
   formatValidationErrors,
 } from './validate.js';
@@ -560,7 +560,7 @@ describe('validateFunctionNameUniqueness', () => {
   });
 
   test('detects collision between modules with similar IDs', () => {
-    // "lang.bun" and "lang_bun" would both generate "install_lang_bun"
+    // Dots and underscores still collapse inside the private namespace.
     const manifest = createManifest([
       {
         id: 'lang.bun',
@@ -588,9 +588,36 @@ describe('validateFunctionNameUniqueness', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].code).toBe('FUNCTION_NAME_COLLISION');
     expect(errors[0].moduleId).toBe('lang_bun'); // Second module gets the error
-    expect(errors[0].context.functionName).toBe('install_lang_bun');
+    expect(errors[0].context.functionName).toBe('acfs_generated_install_lang_bun');
     expect(errors[0].context.collidingModules).toContain('lang.bun');
     expect(errors[0].context.collidingModules).toContain('lang_bun');
+  });
+
+  test('ignores a normalized collision when one module emits no function', () => {
+    const manifest = createManifest([
+      {
+        id: 'lang.bun',
+        description: 'Orchestration-owned Bun setup',
+        install: [],
+        verify: ['echo "verify"'],
+        run_as: 'target_user',
+        optional: false,
+        enabled_by_default: true,
+        generated: false,
+      },
+      {
+        id: 'lang_bun',
+        description: 'Generated Bun setup',
+        install: ['echo "install"'],
+        verify: ['echo "verify"'],
+        run_as: 'target_user',
+        optional: false,
+        enabled_by_default: true,
+        generated: true,
+      },
+    ]);
+
+    expect(validateFunctionNameUniqueness(manifest)).toHaveLength(0);
   });
 
   test('detects multiple collisions', () => {
@@ -606,114 +633,21 @@ describe('validateFunctionNameUniqueness', () => {
   });
 });
 
-describe('validateReservedNames', () => {
-  test('passes when no reserved names are used', () => {
+describe('validateOrchestrationOwnership', () => {
+  test('accepts the registered users.ubuntu authored handoff', () => {
     const manifest = createManifest([
-      {
-        id: 'lang.bun',
-        description: 'Bun runtime',
-        install: ['echo "install"'],
-        verify: ['echo "verify"'],
-        run_as: 'target_user',
-        optional: false,
-        enabled_by_default: true,
-        generated: true,
-      },
+      { id: 'users.ubuntu', description: 'User orchestration', install: [], verify: ['true'], run_as: 'root', optional: false, enabled_by_default: true, generated: false },
     ]);
-
-    const errors = validateReservedNames(manifest);
-    expect(errors).toHaveLength(0);
+    expect(validateOrchestrationOwnership(manifest)).toHaveLength(0);
   });
 
-  test('detects collision with install_all', () => {
-    // A module named "all" would generate "install_all" which is reserved
+  test('rejects an unregistered generated false handoff', () => {
     const manifest = createManifest([
-      {
-        id: 'all',
-        description: 'All module',
-        install: ['echo "install"'],
-        verify: ['echo "verify"'],
-        run_as: 'target_user',
-        optional: false,
-        enabled_by_default: true,
-        generated: true,
-      },
+      { id: 'lang.bun', description: 'Missing handoff', install: [], verify: ['true'], run_as: 'target_user', optional: false, enabled_by_default: true, generated: false },
     ]);
-
-    const errors = validateReservedNames(manifest);
+    const errors = validateOrchestrationOwnership(manifest);
     expect(errors).toHaveLength(1);
-    expect(errors[0].code).toBe('RESERVED_NAME_COLLISION');
-    expect(errors[0].context.functionName).toBe('install_all');
-  });
-
-  test('detects collision with category name', () => {
-    // A module named "base" would generate "install_base" which is a category
-    const manifest = createManifest([
-      {
-        id: 'base',
-        description: 'Base module',
-        install: ['echo "install"'],
-        verify: ['echo "verify"'],
-        run_as: 'target_user',
-        optional: false,
-        enabled_by_default: true,
-        generated: true,
-      },
-    ]);
-
-    const errors = validateReservedNames(manifest);
-    expect(errors).toHaveLength(1);
-    expect(errors[0].code).toBe('RESERVED_NAME_COLLISION');
-    expect(errors[0].context.functionName).toBe('install_base');
-  });
-
-  test('detects collision with other category entrypoints (network/filesystem)', () => {
-    const manifest = createManifest([
-      {
-        id: 'network',
-        description: 'Network category entrypoint collision',
-        install: ['echo "install"'],
-        verify: ['echo "verify"'],
-        run_as: 'target_user',
-        optional: false,
-        enabled_by_default: true,
-        generated: true,
-      },
-      {
-        id: 'filesystem',
-        description: 'Filesystem category entrypoint collision',
-        install: ['echo "install"'],
-        verify: ['echo "verify"'],
-        run_as: 'target_user',
-        optional: false,
-        enabled_by_default: true,
-        generated: true,
-      },
-    ]);
-
-    const errors = validateReservedNames(manifest);
-    expect(errors).toHaveLength(2);
-    const names = errors.map((e) => e.context.functionName).sort();
-    expect(names).toEqual(['install_filesystem', 'install_network']);
-  });
-
-  test('allows modules with category prefix (e.g., base.system)', () => {
-    // "base.system" generates "install_base_system" which is NOT reserved
-    const manifest = createManifest([
-      {
-        id: 'base.system',
-        description: 'Base system',
-        install: ['echo "install"'],
-        verify: ['echo "verify"'],
-        run_as: 'target_user',
-        optional: false,
-        enabled_by_default: true,
-        generated: true,
-      },
-    ]);
-
-    const errors = validateReservedNames(manifest);
-    expect(errors).toHaveLength(0);
+    expect(errors[0].code).toBe('ORCHESTRATION_HANDLER_MISSING');
   });
 });
 
@@ -727,15 +661,5 @@ describe('validateManifest with function name checks', () => {
     const result = validateManifest(manifest);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.code === 'FUNCTION_NAME_COLLISION')).toBe(true);
-  });
-
-  test('includes reserved name collision in combined validation', () => {
-    const manifest = createManifest([
-      { id: 'all', description: 'All', install: ['echo'], verify: ['echo'], run_as: 'target_user', optional: false, enabled_by_default: true, generated: true },
-    ]);
-
-    const result = validateManifest(manifest);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.code === 'RESERVED_NAME_COLLISION')).toBe(true);
   });
 });

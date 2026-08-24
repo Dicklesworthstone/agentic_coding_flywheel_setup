@@ -8,11 +8,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
-import { parseManifestFile } from './parser.js';
+import { parseManifestFile, validateManifestData } from './parser.js';
+import { validateManifest as validateManifestAdvanced } from './validate.js';
+import { resolveModuleCategory } from './utils.js';
 import type { Manifest, Module } from './types.js';
 
 export type ReportStatus = 'pass' | 'warn' | 'fail' | 'unknown' | 'skip';
 export type NetworkMode = 'skip' | 'check';
+export type RepositoryResolution = 'github' | 'unsupported_href' | 'missing_href';
 
 export interface InstallerChecksumEntry {
   url: string;
@@ -83,8 +86,10 @@ export interface StackToolReport {
   displayName: string;
   cliName?: string;
   toolKey?: string;
-  repo: string;
-  repoName: string;
+  repositoryResolution: RepositoryResolution;
+  sourceHref?: string;
+  repo?: string;
+  repoName?: string;
   verifiedInstaller: boolean;
   manifestInstallerUrl?: string;
   checksumUrl?: string;
@@ -121,8 +126,10 @@ interface StackToolSource {
   displayName: string;
   cliName?: string;
   toolKey?: string;
-  repo: string;
-  repoName: string;
+  repositoryResolution: RepositoryResolution;
+  sourceHref?: string;
+  repo?: string;
+  repoName?: string;
   verifiedInstaller: boolean;
   manifestInstallerUrl?: string;
   checksumEntry?: InstallerChecksumEntry;
@@ -225,14 +232,16 @@ function githubRepoFromHref(href: string | undefined): { repo: string; repoName:
   };
 }
 
-function inferToolKey(module: Module, repoName: string, checksums: ChecksumsFile): string | undefined {
+function inferToolKey(module: Module, repoName: string | undefined, checksums: ChecksumsFile): string | undefined {
   if (module.verified_installer?.tool) {
     return module.verified_installer.tool;
   }
 
-  for (const [tool, entry] of Object.entries(checksums.installers)) {
-    if (entry.url.includes(`/${GITHUB_OWNER}/${repoName}/`)) {
-      return tool;
+  if (repoName) {
+    for (const [tool, entry] of Object.entries(checksums.installers)) {
+      if (entry.url.includes(`/${GITHUB_OWNER}/${repoName}/`)) {
+        return tool;
+      }
     }
   }
 
@@ -254,13 +263,17 @@ function collectStackTools(manifest: Manifest, checksums: ChecksumsFile): StackT
   const tools: StackToolSource[] = [];
 
   for (const module of manifest.modules) {
-    if (module.category !== 'stack') continue;
+    if (resolveModuleCategory(module) !== 'stack') continue;
 
-    const repoInfo = githubRepoFromHref(module.web?.href);
-    if (!repoInfo) continue;
-
-    const repo = repoInfo.repo;
-    const repoName = repoInfo.repoName;
+    const sourceHref = module.web?.href;
+    const repoInfo = githubRepoFromHref(sourceHref);
+    const repositoryResolution: RepositoryResolution = repoInfo
+      ? 'github'
+      : sourceHref
+        ? 'unsupported_href'
+        : 'missing_href';
+    const repo = repoInfo?.repo;
+    const repoName = repoInfo?.repoName;
     const toolKey = inferToolKey(module, repoName, checksums);
     const checksumEntry = toolKey ? checksums.installers[toolKey] : undefined;
     const manifestInstallerUrl = module.verified_installer?.url;
@@ -270,6 +283,8 @@ function collectStackTools(manifest: Manifest, checksums: ChecksumsFile): StackT
       displayName: module.web?.display_name ?? module.description,
       cliName: module.web?.cli_name,
       toolKey,
+      repositoryResolution,
+      sourceHref,
       repo,
       repoName,
       verifiedInstaller: Boolean(module.verified_installer),
@@ -415,10 +430,10 @@ function parseDate(value: string | undefined): Date | undefined {
 
 function fixtureForRepo(
   fixtures: Record<string, GitHubReleaseFixture> | undefined,
-  repo: string,
-  repoName: string
+  repo: string | undefined,
+  repoName: string | undefined
 ): GitHubReleaseFixture | undefined {
-  if (!fixtures) return undefined;
+  if (!fixtures || !repo || !repoName) return undefined;
   return fixtures[repo] ?? fixtures[repoName];
 }
 
@@ -428,6 +443,9 @@ async function fetchLatestRelease(
   fetcher: ReleaseFetcher | undefined
 ): Promise<GitHubReleaseFixture> {
   if (fixture) return fixture;
+  if (!tool.repo) {
+    return { status: 'error', detail: 'repository is unresolved' };
+  }
 
   const activeFetcher = fetcher ?? defaultReleaseFetcher;
   const url = `https://api.github.com/repos/${tool.repo}/releases/latest`;
@@ -483,6 +501,16 @@ function evaluateRelease(
   checksumsGeneratedAt: string | undefined,
   network: NetworkMode
 ): ReleaseResult {
+  if (tool.repositoryResolution !== 'github') {
+    return {
+      status: 'unknown',
+      relation: 'unknown',
+      detail: tool.repositoryResolution === 'missing_href'
+        ? 'module has no repository href'
+        : `module href is not a supported ${GITHUB_OWNER} GitHub repository: ${tool.sourceHref}`,
+    };
+  }
+
   if (network === 'skip') {
     return {
       status: 'skip',
@@ -568,7 +596,27 @@ function buildAdvisories(
   return advisories;
 }
 
+function assertManifestSemanticallyValid(manifest: Manifest): void {
+  const basicValidation = validateManifestData(manifest);
+  if (!basicValidation.valid) {
+    throw new Error(
+      `Manifest semantic validation failed: ${basicValidation.errors
+        .map(({ path, message }) => `${path}: ${message}`)
+        .join('; ')}`
+    );
+  }
+  const advancedValidation = validateManifestAdvanced(manifest);
+  if (!advancedValidation.valid) {
+    throw new Error(
+      `Manifest semantic validation failed: ${advancedValidation.errors
+        .map(({ code, message }) => `${code}: ${message}`)
+        .join('; ')}`
+    );
+  }
+}
+
 export async function buildStackProvenanceReport(options: BuildReportOptions): Promise<StackProvenanceReport> {
+  assertManifestSemanticallyValid(options.manifest);
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const stackTools = collectStackTools(options.manifest, options.currentChecksums);
   const checksumDiffs = options.candidateChecksums
@@ -583,7 +631,7 @@ export async function buildStackProvenanceReport(options: BuildReportOptions): P
     const local = evaluateLocalProvenance(tool);
     const diff = tool.toolKey ? stackDiffs.find((candidateDiff) => candidateDiff.tool === tool.toolKey) : undefined;
     const candidate = evaluateCandidate(tool, diff, options.network, Boolean(options.candidateChecksums));
-    const latest = options.network === 'skip'
+    const latest = options.network === 'skip' || tool.repositoryResolution !== 'github'
       ? { status: 'error' as const, detail: 'GitHub latest release check skipped' }
       : await fetchLatestRelease(
           tool,
@@ -599,6 +647,8 @@ export async function buildStackProvenanceReport(options: BuildReportOptions): P
       displayName: tool.displayName,
       cliName: tool.cliName,
       toolKey: tool.toolKey,
+      repositoryResolution: tool.repositoryResolution,
+      sourceHref: tool.sourceHref,
       repo: tool.repo,
       repoName: tool.repoName,
       verifiedInstaller: tool.verifiedInstaller,
@@ -773,7 +823,7 @@ function printHumanReport(report: StackProvenanceReport, quiet: boolean): void {
   console.log('');
 
   for (const tool of report.tools) {
-    console.log(`[${tool.status.toUpperCase()}] ${tool.moduleId} (${tool.toolKey ?? 'no-checksum-key'}) - ${tool.repo}`);
+    console.log(`[${tool.status.toUpperCase()}] ${tool.moduleId} (${tool.toolKey ?? 'no-checksum-key'}) - ${tool.repo ?? tool.sourceHref ?? 'unresolved-repository'}`);
     console.log(`  local: [${tool.local.status}] ${tool.local.detail}`);
     console.log(`  candidate: [${tool.candidate.status}] ${tool.candidate.detail}`);
     console.log(`  release: [${tool.release.status}] ${tool.release.detail}`);
@@ -801,6 +851,8 @@ async function runCli(): Promise<void> {
   if (!manifestResult.success || !manifestResult.data) {
     throw new Error(manifestResult.error?.message ?? 'failed to parse manifest');
   }
+  // Reject invalid execution graphs before checksum generation or network I/O.
+  assertManifestSemanticallyValid(manifestResult.data);
 
   let candidateChecksums = options.candidatePath ? readChecksumsFile(options.candidatePath) : undefined;
   let candidateGenerationDetail: string | undefined;

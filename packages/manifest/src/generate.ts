@@ -9,11 +9,24 @@
  */
 
 import { createHash } from 'node:crypto';
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import {
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  ftruncateSync,
+  writeFileSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+  lstatSync,
+  openSync,
+} from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { parseManifestFile, validateManifestData } from './parser.js';
+import { parseManifestString, validateManifestData } from './parser.js';
 import {
   validateManifest as validateManifestAdvanced,
   formatValidationErrors,
@@ -21,13 +34,13 @@ import {
   type InstallerChecksumEntry,
 } from './validate.js';
 import {
-  getCategories,
   getModuleCategory,
   resolveModuleCategory,
   getModulesByCategory,
   sortModulesByInstallOrder,
+  toGeneratedFunctionName,
 } from './utils.js';
-import type { Module, ModuleCategory, Manifest } from './types.js';
+import { MODULE_CATEGORIES, type Module, type ModuleCategory, type Manifest } from './types.js';
 
 // ============================================================
 // Configuration
@@ -40,7 +53,80 @@ const OUTPUT_DIR = join(PROJECT_ROOT, 'scripts/generated');
 const WEB_OUTPUT_DIR = join(PROJECT_ROOT, 'apps/web/lib/generated');
 const CHECKSUMS_PATH = join(PROJECT_ROOT, 'checksums.yaml');
 
-const HEADER = `#!/bin/bash
+export function findUnexpectedGeneratedPaths(
+  expectedPaths: Iterable<string>,
+  actualPaths: Iterable<string>,
+): string[] {
+  const expected = new Set(Array.from(expectedPaths, (path) => resolve(path)));
+  return Array.from(actualPaths, (path) => resolve(path))
+    .filter((path) => !expected.has(path))
+    .sort();
+}
+
+function readRegularFileNoFollow(path: string, label: string): Buffer {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1) {
+      throw new Error(`${label} is not a single-link regular file: ${path}`);
+    }
+    return readFileSync(fd);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(`${label} is not`)) {
+      throw error;
+    }
+    throw new Error(`${label} could not be opened safely: ${path}`, { cause: error });
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function assertSafeGeneratedDirectory(directory: string): void {
+  const rel = relative(PROJECT_ROOT, directory);
+  if (rel === '' || rel === '..' || rel.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`)) {
+    throw new Error(`Generated output directory escapes the project root: ${directory}`);
+  }
+
+  let current = PROJECT_ROOT;
+  for (const segment of rel.split(/[\\/]+/)) {
+    current = join(current, segment);
+    if (!existsSync(current)) return;
+    const stat = lstatSync(current);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error(`Generated output parent is not a real directory: ${current}`);
+    }
+  }
+}
+
+function writeGeneratedFileNoFollow(path: string, content: string, mode: number): void {
+  const existed = existsSync(path);
+  if (existed) {
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
+      throw new Error(`Refusing unsafe generated output target: ${path}`);
+    }
+  }
+
+  let fd: number | undefined;
+  try {
+    const commonFlags = constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+    fd = existed
+      ? openSync(path, commonFlags)
+      : openSync(path, commonFlags | constants.O_CREAT | constants.O_EXCL, mode);
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.nlink !== 1) {
+      throw new Error(`Generated output changed while being opened: ${path}`);
+    }
+    if (existed) ftruncateSync(fd, 0);
+    writeFileSync(fd, content);
+    fchmodSync(fd, mode);
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+const HEADER = `#!/bin/bash -p
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -54,8 +140,18 @@ set -euo pipefail
 # this script's directory.
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
-# Resolve relative helper paths first.
-ACFS_GENERATED_SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the script itself before deriving any trusted sibling path. Bash
+# preserves the lexical symlink invocation in BASH_SOURCE, so dirname alone
+# would let an attacker-selected sibling lib directory become the trust root.
+if [[ ! -x /usr/bin/readlink ]] \
+    || ! ACFS_GENERATED_SCRIPT_PATH="\$(/usr/bin/readlink -f -- "\${BASH_SOURCE[0]}" 2>/dev/null)" \
+    || [[ -z "\$ACFS_GENERATED_SCRIPT_PATH" ]] \
+    || [[ ! -f "\$ACFS_GENERATED_SCRIPT_PATH" ]]; then
+    printf '[ERROR] Unable to canonicalize generated installer path\n' >&2
+    return 1 2>/dev/null || exit 1
+fi
+ACFS_GENERATED_SCRIPT_DIR="\${ACFS_GENERATED_SCRIPT_PATH%/*}"
+[[ -n "\$ACFS_GENERATED_SCRIPT_DIR" ]] || ACFS_GENERATED_SCRIPT_DIR="/"
 
 # Ensure logging functions available
 if [[ -f "\$ACFS_GENERATED_SCRIPT_DIR/../lib/logging.sh" ]]; then
@@ -73,7 +169,15 @@ fi
 
 # Source install helpers (run_as_*_shell, selection helpers)
 if [[ -f "\$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    # This marker is process-minted control state, never caller configuration.
+    # Discard any inherited value before deciding whether this script owns the
+    # helper security boundary or is being sourced by install.sh.
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
+    if [[ "\${BASH_SOURCE[0]}" == "\$0" ]]; then
+        ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE=1
+    fi
     source "\$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh"
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
 fi
 
 acfs_generated_system_binary_path() {
@@ -208,7 +312,7 @@ acfs_generated_default_home_for_new_user() {
 # When running a generated installer directly (not sourced by install.sh),
 # set sane defaults and derive ACFS paths from the script location so
 # contract validation passes and local assets are discoverable.
-if [[ "\${BASH_SOURCE[0]}" = "\${0}" ]]; then
+if [[ "\${BASH_SOURCE[0]}" == "\$0" ]]; then
     # Match install.sh defaults
     if [[ -z "\${TARGET_USER:-}" ]]; then
         if [[ \$EUID -eq 0 ]] && [[ -z "\${SUDO_USER:-}" ]]; then
@@ -281,9 +385,17 @@ if [[ "\${BASH_SOURCE[0]}" = "\${0}" ]]; then
         exit 1
     fi
 
-    # Derive "bootstrap" paths from the repo layout (scripts/generated/.. -> repo root).
-    if [[ -z "\${ACFS_BOOTSTRAP_DIR:-}" ]]; then
-        ACFS_BOOTSTRAP_DIR="\$(cd "\$ACFS_GENERATED_SCRIPT_DIR/../.." && pwd)"
+    # Internal path/checksum authority is process-minted in direct mode. Never
+    # accept caller-provided ACFS_* path overrides or CHECKSUMS_FILE here.
+    unset ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR
+    unset ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML CHECKSUMS_FILE
+    unset ACFS_MANIFEST_INDEX_LOADED ACFS_GENERATED_SELECTION_READY
+    if ! ACFS_BOOTSTRAP_DIR="\$(/usr/bin/readlink -f -- "\$ACFS_GENERATED_SCRIPT_DIR/../.." 2>/dev/null)" \
+        || [[ -z "\$ACFS_BOOTSTRAP_DIR" ]] \
+        || [[ "\$ACFS_BOOTSTRAP_DIR" == "/" ]] \
+        || [[ ! -d "\$ACFS_BOOTSTRAP_DIR" ]]; then
+        log_error "Unable to derive generated installer repository root"
+        exit 1
     fi
 
     ACFS_BIN_DIR="\${ACFS_BIN_DIR:-\$TARGET_HOME/.local/bin}"
@@ -291,43 +403,15 @@ if [[ "\${BASH_SOURCE[0]}" = "\${0}" ]]; then
         log_error "ACFS_BIN_DIR must be an absolute path and cannot be '/' (got: \${ACFS_BIN_DIR:-<empty>})"
         exit 1
     fi
-    ACFS_LIB_DIR="\${ACFS_LIB_DIR:-\$ACFS_BOOTSTRAP_DIR/scripts/lib}"
-    ACFS_GENERATED_DIR="\${ACFS_GENERATED_DIR:-\$ACFS_BOOTSTRAP_DIR/scripts/generated}"
-    ACFS_ASSETS_DIR="\${ACFS_ASSETS_DIR:-\$ACFS_BOOTSTRAP_DIR/acfs}"
-    ACFS_CHECKSUMS_YAML="\${ACFS_CHECKSUMS_YAML:-\$ACFS_BOOTSTRAP_DIR/checksums.yaml}"
-    ACFS_MANIFEST_YAML="\${ACFS_MANIFEST_YAML:-\$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml}"
+    ACFS_LIB_DIR="\$ACFS_BOOTSTRAP_DIR/scripts/lib"
+    ACFS_GENERATED_DIR="\$ACFS_BOOTSTRAP_DIR/scripts/generated"
+    ACFS_ASSETS_DIR="\$ACFS_BOOTSTRAP_DIR/acfs"
+    ACFS_CHECKSUMS_YAML="\$ACFS_BOOTSTRAP_DIR/checksums.yaml"
+    ACFS_MANIFEST_YAML="\$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml"
 
     export TARGET_USER TARGET_HOME MODE ACFS_BIN_DIR
     export ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
 
-    # Defensive ownership repair (#306): when running as root, make sure the
-    # target user owns their XDG bin dir before the user-space language
-    # installers (uv/rust/bun) write into it. uv installs via an atomic
-    # mktemp+rename inside ~/.local/bin, so a root-owned ~/.local/bin makes its
-    # mktemp fail with "Permission denied (os error 13)" once the installer is
-    # re-exec'd as the (non-root) target user. The ownership repair is
-    # deliberately non-recursive: only the two directories themselves are
-    # touched, never their contents.
-    if [[ \$EUID -eq 0 ]] && [[ -n "\${TARGET_USER:-}" ]] && [[ "\${TARGET_USER}" != "root" ]]; then
-        # SECURITY: never chown through a symlink. If an untrusted target user
-        # pre-staged ~/.local or ~/.local/bin as a symlink (e.g. -> /etc) before
-        # the root install, a chown that follows it would transfer ownership of
-        # the link target to them (local privilege escalation). chown -h /
-        # nofollow is not portable, so refuse the repair entirely when either
-        # path already exists as a symlink.
-        if [[ -L "\$TARGET_HOME/.local" ]] || [[ -L "\$TARGET_HOME/.local/bin" ]]; then
-            log_warn "Skipping ~/.local ownership repair: \$TARGET_HOME/.local or .local/bin is a symlink (refusing to chown through it)"
-        else
-            _acfs_repair_mkdir="\$(_acfs_system_binary_path mkdir 2>/dev/null || true)"
-            _acfs_repair_chown="\$(_acfs_system_binary_path chown 2>/dev/null || true)"
-            if [[ -n "\$_acfs_repair_mkdir" ]] && [[ -n "\$_acfs_repair_chown" ]]; then
-                if "\$_acfs_repair_mkdir" -p "\$TARGET_HOME/.local/bin" 2>/dev/null; then
-                    "\$_acfs_repair_chown" "\${TARGET_USER}" "\$TARGET_HOME/.local" "\$TARGET_HOME/.local/bin" 2>/dev/null || true
-                fi
-            fi
-            unset _acfs_repair_mkdir _acfs_repair_chown
-        fi
-    fi
 fi
 
 acfs_generated_ensure_selection() {
@@ -395,6 +479,18 @@ acfs_security_init() {
 }
 `;
 
+function sourceOnlyHeader(message: string): string {
+  return HEADER.replace(
+    '#!/bin/bash -p\n',
+    `#!/bin/bash -p
+if [[ "\${BASH_SOURCE[0]}" == "\$0" ]]; then
+    builtin printf '%s\\n' '${message}' >&2
+    exit 2
+fi
+`
+  );
+}
+
 const MANIFEST_INDEX_HEADER = `#!/usr/bin/env bash
 # shellcheck disable=SC2034
 # ============================================================
@@ -410,8 +506,8 @@ const INTERNAL_CHECKSUMS_HEADER = `#!/usr/bin/env bash
 # AUTO-GENERATED internal script checksums - DO NOT EDIT
 # Regenerate: bun run generate (from packages/manifest)
 # ============================================================
-# SHA256 checksums for critical internal scripts (bd-3tpl).
-# Used by check-manifest-drift.sh to detect unauthorized changes.
+# SHA256 checksums for checksum-controlled runtime files (bd-3tpl).
+# Parsed as inert data by install.sh and used by check-manifest-drift.sh.
 `;
 
 /**
@@ -419,7 +515,12 @@ const INTERNAL_CHECKSUMS_HEADER = `#!/usr/bin/env bash
  * Paths are relative to PROJECT_ROOT.
  */
 const INTERNAL_SCRIPTS_TO_CHECKSUM = [
+  'install.sh',
+  'checksums.yaml',
+  'scripts/preflight.sh',
   'scripts/lib/security.sh',
+  'scripts/lib/github_api.sh',
+  'scripts/lib/contract.sh',
   'scripts/lib/agents.sh',
   'scripts/lib/update.sh',
   'scripts/lib/doctor.sh',
@@ -431,17 +532,36 @@ const INTERNAL_SCRIPTS_TO_CHECKSUM = [
   'scripts/lib/autofix_unattended.sh',
   'scripts/lib/autofix_version_managers.sh',
   'scripts/lib/ubuntu_upgrade.sh',
+  'scripts/lib/upgrade_resume.sh',
   'scripts/lib/install_helpers.sh',
   'scripts/lib/logging.sh',
+  'scripts/lib/output.sh',
+  'scripts/lib/gum_ui.sh',
+  'scripts/lib/progress.sh',
   'scripts/lib/state.sh',
+  'scripts/lib/report.sh',
+  'scripts/lib/error_tracking.sh',
   'scripts/lib/session.sh',
   'scripts/lib/os_detect.sh',
   'scripts/lib/errors.sh',
   'scripts/lib/user.sh',
   'scripts/lib/tools.sh',
+  'scripts/lib/tailscale.sh',
+  'scripts/lib/webhook.sh',
+  'scripts/lib/notify.sh',
+  'scripts/lib/stack.sh',
   'scripts/lib/export-config.sh',
   'scripts/acfs-global',
   'scripts/acfs-update',
+  'scripts/lib/nightly_update.sh',
+  'scripts/templates/acfs-upgrade-resume.service',
+  'scripts/templates/acfs-nightly-update.service',
+  'scripts/templates/acfs-nightly-update.timer',
+  'packages/onboard/onboard.sh',
+  'scripts/generated/manifest_index.sh',
+  'scripts/generated/doctor_checks.sh',
+  'scripts/generated/install_all.sh',
+  ...MODULE_CATEGORIES.map((category) => `scripts/generated/install_${category}.sh`),
 ] as const;
 
 // ============================================================
@@ -535,6 +655,12 @@ function buildVerifiedInstallerFileCommand(module: Module): string {
   const vi = module.verified_installer;
   if (!vi) return '';
 
+  if (module.run_as !== 'target_user') {
+    throw new Error(
+      `SECURITY: verified installer for module "${module.id}" must use the clean target-user runner.`
+    );
+  }
+
   // SECURITY: Validate runner is in allowlist (belt-and-suspenders with schema)
   if (!ALLOWED_RUNNERS.has(vi.runner)) {
     throw new Error(
@@ -543,7 +669,7 @@ function buildVerifiedInstallerFileCommand(module: Module): string {
     );
   }
 
-  const parts: string[] = module.run_as === 'target_user' ? ['run_as_target_runner'] : [];
+  const parts: string[] = ['run_as_target_runner'];
   const envVars = vi.env ?? [];
   const args = vi.args ?? [];
   const tmpdirEnvValue = verifiedInstallerTmpdirEnvValue(module);
@@ -560,16 +686,9 @@ function buildVerifiedInstallerFileCommand(module: Module): string {
   }
   parts.push(shellQuote(vi.runner));
 
-  // Interpret args as: [runner_options..., '--', script_args...]
-  // If no '--' is provided, treat all args as script args.
-  const dashIndex = args.indexOf('--');
-  const runnerArgs = (dashIndex === -1 ? [] : args.slice(0, dashIndex))
-    .filter((arg) => arg !== '-s');
-  const scriptArgs = dashIndex === -1 ? args : args.slice(dashIndex + 1);
-
-  for (const arg of runnerArgs) {
-    parts.push(shellQuoteVerifiedInstallerArg(arg));
-  }
+  // A leading `--` is a manifest-only separator and is never passed to the
+  // interpreter. Any later separator would imply runner options and is unsafe.
+  const scriptArgs = normalizeVerifiedInstallerScriptArgs(module.id, args);
 
   // The file is created by acfs_security_mktemp, populated only after
   // verification succeeds, and made read-only before this command runs.
@@ -584,6 +703,19 @@ function buildVerifiedInstallerFileCommand(module: Module): string {
   }
 
   return parts.join(' ');
+}
+
+export function normalizeVerifiedInstallerScriptArgs(
+  moduleId: string,
+  args: readonly string[],
+): string[] {
+  const separatorIndex = args.indexOf('--');
+  if (separatorIndex > 0) {
+    throw new Error(
+      `SECURITY: verified installer for module "${moduleId}" contains runner options before --.`
+    );
+  }
+  return separatorIndex === 0 ? args.slice(1) : [...args];
 }
 
 function verifiedInstallerTmpdirEnvValue(module: Module): string | null {
@@ -618,13 +750,6 @@ function getRunAsShellHelper(runAs: string): string {
 function toHeredocDelimiter(moduleId: string): string {
   // Convert module.id to SCREAMING_SNAKE_CASE and prefix with INSTALL_
   return 'INSTALL_' + moduleId.replace(/\./g, '_').toUpperCase();
-}
-
-/**
- * Convert module ID to a valid bash function name
- */
-function toFunctionName(moduleId: string): string {
-  return `install_${moduleId.replace(/\./g, '_')}`;
 }
 
 /**
@@ -1042,17 +1167,15 @@ function joinList(values?: string[]): string {
   return values.join(',');
 }
 
-function computeFileSha256(path: string): string {
-  const content = readFileSync(path);
+function computeContentSha256(content: string | Buffer): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function computeManifestSha256(): string {
-  return computeFileSha256(MANIFEST_PATH);
-}
-
-function computeChecksumsYamlSha256(): string {
-  return computeFileSha256(CHECKSUMS_PATH);
+function assertInputSnapshotUnchanged(path: string, snapshot: Buffer, label: string): void {
+  const current = readRegularFileNoFollow(path, label);
+  if (!current.equals(snapshot)) {
+    throw new Error(`${label} changed during generation; refusing incoherent output`);
+  }
 }
 
 function readProjectVersion(): string {
@@ -1061,7 +1184,7 @@ function readProjectVersion(): string {
     return '0.0.0-dev';
   }
 
-  const version = readFileSync(versionPath, 'utf-8').trim();
+  const version = readRegularFileNoFollow(versionPath, 'VERSION').toString('utf-8').trim();
   return version || '0.0.0-dev';
 }
 
@@ -1122,102 +1245,16 @@ function sortModulesByPhaseAndDependency(manifest: Manifest): Module[] {
 
 function generateVerifiedInstallerSnippet(module: Module): string[] {
   const vi = module.verified_installer!;
+  if (module.run_as !== 'target_user') {
+    throw new Error(
+      `SECURITY: verified installer for module "${module.id}" must use the clean target-user runner.`
+    );
+  }
   const tool = vi.tool;
-  const runInTmux = vi.run_in_tmux === true;
   const tmpdirEnvValue = verifiedInstallerTmpdirEnvValue(module);
   const hasTmpdirEnv = Boolean(tmpdirEnvValue);
-  const envStr = vi.env && vi.env.length > 0
-    ? vi.env.map(a => shellQuoteVerifiedInstallerArg(a)).join(' ')
-    : '';
 
-  // Build the args string for the installer runner invocation.
-  const argsStr = vi.args && vi.args.length > 0
-    ? vi.args.map(a => shellQuoteVerifiedInstallerArg(a)).join(' ')
-    : '';
-
-  // If run_in_tmux is true, we run the installer in a detached tmux session
-  // This prevents blocking when the installer starts a long-running server
-  if (runInTmux) {
-    const tmuxSession = 'acfs-services';
-    // NOTE: this snippet executes as the condition list of `if ! { ... }`
-    // (wrapCommandBlock), where `set -e` is suppressed and only the LAST
-    // command's exit status matters. Bare `false` statements are no-ops
-    // there, so every failure path must set install_success=false and the
-    // block must end with an explicit fail-closed gate, exactly like the
-    // standard and fsfs verified-installer paths.
-    const lines: string[] = [
-      '# Run installer in detached tmux session (run_in_tmux: true)',
-      '# This prevents blocking when the installer starts a long-running service',
-      `local tmux_session="${tmuxSession}"`,
-      'local install_success=false',
-      '',
-      '# Resolve verified installer URL + checksum (fail closed)',
-      `local tool="${tool}"`,
-      'local url=""',
-      'local expected_sha256=""',
-      'local known_installers_decl=""',
-      'if acfs_security_init; then',
-      '    known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"',
-      '    if [[ "$known_installers_decl" == declare\\ -A* ]]; then',
-      '        url="${KNOWN_INSTALLERS[$tool]:-}"',
-      '        if ! expected_sha256="$(get_checksum "$tool")"; then',
-      `            log_error "${escapeBash(module.id)}: get_checksum failed for tool '$tool'"`,
-      '            expected_sha256=""',
-      '        fi',
-      '    else',
-      `        log_error "${escapeBash(module.id)}: KNOWN_INSTALLERS array not available"`,
-      '    fi',
-      'else',
-      `    log_error "${escapeBash(module.id)}: acfs_security_init failed - check security.sh and checksums.yaml"`,
-      'fi',
-      '',
-      'local tmp_install=""',
-      'if [[ -z "$url" ]]; then',
-      `    log_error "${escapeBash(module.id)}: KNOWN_INSTALLERS[$tool] not found"`,
-      'elif [[ -z "$expected_sha256" ]]; then',
-      `    log_error "${escapeBash(module.id)}: checksum for '$tool' not found"`,
-      'else',
-      '    # Download verified installer to a temp file (so tmux can exec it without pipes)',
-      '    tmp_install="$(mktemp "${TMPDIR:-/tmp}/acfs-install-${tool}.XXXXXX" 2>/dev/null)" || tmp_install=""',
-      '    if [[ -z "$tmp_install" ]]; then',
-      `        log_error "Failed to create temp installer for ${module.id}"`,
-      '    elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$tmp_install"; then',
-      '        rm -f "$tmp_install" 2>/dev/null || true',
-      `        log_error "${module.id}: installer verification failed"`,
-      '    else',
-      '        chmod 755 "$tmp_install" 2>/dev/null || true',
-      '',
-      '        # Kill existing session if any (clean slate)',
-      '        run_as_target tmux kill-session -t "$tmux_session" 2>/dev/null || true',
-      '',
-      '        # Create new detached tmux session and run the installer',
-      '        if run_as_target tmux new-session -d -s "$tmux_session" ' +
-        (envStr ? `env ${envStr} ` : '') +
-        `${shellQuote(vi.runner)} "$tmp_install"` +
-        (argsStr ? ` ${argsStr}` : '') +
-        '; then',
-      `            log_success "${module.id} installing in tmux session '$tmux_session'"`,
-      '            log_info "Attach with: tmux attach -t $tmux_session"',
-      '            # Give it a moment to start',
-      '            sleep 3',
-      '            install_success=true',
-      '        else',
-      `            log_error "${module.id}: failed to start tmux install session"`,
-      '        fi',
-      '    fi',
-      'fi',
-      '',
-      'if [[ "$install_success" = "true" ]]; then',
-      '    true',
-      'else',
-      `    log_error "${escapeBash(module.id)}: verified tmux installer failed (fail closed; no unverified fallback)"`,
-      '    false',
-      'fi',
-    ];
-    return lines;
-  }
-
-  // Standard non-tmux installation. The runner consumes a fully verified
+  // The runner consumes a fully verified
   // staging file, never a producer pipeline.
   const execCmd = buildVerifiedInstallerFileCommand(module);
 
@@ -1234,22 +1271,44 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     lines.push(
       `local verified_installer_tmpdir_template=${shellQuoteVerifiedInstallerArg(tmpdirEnvValue)}`,
       'local verified_installer_tmpdir_parent="${verified_installer_tmpdir_template%/*}"',
+      'local verified_installer_tmpdir_prefix="${verified_installer_tmpdir_template%XXXXXX}"',
       'local verified_installer_tmpdir=""',
-      'if [[ "$verified_installer_tmpdir_template" == *[[:space:]]* ]]; then',
-      `    log_error "${escapeBash(module.id)}: installer TMPDIR template contains whitespace: $verified_installer_tmpdir_template"`,
-      '    verified_installer_env_ready=false',
-      'elif [[ "$verified_installer_tmpdir_template" != *XXXXXX* ]]; then',
+      'local verified_installer_tmpdir_suffix=""',
+      'local verified_installer_mkdir_bin=""',
+      'local verified_installer_mktemp_bin=""',
+      'if [[ "$verified_installer_tmpdir_template" != *XXXXXX* ]]; then',
       `    log_error "${escapeBash(module.id)}: installer TMPDIR template must contain XXXXXX: $verified_installer_tmpdir_template"`,
       '    verified_installer_env_ready=false',
-      'elif ! run_as_target mkdir -p "$verified_installer_tmpdir_parent"; then',
+      'elif ! verified_installer_mkdir_bin="$(acfs_generated_system_binary_path mkdir 2>/dev/null)"; then',
+      `    log_error "${escapeBash(module.id)}: trusted mkdir not found for installer TMPDIR"`,
+      '    verified_installer_env_ready=false',
+      'elif ! verified_installer_mktemp_bin="$(acfs_generated_system_binary_path mktemp 2>/dev/null)"; then',
+      `    log_error "${escapeBash(module.id)}: trusted mktemp not found for installer TMPDIR"`,
+      '    verified_installer_env_ready=false',
+      'elif [[ "$verified_installer_tmpdir_parent" != "$TARGET_HOME/.cache/acfs/installer-tmp" ]]; then',
+      `    log_error "${escapeBash(module.id)}: installer TMPDIR parent escaped the approved target-home path"`,
+      '    verified_installer_env_ready=false',
+      'elif [[ -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" ]]; then',
+      `    log_error "${escapeBash(module.id)}: refusing installer TMPDIR through a symlinked target-home path"`,
+      '    verified_installer_env_ready=false',
+      'elif ! run_as_target "$verified_installer_mkdir_bin" -p "$verified_installer_tmpdir_parent"; then',
       `    log_error "${escapeBash(module.id)}: failed to prepare installer TMPDIR parent: $verified_installer_tmpdir_parent"`,
       '    verified_installer_env_ready=false',
-      'elif ! verified_installer_tmpdir="$(run_as_target mktemp -d "$verified_installer_tmpdir_template" 2>/dev/null)"; then',
+      'elif [[ ! -d "$verified_installer_tmpdir_parent" || -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" ]]; then',
+      `    log_error "${escapeBash(module.id)}: installer TMPDIR parent is not a confined real directory"`,
+      '    verified_installer_env_ready=false',
+      'elif ! verified_installer_tmpdir="$(run_as_target "$verified_installer_mktemp_bin" -d "$verified_installer_tmpdir_template" 2>/dev/null)"; then',
       `    log_error "${escapeBash(module.id)}: failed to create installer TMPDIR from template: $verified_installer_tmpdir_template"`,
       '    verified_installer_env_ready=false',
       'elif [[ -z "$verified_installer_tmpdir" ]]; then',
       `    log_error "${escapeBash(module.id)}: installer TMPDIR creation returned an empty path"`,
       '    verified_installer_env_ready=false',
+      'else',
+      '    verified_installer_tmpdir_suffix="${verified_installer_tmpdir#"$verified_installer_tmpdir_prefix"}"',
+      '    if [[ "$verified_installer_tmpdir" != "$verified_installer_tmpdir_prefix"* || -z "$verified_installer_tmpdir_suffix" || "$verified_installer_tmpdir_suffix" == *[!A-Za-z0-9]* || ! -d "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir_parent" ]]; then',
+      `        log_error "${escapeBash(module.id)}: installer TMPDIR escaped its trusted template: $verified_installer_tmpdir"`,
+      '        verified_installer_env_ready=false',
+      '    fi',
       'fi',
       ''
     );
@@ -1337,12 +1396,11 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     'fi',
   ];
 
-  const fsfsInstallerArgs = vi.args && vi.args.length > 0
-    ? vi.args.map(a => shellQuoteVerifiedInstallerArg(a)).join(' ')
+  const normalizedScriptArgs = normalizeVerifiedInstallerScriptArgs(module.id, vi.args ?? []);
+  const fsfsInstallerArgs = normalizedScriptArgs.length > 0
+    ? normalizedScriptArgs.map(a => shellQuoteVerifiedInstallerArg(a)).join(' ')
     : '';
-  const fsfsExecCmd = module.run_as === 'target_user'
-    ? `run_as_target_runner ${shellQuote(vi.runner)} "$verified_installer_file" "\${fsfs_installer_args[@]}"`
-    : `${shellQuote(vi.runner)} "$verified_installer_file" "\${fsfs_installer_args[@]}"`;
+  const fsfsExecCmd = `run_as_target_runner ${shellQuote(vi.runner)} "$verified_installer_file" "\${fsfs_installer_args[@]}"`;
   const fsfsVerifiedInstallAttemptLines: string[] = [
     '# Cleared per attempt so a stale reason from an earlier module can',
     '# never be misattributed to this one.',
@@ -1482,19 +1540,11 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
   ];
 
   if (tool === 'ms') {
-    const sourceInstallCmd = module.run_as === 'target_user'
-      ? 'run_as_target_shell "command -v cargo >/dev/null 2>&1 && cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"'
-      : 'command -v cargo >/dev/null 2>&1 && cargo install --git https://github.com/Dicklesworthstone/meta_skill --force';
-
     lines.push(
-      '# meta_skill has no prebuilt Linux ARM64 release asset yet; build from source there.',
+      '# meta_skill has no checksum-anchored Linux ARM64 install source yet.',
       'if [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && { [[ "$(uname -m 2>/dev/null)" == "aarch64" ]] || [[ "$(uname -m 2>/dev/null)" == "arm64" ]]; }; then',
-      `    log_info "${escapeBash(module.id)}: Linux ARM64 detected; building meta_skill from source"`,
-      `    if ${sourceInstallCmd}; then`,
-      '        install_success=true',
-      '    else',
-      `        log_error "${escapeBash(module.id)}: cargo source install failed for Linux ARM64"`,
-      '    fi',
+      `    log_error "${escapeBash(module.id)}: Linux ARM64 is unsupported until a checksum-anchored artifact or source revision is available"`,
+      '    ACFS_LAST_MODULE_FAILURE_REASON="unsupported architecture"',
       'else',
       ...indentLines(verifiedInstallAttemptLines, 4),
       'fi',
@@ -1792,6 +1842,13 @@ function generateManifestIndex(manifest: Manifest, manifestSha256: string): stri
   lines.push(')');
   lines.push('');
 
+  lines.push('ACFS_CATEGORIES_IN_ORDER=(');
+  for (const category of MODULE_CATEGORIES) {
+    lines.push(`  "${category}"`);
+  }
+  lines.push(')');
+  lines.push('');
+
   // Note: Associative array keys must NOT use double quotes inside [] with set -u
   // Using ["key"] causes bash to try variable expansion on $key, failing with "unbound variable"
   // Correct: [key]="value" or ['key']="value"
@@ -1811,7 +1868,16 @@ function generateManifestIndex(manifest: Manifest, manifestSha256: string): stri
 
   lines.push('declare -gA ACFS_MODULE_FUNC=(');
   for (const module of orderedModules) {
-    lines.push(`  ['${module.id}']="${toFunctionName(module.id)}"`);
+    if (module.generated !== false) {
+      lines.push(`  ['${module.id}']="${toGeneratedFunctionName(module.id)}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('declare -gA ACFS_MODULE_GENERATED=(');
+  for (const module of orderedModules) {
+    lines.push(`  ['${module.id}']="${module.generated === false ? '0' : '1'}"`);
   }
   lines.push(')');
   lines.push('');
@@ -1877,48 +1943,66 @@ function generateManifestIndex(manifest: Manifest, manifestSha256: string): stri
  * Generate internal script checksums file (bd-3tpl).
  * Computes SHA256 for critical internal scripts and emits a bash associative array.
  */
-function generateInternalChecksums(): string {
+function generateInternalChecksums(
+  generatedFiles: ReadonlyMap<string, { content: string; mode: number }>
+): { content: string; staticSnapshots: ReadonlyMap<string, Buffer> } {
   const lines: string[] = [INTERNAL_CHECKSUMS_HEADER];
+  const staticSnapshots = new Map<string, Buffer>();
 
+  lines.push('ACFS_INTERNAL_CHECKSUMS_SCHEMA=1');
+  lines.push('');
   lines.push('declare -gA ACFS_INTERNAL_CHECKSUMS=(');
   for (const relPath of INTERNAL_SCRIPTS_TO_CHECKSUM) {
     const absPath = join(PROJECT_ROOT, relPath);
-    if (existsSync(absPath)) {
-      const content = readFileSync(absPath);
-      const hash = createHash('sha256').update(content).digest('hex');
-      lines.push(`  [${relPath}]="${hash}"`);
+    const pendingGeneratedFile = generatedFiles.get(absPath);
+    let content: string | Buffer;
+    if (pendingGeneratedFile) {
+      // Generated scripts must be hashed from this run's in-memory output,
+      // never from potentially stale files left by an earlier generation.
+      content = pendingGeneratedFile.content;
     } else {
-      lines.push(`  # MISSING: ${relPath}`);
+      if (relPath.startsWith('scripts/generated/')) {
+        throw new Error(`Generated checksum input was not produced in this run: ${relPath}`);
+      }
+      content = readRegularFileNoFollow(absPath, `Internal checksum input ${relPath}`);
+      staticSnapshots.set(absPath, content);
     }
+    const hash = createHash('sha256').update(content).digest('hex');
+    lines.push(`  [${relPath}]="${hash}"`);
   }
   lines.push(')');
   lines.push('');
 
   lines.push(`ACFS_INTERNAL_CHECKSUMS_COUNT=${INTERNAL_SCRIPTS_TO_CHECKSUM.length}`);
-  lines.push(`ACFS_INTERNAL_CHECKSUMS_GENERATED="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"`);
   lines.push('');
 
-  return lines.join('\n');
+  return { content: lines.join('\n'), staticSnapshots };
 }
 
 /**
  * Generate a category install script
  */
 function generateCategoryScript(manifest: Manifest, category: ModuleCategory): string {
-  const modules = getModulesByCategory(manifest, category);
-  const sortedModules = sortModulesByInstallOrder({
-    ...manifest,
-    modules: modules,
-  });
+  // Sort the complete dependency graph before filtering. Category-local
+  // sorting silently discards cross-category edges such as agents -> lang.
+  const sortedModules = sortModulesByPhaseAndDependency(manifest).filter(
+    (module) => resolveModuleCategory(module) === category
+  );
+  const generatedModules = sortedModules.filter((module) => module.generated !== false);
+  const orchestrationModules = sortedModules.filter((module) => module.generated === false);
 
-  const lines: string[] = [HEADER];
+  const lines: string[] = [
+    sourceOnlyHeader(
+      `ERROR: install_${category}.sh is a source-only library; run install.sh --only <module-id>`
+    ),
+  ];
   lines.push(`# Category: ${category}`);
-  lines.push(`# Modules: ${sortedModules.length}`);
+  lines.push(`# Generated modules: ${generatedModules.length}`);
   lines.push('');
 
   // Generate individual install functions
-  for (const module of sortedModules) {
-    const funcName = toFunctionName(module.id);
+  for (const module of generatedModules) {
+    const funcName = toGeneratedFunctionName(module.id);
     lines.push(`# ${sanitizeForBashComment(module.description)}`);
     lines.push(`${funcName}() {`);
     lines.push(`    local module_id="${module.id}"`);
@@ -1936,18 +2020,8 @@ function generateCategoryScript(manifest: Manifest, category: ModuleCategory): s
     lines.push('');
 
     // Verify commands
-    // Skip verification for run_in_tmux modules - they install async in a detached session
-    // and won't be ready for immediate verification. The installed_check will work on re-runs.
-    const skipVerify = module.verified_installer?.run_in_tmux === true;
-    if (skipVerify) {
-      lines.push('    # Verify skipped: run_in_tmux installs async in detached tmux session');
-      lines.push(`    log_info "${module.id}: installation running in background tmux session"`);
-      const tmuxSession = 'acfs-services';
-      lines.push(`    log_info "Attach with: tmux attach -t ${tmuxSession}"`);
-    } else {
-      lines.push('    # Verify');
-      lines.push(...generateVerifyCommands(module));
-    }
+    lines.push('    # Verify');
+    lines.push(...generateVerifyCommands(module));
     if (module.post_install_message) {
       lines.push('');
       lines.push(...generatePostInstallMessage(module));
@@ -1958,22 +2032,14 @@ function generateCategoryScript(manifest: Manifest, category: ModuleCategory): s
     lines.push('');
   }
 
-  // Generate main install function for the category
-  lines.push(`# Install all ${category} modules`);
-  lines.push(`install_${category}() {`);
-  lines.push(`    log_section "Installing ${category} modules"`);
-  for (const module of sortedModules) {
-    const funcName = toFunctionName(module.id);
-    lines.push(`    ${funcName}`);
+  if (orchestrationModules.length > 0) {
+    lines.push(
+      `# Orchestrator-owned modules omitted from this library: ${orchestrationModules.map((module) => module.id).join(', ')}`
+    );
+    lines.push('');
   }
-  lines.push('}');
-  lines.push('');
 
-  // Add main execution
-  lines.push('# Run if executed directly');
-  lines.push('if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then');
-  lines.push(`    install_${category}`);
-  lines.push('fi');
+  lines.push('# Category scripts are source-only libraries.');
   lines.push('');
 
   return lines.join('\n');
@@ -2210,7 +2276,7 @@ function generateDoctorChecks(manifest: Manifest): string {
 
   // Add main execution
   lines.push('# Run if executed directly');
-  lines.push('if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then');
+  lines.push('if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then');
   lines.push('    run_manifest_checks');
   lines.push('fi');
   lines.push('');
@@ -2222,8 +2288,14 @@ function generateDoctorChecks(manifest: Manifest): string {
  * Generate top-level installer script
  */
 function generateTopLevelInstaller(manifest: Manifest): string {
-  const categories = getCategories(manifest);
-  const lines: string[] = [HEADER];
+  // Emit the complete canonical category surface, including zero-handler
+  // orchestration-owned categories such as users.
+  const categories: ModuleCategory[] = [...MODULE_CATEGORIES];
+  const lines: string[] = [
+    sourceOnlyHeader(
+      'ERROR: install_all.sh is a source-only generated harness; run install.sh'
+    ),
+  ];
   lines.push('# Top-level installer - sources all category scripts');
   lines.push('');
 
@@ -2235,13 +2307,22 @@ function generateTopLevelInstaller(manifest: Manifest): string {
 
   // Main install function
   lines.push('# Install all modules in global dependency order');
-  lines.push('install_all() {');
+  lines.push('acfs_generated_install_all() {');
   lines.push('    log_section "ACFS Full Installation"');
   lines.push('');
 
   // Use global sort to ensure dependencies are met across categories
-  const orderedModules = sortModulesByPhaseAndDependency(manifest);
+  const allOrderedModules = sortModulesByPhaseAndDependency(manifest);
+  const orderedModules = allOrderedModules.filter((module) => module.generated !== false);
+  const orchestrationModules = allOrderedModules.filter((module) => module.generated === false);
   let currentCategory: string | null = null;
+
+  if (orchestrationModules.length > 0) {
+    lines.push(
+      `    log_info "Orchestrator-owned modules are not run by acfs_generated_install_all: ${orchestrationModules.map((module) => module.id).join(', ')}"`
+    );
+    lines.push('');
+  }
 
   for (const module of orderedModules) {
     const category = resolveModuleCategory(module);
@@ -2250,20 +2331,19 @@ function generateTopLevelInstaller(manifest: Manifest): string {
       currentCategory = category;
     }
 
-    const funcName = toFunctionName(module.id);
+    const funcName = toGeneratedFunctionName(module.id);
     lines.push(`    ${funcName}`);
   }
 
   lines.push('');
-  lines.push('    log_success "All modules installed!"');
+  lines.push('    log_success "All generated modules installed!"');
   lines.push('}');
   lines.push('');
 
-  // Add main execution
-  lines.push('# Run if executed directly');
-  lines.push('if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then');
-  lines.push('    install_all');
-  lines.push('fi');
+  // acfs_generated_install_all omits orchestration-owned modules and does not reproduce the
+  // production dispatcher's installed-check/failure semantics. Its prologue
+  // rejects direct execution before any adjacent helper can be sourced.
+  lines.push('# Source-only generated harness.');
   lines.push('');
 
   return lines.join('\n');
@@ -2382,11 +2462,13 @@ function getWebVisibleModules(manifest: Manifest): Module[] {
 /**
  * Generate manifest-modules.ts — full module metadata for web-side planning.
  */
-function generateWebModules(manifest: Manifest): string {
+function generateWebModules(
+  manifest: Manifest,
+  acfsVersion: string,
+  manifestSha256: string,
+  checksumsYamlSha256: string,
+): string {
   const modules = sortModulesByPhaseAndDependency(manifest);
-  const acfsVersion = readProjectVersion();
-  const manifestSha256 = computeManifestSha256();
-  const checksumsYamlSha256 = computeChecksumsYamlSha256();
   const lines: string[] = [TS_HEADER];
 
   lines.push('export interface ManifestModuleMetadata {');
@@ -2773,9 +2855,12 @@ async function main(): Promise<void> {
   console.log('=====================================');
   console.log('');
 
-  // Parse manifest
+  // Bind each authoritative input to one immutable in-process snapshot. Parsing
+  // and provenance hashes must describe the same bytes even if another agent
+  // edits the shared worktree while generation is running.
   console.log(`Reading manifest from: ${MANIFEST_PATH}`);
-  const result = parseManifestFile(MANIFEST_PATH);
+  const manifestBytes = readRegularFileNoFollow(MANIFEST_PATH, 'Manifest');
+  const result = parseManifestString(manifestBytes.toString('utf-8'));
 
   if (!result.success || !result.data) {
     console.error('Failed to parse manifest:', result.error);
@@ -2818,11 +2903,11 @@ async function main(): Promise<void> {
     console.error('');
   }
 
-  const categories = getCategories(manifest);
+  const categories: ModuleCategory[] = [...MODULE_CATEGORIES];
   console.log(`Categories: ${categories.join(', ')}`);
   console.log('');
 
-  const manifestSha256 = computeManifestSha256();
+  const manifestSha256 = computeContentSha256(manifestBytes);
 
   // Validate checksum coverage for known upstream installers (fail closed).
   if (!existsSync(CHECKSUMS_PATH)) {
@@ -2831,8 +2916,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const checksumsBytes = readRegularFileNoFollow(CHECKSUMS_PATH, 'Verified installer checksums');
   try {
-    const checksums = parseYaml(readFileSync(CHECKSUMS_PATH, 'utf-8')) as {
+    const checksums = parseYaml(checksumsBytes.toString('utf-8')) as {
       installers?: Record<string, InstallerChecksumEntry>;
     };
     const installers = checksums.installers ?? {};
@@ -2899,16 +2985,26 @@ async function main(): Promise<void> {
   }
 
   // Internal script checksums (bd-3tpl)
+  let internalChecksumSnapshots: ReadonlyMap<string, Buffer> = new Map();
   {
     const filepath = join(OUTPUT_DIR, 'internal_checksums.sh');
-    const content = generateInternalChecksums();
-    filesToGenerate.set(filepath, { content, mode: 0o644 });
+    const generated = generateInternalChecksums(filesToGenerate);
+    internalChecksumSnapshots = generated.staticSnapshots;
+    filesToGenerate.set(filepath, { content: generated.content, mode: 0o644 });
   }
 
   // Web data: TypeScript modules for apps/web
   {
     const modulesPath = join(WEB_OUTPUT_DIR, 'manifest-modules.ts');
-    filesToGenerate.set(modulesPath, { content: generateWebModules(manifest), mode: 0o644 });
+    filesToGenerate.set(modulesPath, {
+      content: generateWebModules(
+        manifest,
+        readProjectVersion(),
+        manifestSha256,
+        computeContentSha256(checksumsBytes),
+      ),
+      mode: 0o644,
+    });
 
     const toolsPath = join(WEB_OUTPUT_DIR, 'manifest-tools.ts');
     filesToGenerate.set(toolsPath, { content: generateWebTools(manifest), mode: 0o644 });
@@ -2924,6 +3020,12 @@ async function main(): Promise<void> {
 
     const indexPath = join(WEB_OUTPUT_DIR, 'manifest-web-index.ts');
     filesToGenerate.set(indexPath, { content: generateWebIndex(), mode: 0o644 });
+  }
+
+  assertInputSnapshotUnchanged(MANIFEST_PATH, manifestBytes, 'Manifest');
+  assertInputSnapshotUnchanged(CHECKSUMS_PATH, checksumsBytes, 'Verified installer checksums');
+  for (const [path, snapshot] of internalChecksumSnapshots) {
+    assertInputSnapshotUnchanged(path, snapshot, `Internal checksum input ${relative(PROJECT_ROOT, path)}`);
   }
 
   // --diff mode: compare against existing files
@@ -2956,6 +3058,19 @@ async function main(): Promise<void> {
       }
     }
 
+    const actualPaths = [OUTPUT_DIR, WEB_OUTPUT_DIR].flatMap((directory) =>
+      existsSync(directory)
+        ? readdirSync(directory).map((name) => join(directory, name))
+        : []
+    );
+    for (const stalePath of findUnexpectedGeneratedPaths(
+      filesToGenerate.keys(),
+      actualPaths,
+    )) {
+      hasDiff = true;
+      console.log(`[STALE] ${relative(PROJECT_ROOT, stalePath)}`);
+    }
+
     console.log('');
     if (hasDiff) {
       console.log('Generated files would change. Run without --diff to update.');
@@ -2985,12 +3100,16 @@ async function main(): Promise<void> {
   }
 
   // Normal generation mode: write all files
+  assertSafeGeneratedDirectory(OUTPUT_DIR);
+  assertSafeGeneratedDirectory(WEB_OUTPUT_DIR);
   mkdirSync(OUTPUT_DIR, { recursive: true });
   mkdirSync(WEB_OUTPUT_DIR, { recursive: true });
+  assertSafeGeneratedDirectory(OUTPUT_DIR);
+  assertSafeGeneratedDirectory(WEB_OUTPUT_DIR);
 
   const generatedFiles: string[] = [];
   for (const [filepath, { content, mode }] of filesToGenerate) {
-    writeFileSync(filepath, content, { mode });
+    writeGeneratedFileNoFollow(filepath, content, mode);
     const filename = filepath.startsWith(WEB_OUTPUT_DIR)
       ? 'web/' + filepath.replace(WEB_OUTPUT_DIR + '/', '')
       : filepath.replace(OUTPUT_DIR + '/', '');

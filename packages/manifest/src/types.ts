@@ -21,6 +21,29 @@ export interface ManifestDefaults {
 export type RunAs = 'target_user' | 'root' | 'current';
 
 /**
+ * Canonical module categories. This runtime tuple is shared by schema and
+ * generator utilities so authored manifests cannot pass one category policy
+ * and then fail under another.
+ */
+export const MODULE_CATEGORIES = [
+  'base',
+  'users',
+  'filesystem',
+  'shell',
+  'cli',
+  'network',
+  'lang',
+  'tools',
+  'db',
+  'cloud',
+  'agents',
+  'stack',
+  'acfs',
+] as const;
+
+export type ModuleCategory = (typeof MODULE_CATEGORIES)[number];
+
+/**
  * Allowed runners for verified installers.
  * SECURITY: Only allow known-safe shell interpreters to prevent command injection.
  */
@@ -42,8 +65,6 @@ export interface VerifiedInstaller {
   env?: string[];
   /** Optional additional args for runner */
   args?: string[];
-  /** If true, run installer in detached tmux session (prevents blocking) */
-  run_in_tmux?: boolean;
 }
 
 /**
@@ -142,7 +163,7 @@ export interface Module {
   /** Human-readable description of what this module provides */
   description: string;
   /** Optional category grouping for generated layout */
-  category?: string;
+  category?: ModuleCategory;
   /** Execution context for install/verify steps */
   run_as: RunAs;
   /** Verified upstream installer reference */
@@ -230,24 +251,6 @@ export interface ValidationWarning {
   /** Warning message */
   message: string;
 }
-
-/**
- * Module category derived from module ID prefix
- */
-export type ModuleCategory =
-  | 'base'
-  | 'users'
-  | 'filesystem'
-  | 'shell'
-  | 'cli'
-  | 'network'
-  | 'lang'
-  | 'tools'
-  | 'db'
-  | 'cloud'
-  | 'agents'
-  | 'stack'
-  | 'acfs';
 
 /**
  * Parse result from YAML parsing

@@ -109,6 +109,67 @@ extract_assignment_value() {
 INTERNAL_CHECKSUM_PATHS=()
 INTERNAL_CHECKSUM_VALUES=()
 INTERNAL_CHECKSUMS_EXPECTED_COUNT=0
+INTERNAL_CHECKSUM_REQUIRED_PATHS=(
+    install.sh
+    checksums.yaml
+    scripts/preflight.sh
+    scripts/lib/security.sh
+    scripts/lib/github_api.sh
+    scripts/lib/contract.sh
+    scripts/lib/agents.sh
+    scripts/lib/update.sh
+    scripts/lib/doctor.sh
+    scripts/lib/acfs-services.sh
+    scripts/lib/doctor_fix.sh
+    scripts/lib/offline_artifact_pack.sh
+    scripts/lib/autofix.sh
+    scripts/lib/autofix_existing.sh
+    scripts/lib/autofix_unattended.sh
+    scripts/lib/autofix_version_managers.sh
+    scripts/lib/ubuntu_upgrade.sh
+    scripts/lib/upgrade_resume.sh
+    scripts/lib/install_helpers.sh
+    scripts/lib/logging.sh
+    scripts/lib/output.sh
+    scripts/lib/gum_ui.sh
+    scripts/lib/progress.sh
+    scripts/lib/state.sh
+    scripts/lib/report.sh
+    scripts/lib/error_tracking.sh
+    scripts/lib/session.sh
+    scripts/lib/os_detect.sh
+    scripts/lib/errors.sh
+    scripts/lib/user.sh
+    scripts/lib/tools.sh
+    scripts/lib/tailscale.sh
+    scripts/lib/webhook.sh
+    scripts/lib/notify.sh
+    scripts/lib/stack.sh
+    scripts/lib/export-config.sh
+    scripts/acfs-global
+    scripts/acfs-update
+    scripts/lib/nightly_update.sh
+    scripts/templates/acfs-upgrade-resume.service
+    scripts/templates/acfs-nightly-update.service
+    scripts/templates/acfs-nightly-update.timer
+    packages/onboard/onboard.sh
+    scripts/generated/manifest_index.sh
+    scripts/generated/doctor_checks.sh
+    scripts/generated/install_all.sh
+    scripts/generated/install_base.sh
+    scripts/generated/install_users.sh
+    scripts/generated/install_filesystem.sh
+    scripts/generated/install_shell.sh
+    scripts/generated/install_cli.sh
+    scripts/generated/install_network.sh
+    scripts/generated/install_lang.sh
+    scripts/generated/install_tools.sh
+    scripts/generated/install_db.sh
+    scripts/generated/install_cloud.sh
+    scripts/generated/install_agents.sh
+    scripts/generated/install_stack.sh
+    scripts/generated/install_acfs.sh
+)
 
 if $JSON_MODE && ! command -v jq &>/dev/null; then
     log_error "jq is required for --json output"
@@ -123,16 +184,107 @@ parse_internal_checksums_file() {
     INTERNAL_CHECKSUM_VALUES=()
     INTERNAL_CHECKSUMS_EXPECTED_COUNT=0
 
-    INTERNAL_CHECKSUMS_EXPECTED_COUNT=$(
-        grep -E '^ACFS_INTERNAL_CHECKSUMS_COUNT=' "$file" | head -n 1 | cut -d'=' -f2 | tr -d '"[:space:]\r' || true
-    )
+    if [[ -L "$file" ]]; then
+        log_error "Internal checksums file must not be a symlink: $file"
+        return 1
+    fi
 
-    while IFS= read -r line; do
-        if [[ "$line" =~ ^[[:space:]]*\[([^]]+)\]=\"([0-9A-Fa-f]{64})\"[[:space:]]*$ ]]; then
-            INTERNAL_CHECKSUM_PATHS+=("${BASH_REMATCH[1]}")
-            INTERNAL_CHECKSUM_VALUES+=("${BASH_REMATCH[2],,}")
+    local ledger_size=""
+    ledger_size="$(stat -c '%s' -- "$file" 2>/dev/null || true)"
+    if [[ ! "$ledger_size" =~ ^[0-9]+$ ]]; then
+        ledger_size="$(stat -f '%z' "$file" 2>/dev/null || true)"
+    fi
+    if [[ ! "$ledger_size" =~ ^[0-9]+$ ]] || (( ledger_size == 0 || ledger_size > 65536 )); then
+        log_error "Internal checksum ledger exceeds its 64 KiB byte bound"
+        return 1
+    fi
+    local -a ledger_lines=()
+    if ! mapfile -t ledger_lines < "$file"; then
+        log_error "Internal checksum ledger could not be read"
+        return 1
+    fi
+
+    local line=""
+    local line_count=0
+    local schema_seen=0
+    local count_seen=0
+    local array_open=false
+    local array_seen=false
+    local -A seen_paths=()
+    local parse_state="expect_schema"
+    for line in "${ledger_lines[@]}"; do
+        ((line_count += 1))
+        if (( line_count > 128 )) || ((${#line} > 4096)); then
+            log_error "Internal checksum ledger exceeds its bounded data grammar"
+            return 1
         fi
-    done < "$file"
+        case "$line" in
+            ''|'#'*) continue ;;
+            'ACFS_INTERNAL_CHECKSUMS_SCHEMA=1')
+                [[ "$parse_state" == "expect_schema" ]] || return 1
+                ((schema_seen += 1))
+                parse_state="expect_array"
+                continue
+                ;;
+            'declare -gA ACFS_INTERNAL_CHECKSUMS=(')
+                [[ "$parse_state" == "expect_array" ]] || return 1
+                [[ "$array_seen" == "false" && "$array_open" == "false" ]] || return 1
+                array_seen=true
+                array_open=true
+                parse_state="in_array"
+                continue
+                ;;
+            ')')
+                [[ "$parse_state" == "in_array" && "$array_open" == "true" ]] || return 1
+                array_open=false
+                parse_state="expect_count"
+                continue
+                ;;
+        esac
+        if [[ "$line" =~ ^[[:space:]]*\[([A-Za-z0-9_./-]+)\]=\"([0-9a-f]{64})\"$ ]]; then
+            [[ "$parse_state" == "in_array" && "$array_open" == "true" ]] || return 1
+            local rel_path="${BASH_REMATCH[1]}"
+            case "$rel_path" in /*|*..*) return 1 ;; esac
+            [[ -z "${seen_paths[$rel_path]+present}" ]] || return 1
+            seen_paths["$rel_path"]=1
+            INTERNAL_CHECKSUM_PATHS+=("$rel_path")
+            INTERNAL_CHECKSUM_VALUES+=("${BASH_REMATCH[2]}")
+            continue
+        fi
+        if [[ "$line" =~ ^ACFS_INTERNAL_CHECKSUMS_COUNT=([0-9]+)$ ]]; then
+            [[ "$parse_state" == "expect_count" ]] || return 1
+            ((count_seen += 1))
+            INTERNAL_CHECKSUMS_EXPECTED_COUNT="${BASH_REMATCH[1]}"
+            parse_state="done"
+            continue
+        fi
+        log_error "Internal checksum ledger contains unsupported data"
+        return 1
+    done
+
+    if (( schema_seen != 1 || count_seen != 1 )) \
+        || [[ "$array_seen" != "true" || "$array_open" == "true" || "$parse_state" != "done" ]] \
+        || [[ "$INTERNAL_CHECKSUMS_EXPECTED_COUNT" != "${#INTERNAL_CHECKSUM_PATHS[@]}" ]]; then
+        log_error "Internal checksum ledger structure/count is invalid"
+        return 1
+    fi
+
+    if [[ ${#INTERNAL_CHECKSUM_PATHS[@]} -ne ${#INTERNAL_CHECKSUM_REQUIRED_PATHS[@]} ]]; then
+        log_error "Internal checksum ledger membership count is not canonical"
+        return 1
+    fi
+    local -A parsed_paths=()
+    local parsed_path=""
+    for parsed_path in "${INTERNAL_CHECKSUM_PATHS[@]}"; do
+        parsed_paths["$parsed_path"]=1
+    done
+    local required_path=""
+    for required_path in "${INTERNAL_CHECKSUM_REQUIRED_PATHS[@]}"; do
+        if [[ -z "${parsed_paths[$required_path]+present}" ]]; then
+            log_error "Internal checksum ledger is missing canonical path: $required_path"
+            return 1
+        fi
+    done
 }
 
 extract_repo_mcp_config_url() {
@@ -160,6 +312,8 @@ extract_repo_mcp_config_url() {
 GENERATED_ARTIFACT_STATUS="skipped"
 GENERATED_ARTIFACT_DRIFT_FILES=()
 GENERATED_ARTIFACT_DRIFT_COUNT=0
+GENERATED_ARTIFACT_STALE_FILES=()
+GENERATED_ARTIFACT_STALE_COUNT=0
 MANIFEST_CONTRACT_STATUS="skipped"
 MANIFEST_CONTRACT_DRIFT_FILES=()
 MANIFEST_CONTRACT_MISMATCH_CODES=()
@@ -175,6 +329,8 @@ check_generated_artifact_drift() {
     GENERATED_ARTIFACT_STATUS="skipped"
     GENERATED_ARTIFACT_DRIFT_FILES=()
     GENERATED_ARTIFACT_DRIFT_COUNT=0
+    GENERATED_ARTIFACT_STALE_FILES=()
+    GENERATED_ARTIFACT_STALE_COUNT=0
 
     if ! command -v bun &>/dev/null; then
         log "Warning: bun not found; skipping generate:diff validation"
@@ -198,11 +354,15 @@ check_generated_artifact_drift() {
         1)
             GENERATED_ARTIFACT_STATUS="drift"
             while IFS= read -r line; do
-                if [[ "$line" =~ ^\[(DIFF|NEW)\][[:space:]]+(.+)$ ]]; then
+                if [[ "$line" =~ ^\[(DIFF|NEW|STALE)\][[:space:]]+(.+)$ ]]; then
                     GENERATED_ARTIFACT_DRIFT_FILES+=("${BASH_REMATCH[2]}")
+                    if [[ "${BASH_REMATCH[1]}" == "STALE" ]]; then
+                        GENERATED_ARTIFACT_STALE_FILES+=("${BASH_REMATCH[2]}")
+                    fi
                 fi
             done <<< "$diff_output"
             GENERATED_ARTIFACT_DRIFT_COUNT=${#GENERATED_ARTIFACT_DRIFT_FILES[@]}
+            GENERATED_ARTIFACT_STALE_COUNT=${#GENERATED_ARTIFACT_STALE_FILES[@]}
             if [[ "$GENERATED_ARTIFACT_DRIFT_COUNT" -eq 0 ]]; then
                 GENERATED_ARTIFACT_STATUS="error"
                 log_error "generate:diff failed before reporting any generated-file differences"
@@ -408,7 +568,10 @@ REPO_MCP_CONFIGS_CHECKED=0
 REPO_MCP_CONFIG_DRIFT_COUNT=0
 REPO_MCP_CONFIG_DRIFT_FILES=()
 
-if [[ -f "$INTERNAL_CHECKSUMS_FILE" ]]; then
+if [[ -L "$INTERNAL_CHECKSUMS_FILE" ]]; then
+    log_error "Internal checksums file must not be a symlink: $INTERNAL_CHECKSUMS_FILE"
+    exit 3
+elif [[ -f "$INTERNAL_CHECKSUMS_FILE" ]]; then
     if ! parse_internal_checksums_file "$INTERNAL_CHECKSUMS_FILE"; then
         exit 3
     fi
@@ -425,7 +588,7 @@ if [[ -f "$INTERNAL_CHECKSUMS_FILE" ]]; then
             rel_path="${INTERNAL_CHECKSUM_PATHS[$i]}"
             expected="${INTERNAL_CHECKSUM_VALUES[$i]}"
             abs_path="$REPO_ROOT/$rel_path"
-            if [[ -f "$abs_path" ]]; then
+            if [[ -f "$abs_path" && ! -L "$abs_path" ]]; then
                 if ! actual="$(sha256_file "$abs_path" "Internal script $rel_path")"; then
                     exit 3
                 fi
@@ -450,7 +613,11 @@ if [[ -f "$INTERNAL_CHECKSUMS_FILE" ]]; then
         fi
     fi
 else
-    log "Internal checksums file not found (pre-migration), skipping"
+    INTERNAL_DRIFT_COUNT=$((INTERNAL_DRIFT_COUNT + 1))
+    INTERNAL_DRIFT_FILES+=("scripts/generated/internal_checksums.sh (MISSING)")
+    DRIFT_DETECTED=true
+    DRIFT_REASONS+=("Mandatory internal checksum ledger is missing")
+    log "Internal checksums file is missing"
 fi
 
 check_repo_mcp_config_drift
@@ -569,12 +736,45 @@ if ! $FIX_MODE; then
     exit 1
 fi
 
+if [[ "$GENERATED_ARTIFACT_STALE_COUNT" -gt 0 ]]; then
+    log_error "Refusing --fix while stale generated files require removal: ${GENERATED_ARTIFACT_STALE_FILES[*]}"
+    log_error "Regeneration cannot remove files, and ACFS requires explicit written approval before deletion."
+    exit 2
+fi
+
 # Auto-fix: regenerate, commit, push
 log "Auto-fixing manifest drift..."
 
 # Check prerequisites for fix
 if ! command -v bun &>/dev/null; then
     log_error "bun not found - cannot regenerate"
+    exit 2
+fi
+
+generation_dirty_sources() {
+    cd "$REPO_ROOT"
+    git status --porcelain -- \
+        install.sh \
+        scripts/preflight.sh \
+        scripts/lib \
+        scripts/acfs-global \
+        scripts/acfs-update \
+        scripts/templates \
+        acfs.manifest.yaml \
+        checksums.yaml \
+        README.md \
+        acfs/onboard/lessons \
+        packages/onboard/onboard.sh \
+        packages/manifest 2>/dev/null \
+        | grep -v '^[?][?]' || true
+}
+
+# Synchronize before deriving any artifact. Rebasing after verification could
+# change a checksummed source and then push a stale ledger.
+cd "$REPO_ROOT"
+current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+if [[ "$current_branch" != "main" ]]; then
+    log_error "--fix only runs on main (current: ${current_branch:-detached})"
     exit 2
 fi
 
@@ -585,16 +785,7 @@ fi
 # we'd push generated artifacts that don't match what's actually committed,
 # which is the failure mode that broke Pinned Ref Smoke and the offline
 # bootstrap installer tests on c55a89eb.
-DIRTY_SOURCES="$(cd "$REPO_ROOT" && git status --porcelain -- \
-    scripts/lib \
-    scripts/acfs-global \
-    scripts/acfs-update \
-    acfs.manifest.yaml \
-    checksums.yaml \
-    README.md \
-    acfs/onboard/lessons \
-    packages/manifest 2>/dev/null \
-    | grep -v '^[?][?]' || true)"
+DIRTY_SOURCES="$(generation_dirty_sources)"
 if [[ -n "$DIRTY_SOURCES" ]]; then
     log_error "Refusing to auto-fix: tracked source files have uncommitted changes."
     log_error "Otherwise generated checksums would capture working-tree state and"
@@ -606,10 +797,29 @@ if [[ -n "$DIRTY_SOURCES" ]]; then
     exit 2
 fi
 
+if ! git pull --rebase origin main; then
+    log_error "Pull --rebase failed before regeneration; no generated files were changed"
+    exit 2
+fi
+DIRTY_SOURCES="$(generation_dirty_sources)"
+if [[ -n "$DIRTY_SOURCES" ]]; then
+    log_error "Tracked generation sources changed while synchronizing; refusing to generate"
+    exit 2
+fi
+
 # Regenerate
 cd "$REPO_ROOT/packages/manifest"
 if ! bun run generate >&2; then
     log_error "bun run generate failed"
+    exit 2
+fi
+
+DIRTY_SOURCES="$(generation_dirty_sources)"
+if [[ -n "$DIRTY_SOURCES" ]]; then
+    log_error "Tracked generation sources changed during generation; refusing to commit artifacts"
+    while IFS= read -r _line; do
+        [[ -z "$_line" ]] || log_error "  $_line"
+    done <<< "$DIRTY_SOURCES"
     exit 2
 fi
 
@@ -633,33 +843,39 @@ fi
 
 log "Manifest SHA256 now matches: $ACTUAL_NOW"
 
-# Verify internal checksums fix (if file was regenerated)
-if [[ -f "$INTERNAL_CHECKSUMS_FILE" ]] && [[ "$INTERNAL_DRIFT_COUNT" -gt 0 ]]; then
-    log "Verifying internal script checksums after regeneration..."
-    if ! parse_internal_checksums_file "$INTERNAL_CHECKSUMS_FILE"; then
-        exit 2
-    fi
-    post_fix_drift=0
-    for i in "${!INTERNAL_CHECKSUM_PATHS[@]}"; do
-        rel_path="${INTERNAL_CHECKSUM_PATHS[$i]}"
-        expected="${INTERNAL_CHECKSUM_VALUES[$i]}"
-        abs_path="$REPO_ROOT/$rel_path"
-        if [[ -f "$abs_path" ]]; then
-            if ! actual="$(sha256_file "$abs_path" "Internal script $rel_path")"; then
-                exit 2
-            fi
-            if [[ "$actual" != "$expected" ]]; then
-                post_fix_drift=$((post_fix_drift + 1))
-                log_error "Still drifted after fix: $rel_path"
-            fi
-        fi
-    done
-    if [[ "$post_fix_drift" -gt 0 ]]; then
-        log_error "Internal checksum drift persists after regeneration ($post_fix_drift files)"
-        exit 2
-    fi
-    log "Internal script checksums verified clean after regeneration"
+# Always prove the complete closed-world checksum contract after generation;
+# the pre-fix drift count cannot establish what the generator just wrote.
+if [[ ! -f "$INTERNAL_CHECKSUMS_FILE" || -L "$INTERNAL_CHECKSUMS_FILE" ]]; then
+    log_error "Generated internal checksum ledger is missing or unsafe"
+    exit 2
 fi
+log "Verifying internal script checksums after regeneration..."
+if ! parse_internal_checksums_file "$INTERNAL_CHECKSUMS_FILE"; then
+    exit 2
+fi
+post_fix_drift=0
+for i in "${!INTERNAL_CHECKSUM_PATHS[@]}"; do
+    rel_path="${INTERNAL_CHECKSUM_PATHS[$i]}"
+    expected="${INTERNAL_CHECKSUM_VALUES[$i]}"
+    abs_path="$REPO_ROOT/$rel_path"
+    if [[ ! -f "$abs_path" || -L "$abs_path" ]]; then
+        post_fix_drift=$((post_fix_drift + 1))
+        log_error "Missing or unsafe after fix: $rel_path"
+        continue
+    fi
+    if ! actual="$(sha256_file "$abs_path" "Internal script $rel_path")"; then
+        exit 2
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+        post_fix_drift=$((post_fix_drift + 1))
+        log_error "Still drifted after fix: $rel_path"
+    fi
+done
+if [[ "$post_fix_drift" -gt 0 ]]; then
+    log_error "Internal checksum drift persists after regeneration ($post_fix_drift files)"
+    exit 2
+fi
+log "Internal script checksums verified clean after regeneration"
 
 check_repo_mcp_config_drift false
 if [[ "$REPO_MCP_CONFIG_DRIFT_COUNT" -gt 0 ]]; then
@@ -684,14 +900,6 @@ fi
 # Commit and push
 cd "$REPO_ROOT"
 
-# --fix commits and pushes to main; refuse to do that from any other branch
-# (it used to push a feature branch or detached HEAD to origin/main).
-current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-if [[ "$current_branch" != "main" ]]; then
-    log_error "--fix only runs on main (current: ${current_branch:-detached}); regenerated files left unstaged"
-    exit 2
-fi
-
 # Stage tracked generated files plus any *new* generator outputs, but never
 # stray untracked files (editor backups, half-written scratch) that other
 # agents may have left in these shared directories.
@@ -707,9 +915,15 @@ while IFS= read -r new_generated; do
     esac
 done < <(git ls-files --others --exclude-standard -- scripts/generated apps/web/lib/generated 2>/dev/null)
 
-if git diff --cached --quiet; then
+if git diff --cached --quiet -- scripts/generated apps/web/lib/generated; then
     log "No generated artifact changes after regeneration (already up to date)"
     exit 0
+fi
+
+DIRTY_SOURCES="$(generation_dirty_sources)"
+if [[ -n "$DIRTY_SOURCES" ]]; then
+    log_error "Tracked generation sources changed before commit; leaving generated files staged for inspection"
+    exit 2
 fi
 
 git commit -m "$(cat <<'COMMIT_MSG'
@@ -719,13 +933,7 @@ Detected by check-manifest-drift.sh.
 Regenerated installer and web generated artifacts via `bun run generate`
 to sync ACFS_MANIFEST_SHA256 and internal checksums with source files.
 COMMIT_MSG
-)"
-
-# Pull latest main first to avoid non-fast-forward push failures
-if ! git pull --rebase origin main; then
-    log_error "Pull --rebase failed; fix committed locally but not pushed"
-    exit 2
-fi
+)" -- scripts/generated apps/web/lib/generated
 
 # Push to main first, then mirror to master for legacy compatibility
 if ! git push origin HEAD:main; then

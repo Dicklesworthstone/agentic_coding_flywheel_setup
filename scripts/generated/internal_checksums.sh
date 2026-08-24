@@ -4,11 +4,18 @@
 # AUTO-GENERATED internal script checksums - DO NOT EDIT
 # Regenerate: bun run generate (from packages/manifest)
 # ============================================================
-# SHA256 checksums for critical internal scripts (bd-3tpl).
-# Used by check-manifest-drift.sh to detect unauthorized changes.
+# SHA256 checksums for checksum-controlled runtime files (bd-3tpl).
+# Parsed as inert data by install.sh and used by check-manifest-drift.sh.
+
+ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
+  [install.sh]="3cc1ecc4c4b54e4f99c8ac787b116a3f63fa8ee04a4d4e73e5ff385adde45ce3"
+  [checksums.yaml]="f2b81ec1865cf86315a39c36cbc08ffe9bbfc183914faea0370dbe2d71ee1b5a"
+  [scripts/preflight.sh]="4b00023815ddd0f591f7549f008d24639f9f039bb211265aae32721e96779130"
   [scripts/lib/security.sh]="54afc34bb8cbdffbf0de6f210672868753afa5769c38b6f86579e4499d3e442d"
+  [scripts/lib/github_api.sh]="af890add1bce526f38989c94a9a3e974d156d3b0c62f204d0654398f64f1fd97"
+  [scripts/lib/contract.sh]="22c148f44ddbaccd559196196ef903f26f65fc77e3b1b6b4efc62b77d3b97aa3"
   [scripts/lib/agents.sh]="1762cbb606a079ecef7b54465feb1a2a5e99a07aa0d93f5b1c333a31077761e4"
   [scripts/lib/update.sh]="3f64e21faedfdb0a2eb7387fa621ae5b8865739349a379f72e7e4ee1b90f4515"
   [scripts/lib/doctor.sh]="df72291804c1cdcc162c6cb41a38de13c5de2bc8f2a56dff455dabcbbfa4db21"
@@ -20,18 +27,48 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/autofix_unattended.sh]="848f5744f75503eebe422a9d2418ed6b1341cfd6452004ee0a4e902d04f5d94a"
   [scripts/lib/autofix_version_managers.sh]="e235b7bfb95115f00bf7a4e3398be504c576d1fbe97a64c64a988294d62d621e"
   [scripts/lib/ubuntu_upgrade.sh]="b60953da90c75f2405f2b5598a7e5c0a098b6bf3d56802dfa5ac142f095dd6dd"
+  [scripts/lib/upgrade_resume.sh]="087c0d6470a6026ea4053f98d3a2d3255c70fae3c8c5ca80feccb8bcbf80539b"
   [scripts/lib/install_helpers.sh]="519613c72a94fe18a9a15d94ba8e82e0511379bb7c08999e140c9da757028837"
   [scripts/lib/logging.sh]="890d8e6e44332bede591e462b277a903ae8d8679adebd8cc4fc76face078f6be"
+  [scripts/lib/output.sh]="95c83ae9c67fbd9364f1d69a6430ca8df7ebd1bd2cfa0fe9339afdead74e96eb"
+  [scripts/lib/gum_ui.sh]="1616f7f6fdd730802da196a661a2e5f576e480e4e96d745ce12ea5b64f9559b5"
+  [scripts/lib/progress.sh]="0506e2665eebda6cf922a014856a1f8e9ce0739cce8282583dc884391343c571"
   [scripts/lib/state.sh]="5321b9d47fcc665ab0dd7c3f708d5be3301f5ebfc6f320b6439f3ccba9b6676c"
+  [scripts/lib/report.sh]="a4fbbc336779eb5e32b9c1fdae8cf9ae5b3345b8a981289762feeb3627dd61a7"
+  [scripts/lib/error_tracking.sh]="5296ebc3428ece8912b1fbc29a576dba8e5789b6a62f3efdb68b497ae106c007"
   [scripts/lib/session.sh]="8a2ab64a67006c62ac0db8d89ea6d71d160f3f2efd2cb99ffe6ea0857abde3e5"
   [scripts/lib/os_detect.sh]="5cc5c182d212d7ea76fd345f97e97d808aad5d7e8cb29736b03f88e2ad115889"
   [scripts/lib/errors.sh]="7733e51599c65d7e4f38ffa38a5b6833e2ba182280676bd34a63788c7f2b0adc"
   [scripts/lib/user.sh]="fc079920a34237bac37d3fb7107f3f8c8ae9e84d82a123669b5eef5d23f68dfe"
   [scripts/lib/tools.sh]="e2d48e800888b759245e66cc9d86d097d83bf10f6d3bd2fcd17ec4bddfec94e0"
+  [scripts/lib/tailscale.sh]="a9370fb4ec1844997bd21d79d4647f9113e8c2c30c1b670be699eedf3f9ac049"
+  [scripts/lib/webhook.sh]="603388d4fbd038b5500c10823175e594c8e7629157376b07af829b5e995483d7"
+  [scripts/lib/notify.sh]="ac8a474c654a48f24dfe5da0a193ed45355d9b1d92948c08b33f5a1b83e64b76"
+  [scripts/lib/stack.sh]="6754693d8b98733c2d8361214624cad0c94a8fd971311e2aa1d4087c1efcdab2"
   [scripts/lib/export-config.sh]="6280123436223b5708f506b0a18b83c64891f8ee55af93c5c513f7fb202b97e3"
   [scripts/acfs-global]="71067648b4f6cdb5fe4be781f2ed08658a701905d5ab06a57f4cd8be45821430"
   [scripts/acfs-update]="178ab5f2af97f8c1584aa298aef350b28fe5b8dafd95e85c28af3be27e05f816"
+  [scripts/lib/nightly_update.sh]="fa753f048bbfcfda265d30e3435a604c0169eed30a78b7191a1b9790f101364f"
+  [scripts/templates/acfs-upgrade-resume.service]="301dcd9e668e25c7d3327eaa6935848fd9a330e4e1c5b7928bd028447441a6b0"
+  [scripts/templates/acfs-nightly-update.service]="9c9354412c770faf7ab39b68cdb35f5d5313ab022128d0561e12c98b0a53ce86"
+  [scripts/templates/acfs-nightly-update.timer]="aa4fbad4fadabe0b61d202b4bf4311ce71c1132ad0ce8453099b593aa04988c3"
+  [packages/onboard/onboard.sh]="90921cfbf03b4d18594ae715d7f5ec2d2a919406d284bd69d6983c9f32356c2e"
+  [scripts/generated/manifest_index.sh]="7ca745d1715cdb24e362e3f4da2a2c2ee0b37f4d93c3bf0ae9d7a774514026a5"
+  [scripts/generated/doctor_checks.sh]="9b4cc70aa706504c76f69e9cb7abfb732f31c31f170547c061058a7986025c07"
+  [scripts/generated/install_all.sh]="e08b9d738fbb8d894ffe46b1ae9d48dbb2364e4fcaf073c10ab5e446bb9dfd5b"
+  [scripts/generated/install_base.sh]="8c33ebb4be69f8ead3cb225723da361ea1ab16c6ef884471b6f1665d28cd4586"
+  [scripts/generated/install_users.sh]="8d7c47770bd6fd74262ebeef00dae865c70f770fdbb49daf2f51bdb6cf8a28ef"
+  [scripts/generated/install_filesystem.sh]="7f1436db2d6371f6a040645b89afaa936063a2312dead366551e818a538adfca"
+  [scripts/generated/install_shell.sh]="1e515211e22b748cd1a209aefa40180fef0067c82ab62dbd7b02731b8371f5a3"
+  [scripts/generated/install_cli.sh]="2c892b3e74015d4ade0c5e55d9b1acb6608642d978b9b315acd63d543aa7cd48"
+  [scripts/generated/install_network.sh]="0c521e91d2c9b5380b777fbd031f0612b969ecd9c76d46ed09e732eb2bbab843"
+  [scripts/generated/install_lang.sh]="65c9dc98821e2192b1bde494c95976864d80c48f74ed3abe7df01f7dd3c1b9e2"
+  [scripts/generated/install_tools.sh]="8affa31db7df156cf9f2e2af9ea44c9d5949ca0a78cee769de5de132a4756daf"
+  [scripts/generated/install_db.sh]="a3686ab9c5acd1d1d3f257e571f3c390166372092742b20bb41dba9b16ae4395"
+  [scripts/generated/install_cloud.sh]="c7241208c13f459d70df0393bdbc7e47ee4ecb54374c10261bf4d76083bba8bc"
+  [scripts/generated/install_agents.sh]="35170a18ec92ecf8010950052c91c97e86f6db28b92fbaa2c662ea6ee3be7e9f"
+  [scripts/generated/install_stack.sh]="4961bd83b6af74f019f1b2ec50f93c826ed8dbedbe8a79a869a5eb15a2505b22"
+  [scripts/generated/install_acfs.sh]="6c8a36b2f813560b49759bdbb5c4b9f8b8b9f07e34ff9a3a59edfc1f3e1bbe5e"
 )
 
-ACFS_INTERNAL_CHECKSUMS_COUNT=23
-ACFS_INTERNAL_CHECKSUMS_GENERATED="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"
+ACFS_INTERNAL_CHECKSUMS_COUNT=59

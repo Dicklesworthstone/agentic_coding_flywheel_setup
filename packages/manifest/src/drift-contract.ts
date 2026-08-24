@@ -11,8 +11,9 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { parseManifestFile } from './parser.js';
+import { parseManifestFile, validateManifestData } from './parser.js';
 import {
+  validateManifest as validateManifestAdvanced,
   validateVerifiedInstallerChecksums,
   type InstallerChecksumEntry,
 } from './validate.js';
@@ -20,10 +21,12 @@ import type { Manifest, Module } from './types.js';
 
 export type DriftContractCode =
   | 'MANIFEST_PARSE_FAILED'
+  | 'MANIFEST_SEMANTIC_INVALID'
   | 'CHECKSUMS_PARSE_FAILED'
   | 'MISSING_FILE'
   | 'MANIFEST_INDEX_MODULE_MISSING'
   | 'DOCTOR_CHECK_MISSING'
+  | 'WEB_MODULE_MISSING'
   | 'WEB_TOOL_MISSING'
   | 'WEB_COMMAND_MISSING'
   | 'WEB_TLDR_MISSING'
@@ -32,7 +35,9 @@ export type DriftContractCode =
   | 'README_SNIPPET_MISSING'
   | 'MISSING_VERIFIED_INSTALLER_CHECKSUM'
   | 'INVALID_VERIFIED_INSTALLER_CHECKSUM'
-  | 'VERIFIED_INSTALLER_URL_MISMATCH';
+  | 'VERIFIED_INSTALLER_URL_MISMATCH'
+  | 'GENERATED_ID_UNEXPECTED'
+  | 'GENERATED_ID_DUPLICATE';
 
 export interface DriftContractMismatch {
   code: DriftContractCode;
@@ -113,39 +118,113 @@ function readText(
   return readFileSync(absPath, 'utf-8');
 }
 
-function extractModuleIdsFromGeneratedTs(content: string): Set<string> {
+interface GeneratedIdInventory {
+  ids: Set<string>;
+  duplicates: Set<string>;
+}
+
+function buildIdInventory(values: Iterable<string>): GeneratedIdInventory {
   const ids = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const value of values) {
+    if (ids.has(value)) duplicates.add(value);
+    ids.add(value);
+  }
+  return { ids, duplicates };
+}
+
+function extractModuleIdsFromGeneratedTs(content: string): GeneratedIdInventory {
+  const values: string[] = [];
   const regex = /moduleId:\s*"([^"]+)"/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(content)) !== null) {
-    ids.add(match[1]);
+    values.push(match[1]);
   }
-  return ids;
+  return buildIdInventory(values);
 }
 
-function extractDoctorCheckIds(content: string): Set<string> {
-  const ids = new Set<string>();
+function extractManifestModuleIds(content: string): GeneratedIdInventory {
+  const arrayMatch = content.match(
+    /export const manifestModules[^=]*=\s*\[([\s\S]*?)\n\];/
+  );
+  if (!arrayMatch) return buildIdInventory([]);
+
+  const values: string[] = [];
+  const regex = /^\s*id:\s*"([^"]+)"/gm;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(arrayMatch[1])) !== null) {
+    values.push(match[1]);
+  }
+  return buildIdInventory(values);
+}
+
+interface LessonIndexInventory {
+  linkIds: GeneratedIdInventory;
+  lookupIds: GeneratedIdInventory;
+  linkSlugs: Map<string, string>;
+  lookupSlugs: Map<string, string>;
+}
+
+function extractLessonIndex(content: string): LessonIndexInventory {
+  const linkValues: string[] = [];
+  const lookupValues: string[] = [];
+  const linkSlugs = new Map<string, string>();
+  const lookupSlugs = new Map<string, string>();
+  const linksMatch = content.match(
+    /export const manifestLessonLinks[^=]*=\s*\[([\s\S]*?)\n\];/
+  );
+  if (linksMatch) {
+    const linkRegex = /\{\s*moduleId:\s*"([^"]+)",\s*lessonSlug:\s*"([^"]+)"/g;
+    let match: RegExpExecArray | null;
+    while ((match = linkRegex.exec(linksMatch[1])) !== null) {
+      linkValues.push(match[1]);
+      linkSlugs.set(match[1], match[2]);
+    }
+  }
+
+  const lookupMatch = content.match(
+    /export const lessonSlugByModuleId[^=]*=\s*\{([\s\S]*?)\n\};/
+  );
+  if (lookupMatch) {
+    const lookupRegex = /^\s*"([^"]+)":\s*"([^"]+)",?$/gm;
+    let match: RegExpExecArray | null;
+    while ((match = lookupRegex.exec(lookupMatch[1])) !== null) {
+      lookupValues.push(match[1]);
+      lookupSlugs.set(match[1], match[2]);
+    }
+  }
+
+  return {
+    linkIds: buildIdInventory(linkValues),
+    lookupIds: buildIdInventory(lookupValues),
+    linkSlugs,
+    lookupSlugs,
+  };
+}
+
+function extractDoctorCheckIds(content: string): GeneratedIdInventory {
+  const values: string[] = [];
   const regex = /^\s*"([^"\t]+)\t/gm;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(content)) !== null) {
-    ids.add(match[1]);
+    values.push(match[1]);
   }
-  return ids;
+  return buildIdInventory(values);
 }
 
-function extractManifestIndexModuleIds(content: string): Set<string> {
-  const ids = new Set<string>();
+function extractManifestIndexModuleIds(content: string): GeneratedIdInventory {
   const arrayMatch = content.match(/ACFS_MODULES_IN_ORDER=\(\n([\s\S]*?)\n\)/);
   if (!arrayMatch) {
-    return ids;
+    return buildIdInventory([]);
   }
 
+  const values: string[] = [];
   const regex = /"([^"]+)"/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(arrayMatch[1])) !== null) {
-    ids.add(match[1]);
+    values.push(match[1]);
   }
-  return ids;
+  return buildIdInventory(values);
 }
 
 function webVisibleModules(manifest: Manifest): Module[] {
@@ -197,6 +276,46 @@ function addMissingModuleIds(
       message: `${label} is missing manifest module "${module.id}"`,
     });
   }
+}
+
+function addUnexpectedIds(
+  mismatches: DriftContractMismatch[],
+  file: string,
+  expectedIds: ReadonlySet<string>,
+  actualIds: ReadonlySet<string>,
+  label: string
+): void {
+  for (const actualId of Array.from(actualIds).sort()) {
+    if (expectedIds.has(actualId)) continue;
+    mismatches.push({
+      code: 'GENERATED_ID_UNEXPECTED',
+      file,
+      moduleId: actualId,
+      actual: actualId,
+      message: `${label} contains unexpected generated ID "${actualId}"`,
+    });
+  }
+}
+
+function addDuplicateIds(
+  mismatches: DriftContractMismatch[],
+  file: string,
+  duplicateIds: ReadonlySet<string>,
+  label: string
+): void {
+  for (const duplicateId of Array.from(duplicateIds).sort()) {
+    mismatches.push({
+      code: 'GENERATED_ID_DUPLICATE',
+      file,
+      moduleId: duplicateId,
+      actual: duplicateId,
+      message: `${label} contains duplicate generated ID "${duplicateId}"`,
+    });
+  }
+}
+
+function moduleIds(modules: Module[]): Set<string> {
+  return new Set(modules.map((module) => module.id));
 }
 
 function checkOnboardingLessons(
@@ -278,6 +397,29 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
   }
 
   const manifest = parseResult.data;
+  const manifestValidation = validateManifestData(manifest);
+  if (!manifestValidation.valid) {
+    for (const error of manifestValidation.errors) {
+      mismatches.push({
+        code: 'MANIFEST_SEMANTIC_INVALID',
+        file: 'acfs.manifest.yaml',
+        message: `${error.path}: ${error.message}`,
+      });
+    }
+    return { ok: false, root, summary, mismatches };
+  }
+  const advancedValidation = validateManifestAdvanced(manifest);
+  if (!advancedValidation.valid) {
+    for (const error of advancedValidation.errors) {
+      mismatches.push({
+        code: 'MANIFEST_SEMANTIC_INVALID',
+        file: 'acfs.manifest.yaml',
+        moduleId: error.moduleId,
+        message: `${error.code}: ${error.message}`,
+      });
+    }
+    return { ok: false, root, summary, mismatches };
+  }
   const verifiedModules = manifest.modules.filter((module) => Boolean(module.verified_installer));
   const visibleModules = webVisibleModules(manifest);
   const commandModules = webCommandModules(manifest);
@@ -322,22 +464,35 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
 
   const manifestIndex = readText(root, 'scripts/generated/manifest_index.sh', mismatches);
   if (manifestIndex !== null) {
-    const actualIds = extractManifestIndexModuleIds(manifestIndex);
+    const inventory = extractManifestIndexModuleIds(manifestIndex);
     addMissingModuleIds(
       mismatches,
       'MANIFEST_INDEX_MODULE_MISSING',
       'scripts/generated/manifest_index.sh',
       manifest.modules,
-      actualIds,
+      inventory.ids,
+      'Generated manifest index'
+    );
+    addUnexpectedIds(
+      mismatches,
+      'scripts/generated/manifest_index.sh',
+      moduleIds(manifest.modules),
+      inventory.ids,
+      'Generated manifest index'
+    );
+    addDuplicateIds(
+      mismatches,
+      'scripts/generated/manifest_index.sh',
+      inventory.duplicates,
       'Generated manifest index'
     );
   }
 
   const doctorChecks = readText(root, 'scripts/generated/doctor_checks.sh', mismatches);
   if (doctorChecks !== null) {
-    const actualDoctorIds = extractDoctorCheckIds(doctorChecks);
+    const inventory = extractDoctorCheckIds(doctorChecks);
     for (const { module, id } of doctorIds) {
-      if (actualDoctorIds.has(id)) {
+      if (inventory.ids.has(id)) {
         continue;
       }
       mismatches.push({
@@ -348,64 +503,179 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
         message: `Generated doctor checks are missing manifest check "${id}"`,
       });
     }
+    addUnexpectedIds(
+      mismatches,
+      'scripts/generated/doctor_checks.sh',
+      new Set(doctorIds.map(({ id }) => id)),
+      inventory.ids,
+      'Generated doctor checks'
+    );
+    addDuplicateIds(
+      mismatches,
+      'scripts/generated/doctor_checks.sh',
+      inventory.duplicates,
+      'Generated doctor checks'
+    );
+  }
+
+  const webModules = readText(root, 'apps/web/lib/generated/manifest-modules.ts', mismatches);
+  if (webModules !== null) {
+    const inventory = extractManifestModuleIds(webModules);
+    addMissingModuleIds(
+      mismatches,
+      'WEB_MODULE_MISSING',
+      'apps/web/lib/generated/manifest-modules.ts',
+      manifest.modules,
+      inventory.ids,
+      'Generated website module metadata'
+    );
+    addUnexpectedIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-modules.ts',
+      moduleIds(manifest.modules),
+      inventory.ids,
+      'Generated website module metadata'
+    );
+    addDuplicateIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-modules.ts',
+      inventory.duplicates,
+      'Generated website module metadata'
+    );
   }
 
   const webTools = readText(root, 'apps/web/lib/generated/manifest-tools.ts', mismatches);
   if (webTools !== null) {
+    const inventory = extractModuleIdsFromGeneratedTs(webTools);
     addMissingModuleIds(
       mismatches,
       'WEB_TOOL_MISSING',
       'apps/web/lib/generated/manifest-tools.ts',
       visibleModules,
-      extractModuleIdsFromGeneratedTs(webTools),
+      inventory.ids,
+      'Generated website tool metadata'
+    );
+    addUnexpectedIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-tools.ts',
+      moduleIds(visibleModules),
+      inventory.ids,
+      'Generated website tool metadata'
+    );
+    addDuplicateIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-tools.ts',
+      inventory.duplicates,
       'Generated website tool metadata'
     );
   }
 
   const webCommands = readText(root, 'apps/web/lib/generated/manifest-commands.ts', mismatches);
   if (webCommands !== null) {
+    const inventory = extractModuleIdsFromGeneratedTs(webCommands);
     addMissingModuleIds(
       mismatches,
       'WEB_COMMAND_MISSING',
       'apps/web/lib/generated/manifest-commands.ts',
       commandModules,
-      extractModuleIdsFromGeneratedTs(webCommands),
+      inventory.ids,
+      'Generated command reference metadata'
+    );
+    addUnexpectedIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-commands.ts',
+      moduleIds(commandModules),
+      inventory.ids,
+      'Generated command reference metadata'
+    );
+    addDuplicateIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-commands.ts',
+      inventory.duplicates,
       'Generated command reference metadata'
     );
   }
 
   const webTldr = readText(root, 'apps/web/lib/generated/manifest-tldr.ts', mismatches);
   if (webTldr !== null) {
+    const inventory = extractModuleIdsFromGeneratedTs(webTldr);
     addMissingModuleIds(
       mismatches,
       'WEB_TLDR_MISSING',
       'apps/web/lib/generated/manifest-tldr.ts',
       tldrModules,
-      extractModuleIdsFromGeneratedTs(webTldr),
+      inventory.ids,
+      'Generated TLDR metadata'
+    );
+    addUnexpectedIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-tldr.ts',
+      moduleIds(tldrModules),
+      inventory.ids,
+      'Generated TLDR metadata'
+    );
+    addDuplicateIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-tldr.ts',
+      inventory.duplicates,
       'Generated TLDR metadata'
     );
   }
 
   const lessonIndex = readText(root, 'apps/web/lib/generated/manifest-lessons-index.ts', mismatches);
   if (lessonIndex !== null) {
-    const lessonIndexIds = extractModuleIdsFromGeneratedTs(lessonIndex);
+    const lessonInventory = extractLessonIndex(lessonIndex);
+    const allLessonIds = new Set([
+      ...lessonInventory.linkIds.ids,
+      ...lessonInventory.lookupIds.ids,
+    ]);
     addMissingModuleIds(
       mismatches,
       'LESSON_LINK_MISSING',
       'apps/web/lib/generated/manifest-lessons-index.ts',
       lessonModules,
-      lessonIndexIds,
+      lessonInventory.linkIds.ids,
       'Generated lesson index'
+    );
+    addUnexpectedIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-lessons-index.ts',
+      moduleIds(lessonModules),
+      allLessonIds,
+      'Generated lesson index'
+    );
+    addDuplicateIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-lessons-index.ts',
+      lessonInventory.linkIds.duplicates,
+      'Generated lesson link array'
+    );
+    addDuplicateIds(
+      mismatches,
+      'apps/web/lib/generated/manifest-lessons-index.ts',
+      lessonInventory.lookupIds.duplicates,
+      'Generated lesson lookup map'
     );
     for (const module of lessonModules) {
       const slug = module.web?.lesson_slug;
-      if (slug && !lessonIndex.includes(`lessonSlug: "${slug}"`)) {
+      if (slug && lessonInventory.linkSlugs.get(module.id) !== slug) {
         mismatches.push({
           code: 'LESSON_LINK_MISSING',
           file: 'apps/web/lib/generated/manifest-lessons-index.ts',
           moduleId: module.id,
           expected: slug,
-          message: `Generated lesson index is missing lesson slug "${slug}" for "${module.id}"`,
+          actual: lessonInventory.linkSlugs.get(module.id),
+          message: `Generated lesson link for "${module.id}" must map to "${slug}"`,
+        });
+      }
+      if (slug && lessonInventory.lookupSlugs.get(module.id) !== slug) {
+        mismatches.push({
+          code: 'LESSON_LINK_MISSING',
+          file: 'apps/web/lib/generated/manifest-lessons-index.ts',
+          moduleId: module.id,
+          expected: slug,
+          actual: lessonInventory.lookupSlugs.get(module.id),
+          message: `Generated lesson lookup for "${module.id}" must map to "${slug}"`,
         });
       }
     }
@@ -416,7 +686,7 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
 
   summary.checked =
     summary.verifiedInstallers +
-    summary.modules +
+    summary.modules * 2 +
     summary.doctorChecksExpected +
     summary.webVisibleModules +
     summary.webCommandModules +

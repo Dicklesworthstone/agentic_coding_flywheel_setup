@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/bin/bash -p
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    builtin printf '%s\n' 'ERROR: install_stack.sh is a source-only library; run install.sh --only <module-id>' >&2
+    exit 2
+fi
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -12,8 +16,16 @@ set -euo pipefail
 # this script's directory.
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
-# Resolve relative helper paths first.
-ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the script itself before deriving any trusted sibling path. Bash
+# preserves the lexical symlink invocation in BASH_SOURCE, so dirname alone
+# would let an attacker-selected sibling lib directory become the trust root.
+if [[ ! -x /usr/bin/readlink ]]     || ! ACFS_GENERATED_SCRIPT_PATH="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null)"     || [[ -z "$ACFS_GENERATED_SCRIPT_PATH" ]]     || [[ ! -f "$ACFS_GENERATED_SCRIPT_PATH" ]]; then
+    printf '[ERROR] Unable to canonicalize generated installer path
+' >&2
+    return 1 2>/dev/null || exit 1
+fi
+ACFS_GENERATED_SCRIPT_DIR="${ACFS_GENERATED_SCRIPT_PATH%/*}"
+[[ -n "$ACFS_GENERATED_SCRIPT_DIR" ]] || ACFS_GENERATED_SCRIPT_DIR="/"
 
 # Ensure logging functions available
 if [[ -f "$ACFS_GENERATED_SCRIPT_DIR/../lib/logging.sh" ]]; then
@@ -31,7 +43,15 @@ fi
 
 # Source install helpers (run_as_*_shell, selection helpers)
 if [[ -f "$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    # This marker is process-minted control state, never caller configuration.
+    # Discard any inherited value before deciding whether this script owns the
+    # helper security boundary or is being sourced by install.sh.
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
+    if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+        ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE=1
+    fi
     source "$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh"
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
 fi
 
 acfs_generated_system_binary_path() {
@@ -166,7 +186,7 @@ acfs_generated_default_home_for_new_user() {
 # When running a generated installer directly (not sourced by install.sh),
 # set sane defaults and derive ACFS paths from the script location so
 # contract validation passes and local assets are discoverable.
-if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     # Match install.sh defaults
     if [[ -z "${TARGET_USER:-}" ]]; then
         if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
@@ -239,9 +259,14 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
         exit 1
     fi
 
-    # Derive "bootstrap" paths from the repo layout (scripts/generated/.. -> repo root).
-    if [[ -z "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
-        ACFS_BOOTSTRAP_DIR="$(cd "$ACFS_GENERATED_SCRIPT_DIR/../.." && pwd)"
+    # Internal path/checksum authority is process-minted in direct mode. Never
+    # accept caller-provided ACFS_* path overrides or CHECKSUMS_FILE here.
+    unset ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR
+    unset ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML CHECKSUMS_FILE
+    unset ACFS_MANIFEST_INDEX_LOADED ACFS_GENERATED_SELECTION_READY
+    if ! ACFS_BOOTSTRAP_DIR="$(/usr/bin/readlink -f -- "$ACFS_GENERATED_SCRIPT_DIR/../.." 2>/dev/null)"         || [[ -z "$ACFS_BOOTSTRAP_DIR" ]]         || [[ "$ACFS_BOOTSTRAP_DIR" == "/" ]]         || [[ ! -d "$ACFS_BOOTSTRAP_DIR" ]]; then
+        log_error "Unable to derive generated installer repository root"
+        exit 1
     fi
 
     ACFS_BIN_DIR="${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}"
@@ -249,43 +274,15 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
         log_error "ACFS_BIN_DIR must be an absolute path and cannot be '/' (got: ${ACFS_BIN_DIR:-<empty>})"
         exit 1
     fi
-    ACFS_LIB_DIR="${ACFS_LIB_DIR:-$ACFS_BOOTSTRAP_DIR/scripts/lib}"
-    ACFS_GENERATED_DIR="${ACFS_GENERATED_DIR:-$ACFS_BOOTSTRAP_DIR/scripts/generated}"
-    ACFS_ASSETS_DIR="${ACFS_ASSETS_DIR:-$ACFS_BOOTSTRAP_DIR/acfs}"
-    ACFS_CHECKSUMS_YAML="${ACFS_CHECKSUMS_YAML:-$ACFS_BOOTSTRAP_DIR/checksums.yaml}"
-    ACFS_MANIFEST_YAML="${ACFS_MANIFEST_YAML:-$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml}"
+    ACFS_LIB_DIR="$ACFS_BOOTSTRAP_DIR/scripts/lib"
+    ACFS_GENERATED_DIR="$ACFS_BOOTSTRAP_DIR/scripts/generated"
+    ACFS_ASSETS_DIR="$ACFS_BOOTSTRAP_DIR/acfs"
+    ACFS_CHECKSUMS_YAML="$ACFS_BOOTSTRAP_DIR/checksums.yaml"
+    ACFS_MANIFEST_YAML="$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml"
 
     export TARGET_USER TARGET_HOME MODE ACFS_BIN_DIR
     export ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
 
-    # Defensive ownership repair (#306): when running as root, make sure the
-    # target user owns their XDG bin dir before the user-space language
-    # installers (uv/rust/bun) write into it. uv installs via an atomic
-    # mktemp+rename inside ~/.local/bin, so a root-owned ~/.local/bin makes its
-    # mktemp fail with "Permission denied (os error 13)" once the installer is
-    # re-exec'd as the (non-root) target user. The ownership repair is
-    # deliberately non-recursive: only the two directories themselves are
-    # touched, never their contents.
-    if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "${TARGET_USER}" != "root" ]]; then
-        # SECURITY: never chown through a symlink. If an untrusted target user
-        # pre-staged ~/.local or ~/.local/bin as a symlink (e.g. -> /etc) before
-        # the root install, a chown that follows it would transfer ownership of
-        # the link target to them (local privilege escalation). chown -h /
-        # nofollow is not portable, so refuse the repair entirely when either
-        # path already exists as a symlink.
-        if [[ -L "$TARGET_HOME/.local" ]] || [[ -L "$TARGET_HOME/.local/bin" ]]; then
-            log_warn "Skipping ~/.local ownership repair: $TARGET_HOME/.local or .local/bin is a symlink (refusing to chown through it)"
-        else
-            _acfs_repair_mkdir="$(_acfs_system_binary_path mkdir 2>/dev/null || true)"
-            _acfs_repair_chown="$(_acfs_system_binary_path chown 2>/dev/null || true)"
-            if [[ -n "$_acfs_repair_mkdir" ]] && [[ -n "$_acfs_repair_chown" ]]; then
-                if "$_acfs_repair_mkdir" -p "$TARGET_HOME/.local/bin" 2>/dev/null; then
-                    "$_acfs_repair_chown" "${TARGET_USER}" "$TARGET_HOME/.local" "$TARGET_HOME/.local/bin" 2>/dev/null || true
-                fi
-            fi
-            unset _acfs_repair_mkdir _acfs_repair_chown
-        fi
-    fi
 fi
 
 acfs_generated_ensure_selection() {
@@ -353,10 +350,10 @@ acfs_security_init() {
 }
 
 # Category: stack
-# Modules: 29
+# Generated modules: 29
 
 # Named tmux manager (agent cockpit)
-install_stack_ntm() {
+acfs_generated_install_stack_ntm() {
     local module_id="stack.ntm"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -468,7 +465,7 @@ INSTALL_STACK_NTM
 }
 
 # Like gmail for coding agents; MCP HTTP server + token; installs beads tools
-install_stack_mcp_agent_mail() {
+acfs_generated_install_stack_mcp_agent_mail() {
     local module_id="stack.mcp_agent_mail"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -969,7 +966,7 @@ INSTALL_STACK_MCP_AGENT_MAIL
 }
 
 # Local-first knowledge management with hybrid semantic search (ms)
-install_stack_meta_skill() {
+acfs_generated_install_stack_meta_skill() {
     local module_id="stack.meta_skill"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -988,14 +985,10 @@ install_stack_meta_skill() {
             local verified_installer_file=""
             local verified_installer_chmod_bin=""
 
-            # meta_skill has no prebuilt Linux ARM64 release asset yet; build from source there.
+            # meta_skill has no checksum-anchored Linux ARM64 install source yet.
             if [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && { [[ "$(uname -m 2>/dev/null)" == "aarch64" ]] || [[ "$(uname -m 2>/dev/null)" == "arm64" ]]; }; then
-                log_info "stack.meta_skill: Linux ARM64 detected; building meta_skill from source"
-                if run_as_target_shell "command -v cargo >/dev/null 2>&1 && cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"; then
-                    install_success=true
-                else
-                    log_error "stack.meta_skill: cargo source install failed for Linux ARM64"
-                fi
+                log_error "stack.meta_skill: Linux ARM64 is unsupported until a checksum-anchored artifact or source revision is available"
+                ACFS_LAST_MODULE_FAILURE_REASON="unsupported architecture"
             else
                     # Cleared per attempt so a stale reason from an earlier module can
                     # never be misattributed to this one.
@@ -1101,7 +1094,7 @@ INSTALL_STACK_META_SKILL
 }
 
 # Automated iterative spec refinement with extended AI reasoning (apr)
-install_stack_automated_plan_reviser() {
+acfs_generated_install_stack_automated_plan_reviser() {
     local module_id="stack.automated_plan_reviser"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -1233,7 +1226,7 @@ INSTALL_STACK_AUTOMATED_PLAN_REVISER
 }
 
 # Curated battle-tested prompts for AI agents - browse and install as skills (jfp)
-install_stack_jeffreysprompts() {
+acfs_generated_install_stack_jeffreysprompts() {
     local module_id="stack.jeffreysprompts"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -1365,7 +1358,7 @@ INSTALL_STACK_JEFFREYSPROMPTS
 }
 
 # Find and terminate stuck/zombie processes with intelligent scoring (pt)
-install_stack_process_triage() {
+acfs_generated_install_stack_process_triage() {
     local module_id="stack.process_triage"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -1497,7 +1490,7 @@ INSTALL_STACK_PROCESS_TRIAGE
 }
 
 # UBS bug scanning (easy-mode)
-install_stack_ultimate_bug_scanner() {
+acfs_generated_install_stack_ultimate_bug_scanner() {
     local module_id="stack.ultimate_bug_scanner"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -1619,7 +1612,7 @@ INSTALL_STACK_ULTIMATE_BUG_SCANNER
 }
 
 # beads_rust (br) - Rust issue tracker with graph-aware dependencies
-install_stack_beads_rust() {
+acfs_generated_install_stack_beads_rust() {
     local module_id="stack.beads_rust"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -1741,7 +1734,7 @@ INSTALL_STACK_BEADS_RUST
 }
 
 # bv TUI for Beads tasks
-install_stack_beads_viewer() {
+acfs_generated_install_stack_beads_viewer() {
     local module_id="stack.beads_viewer"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -1853,7 +1846,7 @@ INSTALL_STACK_BEADS_VIEWER
 }
 
 # Unified search across agent session history
-install_stack_cass() {
+acfs_generated_install_stack_cass() {
     local module_id="stack.cass"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -1875,22 +1868,44 @@ install_stack_cass() {
 
             local verified_installer_tmpdir_template="$TARGET_HOME"'/.cache/acfs/installer-tmp/cass.XXXXXX'
             local verified_installer_tmpdir_parent="${verified_installer_tmpdir_template%/*}"
+            local verified_installer_tmpdir_prefix="${verified_installer_tmpdir_template%XXXXXX}"
             local verified_installer_tmpdir=""
-            if [[ "$verified_installer_tmpdir_template" == *[[:space:]]* ]]; then
-                log_error "stack.cass: installer TMPDIR template contains whitespace: $verified_installer_tmpdir_template"
-                verified_installer_env_ready=false
-            elif [[ "$verified_installer_tmpdir_template" != *XXXXXX* ]]; then
+            local verified_installer_tmpdir_suffix=""
+            local verified_installer_mkdir_bin=""
+            local verified_installer_mktemp_bin=""
+            if [[ "$verified_installer_tmpdir_template" != *XXXXXX* ]]; then
                 log_error "stack.cass: installer TMPDIR template must contain XXXXXX: $verified_installer_tmpdir_template"
                 verified_installer_env_ready=false
-            elif ! run_as_target mkdir -p "$verified_installer_tmpdir_parent"; then
+            elif ! verified_installer_mkdir_bin="$(acfs_generated_system_binary_path mkdir 2>/dev/null)"; then
+                log_error "stack.cass: trusted mkdir not found for installer TMPDIR"
+                verified_installer_env_ready=false
+            elif ! verified_installer_mktemp_bin="$(acfs_generated_system_binary_path mktemp 2>/dev/null)"; then
+                log_error "stack.cass: trusted mktemp not found for installer TMPDIR"
+                verified_installer_env_ready=false
+            elif [[ "$verified_installer_tmpdir_parent" != "$TARGET_HOME/.cache/acfs/installer-tmp" ]]; then
+                log_error "stack.cass: installer TMPDIR parent escaped the approved target-home path"
+                verified_installer_env_ready=false
+            elif [[ -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" ]]; then
+                log_error "stack.cass: refusing installer TMPDIR through a symlinked target-home path"
+                verified_installer_env_ready=false
+            elif ! run_as_target "$verified_installer_mkdir_bin" -p "$verified_installer_tmpdir_parent"; then
                 log_error "stack.cass: failed to prepare installer TMPDIR parent: $verified_installer_tmpdir_parent"
                 verified_installer_env_ready=false
-            elif ! verified_installer_tmpdir="$(run_as_target mktemp -d "$verified_installer_tmpdir_template" 2>/dev/null)"; then
+            elif [[ ! -d "$verified_installer_tmpdir_parent" || -L "$TARGET_HOME" || -L "$TARGET_HOME/.cache" || -L "$TARGET_HOME/.cache/acfs" || -L "$verified_installer_tmpdir_parent" ]]; then
+                log_error "stack.cass: installer TMPDIR parent is not a confined real directory"
+                verified_installer_env_ready=false
+            elif ! verified_installer_tmpdir="$(run_as_target "$verified_installer_mktemp_bin" -d "$verified_installer_tmpdir_template" 2>/dev/null)"; then
                 log_error "stack.cass: failed to create installer TMPDIR from template: $verified_installer_tmpdir_template"
                 verified_installer_env_ready=false
             elif [[ -z "$verified_installer_tmpdir" ]]; then
                 log_error "stack.cass: installer TMPDIR creation returned an empty path"
                 verified_installer_env_ready=false
+            else
+                verified_installer_tmpdir_suffix="${verified_installer_tmpdir#"$verified_installer_tmpdir_prefix"}"
+                if [[ "$verified_installer_tmpdir" != "$verified_installer_tmpdir_prefix"* || -z "$verified_installer_tmpdir_suffix" || "$verified_installer_tmpdir_suffix" == *[!A-Za-z0-9]* || ! -d "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir_parent" ]]; then
+                    log_error "stack.cass: installer TMPDIR escaped its trusted template: $verified_installer_tmpdir"
+                    verified_installer_env_ready=false
+                fi
             fi
 
                 # Cleared per attempt so a stale reason from an earlier module can
@@ -1991,7 +2006,7 @@ INSTALL_STACK_CASS
 }
 
 # Procedural memory for agents (cass-memory)
-install_stack_cm() {
+acfs_generated_install_stack_cm() {
     local module_id="stack.cm"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2113,7 +2128,7 @@ INSTALL_STACK_CM
 }
 
 # Instant auth switching for agent CLIs
-install_stack_caam() {
+acfs_generated_install_stack_caam() {
     local module_id="stack.caam"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2225,7 +2240,7 @@ INSTALL_STACK_CAAM
 }
 
 # Two-person rule for dangerous commands (optional guardrails)
-install_stack_slb() {
+acfs_generated_install_stack_slb() {
     local module_id="stack.slb"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2298,7 +2313,7 @@ INSTALL_STACK_SLB
 }
 
 # Destructive Command Guard - Claude Code hook blocking dangerous git/fs commands
-install_stack_dcg() {
+acfs_generated_install_stack_dcg() {
     local module_id="stack.dcg"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2474,7 +2489,7 @@ INSTALL_STACK_DCG
 }
 
 # Repo Updater - multi-repo sync + AI-driven commit automation
-install_stack_ru() {
+acfs_generated_install_stack_ru() {
     local module_id="stack.ru"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2586,7 +2601,7 @@ INSTALL_STACK_RU
 }
 
 # Brenner Bot - research session manager with hypothesis tracking
-install_stack_brenner_bot() {
+acfs_generated_install_stack_brenner_bot() {
     local module_id="stack.brenner_bot"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2708,7 +2723,7 @@ INSTALL_STACK_BRENNER_BOT
 }
 
 # Remote Compilation Helper - transparent build offloading for AI coding agents
-install_stack_rch() {
+acfs_generated_install_stack_rch() {
     local module_id="stack.rch"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2830,7 +2845,7 @@ INSTALL_STACK_RCH
 }
 
 # WezTerm Automata (wa) - terminal automation and orchestration for AI agents
-install_stack_wezterm_automata() {
+acfs_generated_install_stack_wezterm_automata() {
     local module_id="stack.wezterm_automata"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -2885,7 +2900,7 @@ INSTALL_STACK_WEZTERM_AUTOMATA
 }
 
 # System Resource Protection Script - ananicy-cpp rules + TUI monitor for responsive dev workstations
-install_stack_srps() {
+acfs_generated_install_stack_srps() {
     local module_id="stack.srps"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -3023,7 +3038,7 @@ INSTALL_STACK_SRPS
 }
 
 # Two-tier hybrid local search — lexical (BM25) + semantic retrieval with progressive delivery (fsfs)
-install_stack_frankensearch() {
+acfs_generated_install_stack_frankensearch() {
     local module_id="stack.frankensearch"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -3218,7 +3233,7 @@ INSTALL_STACK_FRANKENSEARCH
 }
 
 # Cross-platform disk-pressure defense for AI coding workloads (sbh)
-install_stack_storage_ballast_helper() {
+acfs_generated_install_stack_storage_ballast_helper() {
     local module_id="stack.storage_ballast_helper"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -3340,7 +3355,7 @@ INSTALL_STACK_STORAGE_BALLAST_HELPER
 }
 
 # Cross-provider AI coding session resumption — convert and resume sessions across providers (casr)
-install_stack_cross_agent_session_resumer() {
+acfs_generated_install_stack_cross_agent_session_resumer() {
     local module_id="stack.cross_agent_session_resumer"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -3462,7 +3477,7 @@ INSTALL_STACK_CROSS_AGENT_SESSION_RESUMER
 }
 
 # Fallback release infrastructure — local builds via act when GitHub Actions is throttled (dsr)
-install_stack_doodlestein_self_releaser() {
+acfs_generated_install_stack_doodlestein_self_releaser() {
     local module_id="stack.doodlestein_self_releaser"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -3584,7 +3599,7 @@ INSTALL_STACK_DOODLESTEIN_SELF_RELEASER
 }
 
 # Smart backup tool for AI coding agent configuration folders (asb)
-install_stack_agent_settings_backup() {
+acfs_generated_install_stack_agent_settings_backup() {
     local module_id="stack.agent_settings_backup"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -3759,7 +3774,7 @@ INSTALL_STACK_AGENT_SETTINGS_BACKUP
 }
 
 # Post-compaction reminder hook for Claude Code that forces an AGENTS.md re-read
-install_stack_pcr() {
+acfs_generated_install_stack_pcr() {
     local module_id="stack.pcr"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -3941,7 +3956,7 @@ INSTALL_STACK_PCR
 }
 
 # Durable, local-first, explainable memory for coding agents (ee)
-install_stack_eidetic_engine_cli() {
+acfs_generated_install_stack_eidetic_engine_cli() {
     local module_id="stack.eidetic_engine_cli"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -4063,7 +4078,7 @@ INSTALL_STACK_EIDETIC_ENGINE_CLI
 }
 
 # Pure-Rust Markdown engine rendering self-contained HTML and tagged PDF (fmd)
-install_stack_franken_markdown() {
+acfs_generated_install_stack_franken_markdown() {
     local module_id="stack.franken_markdown"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -4185,7 +4200,7 @@ INSTALL_STACK_FRANKEN_MARKDOWN
 }
 
 # Native single-binary Rust port of the Pi coding agent (pi)
-install_stack_pi_agent_rust() {
+acfs_generated_install_stack_pi_agent_rust() {
     local module_id="stack.pi_agent_rust"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -4307,7 +4322,7 @@ INSTALL_STACK_PI_AGENT_RUST
 }
 
 # Recover crashed coding-agent sessions after a hard power cut (pfr)
-install_stack_power_failure_resumer() {
+acfs_generated_install_stack_power_failure_resumer() {
     local module_id="stack.power_failure_resumer"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -4428,41 +4443,4 @@ INSTALL_STACK_POWER_FAILURE_RESUMER
     log_success "stack.power_failure_resumer installed"
 }
 
-# Install all stack modules
-install_stack() {
-    log_section "Installing stack modules"
-    install_stack_ntm
-    install_stack_mcp_agent_mail
-    install_stack_meta_skill
-    install_stack_automated_plan_reviser
-    install_stack_jeffreysprompts
-    install_stack_process_triage
-    install_stack_ultimate_bug_scanner
-    install_stack_beads_rust
-    install_stack_beads_viewer
-    install_stack_cass
-    install_stack_cm
-    install_stack_caam
-    install_stack_slb
-    install_stack_dcg
-    install_stack_ru
-    install_stack_brenner_bot
-    install_stack_rch
-    install_stack_wezterm_automata
-    install_stack_srps
-    install_stack_frankensearch
-    install_stack_storage_ballast_helper
-    install_stack_cross_agent_session_resumer
-    install_stack_doodlestein_self_releaser
-    install_stack_agent_settings_backup
-    install_stack_pcr
-    install_stack_eidetic_engine_cli
-    install_stack_franken_markdown
-    install_stack_pi_agent_rust
-    install_stack_power_failure_resumer
-}
-
-# Run if executed directly
-if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
-    install_stack
-fi
+# Category scripts are source-only libraries.

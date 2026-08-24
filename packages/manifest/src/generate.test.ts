@@ -10,9 +10,13 @@ import { describe, test, expect, beforeAll } from 'bun:test';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { parseManifestFile } from './parser.js';
 import {
+  findUnexpectedGeneratedPaths,
   isOptionalVerifyCommand,
+  normalizeVerifiedInstallerScriptArgs,
   stripOptionalVerifySuffix,
 } from './generate.js';
 import {
@@ -20,8 +24,9 @@ import {
   getModuleCategory,
   sortModulesByInstallOrder,
   getTransitiveDependencies,
+  toGeneratedFunctionName,
 } from './utils.js';
-import type { Manifest, Module } from './types.js';
+import { MODULE_CATEGORIES, type Manifest, type Module } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, '../../..');
@@ -31,6 +36,17 @@ const WEB_GENERATED_DIR = resolve(PROJECT_ROOT, 'apps/web/lib/generated');
 const MANIFEST_INDEX_PATH = resolve(GENERATED_DIR, 'manifest_index.sh');
 
 describe('Generator optional verify parsing', () => {
+  test('reports stale generated paths without deleting them', () => {
+    expect(findUnexpectedGeneratedPaths(
+      ['/repo/generated/current.sh'],
+      ['/repo/generated/current.sh', '/repo/generated/install_old.sh'],
+    )).toEqual(['/repo/generated/install_old.sh']);
+    expect(findUnexpectedGeneratedPaths(
+      ['/repo/generated/current.sh'],
+      ['/repo/generated/current.sh'],
+    )).toEqual([]);
+  });
+
   test('strips optional true suffixes with trailing comments', () => {
     const command = 'ms doctor || true # optional until credentials are configured';
 
@@ -43,6 +59,28 @@ describe('Generator optional verify parsing', () => {
 
     expect(isOptionalVerifyCommand(command)).toBe(false);
     expect(stripOptionalVerifySuffix(command)).toBe(command);
+  });
+
+  test('normalizes a manifest-only verified-installer separator exactly once', () => {
+    expect(normalizeVerifiedInstallerScriptArgs(
+      'stack.frankensearch',
+      ['--', '--easy-mode'],
+    )).toEqual(['--easy-mode']);
+    expect(normalizeVerifiedInstallerScriptArgs(
+      'stack.frankensearch',
+      ['--easy-mode'],
+    )).toEqual(['--easy-mode']);
+    expect(() => normalizeVerifiedInstallerScriptArgs(
+      'stack.frankensearch',
+      ['-c', 'attacker', '--'],
+    )).toThrow('runner options before --');
+  });
+
+  test('places every module installer in a private generated namespace', () => {
+    expect(toGeneratedFunctionName('stack.ntm')).toBe('acfs_generated_install_stack_ntm');
+    expect(toGeneratedFunctionName('agents.antigravity')).toBe(
+      'acfs_generated_install_agents_antigravity'
+    );
   });
 });
 
@@ -137,6 +175,13 @@ describe('Generated manifest_index.sh content', () => {
     expect(manifestIndexContent).toContain('declare -gA ACFS_MODULE_DEPS=(');
   });
 
+  test('publishes the canonical category order for shell consumers', () => {
+    expect(manifestIndexContent).toContain('ACFS_CATEGORIES_IN_ORDER=(');
+    for (const category of MODULE_CATEGORIES) {
+      expect(manifestIndexContent).toContain(`  "${category}"`);
+    }
+  });
+
   test('dependencies are correctly formatted', () => {
     for (const module of manifest.modules) {
       const deps = module.dependencies?.join(',') ?? '';
@@ -149,11 +194,24 @@ describe('Generated manifest_index.sh content', () => {
     expect(manifestIndexContent).toContain('declare -gA ACFS_MODULE_FUNC=(');
   });
 
-  test('function names follow convention', () => {
+  test('function names follow the isolated convention', () => {
     for (const module of manifest.modules) {
-      const expectedFunc = `install_${module.id.replace(/\./g, '_')}`;
-      // Generator emits associative-array keys as `[module.id]` (unquoted, safe for our IDs).
-      expect(manifestIndexContent).toContain(`['${module.id}']="${expectedFunc}"`);
+      const expectedFunc = toGeneratedFunctionName(module.id);
+      if (module.generated === false) {
+        expect(manifestIndexContent).not.toContain(`['${module.id}']="${expectedFunc}"`);
+      } else {
+        expect(manifestIndexContent).toContain(`['${module.id}']="${expectedFunc}"`);
+      }
+    }
+    expect(manifestIndexContent).not.toMatch(/="install_[a-z]/);
+  });
+
+  test('records generated versus orchestration-owned modules explicitly', () => {
+    expect(manifestIndexContent).toContain('declare -gA ACFS_MODULE_GENERATED=(');
+    for (const module of manifest.modules) {
+      expect(manifestIndexContent).toContain(
+        `['${module.id}']="${module.generated === false ? '0' : '1'}"`
+      );
     }
   });
 
@@ -362,10 +420,18 @@ describe('Generated verified installer args', () => {
     expect(stackContent).toContain(
       `local verified_installer_tmpdir_template="$TARGET_HOME"'/.cache/acfs/installer-tmp/cass.XXXXXX'`
     );
-    expect(stackContent).toContain('run_as_target mkdir -p "$verified_installer_tmpdir_parent"');
+    expect(stackContent).not.toContain('installer TMPDIR template contains whitespace');
+    expect(stackContent).toContain('acfs_generated_system_binary_path mkdir');
+    expect(stackContent).toContain('acfs_generated_system_binary_path mktemp');
+    expect(stackContent).toContain('run_as_target "$verified_installer_mkdir_bin" -p "$verified_installer_tmpdir_parent"');
     expect(stackContent).toContain(
-      'verified_installer_tmpdir="$(run_as_target mktemp -d "$verified_installer_tmpdir_template" 2>/dev/null)"'
+      'verified_installer_tmpdir="$(run_as_target "$verified_installer_mktemp_bin" -d "$verified_installer_tmpdir_template" 2>/dev/null)"'
     );
+    expect(stackContent).toContain(
+      '[[ "$verified_installer_tmpdir" != "$verified_installer_tmpdir_prefix"* || -z "$verified_installer_tmpdir_suffix"'
+    );
+    expect(stackContent).toContain('|| -L "$verified_installer_tmpdir" || -L "$verified_installer_tmpdir_parent" ]]');
+    expect(stackContent).toContain('refusing installer TMPDIR through a symlinked target-home path');
     expect(stackContent).toContain(
       `run_as_target_runner 'env' "TMPDIR=$verified_installer_tmpdir" 'bash' "$verified_installer_file" '--easy-mode' '--verify'`
     );
@@ -408,18 +474,17 @@ describe('Generated verified installer args', () => {
     expect(agentsContent).toContain('acfs_link_primary_bin_command() {');
   });
 
-  test('stack.meta_skill falls back to cargo source install on Linux ARM64', () => {
+  test('stack.meta_skill fails closed on Linux ARM64 without anchored source', () => {
     const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
     expect(existsSync(stackPath)).toBe(true);
     const stackContent = readFileSync(stackPath, 'utf-8');
 
-    expect(stackContent).toContain('meta_skill has no prebuilt Linux ARM64 release asset yet');
+    expect(stackContent).toContain('meta_skill has no checksum-anchored Linux ARM64 install source yet');
     expect(stackContent).toContain('[[ "$(uname -s 2>/dev/null)" == "Linux" ]]');
     expect(stackContent).toContain('[[ "$(uname -m 2>/dev/null)" == "aarch64" ]]');
     expect(stackContent).toContain('[[ "$(uname -m 2>/dev/null)" == "arm64" ]]');
-    expect(stackContent).toContain(
-      'run_as_target_shell "command -v cargo >/dev/null 2>&1 && cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"'
-    );
+    expect(stackContent).toContain('Linux ARM64 is unsupported until a checksum-anchored artifact or source revision is available');
+    expect(stackContent).not.toContain('cargo install --git https://github.com/Dicklesworthstone/meta_skill');
   });
 
   test('stack.frankensearch selects lite Linux release artifacts', () => {
@@ -836,13 +901,7 @@ describe('Utils: getCategories', () => {
 
   test('returns all unique categories', () => {
     const categories = getCategories(manifest);
-
-    // Expected categories based on manifest
-    const expectedCategories = ['base', 'users', 'shell', 'cli', 'lang', 'tools', 'agents', 'db', 'cloud', 'stack', 'acfs'];
-
-    for (const cat of expectedCategories) {
-      expect(categories).toContain(cat);
-    }
+    expect([...categories].sort()).toEqual([...MODULE_CATEGORIES].sort());
   });
 
   test('returns no duplicates', () => {
@@ -853,20 +912,119 @@ describe('Utils: getCategories', () => {
 });
 
 describe('Generated script headers', () => {
-  test('all generated scripts have consistent header', () => {
-    const categories = ['base', 'lang', 'agents', 'stack'];
+  test('executable generated headers canonicalize their trust root and derive directness locally', () => {
+    const scriptContent = readFileSync(resolve(GENERATED_DIR, 'install_stack.sh'), 'utf-8');
 
-    for (const category of categories) {
-      const scriptPath = resolve(GENERATED_DIR, `install_${category}.sh`);
-      if (existsSync(scriptPath)) {
-        const content = readFileSync(scriptPath, 'utf-8');
+    expect(scriptContent.startsWith('#!/bin/bash -p\n')).toBe(true);
+    expect(scriptContent).toContain(
+      'ACFS_GENERATED_SCRIPT_PATH="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null)"'
+    );
+    expect(scriptContent).toContain(
+      'unset ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR'
+    );
+    expect(scriptContent).toContain('if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then');
+    expect(scriptContent).not.toContain('ACFS_GENERATED_DIRECT_EXECUTION');
+    expect(scriptContent).not.toContain(
+      'ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"'
+    );
+  });
 
-        // Check for standard header elements
-        expect(content).toStartWith('#!/bin/bash\n');
-        expect(content).toContain('AUTO-GENERATED');
-        expect(content).toContain('set -euo pipefail');
-      }
+  test('nested category sourcing cannot suppress the install_all direct refusal', () => {
+    const installAllContent = readFileSync(resolve(GENERATED_DIR, 'install_all.sh'), 'utf-8');
+
+    expect(installAllContent).toContain('source "$ACFS_GENERATED_SCRIPT_DIR/install_base.sh"');
+    const refusal = 'install_all.sh is a source-only generated harness; run install.sh';
+    expect(installAllContent).toContain(refusal);
+    expect(installAllContent.indexOf(refusal)).toBeLessThan(
+      installAllContent.indexOf('source "$ACFS_GENERATED_SCRIPT_DIR/../lib/logging.sh"')
+    );
+    expect(installAllContent).not.toContain('ACFS_GENERATED_DIRECT_EXECUTION');
+    expect(installAllContent).toContain('acfs_generated_install_all() {');
+    expect(installAllContent).not.toContain('\ninstall_all() {');
+  });
+
+  test('every category file is source-only and exposes no dependency-incomplete aggregate', () => {
+    for (const category of MODULE_CATEGORIES) {
+      const categoryContent = readFileSync(
+        resolve(GENERATED_DIR, `install_${category}.sh`),
+        'utf-8'
+      );
+
+      expect(categoryContent).toContain(
+        `install_${category}.sh is a source-only library; run install.sh --only <module-id>`
+      );
+      expect(categoryContent).toContain('exit 2');
+      expect(categoryContent.indexOf('source-only library')).toBeLessThan(
+        categoryContent.indexOf('source "$ACFS_GENERATED_SCRIPT_DIR/../lib/logging.sh"')
+      );
+      expect(categoryContent).not.toContain(`\ninstall_${category}() {`);
     }
+
+    const usersContent = readFileSync(resolve(GENERATED_DIR, 'install_users.sh'), 'utf-8');
+    expect(usersContent).toContain(
+      'Orchestrator-owned modules omitted from this library: users.ubuntu'
+    );
+    expect(usersContent).not.toContain('acfs_generated_install_users_ubuntu() {');
+  });
+
+  test('direct generated install harnesses refuse before runtime setup', () => {
+    for (const filename of [
+      ...MODULE_CATEGORIES.map((category) => `install_${category}.sh`),
+      'install_all.sh',
+    ]) {
+      const result = spawnSync('/bin/bash', [resolve(GENERATED_DIR, filename)], {
+        encoding: 'utf-8',
+      });
+
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain('source-only');
+      expect(result.stderr).not.toContain('Unable to canonicalize generated installer path');
+    }
+  });
+
+  test('all generated scripts have consistent header', () => {
+    for (const category of MODULE_CATEGORIES) {
+      const scriptPath = resolve(GENERATED_DIR, `install_${category}.sh`);
+      const content = readFileSync(scriptPath, 'utf-8');
+
+      // Check for standard header elements
+      expect(content).toStartWith('#!/bin/bash -p\n');
+      expect(content).toContain('AUTO-GENERATED');
+      expect(content).toContain('set -euo pipefail');
+      expect(content).toContain('ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE=1');
+      expect(content.indexOf('unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE')).toBeLessThan(
+        content.indexOf('ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE=1')
+      );
+    }
+  });
+
+  test('source mode ignores an inherited force marker and preserves its orchestrator runner', () => {
+    const scriptPath = resolve(GENERATED_DIR, 'install_base.sh');
+    const result = spawnSync(
+      '/bin/bash',
+      [
+        '-c',
+        [
+          'set -euo pipefail',
+          'run_as_target() { printf "orchestrator-runner\\n"; }',
+          'source "$1"',
+          'run_as_target',
+          '[[ -z "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE+x}" ]]',
+        ].join('; '),
+        '_',
+        scriptPath,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          PATH: '/usr/bin:/bin',
+          ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE: '1',
+        },
+      }
+    );
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('orchestrator-runner\n');
   });
 
   test('generated scripts source logging.sh', () => {
@@ -885,23 +1043,97 @@ describe('Generated script headers', () => {
     }
   });
 
-  test('internal checksums cover state-mutating repair and upgrade modules', () => {
+  test('internal checksum ledger is closed, inert data for its controlled runtime set', () => {
     const content = readFileSync(resolve(GENERATED_DIR, 'internal_checksums.sh'), 'utf-8');
-    const checksummedPaths = new Set(
-      content.split('\n').flatMap((line) => {
-        const match = line.match(/^\s*\[([^\]]+)]="[a-f0-9]{64}"\s*$/);
-        return match ? [match[1]] : [];
-      })
-    );
-    for (const path of [
+    const rawEntries: Array<[string, string]> = [];
+    const checksums = new Map<string, string>();
+    for (const line of content.split('\n')) {
+      const match = line.match(/^\s*\[([^\]]+)]="([a-f0-9]{64})"\s*$/);
+      if (match) {
+        rawEntries.push([match[1], match[2]]);
+        checksums.set(match[1], match[2]);
+      }
+    }
+
+    expect(content).toContain('ACFS_INTERNAL_CHECKSUMS_SCHEMA=1');
+    expect(content).not.toContain('ACFS_INTERNAL_CHECKSUMS_GENERATED=');
+    expect(content).not.toContain('$(date');
+    const countMatch = content.match(/^ACFS_INTERNAL_CHECKSUMS_COUNT=(\d+)$/m);
+    expect(countMatch).not.toBeNull();
+    expect(rawEntries.length).toBe(checksums.size);
+    expect(Number(countMatch?.[1])).toBe(checksums.size);
+    expect(checksums.size).toBe(59);
+
+    const mandatoryPaths = [
+      'install.sh',
+      'checksums.yaml',
+      'scripts/preflight.sh',
+      'scripts/lib/github_api.sh',
       'scripts/lib/autofix.sh',
       'scripts/lib/autofix_existing.sh',
       'scripts/lib/autofix_unattended.sh',
       'scripts/lib/autofix_version_managers.sh',
       'scripts/lib/ubuntu_upgrade.sh',
-    ]) {
-      expect(checksummedPaths.has(path)).toBe(true);
+      'scripts/lib/upgrade_resume.sh',
+      'scripts/lib/contract.sh',
+      'scripts/lib/output.sh',
+      'scripts/lib/gum_ui.sh',
+      'scripts/lib/progress.sh',
+      'scripts/lib/report.sh',
+      'scripts/lib/error_tracking.sh',
+      'scripts/lib/tailscale.sh',
+      'scripts/lib/webhook.sh',
+      'scripts/lib/notify.sh',
+      'scripts/lib/stack.sh',
+      'scripts/lib/nightly_update.sh',
+      'scripts/templates/acfs-upgrade-resume.service',
+      'scripts/templates/acfs-nightly-update.service',
+      'scripts/templates/acfs-nightly-update.timer',
+      'packages/onboard/onboard.sh',
+      'scripts/generated/manifest_index.sh',
+      'scripts/generated/doctor_checks.sh',
+      'scripts/generated/install_all.sh',
+      ...MODULE_CATEGORIES.map((category) => `scripts/generated/install_${category}.sh`),
+    ];
+    for (const path of mandatoryPaths) {
+      expect(checksums.has(path)).toBe(true);
     }
+
+    for (const [path, expected] of checksums) {
+      const actual = createHash('sha256')
+        .update(readFileSync(resolve(PROJECT_ROOT, path)))
+        .digest('hex');
+      expect(expected).toBe(actual);
+    }
+
+    const installer = readFileSync(resolve(PROJECT_ROOT, 'install.sh'), 'utf-8');
+    const requiredBlock = installer.match(
+      /local -a required_paths=\(\n([\s\S]*?)\n\s*\)\n\s*if \(\( parsed_count/
+    );
+    expect(requiredBlock).not.toBeNull();
+    const runtimeRequiredPathList = (requiredBlock?.[1] ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const runtimeRequiredPaths = new Set(runtimeRequiredPathList);
+    expect(runtimeRequiredPathList.length).toBe(runtimeRequiredPaths.size);
+    expect(runtimeRequiredPaths).toEqual(new Set(checksums.keys()));
+
+    const driftChecker = readFileSync(
+      resolve(PROJECT_ROOT, 'scripts/check-manifest-drift.sh'),
+      'utf-8'
+    );
+    const driftRequiredBlock = driftChecker.match(
+      /INTERNAL_CHECKSUM_REQUIRED_PATHS=\(\n([\s\S]*?)\n\)/
+    );
+    expect(driftRequiredBlock).not.toBeNull();
+    const driftRequiredPathList = (driftRequiredBlock?.[1] ?? '')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const driftRequiredPaths = new Set(driftRequiredPathList);
+    expect(driftRequiredPathList.length).toBe(driftRequiredPaths.size);
+    expect(driftRequiredPaths).toEqual(new Set(checksums.keys()));
   });
 
   test('generated system-binary resolvers exclude locally managed prefixes', () => {

@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/bin/bash -p
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    builtin printf '%s\n' 'ERROR: install_filesystem.sh is a source-only library; run install.sh --only <module-id>' >&2
+    exit 2
+fi
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -12,8 +16,16 @@ set -euo pipefail
 # this script's directory.
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
-# Resolve relative helper paths first.
-ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the script itself before deriving any trusted sibling path. Bash
+# preserves the lexical symlink invocation in BASH_SOURCE, so dirname alone
+# would let an attacker-selected sibling lib directory become the trust root.
+if [[ ! -x /usr/bin/readlink ]]     || ! ACFS_GENERATED_SCRIPT_PATH="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null)"     || [[ -z "$ACFS_GENERATED_SCRIPT_PATH" ]]     || [[ ! -f "$ACFS_GENERATED_SCRIPT_PATH" ]]; then
+    printf '[ERROR] Unable to canonicalize generated installer path
+' >&2
+    return 1 2>/dev/null || exit 1
+fi
+ACFS_GENERATED_SCRIPT_DIR="${ACFS_GENERATED_SCRIPT_PATH%/*}"
+[[ -n "$ACFS_GENERATED_SCRIPT_DIR" ]] || ACFS_GENERATED_SCRIPT_DIR="/"
 
 # Ensure logging functions available
 if [[ -f "$ACFS_GENERATED_SCRIPT_DIR/../lib/logging.sh" ]]; then
@@ -31,7 +43,15 @@ fi
 
 # Source install helpers (run_as_*_shell, selection helpers)
 if [[ -f "$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh" ]]; then
+    # This marker is process-minted control state, never caller configuration.
+    # Discard any inherited value before deciding whether this script owns the
+    # helper security boundary or is being sourced by install.sh.
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
+    if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+        ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE=1
+    fi
     source "$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh"
+    unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
 fi
 
 acfs_generated_system_binary_path() {
@@ -166,7 +186,7 @@ acfs_generated_default_home_for_new_user() {
 # When running a generated installer directly (not sourced by install.sh),
 # set sane defaults and derive ACFS paths from the script location so
 # contract validation passes and local assets are discoverable.
-if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     # Match install.sh defaults
     if [[ -z "${TARGET_USER:-}" ]]; then
         if [[ $EUID -eq 0 ]] && [[ -z "${SUDO_USER:-}" ]]; then
@@ -239,9 +259,14 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
         exit 1
     fi
 
-    # Derive "bootstrap" paths from the repo layout (scripts/generated/.. -> repo root).
-    if [[ -z "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
-        ACFS_BOOTSTRAP_DIR="$(cd "$ACFS_GENERATED_SCRIPT_DIR/../.." && pwd)"
+    # Internal path/checksum authority is process-minted in direct mode. Never
+    # accept caller-provided ACFS_* path overrides or CHECKSUMS_FILE here.
+    unset ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR
+    unset ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML CHECKSUMS_FILE
+    unset ACFS_MANIFEST_INDEX_LOADED ACFS_GENERATED_SELECTION_READY
+    if ! ACFS_BOOTSTRAP_DIR="$(/usr/bin/readlink -f -- "$ACFS_GENERATED_SCRIPT_DIR/../.." 2>/dev/null)"         || [[ -z "$ACFS_BOOTSTRAP_DIR" ]]         || [[ "$ACFS_BOOTSTRAP_DIR" == "/" ]]         || [[ ! -d "$ACFS_BOOTSTRAP_DIR" ]]; then
+        log_error "Unable to derive generated installer repository root"
+        exit 1
     fi
 
     ACFS_BIN_DIR="${ACFS_BIN_DIR:-$TARGET_HOME/.local/bin}"
@@ -249,43 +274,15 @@ if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
         log_error "ACFS_BIN_DIR must be an absolute path and cannot be '/' (got: ${ACFS_BIN_DIR:-<empty>})"
         exit 1
     fi
-    ACFS_LIB_DIR="${ACFS_LIB_DIR:-$ACFS_BOOTSTRAP_DIR/scripts/lib}"
-    ACFS_GENERATED_DIR="${ACFS_GENERATED_DIR:-$ACFS_BOOTSTRAP_DIR/scripts/generated}"
-    ACFS_ASSETS_DIR="${ACFS_ASSETS_DIR:-$ACFS_BOOTSTRAP_DIR/acfs}"
-    ACFS_CHECKSUMS_YAML="${ACFS_CHECKSUMS_YAML:-$ACFS_BOOTSTRAP_DIR/checksums.yaml}"
-    ACFS_MANIFEST_YAML="${ACFS_MANIFEST_YAML:-$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml}"
+    ACFS_LIB_DIR="$ACFS_BOOTSTRAP_DIR/scripts/lib"
+    ACFS_GENERATED_DIR="$ACFS_BOOTSTRAP_DIR/scripts/generated"
+    ACFS_ASSETS_DIR="$ACFS_BOOTSTRAP_DIR/acfs"
+    ACFS_CHECKSUMS_YAML="$ACFS_BOOTSTRAP_DIR/checksums.yaml"
+    ACFS_MANIFEST_YAML="$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml"
 
     export TARGET_USER TARGET_HOME MODE ACFS_BIN_DIR
     export ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
 
-    # Defensive ownership repair (#306): when running as root, make sure the
-    # target user owns their XDG bin dir before the user-space language
-    # installers (uv/rust/bun) write into it. uv installs via an atomic
-    # mktemp+rename inside ~/.local/bin, so a root-owned ~/.local/bin makes its
-    # mktemp fail with "Permission denied (os error 13)" once the installer is
-    # re-exec'd as the (non-root) target user. The ownership repair is
-    # deliberately non-recursive: only the two directories themselves are
-    # touched, never their contents.
-    if [[ $EUID -eq 0 ]] && [[ -n "${TARGET_USER:-}" ]] && [[ "${TARGET_USER}" != "root" ]]; then
-        # SECURITY: never chown through a symlink. If an untrusted target user
-        # pre-staged ~/.local or ~/.local/bin as a symlink (e.g. -> /etc) before
-        # the root install, a chown that follows it would transfer ownership of
-        # the link target to them (local privilege escalation). chown -h /
-        # nofollow is not portable, so refuse the repair entirely when either
-        # path already exists as a symlink.
-        if [[ -L "$TARGET_HOME/.local" ]] || [[ -L "$TARGET_HOME/.local/bin" ]]; then
-            log_warn "Skipping ~/.local ownership repair: $TARGET_HOME/.local or .local/bin is a symlink (refusing to chown through it)"
-        else
-            _acfs_repair_mkdir="$(_acfs_system_binary_path mkdir 2>/dev/null || true)"
-            _acfs_repair_chown="$(_acfs_system_binary_path chown 2>/dev/null || true)"
-            if [[ -n "$_acfs_repair_mkdir" ]] && [[ -n "$_acfs_repair_chown" ]]; then
-                if "$_acfs_repair_mkdir" -p "$TARGET_HOME/.local/bin" 2>/dev/null; then
-                    "$_acfs_repair_chown" "${TARGET_USER}" "$TARGET_HOME/.local" "$TARGET_HOME/.local/bin" 2>/dev/null || true
-                fi
-            fi
-            unset _acfs_repair_mkdir _acfs_repair_chown
-        fi
-    fi
 fi
 
 acfs_generated_ensure_selection() {
@@ -353,10 +350,10 @@ acfs_security_init() {
 }
 
 # Category: filesystem
-# Modules: 1
+# Generated modules: 1
 
 # Create workspace and ACFS directories
-install_base_filesystem() {
+acfs_generated_install_base_filesystem() {
     local module_id="base.filesystem"
     acfs_require_contract "module:${module_id}" || return 1
     acfs_generated_ensure_selection || return 1
@@ -565,9 +562,9 @@ chown -hR "${TARGET_USER:-ubuntu}:${TARGET_USER:-ubuntu}" "$target_home/.acfs"
 # Save the workspace AGENTS.md template into ACFS-owned storage.
 # ACFS may freely refresh this canonical copy on every install/update.
 ACFS_RAW="${ACFS_RAW:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF:-main}}"
-CURL_ARGS=(-fsSL)
-if curl --help all 2>/dev/null | grep -q -- '--proto'; then
-  CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
+CURL_ARGS=(-q -fsSL)
+if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then
+  CURL_ARGS=(-q --proto '=https' --proto-redir '=https' -fsSL)
 fi
 mkdir -p "$target_home/.acfs/docs"
 curl "${CURL_ARGS[@]}" -o "$target_home/.acfs/docs/AGENTS.workspace.md" "${ACFS_RAW}/acfs/AGENTS.md" || true
@@ -778,13 +775,4 @@ INSTALL_BASE_FILESYSTEM
     log_success "base.filesystem installed"
 }
 
-# Install all filesystem modules
-install_filesystem() {
-    log_section "Installing filesystem modules"
-    install_base_filesystem
-}
-
-# Run if executed directly
-if [[ "${BASH_SOURCE[0]}" = "${0}" ]]; then
-    install_filesystem
-fi
+# Category scripts are source-only libraries.
