@@ -22,6 +22,32 @@ NC='\033[0m'
 # Track what was created for summary
 declare -ga CREATED_ITEMS=()
 
+# Holds the project directory from the moment it is created (or an empty
+# pre-existing one starts being populated) until setup completes. Under
+# `set -e` any failed step aborts the script mid-way; the EXIT trap uses
+# this to tell the user a partial project was left behind instead of dying
+# silently. Cleared right before the success summary.
+NEWPROJ_PARTIAL_DIR=""
+
+_newproj_report_partial_on_exit() {
+    local rc=$?
+    if (( rc != 0 )) && [[ -n "${NEWPROJ_PARTIAL_DIR:-}" ]]; then
+        {
+            echo ""
+            echo -e "${RED}newproj failed (exit $rc) before project setup finished.${NC}"
+            echo -e "${YELLOW}Partial project left at: ${NEWPROJ_PARTIAL_DIR}${NC}"
+            if [[ ${#CREATED_ITEMS[@]} -gt 0 ]]; then
+                echo -e "${YELLOW}Created before the failure:${NC}"
+                local item
+                for item in "${CREATED_ITEMS[@]}"; do
+                    echo "  - $item"
+                done
+            fi
+            echo -e "${YELLOW}Nothing was removed automatically. Review the directory, delete it if unwanted, then re-run newproj.${NC}"
+        } >&2
+    fi
+}
+
 # ============================================================
 # Environment Detection
 # ============================================================
@@ -683,6 +709,8 @@ main() {
         echo -e "${RED}Error: Failed to enter project directory: $project_dir${NC}" >&2
         exit 1
     }
+    # From here on a failure leaves a partially-populated project.
+    NEWPROJ_PARTIAL_DIR="$project_dir"
 
     # Initialize git if not already
     if [[ ! -d .git ]]; then
@@ -848,6 +876,7 @@ EOF
     fi
 
     echo ""
+    NEWPROJ_PARTIAL_DIR=""
     echo -e "${GREEN}Project $project_name ready at $project_dir${NC}"
     echo ""
     echo "Next steps:"
@@ -864,5 +893,8 @@ EOF
 
 # Only run main if script is executed directly, not sourced
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    # Only the executed script owns the EXIT trap; a sourcing caller (tests)
+    # must not have its shell's traps replaced.
+    trap _newproj_report_partial_on_exit EXIT
     main "$@"
 fi
