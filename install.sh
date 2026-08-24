@@ -5244,7 +5244,23 @@ ensure_base_deps() {
             log_detail "dry-run: would install (pacman): curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf"
             return 0
         fi
-        acfs_arch_pkg_install curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf || return 1
+        # This runs before the user has confirmed the install. On Arch the
+        # first pacman call triggers a full 'pacman -Syu', so only touch pacman
+        # here when a base dependency is actually missing; on Omarchy they are
+        # all present already and the system upgrade then waits until after
+        # confirmation, at the first real package install.
+        local -a arch_base_missing=()
+        local arch_base_pkg=""
+        for arch_base_pkg in curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf; do
+            if ! pacman -Qq "$arch_base_pkg" &>/dev/null && ! pacman -Qg "$arch_base_pkg" &>/dev/null; then
+                arch_base_missing+=("$arch_base_pkg")
+            fi
+        done
+        if [[ ${#arch_base_missing[@]} -eq 0 ]]; then
+            log_detail "Base dependencies already present (pacman)"
+            return 0
+        fi
+        acfs_arch_pkg_install "${arch_base_missing[@]}" || return 1
         return 0
     fi
 
