@@ -1071,12 +1071,14 @@ offline_pack_write_manifest() {
     local pack_mode="complete"
 
     [[ "$OFFLINE_PACK_BEST_EFFORT" == "true" && ${#OFFLINE_PACK_ERRORS[@]} -gt 0 ]] && pack_mode="diagnostic"
-    if [[ -f "$OFFLINE_PACK_SOURCE_ROOT/VERSION" ]]; then
-        version="$(< "$OFFLINE_PACK_SOURCE_ROOT/VERSION")"
+    # Describe the bytes actually shipped, not pathnames that were read before
+    # the copy. Consumers verify these pack-local objects against this manifest.
+    if [[ -f "$pack_root/VERSION" ]]; then
+        version="$(< "$pack_root/VERSION")"
         version="${version//[[:space:]]/}"
     fi
-    manifest_sha="$(offline_pack_sha256 "$OFFLINE_PACK_MANIFEST_FILE")"
-    checksums_sha="$(offline_pack_sha256 "$OFFLINE_PACK_CHECKSUMS_FILE")"
+    manifest_sha="$(offline_pack_sha256 "$pack_root/acfs.manifest.yaml")"
+    checksums_sha="$(offline_pack_sha256 "$pack_root/checksums.yaml")"
 
     offline_pack_jq -n \
         --arg schema "$OFFLINE_PACK_SCHEMA" \

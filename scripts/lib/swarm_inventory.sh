@@ -330,7 +330,7 @@ swarm_inventory_validation_json() {
             | select(getpath($p) | test("(^|[^0-9.])[0-9]{1,3}(\\.[0-9]{1,3}){3}([^0-9.]|$)|[0-9a-f]{0,4}(:[0-9a-f]{0,4}){5,7}|(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_|tskey-|sk-[A-Za-z0-9]{20,}|hvs\\.|xox[bpsar]-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|(ssh|scp) +[A-Za-z0-9._-]+@"; "i"))
             | pathstr($p)
           ] | unique) as $sensitive_paths
-        | ($host_list | map(select((.id | type) == "string") | .id) | group_by(.) | map(select(length > 1) | .[0])) as $duplicates
+        | ($host_list | map(select(type == "object") | select((.id | type) == "string") | .id) | group_by(.) | map(select(length > 1) | .[0])) as $duplicates
         | [
             $host_list | to_entries[] | . as $entry
             | ($entry.key) as $idx

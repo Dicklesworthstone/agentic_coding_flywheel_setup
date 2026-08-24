@@ -52,6 +52,39 @@ teardown() {
     assert_output --partial "missing required fields"
 }
 
+@test "session IDs use one bounded filename-safe grammar" {
+    run acfs_session_validate_id "session_ABC-123"
+    assert_success
+
+    local invalid_id
+    for invalid_id in "../escape" "nested/session" "." "-leading" "contains space" $'line\nbreak'; do
+        run acfs_session_validate_id "$invalid_id"
+        assert_failure
+        assert_output --partial "must be 1-128 characters"
+    done
+
+    local too_long
+    printf -v too_long '%0129d' 0
+    run acfs_session_validate_id "$too_long"
+    assert_failure
+    assert_output --partial "must be 1-128 characters"
+}
+
+@test "validate_session_export: rejects path-like session IDs" {
+    local invalid_json='{
+        "schema_version": 1,
+        "session_id": "../../outside",
+        "agent": "claude-code",
+        "stats": { "turns": 1 }
+    }'
+    local file
+    file=$(create_temp_file "$invalid_json")
+
+    run validate_session_export "$file"
+    assert_failure
+    assert_output --partial "Session export ID must be"
+}
+
 @test "list_sessions: rejects non-numeric day and limit values before calling cass" {
     run list_sessions --days nope
     assert_failure
@@ -245,6 +278,86 @@ EOF
     refute_output --partial "password=secret123"
 }
 
+@test "sanitize_content: redacts complete and truncated private-key blocks" {
+    local content=$'before\n-----BEGIN OPENSSH PRIVATE KEY-----\nprivate-payload-one\n-----END OPENSSH PRIVATE KEY-----\nmiddle\n-----BEGIN EC PRIVATE KEY-----\nprivate-payload-two'
+
+    run sanitize_content "$content"
+    assert_success
+    assert_output --partial "before"
+    assert_output --partial "middle"
+    assert_output --partial "[PRIVATE_KEY_REDACTED]"
+    refute_output --partial "BEGIN OPENSSH PRIVATE KEY"
+    refute_output --partial "private-payload-one"
+    refute_output --partial "BEGIN EC PRIVATE KEY"
+    refute_output --partial "private-payload-two"
+}
+
+@test "sanitize_session_export: redacts nested PEM private keys" {
+    local json='{
+        "schema_version": 1,
+        "session_id": "pem-session",
+        "agent": "claude-code",
+        "stats": { "turns": 1 },
+        "sanitized_transcript": [{
+            "content": "before\n-----BEGIN RSA PRIVATE KEY-----\nprivate-json-payload\n-----END RSA PRIVATE KEY-----\nafter"
+        }]
+    }'
+    local file
+    file=$(create_temp_file "$json")
+
+    run sanitize_session_export "$file"
+    assert_success
+
+    run cat "$file"
+    assert_success
+    assert_output --partial "[PRIVATE_KEY_REDACTED]"
+    assert_output --partial "after"
+    refute_output --partial "BEGIN RSA PRIVATE KEY"
+    refute_output --partial "private-json-payload"
+}
+
+@test "export_session: private-key postcondition cannot be bypassed for JSON" {
+    local file
+    file=$(create_temp_file "dummy session")
+
+    init_stub_dir
+    cat > "$STUB_DIR/cass" <<'EOF'
+#!/bin/bash
+if [[ "$1" == "export" ]]; then
+    printf '%s\n' '{"schema_version":1,"session_id":"pem-session","agent":"claude-code","content":"-----BEGIN PRIVATE KEY-----\nprivate-export-payload\n-----END PRIVATE KEY-----"}'
+    exit 0
+fi
+exit 1
+EOF
+    chmod +x "$STUB_DIR/cass"
+
+    run export_session "$file" --format json --no-sanitize
+    assert_failure
+    assert_output --partial "Private-key material remains"
+    refute_output --partial "private-export-payload"
+}
+
+@test "export_session: private-key postcondition cannot be bypassed for Markdown" {
+    local file
+    file=$(create_temp_file "dummy session")
+
+    init_stub_dir
+    cat > "$STUB_DIR/cass" <<'EOF'
+#!/bin/bash
+if [[ "$1" == "export" ]]; then
+    printf '%s\n' 'before' '-----BEGIN PGP PRIVATE KEY BLOCK-----' 'private-markdown-payload' '-----END PGP PRIVATE KEY BLOCK-----'
+    exit 0
+fi
+exit 1
+EOF
+    chmod +x "$STUB_DIR/cass"
+
+    run export_session "$file" --format markdown --no-sanitize
+    assert_failure
+    assert_output --partial "Private-key material remains"
+    refute_output --partial "private-markdown-payload"
+}
+
 @test "sanitize_session_export: preserves structure and redacts secrets" {
     local json='{
         "schema_version": 1,
@@ -375,6 +488,43 @@ EOF
     assert_output --partial "missing required fields"
 }
 
+@test "import_session: refuses a generated-ID collision without changing the existing session" {
+    local test_home
+    test_home=$(create_temp_dir)
+    export HOME="$test_home"
+    export ACFS_SESSIONS_DIR="$HOME/.acfs/sessions"
+    mkdir -p "$ACFS_SESSIONS_DIR"
+    printf '%s\n' "existing-session-sentinel" > "$ACFS_SESSIONS_DIR/fixed-id.json"
+
+    generate_session_id() {
+        printf '%s\n' "fixed-id"
+    }
+
+    local valid='{
+        "schema_version": 1,
+        "session_id": "import-source",
+        "agent": "claude-code",
+        "stats": { "turns": 1 },
+        "sanitized_transcript": []
+    }'
+    local file
+    file=$(create_temp_file "$valid")
+
+    run import_session "$file"
+    assert_failure
+    assert_output --partial "Refusing to overwrite existing session destination"
+
+    run cat "$ACFS_SESSIONS_DIR/fixed-id.json"
+    assert_success
+    assert_output "existing-session-sentinel"
+}
+
+@test "show_session: rejects traversal IDs before filesystem access" {
+    run show_session "../../outside"
+    assert_failure
+    assert_output --partial "Session ID must be"
+}
+
 @test "import_session: preserves caller RETURN trap" {
     local test_home
     test_home=$(create_temp_dir)
@@ -440,6 +590,37 @@ EOF
     assert_success
     assert_equal "$output" "$written_path"
     assert_equal "$resume_command" "claude -r $target_session_id"
+}
+
+@test "native conversion: refuses invalid and pre-existing target session IDs" {
+    local test_home
+    test_home=$(create_temp_dir)
+    export HOME="$test_home"
+    export CLAUDE_HOME="$HOME/.claude"
+
+    local canonical
+    canonical=$(create_temp_file '{
+        "workspace": "/data/project",
+        "source_session_id": "source-id",
+        "messages": [{"role":"user","content":"hello","timestamp":"2026-03-03T01:00:00Z"}]
+    }')
+
+    run write_native_claude_from_canonical "$canonical" "/data/project" "../escape" true
+    assert_failure
+    assert_output --partial "Target session ID must be"
+
+    local target_dir="$CLAUDE_HOME/projects/-data-project"
+    local target_file="$target_dir/fixed-id.jsonl"
+    mkdir -p "$target_dir"
+    printf '%s\n' "existing-native-sentinel" > "$target_file"
+
+    run write_native_claude_from_canonical "$canonical" "/data/project" "fixed-id" false
+    assert_failure
+    assert_output --partial "Refusing to overwrite existing session destination"
+
+    run cat "$target_file"
+    assert_success
+    assert_output "existing-native-sentinel"
 }
 
 @test "convert_session_native: preserves caller RETURN trap" {

@@ -1703,17 +1703,15 @@ print_resume_hint() {
 # Track whether cleanup was triggered by a signal (not a normal EXIT).
 _ACFS_SIGNAL_RECEIVED=""
 
-_acfs_signal_handler() {
-    _ACFS_SIGNAL_RECEIVED="$1"
-    # A streamed verifier waits on the archive-attested installer. Forward a
-    # direct signal to that child and wait for it to stop before EXIT cleanup
-    # removes the source tree from underneath it.
-    if [[ "${ACFS_BOOTSTRAP_CHILD_PID:-}" =~ ^[0-9]+$ ]] \
-        && kill -0 "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null; then
-        kill -s "$1" "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true
-        wait "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true
-        ACFS_BOOTSTRAP_CHILD_PID=""
-    fi
+_acfs_bootstrap_mark_quiescent() {
+    ACFS_BOOTSTRAP_CHILD_PID=""
+    ACFS_BOOTSTRAP_CHILD_PGID=""
+    ACFS_BOOTSTRAP_CHILD_STATE="QUIESCENT"
+    ACFS_BOOTSTRAP_PENDING_SIGNAL=""
+    ACFS_BOOTSTRAP_PRESERVE_TREE=false
+}
+
+_acfs_bootstrap_signal_exit() {
     # Exit with 128+signum (standard convention) to trigger the EXIT trap.
     case "$1" in
         TERM) exit 143 ;;
@@ -1721,6 +1719,112 @@ _acfs_signal_handler() {
         HUP)  exit 129 ;;
         *)    exit 1   ;;
     esac
+}
+
+_acfs_bootstrap_group_may_be_live() {
+    local pgid="${ACFS_BOOTSTRAP_CHILD_PGID:-}"
+    local ps_bin="${ACFS_BOOTSTRAP_PS_BIN:-}"
+    local process_table=""
+    local observed_pgid=""
+    local observed_state=""
+
+    # Unknown identity or an unavailable observer is not proof of quiescence.
+    [[ "$pgid" =~ ^[0-9]+$ ]] || return 0
+    [[ "$pgid" != "0" && "$pgid" != "1" ]] || return 0
+    [[ -x "$ps_bin" ]] || return 0
+    if ! process_table="$("$ps_bin" -e -o pgid= -o stat= 2>/dev/null)"; then
+        return 0
+    fi
+
+    while read -r observed_pgid observed_state _; do
+        [[ "$observed_pgid" == "$pgid" ]] || continue
+        # A zombie cannot execute from the verified tree. Its parent still needs
+        # to reap it, but it must not make cleanup wait forever.
+        [[ "$observed_state" == Z* ]] || return 0
+    done <<< "$process_table"
+
+    return 1
+}
+
+_acfs_wait_for_bootstrap_group_quiescence() {
+    local attempts="${1:-40}"
+    local delay="${2:-0.25}"
+    local sleep_bin="${ACFS_BOOTSTRAP_SLEEP_BIN:-}"
+    local attempt=0
+
+    [[ -x "$sleep_bin" ]] || return 1
+    for ((attempt = 0; attempt < attempts; attempt++)); do
+        if ! _acfs_bootstrap_group_may_be_live; then
+            return 0
+        fi
+        if ! "$sleep_bin" "$delay"; then
+            return 1
+        fi
+    done
+
+    ! _acfs_bootstrap_group_may_be_live
+}
+
+_acfs_terminate_bootstrap_group() {
+    local pid="${ACFS_BOOTSTRAP_CHILD_PID:-}"
+    local pgid="${ACFS_BOOTSTRAP_CHILD_PGID:-}"
+
+    if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-}" != "RUNNING" ]] \
+        || [[ ! "$pid" =~ ^[0-9]+$ ]] \
+        || [[ ! "$pgid" =~ ^[0-9]+$ ]] \
+        || [[ "$pgid" != "$pid" ]] \
+        || [[ "$pgid" == "0" || "$pgid" == "1" ]]; then
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        log_error "Cannot safely signal the verified bootstrap child: process-group identity is unproven"
+        return 1
+    fi
+
+    # Always terminate the whole validated child group. Forwarding INT to a
+    # non-job-control asynchronous Bash is unreliable because Bash starts such
+    # children with SIGINT/SIGQUIT ignored.
+    if ! builtin kill -TERM -- "-$pgid" 2>/dev/null \
+        && _acfs_bootstrap_group_may_be_live; then
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        log_error "Unable to terminate verified bootstrap process group $pgid"
+        return 1
+    fi
+
+    if ! _acfs_wait_for_bootstrap_group_quiescence 40 0.25; then
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        log_error "Verified bootstrap process group $pgid did not stop within 10 seconds"
+        return 1
+    fi
+
+    # Reap the group leader after every member is quiescent. Its status is not
+    # propagated on a signal path; the supervisor exits with 128+signum below.
+    wait "$pid" 2>/dev/null || true
+    _acfs_bootstrap_mark_quiescent
+    return 0
+}
+
+_acfs_signal_handler() {
+    local signal="$1"
+    _ACFS_SIGNAL_RECEIVED="$signal"
+
+    # A signal can arrive after the fork but before $! and the PGID have been
+    # published. Record it and let the spawning path establish a safe identity
+    # before it signals anything.
+    if [[ "${ACFS_BOOTSTRAP_SIGNAL_HANDLING:-false}" == "true" ]] \
+        || [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" == "SPAWNING" ]]; then
+        ACFS_BOOTSTRAP_PENDING_SIGNAL="$signal"
+        return 0
+    fi
+
+    if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" == "RUNNING" ]]; then
+        ACFS_BOOTSTRAP_SIGNAL_HANDLING=true
+        _acfs_terminate_bootstrap_group || true
+        ACFS_BOOTSTRAP_SIGNAL_HANDLING=false
+    elif [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]]; then
+        # An impossible/unknown state must preserve the verified source tree.
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+    fi
+
+    _acfs_bootstrap_signal_exit "$signal"
 }
 
 acfs_bootstrap_dir_is_owned_temp() {

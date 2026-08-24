@@ -2223,7 +2223,9 @@ record_change() {
     fi
 
     # Store in memory
-    ACFS_CHANGE_RECORDS["$change_id"]="$record"
+    if [[ "$(declare -p ACFS_CHANGE_RECORDS 2>/dev/null)" == *"declare -A"* || "$(declare -p ACFS_CHANGE_RECORDS 2>/dev/null)" == *"declare -gA"* ]]; then
+        ACFS_CHANGE_RECORDS["$change_id"]="$record"
+    fi
     ACFS_CHANGE_ORDER+=("$change_id")
 
     log_info "[AUTO-FIX] [$change_id] $description"
