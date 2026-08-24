@@ -1,8 +1,224 @@
-# Offline Artifact Pack Manifest And Trust Policy
+# Verified Installer Entrypoint Cache
 
-This note records the `bd-8woeg` design for verified ACFS offline artifact
-packs. It is a contract for later builder and installer-consumer beads; it does
-not describe current installer behavior.
+<!-- CURRENT-CONTRACT:BEGIN -->
+
+This section is the authoritative contract for the cache that ACFS currently
+builds and consumes. The historical full-offline design is retained below only
+as a superseded proposal for future work.
+
+## Capability Boundary
+
+The v1 cache contains the checksum-reviewed **entrypoint script** for each
+selected `verified_installer` module. Selecting the cache makes acquisition of
+those entrypoint bytes fail closed: ACFS either validates and stages the exact
+cached script or refuses the module without attempting a live entrypoint
+download.
+
+This is **not an offline or air-gapped installation bundle**. An accepted
+entrypoint can still download release archives, packages, repositories, or
+registry payloads when it runs. Bootstrap archives, apt metadata and packages,
+Git repositories, language registries, OAuth/device flows, provider actions,
+and other transitive dependencies are not bundled. The target machine therefore
+still needs network access for normal installer execution.
+
+The cache has one deliberately narrow guarantee:
+
+> The first executable bytes fetched for a cached `verified_installer` module
+> are the same HTTPS URL and SHA-256-approved bytes recorded in the current
+> `checksums.yaml`; they are read from the selected cache, not from the network.
+
+## Public Interface
+
+Build the cache on a connected, trusted machine:
+
+```bash
+acfs installer-cache build --output /tmp/acfs-cache
+acfs installer-cache build --output /tmp/acfs-cache --module stack.rch
+acfs installer-cache build --dry-run --json
+```
+
+`--module` is repeatable. With no `--module`, the builder selects every manifest
+module with valid `verified_installer` metadata. The output directory must be
+empty and receives exactly one `acfs-installer-cache/` child.
+
+Select that cache during installation with either the flag or its environment
+equivalent:
+
+```bash
+./install.sh \
+  --verified-installer-cache /tmp/acfs-cache/acfs-installer-cache \
+  --yes --mode vibe
+
+ACFS_VERIFIED_INSTALLER_CACHE=/tmp/acfs-cache/acfs-installer-cache \
+  ./install.sh --yes --mode vibe
+```
+
+The selected path may name `acfs-installer-cache/` itself or its immediate
+parent. If neither the flag nor `ACFS_VERIFIED_INSTALLER_CACHE` is set, verified
+installers retain their normal live-download behavior. If a cache is explicitly
+selected, a missing, malformed, expired, incompatible, incomplete, or tampered
+cache is terminal for that verified installer: there is no live entrypoint
+fallback.
+
+There are no legacy offline-mode aliases in this contract. In particular, the
+cache does not imply that execution is network-free.
+
+## Directory Layout
+
+The published directory is:
+
+```text
+acfs-installer-cache/
+├── manifest.json
+├── checksums.yaml
+├── acfs.manifest.yaml
+├── VERSION
+├── artifacts/
+│   └── <module-id>/
+│       └── <tool>-install.sh
+└── provenance/
+    ├── builder-env.json
+    └── source-index.json
+```
+
+The builder writes a private, same-parent staging directory, writes
+`manifest.json` last as the acceptance marker, and publishes with a no-clobber
+rename. It refuses a non-empty output directory. A successful build never
+merges into or replaces an existing cache.
+
+`--best-effort` is diagnostic only. If any selected entrypoint cannot be
+acquired and verified, the emitted manifest uses `packMode: "diagnostic"` and
+contains failure records. The installer accepts only a complete
+`entrypoint-cache` manifest with an empty `failures` array.
+
+## Manifest And Policy Contract
+
+The current manifest is JSON with these fixed identity and policy values:
+
+```json
+{
+  "schema": "acfs.verified-installer-entrypoint-cache.v1",
+  "schemaVersion": 1,
+  "generatedBy": "acfs installer-cache build",
+  "packMode": "entrypoint-cache",
+  "packScope": "verified_installer_entrypoints",
+  "targets": [
+    {"os": "ubuntu", "version": "25.10", "architecture": "x86_64"}
+  ],
+  "failures": [],
+  "policy": {
+    "entrypointFetchMode": "cache_required",
+    "executionNetworkMode": "required",
+    "transitiveClosure": "not_bundled",
+    "bootstrap": "not_bundled",
+    "verifiedInstallerPolicy": "must_match_checksums_yaml",
+    "partialPackPolicy": "refuse_unless_best_effort_diagnostic"
+  }
+}
+```
+
+The full manifest also records generation and expiry timestamps, the expiry
+window, ACFS version and source provenance, hashes of the packed
+`acfs.manifest.yaml`, `checksums.yaml`, and both provenance files, plus a
+one-to-one mapping between modules and artifacts. Each module must have
+`coverage: "entrypoint_cached"`. Each artifact must have kind
+`verified_installer_entrypoint`, its HTTPS source URL, verified-installer key,
+SHA-256, byte size, and architecture.
+
+The only supported target OS is Ubuntu. A cache names exactly one Ubuntu
+version and one architecture (`x86_64` or `aarch64`); the consumer requires an
+exact match with the target host. An entrypoint is limited to 16 MiB.
+
+## Trust And Consumption Rules
+
+`checksums.yaml` remains the canonical trust boundary. The builder does not
+mint new trust: it copies the current manifest and checksum inputs, downloads
+only HTTPS URLs represented by a unique checksum key, and verifies each
+download before publication. The consumer independently requires all of the
+following before returning executable bytes:
+
+1. `manifest.json` is a contained, regular, readable file with the supported
+   schema, fixed policy values, complete module/artifact cardinality, and no
+   duplicate identities or paths.
+2. The manifest has not expired, and its single Ubuntu version and architecture
+   match the host.
+3. The packed and currently installed `checksums.yaml` are identical to the
+   manifest hash.
+4. The packed and currently installed `acfs.manifest.yaml` are identical to the
+   manifest hash.
+5. Both bounded provenance files match their declared hashes.
+6. Exactly one contained, regular artifact matches the requested checksum key,
+   HTTPS URL, SHA-256, and architecture.
+7. A bounded private snapshot of that artifact matches both its declared size
+   and SHA-256 before the snapshot path is returned for execution.
+
+Paths containing traversal segments, backslashes, control characters, query
+strings, fragments, or URL user-info are rejected. Manifest, checksum,
+provenance, and artifact reads are bounded. Cache files are executable supply
+chain material and must be transported and stored with the same care as the
+original installers.
+
+Stable refusal classes currently include:
+
+| Code | Meaning |
+| --- | --- |
+| `pack_missing_manifest` | The selected cache has no readable acceptance marker. |
+| `pack_malformed_manifest` | Structure, fixed policy, identity, or bound metadata is invalid. |
+| `pack_schema_unsupported` | Cache schema or schema version is unsupported. |
+| `pack_expired` | The cache has passed `expiresAt`. |
+| `pack_arch_unsupported` | The host architecture does not match the cache. |
+| `pack_ubuntu_unsupported` | The host is not the exact cached Ubuntu version. |
+| `pack_path_escape` | A selected path is unsafe or resolves outside the cache. |
+| `pack_hash_mismatch` | Entrypoint bytes or size do not match the manifest. |
+| `pack_checksums_mismatch` | Current trust-root bytes, URL, or approved SHA-256 do not match. |
+| `pack_unbundled_required_module` | The requested entrypoint is absent or the cache is diagnostic/incomplete. |
+
+## Test Boundary
+
+Builder and consumer fixture tests must include a complete-cache success case
+and mutation-sensitive refusals for malformed schemas, diagnostic/failure
+manifests, duplicate identities and paths, missing module coverage, target
+mismatch, expired timestamps, trust-root drift, provenance drift, path escape,
+oversized files, and artifact hash/size mismatch. Every explicit-cache refusal
+must assert both zero live entrypoint fetches and empty executable stdout.
+
+Those tests prove entrypoint-cache behavior only. A network-enabled test cannot
+prove an offline install merely because the entrypoint itself came from disk.
+
+## Future True-Offline Work
+
+A future air-gapped bundle is a separate capability and must not reuse the v1
+cache name or imply that `executionNetworkMode` is anything but `required`.
+Before such a mode can be advertised, it needs all of the following:
+
+- a resolved transitive artifact graph for every selected module, including
+  bootstrap bytes, apt repository snapshots and packages, release archives,
+  Git objects, and language-registry payloads;
+- a closed-world inventory binding every archive member and execution input to
+  an independently reviewed digest, with safe extraction and no undeclared,
+  special, duplicate, or escaping paths;
+- explicit `bundled`, `metadata_only`, `live_required`, and `prohibited`
+  classifications for credentials, OAuth/device login, provider interaction,
+  mutable host state, and artifacts that cannot be redistributed;
+- secret scanning and support-output redaction that never package keys, tokens,
+  cookies, sessions, hostnames, IP addresses, or credential stores; and
+- a mutation-sensitive end-to-end install run with outbound networking denied,
+  proving both success from the bundle and failure when any required transitive
+  artifact is removed or changed.
+
+Until those requirements are implemented and observed, ACFS must describe this
+feature only as a verified installer entrypoint cache.
+
+<!-- CURRENT-CONTRACT:END -->
+
+<details>
+<summary>Historical full-offline proposal (superseded; not current behavior or a public CLI contract)</summary>
+
+## Superseded Full-Offline Design (`bd-8woeg`)
+
+Everything below this point is preserved as design history. Names, schemas,
+commands, environment variables, layouts, and guarantees below are not current
+interfaces and must not be used to describe the v1 entrypoint cache.
 
 ## Purpose
 
@@ -405,3 +621,5 @@ Implementation beads should add fixture tests for:
 - path traversal attempt
 - secret-looking manifest value
 - fully offline request with `live_required` module
+
+</details>

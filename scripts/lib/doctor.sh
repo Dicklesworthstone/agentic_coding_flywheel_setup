@@ -1326,6 +1326,35 @@ run_with_timeout() {
     return $status
 }
 
+# Arch-family detection for fix hints (cached after first call).
+# ACFS_DISTRO_FAMILY is authoritative when the installer exported it;
+# otherwise fall back to /etc/os-release (arch, arch-likes, omarchy).
+_acfs_doctor_is_arch_family() {
+    if [[ -z "${_ACFS_DOCTOR_IS_ARCH_FAMILY:-}" ]]; then
+        _ACFS_DOCTOR_IS_ARCH_FAMILY="false"
+        if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]]; then
+            _ACFS_DOCTOR_IS_ARCH_FAMILY="true"
+        elif [[ -r /etc/os-release ]] && grep -Eq '^(ID_LIKE=.*arch|ID="?(arch|omarchy)"?$)' /etc/os-release 2>/dev/null; then
+            _ACFS_DOCTOR_IS_ARCH_FAMILY="true"
+        fi
+    fi
+    [[ "$_ACFS_DOCTOR_IS_ARCH_FAMILY" == "true" ]]
+}
+
+# Emit a distro-appropriate package install hint.
+# Usage: doctor_pkg_install_hint <apt-package> [pacman-package]
+# The pacman package name defaults to the apt name; pass the second arg when
+# they differ (golang-go/go, gh/github-cli, postgresql-client/postgresql).
+doctor_pkg_install_hint() {
+    local apt_pkg="$1"
+    local pacman_pkg="${2:-$1}"
+    if _acfs_doctor_is_arch_family; then
+        printf 'sudo pacman -S --needed %s' "$pacman_pkg"
+    else
+        printf 'sudo apt install %s' "$apt_pkg"
+    fi
+}
+
 # Cache entries are scoped by the runtime home so that e.g. root running
 # doctor for different TARGET_USERs (or for itself and a target user) never
 # reads another user's cached verdicts (gh_auth etc.).
@@ -1367,7 +1396,7 @@ cache_result() {
 # Output: Cached value on hit
 get_cached_result() {
     local key="$1"
-    local cache_file="$CACHE_DIR/$key"
+    local cache_file="$CACHE_DIR/${key}.$(_doctor_cache_scope_suffix)"
 
     # Skip if caching disabled
     [[ "$NO_CACHE" == "true" ]] && return 1
@@ -2085,17 +2114,11 @@ check_shell() {
     # the user's existing prompt setup (e.g. Omarchy's starship). Report these
     # as skipped rather than failing.
     local _acfs_arch_shell_ux="false"
-    if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]]; then
-        _acfs_arch_shell_ux="true"
-    elif [[ -r /etc/os-release ]] && grep -Eq '^(ID_LIKE=.*arch|ID="?(arch|omarchy)"?$)' /etc/os-release 2>/dev/null; then
+    if _acfs_doctor_is_arch_family; then
         _acfs_arch_shell_ux="true"
     fi
 
-    if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
-        check_command "shell.zsh" "zsh" "zsh" "sudo pacman -S zsh"
-    else
-        check_command "shell.zsh" "zsh" "zsh" "sudo apt install zsh"
-    fi
+    check_command "shell.zsh" "zsh" "zsh" "$(doctor_pkg_install_hint zsh)"
 
     if [[ "$_acfs_arch_shell_ux" == "true" ]]; then
         check "shell.ohmyzsh" "Oh My Zsh" "skip" "not used on Arch-family; existing prompt preserved"
