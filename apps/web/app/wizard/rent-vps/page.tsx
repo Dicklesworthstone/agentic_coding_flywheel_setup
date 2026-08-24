@@ -318,7 +318,6 @@ function CapacityPlanner() {
       hasHydratedPlannerSelection.current = true;
       if (hasLocalPlannerInteraction.current) return;
       const hydratedSelection = savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlannerSelection(hydratedSelection);
       // Persist the normalized value returned by the preference layer so stale
       // provider, plan, region, image, or capacity choices are repaired once.
@@ -327,7 +326,6 @@ function CapacityPlanner() {
     }
     // Keep the controls usable when localStorage is unavailable while still
     // accepting persisted or cross-tab updates when the query has a value.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPlannerSelection(savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION);
   }, [savedVPSReadinessSelection, setVPSReadinessSelection, vpsReadinessSelectionLoaded]);
 

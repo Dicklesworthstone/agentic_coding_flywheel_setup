@@ -118,12 +118,12 @@ def main():
     try:
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
-        emit("allow")
+        emit("force_ask", "DCG could not inspect malformed Antigravity hook input")
         return 0
 
     command = extract_command(payload)
     if not command:
-        emit("allow")
+        emit("force_ask", "DCG could not inspect the proposed command")
         return 0
 
     dcg_bin = os.environ.get("DCG_BIN", os.path.expanduser("~/.local/bin/dcg"))
@@ -416,9 +416,49 @@ def is_dcg_hook(hook):
     return bool(tokens and tokens_invoke_dcg(tokens))
 
 
+def without_dcg_pre_tool_hooks(group):
+    if not isinstance(group, dict):
+        return group
+
+    pre_tool = group.get("PreToolUse")
+    if not isinstance(pre_tool, list):
+        return group
+
+    kept_entries = []
+    changed = False
+    for entry in pre_tool:
+        if not isinstance(entry, dict):
+            kept_entries.append(entry)
+            continue
+        hooks_value = entry.get("hooks")
+        if not isinstance(hooks_value, list):
+            kept_entries.append(entry)
+            continue
+
+        non_dcg_hooks = [hook for hook in hooks_value if not is_dcg_hook(hook)]
+        if len(non_dcg_hooks) == len(hooks_value):
+            kept_entries.append(entry)
+            continue
+
+        changed = True
+        if non_dcg_hooks:
+            kept_entries.append({**entry, "hooks": non_dcg_hooks})
+
+    if not changed:
+        return group
+    return {**group, "PreToolUse": kept_entries}
+
+
 def ensure_dcg_hook():
     ensure_hook_script()
     hooks = read_json(HOOKS_PATH, "Antigravity hooks")
+
+    # Native DCG releases and older ACFS versions used different group names
+    # and matcher expressions. Remove only recognized DCG handlers from every
+    # group, without interpreting peer regexes or collapsing their entries.
+    for group_name, existing_group in list(hooks.items()):
+        hooks[group_name] = without_dcg_pre_tool_hooks(existing_group)
+
     group = hooks.get("dcg")
     if not isinstance(group, dict):
         group = {}
@@ -426,24 +466,6 @@ def ensure_dcg_hook():
     pre_tool = group.get("PreToolUse")
     if not isinstance(pre_tool, list):
         pre_tool = []
-
-    kept_entries = []
-    for entry in pre_tool:
-        if not isinstance(entry, dict):
-            kept_entries.append(entry)
-            continue
-        if entry.get("matcher") != "run_command":
-            kept_entries.append(entry)
-            continue
-        hooks_value = entry.get("hooks", [])
-        if not isinstance(hooks_value, list):
-            kept_entries.append(entry)
-            continue
-        non_dcg_hooks = [hook for hook in hooks_value if not is_dcg_hook(hook)]
-        if len(non_dcg_hooks) == len(hooks_value):
-            kept_entries.append(entry)
-        elif non_dcg_hooks:
-            kept_entries.append({**entry, "hooks": non_dcg_hooks})
 
     acfs_dcg_entry = {
         "matcher": "run_command",
@@ -458,7 +480,7 @@ def ensure_dcg_hook():
     group["enabled"] = True
     group["PreToolUse"] = [
         acfs_dcg_entry,
-        *kept_entries,
+        *pre_tool,
     ]
     hooks["dcg"] = group
     write_json_if_changed(HOOKS_PATH, hooks)
