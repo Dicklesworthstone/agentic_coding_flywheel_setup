@@ -1269,6 +1269,8 @@ offline_pack_write_manifest() {
     local version="unknown"
     local manifest_sha=""
     local checksums_sha=""
+    local builder_env_sha=""
+    local source_index_sha=""
     local pack_mode="$OFFLINE_PACK_COMPLETE_MODE"
 
     [[ "$OFFLINE_PACK_BEST_EFFORT" == "true" && ${#OFFLINE_PACK_ERRORS[@]} -gt 0 ]] && pack_mode="diagnostic"
@@ -1292,6 +1294,9 @@ offline_pack_write_manifest() {
         > "$pack_root/provenance/builder-env.json"; then
         return 1
     fi
+
+    builder_env_sha="$(offline_pack_sha256 "$pack_root/provenance/builder-env.json")" || return 1
+    source_index_sha="$(offline_pack_sha256 "$pack_root/provenance/source-index.json")" || return 1
 
     if ! offline_pack_jq -n \
         --argjson artifacts "$OFFLINE_PACK_ARTIFACTS_JSON" \
@@ -1318,6 +1323,8 @@ offline_pack_write_manifest() {
         --arg sourceTreeState "$OFFLINE_PACK_SOURCE_TREE_STATE" \
         --arg manifestSha "$manifest_sha" \
         --arg checksumsSha "$checksums_sha" \
+        --arg builderEnvSha "$builder_env_sha" \
+        --arg sourceIndexSha "$source_index_sha" \
         --arg arch "$OFFLINE_PACK_ARCH" \
         --arg ubuntuVersion "$OFFLINE_PACK_UBUNTU_VERSION" \
         --argjson modules "$OFFLINE_PACK_MODULES_JSON" \
@@ -1338,7 +1345,9 @@ offline_pack_write_manifest() {
             sourceCommit: $sourceCommit,
             sourceTreeState: $sourceTreeState,
             manifestSha256: $manifestSha,
-            checksumsYamlSha256: $checksumsSha
+            checksumsYamlSha256: $checksumsSha,
+            provenanceBuilderEnvSha256: $builderEnvSha,
+            provenanceSourceIndexSha256: $sourceIndexSha
           },
           targets: [{os: "ubuntu", version: $ubuntuVersion, architecture: $arch}],
           modules: $modules,
