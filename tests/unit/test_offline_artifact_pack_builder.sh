@@ -164,6 +164,38 @@ YAML
     printf '%s\n' "$source_root"
 }
 
+write_fixture_source_without_verified_installer() {
+    local name="$1"
+    local source_root="$ARTIFACT_DIR/$name/source"
+
+    mkdir -p "$source_root/scripts/lib"
+    printf '9.9.9-test\n' > "$source_root/VERSION"
+    /bin/cp "$OFFLINE_PACK_SH" "$source_root/scripts/lib/offline_artifact_pack.sh"
+    cat > "$source_root/acfs.manifest.yaml" <<'YAML'
+version: 2
+name: fixture
+id: acfs
+modules:
+  - id: base.system
+    description: Base packages
+    category: base
+    phase: 1
+    run_as: root
+    optional: false
+    enabled_by_default: true
+    install: []
+    verify: []
+YAML
+    cat > "$source_root/checksums.yaml" <<'YAML'
+installers:
+  rch:
+    url: "https://fixture.test/no-verified/rch-install.sh"
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+YAML
+
+    printf '%s\n' "$source_root"
+}
+
 run_pack() {
     local name="$1"
     shift
@@ -223,6 +255,7 @@ test_non_https_source_is_refused() {
 
 test_build_writes_manifest_and_verified_artifact() {
     local source_root output_dir output status manifest artifact_path expected_sha
+    local builder_env_sha source_index_sha
     source_root="$(write_fixture_source build valid)"
     output_dir="$ARTIFACT_DIR/build/output"
 
@@ -231,27 +264,42 @@ test_build_writes_manifest_and_verified_artifact() {
     manifest="$output_dir/acfs-installer-cache/manifest.json"
     artifact_path="$output_dir/acfs-installer-cache/artifacts/stack.rch/rch-install.sh"
     expected_sha="$(test_sha256_file "$artifact_path")"
+    builder_env_sha="$(test_sha256_file "$output_dir/acfs-installer-cache/provenance/builder-env.json")"
+    source_index_sha="$(test_sha256_file "$output_dir/acfs-installer-cache/provenance/source-index.json")"
 
     [[ "$status" -eq 0 ]] || return 1
     [[ -f "$manifest" ]] || return 1
     [[ -f "$artifact_path" ]] || return 1
     [[ ! -e "$output_dir/acfs-installer-cache/scripts" ]] || return 1
     [[ ! -e "$output_dir/acfs-installer-cache/acfs" ]] || return 1
-    jq -e --arg expectedSha "$expected_sha" '
+    jq -e \
+      --arg expectedSha "$expected_sha" \
+      --arg builderEnvSha "$builder_env_sha" \
+      --arg sourceIndexSha "$source_index_sha" '
       .schema == "acfs.verified-installer-entrypoint-cache.v1" and
+      .generatedBy == "acfs installer-cache build" and
       .packMode == "entrypoint-cache" and
       .packScope == "verified_installer_entrypoints" and
+      (.targets | length) == 1 and
+      .targets[0].os == "ubuntu" and
+      .targets[0].version == "25.10" and
+      (.targets[0].architecture == "x86_64" or .targets[0].architecture == "aarch64") and
       .policy.executionNetworkMode == "required" and
       .policy.transitiveClosure == "not_bundled" and
       .policy.bootstrap == "not_bundled" and
       .policy.verifiedInstallerPolicy == "must_match_checksums_yaml" and
+      .policy.partialPackPolicy == "refuse_unless_best_effort_diagnostic" and
       .acfs.sourceRef == "unknown" and
       .acfs.sourceCommit == "unknown" and
       .acfs.sourceTreeState == "unversioned" and
+      .acfs.provenanceBuilderEnvSha256 == $builderEnvSha and
+      .acfs.provenanceSourceIndexSha256 == $sourceIndexSha and
       .modules[0].id == "stack.rch" and
       .modules[0].coverage == "entrypoint_cached" and
       .modules[0].verifiedInstallerKey == "rch" and
+      .modules[0].verifiedInstallerRunner == "bash" and
       .artifacts[0].kind == "verified_installer_entrypoint" and
+      .artifacts[0].architecture == .targets[0].architecture and
       .artifacts[0].sha256 == $expectedSha and
       .artifacts[0].path == "artifacts/stack.rch/rch-install.sh" and
       .failures == []
@@ -436,6 +484,22 @@ test_non_verified_module_is_refused() {
     ' <<<"$output" >/dev/null || return 1
 
     pass "non_verified_module_is_refused"
+}
+
+test_default_selection_refuses_zero_verified_installers() {
+    local source_root output status
+    source_root="$(write_fixture_source_without_verified_installer no-verified)"
+
+    output="$(run_pack no-verified build --dry-run --json --source-root "$source_root")"
+    status="$(cat "$ARTIFACT_DIR/no-verified.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_unbundled_required_module: no verified_installer modules were selected"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "default_selection_refuses_zero_verified_installers"
 }
 
 test_invalid_module_id_cannot_escape_pack_root() {
@@ -630,7 +694,33 @@ test_timeout_option_is_validated_and_recorded() {
     [[ "$status" -eq 2 ]] || return 1
     [[ "$output" == *"--timeout must be a positive integer"* ]] || return 1
 
+    output="$(run_pack timeout-too-large build --dry-run --json --source-root "$source_root" --module stack.rch --timeout 3601)"
+    status="$(cat "$ARTIFACT_DIR/timeout-too-large.exit")"
+    [[ "$status" -eq 2 ]] || return 1
+    [[ "$output" == *"--timeout must be no greater than 3600"* ]] || return 1
+
+    output="$(run_pack expiry-too-large build --dry-run --json --source-root "$source_root" --module stack.rch --expires-days 3651)"
+    status="$(cat "$ARTIFACT_DIR/expiry-too-large.exit")"
+    [[ "$status" -eq 2 ]] || return 1
+    [[ "$output" == *"--expires-days must be no greater than 3650"* ]] || return 1
+
     pass "timeout_option_is_validated_and_recorded"
+}
+
+test_invalid_ubuntu_target_is_refused_before_publication() {
+    local source_root output status
+    source_root="$(write_fixture_source invalid-ubuntu valid)"
+
+    output="$(run_pack invalid-ubuntu build --dry-run --json --source-root "$source_root" --module stack.rch --ubuntu-version rolling)"
+    status="$(cat "$ARTIFACT_DIR/invalid-ubuntu.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_ubuntu_unsupported"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "invalid_ubuntu_target_is_refused_before_publication"
 }
 
 run_all_tests() {
@@ -647,6 +737,7 @@ run_all_tests() {
         test_checksum_mismatch_fails_closed
         test_unknown_module_is_refused
         test_non_verified_module_is_refused
+        test_default_selection_refuses_zero_verified_installers
         test_invalid_module_id_cannot_escape_pack_root
         test_duplicate_module_id_is_refused
         test_invalid_module_markdown_reports_without_crashing
@@ -657,6 +748,7 @@ run_all_tests() {
         test_invalid_verified_installer_runner_is_refused
         test_best_effort_records_download_failure
         test_timeout_option_is_validated_and_recorded
+        test_invalid_ubuntu_target_is_refused_before_publication
     )
 
     for test_name in "${tests[@]}"; do
