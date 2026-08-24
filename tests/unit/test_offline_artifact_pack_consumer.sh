@@ -16,6 +16,9 @@ CONTENT='printf "cached installer fixture\n"'
 
 mkdir -p "$TEST_ROOT"
 export CHECKSUMS_FILE="$TEST_ROOT/current-checksums.yaml"
+TEST_TIMEOUT_BIN="$TEST_ROOT/timeout"
+printf '#!/usr/bin/env bash\nshift\nexec "$@"\n' > "$TEST_TIMEOUT_BIN"
+chmod +x "$TEST_TIMEOUT_BIN"
 
 sha_text() {
     printf '%s' "$1" | sha256sum | awk '{print $1}'
@@ -39,6 +42,28 @@ write_checksums "$CHECKSUMS_FILE" "$ARTIFACT_SHA"
 # shellcheck source=scripts/lib/security.sh
 source "$REPO_ROOT/scripts/lib/security.sh"
 
+acfs_security_required_binary_path() {
+    local name="${1:-}"
+    local path=""
+
+    if [[ "$name" == "timeout" ]]; then
+        printf '%s\n' "$TEST_TIMEOUT_BIN"
+        return 0
+    fi
+    path="$(acfs_security_system_binary_path "$name" 2>/dev/null || true)"
+    [[ -n "$path" ]] || return 127
+    printf '%s\n' "$path"
+}
+
+acfs_security_date() {
+    case "$*" in
+        "-u -d 2099-01-01T00:00:00Z +%s") printf '4070908800\n' ;;
+        "-u -d 2000-01-01T00:00:00Z +%s") printf '946684800\n' ;;
+        "-u +%s") printf '2000000000\n' ;;
+        *) /usr/bin/date "$@" ;;
+    esac
+}
+
 # The consumer contract is Ubuntu-specific. Keep fixture metadata deterministic
 # when this static/unit harness is invoked from a non-Ubuntu development host.
 acfs_offline_pack_current_ubuntu_version() {
@@ -53,8 +78,8 @@ _acfs_remove_temp_files() {
 CURRENT_ARCH="$(acfs_offline_pack_current_arch)"
 MANIFEST_SHA="$(calculate_file_sha256 "$REPO_ROOT/acfs.manifest.yaml")"
 CHECKSUMS_SHA="$(calculate_file_sha256 "$CHECKSUMS_FILE")"
-FUTURE_EXPIRES="$(date -u -d '+1 day' '+%Y-%m-%dT%H:%M:%SZ')"
-PAST_EXPIRES="$(date -u -d '-1 day' '+%Y-%m-%dT%H:%M:%SZ')"
+FUTURE_EXPIRES="2099-01-01T00:00:00Z"
+PAST_EXPIRES="2000-01-01T00:00:00Z"
 
 pass() {
     TESTS_PASSED=$((TESTS_PASSED + 1))
