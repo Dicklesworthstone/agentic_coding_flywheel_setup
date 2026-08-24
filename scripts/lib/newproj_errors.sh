@@ -388,7 +388,7 @@ try_create_directory() {
             return 1
         fi
 
-        first_entry=$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) || {
+        first_entry=$(find "$dir/." -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) || {
             log_error "Cannot inspect existing directory: $dir" 2>/dev/null || true
             show_error_with_recovery "permission" "Cannot inspect existing directory: $dir"
             return 1
@@ -455,7 +455,10 @@ try_git_init() {
         return 0
     fi
 
-    git -C "$dir" init -b main 2>/dev/null
+    # -q: this runs under run_screen_handler_capture, which treats the last
+    # stdout line as the next screen id; "Initialized empty Git repository…"
+    # became an "Unknown screen" abort on [r] Retry.
+    git -C "$dir" init -q -b main 2>/dev/null
     local errno=$?
     if [[ $errno -ne 0 ]]; then
         log_error "git init failed in $dir (errno: $errno)" 2>/dev/null || true

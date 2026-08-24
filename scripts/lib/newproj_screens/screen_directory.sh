@@ -108,7 +108,7 @@ check_directory_status() {
         fi
 
         local first_entry=""
-        first_entry=$(find "$resolved" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) || {
+        first_entry=$(find "$resolved/." -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) || {
             echo "ERROR:Cannot inspect existing directory: $resolved"
             return 2
         }

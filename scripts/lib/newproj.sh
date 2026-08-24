@@ -645,7 +645,9 @@ main() {
         fi
 
         local first_entry=""
-        first_entry=$(find "$project_dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) || {
+        # "$dir/." so a symlinked target directory is inspected, not the link
+        # (find -P on a bare symlink start point yields nothing => "empty").
+        first_entry=$(find "$project_dir/." -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null) || {
             echo -e "${RED}Error: Cannot inspect existing directory: $project_dir${NC}" >&2
             exit 1
         }
@@ -800,9 +802,7 @@ EOF
             cat > .claude/settings.local.json << 'EOF'
 {
   "permissions": {
-    "allow_file_read": true,
-    "allow_file_write": true,
-    "allow_shell": true
+    "allow": ["Read", "Edit", "Write", "Bash"]
   }
 }
 EOF

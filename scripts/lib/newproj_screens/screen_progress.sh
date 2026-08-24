@@ -354,9 +354,7 @@ venv/
 
             local claude_settings='{
   "permissions": {
-    "allow_file_read": true,
-    "allow_file_write": true,
-    "allow_shell": true
+    "allow": ["Read", "Edit", "Write", "Bash"]
   }
 }'
             if try_write_file "$project_dir/.claude/settings.local.json" "$claude_settings"; then
