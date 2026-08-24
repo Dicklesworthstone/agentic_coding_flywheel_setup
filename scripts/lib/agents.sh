@@ -1567,6 +1567,8 @@ upgrade_all_agents() {
 
 # Install all coding agents (called by install.sh)
 install_all_agents() {
+    local failed=0
+
     log_step "6/8" "Installing coding agents..."
 
     # Verify bun is available first
@@ -1576,13 +1578,22 @@ install_all_agents() {
         return 1
     fi
 
-    # Install each agent
-    install_claude_code
-    install_codex_cli
-    install_antigravity_cli
+    # Install each agent without erasing an earlier failure when a later step
+    # succeeds. This function is also the direct-execution entry point.
+    if ! install_claude_code; then
+        failed=$((failed + 1))
+    fi
+    if ! install_codex_cli; then
+        failed=$((failed + 1))
+    fi
+    if ! install_antigravity_cli; then
+        failed=$((failed + 1))
+    fi
 
     # Verify installation
-    verify_agents
+    if ! verify_agents; then
+        failed=$((failed + 1))
+    fi
 
     # Note about authentication
     echo ""
@@ -1592,7 +1603,13 @@ install_all_agents() {
     log_detail "  • Antigravity: Run 'agy' and complete Google login"
     echo ""
 
+    if ((failed > 0)); then
+        log_warn "Coding agents installation incomplete ($failed failed step(s))"
+        return 1
+    fi
+
     log_success "Coding agents installation complete"
+    return 0
 }
 
 # ============================================================

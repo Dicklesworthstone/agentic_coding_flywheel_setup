@@ -57,6 +57,22 @@ settings_prime_failure_is_propagated() {
   '
 }
 
+install_all_agents_propagates_antigravity_failure() {
+  bash -c '
+    source scripts/lib/agents.sh
+    _agent_check_bun() { return 0; }
+    install_claude_code() { return 0; }
+    install_codex_cli() { return 0; }
+    install_antigravity_cli() { return 29; }
+    verify_agents() { return 0; }
+    log_step() { :; }
+    log_detail() { :; }
+    log_warn() { :; }
+    log_success() { :; }
+    ! install_all_agents >/dev/null
+  '
+}
+
 echo "agy install contract tests"
 
 # 1. KNOWN_INSTALLERS registers the antigravity installer URL (5.3).
@@ -116,6 +132,8 @@ check "all agy relocation lanes identify wrappers before replacing agy-real" \
   "grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" install.sh && grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" scripts/lib/update.sh && grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" acfs.manifest.yaml"
 check "agents library propagates locked-settings priming failure" \
   "settings_prime_failure_is_propagated"
+check "agent installer aggregate preserves an Antigravity failure" \
+  "install_all_agents_propagates_antigravity_failure"
 check "agy locked launcher pins always-proceed tool permission" \
   "grep -q '\"toolPermission\": \"always-proceed\"' scripts/lib/agy_locked.py"
 check "agy locked launcher installs dcg hook support" \
