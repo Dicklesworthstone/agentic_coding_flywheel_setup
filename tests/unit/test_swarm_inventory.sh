@@ -224,6 +224,16 @@ invalid_stale_hours_fixture() {
 JSON
 }
 
+invalid_structure_fixture() {
+    write_fixture invalid_structure <<'JSON'
+{
+  "schema_version": 1,
+  "defaults": {"stale_after_hours": 24},
+  "hosts": [42]
+}
+JSON
+}
+
 run_inventory_json() {
     local name="$1"
     shift
@@ -378,6 +388,19 @@ CASES
     pass "validate_rejects_invalid_stale_after_hours"
 }
 
+test_validate_reports_nonobject_host_without_crashing() {
+    local inventory output
+    inventory="$(invalid_structure_fixture)"
+    output="$(run_inventory_json invalid-structure validate --inventory "$inventory")"
+    [[ "$(cat "$ARTIFACT_DIR/invalid-structure.exit")" -eq 2 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      (.errors[] | select(.code == "invalid_host" and .path == "hosts[0]"))
+    ' <<< "$output" >/dev/null || return 1
+
+    pass "validate_reports_nonobject_host_without_crashing"
+}
+
 test_validate_rejects_sensitive_fields() {
     local inventory output
     inventory="$(sensitive_inventory_fixture)"
@@ -472,6 +495,7 @@ main() {
     run_test test_import_export_preserve_unknown_fields
     run_test test_import_replaces_destination_atomically
     run_test test_validate_rejects_invalid_stale_after_hours
+    run_test test_validate_reports_nonobject_host_without_crashing
     run_test test_validate_rejects_sensitive_fields
     run_test test_duplicate_ids_write_validate_artifacts
     run_test test_malformed_import_export_write_error_artifacts

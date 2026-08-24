@@ -220,6 +220,9 @@ test_build_writes_manifest_and_verified_artifact() {
       .schema == "acfs.offline-artifact-pack.v1" and
       .packMode == "complete" and
       .policy.verifiedInstallerPolicy == "must_match_checksums_yaml" and
+      .acfs.sourceRef == "unknown" and
+      .acfs.sourceCommit == "unknown" and
+      .acfs.sourceTreeState == "unversioned" and
       .modules[0].id == "stack.rch" and
       .modules[0].verifiedInstallerKey == "rch" and
       .artifacts[0].sha256 == $expectedSha and
@@ -229,6 +232,53 @@ test_build_writes_manifest_and_verified_artifact() {
     jq -e '.status == "pass" and .output.packMode == "complete"' <<<"$output" >/dev/null || return 1
 
     pass "build_writes_manifest_and_verified_artifact"
+}
+
+test_build_refuses_dirty_versioned_source_surfaces() {
+    local source_root output_dir output status
+    source_root="$(write_fixture_source dirty-source valid)"
+    output_dir="$ARTIFACT_DIR/dirty-source/output"
+
+    git -C "$source_root" init -q -b main
+    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs
+    git -C "$source_root" -c user.name=ACFS -c user.email=acfs@example.invalid commit -q -m fixture
+    printf '# uncommitted runtime mutation\n' >> "$source_root/scripts/lib/fixture.sh"
+
+    output="$(run_pack dirty-source build --json --source-root "$source_root" --output "$output_dir" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/dirty-source.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_source_dirty"))
+    ' <<<"$output" >/dev/null || return 1
+    [[ ! -e "$output_dir" ]] || return 1
+
+    pass "build_refuses_dirty_versioned_source_surfaces"
+}
+
+test_build_binds_clean_versioned_source_commit() {
+    local source_root output_dir output status expected_commit manifest
+    source_root="$(write_fixture_source clean-source valid)"
+    output_dir="$ARTIFACT_DIR/clean-source/output"
+    manifest="$output_dir/acfs-offline-pack/manifest.json"
+
+    git -C "$source_root" init -q -b main
+    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs
+    git -C "$source_root" -c user.name=ACFS -c user.email=acfs@example.invalid commit -q -m fixture
+    expected_commit="$(git -C "$source_root" rev-parse HEAD)"
+
+    output="$(run_pack clean-source build --json --source-root "$source_root" --output "$output_dir" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/clean-source.exit")"
+
+    [[ "$status" -eq 0 ]] || return 1
+    jq -e --arg commit "$expected_commit" '
+      .acfs.sourceCommit == $commit and
+      .acfs.sourceTreeState == "clean"
+    ' "$manifest" >/dev/null || return 1
+    jq -e '.status == "pass"' <<<"$output" >/dev/null || return 1
+
+    pass "build_binds_clean_versioned_source_commit"
 }
 
 test_build_ignores_path_poisoned_pack_tools() {
@@ -419,6 +469,8 @@ run_all_tests() {
         test_dry_run_json_uses_manifest_and_checksums
         test_non_https_source_is_refused
         test_build_writes_manifest_and_verified_artifact
+        test_build_refuses_dirty_versioned_source_surfaces
+        test_build_binds_clean_versioned_source_commit
         test_build_ignores_path_poisoned_pack_tools
         test_checksum_mismatch_fails_closed
         test_unknown_module_is_refused

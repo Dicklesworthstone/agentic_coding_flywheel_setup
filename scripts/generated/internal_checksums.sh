@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="812461beecc75aa2b4481a7484996e4639267af6a69ca5184899d5d910a81632"
+  [install.sh]="5c98d4c2414d2275477273ab62c11fa8e43c36b915cc7d8882d07bf299cc9d77"
   [checksums.yaml]="a62d703fe6d1953b22db8db249538c8a29eff8955f6e555ca4472fb2ee00a0e3"
   [scripts/preflight.sh]="6c49cbb7368c52cbfb720b2781e1b335379a88e151ce24a5b386e9b91b99273c"
   [scripts/lib/security.sh]="792e033fa3f397ca30307d5cc99d0fa2b6489258f1c17fe8d83604e765640733"
@@ -22,7 +22,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/acfs-services.sh]="d4fbfcb6cce3cba3f266c72df4f9dee562f03f9563f457dca3194ed22db7adc7"
   [scripts/lib/doctor_fix.sh]="b5e7a73779aa965bdab0a1f2937cad38604a63f80de45deb67f243456c881a0c"
   [scripts/lib/offline_artifact_pack.sh]="29ede68755c85a54bc32765bf52acfc59047c8a7d15569be6db424987731d9b4"
-  [scripts/lib/autofix.sh]="eb59f02374921dacb3b04e1340909e876c44b874ea2e771efa19ba21db76066d"
+  [scripts/lib/autofix.sh]="0f476babb978ce9527539a4673ba7ec911cd86089b3812b7c9fa872144ab318b"
   [scripts/lib/autofix_existing.sh]="5cbfc0e4051c30d9a52268b7cd5c1940089579fe5e2495d4da22ed609a05044f"
   [scripts/lib/autofix_unattended.sh]="848f5744f75503eebe422a9d2418ed6b1341cfd6452004ee0a4e902d04f5d94a"
   [scripts/lib/autofix_version_managers.sh]="e235b7bfb95115f00bf7a4e3398be504c576d1fbe97a64c64a988294d62d621e"
@@ -36,7 +36,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/state.sh]="c829c5656d03f4d0a055874533fdcee3e5f3f20d3fab16c7d692bd33daa50c8f"
   [scripts/lib/report.sh]="aa0e2c4b279a90d4b3b87ed306500f7fd13eb26583dda6f82dc2a71f65f18a8f"
   [scripts/lib/error_tracking.sh]="5296ebc3428ece8912b1fbc29a576dba8e5789b6a62f3efdb68b497ae106c007"
-  [scripts/lib/session.sh]="ed3bfe55500249f13a901a3fd5c35a4e3f8a4da6652a037bf591d169bdd416de"
+  [scripts/lib/session.sh]="0a486fb8ced32d3148739ba92715d1c7179abe91368b1622ca5fc74c57ddaff0"
   [scripts/lib/os_detect.sh]="5cc5c182d212d7ea76fd345f97e97d808aad5d7e8cb29736b03f88e2ad115889"
   [scripts/lib/errors.sh]="7733e51599c65d7e4f38ffa38a5b6833e2ba182280676bd34a63788c7f2b0adc"
   [scripts/lib/user.sh]="fc079920a34237bac37d3fb7107f3f8c8ae9e84d82a123669b5eef5d23f68dfe"

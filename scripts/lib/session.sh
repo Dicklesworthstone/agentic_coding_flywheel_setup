@@ -1499,7 +1499,11 @@ write_native_claude_from_canonical() {
             log_error "Failed to create Claude session directory: $target_dir"
             return 1
         fi
-        acfs_session_create_new_file "$target_dir" "$target_path" || return 1
+        local target_tmp=""
+        target_tmp=$(mktemp "${target_dir}/.${target_session_id}.XXXXXX.tmp") || {
+            log_error "Failed to stage Claude session in: $target_dir"
+            return 1
+        }
 
         local parent_uuid=""
         local msg_count=0
@@ -1520,7 +1524,7 @@ write_native_claude_from_canonical() {
                 first_prompt="$content"
             fi
 
-            jq -cn \
+            if ! jq -cn \
                 --arg parent "$parent_uuid" \
                 --arg cwd "$workspace" \
                 --arg sid "$target_session_id" \
@@ -1547,14 +1551,24 @@ write_native_claude_from_canonical() {
                     uuid: $uuid,
                     timestamp: $ts
                 }
-            ' >> "$target_path"
+            ' >> "$target_tmp"; then
+                acfs_session_remove_temp_files "$target_tmp"
+                log_error "Failed to stage Claude session message"
+                return 1
+            fi
 
             parent_uuid="$entry_uuid"
             msg_count=$((msg_count + 1))
         done < <(jq -c '.messages[]' "$canonical_file")
 
+        if ! acfs_session_publish_new_file "$target_tmp" "$target_dir" "$target_path"; then
+            acfs_session_remove_temp_files "$target_tmp"
+            return 1
+        fi
+
         # Update/seed sessions-index so converted session appears alongside native sessions.
-        local index_file="$home_dir/projects/$dir_key/sessions-index.json"
+        local index_file=""
+        index_file="$(acfs_session_child_path "$target_dir" "sessions-index.json")" || return 1
         local index_tmp
         local index_existed=false
         index_tmp=$(mktemp "${target_dir}/.sessions-index.XXXXXX.tmp") || return 1
@@ -1655,9 +1669,13 @@ write_native_codex_from_canonical() {
             log_error "Failed to create Codex session directory: $target_dir"
             return 1
         fi
-        acfs_session_create_new_file "$target_dir" "$target_path" || return 1
+        local target_tmp=""
+        target_tmp=$(mktemp "${target_dir}/.${target_session_id}.XXXXXX.tmp") || {
+            log_error "Failed to stage Codex session in: $target_dir"
+            return 1
+        }
 
-        jq -cn \
+        if ! jq -cn \
             --arg sid "$target_session_id" \
             --arg cwd "$workspace" \
             --arg ts "$now_iso" '
@@ -1674,7 +1692,11 @@ write_native_codex_from_canonical() {
                     model_provider: "openai"
                 }
             }
-        ' >> "$target_path"
+        ' >> "$target_tmp"; then
+            acfs_session_remove_temp_files "$target_tmp"
+            log_error "Failed to stage Codex session metadata"
+            return 1
+        fi
 
         local msg
         while IFS= read -r msg; do
@@ -1686,7 +1708,7 @@ write_native_codex_from_canonical() {
             [[ -z "$msg_ts" ]] && msg_ts="$now_iso"
 
             if [[ "$role" == "user" ]]; then
-                jq -cn \
+                if ! jq -cn \
                     --arg ts "$msg_ts" \
                     --arg content "$content" '
                     {
@@ -1700,9 +1722,13 @@ write_native_codex_from_canonical() {
                             text_elements: []
                         }
                     }
-                ' >> "$target_path"
+                ' >> "$target_tmp"; then
+                    acfs_session_remove_temp_files "$target_tmp"
+                    log_error "Failed to stage Codex user message"
+                    return 1
+                fi
             else
-                jq -cn \
+                if ! jq -cn \
                     --arg ts "$msg_ts" \
                     --arg content "$content" '
                     {
@@ -1719,9 +1745,18 @@ write_native_codex_from_canonical() {
                             ]
                         }
                     }
-                ' >> "$target_path"
+                ' >> "$target_tmp"; then
+                    acfs_session_remove_temp_files "$target_tmp"
+                    log_error "Failed to stage Codex assistant message"
+                    return 1
+                fi
             fi
         done < <(jq -c '.messages[]' "$canonical_file")
+
+        if ! acfs_session_publish_new_file "$target_tmp" "$target_dir" "$target_path"; then
+            acfs_session_remove_temp_files "$target_tmp"
+            return 1
+        fi
     fi
 
     printf '%s\n' "$target_path"
@@ -1753,8 +1788,10 @@ write_native_gemini_from_canonical() {
     local chats_dir="$root_dir/chats"
     local target_path=""
     target_path="$(acfs_session_child_path "$chats_dir" "session-${file_stub}.json")" || return 1
-    local logs_path="$root_dir/logs.json"
-    local project_root_file="$root_dir/.project_root"
+    local logs_path=""
+    local project_root_file=""
+    logs_path="$(acfs_session_child_path "$root_dir" "logs.json")" || return 1
+    project_root_file="$(acfs_session_child_path "$root_dir" ".project_root")" || return 1
     acfs_session_require_new_destination "$chats_dir" "$target_path" || return 1
 
     if [[ "$dry_run" != "true" ]]; then
@@ -1781,10 +1818,17 @@ write_native_gemini_from_canonical() {
             fi
         fi
 
-        acfs_session_create_new_file "$chats_dir" "$target_path" || return 1
+        local target_tmp=""
+        target_tmp=$(mktemp "${chats_dir}/.${target_session_id}.XXXXXX.tmp") || {
+            log_error "Failed to stage Gemini session in: $chats_dir"
+            return 1
+        }
 
         local msg_tmp logs_tmp=""
-        msg_tmp=$(mktemp "${TMPDIR:-/tmp}/acfs_gemini_msgs.XXXXXX") || return 1
+        msg_tmp=$(mktemp "${TMPDIR:-/tmp}/acfs_gemini_msgs.XXXXXX") || {
+            acfs_session_remove_temp_files "$target_tmp"
+            return 1
+        }
 
         local first_ts=""
         local last_ts="$now_iso"
@@ -1800,7 +1844,7 @@ write_native_gemini_from_canonical() {
             last_ts="$msg_ts"
             entry_id="$(session_generate_uuid)"
 
-            jq -cn \
+            if ! jq -cn \
                 --arg id "$entry_id" \
                 --arg ts "$msg_ts" \
                 --arg role "$role" \
@@ -1811,14 +1855,18 @@ write_native_gemini_from_canonical() {
                     type: (if $role == "user" then "user" else "gemini" end),
                     content: [{text: $content}]
                 }
-            ' >> "$msg_tmp"
+            ' >> "$msg_tmp"; then
+                acfs_session_remove_temp_files "$target_tmp" "$msg_tmp"
+                log_error "Failed to stage Gemini session message"
+                return 1
+            fi
         done < <(jq -c '.messages[]' "$canonical_file")
 
         [[ -z "$first_ts" ]] && first_ts="$now_iso"
 
         local messages_json
         if ! messages_json="$(jq -s '.' "$msg_tmp")"; then
-            acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+            acfs_session_remove_temp_files "$target_tmp" "$msg_tmp" "$logs_tmp"
             log_error "Failed to assemble Gemini message payload"
             return 1
         fi
@@ -1837,9 +1885,14 @@ write_native_gemini_from_canonical() {
                 messages: $messages,
                 summary: ""
             }
-        ' >> "$target_path"; then
-            acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+        ' > "$target_tmp"; then
+            acfs_session_remove_temp_files "$target_tmp" "$msg_tmp" "$logs_tmp"
             log_error "Failed to write Gemini chat file: $target_path"
+            return 1
+        fi
+
+        if ! acfs_session_publish_new_file "$target_tmp" "$chats_dir" "$target_path"; then
+            acfs_session_remove_temp_files "$target_tmp" "$msg_tmp" "$logs_tmp"
             return 1
         fi
 
@@ -2054,6 +2107,9 @@ convert_session_native() {
     if [[ -z "$target_session_id" ]]; then
         target_session_id="$(session_generate_uuid)"
     fi
+    if ! acfs_session_validate_id "$target_session_id" "Target session ID"; then
+        return 1
+    fi
 
     local canonical_tmp
     canonical_tmp=$(mktemp "${TMPDIR:-/tmp}/acfs_native_canonical.XXXXXX") || {
@@ -2083,6 +2139,10 @@ convert_session_native() {
 
     local source_session_id
     source_session_id="$(jq -r '.source_session_id // "unknown"' "$canonical_tmp")"
+    if ! acfs_session_validate_id "$source_session_id" "Source session ID"; then
+        acfs_session_remove_temp_files "$canonical_tmp"
+        return 1
+    fi
 
     local written_path
     if ! written_path="$(write_native_from_canonical "$canonical_tmp" "$to_agent" "$workspace" "$target_session_id" "$dry_run")"; then
@@ -2282,6 +2342,10 @@ import_session() {
         log_error "Unrecognized session format"; return 1
     fi
 
+    if ! acfs_session_validate_id "$session_id" "Imported source session ID"; then
+        return 1
+    fi
+
     echo ""
     echo "Session Summary:"
     echo "  Session ID: $session_id"
@@ -2298,8 +2362,17 @@ import_session() {
         log_error "Failed to create session storage directory: $sessions_dir"
         return 1
     fi
-    local local_id; local_id=$(generate_session_id)
-    local dest="$sessions_dir/${local_id}.json"
+    local local_id
+    local dest=""
+    local_id="$(generate_session_id)" || {
+        log_error "Failed to generate local session ID"
+        return 1
+    }
+    if ! acfs_session_validate_id "$local_id" "Generated local session ID"; then
+        return 1
+    fi
+    dest="$(acfs_session_child_path "$sessions_dir" "${local_id}.json")" || return 1
+    acfs_session_require_new_destination "$sessions_dir" "$dest" || return 1
 
     if [[ "$is_cass" == "true" ]]; then
         local tmp_dest
@@ -2321,7 +2394,7 @@ import_session() {
             return 1
         fi
 
-        if ! mv -- "$tmp_dest" "$dest"; then
+        if ! acfs_session_publish_new_file "$tmp_dest" "$sessions_dir" "$dest"; then
             acfs_session_remove_temp_files "$tmp_dest"
             log_error "Failed to write imported session: $dest"
             return 1
@@ -2346,7 +2419,7 @@ import_session() {
             return 1
         fi
 
-        if ! mv -- "$tmp_dest" "$dest"; then
+        if ! acfs_session_publish_new_file "$tmp_dest" "$sessions_dir" "$dest"; then
             acfs_session_remove_temp_files "$tmp_dest"
             log_error "Failed to write imported session: $dest"
             return 1
@@ -2383,11 +2456,15 @@ show_session() {
         log_error "Session ID required"
         return 1
     fi
+    if ! acfs_session_validate_id "$session_id" "Session ID"; then
+        return 1
+    fi
 
     sessions_dir="$(acfs_session_storage_dir)" || return 1
 
-    local file="$sessions_dir/${session_id}.json"
-    if [[ ! -f "$file" ]]; then
+    local file=""
+    file="$(acfs_session_child_path "$sessions_dir" "${session_id}.json")" || return 1
+    if [[ ! -f "$file" ]] || [[ -L "$file" ]]; then
         log_error "Session not found: $session_id"
         return 1
     fi
@@ -2436,6 +2513,7 @@ list_imported_sessions() {
 
     for f in "$sessions_dir"/*.json; do
         [[ -f "$f" ]] || continue
+        [[ ! -L "$f" ]] || continue
         local id; id=$(basename "$f" .json)
         jq -r '"  \("'"$id"'")   \(.agent[:12])   \(.session_id)"' "$f" 2>/dev/null
     done

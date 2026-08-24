@@ -2539,7 +2539,7 @@ undo_change() {
             rollback_path="/opt/homebrew/bin:/opt/homebrew/sbin:$rollback_path"
         fi
     fi
-    local -a rollback_env_args=(
+    local rollback_env_args=(
         -i
         PATH="$rollback_path"
         HOME="${HOME:-/}"

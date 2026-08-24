@@ -280,18 +280,26 @@ swarm_inventory_validation_json() {
         ];
         def role_ok($v): ($v | IN("swarm-controller", "swarm-worker", "rch-worker", "support", "disabled"));
         def status_ok($v): ($v | IN("active", "stale", "disabled", "unknown"));
-        def id_ok($v): (($v | type) == "string" and ($v | test("^[a-z0-9][a-z0-9._-]{0,62}$")));
+        def id_ok($v):
+          if ($v | type) != "string" then false
+          else ($v | test("^[a-z0-9][a-z0-9._-]{0,62}$")) end;
         def is_object($v): (($v | type) == "object");
         def stale_hours_ok($v):
-          (($v | type) == "number" and $v >= 1 and ($v | floor) == $v);
+          if ($v | type) != "number" then false
+          else ($v >= 1 and ($v | floor) == $v) end;
         def unknown_count($obj; $allowed):
           if ($obj | type) == "object" then
             ([($obj | keys_unsorted[]) as $k | select(($allowed | index($k)) | not)] | length)
           else 0 end;
-        (if ($inventory | has("defaults")) then $inventory.defaults else null end) as $defaults_raw
+        ($inventory | type) as $inventory_type
+        | (if $inventory_type == "object" then $inventory else {} end) as $inventory_obj
+        | (if $inventory_type == "object" then [] else
+             [err("invalid_inventory"; ""; "inventory must be an object")]
+           end) as $inventory_errors
+        | (if ($inventory_obj | has("defaults")) then $inventory_obj.defaults else null end) as $defaults_raw
         | (if ($defaults_raw | type) == "object" then $defaults_raw else {} end) as $defaults
-        | ($inventory.hosts // null) as $hosts
-        | (if ($inventory.schema_version // null) == 1 then [] else [err("unsupported_schema_version"; "schema_version"; "schema_version must be 1")] end) as $schema_errors
+        | ($inventory_obj.hosts // null) as $hosts
+        | (if ($inventory_obj.schema_version // null) == 1 then [] else [err("unsupported_schema_version"; "schema_version"; "schema_version must be 1")] end) as $schema_errors
         | (if $defaults_raw == null or ($defaults_raw | type) == "object" then [] else
              [err("invalid_defaults"; "defaults"; "defaults must be an object")]
            end) as $defaults_errors
@@ -302,7 +310,7 @@ swarm_inventory_validation_json() {
         | (if ($hosts | type) == "array" then [] else [err("invalid_hosts"; "hosts"; "hosts must be an array")] end) as $host_array_errors
         | (if ($hosts | type) == "array" then $hosts else [] end) as $host_list
         | ([
-            $inventory
+            $inventory_obj
             | paths as $p
             | select(($p | length) > 0 and (($p[-1] | type) == "string"))
             | ($p[-1] | ascii_downcase) as $key
@@ -317,7 +325,7 @@ swarm_inventory_validation_json() {
           ] + [
             # Values that look like network endpoints or credentials, whatever
             # the key is called (free-text notes are the usual leak).
-            $inventory
+            $inventory_obj
             | paths(type == "string") as $p
             | select(getpath($p) | test("(^|[^0-9.])[0-9]{1,3}(\\.[0-9]{1,3}){3}([^0-9.]|$)|[0-9a-f]{0,4}(:[0-9a-f]{0,4}){5,7}|(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_|tskey-|sk-[A-Za-z0-9]{20,}|hvs\\.|xox[bpsar]-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|(ssh|scp) +[A-Za-z0-9._-]+@"; "i"))
             | pathstr($p)
@@ -329,38 +337,39 @@ swarm_inventory_validation_json() {
             | ($entry.value) as $h
             | if ($h | type) != "object" then
                 err("invalid_host"; "hosts[" + ($idx | tostring) + "]"; "host must be an object")
-              else empty end,
-              if id_ok($h.id) then empty else
-                err("invalid_host_id"; "hosts[" + ($idx | tostring) + "].id"; "host id must match ^[a-z0-9][a-z0-9._-]{0,62}$")
-              end,
-              if role_ok($h.role) then empty else
-                err("invalid_role"; "hosts[" + ($idx | tostring) + "].role"; "unsupported host role")
-              end,
-              if status_ok($h.status) then empty else
-                err("invalid_status"; "hosts[" + ($idx | tostring) + "].status"; "unsupported host status")
-              end,
-              if (($h.last_probe_at == null) or (($h.last_probe_at | type) == "string")) then empty else
-                err("invalid_last_probe_at"; "hosts[" + ($idx | tostring) + "].last_probe_at"; "last_probe_at must be string or null")
-              end,
-              if is_object($h.resources) then empty else
-                err("invalid_resources"; "hosts[" + ($idx | tostring) + "].resources"; "resources must be an object")
-              end,
-              if is_object($h.capacity) then empty else
-                err("invalid_capacity"; "hosts[" + ($idx | tostring) + "].capacity"; "capacity must be an object")
-              end,
-              if is_object($h.rch) then empty else
-                err("invalid_rch"; "hosts[" + ($idx | tostring) + "].rch"; "rch must be an object")
-              end,
-              if is_object($h.ntm) then empty else
-                err("invalid_ntm"; "hosts[" + ($idx | tostring) + "].ntm"; "ntm must be an object")
-              end,
-              if is_object($h.ru) then empty else
-                err("invalid_ru"; "hosts[" + ($idx | tostring) + "].ru"; "ru must be an object")
+              else
+                (if id_ok($h.id) then empty else
+                   err("invalid_host_id"; "hosts[" + ($idx | tostring) + "].id"; "host id must match ^[a-z0-9][a-z0-9._-]{0,62}$")
+                 end),
+                (if role_ok($h.role) then empty else
+                   err("invalid_role"; "hosts[" + ($idx | tostring) + "].role"; "unsupported host role")
+                 end),
+                (if status_ok($h.status) then empty else
+                   err("invalid_status"; "hosts[" + ($idx | tostring) + "].status"; "unsupported host status")
+                 end),
+                (if (($h.last_probe_at == null) or (($h.last_probe_at | type) == "string")) then empty else
+                   err("invalid_last_probe_at"; "hosts[" + ($idx | tostring) + "].last_probe_at"; "last_probe_at must be string or null")
+                 end),
+                (if is_object($h.resources) then empty else
+                   err("invalid_resources"; "hosts[" + ($idx | tostring) + "].resources"; "resources must be an object")
+                 end),
+                (if is_object($h.capacity) then empty else
+                   err("invalid_capacity"; "hosts[" + ($idx | tostring) + "].capacity"; "capacity must be an object")
+                 end),
+                (if is_object($h.rch) then empty else
+                   err("invalid_rch"; "hosts[" + ($idx | tostring) + "].rch"; "rch must be an object")
+                 end),
+                (if is_object($h.ntm) then empty else
+                   err("invalid_ntm"; "hosts[" + ($idx | tostring) + "].ntm"; "ntm must be an object")
+                 end),
+                (if is_object($h.ru) then empty else
+                   err("invalid_ru"; "hosts[" + ($idx | tostring) + "].ru"; "ru must be an object")
+                 end)
               end
           ] as $field_errors
         | ($sensitive_paths | map(err("forbidden_sensitive_field"; .; "Inventory contains forbidden sensitive field name"))) as $sensitive_errors
         | ($duplicates | map(err("duplicate_host_id"; "hosts[].id"; "duplicate host id: " + .))) as $duplicate_errors
-        | ($schema_errors + $defaults_errors + $stale_hours_errors + $host_array_errors + $field_errors + $sensitive_errors + $duplicate_errors) as $errors
+        | ($inventory_errors + $schema_errors + $defaults_errors + $stale_hours_errors + $host_array_errors + $field_errors + $sensitive_errors + $duplicate_errors) as $errors
         | {
             schema_version: 1,
             source_file: $source_file,
@@ -369,7 +378,7 @@ swarm_inventory_validation_json() {
             forbidden_sensitive_field_paths: $sensitive_paths,
             duplicate_ids: $duplicates,
             unknown_field_count: (
-              unknown_count($inventory; ["schema_version", "updated_at", "defaults", "hosts"])
+              unknown_count($inventory_obj; ["schema_version", "updated_at", "defaults", "hosts"])
               + ([ $host_list[]? | unknown_count(.; ["id", "display_name", "role", "status", "manual_tags", "last_probe_at", "probe_source", "resources", "capacity", "rch", "ntm", "ru", "notes"]) ] | add // 0)
             ),
             warnings: []
@@ -391,7 +400,8 @@ swarm_inventory_report_json() {
         '
         def n($v):
           if ($v | type) == "number" then $v
-          elif (($v | type) == "string" and ($v | test("^[0-9]+$"))) then ($v | tonumber)
+          elif ($v | type) != "string" then 0
+          elif ($v | test("^[0-9]+$")) then ($v | tonumber)
           else 0 end;
         def ts($s): if ($s | type) == "string" then ($s | fromdateiso8601? // null) else null end;
         def launch_role($role): ($role | IN("swarm-controller", "swarm-worker", "support"));

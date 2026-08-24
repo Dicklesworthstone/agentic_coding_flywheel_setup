@@ -2191,7 +2191,8 @@ test_undo_change_never_executes_checksum_invalid_record_with_force() {
     change_id="$(record_change "test" "Untrusted undo" "true" false info '[]' '[]' '[]')"
     orig_record="$(grep -F "\"id\":\"$change_id\"" "$ACFS_CHANGES_FILE" | tail -1)"
     tampered_record="$(printf '%s' "$orig_record" | jq -c --arg command "printf compromised > '$marker_file'" '.undo_command = $command')"
-    ACFS_CHANGE_RECORDS["$change_id"]="$tampered_record"
+    printf '%s\n' "$tampered_record" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1 || true
 
     if undo_change "$change_id" true true >/dev/null 2>&1; then
         echo "  Forced undo accepted a checksum-invalid executable record"
@@ -2232,7 +2233,8 @@ test_undo_change_rejects_checksummed_malformed_record() {
     malformed_record="$(autofix_add_record_checksum "$malformed_record")"
     malformed_record="$(printf '%s' "$malformed_record" | jq -c --arg command "printf compromised > '$marker_file'" 'del(.record_checksum) | .undo_command = $command')"
     malformed_record="$(autofix_add_record_checksum "$malformed_record")"
-    ACFS_CHANGE_RECORDS["$change_id"]="$malformed_record"
+    printf '%s\n' "$malformed_record" > "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1 || true
 
     if undo_change "$change_id" true true >/dev/null 2>&1; then
         echo "  Undo accepted malformed executable metadata with a valid checksum"

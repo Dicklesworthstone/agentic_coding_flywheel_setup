@@ -31,6 +31,9 @@ OFFLINE_PACK_FAILURES_JSON="[]"
 OFFLINE_PACK_JQ_BIN=""
 OFFLINE_PACK_HASH_SPEC=""
 OFFLINE_PACK_AWK_BIN=""
+OFFLINE_PACK_SOURCE_REF="unknown"
+OFFLINE_PACK_SOURCE_COMMIT="unknown"
+OFFLINE_PACK_SOURCE_TREE_STATE="unversioned"
 
 declare -gA OFFLINE_PACK_INSTALLER_URL=()
 declare -gA OFFLINE_PACK_INSTALLER_SHA=()
@@ -259,6 +262,65 @@ offline_pack_git() {
     git_bin="$(offline_pack_system_binary_path git 2>/dev/null || true)"
     [[ -n "$git_bin" ]] || return 127
     "$git_bin" "$@"
+}
+
+# Bind any Git provenance claim to the exact tracked surfaces copied into the
+# pack.  A dirty source tree must never be labelled with a clean HEAD commit.
+# Non-Git fixture/source directories remain supported, but are explicitly
+# recorded as unversioned rather than receiving a misleading commit identity.
+offline_pack_capture_source_snapshot() {
+    local inside_work_tree=""
+    local dirty_sources=""
+
+    OFFLINE_PACK_SOURCE_REF="unknown"
+    OFFLINE_PACK_SOURCE_COMMIT="unknown"
+    OFFLINE_PACK_SOURCE_TREE_STATE="unversioned"
+
+    inside_work_tree="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse --is-inside-work-tree 2>/dev/null || true)"
+    [[ "$inside_work_tree" == "true" ]] || return 0
+
+    OFFLINE_PACK_SOURCE_COMMIT="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse HEAD 2>/dev/null || true)"
+    OFFLINE_PACK_SOURCE_REF="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [[ ! "$OFFLINE_PACK_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+        OFFLINE_PACK_SOURCE_TREE_STATE="invalid"
+        offline_pack_add_error "pack_source_unverifiable: unable to resolve source HEAD"
+        return 1
+    fi
+
+    if ! dirty_sources="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all --ignore-submodules=none -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs 2>/dev/null)"; then
+        OFFLINE_PACK_SOURCE_TREE_STATE="invalid"
+        offline_pack_add_error "pack_source_unverifiable: unable to inspect copied source surfaces"
+        return 1
+    fi
+    if [[ -n "$dirty_sources" ]]; then
+        OFFLINE_PACK_SOURCE_TREE_STATE="dirty"
+        offline_pack_add_error "pack_source_dirty: copied source surfaces differ from HEAD"
+        return 1
+    fi
+
+    OFFLINE_PACK_SOURCE_TREE_STATE="clean"
+    return 0
+}
+
+offline_pack_assert_source_snapshot_unchanged() {
+    local current_commit=""
+    local dirty_sources=""
+
+    [[ "$OFFLINE_PACK_SOURCE_TREE_STATE" == "clean" ]] || return 0
+    current_commit="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse HEAD 2>/dev/null || true)"
+    if [[ "$current_commit" != "$OFFLINE_PACK_SOURCE_COMMIT" ]]; then
+        offline_pack_add_error "pack_source_changed: source HEAD moved while the pack was built"
+        return 1
+    fi
+    if ! dirty_sources="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all --ignore-submodules=none -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs 2>/dev/null)"; then
+        offline_pack_add_error "pack_source_unverifiable: unable to recheck copied source surfaces"
+        return 1
+    fi
+    if [[ -n "$dirty_sources" ]]; then
+        offline_pack_add_error "pack_source_changed: copied source surfaces changed while the pack was built"
+        return 1
+    fi
+    return 0
 }
 
 offline_pack_curl_binary_path() {
@@ -1004,8 +1066,6 @@ offline_pack_write_manifest() {
     local generated_at="$2"
     local expires_at="$3"
     local version="unknown"
-    local source_ref="unknown"
-    local source_commit="unknown"
     local manifest_sha=""
     local checksums_sha=""
     local pack_mode="complete"
@@ -1015,8 +1075,6 @@ offline_pack_write_manifest() {
         version="$(< "$OFFLINE_PACK_SOURCE_ROOT/VERSION")"
         version="${version//[[:space:]]/}"
     fi
-    source_ref="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')"
-    source_commit="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse HEAD 2>/dev/null || printf 'unknown')"
     manifest_sha="$(offline_pack_sha256 "$OFFLINE_PACK_MANIFEST_FILE")"
     checksums_sha="$(offline_pack_sha256 "$OFFLINE_PACK_CHECKSUMS_FILE")"
 
@@ -1029,8 +1087,9 @@ offline_pack_write_manifest() {
         --argjson staleAfterDays "$OFFLINE_PACK_EXPIRES_DAYS" \
         --arg packMode "$pack_mode" \
         --arg acfsVersion "$version" \
-        --arg sourceRef "$source_ref" \
-        --arg sourceCommit "$source_commit" \
+        --arg sourceRef "$OFFLINE_PACK_SOURCE_REF" \
+        --arg sourceCommit "$OFFLINE_PACK_SOURCE_COMMIT" \
+        --arg sourceTreeState "$OFFLINE_PACK_SOURCE_TREE_STATE" \
         --arg manifestSha "$manifest_sha" \
         --arg checksumsSha "$checksums_sha" \
         --arg arch "$OFFLINE_PACK_ARCH" \
@@ -1050,6 +1109,7 @@ offline_pack_write_manifest() {
             version: $acfsVersion,
             sourceRef: $sourceRef,
             sourceCommit: $sourceCommit,
+            sourceTreeState: $sourceTreeState,
             manifestSha256: $manifestSha,
             checksumsYamlSha256: $checksumsSha
           },
@@ -1066,11 +1126,12 @@ offline_pack_write_manifest() {
 
     offline_pack_jq -n \
         --arg generatedAt "$generated_at" \
-        --arg sourceRef "$source_ref" \
-        --arg sourceCommit "$source_commit" \
+        --arg sourceRef "$OFFLINE_PACK_SOURCE_REF" \
+        --arg sourceCommit "$OFFLINE_PACK_SOURCE_COMMIT" \
+        --arg sourceTreeState "$OFFLINE_PACK_SOURCE_TREE_STATE" \
         --arg arch "$OFFLINE_PACK_ARCH" \
         --arg ubuntuVersion "$OFFLINE_PACK_UBUNTU_VERSION" \
-        '{generatedAt: $generatedAt, sourceRef: $sourceRef, sourceCommit: $sourceCommit, target: {os: "ubuntu", version: $ubuntuVersion, architecture: $arch}}' \
+        '{generatedAt: $generatedAt, sourceRef: $sourceRef, sourceCommit: $sourceCommit, sourceTreeState: $sourceTreeState, target: {os: "ubuntu", version: $ubuntuVersion, architecture: $arch}}' \
         > "$pack_root/provenance/builder-env.json"
 
     offline_pack_jq -n \
@@ -1209,6 +1270,8 @@ offline_pack_main() {
         return
     fi
 
+    offline_pack_capture_source_snapshot || true
+
     if (( ${#OFFLINE_PACK_ERRORS[@]} > 0 )); then
         offline_pack_emit_result "" "$generated_at"
         return 1
@@ -1224,6 +1287,11 @@ offline_pack_main() {
     fi
 
     if ! offline_pack_download_artifacts "$pack_root"; then
+        offline_pack_emit_result "$pack_root" "$generated_at"
+        return 1
+    fi
+
+    if ! offline_pack_assert_source_snapshot_unchanged; then
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
     fi
