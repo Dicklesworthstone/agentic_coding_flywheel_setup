@@ -1541,7 +1541,7 @@ offline_pack_main() {
         if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
             offline_pack_load_checksums "$OFFLINE_PACK_CHECKSUMS_FILE" || true
             offline_pack_load_manifest_modules "$OFFLINE_PACK_MANIFEST_FILE" || true
-            offline_pack_select_modules
+            offline_pack_select_modules || true
         fi
         if [[ "$OFFLINE_PACK_FORMAT" == "json" ]]; then
             offline_pack_plan_json "$generated_at" "$expires_at"
