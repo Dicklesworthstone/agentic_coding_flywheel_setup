@@ -4005,9 +4005,9 @@ update_run_fsfs_installer() {
 }
 
 # Drift-aware SLB preservation (#329): SLB mediates approval for dangerous
-# commands, so a nightly rebuild must never silently replace a binary the
+# commands, so a nightly update must never silently replace a binary the
 # operator has audited or pinned. ACFS records the hash of the binary it last
-# built in a sidecar next to it; an installed binary that does not match that
+# installed in a sidecar next to it; an installed binary that does not match that
 # recorded hash (including any binary installed before the sidecar existed)
 # is treated as operator-owned and preserved with a logged notice unless
 # ACFS_FORCE_SLB_UPDATE=1 is set, in which case the previous binary is backed
@@ -4020,55 +4020,145 @@ update_slb_sidecar_path_for() {
 }
 
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
-update_run_slb_source_install() {
+update_run_slb_verified_install() {
     local slb_path=""
     local sidecar_file=""
     local current_hash=""
     local recorded_hash=""
-    local backup_env=""
+    local target_user=""
+    local target_home=""
+    local install_dir=""
+    local installed_path=""
+    local installed_hash=""
+    local backup_path=""
+    local cp_bin=""
+    local mkdir_bin=""
+    local bash_bin=""
+    local chmod_bin=""
+    local -a sudo_prefix=()
 
     slb_path="$(update_binary_path slb 2>/dev/null || true)"
     if [[ -n "$slb_path" ]]; then
         sidecar_file="$(update_slb_sidecar_path_for "$slb_path")"
         current_hash="$(update_sha256_file "$slb_path" 2>/dev/null || true)"
-        recorded_hash="$(cat "$sidecar_file" 2>/dev/null || true)"
+        if [[ -f "$sidecar_file" && ! -L "$sidecar_file" ]]; then
+            recorded_hash="$(< "$sidecar_file")"
+        fi
 
         if [[ "${ACFS_FORCE_SLB_UPDATE:-0}" == "1" ]]; then
-            echo "SLB: rebuilding over existing binary at $slb_path (ACFS_FORCE_SLB_UPDATE=1); previous binary saved as slb.acfs-bak" >&2
-            log_to_file "SLB: forced rebuild over existing binary at $slb_path (ACFS_FORCE_SLB_UPDATE=1)"
-            backup_env="ACFS_SLB_BACKUP_EXISTING=1"
-        elif [[ -n "$current_hash" && -n "$recorded_hash" && "$current_hash" == "$recorded_hash" ]]; then
+            echo "SLB: updating existing binary at $slb_path (ACFS_FORCE_SLB_UPDATE=1); previous binary will be saved as slb.acfs-bak" >&2
+            log_to_file "SLB: forced verified update over existing binary at $slb_path (ACFS_FORCE_SLB_UPDATE=1)"
+        elif [[ "$current_hash" =~ ^[0-9a-fA-F]{64}$ ]] \
+            && [[ "$recorded_hash" =~ ^[0-9a-fA-F]{64}$ ]] \
+            && [[ "${current_hash,,}" == "${recorded_hash,,}" ]]; then
             # Exactly what ACFS last built, unmodified: safe to refresh.
             log_to_file "SLB: existing binary at $slb_path matches ACFS sidecar hash; refreshing"
         else
-            echo "SLB: preserving existing binary at $slb_path (not the binary ACFS last built; possibly operator-audited). Set ACFS_FORCE_SLB_UPDATE=1 to rebuild from source." >&2
-            log_to_file "SLB: preserved existing binary at $slb_path (hash does not match ACFS sidecar; skipping source rebuild)"
+            echo "SLB: preserving existing binary at $slb_path (not the binary ACFS last installed; possibly operator-audited). Set ACFS_FORCE_SLB_UPDATE=1 to replace it." >&2
+            log_to_file "SLB: preserved existing binary at $slb_path (hash does not match ACFS sidecar; skipping verified update)"
             return 0
         fi
     fi
 
-    log_to_file "Building SLB from source (upstream installer issue workaround)"
+    target_user="$(update_target_user 2>/dev/null || true)"
+    update_validate_target_user "$target_user" || return 1
+    target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
+    [[ -n "$target_home" ]] || {
+        echo "Unable to resolve target home for verified SLB update" >&2
+        return 1
+    }
 
-    local build_cmd
-    build_cmd="$(cat <<'EOF'
-set -euo pipefail
-mkdir -p "$HOME/go/bin"
-if [ "${ACFS_SLB_BACKUP_EXISTING:-0}" = "1" ] && [ -x "$HOME/go/bin/slb" ]; then
-    cp -f "$HOME/go/bin/slb" "$HOME/go/bin/slb.acfs-bak"
-fi
-SLB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/slb_build.XXXXXX")"
-trap '[ -n "$SLB_TMP" ] && rm -rf "$SLB_TMP"' EXIT
-cd "$SLB_TMP"
-git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git .
-go build -o "$HOME/go/bin/slb" ./cmd/slb
-if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$HOME/go/bin/slb" | awk '{print $1}' > "$HOME/go/bin/.slb.acfs-sha256"
-else
-    shasum -a 256 "$HOME/go/bin/slb" | awk '{print $1}' > "$HOME/go/bin/.slb.acfs-sha256"
-fi
-EOF
-)"
-    update_run_in_target_context "$backup_env" bash -c "$build_cmd"
+    if [[ -n "$slb_path" ]]; then
+        install_dir="${slb_path%/*}"
+    else
+        install_dir="$(update_preferred_user_bin_dir 2>/dev/null || true)"
+        install_dir="$(update_validate_bin_dir_for_home "$install_dir" "$target_home" 2>/dev/null || true)"
+    fi
+    if [[ -z "$install_dir" || "$install_dir" != /* || "$install_dir" == "/" ]]; then
+        echo "Unable to resolve a safe installation directory for SLB" >&2
+        return 1
+    fi
+
+    installed_path="$install_dir/slb"
+    sidecar_file="$(update_slb_sidecar_path_for "$installed_path")"
+    if [[ -L "$installed_path" ]]; then
+        echo "Refusing to replace symlinked SLB path: $installed_path" >&2
+        return 1
+    fi
+    if [[ -L "$sidecar_file" ]] || { [[ -e "$sidecar_file" ]] && [[ ! -f "$sidecar_file" ]]; }; then
+        echo "Refusing unsafe SLB checksum sidecar: $sidecar_file" >&2
+        return 1
+    fi
+
+    cp_bin="$(update_system_binary_path cp 2>/dev/null || true)"
+    mkdir_bin="$(update_system_binary_path mkdir 2>/dev/null || true)"
+    bash_bin="$(update_system_binary_path bash 2>/dev/null || true)"
+    chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
+    if [[ -z "$cp_bin" || -z "$mkdir_bin" || -z "$bash_bin" || -z "$chmod_bin" ]]; then
+        echo "Required system tools are unavailable for verified SLB update" >&2
+        return 1
+    fi
+
+    if ! update_run_in_target_context "" "$mkdir_bin" -p -- "$install_dir"; then
+        update_sudo_prefix sudo_prefix || return 1
+        "${sudo_prefix[@]}" "$mkdir_bin" -p -- "$install_dir" || return 1
+    fi
+
+    if [[ -n "$slb_path" && "${ACFS_FORCE_SLB_UPDATE:-0}" == "1" ]]; then
+        backup_path="$slb_path.acfs-bak"
+        if [[ -L "$backup_path" ]] || { [[ -e "$backup_path" ]] && [[ ! -f "$backup_path" ]]; }; then
+            echo "Refusing unsafe SLB backup path: $backup_path" >&2
+            return 1
+        fi
+        if ! update_run_in_target_context "" "$cp_bin" -f -- "$slb_path" "$backup_path"; then
+            update_sudo_prefix sudo_prefix || return 1
+            "${sudo_prefix[@]}" "$cp_bin" -f -- "$slb_path" "$backup_path" || return 1
+        fi
+    fi
+
+    log_to_file "Installing SLB through the checksum-verified upstream installer"
+    update_run_verified_installer_with_env slb "INSTALL_DIR=$install_dir" || return $?
+
+    if [[ ! -x "$installed_path" || -L "$installed_path" ]]; then
+        echo "Verified SLB installer did not produce a safe executable at $installed_path" >&2
+        return 1
+    fi
+    installed_hash="$(update_sha256_file "$installed_path" 2>/dev/null || true)"
+    if [[ ! "$installed_hash" =~ ^[0-9a-fA-F]{64}$ ]]; then
+        echo "Unable to hash the installed SLB binary at $installed_path" >&2
+        return 1
+    fi
+
+    if ! update_run_in_target_context "" "$bash_bin" --noprofile --norc -c '
+        set -euo pipefail
+        sidecar_file="$1"
+        installed_hash="$2"
+        if [[ -L "$sidecar_file" ]] || { [[ -e "$sidecar_file" ]] && [[ ! -f "$sidecar_file" ]]; }; then
+            exit 73
+        fi
+        umask 022
+        printf "%s\n" "$installed_hash" > "$sidecar_file"
+        "$3" 0644 -- "$sidecar_file"
+    ' _ "$sidecar_file" "${installed_hash,,}" "$chmod_bin"; then
+        update_sudo_prefix sudo_prefix || return 1
+        "${sudo_prefix[@]}" "$bash_bin" --noprofile --norc -c '
+            set -euo pipefail
+            sidecar_file="$1"
+            installed_hash="$2"
+            if [[ -L "$sidecar_file" ]] || { [[ -e "$sidecar_file" ]] && [[ ! -f "$sidecar_file" ]]; }; then
+                exit 73
+            fi
+            umask 022
+            printf "%s\n" "$installed_hash" > "$sidecar_file"
+            "$3" 0644 -- "$sidecar_file"
+        ' _ "$sidecar_file" "${installed_hash,,}" "$chmod_bin" || return 1
+    fi
+
+    recorded_hash="$(< "$sidecar_file")"
+    [[ "$recorded_hash" == "${installed_hash,,}" ]] || {
+        echo "Failed to record the installed SLB checksum at $sidecar_file" >&2
+        return 1
+    }
 }
 
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via run_cmd()
@@ -6159,10 +6249,9 @@ update_stack() {
     # CAAM - always install/update
     run_cmd "CAAM" update_run_verified_installer caam
 
-    # SLB - install when absent; refresh only ACFS-built binaries (#329).
+    # SLB - install when absent; refresh only ACFS-managed binaries (#329).
     # An operator-audited/pinned binary is preserved unless ACFS_FORCE_SLB_UPDATE=1.
-    # (Builds from source due to upstream installer bug.)
-    run_cmd "SLB" update_run_slb_source_install
+    run_cmd "SLB" update_run_slb_verified_install
 
     # RU (Repo Updater) - always install/update
     run_cmd "RU" update_run_verified_installer_with_env ru "RU_NON_INTERACTIVE=1"
