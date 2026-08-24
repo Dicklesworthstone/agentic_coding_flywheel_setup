@@ -8169,19 +8169,43 @@ install_languages() {
 # Phase 6: Coding agents
 # ============================================================
 install_agy_locked_launchers() {
-    acfs_ensure_primary_bin_dir 2>/dev/null || true
-
     local source_asset=""
+    local selected_source_root=""
+    local trusted_source_root="${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}"
+    local expected_source_sha=""
+    local actual_source_sha=""
     local agy_marker_rc=1
     local grep_bin=""
-    source_asset="$(find_asset "scripts/lib/agy_locked.py" 2>/dev/null || true)"
-    if [[ -z "$source_asset" || ! -f "$source_asset" ]]; then
-        source_asset="${ACFS_SCRIPT_DIR:-$REPO_ROOT}/scripts/lib/agy_locked.py"
+
+    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
+        selected_source_root="$ACFS_BOOTSTRAP_DIR"
+    else
+        selected_source_root="${SCRIPT_DIR:-}"
     fi
-    if [[ ! -f "$source_asset" ]]; then
-        log_error "Antigravity locked launcher asset not found: $source_asset"
+    source_asset="$trusted_source_root/scripts/lib/agy_locked.py"
+    expected_source_sha="${ACFS_INTERNAL_CHECKSUMS[scripts/lib/agy_locked.py]:-}"
+
+    if [[ -z "$trusted_source_root" ]] \
+        || [[ "$trusted_source_root" != /* ]] \
+        || [[ "$trusted_source_root" == "/" ]] \
+        || [[ ! -d "$trusted_source_root" ]] \
+        || [[ -L "$trusted_source_root" ]] \
+        || [[ "$selected_source_root" != "$trusted_source_root" ]] \
+        || [[ "${ACFS_LIB_DIR:-}" != "$trusted_source_root/scripts/lib" ]] \
+        || [[ ! -f "$source_asset" ]] \
+        || [[ -L "$source_asset" ]] \
+        || [[ ! "$expected_source_sha" =~ ^[0-9a-f]{64}$ ]]; then
+        log_error "Antigravity locked launcher asset is missing or unsafe in the verified ACFS source: $source_asset"
         return 1
     fi
+
+    actual_source_sha="$(acfs_calculate_file_sha256 "$source_asset" 2>/dev/null || true)"
+    if [[ "$actual_source_sha" != "$expected_source_sha" ]]; then
+        log_error "Antigravity locked launcher asset changed after source verification: $source_asset"
+        return 1
+    fi
+
+    acfs_ensure_primary_bin_dir || return 1
 
     grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
     if [[ -z "$grep_bin" ]]; then
@@ -8274,8 +8298,6 @@ install_agents_phase() {
                 try_step "Linking Claude Code into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$claude_candidate" "claude" || true
             fi
         fi
-
-        install_agy_locked_launchers || log_warn "agy locked launcher installation failed"
 
         log_success "Coding agents installed"
         return 0
@@ -8396,9 +8418,9 @@ install_agents_phase() {
         log_detail "Antigravity CLI already installed"
     else
         log_detail "Installing Antigravity CLI for $TARGET_USER"
-        try_step "Installing Antigravity CLI" acfs_run_verified_upstream_script_as_target "antigravity" "bash" || true
+        try_step "Installing Antigravity CLI" acfs_run_verified_upstream_script_as_target "antigravity" "bash" || return 1
     fi
-    install_agy_locked_launchers || log_warn "agy locked launcher installation failed"
+    install_agy_locked_launchers || return 1
 
     log_success "Coding agents installed"
 }
