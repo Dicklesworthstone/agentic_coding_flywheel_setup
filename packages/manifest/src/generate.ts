@@ -28,7 +28,11 @@ import {
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { parseManifestString, validateManifestData } from './parser.js';
+import {
+  parseManifestString,
+  validateManifest as validateManifestSchema,
+  validateManifestData,
+} from './parser.js';
 import {
   validateManifest as validateManifestAdvanced,
   formatValidationErrors,
@@ -3170,11 +3174,60 @@ async function main(): Promise<void> {
       }
       pluginResults.push(result);
       console.log(
-        `✓ Plugin package "${result.package?.packageId ?? rawPath}" validated (${result.manifestModules.length} module(s))`
+        `✓ Plugin package "${result.package?.packageId ?? resolvedPath}" validated (${result.manifestModules.length} module(s))`
       );
     }
 
     effectiveManifest = mergeValidatedPlugins(manifest, pluginResults);
+
+    // A plugin is first validated in isolation, but generation consumes the
+    // merged graph. Re-run every first-party invariant over that exact graph so
+    // no composition bug can bypass schema, dependency, orchestration, function
+    // name, runner, or checksum policy.
+    const mergedBasicValidation = validateManifestSchema(effectiveManifest);
+    if (!mergedBasicValidation.valid) {
+      console.error('');
+      console.error(
+        `Merged manifest validation failed with ${mergedBasicValidation.errors.length} error(s):`
+      );
+      for (const error of mergedBasicValidation.errors) {
+        console.error(`- ${error.path}: ${error.message}`);
+      }
+      console.error('');
+      process.exit(1);
+    }
+
+    const mergedAdvancedValidation = validateManifestAdvanced(effectiveManifest);
+    if (!mergedAdvancedValidation.valid) {
+      console.error('');
+      console.error(formatValidationErrors(mergedAdvancedValidation));
+      console.error('');
+      process.exit(1);
+    }
+
+    const mergedChecksumErrors = validateVerifiedInstallerChecksums(
+      effectiveManifest,
+      installers
+    );
+    if (mergedChecksumErrors.length > 0) {
+      console.error('Merged verified installer checksum validation failed:');
+      for (const error of mergedChecksumErrors) {
+        console.error(`- [${error.code}] ${error.message}`);
+      }
+      process.exit(1);
+    }
+
+    if (mergedBasicValidation.warnings.length > 0) {
+      console.error('');
+      console.error(
+        `Merged manifest validation warnings (${mergedBasicValidation.warnings.length}):`
+      );
+      for (const warning of mergedBasicValidation.warnings) {
+        console.error(`- ${warning.path}: ${warning.message}`);
+      }
+      console.error('');
+    }
+
     console.log(
       `Merged ${pluginResults.length} plugin package(s) (${existingPluginModuleIds.length} total plugin modules)`
     );

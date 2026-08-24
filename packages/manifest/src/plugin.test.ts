@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { createHash } from 'node:crypto';
 import { mkdtempSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -861,18 +860,16 @@ describe('loadPluginPackageFromFile', () => {
     const pluginPath = join(dir, 'plugin.json');
     const plugin = validPlugin();
     const pluginBytes = JSON.stringify(plugin, null, 2);
-    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const opts = validationOptions({ expectedPackageSha256 });
-
-    const result = loadPluginPackageFromFile(pluginPath, opts);
+    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
     expect(result.valid).toBe(true);
     expect(result.manifestModules.length).toBe(1);
     expect(result.manifestModules[0].id).toBe('plugin.example_tools.cli');
+    expect(result.manifestModules[0].plugin?.pluginSha256).toBe(CHECKSUM);
   });
 
-  test('refuses to treat a calculated package hash as its own trusted digest', () => {
+  test('refuses to infer an archive hash from extracted manifest bytes', () => {
     const dir = mkdtempSync(join(tmpdir(), 'acfs-untrusted-plugin-test-'));
     const pluginPath = join(dir, 'plugin.json');
     writeFileSync(pluginPath, JSON.stringify(validPlugin()), 'utf-8');
@@ -886,7 +883,10 @@ describe('loadPluginPackageFromFile', () => {
     expect(result.manifestModules).toHaveLength(0);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'plugin_package_hash_mismatch',
-      context: expect.objectContaining({ expectedPackageSha256Prefix: '<missing>' }),
+      context: {
+        packageSha256Prefix: '<missing>',
+        expectedPackageSha256Prefix: '<missing>',
+      },
     }));
   });
 
@@ -894,13 +894,9 @@ describe('loadPluginPackageFromFile', () => {
     const dir = mkdtempSync(join(tmpdir(), 'acfs-yaml-plugin-test-'));
     const pluginPath = join(dir, 'plugin.yaml');
     const pluginBytes = JSON.stringify(validPlugin());
-    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const result = loadPluginPackageFromFile(
-      pluginPath,
-      validationOptions({ expectedPackageSha256 })
-    );
+    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -941,13 +937,9 @@ describe('loadPluginPackageFromFile', () => {
     const displayNameOffset = pluginBytes.indexOf(Buffer.from('Example Tools'));
     expect(displayNameOffset).toBeGreaterThanOrEqual(0);
     pluginBytes[displayNameOffset] = 0xff;
-    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
     writeFileSync(pluginPath, pluginBytes);
 
-    const result = loadPluginPackageFromFile(
-      pluginPath,
-      validationOptions({ expectedPackageSha256 })
-    );
+    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -966,13 +958,9 @@ describe('loadPluginPackageFromFile', () => {
       '"displayName":"Example Tools"',
       '"displayName":"Decoy","displayName":"Example Tools"'
     );
-    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const result = loadPluginPackageFromFile(
-      pluginPath,
-      validationOptions({ expectedPackageSha256 })
-    );
+    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -993,13 +981,9 @@ describe('loadPluginPackageFromFile', () => {
       /}$/,
       `,"extensions":${nestedValue}}`
     );
-    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const result = loadPluginPackageFromFile(
-      pluginPath,
-      validationOptions({ expectedPackageSha256 })
-    );
+    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);

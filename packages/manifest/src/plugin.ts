@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
 import { TextDecoder } from 'node:util';
 import { z } from 'zod';
@@ -1498,11 +1497,13 @@ export function formatPluginDiagnostics(result: PluginValidationResult): string 
 }
 
 /**
- * Safely read and validate a plugin package file from disk.
+ * Safely read and validate an already-extracted plugin manifest from disk.
+ * The caller remains responsible for calculating the compressed package hash
+ * and supplying both that value and its independently trusted expected digest.
  */
 export function loadPluginPackageFromFile(
   filePath: string,
-  options: Omit<PluginValidationOptions, 'packageSha256'>
+  options: PluginValidationOptions
 ): PluginValidationResult {
   if (!filePath.endsWith('.json')) {
     return {
@@ -1609,7 +1610,6 @@ export function loadPluginPackageFromFile(
     if (fd !== undefined) closeSync(fd);
   }
 
-  const packageSha256 = createHash('sha256').update(fileBytes).digest('hex');
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(fileBytes);
@@ -1664,11 +1664,7 @@ export function loadPluginPackageFromFile(
     };
   }
 
-  return validatePluginPackage(parsed, {
-    ...options,
-    packageSha256,
-    expectedPackageSha256: options.expectedPackageSha256,
-  });
+  return validatePluginPackage(parsed, options);
 }
 
 /**
