@@ -129,8 +129,10 @@ write_pack() {
     local artifact_size=""
     local artifact_content="$CONTENT"
     local artifacts_json="[]"
+    local builder_env_sha=""
+    local source_index_sha=""
 
-    mkdir -p "$pack_root/artifacts"
+    mkdir -p "$pack_root/artifacts" "$pack_root/provenance"
     write_checksums "$pack_root/checksums.yaml" "$ARTIFACT_SHA"
     /bin/cp "$REPO_ROOT/acfs.manifest.yaml" "$pack_root/acfs.manifest.yaml"
 
@@ -173,11 +175,19 @@ write_pack() {
         )"
     fi
 
+    printf '{"fixture":"builder-env"}\n' > "$pack_root/provenance/builder-env.json"
+    jq -n --argjson artifacts "$artifacts_json" '{artifacts: $artifacts}' \
+        > "$pack_root/provenance/source-index.json"
+    builder_env_sha="$(calculate_file_sha256 "$pack_root/provenance/builder-env.json")"
+    source_index_sha="$(calculate_file_sha256 "$pack_root/provenance/source-index.json")"
+
     jq -n \
         --arg generatedAt "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
         --arg expiresAt "$expires_at" \
         --arg manifestSha "$MANIFEST_SHA" \
         --arg checksumsSha "$CHECKSUMS_SHA" \
+        --arg builderEnvSha "$builder_env_sha" \
+        --arg sourceIndexSha "$source_index_sha" \
         --arg arch "$arch" \
         --arg fixtureMode "$fixture_mode" \
         --argjson artifacts "$artifacts_json" \
@@ -196,7 +206,9 @@ write_pack() {
                 sourceCommit: "test",
                 sourceTreeState: "clean",
                 manifestSha256: $manifestSha,
-                checksumsYamlSha256: $checksumsSha
+                checksumsYamlSha256: $checksumsSha,
+                provenanceBuilderEnvSha256: $builderEnvSha,
+                provenanceSourceIndexSha256: $sourceIndexSha
             },
             targets: [{os: "ubuntu", version: "25.10", architecture: $arch}],
             modules: [{
