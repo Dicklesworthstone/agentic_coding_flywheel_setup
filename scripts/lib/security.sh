@@ -836,7 +836,11 @@ acfs_offline_pack_validate_manifest() {
         (.targets | type == "array" and length > 0) and
         (all(.targets[]; (.os | type == "string") and (.version | type == "string") and (.architecture | type == "string"))) and
         (.modules | type == "array") and
-        (all(.modules[]; (.id | type == "string" and length > 0) and (.coverage == "entrypoint_cached") and (.verifiedInstallerKey | type == "string" and length > 0))) and
+        (all(.modules[];
+            (.id | type == "string" and test("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$")) and
+            (.coverage == "entrypoint_cached") and
+            (.verifiedInstallerKey | type == "string" and test("^[a-z][a-z0-9_]*$"))
+        )) and
         (([.modules[].id] | length) == ([.modules[].id] | unique | length)) and
         (.artifacts | type == "array") and
         (all(.artifacts[];
@@ -844,8 +848,21 @@ acfs_offline_pack_validate_manifest() {
             (.moduleId | type == "string" and length > 0) and
             (.kind == "verified_installer_entrypoint") and
             (.verifiedInstallerKey | type == "string" and length > 0) and
-            (.path | type == "string" and length > 0) and
-            (.sourceUrl | type == "string" and startswith("https://")) and
+            ((.path | type) == "string") and
+            (.path as $p |
+                ($p | startswith("artifacts/")) and
+                (($p | contains("\\")) | not) and
+                ($p | split("/") | all(. != "" and . != "." and . != ".."))
+            ) and
+            ((.sourceUrl | type) == "string") and
+            (.sourceUrl as $u |
+                ($u | startswith("https://")) and
+                (($u | contains("@")) | not) and
+                (($u | contains("?")) | not) and
+                (($u | contains("#")) | not) and
+                (($u | contains("\\")) | not) and
+                (($u | test("[[:space:]]")) | not)
+            ) and
             (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
             (.sizeBytes | type == "number" and floor == . and . >= 0)
         )) and
@@ -963,7 +980,47 @@ acfs_offline_pack_verify_artifact() {
     local name="$3"
     local pack_info=""
     local pack_root=""
-    local manifest_file=""
+    local manifest_source=""
+    local manifest_snapshot=""
+    local manifest_size=""
+    local head_bin=""
+    local timeout_bin=""
+    local status=0
+
+    pack_info="$(acfs_offline_pack_locate "$name")" || return 1
+    pack_root="${pack_info%%$'\t'*}"
+    manifest_source="${pack_info#*$'\t'}"
+    manifest_snapshot="$(acfs_security_mktemp "/tmp/acfs-installer-cache-manifest.XXXXXX" 2>/dev/null)" || {
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to create a private manifest snapshot"
+        return 1
+    }
+    head_bin="$(acfs_security_required_binary_path head 2>/dev/null || true)"
+    timeout_bin="$(acfs_security_required_binary_path timeout 2>/dev/null || true)"
+    if [[ -z "$head_bin" || -z "$timeout_bin" ]] \
+        || ! "$timeout_bin" 5 "$head_bin" -c 8388609 -- "$manifest_source" > "$manifest_snapshot"; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to snapshot manifest.json within policy bounds"
+        _acfs_remove_temp_files "$manifest_snapshot"
+        return 1
+    fi
+    manifest_size="$(acfs_security_file_size "$manifest_snapshot" 2>/dev/null || true)"
+    if [[ ! "$manifest_size" =~ ^[0-9]+$ || "$manifest_size" -gt 8388608 ]]; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "manifest.json exceeds the 8 MiB policy limit"
+        _acfs_remove_temp_files "$manifest_snapshot"
+        return 1
+    fi
+
+    _acfs_offline_pack_verify_artifact_snapshot \
+        "$pack_root" "$manifest_snapshot" "$url" "$expected_sha256" "$name" || status=$?
+    _acfs_remove_temp_files "$manifest_snapshot"
+    return "$status"
+}
+
+_acfs_offline_pack_verify_artifact_snapshot() {
+    local pack_root="$1"
+    local manifest_file="$2"
+    local url="$3"
+    local expected_sha256="$4"
+    local name="$5"
     local jq_bin=""
     local arch=""
     local artifact_tsv=""
@@ -976,17 +1033,16 @@ acfs_offline_pack_verify_artifact() {
     local artifact_snapshot=""
     local actual_sha=""
     local actual_size=""
+    local copy_limit=0
+    local head_bin=""
+    local timeout_bin=""
     local emit_status=0
-
-    pack_info="$(acfs_offline_pack_locate "$name")" || return 1
-    pack_root="${pack_info%%$'\t'*}"
-    manifest_file="${pack_info#*$'\t'}"
 
     acfs_offline_pack_validate_manifest "$pack_root" "$manifest_file" "$name" || return 1
 
     jq_bin="$(acfs_offline_pack_jq_bin)" || return 1
     arch="$(acfs_offline_pack_current_arch)" || return 1
-    artifact_tsv="$("$jq_bin" -r --arg key "$name" --arg url "$url" --arg sha "$expected_sha256" --arg arch "$arch" '
+    if ! artifact_tsv="$("$jq_bin" -r --arg key "$name" --arg url "$url" --arg sha "$expected_sha256" --arg arch "$arch" '
         def artifact_arch: (.architecture // .platform.arch // "");
         [
             .artifacts[]?
@@ -997,12 +1053,18 @@ acfs_offline_pack_verify_artifact() {
         ]
         | first // empty
         | if type == "object" then [.moduleId, .path, (.sha256 // ""), ((.sizeBytes // "") | tostring)] | @tsv else empty end
-    ' "$manifest_file")"
+    ' "$manifest_file")"; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to resolve cached entrypoint"
+        return 1
+    fi
 
     if [[ -z "$artifact_tsv" ]]; then
-        key_count="$("$jq_bin" -r --arg key "$name" '[.artifacts[]? | select(.verifiedInstallerKey == $key)] | length' "$manifest_file")"
+        if ! key_count="$("$jq_bin" -r --arg key "$name" '[.artifacts[] | select(.verifiedInstallerKey == $key)] | length' "$manifest_file")"; then
+            acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to inspect cached entrypoint identities"
+            return 1
+        fi
         if [[ "$key_count" == "0" ]]; then
-            acfs_offline_pack_error "pack_unbundled_required_module" "$name" "no bundled artifact has verifiedInstallerKey=$name"
+            acfs_offline_pack_error "pack_unbundled_required_module" "$name" "no cached entrypoint has verifiedInstallerKey=$name"
         else
             acfs_offline_pack_error "pack_checksums_mismatch" "$name" "no artifact matches the requested URL, sha256, and architecture"
         fi
@@ -1013,7 +1075,7 @@ acfs_offline_pack_verify_artifact() {
     if ! "$jq_bin" -e --arg moduleId "$module_id" --arg key "$name" '
         any(.modules[]; .id == $moduleId and .coverage == "entrypoint_cached" and .verifiedInstallerKey == $key)
     ' "$manifest_file" >/dev/null; then
-        acfs_offline_pack_error "pack_unbundled_required_module" "$name" "module $module_id is not marked bundled for verifiedInstallerKey=$name"
+        acfs_offline_pack_error "pack_unbundled_required_module" "$name" "module $module_id is not marked entrypoint_cached for verifiedInstallerKey=$name"
         return 1
     fi
 
@@ -1036,14 +1098,29 @@ acfs_offline_pack_verify_artifact() {
         return 1
     fi
 
+    actual_size="$(acfs_security_file_size "$artifact_file" 2>/dev/null || true)"
+    if [[ ! "$actual_size" =~ ^[0-9]+$ || ! "$size_bytes" =~ ^[0-9]+$ ]] \
+        || [[ "$actual_size" != "$size_bytes" ]]; then
+        acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path does not match declared size"
+        return 1
+    fi
+    if (( size_bytes > 16777216 )); then
+        acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path exceeds the 16 MiB installer-entrypoint limit"
+        return 1
+    fi
+
     # The pack can live on removable or otherwise shared storage. Snapshot the
     # artifact into a private file before verification so a concurrent rename
     # cannot swap different bytes into the later stdout read (TOCTOU).
-    artifact_snapshot="$(acfs_security_mktemp "/tmp/acfs-offline-artifact.XXXXXX" 2>/dev/null)" || {
+    artifact_snapshot="$(acfs_security_mktemp "/tmp/acfs-installer-cache-artifact.XXXXXX" 2>/dev/null)" || {
         acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to create a private snapshot for $rel_path"
         return 1
     }
-    if ! acfs_security_cat_file "$artifact_file" > "$artifact_snapshot"; then
+    head_bin="$(acfs_security_required_binary_path head 2>/dev/null || true)"
+    timeout_bin="$(acfs_security_required_binary_path timeout 2>/dev/null || true)"
+    copy_limit=$((size_bytes + 1))
+    if [[ -z "$head_bin" || -z "$timeout_bin" ]] \
+        || ! "$timeout_bin" 5 "$head_bin" -c "$copy_limit" -- "$artifact_file" > "$artifact_snapshot"; then
         acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to snapshot artifact $rel_path"
         _acfs_remove_temp_files "$artifact_snapshot"
         return 1
@@ -1065,17 +1142,15 @@ acfs_offline_pack_verify_artifact() {
         return 1
     fi
 
-    if [[ -n "$size_bytes" && "$size_bytes" != "null" ]]; then
-        actual_size="$(acfs_security_file_size "$artifact_snapshot")" || {
-            acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to measure artifact $rel_path"
-            _acfs_remove_temp_files "$artifact_snapshot"
-            return 1
-        }
-        if [[ "$actual_size" != "$size_bytes" ]]; then
-            acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path does not match declared size"
-            _acfs_remove_temp_files "$artifact_snapshot"
-            return 1
-        fi
+    actual_size="$(acfs_security_file_size "$artifact_snapshot")" || {
+        acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to measure artifact $rel_path"
+        _acfs_remove_temp_files "$artifact_snapshot"
+        return 1
+    }
+    if [[ "$actual_size" != "$size_bytes" ]]; then
+        acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path changed while it was snapshotted"
+        _acfs_remove_temp_files "$artifact_snapshot"
+        return 1
     fi
 
     log_detail "installer_cache_hit tool=$name module=$module_id artifact=$rel_path"
