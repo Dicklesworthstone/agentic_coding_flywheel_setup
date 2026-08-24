@@ -5995,22 +5995,26 @@ install_cli_tools() {
     local used_generated_cli=false
     local used_generated_network=false
 
+    # Every generated category in this phase runs before the phase result is
+    # decided; an early `return 1` from cli used to skip network (Tailscale)
+    # and tools entirely.
+    local cli_phase_rc=0
     if acfs_use_generated_category "cli"; then
         log_detail "Using generated installers for cli (phase 5)"
-        acfs_run_generated_category_phase "cli" "5" || return 1
+        acfs_run_generated_category_phase "cli" "5" || cli_phase_rc=1
         used_generated_cli=true
     fi
 
     if acfs_use_generated_category "network"; then
         log_detail "Using generated installers for network (phase 5)"
-        acfs_run_generated_category_phase "network" "5" || return 1
+        acfs_run_generated_category_phase "network" "5" || cli_phase_rc=1
         used_generated_network=true
     fi
 
     # tools phase 5: lazygit, lazydocker — bug #146 audit follow-up
     if acfs_use_generated_category "tools"; then
         log_detail "Using generated installers for tools (phase 5)"
-        acfs_run_generated_category_phase "tools" "5" || return 1
+        acfs_run_generated_category_phase "tools" "5" || cli_phase_rc=1
     fi
 
     if [[ "$used_generated_cli" == "true" ]]; then
@@ -6254,6 +6258,10 @@ install_cli_tools() {
         fi
     fi
 
+    if [[ "$cli_phase_rc" -ne 0 ]]; then
+        log_warn "CLI tools phase finished with generated-module failures (see summary); the phase will be retried on resume"
+        return 1
+    fi
     log_success "CLI tools installed"
 }
 
@@ -6557,10 +6565,11 @@ install_languages() {
     log_step "5/9" "Installing language runtimes..."
 
     local ran_any=false
+    local lang_phase_rc=0
 
     if acfs_use_generated_category "lang"; then
         log_detail "Using generated installers for lang (phase 6)"
-        acfs_run_generated_category_phase "lang" "6" || return 1
+        acfs_run_generated_category_phase "lang" "6" || lang_phase_rc=1
         ran_any=true
     else
         install_languages_legacy_lang || return 1
@@ -6569,7 +6578,7 @@ install_languages() {
 
     if acfs_use_generated_category "tools"; then
         log_detail "Using generated installers for tools (phase 6)"
-        acfs_run_generated_category_phase "tools" "6" || return 1
+        acfs_run_generated_category_phase "tools" "6" || lang_phase_rc=1
         ran_any=true
     else
         install_languages_legacy_tools || return 1
@@ -6580,6 +6589,10 @@ install_languages() {
         log_warn "No language/tool modules selected"
     fi
 
+    if [[ "$lang_phase_rc" -ne 0 ]]; then
+        log_warn "Language phase finished with generated-module failures (see summary); the phase will be retried on resume"
+        return 1
+    fi
     log_success "Language runtimes installed"
 }
 
@@ -7278,10 +7291,11 @@ install_cloud_db() {
     fi
 
     local ran_any=false
+    local cloud_phase_rc=0
 
     if acfs_use_generated_category "db"; then
         log_detail "Using generated installers for db (phase 8)"
-        acfs_run_generated_category_phase "db" "8" || return 1
+        acfs_run_generated_category_phase "db" "8" || cloud_phase_rc=1
         ran_any=true
     else
         install_cloud_db_legacy_db "$codename" || return 1
@@ -7290,7 +7304,7 @@ install_cloud_db() {
 
     if acfs_use_generated_category "tools"; then
         log_detail "Using generated installers for tools (phase 8)"
-        acfs_run_generated_category_phase "tools" "8" || return 1
+        acfs_run_generated_category_phase "tools" "8" || cloud_phase_rc=1
         ran_any=true
     else
         install_cloud_db_legacy_tools "$codename" || return 1
@@ -7299,7 +7313,7 @@ install_cloud_db() {
 
     if acfs_use_generated_category "cloud"; then
         log_detail "Using generated installers for cloud (phase 8)"
-        acfs_run_generated_category_phase "cloud" "8" || return 1
+        acfs_run_generated_category_phase "cloud" "8" || cloud_phase_rc=1
         ran_any=true
     else
         install_cloud_db_legacy_cloud || return 1
@@ -7310,6 +7324,10 @@ install_cloud_db() {
         log_warn "No cloud/db/tools modules selected"
     fi
 
+    if [[ "$cloud_phase_rc" -ne 0 ]]; then
+        log_warn "Cloud & database phase finished with generated-module failures (see summary); the phase will be retried on resume"
+        return 1
+    fi
     log_success "Cloud & database tools phase complete"
 }
 
@@ -7368,16 +7386,23 @@ install_stack_phase() {
     log_step "8/9" "Installing Dicklesworthstone stack..."
 
     # Install utils.* modules (category: tools, phase: 9) — bug #146 fix
+    # Run every category in this phase before deciding the phase result: a
+    # single failing utils.* module must not skip ntm, Agent Mail, the skills
+    # installer, br/bv, cass, cm, ... (the `|| return 1` short-circuit did
+    # exactly that once category failures started propagating).
+    local stack_phase_rc=0
     if acfs_use_generated_category "tools"; then
         log_detail "Using generated installers for tools (phase 9)"
-        acfs_run_generated_category_phase "tools" "9" || return 1
+        acfs_run_generated_category_phase "tools" "9" || stack_phase_rc=1
     fi
 
     if acfs_use_generated_category "stack"; then
         log_detail "Using generated installers for stack (phase 9)"
-        acfs_run_generated_category_phase "stack" "9" || return 1
-        log_success "Dicklesworthstone stack installed"
-        return 0
+        acfs_run_generated_category_phase "stack" "9" || stack_phase_rc=1
+        if [[ "$stack_phase_rc" -eq 0 ]]; then
+            log_success "Dicklesworthstone stack installed"
+        fi
+        return "$stack_phase_rc"
     fi
 
     # NTM (Named Tmux Manager)
