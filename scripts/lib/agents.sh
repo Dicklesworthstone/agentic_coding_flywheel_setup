@@ -755,11 +755,26 @@ _agent_install_agy_locked_launchers() {
     return 0
 }
 
+_agent_prime_antigravity_settings() {
+    local agy_locked="${1:-}"
+    local agy_locked_q=""
+
+    [[ -n "$agy_locked" ]] || return 1
+
+    printf -v agy_locked_q '%q' "$agy_locked"
+    if _agent_run_as_user "$agy_locked_q --acfs-prime-settings" 2>/dev/null; then
+        log_detail "Antigravity locked settings and DCG hook primed"
+        return 0
+    fi
+
+    log_warn "Failed to prime Antigravity locked settings and DCG hook"
+    return 1
+}
+
 _configure_antigravity_settings() {
     local target_home="${1:-}"
     local target_bin=""
     local agy_locked=""
-    local agy_locked_q=""
 
     [[ -n "$target_home" ]] || target_home="$(_agent_target_home "${TARGET_USER:-ubuntu}")"
     _agent_install_agy_locked_launchers || return 1
@@ -772,12 +787,7 @@ _configure_antigravity_settings() {
         return 1
     fi
 
-    printf -v agy_locked_q '%q' "$agy_locked"
-    if _agent_run_as_user "$agy_locked_q --acfs-prime-settings" 2>/dev/null; then
-        log_detail "Antigravity locked settings and DCG hook primed"
-    else
-        log_warn "Antigravity settings will be primed on first agy launch"
-    fi
+    _agent_prime_antigravity_settings "$agy_locked"
 }
 
 _agent_has_nvm_node() {
