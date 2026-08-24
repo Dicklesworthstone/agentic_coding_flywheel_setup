@@ -281,6 +281,54 @@ test_build_binds_clean_versioned_source_commit() {
     pass "build_binds_clean_versioned_source_commit"
 }
 
+test_build_does_not_bind_custom_inputs_to_source_commit() {
+    local source_root output_dir output status manifest custom_manifest
+    source_root="$(write_fixture_source custom-inputs valid)"
+    output_dir="$ARTIFACT_DIR/custom-inputs/output"
+    manifest="$output_dir/acfs-offline-pack/manifest.json"
+    custom_manifest="$ARTIFACT_DIR/custom-inputs/reviewed.manifest.yaml"
+
+    git -C "$source_root" init -q -b main
+    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs
+    git -C "$source_root" -c user.name=ACFS -c user.email=acfs@example.invalid commit -q -m fixture
+    cp "$source_root/acfs.manifest.yaml" "$custom_manifest"
+
+    output="$(run_pack custom-inputs build --json --source-root "$source_root" --manifest-file "$custom_manifest" --output "$output_dir" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/custom-inputs.exit")"
+
+    [[ "$status" -eq 0 ]] || return 1
+    jq -e '
+      .acfs.sourceRef == "unknown" and
+      .acfs.sourceCommit == "unknown" and
+      .acfs.sourceTreeState == "custom-inputs"
+    ' "$manifest" >/dev/null || return 1
+    jq -e '
+      .status == "warn" and
+      any(.validation.warnings[]; contains("pack_source_custom_inputs"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "build_does_not_bind_custom_inputs_to_source_commit"
+}
+
+test_build_refuses_symlinked_source_payload() {
+    local source_root output_dir output status
+    source_root="$(write_fixture_source symlink-source valid)"
+    output_dir="$ARTIFACT_DIR/symlink-source/output"
+    ln -s /etc/passwd "$source_root/acfs/zsh/external-source"
+
+    output="$(run_pack symlink-source build --json --source-root "$source_root" --output "$output_dir" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/symlink-source.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_source_unsafe"))
+    ' <<<"$output" >/dev/null || return 1
+    [[ ! -e "$output_dir" ]] || return 1
+
+    pass "build_refuses_symlinked_source_payload"
+}
+
 test_build_ignores_path_poisoned_pack_tools() {
     local source_root output_dir output status tool marker
     local poison_markers=()
@@ -471,6 +519,8 @@ run_all_tests() {
         test_build_writes_manifest_and_verified_artifact
         test_build_refuses_dirty_versioned_source_surfaces
         test_build_binds_clean_versioned_source_commit
+        test_build_does_not_bind_custom_inputs_to_source_commit
+        test_build_refuses_symlinked_source_payload
         test_build_ignores_path_poisoned_pack_tools
         test_checksum_mismatch_fails_closed
         test_unknown_module_is_refused

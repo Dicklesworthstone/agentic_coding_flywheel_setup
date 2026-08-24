@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ============================================================
 # ACFS Swarm Inventory - advisory local host inventory
 #
@@ -8,6 +8,11 @@
 # ============================================================
 
 set -euo pipefail
+
+readonly SWARM_INV_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+if [[ $EUID -eq 0 ]]; then
+    export PATH="$SWARM_INV_PRIVILEGED_PATH"
+fi
 
 SWARM_INV_SUBCOMMAND="report"
 SWARM_INV_JSON=false
@@ -151,6 +156,19 @@ swarm_inventory_parent_dir() {
     mkdir -p -- "$dir"
 }
 
+swarm_inventory_sync_path() {
+    local sync_bin="$1"
+    local path="$2"
+
+    # GNU coreutils accepts a file operand and fsyncs only that file. BSD sync
+    # accepts no operands, so retain a portable (but broader) fallback there.
+    if "$sync_bin" --version >/dev/null 2>&1; then
+        "$sync_bin" "$path"
+    else
+        "$sync_bin"
+    fi
+}
+
 swarm_inventory_atomic_write() {
     local output_file="$1"
     local contents="$2"
@@ -174,11 +192,10 @@ swarm_inventory_atomic_write() {
         return 1
     fi
 
-    # `sync` without operands works on GNU and BSD systems. The first call
-    # durably flushes the complete temporary file; the second flushes the
-    # rename and containing-directory metadata before success is reported.
+    # Flush the complete temporary file before publishing it. On the supported
+    # GNU target this is a file-scoped fsync, avoiding a system-wide writeback.
     sync_bin="$(swarm_inventory_binary_path sync 2>/dev/null || true)"
-    if [[ -z "$sync_bin" ]] || ! "$sync_bin"; then
+    if [[ -z "$sync_bin" ]] || ! swarm_inventory_sync_path "$sync_bin" "$temp_file"; then
         rm -f -- "$temp_file" 2>/dev/null || true
         return 1
     fi
@@ -188,7 +205,9 @@ swarm_inventory_atomic_write() {
         return 1
     fi
 
-    "$sync_bin"
+    # Persist the rename itself before reporting success. If this barrier fails,
+    # preserve the already-published valid file and report durability uncertainty.
+    swarm_inventory_sync_path "$sync_bin" "$parent_dir"
 }
 
 swarm_inventory_error_json() {

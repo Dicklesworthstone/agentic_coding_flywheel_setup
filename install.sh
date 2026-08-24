@@ -239,12 +239,14 @@ ACFS_TRUSTED_INTERNAL_SOURCE_ROOT=""
 ACFS_BOOTSTRAP_SUPERVISOR=false
 ACFS_BOOTSTRAP_CHILD_PID=""
 ACFS_BOOTSTRAP_CHILD_PGID=""
+ACFS_BOOTSTRAP_CHILD_STARTTIME=""
 ACFS_BOOTSTRAP_CHILD_STATE="QUIESCENT"
 ACFS_BOOTSTRAP_PENDING_SIGNAL=""
 ACFS_BOOTSTRAP_SIGNAL_HANDLING=false
 ACFS_BOOTSTRAP_PRESERVE_TREE=false
 ACFS_BOOTSTRAP_PS_BIN=""
 ACFS_BOOTSTRAP_SLEEP_BIN=""
+ACFS_CLEANUP_ACTIVE=false
 ACFS_VERIFIED_BOOTSTRAP_SOURCE="${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}"
 ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}"
 
@@ -1706,9 +1708,47 @@ _ACFS_SIGNAL_RECEIVED=""
 _acfs_bootstrap_mark_quiescent() {
     ACFS_BOOTSTRAP_CHILD_PID=""
     ACFS_BOOTSTRAP_CHILD_PGID=""
+    ACFS_BOOTSTRAP_CHILD_STARTTIME=""
     ACFS_BOOTSTRAP_CHILD_STATE="QUIESCENT"
     ACFS_BOOTSTRAP_PENDING_SIGNAL=""
     ACFS_BOOTSTRAP_PRESERVE_TREE=false
+}
+
+_acfs_bootstrap_proc_identity() {
+    local pid="${1:-}"
+    local proc_stat=""
+    local proc_tail=""
+    local -a proc_fields=()
+
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    [[ -r "/proc/$pid/stat" ]] || return 1
+    if ! IFS= builtin read -r proc_stat < "/proc/$pid/stat"; then
+        return 1
+    fi
+
+    # comm (field 2) is parenthesized and may contain spaces or ')'. Removing
+    # through the final ") " makes proc_fields[2] the process group (field 5)
+    # and proc_fields[19] the immutable start time (field 22).
+    proc_tail="${proc_stat##*) }"
+    [[ "$proc_tail" != "$proc_stat" ]] || return 1
+    IFS=' ' read -r -a proc_fields <<< "$proc_tail"
+    ((${#proc_fields[@]} >= 20)) || return 1
+    [[ "${proc_fields[2]}" =~ ^[0-9]+$ ]] || return 1
+    [[ "${proc_fields[19]}" =~ ^[0-9]+$ ]] || return 1
+    builtin printf '%s %s\n' "${proc_fields[2]}" "${proc_fields[19]}"
+}
+
+_acfs_bootstrap_leader_identity_matches() {
+    local pid="${ACFS_BOOTSTRAP_CHILD_PID:-}"
+    local pgid="${ACFS_BOOTSTRAP_CHILD_PGID:-}"
+    local starttime="${ACFS_BOOTSTRAP_CHILD_STARTTIME:-}"
+    local observed_identity=""
+
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    [[ "$pgid" == "$pid" ]] || return 1
+    [[ "$starttime" =~ ^[0-9]+$ ]] || return 1
+    observed_identity="$(_acfs_bootstrap_proc_identity "$pid" 2>/dev/null || true)"
+    [[ "$observed_identity" == "$pgid $starttime" ]]
 }
 
 _acfs_bootstrap_signal_exit() {
@@ -1779,6 +1819,15 @@ _acfs_terminate_bootstrap_group() {
         return 1
     fi
 
+    # PID numbers are reusable capabilities. Refuse a negative-PGID signal if
+    # the original leader has already been reaped or its Linux start time no
+    # longer matches the identity captured at publication.
+    if ! _acfs_bootstrap_leader_identity_matches; then
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        log_error "Cannot safely signal the verified bootstrap group: leader identity changed"
+        return 1
+    fi
+
     # Always terminate the whole validated child group. Forwarding INT to a
     # non-job-control asynchronous Bash is unreliable because Bash starts such
     # children with SIGINT/SIGQUIT ignored.
@@ -1805,6 +1854,15 @@ _acfs_terminate_bootstrap_group() {
 _acfs_signal_handler() {
     local signal="$1"
     _ACFS_SIGNAL_RECEIVED="$signal"
+
+    # An EXIT trap is already unwinding the process. Re-entering it through a
+    # nested signal-triggered exit can skip the fail-safe preservation branch.
+    if [[ "${ACFS_CLEANUP_ACTIVE:-false}" == "true" ]]; then
+        if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]]; then
+            ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        fi
+        return 0
+    fi
 
     # A signal can arrive after the fork but before $! and the PGID have been
     # published. Record it and let the spawning path establish a safe identity
@@ -1964,6 +2022,7 @@ acfs_release_install_lock() {
 cleanup() {
     # Capture exit code FIRST, before any other commands can overwrite $?
     local exit_code=$?
+    ACFS_CLEANUP_ACTIVE=true
 
     # Cleanup must never abort — disable errexit for the entire function.
     set +e
@@ -1977,7 +2036,8 @@ cleanup() {
         if [[ "${ACFS_BOOTSTRAP_PRESERVE_TREE:-false}" == "true" ]] \
             || [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]] \
             || [[ -n "${ACFS_BOOTSTRAP_CHILD_PID:-}" ]] \
-            || [[ -n "${ACFS_BOOTSTRAP_CHILD_PGID:-}" ]]; then
+            || [[ -n "${ACFS_BOOTSTRAP_CHILD_PGID:-}" ]] \
+            || [[ -n "${ACFS_BOOTSTRAP_CHILD_STARTTIME:-}" ]]; then
             # Removing the archive while an unobserved descendant may still be
             # executing from it creates a use-after-cleanup race. Leak this one
             # bounded temp tree instead and make the preservation visible.

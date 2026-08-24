@@ -271,6 +271,8 @@ offline_pack_git() {
 offline_pack_capture_source_snapshot() {
     local inside_work_tree=""
     local dirty_sources=""
+    local canonical_manifest="$OFFLINE_PACK_SOURCE_ROOT/acfs.manifest.yaml"
+    local canonical_checksums="$OFFLINE_PACK_SOURCE_ROOT/checksums.yaml"
 
     OFFLINE_PACK_SOURCE_REF="unknown"
     OFFLINE_PACK_SOURCE_COMMIT="unknown"
@@ -296,6 +298,19 @@ offline_pack_capture_source_snapshot() {
         OFFLINE_PACK_SOURCE_TREE_STATE="dirty"
         offline_pack_add_error "pack_source_dirty: copied source surfaces differ from HEAD"
         return 1
+    fi
+
+    # A commit can identify the canonical repository inputs, but it cannot
+    # identify arbitrary --manifest-file/--checksums-file overrides. Keep the
+    # build usable for fixtures and reviewed composites without making a false
+    # clean-HEAD provenance claim for those bytes.
+    if [[ "$OFFLINE_PACK_MANIFEST_FILE" != "$canonical_manifest" ]] \
+        || [[ "$OFFLINE_PACK_CHECKSUMS_FILE" != "$canonical_checksums" ]]; then
+        OFFLINE_PACK_SOURCE_REF="unknown"
+        OFFLINE_PACK_SOURCE_COMMIT="unknown"
+        OFFLINE_PACK_SOURCE_TREE_STATE="custom-inputs"
+        offline_pack_add_warning "pack_source_custom_inputs: Git commit provenance is unavailable for overridden manifest/checksum inputs"
+        return 0
     fi
 
     OFFLINE_PACK_SOURCE_TREE_STATE="clean"
@@ -823,6 +838,49 @@ offline_pack_output_dir_is_empty() {
     [[ -z "$found" ]]
 }
 
+offline_pack_validate_source_layout() {
+    local source_file=""
+    local source_tree=""
+    local unsafe_path=""
+
+    # The pack is later executed as code. Refuse links and special files so a
+    # clean tracked symlink cannot smuggle host-dependent bytes or escape the
+    # pack root after cp -R. Only ordinary files/directories are admissible.
+    for source_file in \
+        "$OFFLINE_PACK_SOURCE_ROOT/VERSION" \
+        "$OFFLINE_PACK_MANIFEST_FILE" \
+        "$OFFLINE_PACK_CHECKSUMS_FILE"
+    do
+        if [[ -L "$source_file" ]] || [[ ! -f "$source_file" ]]; then
+            offline_pack_add_error "pack_source_unsafe: required source input is not a regular non-symlink file: $source_file"
+            return 1
+        fi
+    done
+
+    for source_tree in \
+        "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib" \
+        "$OFFLINE_PACK_SOURCE_ROOT/scripts/generated" \
+        "$OFFLINE_PACK_SOURCE_ROOT/acfs"
+    do
+        if [[ -L "$source_tree" ]] || [[ ! -d "$source_tree" ]]; then
+            offline_pack_add_error "pack_source_unsafe: required source tree is not a regular non-symlink directory: $source_tree"
+            return 1
+        fi
+        unsafe_path="$(
+            offline_pack_find "$source_tree" -mindepth 1 \
+                \( -type l -o \( ! -type f ! -type d \) \) \
+                -print -quit
+        )" || {
+            offline_pack_add_error "pack_source_unverifiable: unable to inspect source tree $source_tree"
+            return 1
+        }
+        if [[ -n "$unsafe_path" ]]; then
+            offline_pack_add_error "pack_source_unsafe: source tree contains a symlink or special file: $unsafe_path"
+            return 1
+        fi
+    done
+}
+
 offline_pack_prepare_layout() {
     local output_dir="$1"
     local pack_root="$2"
@@ -838,7 +896,10 @@ offline_pack_prepare_layout() {
         return 1
     fi
 
-    offline_pack_mkdir_p "$pack_root/scripts" "$pack_root/provenance" "$pack_root/artifacts"
+    if ! offline_pack_mkdir_p "$pack_root/scripts" "$pack_root/provenance" "$pack_root/artifacts"; then
+        offline_pack_add_error "pack_output_unwritable: unable to create pack layout under $pack_root"
+        return 1
+    fi
 
     for rel in VERSION acfs.manifest.yaml checksums.yaml; do
         case "$rel" in
@@ -847,13 +908,22 @@ offline_pack_prepare_layout() {
                     offline_pack_add_error "pack_source_missing: $rel"
                     return 1
                 }
-                offline_pack_cp "$OFFLINE_PACK_SOURCE_ROOT/$rel" "$pack_root/$rel"
+                if ! offline_pack_cp "$OFFLINE_PACK_SOURCE_ROOT/$rel" "$pack_root/$rel"; then
+                    offline_pack_add_error "pack_copy_failed: unable to copy $rel"
+                    return 1
+                fi
                 ;;
             acfs.manifest.yaml)
-                offline_pack_cp "$OFFLINE_PACK_MANIFEST_FILE" "$pack_root/$rel"
+                if ! offline_pack_cp "$OFFLINE_PACK_MANIFEST_FILE" "$pack_root/$rel"; then
+                    offline_pack_add_error "pack_copy_failed: unable to copy $rel"
+                    return 1
+                fi
                 ;;
             checksums.yaml)
-                offline_pack_cp "$OFFLINE_PACK_CHECKSUMS_FILE" "$pack_root/$rel"
+                if ! offline_pack_cp "$OFFLINE_PACK_CHECKSUMS_FILE" "$pack_root/$rel"; then
+                    offline_pack_add_error "pack_copy_failed: unable to copy $rel"
+                    return 1
+                fi
                 ;;
         esac
     done
@@ -865,9 +935,18 @@ offline_pack_prepare_layout() {
         }
     done
 
-    offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib" "$pack_root/scripts/lib"
-    offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/scripts/generated" "$pack_root/scripts/generated"
-    offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/acfs" "$pack_root/acfs"
+    if ! offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib" "$pack_root/scripts/lib"; then
+        offline_pack_add_error "pack_copy_failed: unable to copy scripts/lib"
+        return 1
+    fi
+    if ! offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/scripts/generated" "$pack_root/scripts/generated"; then
+        offline_pack_add_error "pack_copy_failed: unable to copy scripts/generated"
+        return 1
+    fi
+    if ! offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/acfs" "$pack_root/acfs"; then
+        offline_pack_add_error "pack_copy_failed: unable to copy acfs"
+        return 1
+    fi
 }
 
 offline_pack_fetch_url() {
@@ -1256,6 +1335,9 @@ offline_pack_main() {
     expires_at="$(offline_pack_iso_expires)"
 
     offline_pack_resolve_inputs || true
+    if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
+        offline_pack_validate_source_layout || true
+    fi
     if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
         offline_pack_load_checksums "$OFFLINE_PACK_CHECKSUMS_FILE" || true
         offline_pack_load_manifest_modules "$OFFLINE_PACK_MANIFEST_FILE" || true

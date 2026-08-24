@@ -2273,6 +2273,7 @@ undo_change() {
     local change_id="$1"
     local force="${2:-false}"
     local skip_deps="${3:-false}"
+    local undo_exit_code=0
 
     if [[ -z "${ACFS_AUTOFIX_LOCK_FD:-}" ]]; then
         log_error "Undo requested without active auto-fix lock"
@@ -2515,8 +2516,6 @@ undo_change() {
     fi
 
     # Execute undo under sanitized environment
-    local undo_exit_code=0
-    local bash_bin="" env_bin=""
     bash_bin="$(autofix_system_binary_path bash 2>/dev/null || true)"
     if [[ -z "$bash_bin" ]]; then
         log_error "Unable to locate bash for undo command"
@@ -2541,7 +2540,8 @@ undo_change() {
             rollback_path="/opt/homebrew/bin:/opt/homebrew/sbin:$rollback_path"
         fi
     fi
-    local rollback_env_args=(
+    local rollback_env_args
+    rollback_env_args=(
         -i
         PATH="$rollback_path"
         HOME="${HOME:-/}"
@@ -2752,7 +2752,8 @@ acfs_undo_command() {
     local list_only=false
     local verify_only=false
     local category=""
-    local change_ids=()
+    local change_ids
+    change_ids=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in

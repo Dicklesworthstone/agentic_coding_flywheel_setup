@@ -112,6 +112,7 @@ fi
 # ============================================================
 
 readonly ACFS_SESSION_ID_MAX_LENGTH=128
+readonly ACFS_SESSION_LOCK_WAIT_SECONDS=120
 
 acfs_session_validate_id() {
     local session_id="${1:-}"
@@ -1495,36 +1496,10 @@ write_native_claude_from_canonical() {
     acfs_session_require_new_destination "$target_dir" "$target_path" || return 1
 
     if [[ "$dry_run" != "true" ]]; then
-        (
         if ! mkdir -p "$target_dir"; then
             log_error "Failed to create Claude session directory: $target_dir"
             return 1
         fi
-        local lock_path=""
-        local flock_bin=""
-        # Keep the data-free lock file permanently; unlinking lock files creates
-        # split-lock races and would violate ACFS's no-deletion discipline.
-        lock_path="$(acfs_session_child_path "$target_dir" ".acfs-session-conversion.lock")" || return 1
-        flock_bin="$(acfs_session_system_binary_path flock 2>/dev/null || true)"
-        if [[ -z "$flock_bin" ]]; then
-            log_error "Trusted flock is required for concurrent-safe Claude session conversion"
-            return 1
-        fi
-        if [[ -L "$lock_path" ]] || { [[ -e "$lock_path" ]] && [[ ! -f "$lock_path" ]]; }; then
-            log_error "Refusing unsafe Claude session lock: $lock_path"
-            return 1
-        fi
-        umask 077
-        if ! exec 9>>"$lock_path"; then
-            log_error "Failed to open Claude session lock: $lock_path"
-            return 1
-        fi
-        if ! "$flock_bin" -x -w 30 9; then
-            log_error "Timed out waiting for Claude session conversion lock: $lock_path"
-            return 1
-        fi
-        acfs_session_require_new_destination "$target_dir" "$target_path" || return 1
-
         local target_tmp=""
         target_tmp=$(mktemp "${target_dir}/.${target_session_id}.XXXXXX.tmp") || {
             log_error "Failed to stage Claude session in: $target_dir"
@@ -1587,85 +1562,110 @@ write_native_claude_from_canonical() {
             msg_count=$((msg_count + 1))
         done < <(jq -c '.messages[]' "$canonical_file")
 
-        if ! acfs_session_publish_new_file "$target_tmp" "$target_dir" "$target_path"; then
+        if ! (
+            local lock_path=""
+            local flock_bin=""
+            # Keep the data-free lock file permanently; unlinking lock files creates
+            # split-lock races and would violate ACFS's no-deletion discipline.
+            lock_path="$(acfs_session_child_path "$target_dir" ".acfs-session-conversion.lock")" || return 1
+            flock_bin="$(acfs_session_system_binary_path flock 2>/dev/null || true)"
+            if [[ -z "$flock_bin" ]]; then
+                log_error "Trusted flock is required for concurrent-safe Claude session conversion"
+                return 1
+            fi
+            if [[ -L "$lock_path" ]] || { [[ -e "$lock_path" ]] && [[ ! -f "$lock_path" ]]; }; then
+                log_error "Refusing unsafe Claude session lock: $lock_path"
+                return 1
+            fi
+            umask 077
+            if ! exec 9>>"$lock_path"; then
+                log_error "Failed to open Claude session lock: $lock_path"
+                return 1
+            fi
+            if ! "$flock_bin" -x -w "$ACFS_SESSION_LOCK_WAIT_SECONDS" 9; then
+                log_error "Timed out waiting for Claude session conversion lock: $lock_path"
+                return 1
+            fi
+            acfs_session_require_new_destination "$target_dir" "$target_path" || return 1
+            acfs_session_publish_new_file "$target_tmp" "$target_dir" "$target_path" || return 1
+
+            # Update/seed sessions-index while the workspace transaction lock is held.
+            local index_file=""
+            index_file="$(acfs_session_child_path "$target_dir" "sessions-index.json")" || return 1
+            local index_tmp
+            local index_existed=false
+            index_tmp=$(mktemp "${target_dir}/.sessions-index.XXXXXX.tmp") || return 1
+            if [[ -L "$index_file" ]] || { [[ -e "$index_file" ]] && [[ ! -f "$index_file" ]]; }; then
+                acfs_session_remove_temp_files "$index_tmp"
+                log_error "Refusing unsafe Claude sessions-index: $index_file"
+                return 1
+            fi
+            if [[ -f "$index_file" ]]; then
+                index_existed=true
+            fi
+
+            local file_mtime_ms
+            file_mtime_ms=$(( $(date +%s) * 1000 ))
+
+            local -a index_jq_args=(
+                --arg sid "$target_session_id"
+                --arg full "$target_path"
+                --arg first_prompt "$first_prompt"
+                --arg created "$created_ts"
+                --arg modified "$created_ts"
+                --arg project "$workspace"
+                --arg summary "Converted session"
+                --argjson mtime "$file_mtime_ms"
+                --argjson count "$msg_count"
+            )
+            local index_filter='
+                .version = (if (.version | type) == "number" then .version else 1 end) |
+                .entries = (
+                    (.entries // [])
+                    | map(select(.sessionId != $sid))
+                    + [{
+                        sessionId: $sid,
+                        fullPath: $full,
+                        fileMtime: $mtime,
+                        firstPrompt: $first_prompt,
+                        summary: $summary,
+                        messageCount: $count,
+                        created: $created,
+                        modified: $modified,
+                        gitBranch: "main",
+                        projectPath: $project,
+                        isSidechain: false
+                    }]
+                )
+            '
+
+            if [[ "$index_existed" == "true" ]]; then
+                if ! jq "${index_jq_args[@]}" "$index_filter" "$index_file" > "$index_tmp"; then
+                    acfs_session_remove_temp_files "$index_tmp"
+                    log_error "Failed to update Claude sessions-index: $index_file"
+                    return 1
+                fi
+            elif ! printf '{"version":1,"entries":[]}\n' | jq "${index_jq_args[@]}" "$index_filter" > "$index_tmp"; then
+                acfs_session_remove_temp_files "$index_tmp"
+                log_error "Failed to create Claude sessions-index: $index_file"
+                return 1
+            fi
+
+            if [[ "$index_existed" == "true" ]]; then
+                if ! mv -- "$index_tmp" "$index_file"; then
+                    acfs_session_remove_temp_files "$index_tmp"
+                    log_error "Failed to write Claude sessions-index: $index_file"
+                    return 1
+                fi
+            elif ! acfs_session_publish_new_file "$index_tmp" "$target_dir" "$index_file"; then
+                acfs_session_remove_temp_files "$index_tmp"
+                log_error "Failed to publish Claude sessions-index: $index_file"
+                return 1
+            fi
+        ); then
             acfs_session_remove_temp_files "$target_tmp"
             return 1
         fi
-
-        # Update/seed sessions-index so converted session appears alongside native sessions.
-        local index_file=""
-        index_file="$(acfs_session_child_path "$target_dir" "sessions-index.json")" || return 1
-        local index_tmp
-        local index_existed=false
-        index_tmp=$(mktemp "${target_dir}/.sessions-index.XXXXXX.tmp") || return 1
-        if [[ -L "$index_file" ]] || { [[ -e "$index_file" ]] && [[ ! -f "$index_file" ]]; }; then
-            acfs_session_remove_temp_files "$index_tmp"
-            log_error "Refusing unsafe Claude sessions-index: $index_file"
-            return 1
-        fi
-        if [[ -f "$index_file" ]]; then
-            index_existed=true
-        fi
-
-        local file_mtime_ms
-        file_mtime_ms=$(( $(date +%s) * 1000 ))
-
-        local -a index_jq_args=(
-            --arg sid "$target_session_id"
-            --arg full "$target_path"
-            --arg first_prompt "$first_prompt"
-            --arg created "$created_ts"
-            --arg modified "$created_ts"
-            --arg project "$workspace"
-            --arg summary "Converted session"
-            --argjson mtime "$file_mtime_ms"
-            --argjson count "$msg_count"
-        )
-        local index_filter='
-            .version = (if (.version | type) == "number" then .version else 1 end) |
-            .entries = (
-                (.entries // [])
-                | map(select(.sessionId != $sid))
-                + [{
-                    sessionId: $sid,
-                    fullPath: $full,
-                    fileMtime: $mtime,
-                    firstPrompt: $first_prompt,
-                    summary: $summary,
-                    messageCount: $count,
-                    created: $created,
-                    modified: $modified,
-                    gitBranch: "main",
-                    projectPath: $project,
-                    isSidechain: false
-                }]
-            )
-        '
-
-        if [[ "$index_existed" == "true" ]]; then
-            if ! jq "${index_jq_args[@]}" "$index_filter" "$index_file" > "$index_tmp"; then
-                acfs_session_remove_temp_files "$index_tmp"
-                log_error "Failed to update Claude sessions-index: $index_file"
-                return 1
-            fi
-        elif ! printf '{"version":1,"entries":[]}\n' | jq "${index_jq_args[@]}" "$index_filter" > "$index_tmp"; then
-            acfs_session_remove_temp_files "$index_tmp"
-            log_error "Failed to create Claude sessions-index: $index_file"
-            return 1
-        fi
-
-        if [[ "$index_existed" == "true" ]]; then
-            if ! mv -- "$index_tmp" "$index_file"; then
-                acfs_session_remove_temp_files "$index_tmp"
-                log_error "Failed to write Claude sessions-index: $index_file"
-                return 1
-            fi
-        elif ! acfs_session_publish_new_file "$index_tmp" "$target_dir" "$index_file"; then
-            acfs_session_remove_temp_files "$index_tmp"
-            log_error "Failed to publish Claude sessions-index: $index_file"
-            return 1
-        fi
-        ) || return 1
     fi
 
     printf '%s\n' "$target_path"
@@ -1822,55 +1822,10 @@ write_native_gemini_from_canonical() {
     acfs_session_require_new_destination "$chats_dir" "$target_path" || return 1
 
     if [[ "$dry_run" != "true" ]]; then
-        (
         if ! mkdir -p "$chats_dir"; then
             log_error "Failed to create Gemini session directory: $chats_dir"
             return 1
         fi
-        local lock_path=""
-        local flock_bin=""
-        # Keep the data-free lock file permanently; unlinking lock files creates
-        # split-lock races and would violate ACFS's no-deletion discipline.
-        lock_path="$(acfs_session_child_path "$root_dir" ".acfs-session-conversion.lock")" || return 1
-        flock_bin="$(acfs_session_system_binary_path flock 2>/dev/null || true)"
-        if [[ -z "$flock_bin" ]]; then
-            log_error "Trusted flock is required for concurrent-safe Gemini session conversion"
-            return 1
-        fi
-        if [[ -L "$lock_path" ]] || { [[ -e "$lock_path" ]] && [[ ! -f "$lock_path" ]]; }; then
-            log_error "Refusing unsafe Gemini session lock: $lock_path"
-            return 1
-        fi
-        umask 077
-        if ! exec 9>>"$lock_path"; then
-            log_error "Failed to open Gemini session lock: $lock_path"
-            return 1
-        fi
-        if ! "$flock_bin" -x -w 30 9; then
-            log_error "Timed out waiting for Gemini session conversion lock: $lock_path"
-            return 1
-        fi
-        acfs_session_require_new_destination "$chats_dir" "$target_path" || return 1
-
-        if [[ -L "$project_root_file" ]] || { [[ -e "$project_root_file" ]] && [[ ! -f "$project_root_file" ]]; }; then
-            log_error "Refusing unsafe Gemini project-root file: $project_root_file"
-            return 1
-        fi
-        if [[ -f "$project_root_file" ]]; then
-            local existing_project_root=""
-            existing_project_root="$(tr -d '\r\n' < "$project_root_file" 2>/dev/null || true)"
-            if [[ "$existing_project_root" != "$workspace" ]]; then
-                log_error "Refusing to overwrite Gemini project-root metadata: $project_root_file"
-                return 1
-            fi
-        else
-            acfs_session_create_new_file "$root_dir" "$project_root_file" || return 1
-            if ! printf '%s\n' "$workspace" >> "$project_root_file"; then
-                log_error "Failed to write Gemini project-root metadata: $project_root_file"
-                return 1
-            fi
-        fi
-
         local target_tmp=""
         target_tmp=$(mktemp "${chats_dir}/.${target_session_id}.XXXXXX.tmp") || {
             log_error "Failed to stage Gemini session in: $chats_dir"
@@ -1944,14 +1899,9 @@ write_native_gemini_from_canonical() {
             return 1
         fi
 
-        if ! acfs_session_publish_new_file "$target_tmp" "$chats_dir" "$target_path"; then
-            acfs_session_remove_temp_files "$target_tmp" "$msg_tmp" "$logs_tmp"
-            return 1
-        fi
-
         # Keep logs.json in sync with user prompts for native discoverability.
         local user_log_entries
-        user_log_entries="$(jq -c --arg sid "$target_session_id" '
+        if ! user_log_entries="$(jq -c --arg sid "$target_session_id" '
             [ .messages
               | map(select(.role == "user"))
               | to_entries[]
@@ -1963,44 +1913,98 @@ write_native_gemini_from_canonical() {
                     timestamp: (if (.value.timestamp | length) > 0 then .value.timestamp else (now | todateiso8601) end)
                 }
             ]
-        ' "$canonical_file")"
-
-        if [[ -L "$logs_path" ]] || { [[ -e "$logs_path" ]] && [[ ! -f "$logs_path" ]]; }; then
-            acfs_session_remove_temp_files "$msg_tmp"
-            log_error "Refusing unsafe Gemini logs file: $logs_path"
+        ' "$canonical_file")"; then
+            acfs_session_remove_temp_files "$target_tmp" "$msg_tmp"
+            log_error "Failed to stage Gemini log entries"
             return 1
         fi
 
-        logs_tmp=$(mktemp "${root_dir}/.logs.XXXXXX.tmp") || {
-            acfs_session_remove_temp_files "$msg_tmp"
+        if ! (
+            local lock_path=""
+            local flock_bin=""
+            # Keep the data-free lock file permanently; unlinking lock files creates
+            # split-lock races and would violate ACFS's no-deletion discipline.
+            lock_path="$(acfs_session_child_path "$root_dir" ".acfs-session-conversion.lock")" || return 1
+            flock_bin="$(acfs_session_system_binary_path flock 2>/dev/null || true)"
+            if [[ -z "$flock_bin" ]]; then
+                log_error "Trusted flock is required for concurrent-safe Gemini session conversion"
+                return 1
+            fi
+            if [[ -L "$lock_path" ]] || { [[ -e "$lock_path" ]] && [[ ! -f "$lock_path" ]]; }; then
+                log_error "Refusing unsafe Gemini session lock: $lock_path"
+                return 1
+            fi
+            umask 077
+            if ! exec 9>>"$lock_path"; then
+                log_error "Failed to open Gemini session lock: $lock_path"
+                return 1
+            fi
+            if ! "$flock_bin" -x -w "$ACFS_SESSION_LOCK_WAIT_SECONDS" 9; then
+                log_error "Timed out waiting for Gemini session conversion lock: $lock_path"
+                return 1
+            fi
+            acfs_session_require_new_destination "$chats_dir" "$target_path" || return 1
+
+            if [[ -L "$project_root_file" ]] || { [[ -e "$project_root_file" ]] && [[ ! -f "$project_root_file" ]]; }; then
+                log_error "Refusing unsafe Gemini project-root file: $project_root_file"
+                return 1
+            fi
+            if [[ -f "$project_root_file" ]]; then
+                local existing_project_root=""
+                existing_project_root="$(tr -d '\r\n' < "$project_root_file" 2>/dev/null || true)"
+                if [[ "$existing_project_root" != "$workspace" ]]; then
+                    log_error "Refusing to overwrite Gemini project-root metadata: $project_root_file"
+                    return 1
+                fi
+            else
+                acfs_session_create_new_file "$root_dir" "$project_root_file" || return 1
+                if ! printf '%s\n' "$workspace" >> "$project_root_file"; then
+                    log_error "Failed to write Gemini project-root metadata: $project_root_file"
+                    return 1
+                fi
+            fi
+
+            acfs_session_publish_new_file "$target_tmp" "$chats_dir" "$target_path" || return 1
+
+            if [[ -L "$logs_path" ]] || { [[ -e "$logs_path" ]] && [[ ! -f "$logs_path" ]]; }; then
+                acfs_session_remove_temp_files "$msg_tmp"
+                log_error "Refusing unsafe Gemini logs file: $logs_path"
+                return 1
+            fi
+
+            logs_tmp=$(mktemp "${root_dir}/.logs.XXXXXX.tmp") || {
+                acfs_session_remove_temp_files "$msg_tmp"
+                return 1
+            }
+            if [[ -f "$logs_path" ]]; then
+                if ! jq --argjson add "$user_log_entries" '. + $add' "$logs_path" > "$logs_tmp"; then
+                    acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+                    log_error "Refusing to replace malformed Gemini logs file: $logs_path"
+                    return 1
+                fi
+                if ! mv -- "$logs_tmp" "$logs_path"; then
+                    acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+                    log_error "Failed to update Gemini logs file: $logs_path"
+                    return 1
+                fi
+            else
+                if ! printf '%s\n' "$user_log_entries" > "$logs_tmp"; then
+                    acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+                    log_error "Failed to stage Gemini logs file: $logs_path"
+                    return 1
+                fi
+                if ! acfs_session_publish_new_file "$logs_tmp" "$root_dir" "$logs_path"; then
+                    acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+                    log_error "Failed to publish Gemini logs file: $logs_path"
+                    return 1
+                fi
+            fi
+        ); then
+            acfs_session_remove_temp_files "$target_tmp" "$msg_tmp" "$logs_tmp"
             return 1
-        }
-        if [[ -f "$logs_path" ]]; then
-            if ! jq --argjson add "$user_log_entries" '. + $add' "$logs_path" > "$logs_tmp"; then
-                acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
-                log_error "Refusing to replace malformed Gemini logs file: $logs_path"
-                return 1
-            fi
-            if ! mv -- "$logs_tmp" "$logs_path"; then
-                acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
-                log_error "Failed to update Gemini logs file: $logs_path"
-                return 1
-            fi
-        else
-            if ! printf '%s\n' "$user_log_entries" > "$logs_tmp"; then
-                acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
-                log_error "Failed to stage Gemini logs file: $logs_path"
-                return 1
-            fi
-            if ! acfs_session_publish_new_file "$logs_tmp" "$root_dir" "$logs_path"; then
-                acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
-                log_error "Failed to publish Gemini logs file: $logs_path"
-                return 1
-            fi
         fi
 
         acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
-        ) || return 1
     fi
 
     printf '%s\n' "$target_path"

@@ -369,6 +369,28 @@ test_import_replaces_destination_atomically() {
     pass "import_replaces_destination_atomically"
 }
 
+test_durable_write_uses_narrow_gnu_sync_with_portable_fallback() {
+    local helper_body atomic_body
+    helper_body="$(sed -n '/^swarm_inventory_sync_path()/,/^}/p' "$SWARM_INV_SH")"
+    atomic_body="$(sed -n '/^swarm_inventory_atomic_write()/,/^}/p' "$SWARM_INV_SH")"
+
+    [[ "$helper_body" == *'"$sync_bin" --version'* ]] || return 1
+    [[ "$helper_body" == *'"$sync_bin" "$path"'* ]] || return 1
+    grep -Fxq '        "$sync_bin"' <<< "$helper_body" || return 1
+    [[ "$atomic_body" == *'swarm_inventory_sync_path "$sync_bin" "$temp_file"'* ]] || return 1
+    [[ "$atomic_body" == *'swarm_inventory_sync_path "$sync_bin" "$parent_dir"'* ]] || return 1
+
+    pass "durable_write_uses_narrow_gnu_sync_with_portable_fallback"
+}
+
+test_privileged_execution_uses_fixed_interpreter_and_path() {
+    [[ "$(sed -n '1p' "$SWARM_INV_SH")" == '#!/bin/bash' ]] || return 1
+    grep -Fq 'readonly SWARM_INV_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"' "$SWARM_INV_SH" || return 1
+    grep -Fq 'export PATH="$SWARM_INV_PRIVILEGED_PATH"' "$SWARM_INV_SH" || return 1
+
+    pass "privileged_execution_uses_fixed_interpreter_and_path"
+}
+
 test_validate_rejects_invalid_stale_after_hours() {
     local case_name stale_hours_json inventory output
     while IFS='|' read -r case_name stale_hours_json; do
@@ -494,6 +516,8 @@ main() {
     run_test test_role_boundaries_exclude_rch_worker_and_disabled_hosts
     run_test test_import_export_preserve_unknown_fields
     run_test test_import_replaces_destination_atomically
+    run_test test_durable_write_uses_narrow_gnu_sync_with_portable_fallback
+    run_test test_privileged_execution_uses_fixed_interpreter_and_path
     run_test test_validate_rejects_invalid_stale_after_hours
     run_test test_validate_reports_nonobject_host_without_crashing
     run_test test_validate_rejects_sensitive_fields
