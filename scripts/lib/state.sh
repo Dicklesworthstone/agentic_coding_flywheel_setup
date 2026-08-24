@@ -1980,6 +1980,14 @@ state_phase_complete() {
         .phase_durations[$phase] = $dur |
         .current_phase = null |
         .current_step = null |
+        # A tolerated step failure (try_step ... || true) records failed_* for
+        # this phase and then the phase completes. Since state_phase_start only
+        # clears failed_* for the phase being started, a completed phase would
+        # otherwise carry a stale "Previous failure at:" forever and steer the
+        # resume hint at the wrong phase.
+        (if (.failed_phase // "") == $phase then
+            .failed_phase = null | .failed_step = null | .failed_error = null
+         else . end) |
         del(.phase_start_time)
     '); then
         _state_release_lock
