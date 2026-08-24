@@ -891,6 +891,36 @@ describe('validatePluginPackage', () => {
     }));
   });
 
+  test('applies the direct object string budget in UTF-8 bytes', () => {
+    const plugin = validPlugin();
+    plugin.extensions = {
+      multibyteText: '界'.repeat(Math.floor(MAX_PLUGIN_MANIFEST_BYTES / 3) + 1),
+    };
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('accepted size budget'),
+    }));
+  });
+
+  test('includes object keys in the direct object string budget', () => {
+    const plugin = validPlugin();
+    const oversizedKey = 'k'.repeat(MAX_PLUGIN_MANIFEST_BYTES + 1);
+    plugin.extensions = { [oversizedKey]: null };
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('accepted size budget'),
+      path: '<root>',
+    }));
+  });
+
   test('rejects sparse arrays whose declared length exceeds the validation budget', () => {
     const plugin = validPlugin();
     const sparseEntries: unknown[] = [];
@@ -904,6 +934,47 @@ describe('validatePluginPackage', () => {
       code: 'plugin_disallowed_behavior',
       message: expect.stringContaining('maximum item count'),
     }));
+  });
+
+  test('rejects sparse arrays even when their declared length is within budget', () => {
+    const plugin = validPlugin();
+    const sparseEntries: unknown[] = [];
+    sparseEntries.length = 3;
+    sparseEntries[1] = 'present';
+    plugin.extensions = { sparseEntries };
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('sparse arrays'),
+    }));
+  });
+
+  test('rejects direct object values outside the JSON primitive domain', () => {
+    const nonJsonValues: unknown[] = [
+      undefined,
+      1n,
+      Symbol('not-json'),
+      () => true,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ];
+
+    for (const nonJsonValue of nonJsonValues) {
+      const plugin = validPlugin();
+      plugin.extensions = { nonJsonValue };
+
+      const result = validatePluginPackage(plugin, validationOptions());
+
+      expect(result.valid).toBe(false);
+      expect(result.package).toBeUndefined();
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        code: 'plugin_disallowed_behavior',
+      }));
+      expect(() => JSON.stringify(result)).not.toThrow();
+    }
   });
 
   test('does not confuse ordinary words containing secret-name substrings with credential fields', () => {

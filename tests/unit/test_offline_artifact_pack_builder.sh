@@ -260,6 +260,8 @@ test_single_backslash_is_refused_by_url_and_path_guards() {
 
         ! offline_pack_installer_url_is_safe 'https://fixture.test/path\installer.sh'
         ! acfs_offline_pack_path_is_safe 'artifacts\stack.rch\installer.sh'
+        ! offline_pack_installer_url_is_safe $'https://fixture.test/path/\033installer.sh'
+        ! acfs_offline_pack_path_is_safe $'artifacts/stack.rch/\033installer.sh'
         offline_pack_installer_url_is_safe 'https://fixture.test/path/installer.sh'
         acfs_offline_pack_path_is_safe 'artifacts/stack.rch/installer.sh'
     ); then

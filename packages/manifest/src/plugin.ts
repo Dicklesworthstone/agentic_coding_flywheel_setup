@@ -326,7 +326,7 @@ function inspectPluginInputStructure(
   ];
   const seen = new WeakSet<object>();
   let nodes = 0;
-  let stringCharacters = 0;
+  let stringBytes = 0;
 
   const refuse = (message: string, path: string): false => {
     addDiagnostic(diagnostics, {
@@ -356,13 +356,22 @@ function inspectPluginInputStructure(
       }
 
       if (typeof candidate.value === 'string') {
-        stringCharacters += candidate.value.length;
-        if (stringCharacters > MAX_PLUGIN_MANIFEST_BYTES) {
+        stringBytes += Buffer.byteLength(candidate.value, 'utf8');
+        if (stringBytes > MAX_PLUGIN_MANIFEST_BYTES) {
           return refuse('Plugin manifest string content exceeds the accepted size budget', '<root>');
         }
         continue;
       }
-      if (candidate.value === null || typeof candidate.value !== 'object') continue;
+      if (candidate.value === null || typeof candidate.value === 'boolean') continue;
+      if (typeof candidate.value === 'number') {
+        if (!Number.isFinite(candidate.value)) {
+          return refuse('Plugin manifest numbers must be finite JSON values', candidate.path);
+        }
+        continue;
+      }
+      if (typeof candidate.value !== 'object') {
+        return refuse('Plugin manifest must contain only JSON-compatible values', candidate.path);
+      }
       if (seen.has(candidate.value)) {
         return refuse(
           'Plugin manifest must not contain repeated or cyclic object references',
@@ -386,14 +395,20 @@ function inspectPluginInputStructure(
       }
 
       const descriptors = Object.getOwnPropertyDescriptors(candidate.value);
+      let arrayItemCount = 0;
       for (const key of Reflect.ownKeys(descriptors)) {
         if (typeof key !== 'string') {
           return refuse('Plugin manifest must not contain symbol-keyed properties', candidate.path);
+        }
+        stringBytes += Buffer.byteLength(key, 'utf8');
+        if (stringBytes > MAX_PLUGIN_MANIFEST_BYTES) {
+          return refuse('Plugin manifest string content exceeds the accepted size budget', '<root>');
         }
         if (arrayValue && key === 'length') continue;
         if (arrayValue && !/^(?:0|[1-9][0-9]*)$/.test(key)) {
           return refuse('Plugin manifest arrays must not contain named properties', candidate.path);
         }
+        if (arrayValue) arrayItemCount++;
 
         const descriptor = descriptors[key];
         const childPath = candidate.path === '<root>'
@@ -412,6 +427,9 @@ function inspectPluginInputStructure(
           path: childPath,
           depth: candidate.depth + 1,
         });
+      }
+      if (arrayValue && arrayItemCount !== candidate.value.length) {
+        return refuse('Plugin manifest must not contain sparse arrays', candidate.path);
       }
     }
   } catch {
