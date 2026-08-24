@@ -49,9 +49,56 @@ log() {
     printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$LOG_FILE" >&2
 }
 
+# Consecutive fail-closed runs are tracked so a persistently broken monitor
+# (expired gh auth, dead network, wedged clone) alerts a human instead of
+# silently leaving checksums unmonitored. Alerting is strictly best-effort:
+# it must never mask the fail-closed exit or itself abort the trap path.
+FAIL_STREAK_FILE="$STATE_DIR/fail_closed_streak"
+
+_alert_fail_closed_streak() {
+    local streak="$1" reason="$2"
+    # Alert when the streak first crosses 3, then re-alert every 24 runs
+    # (~6h at the 15-minute timer cadence) while it persists.
+    if (( streak != 3 )) && { (( streak < 3 )) || (( streak % 24 != 0 )); }; then
+        return 0
+    fi
+    local alert_msg="ACFS checksum monitor has failed closed $streak times in a row on $(hostname 2>/dev/null || echo unknown-host). Latest reason: $reason. Checksum drift is NOT being monitored until this is fixed. See $LOG_DIR."
+    # Optional push notification
+    if [[ -n "${ACFS_NTFY_TOPIC:-}" ]]; then
+        curl -fsS -m 10 -A "OpenAI File Downloader, XaiImageApiFetch/1.0" \
+            -d "$alert_msg" "https://ntfy.sh/${ACFS_NTFY_TOPIC}" \
+            >>"$LOG_FILE" 2>&1 || true
+    fi
+    # GitHub issue (deduped by label + search, same pattern as the
+    # external-change review issue below)
+    local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
+    local existing=""
+    existing="$(gh issue list --repo "$repo_slug" --state open \
+        --label monitoring \
+        --search "Checksum monitor failing closed" \
+        --json number -q '.[0].number' 2>>"$LOG_FILE" || true)"
+    if [[ -n "$existing" && "$existing" != "null" ]]; then
+        gh issue comment "$existing" --repo "$repo_slug" \
+            --body "$alert_msg" >>"$LOG_FILE" 2>&1 \
+            && log "commented on existing monitoring issue #$existing" || true
+    else
+        gh issue create --repo "$repo_slug" \
+            --title "🚨 Checksum monitor failing closed - checksums unmonitored" \
+            --label monitoring \
+            --body "$alert_msg" >>"$LOG_FILE" 2>&1 \
+            && log "created monitoring alert issue" || true
+    fi
+}
+
 fail_closed() {
     log "FAIL-CLOSED: $*"
-    log "summary: result=fail_closed repo=$MONITOR_REPO"
+    local streak=0
+    streak="$(command cat "$FAIL_STREAK_FILE" 2>/dev/null || echo 0)"
+    [[ "$streak" =~ ^[0-9]+$ ]] || streak=0
+    streak=$((streak + 1))
+    printf '%s\n' "$streak" > "$FAIL_STREAK_FILE" 2>/dev/null || true
+    _alert_fail_closed_streak "$streak" "$*" || true
+    log "summary: result=fail_closed streak=$streak repo=$MONITOR_REPO"
     exit 1
 }
 
@@ -266,5 +313,8 @@ $(command cat "$body_file")" >>"$LOG_FILE" 2>&1 \
             && log "created external-change review issue"
     fi
 fi
+
+# Healthy run: clear the consecutive fail-closed streak
+printf '0\n' > "$FAIL_STREAK_FILE" 2>/dev/null || true
 
 log "summary: result=ok drift_detected=$drift_detected drift_fixed=$drift_fixed mismatches=$mismatches errors=$errors skipped=$skipped trusted=${trusted_changed:-none} external=${external_changed:-none} committed=$committed"
