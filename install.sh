@@ -4209,14 +4209,14 @@ acfs_run_verified_bootstrap_installer() {
     local -a child_args=()
     while (($# > 0)); do
         case "$1" in
-            --bootstrap-archive|--ref|--checksums-ref)
+            --bootstrap-archive|--ref|--checksums-ref|--verified-installer-cache)
                 if (($# < 2)); then
                     log_error "$1 requires a value"
                     return 1
                 fi
                 shift 2
                 ;;
-            --bootstrap-archive=*|--ref=*|--checksums-ref=*)
+            --bootstrap-archive=*|--ref=*|--checksums-ref=*|--verified-installer-cache=*)
                 shift
                 ;;
             *)
@@ -4227,6 +4227,9 @@ acfs_run_verified_bootstrap_installer() {
     done
 
     child_args+=(--ref "$child_ref" --checksums-ref "$child_checksums_ref")
+    if [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]; then
+        child_args+=(--verified-installer-cache "$ACFS_VERIFIED_INSTALLER_CACHE")
+    fi
 
     log_detail "Handing execution to the verified archive installer"
     local source_kind="remote"
@@ -5450,11 +5453,6 @@ acfs_load_upstream_checksums() {
     ACFS_UPSTREAM_LOADED=true
     return 0
 }
-
-#
-# Upstream installers are pinned by checksums.yaml and staged through the
-# cache-aware verifier in security.sh. Live mode may refresh stale checksum
-# metadata there; an explicit installer cache always fails closed instead.
 
 acfs_run_verified_upstream_script_as_target_with_env() {
     if [[ $# -lt 2 ]]; then
