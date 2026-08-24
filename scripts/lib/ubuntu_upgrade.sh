@@ -1398,7 +1398,12 @@ upgrade_setup_infrastructure() {
     target_home_q=$(printf '%q' "$resolved_target_home")
     acfs_home_q=$(printf '%q' "$resolved_acfs_home")
     acfs_state_file_q=$(printf '%q' "$resolved_acfs_state_file")
-    continue_home_q=$(printf '%q' "$resolved_target_home")
+    # The post-reboot continuation runs as root (systemd User=root), exactly
+    # like the original curl|bash run where HOME=/root. Exporting the target
+    # user's home as root's HOME made root-context tools (git, curl caches,
+    # PATH fragments) drop root-owned files into the user's home after phase
+    # 1's chown. TARGET_HOME still carries the user's home separately.
+    continue_home_q=$(printf '%q' "/root")
 
     local -a continue_args=("${install_args[@]}")
     if [[ "$append_skip_upgrade" == "true" ]]; then

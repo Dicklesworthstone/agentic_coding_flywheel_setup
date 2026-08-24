@@ -67,8 +67,11 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 typeset -g POWERLEVEL9K_DISABLE_CONFIGURATION_WIZARD=true
 
 # Oh My Zsh auto-update
-zstyle ':omz:update' mode auto
-zstyle ':omz:update' frequency 1
+# reminder, not auto: auto mode did a network fetch on the first shell of
+# every day (slow/offline VPS shells blocked on it); `acfs update
+# --shell-only` owns OMZ updates.
+zstyle ':omz:update' mode reminder
+zstyle ':omz:update' frequency 7
 
 # Plugins
 plugins=(
@@ -126,11 +129,13 @@ else
   fi
 fi
 
-# --- Editor preference ---
-if [[ -n "$SSH_CONNECTION" ]]; then
-  export EDITOR='vim'
-else
-  export EDITOR='nvim'
+# --- Editor preference (respect an EDITOR the user already set) ---
+if [[ -z "${EDITOR:-}" ]]; then
+  if [[ -n "$SSH_CONNECTION" ]]; then
+    export EDITOR='vim'
+  else
+    export EDITOR='nvim'
+  fi
 fi
 
 # --- Modern CLI aliases (only if present) ---
@@ -686,8 +691,14 @@ bindkey "^[[1;3D" backward-word
 bindkey "^[^[[C" forward-word
 bindkey "^[^[[D" backward-word
 
-# Ctrl+Backspace and Ctrl+Delete
-bindkey "^H" backward-kill-word
+# Ctrl+Backspace and Ctrl+Delete. On the Linux console (and terminals set to
+# send ^H for plain Backspace, e.g. PuTTY's Control-H mode) binding ^H to
+# word-kill makes ordinary Backspace eat a whole word, so guard by TERM and
+# provide Alt+Backspace as the always-available word-kill.
+if [[ "$TERM" != linux ]]; then
+  bindkey "^H" backward-kill-word
+fi
+bindkey "^[^?" backward-kill-word
 bindkey "^[[3;5~" kill-word
 
 # Home/End keys

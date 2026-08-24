@@ -2121,6 +2121,15 @@ fix_ssh_keepalive() {
     local check_id="$1"
     local sshd_config="${DOCTOR_FIX_SSHD_CONFIG:-/etc/ssh/sshd_config}"
     local marker="# ACFS: SSH keepalive settings (added by doctor --fix)"
+    # Prefer a drop-in under sshd_config.d: appending to sshd_config lands
+    # after any trailing Match block, silently scoping the directives to that
+    # Match, and a drop-in is cleanly reversible (rm) instead of needing a
+    # whole-file backup restore.
+    local sshd_dropin=""
+    if [[ -d "${sshd_config%/*}/sshd_config.d" ]] && \
+       grep -qE '^[[:space:]]*Include[[:space:]]+.*sshd_config\.d' "$sshd_config" 2>/dev/null; then
+        sshd_dropin="${sshd_config%/*}/sshd_config.d/60-acfs-keepalive.conf"
+    fi
     local root_display=""
     local systemctl_bin=""
     local tee_bin=""
@@ -2139,14 +2148,14 @@ fix_ssh_keepalive() {
     fi
 
     # Guard: Check if already configured
-    if grep -qE '^[[:space:]]*ClientAliveInterval[[:space:]]+[0-9]+' "$sshd_config" 2>/dev/null; then
+    if grep -qsE '^[[:space:]]*ClientAliveInterval[[:space:]]+[0-9]+' "$sshd_config" "${sshd_config%/*}/sshd_config.d/"*.conf 2>/dev/null; then
         doctor_fix_log INFO "SSH keepalive already configured"
         return 0
     fi
 
     if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-        FIXES_DRY_RUN+=("fix.ssh.keepalive|Configure SSH keepalive|$sshd_config|${root_display}tee -a $sshd_config")
-        doctor_fix_log DRY "Configure SSH keepalive in $sshd_config"
+        FIXES_DRY_RUN+=("fix.ssh.keepalive|Configure SSH keepalive|${sshd_dropin:-$sshd_config}|${root_display}tee ${sshd_dropin:-"-a $sshd_config"}")
+        doctor_fix_log DRY "Configure SSH keepalive in ${sshd_dropin:-$sshd_config}"
         return 0
     fi
 
@@ -2161,10 +2170,13 @@ fix_ssh_keepalive() {
         return 1
     fi
 
-    # Create backup
+    # Create backup (append path only: a drop-in is a brand-new file whose
+    # rollback is simply removing it, no whole-file backup needed)
     local backup_json=""
     local restore_command=""
-    if [[ -f "$sshd_config" ]]; then
+    if [[ -n "$sshd_dropin" ]]; then
+        restore_command="rm -f $(printf '%q' "$sshd_dropin")"
+    elif [[ -f "$sshd_config" ]]; then
         if ! backup_json=$(create_backup "$sshd_config" "ssh-keepalive"); then
             doctor_fix_log ERROR "Failed to back up $sshd_config before adding SSH keepalive settings"
             FIX_FAILED=$((FIX_FAILED + 1))
@@ -2179,15 +2191,19 @@ fix_ssh_keepalive() {
     fi
 
     # Apply settings
+    local keepalive_target="${sshd_dropin:-$sshd_config}"
+    local -a tee_args=(-a "$sshd_config")
+    if [[ -n "$sshd_dropin" ]]; then
+        tee_args=("$sshd_dropin")
+    fi
     if ! {
-        echo ""
         echo "$marker"
         echo "ClientAliveInterval 60"
         echo "ClientAliveCountMax 3"
-    } | "${root_cmd[@]}" "$tee_bin" -a "$sshd_config" > /dev/null; then
-        doctor_fix_log ERROR "Failed to append SSH keepalive settings to $sshd_config"
+    } | "${root_cmd[@]}" "$tee_bin" "${tee_args[@]}" > /dev/null; then
+        doctor_fix_log ERROR "Failed to write SSH keepalive settings to $keepalive_target"
         if ! doctor_fix_run_rollback_command "$restore_command" true; then
-            doctor_fix_log ERROR "Failed to restore $sshd_config after the append failure"
+            doctor_fix_log ERROR "Failed to restore $keepalive_target after the write failure"
         fi
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
@@ -2208,9 +2224,9 @@ fix_ssh_keepalive() {
     if ! doctor_fix_record_change_or_rollback \
         "$restore_command; $reload_rollback" \
         true \
-        "config" "Configured SSH keepalive in $sshd_config" \
+        "config" "Configured SSH keepalive in $keepalive_target" \
         "$restore_command; $reload_rollback" \
-        true "info" "$(doctor_fix_files_json "$sshd_config")" "$(doctor_fix_backups_json_array "${backup_json:-[]}")" "[]"; then
+        true "info" "$(doctor_fix_files_json "$keepalive_target")" "$(doctor_fix_backups_json_array "${backup_json:-[]}")" "[]"; then
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -2254,16 +2270,20 @@ doctor_fix_agent_mail_cli_path() {
 
 doctor_fix_resolve_path_target() {
     local path_value="${1:-}"
+    local readlink_bin=""
+    local realpath_bin=""
 
     [[ -n "$path_value" ]] || return 1
 
-    if readlink -f "$path_value" >/dev/null 2>&1; then
-        readlink -f "$path_value"
+    readlink_bin="$(doctor_fix_system_binary_path readlink 2>/dev/null || true)"
+    if [[ -n "$readlink_bin" ]] && "$readlink_bin" -f "$path_value" >/dev/null 2>&1; then
+        "$readlink_bin" -f "$path_value"
         return 0
     fi
 
-    if realpath "$path_value" >/dev/null 2>&1; then
-        realpath "$path_value"
+    realpath_bin="$(doctor_fix_system_binary_path realpath 2>/dev/null || true)"
+    if [[ -n "$realpath_bin" ]] && "$realpath_bin" "$path_value" >/dev/null 2>&1; then
+        "$realpath_bin" "$path_value"
         return 0
     fi
 
