@@ -145,7 +145,7 @@ check "agy locked launcher pins always-proceed tool permission" \
 check "agy locked launcher installs dcg hook support" \
   "grep -q 'dcg-antigravity-hook.py' scripts/lib/agy_locked.py"
 check "agy locked launcher emits Antigravity block decisions for dcg denials" \
-  "grep -q 'emit(\"block\", f\"Blocked by dcg:' scripts/lib/agy_locked.py && grep -q 'payload\[\"action\"\] = \"block\"' scripts/lib/agy_locked.py"
+  "grep -q 'emit(\"block\", f\"Blocked by dcg:' scripts/lib/agy_locked.py"
 check "agy locked launcher supports installer priming" \
   "grep -q -- '--acfs-prime-settings' scripts/lib/agy_locked.py"
 check "agy locked launcher only treats priming as an exact invocation" \

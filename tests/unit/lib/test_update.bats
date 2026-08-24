@@ -13201,6 +13201,9 @@ EOF
     assert_success
     [[ ! -e "$marker" ]] || fail "poisoned shell function executed: $(<"$marker")"
     [[ "$(<"$output_file")" == "tester:$target_home" ]] || fail "manifest check did not run in target context"
+
+    run _doctor_run_manifest_check target_user 'false; true'
+    assert_failure
 }
 
 @test "doctor.sh: fix suggestions do not emit malicious pinned refs from state" {

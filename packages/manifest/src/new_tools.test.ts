@@ -1,5 +1,5 @@
 /**
- * Tests: Verify all new Dicklesworthstone tools have complete manifest entries
+ * Tests: Verify all new Agent Flywheel tools have complete manifest entries
  * Related: bead bd-bd536
  *
  * Parses the real acfs.manifest.yaml and checks each tool has:

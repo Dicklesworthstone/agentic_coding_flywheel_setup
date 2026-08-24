@@ -2,7 +2,7 @@
 # shellcheck disable=SC1091
 # ============================================================
 # ACFS Installer - Agent Flywheel Stack Library
-# Installs all 23 Dicklesworthstone tools + utilities
+# Installs all 23 Agent Flywheel tools + utilities
 # ============================================================
 
 STACK_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

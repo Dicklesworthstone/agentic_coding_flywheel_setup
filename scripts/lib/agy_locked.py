@@ -89,10 +89,6 @@ def emit(decision, reason=None):
     payload = {"decision": decision}
     if reason:
         payload["reason"] = reason
-    if decision == "block":
-        payload["action"] = "block"
-        if reason:
-            payload["message"] = reason
     print(json.dumps(payload), flush=True)
 
 

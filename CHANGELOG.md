@@ -23,7 +23,7 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 - **`acfs services` command** for unified daemon management -- start/stop/restart Agent Mail, CM, and the CASS indexer from one place ([`2d48c4b`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/2d48c4b1))
 - **`--only` and `--only-phase` flags** allow selective tool or phase installation on fresh VPS installs, with OR semantics when combined ([`da096a7`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/da096a7c), [`287dc59`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/287dc596))
-- **`--stack-only` flag** for `acfs update` to update only Dicklesworthstone stack tools ([`6199da1`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/6199da18))
+- **`--stack-only` flag** for `acfs update` to update only Agent Flywheel stack tools ([`6199da1`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/6199da18))
 - **`loginctl enable-linger`** so `systemctl --user` services survive SSH disconnects on fresh installs ([`fff5933`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/fff59332))
 - **Verified installer framework** -- `install_asset_from_path` helper, DSR migrated to verified installer, 13 missing tool installers added ([`bcd4734`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/bcd47348), [`e81279f`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/e81279fa))
 - **Version + commit hash shown** in `acfs update` output for traceability ([`711c06a`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/711c06a8))
@@ -89,7 +89,7 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 ### Testing
 
 - **Expanded test suites** -- E2E, unit, and VM tests for installer, doctor, newproj, and web ([`5d1b2f2`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/5d1b2f28), [`e851325`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/e8513250))
-- **Comprehensive tests for 9 new Dicklesworthstone tools** ([`0ce1d0c`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/0ce1d0cc))
+- **Comprehensive tests for 9 new Agent Flywheel tools** ([`0ce1d0c`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/0ce1d0cc))
 - POSIX-correct grep patterns (`grep -qiE` instead of `grep -qi 'A\|B'`) ([`ee925a1`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/ee925a19))
 
 ### Infrastructure
