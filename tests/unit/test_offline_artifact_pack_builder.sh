@@ -86,7 +86,7 @@ write_fixture_source() {
 
     mkdir -p "$source_root/scripts/lib"
     printf '9.9.9-test\n' > "$source_root/VERSION"
-    printf '# fixture cache builder\n' > "$source_root/scripts/lib/offline_artifact_pack.sh"
+    /bin/cp "$OFFLINE_PACK_SH" "$source_root/scripts/lib/offline_artifact_pack.sh"
     printf '#!/usr/bin/env bash\nprintf "rch fixture installer\\n"\n' > "$artifact_file"
     artifact_sha="$(sha256sum "$artifact_file" | awk '{print $1}')"
     artifact_url="https://fixture.test/$name/rch-install.sh"
@@ -267,7 +267,7 @@ test_build_binds_clean_versioned_source_commit() {
     local source_root output_dir output status expected_commit manifest
     source_root="$(write_fixture_source clean-source valid)"
     output_dir="$ARTIFACT_DIR/clean-source/output"
-    manifest="$output_dir/acfs-offline-pack/manifest.json"
+    manifest="$output_dir/acfs-installer-cache/manifest.json"
 
     git -C "$source_root" init -q -b main
     git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib/offline_artifact_pack.sh

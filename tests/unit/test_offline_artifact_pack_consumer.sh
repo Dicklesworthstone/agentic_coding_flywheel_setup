@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# Unit tests for offline artifact pack consumption in verify_checksum
+# Unit tests for verified installer entrypoint cache consumption in verify_checksum
 # ============================================================
 
 set -euo pipefail
@@ -39,6 +39,17 @@ write_checksums "$CHECKSUMS_FILE" "$ARTIFACT_SHA"
 # shellcheck source=scripts/lib/security.sh
 source "$REPO_ROOT/scripts/lib/security.sh"
 
+# The consumer contract is Ubuntu-specific. Keep fixture metadata deterministic
+# when this static/unit harness is invoked from a non-Ubuntu development host.
+acfs_offline_pack_current_ubuntu_version() {
+    printf '25.10\n'
+}
+
+# Session policy forbids test cleanup from deleting diagnostic evidence.
+_acfs_remove_temp_files() {
+    :
+}
+
 CURRENT_ARCH="$(acfs_offline_pack_current_arch)"
 MANIFEST_SHA="$(calculate_file_sha256 "$REPO_ROOT/acfs.manifest.yaml")"
 CHECKSUMS_SHA="$(calculate_file_sha256 "$CHECKSUMS_FILE")"
@@ -71,13 +82,14 @@ write_pack() {
     local include_artifact="${4:-yes}"
     local artifact_rel="${5:-artifacts/fixture.module/${TOOL}-install.sh}"
     local output_dir="$TEST_ROOT/$name"
-    local pack_root="$output_dir/acfs-offline-pack"
+    local pack_root="$output_dir/acfs-installer-cache"
     local artifact_path="$pack_root/$artifact_rel"
     local artifact_size=""
     local artifacts_json="[]"
 
     mkdir -p "$pack_root/artifacts"
     write_checksums "$pack_root/checksums.yaml" "$ARTIFACT_SHA"
+    /bin/cp "$REPO_ROOT/acfs.manifest.yaml" "$pack_root/acfs.manifest.yaml"
 
     if [[ "$include_artifact" == "yes" ]]; then
         mkdir -p "${artifact_path%/*}"
@@ -101,7 +113,7 @@ write_pack() {
                 '[{
                     id: $id,
                     moduleId: $moduleId,
-                    kind: "verified_installer",
+                    kind: "verified_installer_entrypoint",
                     verifiedInstallerKey: $tool,
                     path: $path,
                     sourceUrl: $sourceUrl,
@@ -120,24 +132,26 @@ write_pack() {
         --arg arch "$arch" \
         --argjson artifacts "$artifacts_json" \
         '{
-            schema: "acfs.offline-artifact-pack.v1",
+            schema: "acfs.verified-installer-entrypoint-cache.v1",
             schemaVersion: 1,
-            generatedBy: "test fixture",
+            generatedBy: "acfs installer-cache build",
             generatedAt: $generatedAt,
             expiresAt: $expiresAt,
             staleAfterDays: 30,
-            packMode: "complete",
+            packMode: "entrypoint-cache",
+            packScope: "verified_installer_entrypoints",
             acfs: {
                 version: "test",
                 sourceRef: "main",
                 sourceCommit: "test",
+                sourceTreeState: "clean",
                 manifestSha256: $manifestSha,
                 checksumsYamlSha256: $checksumsSha
             },
             targets: [{os: "ubuntu", version: "25.10", architecture: $arch}],
             modules: [{
                 id: "fixture.module",
-                bundlingPolicy: "bundled",
+                coverage: "entrypoint_cached",
                 verifiedInstallerKey: "fixture_tool",
                 verifiedInstallerRunner: "bash",
                 verifiedInstallerArgsRaw: ""
@@ -145,7 +159,10 @@ write_pack() {
             artifacts: $artifacts,
             failures: [],
             policy: {
-                networkMode: "offline",
+                entrypointFetchMode: "cache_required",
+                executionNetworkMode: "required",
+                transitiveClosure: "not_bundled",
+                bootstrap: "not_bundled",
                 verifiedInstallerPolicy: "must_match_checksums_yaml",
                 partialPackPolicy: "refuse_unless_best_effort_diagnostic"
             }
@@ -159,12 +176,10 @@ verify_with_pack() {
     local output_file="$2"
     local error_file="$3"
 
-    export ACFS_OFFLINE_PACK="$pack_root"
-    export ACFS_OFFLINE_NETWORK_MODE=offline
-    export ACFS_OFFLINE_PACK_REQUIRED=true
+    export ACFS_VERIFIED_INSTALLER_CACHE="$pack_root"
 
     acfs_download_to_file() {
-        echo "network download should not be used in offline-pack tests" >&2
+        echo "network download should not be used for cached installer entrypoints" >&2
         return 79
     }
 
@@ -188,8 +203,8 @@ test_valid_pack_uses_local_artifact() {
         fail "valid_pack_uses_local_artifact" "verified bytes did not match fixture"
         return
     }
-    grep -Fq "offline_pack_hit tool=$TOOL" "$error_file" || {
-        fail "valid_pack_uses_local_artifact" "offline hit log missing"
+    grep -Fq "installer_cache_hit tool=$TOOL" "$error_file" || {
+        fail "valid_pack_uses_local_artifact" "installer cache hit log missing"
         return
     }
     pass "valid_pack_uses_local_artifact"
@@ -262,11 +277,9 @@ test_missing_pack_fails_closed() {
     local output_file="$TEST_ROOT/missing-pack.out"
     local error_file="$TEST_ROOT/missing-pack.err"
 
-    export ACFS_OFFLINE_PACK="$TEST_ROOT/no-such-pack"
-    export ACFS_OFFLINE_NETWORK_MODE=offline
-    export ACFS_OFFLINE_PACK_REQUIRED=true
+    export ACFS_VERIFIED_INSTALLER_CACHE="$TEST_ROOT/no-such-cache"
     acfs_download_to_file() {
-        echo "network download should not run for missing offline pack" >&2
+        echo "network download should not run for a missing requested cache" >&2
         return 79
     }
 
@@ -287,13 +300,7 @@ test_live_path_still_works_without_pack() {
     local error_file="$TEST_ROOT/live.err"
     local output=""
 
-    unset ACFS_OFFLINE_PACK
-    unset ACFS_OFFLINE_ARTIFACT_PACK
-    unset ACFS_OFFLINE_NETWORK_MODE
-    unset ACFS_OFFLINE_PACK_REQUIRED
-    _acfs_remove_temp_files() {
-        :
-    }
+    unset ACFS_VERIFIED_INSTALLER_CACHE
     acfs_download_to_file() {
         printf '%s' "$CONTENT" > "$2"
     }
@@ -315,7 +322,7 @@ test_live_path_still_works_without_pack() {
     pass "live_path_still_works_without_pack"
 }
 
-test_artifact_swap_before_emit_is_refused() {
+test_artifact_swap_after_snapshot_cannot_change_emitted_bytes() {
     local pack_root=""
     local artifact_path=""
     local output_file="$TEST_ROOT/swap-before-emit.out"
@@ -324,30 +331,26 @@ test_artifact_swap_before_emit_is_refused() {
     pack_root="$(write_pack "swap-before-emit" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
     artifact_path="$pack_root/artifacts/fixture.module/${TOOL}-install.sh"
 
-    # Deterministically model a concurrent replacement at the old check/use
-    # boundary. The fixed consumer snapshots first, so these bytes are hashed
-    # and refused. The old consumer hashed the original and emitted this swap.
+    # Deterministically model a concurrent replacement after the private
+    # snapshot has been verified. The emitted bytes must still come from that
+    # snapshot, never from the now-mutated shared cache pathname.
     acfs_security_cat_file() {
         local file="$1"
-        if [[ "$file" == "$artifact_path" ]]; then
-            printf '%s' 'tampered after verification' > "$file"
+        if [[ "$file" != "$artifact_path" ]]; then
+            printf '%s' 'tampered after snapshot' > "$artifact_path"
         fi
         /bin/cat "$file"
     }
 
-    if verify_with_pack "$pack_root" "$output_file" "$error_file"; then
-        fail "artifact_swap_before_emit_is_refused" "verify_checksum accepted bytes swapped after pathname validation"
+    if ! verify_with_pack "$pack_root" "$output_file" "$error_file"; then
+        fail "artifact_swap_after_snapshot_cannot_change_emitted_bytes" "verified private snapshot was not emitted"
         return
     fi
-    [[ ! -s "$output_file" ]] || {
-        fail "artifact_swap_before_emit_is_refused" "unverified bytes escaped to stdout"
+    [[ "$(< "$output_file")" == "$CONTENT" ]] || {
+        fail "artifact_swap_after_snapshot_cannot_change_emitted_bytes" "mutated shared bytes escaped to stdout"
         return
     }
-    grep -Fq "code=pack_hash_mismatch" "$error_file" || {
-        fail "artifact_swap_before_emit_is_refused" "expected pack_hash_mismatch in error log"
-        return
-    }
-    pass "artifact_swap_before_emit_is_refused"
+    pass "artifact_swap_after_snapshot_cannot_change_emitted_bytes"
 }
 
 run_all_tests() {
@@ -359,10 +362,10 @@ run_all_tests() {
     test_unsupported_arch_is_refused
     test_missing_pack_fails_closed
     test_live_path_still_works_without_pack
-    test_artifact_swap_before_emit_is_refused
+    test_artifact_swap_after_snapshot_cannot_change_emitted_bytes
 
     echo ""
-    echo "Offline artifact pack consumer tests: $TESTS_PASSED passed, $TESTS_FAILED failed"
+    echo "Installer entrypoint cache consumer tests: $TESTS_PASSED passed, $TESTS_FAILED failed"
     echo "Artifacts: $TEST_ROOT"
 
     [[ "$TESTS_FAILED" -eq 0 ]]

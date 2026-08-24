@@ -693,7 +693,6 @@ acfs_offline_pack_locate() {
     local configured="${ACFS_VERIFIED_INSTALLER_CACHE:-}"
     local name="$1"
     local pack_root=""
-    local manifest_size=""
 
     if [[ -z "$configured" ]]; then
         acfs_offline_pack_error "pack_missing_manifest" "$name" "ACFS_VERIFIED_INSTALLER_CACHE is empty"
@@ -720,12 +719,6 @@ acfs_offline_pack_locate() {
         acfs_offline_pack_error "pack_path_escape" "$name" "manifest.json resolves outside the cache"
         return 1
     fi
-    manifest_size="$(acfs_security_file_size "$pack_root/manifest.json" 2>/dev/null || true)"
-    if [[ ! "$manifest_size" =~ ^[0-9]+$ || "$manifest_size" -gt 8388608 ]]; then
-        acfs_offline_pack_error "pack_malformed_manifest" "$name" "manifest.json exceeds the 8 MiB policy limit"
-        return 1
-    fi
-
     printf '%s\t%s\n' "$pack_root" "$pack_root/manifest.json"
 }
 
@@ -823,36 +816,44 @@ acfs_offline_pack_validate_manifest() {
 
     if ! "$jq_bin" -e '
         (type == "object") and
-        (.schema | type == "string") and
-        (.schemaVersion | type == "number" and floor == .) and
-        (.generatedBy | type == "string" and length > 0) and
+        (.schema == "acfs.verified-installer-entrypoint-cache.v1") and
+        (.schemaVersion == 1) and
+        (.generatedBy == "acfs installer-cache build") and
         (.generatedAt | type == "string" and length > 0) and
         (.expiresAt | type == "string" and length > 0) and
         (.staleAfterDays | type == "number" and floor == . and . > 0) and
-        (.packMode | type == "string") and
-        (.packScope | type == "string") and
+        (.packMode == "entrypoint-cache") and
+        (.packScope == "verified_installer_entrypoints") and
         (.acfs | type == "object") and
         (.acfs.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
         (.acfs.checksumsYamlSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-        (.targets | type == "array" and length > 0) and
-        (all(.targets[]; (.os | type == "string") and (.version | type == "string") and (.architecture | type == "string"))) and
-        (.modules | type == "array") and
+        (.targets | type == "array" and length == 1) and
+        (all(.targets[];
+            (.os == "ubuntu") and
+            (.version | type == "string" and test("^[0-9]+\\.[0-9]+$")) and
+            (.architecture == "x86_64" or .architecture == "aarch64")
+        )) and
+        (.modules | type == "array" and length > 0) and
         (all(.modules[];
             (.id | type == "string" and test("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$")) and
             (.coverage == "entrypoint_cached") and
-            (.verifiedInstallerKey | type == "string" and test("^[a-z][a-z0-9_]*$"))
+            (.verifiedInstallerKey | type == "string" and test("^[a-z][a-z0-9_]*$")) and
+            (.verifiedInstallerRunner == "bash" or .verifiedInstallerRunner == "sh") and
+            (.verifiedInstallerArgsRaw | type == "string" and ((test("[[:cntrl:]]")) | not))
         )) and
         (([.modules[].id] | length) == ([.modules[].id] | unique | length)) and
         (.artifacts | type == "array") and
+        ((.artifacts | length) == (.modules | length)) and
         (all(.artifacts[];
-            (.id | type == "string" and length > 0) and
-            (.moduleId | type == "string" and length > 0) and
+            (.id == "\(.moduleId):\(.verifiedInstallerKey)") and
+            (.moduleId | type == "string" and test("^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$")) and
             (.kind == "verified_installer_entrypoint") and
-            (.verifiedInstallerKey | type == "string" and length > 0) and
+            (.verifiedInstallerKey | type == "string" and test("^[a-z][a-z0-9_]*$")) and
             ((.path | type) == "string") and
             (.path as $p |
                 ($p | startswith("artifacts/")) and
                 (($p | contains("\\")) | not) and
+                (($p | test("[[:cntrl:]]")) | not) and
                 ($p | split("/") | all(. != "" and . != "." and . != ".."))
             ) and
             ((.sourceUrl | type) == "string") and
@@ -862,20 +863,40 @@ acfs_offline_pack_validate_manifest() {
                 (($u | contains("?")) | not) and
                 (($u | contains("#")) | not) and
                 (($u | contains("\\")) | not) and
-                (($u | test("[[:space:]]")) | not)
+                (($u | test("[[:space:]]")) | not) and
+                (($u | test("[[:cntrl:]]")) | not)
             ) and
             (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-            (.sizeBytes | type == "number" and floor == . and . >= 0)
+            (.sizeBytes | type == "number" and floor == . and . >= 0 and . <= 16777216) and
+            (.architecture == "x86_64" or .architecture == "aarch64")
         )) and
         (([.artifacts[].id] | length) == ([.artifacts[].id] | unique | length)) and
         (([.artifacts[].path] | length) == ([.artifacts[].path] | unique | length)) and
-        (.failures | type == "array") and
+        (. as $root |
+            all($root.artifacts[]; . as $artifact |
+                any($root.modules[];
+                    .id == $artifact.moduleId and
+                    .verifiedInstallerKey == $artifact.verifiedInstallerKey
+                )
+            ) and
+            all($root.modules[]; . as $module |
+                ([$root.artifacts[] |
+                    select(
+                        .moduleId == $module.id and
+                        .verifiedInstallerKey == $module.verifiedInstallerKey
+                    )
+                ] | length) == 1
+            ) and
+            all($root.artifacts[]; .architecture == $root.targets[0].architecture)
+        ) and
+        (.failures | type == "array" and length == 0) and
         (.policy | type == "object") and
         (.policy.entrypointFetchMode == "cache_required") and
         (.policy.executionNetworkMode == "required") and
         (.policy.transitiveClosure == "not_bundled") and
         (.policy.bootstrap == "not_bundled") and
-        (.policy.verifiedInstallerPolicy == "must_match_checksums_yaml")
+        (.policy.verifiedInstallerPolicy == "must_match_checksums_yaml") and
+        (.policy.partialPackPolicy == "refuse_unless_best_effort_diagnostic")
     ' "$manifest_file" >/dev/null 2>&1; then
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "manifest.json is missing required cache security fields or contains duplicate identities"
         return 1
@@ -923,10 +944,16 @@ acfs_offline_pack_validate_manifest() {
         acfs_offline_pack_error "pack_ubuntu_unsupported" "$name" "unable to determine Ubuntu VERSION_ID"
         return 1
     fi
+    if ! "$jq_bin" -e --arg ubuntuVersion "$ubuntu_version" '
+        any(.targets[]; .os == "ubuntu" and .version == $ubuntuVersion)
+    ' "$manifest_file" >/dev/null; then
+        acfs_offline_pack_error "pack_ubuntu_unsupported" "$name" "Ubuntu $ubuntu_version is not listed in targets[]"
+        return 1
+    fi
     if ! "$jq_bin" -e --arg arch "$arch" --arg ubuntuVersion "$ubuntu_version" '
         any(.targets[]; .os == "ubuntu" and .architecture == $arch and .version == $ubuntuVersion)
     ' "$manifest_file" >/dev/null; then
-        acfs_offline_pack_error "pack_ubuntu_unsupported" "$name" "Ubuntu $ubuntu_version on $arch is not listed in targets[]"
+        acfs_offline_pack_error "pack_arch_unsupported" "$name" "architecture $arch is not cached for Ubuntu $ubuntu_version"
         return 1
     fi
 
@@ -1063,7 +1090,7 @@ _acfs_offline_pack_verify_artifact_snapshot() {
             | select(.kind == "verified_installer_entrypoint" and .verifiedInstallerKey == $key)
             | select((.sourceUrl // "") == $url)
             | select(((.sha256 // "") == $sha) or ((.checksumsYamlSha256 // "") == $sha))
-            | select((artifact_arch == "") or (artifact_arch == $arch))
+            | select(artifact_arch == $arch)
         ]
         | first // empty
         | if type == "object" then [.moduleId, .path, (.sha256 // ""), ((.sizeBytes // "") | tostring)] | @tsv else empty end

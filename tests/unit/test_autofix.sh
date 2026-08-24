@@ -1492,7 +1492,7 @@ test_init_autofix_state_fails_when_repair_fails() {
     if init_autofix_state >/dev/null 2>&1; then
         echo "  init_autofix_state unexpectedly succeeded despite failed repair"
         unset _ACFS_AUTOFIX_SOURCED
-        source "$REPO_ROOT/scripts/lib/autofix.sh"
+        source "$REPO_ROOT/scripts/lib/autofix.sh" 2>/dev/null || true
         cleanup_test_env
         return 1
     fi
@@ -1500,13 +1500,13 @@ test_init_autofix_state_fails_when_repair_fails() {
     if [[ "$ACFS_AUTOFIX_INITIALIZED" == "true" ]]; then
         echo "  init_autofix_state left ACFS_AUTOFIX_INITIALIZED=true after failed repair"
         unset _ACFS_AUTOFIX_SOURCED
-        source "$REPO_ROOT/scripts/lib/autofix.sh"
+        source "$REPO_ROOT/scripts/lib/autofix.sh" 2>/dev/null || true
         cleanup_test_env
         return 1
     fi
 
     unset _ACFS_AUTOFIX_SOURCED
-    source "$REPO_ROOT/scripts/lib/autofix.sh"
+    source "$REPO_ROOT/scripts/lib/autofix.sh" 2>/dev/null || true
     cleanup_test_env
     return 0
 }
@@ -1644,19 +1644,19 @@ test_session_lock_preserves_caller_descriptors() {
     setup_test_env
 
     local caller_fd_file="/tmp/test_autofix_caller_fd_$$"
-    exec 201>"$caller_fd_file"
-    printf 'before\n' >&201
+    exec 8>"$caller_fd_file"
+    printf 'before\n' >&8
 
     if ! start_autofix_session >/dev/null 2>&1; then
         echo "  Failed to start session with a caller-owned descriptor open"
-        exec 201>&-
+        exec 8>&-
         cleanup_test_env
         return 1
     fi
-    printf 'during\n' >&201
+    printf 'during\n' >&8
     end_autofix_session >/dev/null 2>&1 || true
-    printf 'after\n' >&201
-    exec 201>&-
+    printf 'after\n' >&8
+    exec 8>&-
 
     if [[ "$(cat "$caller_fd_file")" != $'before\nduring\nafter' ]]; then
         echo "  Auto-fix lock allocation clobbered a caller-owned descriptor"
@@ -1679,13 +1679,13 @@ test_start_autofix_session_releases_lock_when_session_marker_write_fails() {
     if start_autofix_session >/dev/null 2>&1; then
         echo "  start_autofix_session unexpectedly succeeded when session marker write failed"
         unset _ACFS_AUTOFIX_SOURCED
-        source "$REPO_ROOT/scripts/lib/autofix.sh"
+        source "$REPO_ROOT/scripts/lib/autofix.sh" 2>/dev/null || true
         cleanup_test_env
         return 1
     fi
 
     unset _ACFS_AUTOFIX_SOURCED
-    source "$REPO_ROOT/scripts/lib/autofix.sh"
+    source "$REPO_ROOT/scripts/lib/autofix.sh" 2>/dev/null || true
 
     if [[ -f "$ACFS_STATE_DIR/.session" ]]; then
         echo "  Failed start left behind a session marker"
@@ -1693,19 +1693,19 @@ test_start_autofix_session_releases_lock_when_session_marker_write_fails() {
         return 1
     fi
 
-    exec 201>"$ACFS_LOCK_FILE" || {
+    exec 8>"$ACFS_LOCK_FILE" || {
         echo "  Failed to open autofix lock file after failed session start"
         cleanup_test_env
         return 1
     }
-    if ! flock -n 201; then
+    if ! flock -n 8; then
         echo "  Failed start left the autofix lock held"
-        exec 201>&-
+        exec 8>&-
         cleanup_test_env
         return 1
     fi
-    flock -u 201 2>/dev/null || true
-    exec 201>&-
+    flock -u 8 2>/dev/null || true
+    exec 8>&-
 
     cleanup_test_env
     return 0
@@ -1796,28 +1796,28 @@ test_start_autofix_session_ignores_reused_pid_in_orphaned_marker() {
 test_start_autofix_session_clears_session_id_when_lock_is_held() {
     setup_test_env
 
-    exec 201>"$ACFS_LOCK_FILE" || {
+    exec 8>"$ACFS_LOCK_FILE" || {
         echo "  Failed to open autofix lock file for pre-lock test"
         cleanup_test_env
         return 1
     }
-    if ! flock -n 201; then
+    if ! flock -n 8; then
         echo "  Failed to pre-acquire autofix lock for contention test"
-        exec 201>&-
+        exec 8>&-
         cleanup_test_env
         return 1
     fi
 
     if start_autofix_session >/dev/null 2>&1; then
         echo "  start_autofix_session unexpectedly succeeded while the autofix lock was held"
-        flock -u 201 2>/dev/null || true
-        exec 201>&-
+        flock -u 8 2>/dev/null || true
+        exec 8>&-
         cleanup_test_env
         return 1
     fi
 
-    flock -u 201 2>/dev/null || true
-    exec 201>&-
+    flock -u 8 2>/dev/null || true
+    exec 8>&-
 
     if [[ -n "${ACFS_SESSION_ID:-}" ]]; then
         echo "  Failed start left a transient session ID behind"
@@ -1840,7 +1840,7 @@ test_end_autofix_session_preserves_marker_when_integrity_update_fails() {
     setup_test_env
 
     if ! start_autofix_session >/dev/null 2>&1; then
-        echo "  Failed to start session"
+        echo "  Failed to start session before finalization test"
         cleanup_test_env
         return 1
     fi
@@ -1850,13 +1850,13 @@ test_end_autofix_session_preserves_marker_when_integrity_update_fails() {
     if end_autofix_session >/dev/null 2>&1; then
         echo "  end_autofix_session unexpectedly succeeded when integrity update failed"
         unset _ACFS_AUTOFIX_SOURCED
-        source "$REPO_ROOT/scripts/lib/autofix.sh"
+        source "$REPO_ROOT/scripts/lib/autofix.sh" 2>/dev/null || true
         cleanup_test_env
         return 1
     fi
 
     unset _ACFS_AUTOFIX_SOURCED
-    source "$REPO_ROOT/scripts/lib/autofix.sh"
+    source "$REPO_ROOT/scripts/lib/autofix.sh" 2>/dev/null || true
 
     if [[ ! -f "$ACFS_STATE_DIR/.session" ]]; then
         echo "  Failed session finalization removed the session marker"
@@ -1864,19 +1864,19 @@ test_end_autofix_session_preserves_marker_when_integrity_update_fails() {
         return 1
     fi
 
-    exec 201>"$ACFS_LOCK_FILE" || {
+    exec 8>"$ACFS_LOCK_FILE" || {
         echo "  Failed to open autofix lock file after failed session finalization"
         cleanup_test_env
         return 1
     }
-    if ! flock -n 201; then
+    if ! flock -n 8; then
         echo "  Failed session finalization left the autofix lock held"
-        exec 201>&-
+        exec 8>&-
         cleanup_test_env
         return 1
     fi
-    flock -u 201 2>/dev/null || true
-    exec 201>&-
+    flock -u 8 2>/dev/null || true
+    exec 8>&-
 
     cleanup_test_env
     return 0

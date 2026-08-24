@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# ACFS Verified Installer Entrypoint Pack Builder
+# ACFS Verified Installer Entrypoint Cache Builder
 #
 # Prepares an inspectable cache of checksum-pinned installer entrypoints from
 # acfs.manifest.yaml and checksums.yaml. The entrypoints may themselves download
@@ -351,6 +351,7 @@ offline_pack_assert_source_snapshot_unchanged() {
     local rel_path=""
     local expected_sha=""
     local actual_sha=""
+    local executing_builder=""
 
     [[ "$OFFLINE_PACK_SOURCE_TREE_STATE" == "clean" ]] || return 0
     current_commit="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse HEAD 2>/dev/null || true)"
@@ -378,10 +379,14 @@ offline_pack_assert_source_snapshot_unchanged() {
             return 1
         fi
     done
+    # Bind the provenance claim to the bytes that actually executed. Merely
+    # hashing SOURCE_ROOT's copy would let a different external builder claim
+    # the source commit while never executing the committed implementation.
+    executing_builder="$(offline_pack_abs_file "${BASH_SOURCE[0]}" 2>/dev/null || true)"
     expected_sha="$(offline_pack_git_blob_sha256 "$OFFLINE_PACK_SOURCE_COMMIT" scripts/lib/offline_artifact_pack.sh 2>/dev/null || true)"
-    actual_sha="$(offline_pack_sha256 "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib/offline_artifact_pack.sh" 2>/dev/null || true)"
+    actual_sha="$(offline_pack_sha256 "$executing_builder" 2>/dev/null || true)"
     if [[ ! "$expected_sha" =~ ^[0-9a-f]{64}$ || "$actual_sha" != "$expected_sha" ]]; then
-        offline_pack_add_error "pack_source_changed: builder does not match sourceCommit"
+        offline_pack_add_error "pack_source_changed: executing builder does not match sourceCommit"
         return 1
     fi
     return 0
@@ -1384,7 +1389,7 @@ offline_pack_emit_markdown() {
     local url=""
 
     status="$(offline_pack_status)"
-    printf 'ACFS Verified Installer Entrypoint Pack Build\n'
+    printf 'ACFS Verified Installer Entrypoint Cache Build\n'
     printf 'Status: %s\n' "$status"
     printf 'Mode: %s\n' "$([[ "$OFFLINE_PACK_DRY_RUN" == "true" ]] && printf 'dry-run' || printf 'build')"
     printf 'Target: Ubuntu %s on %s\n' "$OFFLINE_PACK_UBUNTU_VERSION" "$OFFLINE_PACK_ARCH"
@@ -1411,7 +1416,11 @@ offline_pack_emit_markdown() {
 
     for module_id in "${OFFLINE_PACK_SELECTED_MODULES[@]}"; do
         tool="${OFFLINE_PACK_MODULE_TOOL[$module_id]:-}"
-        url="${OFFLINE_PACK_INSTALLER_URL[$tool]:-}"
+        if [[ -n "$tool" ]]; then
+            url="${OFFLINE_PACK_INSTALLER_URL[$tool]:-}"
+        else
+            url=""
+        fi
         printf '  - %s (%s) %s\n' "$module_id" "${tool:-no verified installer}" "${url:-no approved URL}"
     done
 }
