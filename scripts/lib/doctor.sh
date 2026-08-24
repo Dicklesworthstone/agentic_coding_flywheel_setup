@@ -5095,6 +5095,7 @@ main() {
                 echo "  --no-cache  Skip cache, run all checks fresh"
                 echo "  --fix       Automatically apply safe fixes for failed checks"
                 echo "  --dry-run   Preview fixes without applying (use with --fix)"
+                echo "  --quiet, -q Exit code only (0=healthy, 1=issues); suppresses all output"
                 echo ""
                 echo "By default, doctor runs quick existence checks only."
                 echo "Use --deep for thorough validation including:"
@@ -5119,6 +5120,8 @@ main() {
                 echo "  acfs doctor --json            # JSON output for tooling"
                 echo "  acfs doctor --fix             # Apply safe fixes"
                 echo "  acfs doctor --fix --dry-run   # Preview fixes"
+                echo "  acfs undo --list              # List changes recorded by --fix"
+                echo "  acfs undo --all               # Undo the most recent fix session"
                 exit 0
                 ;;
             *)
@@ -5126,6 +5129,13 @@ main() {
                 ;;
         esac
     done
+
+    # --quiet: exit code only. This must precede the banner below, not just
+    # the checks — the first cut redirected right before check_identity and
+    # the gum banner box still reached stdout. Genuine errors keep stderr.
+    if [[ "$QUIET_MODE" == "true" ]]; then
+        exec 1>/dev/null
+    fi
 
     local_progress_record_doctor_invoked "$DEEP_MODE" "$FIX_MODE" "$DRY_RUN_MODE" "$JSON_MODE" 2>/dev/null || true
 
@@ -5170,12 +5180,6 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
             echo "Warning: doctor_fix.sh not loaded, --fix unavailable" >&2
             FIX_MODE=false
         fi
-    fi
-
-    if [[ "$QUIET_MODE" == "true" ]]; then
-        # --quiet: exit code only. Everything the checks print goes to stdout;
-        # genuine errors still reach stderr.
-        exec 1>/dev/null
     fi
 
     check_identity
