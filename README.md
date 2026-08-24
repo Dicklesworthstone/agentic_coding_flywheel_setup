@@ -55,7 +55,7 @@ The installer is **idempotent**—if interrupted, simply re-run it. It will auto
 - **Zero to Hero:** Takes complete beginners from "I have a laptop" to "I have Claude/Codex/Antigravity agents writing code for me on a VPS"
 - **One-Liner Magic:** A single `curl | bash` command installs 30+ tools, configures everything, and sets up three AI coding agents
 - **Vibe Mode:** Pre-configured for maximum velocity—passwordless sudo, dangerous agent flags enabled, optimized shell environment
-- **Battle-Tested Stack:** Includes the complete Dicklesworthstone stack (10 tools + utilities) for agent orchestration, coordination, and safety
+- **Battle-Tested Stack:** Includes the complete Agent Flywheel stack (core tools + utilities) for agent orchestration, coordination, and safety
 
 **What you get:**
 - Modern shell (zsh + oh-my-zsh + powerlevel10k)
@@ -1197,7 +1197,7 @@ Multi-step progress indicator:
 
 ### Expanded Lesson Library
 
-The Learning Hub includes specialized lessons for each tool in the Dicklesworthstone stack:
+The Learning Hub includes specialized lessons for each tool in the Agent Flywheel stack:
 
 | Lesson | Topics |
 |--------|--------|
