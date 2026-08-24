@@ -2913,6 +2913,14 @@ export function generateWebIndex(): string {
 // ============================================================
 
 const PLUGIN_PACKAGE_SUFFIXES = ['.json'] as const;
+const GENERATOR_CONTROL_OPTIONS = new Set([
+  '--dry-run',
+  '--verbose',
+  '--validate',
+  '--diff',
+  '--help',
+  '-h',
+]);
 
 function pluginOptionValue(args: readonly string[], index: number, option: string): string {
   const value = args[index + 1];
@@ -2989,6 +2997,12 @@ export function collectPluginInputPaths(
         option,
         cwd,
       );
+    } else if (GENERATOR_CONTROL_OPTIONS.has(argument)) {
+      continue;
+    } else if (argument.startsWith('-')) {
+      throw new Error(`Unknown generator option: ${argument}`);
+    } else {
+      throw new Error(`Unexpected positional argument: ${argument}`);
     }
   }
 

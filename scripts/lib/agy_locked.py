@@ -83,6 +83,7 @@ import sys
 
 
 DCG_TIMEOUT_SECONDS = 4
+DCG_BLOCKING_DECISIONS = frozenset({"deny", "block", "ask", "indeterminate"})
 
 
 def emit(decision, reason=None):
@@ -93,6 +94,8 @@ def emit(decision, reason=None):
 
 
 def extract_command(payload):
+    if not isinstance(payload, dict):
+        return ""
     tool_call = payload.get("toolCall") or payload.get("tool_call")
     if not isinstance(tool_call, dict):
         return ""
@@ -125,7 +128,16 @@ def main():
     dcg_bin = os.environ.get("DCG_BIN", os.path.expanduser("~/.local/bin/dcg"))
     try:
         proc = subprocess.run(
-            [dcg_bin, "--robot", "test", command],
+            [
+                dcg_bin,
+                "--robot",
+                "--agent",
+                "antigravity",
+                "test",
+                "--dialect",
+                "posix",
+                command,
+            ],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -140,9 +152,11 @@ def main():
         result = json.loads(proc.stdout) if proc.stdout.strip() else {}
     except json.JSONDecodeError:
         result = {}
+    if not isinstance(result, dict):
+        result = {}
 
     decision = result.get("decision")
-    if proc.returncode == 1 or decision in {"deny", "block"}:
+    if proc.returncode == 1 or decision in DCG_BLOCKING_DECISIONS:
         reason = (
             result.get("reason")
             or result.get("explanation")

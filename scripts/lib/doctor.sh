@@ -2181,9 +2181,13 @@ check_shell() {
         check "shell.lsd_or_eza" "lsd/eza" "warn" "neither installed" "$(doctor_pkg_install_hint lsd)"
     fi
 
-    check_command "shell.atuin" "Atuin" "atuin" "$(fix_for_module "shell.atuin")"
+    # Check ids mirror the manifest module ids (tools.*) so installer-backed
+    # fix hints ("--only <module>") always reference the emitting check's
+    # module. "shell.atuin" was also a nonexistent module id, which made
+    # fix_for_module build a reinstall command that installs nothing.
+    check_command "tools.atuin" "Atuin" "atuin" "$(fix_for_module "tools.atuin")"
     check_command "shell.fzf" "fzf" "fzf" "$(doctor_pkg_install_hint fzf)"
-    check_command "shell.zoxide" "zoxide" "zoxide" \
+    check_command "tools.zoxide" "zoxide" "zoxide" \
         "Re-run: $(fix_for_module tools.zoxide)"
     check_command "shell.direnv" "direnv" "direnv" "$(doctor_pkg_install_hint direnv)"
 

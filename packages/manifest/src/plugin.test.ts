@@ -1273,6 +1273,22 @@ describe('loadPluginManifestFromFile', () => {
 });
 
 describe('collectPluginInputPaths', () => {
+  test('accepts documented control flags but rejects unknown arguments', () => {
+    expect(
+      collectPluginInputPaths(
+        ['--dry-run', '--verbose', '--validate', '--diff', '--help', '-h'],
+        {},
+      ),
+    ).toEqual([]);
+
+    expect(() => collectPluginInputPaths(['--plguin', 'plugin.json'], {})).toThrow(
+      'Unknown generator option: --plguin',
+    );
+    expect(() => collectPluginInputPaths(['plugin.json'], {})).toThrow(
+      'Unexpected positional argument: plugin.json',
+    );
+  });
+
   test('refuses missing option values and missing directories', () => {
     const workingDirectory = mkdtempSync(join(tmpdir(), 'acfs-plugin-input-errors-'));
 
