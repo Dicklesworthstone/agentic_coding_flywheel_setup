@@ -186,7 +186,7 @@ verify:
 
 ---
 
-### Phase 9: Dicklesworthstone Stack (`install_stack`)
+### Phase 9: Agent Flywheel Stack (`install_stack`)
 
 **Installer installs:**
 
@@ -353,7 +353,7 @@ orchestration:
 | `--apt-only` | Only apt packages | Category filter: `base`, `cli` |
 | `--agents-only` | Only coding agents | Category filter: `agents` |
 | `--cloud-only` | Only cloud CLIs | Category filter: `cloud` |
-| `--stack` | Include Dicklesworthstone stack | Category filter: `stack` |
+| `--stack` | Include Agent Flywheel stack | Category filter: `stack` |
 | `--no-apt` | Skip apt | Exclude category: `base`, `cli` |
 | `--no-agents` | Skip agents | Exclude category: `agents` |
 | `--no-cloud` | Skip cloud CLIs | Exclude category: `cloud` |

@@ -8982,7 +8982,7 @@ install_cloud_db() {
 }
 
 # ============================================================
-# Phase 8: Dicklesworthstone stack
+# Phase 8: Agent Flywheel stack
 # ============================================================
 
 # Resolve binaries only from target-owned or stable system locations.
@@ -9032,8 +9032,8 @@ binary_installed() {
 }
 
 install_stack_phase() {
-    set_phase "stack" "Dicklesworthstone Stack"
-    log_step "8/9" "Installing Dicklesworthstone stack..."
+    set_phase "stack" "Agent Flywheel Stack"
+    log_step "8/9" "Installing Agent Flywheel stack..."
 
     # Install utils.* modules (category: tools, phase: 9) — bug #146 fix
     # Run every category in this phase before deciding the phase result: a
@@ -9050,7 +9050,7 @@ install_stack_phase() {
         log_detail "Using generated installers for stack (phase 9)"
         acfs_run_generated_category_phase "stack" "9" || stack_phase_rc=1
         if [[ "$stack_phase_rc" -eq 0 ]]; then
-            log_success "Dicklesworthstone stack installed"
+            log_success "Agent Flywheel stack installed"
         fi
         return "$stack_phase_rc"
     fi
@@ -10000,7 +10000,7 @@ UNIT_EOF
         log_warn "Stack phase finished with generated-module failures (see summary); the phase will be retried on resume"
         return 1
     fi
-    log_success "Dicklesworthstone stack installed"
+    log_success "Agent Flywheel stack installed"
 }
 
 # ============================================================

@@ -2519,14 +2519,14 @@ check_cloud() {
     blank_line
 }
 
-# Check Dicklesworthstone stack
+# Check Agent Flywheel stack
 check_stack() {
     local ubs_bin=""
     local bv_path=""
     local am_bin=""
     local ru_bin=""
 
-    section "Dicklesworthstone stack"
+    section "Agent Flywheel stack"
 
     check_command "stack.ntm" "NTM" "ntm" \
         "Re-run: $(fix_for_module stack.ntm)"
@@ -3240,7 +3240,7 @@ _doctor_run_manifest_check() {
 # Run manifest checks that are NOT already covered by bespoke functions.
 # Integrates with the standard check() output (JSON/gum/plain) so the results
 # are indistinguishable from hand-written checks.  Failed checks include a
-# copy-pasteable fix suggestion using `acfs install --only <module>`.
+# copy-pasteable fix suggestion using the manifest-bound ACFS installer.
 check_manifest_supplemental() {
     [[ "$MANIFEST_CHECKS_LOADED" == "true" ]] || return 0
     [[ ${#MANIFEST_CHECKS[@]} -gt 0 ]] || return 0

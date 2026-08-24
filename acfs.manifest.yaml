@@ -1605,7 +1605,7 @@ modules:
       - vercel --version
 
   # ============================================================
-  # PHASE 9: Dicklesworthstone stack (all 8 tools)
+  # PHASE 9: Agent Flywheel stack (all 8 tools)
   # ============================================================
   - id: stack.ntm
     description: Named tmux manager (agent cockpit)

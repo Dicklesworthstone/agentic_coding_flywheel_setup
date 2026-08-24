@@ -64,7 +64,7 @@ Categories determine generated file layout (`scripts/generated/install_<category
 | `lang` | Language runtimes (bun, uv, rust, go) | `install_lang.sh` | 6 |
 | `agents` | Coding agents (claude, codex, gemini) | `install_agents.sh` | 7 |
 | `cloud` | Cloud & database tools | `install_cloud.sh` | 8 |
-| `stack` | Dicklesworthstone stack (ntm, bv, cass, etc.) | `install_stack.sh` | 9 |
+| `stack` | Agent Flywheel stack (ntm, bv, cass, etc.) | `install_stack.sh` | 9 |
 | `acfs` | ACFS finalization (onboard, doctor) | `install_acfs.sh` | 10 |
 
 **Notes:**
@@ -103,7 +103,7 @@ Controls whether a module is included in the default install:
 | `tools.zoxide` | `true` | Core navigation UX |
 | `tools.ast_grep` | `true` | Required by UBS |
 | `agents.*` | `true` | Core workflow |
-| `stack.*` | `true` | Core workflow (Dicklesworthstone stack) |
+| `stack.*` | `true` | Core workflow (Agent Flywheel stack) |
 | `acfs.*` | `true` | ACFS finalization |
 | `db.postgres18` | **`false`** | Heavy; `--skip-postgres` exists |
 | `tools.vault` | **`false`** | Specialized; `--skip-vault` exists |
@@ -150,7 +150,7 @@ How categories map to install.sh phases:
 | 6 | `lang` | Language runtimes + tools |
 | 7 | `agents` | Coding agents |
 | 8 | `cloud` | Cloud & database tools |
-| 9 | `stack` | Dicklesworthstone stack |
+| 9 | `stack` | Agent Flywheel stack |
 | 10 | `acfs` | Finalization |
 
 ### Category → Wizard Step Mapping
@@ -2382,8 +2382,8 @@ main() {
     log_step "8/10" "Installing cloud & database tools..."
     install_cloud  # FROM GENERATED (vault, postgres, wrangler, supabase, vercel)
 
-    # Phase 9: Dicklesworthstone stack
-    log_step "9/10" "Installing Dicklesworthstone stack..."
+    # Phase 9: Agent Flywheel stack
+    log_step "9/10" "Installing Agent Flywheel stack..."
     install_stack  # FROM GENERATED (ntm, mcp_agent_mail, ubs, bv, cass, cm, caam, slb)
 
     # Phase 10: Finalization

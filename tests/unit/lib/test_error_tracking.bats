@@ -12,6 +12,17 @@ teardown() {
     common_teardown
 }
 
+@test "installation summary points to an implemented recovery command" {
+    track_failed_tool "example-tool" "installer failed"
+
+    run print_install_summary
+
+    assert_success
+    assert_output --partial "acfs doctor"
+    assert_output --partial "manifest-bound Fix command"
+    refute_output --partial "acfs install --retry-failed"
+}
+
 @test "failed-tools retry defaults fail clearly without HOME context" {
     run env -i PATH="/usr/bin:/bin" bash -c 'set -euo pipefail; source "$1"; source "$2"; save_failed_tools_for_retry' _ "$PROJECT_ROOT/scripts/lib/logging.sh" "$PROJECT_ROOT/scripts/lib/error_tracking.sh"
     assert_failure
@@ -136,14 +147,14 @@ EOF
         source "$1"
         source "$2"
         CURRENT_PHASE="stack"
-        CURRENT_PHASE_NAME="Dicklesworthstone Stack"
+        CURRENT_PHASE_NAME="Agent Flywheel Stack"
         CURRENT_STEP="unknown step"
         LAST_ERROR="Unknown error"
         report_failure 8 9
     ' _ "$PROJECT_ROOT/scripts/lib/errors.sh" "$PROJECT_ROOT/scripts/lib/report.sh"
 
     assert_success
-    assert_output --partial "Phase 8/9: Dicklesworthstone Stack"
+    assert_output --partial "Phase 8/9: Agent Flywheel Stack"
     assert_output --partial "Failed at:"
 
     local count
@@ -167,7 +178,7 @@ EOF
             printf "canonical-resume phase=%s step=%s\n" "$1" "$2"
         }
         CURRENT_PHASE="stack"
-        CURRENT_PHASE_NAME="Dicklesworthstone Stack"
+        CURRENT_PHASE_NAME="Agent Flywheel Stack"
         CURRENT_STEP="MCP Agent Mail"
         LAST_ERROR="checksum mismatch: expected old actual new"
         report_failure 8 9
@@ -237,7 +248,7 @@ EOF
             SKIP_MODULES=("stack.cass")
             NO_DEPS=true
             CURRENT_PHASE="stack"
-            CURRENT_PHASE_NAME="Dicklesworthstone Stack"
+            CURRENT_PHASE_NAME="Agent Flywheel Stack"
             CURRENT_STEP="MCP Agent Mail"
             LAST_ERROR="checksum mismatch: expected old actual new"
             report_failure 8 9
@@ -283,14 +294,14 @@ EOF_STATE
     ' _ "$PROJECT_ROOT/scripts/lib/state.sh" "$PROJECT_ROOT/scripts/lib/errors.sh" "$PROJECT_ROOT/scripts/lib/report.sh"
 
     assert_success
-    assert_output --partial "Phase 8/9: Dicklesworthstone Stack"
+    assert_output --partial "Phase 8/9: Agent Flywheel Stack"
     assert_output --partial "Failed at:"
     assert_output --partial "MCP Agent Mail"
     assert_output --partial "checksum mismatch: expected old actual new"
     refute_output --partial "unknown step"
 
     run jq -e '
-        .phase.name == "Dicklesworthstone Stack"
+        .phase.name == "Agent Flywheel Stack"
         and .failure.step == "MCP Agent Mail"
         and .failure.error == "checksum mismatch: expected old actual new"
         and (.failure.suggested_fix | contains("Upstream installer script has changed"))

@@ -236,7 +236,7 @@ If you aren't 100% sure how to use a third-party library, **SEARCH ONLINE** to f
 
 ### What It Does
 
-Provides a step-by-step wizard website, a one-liner installer, and an onboarding TUI to configure Ubuntu VPS instances with a complete agentic coding environment: shell setup, languages, dev tools, coding agents, and the Dicklesworthstone coordination stack.
+Provides a step-by-step wizard website, a one-liner installer, and an onboarding TUI to configure Ubuntu VPS instances with a complete agentic coding environment: shell setup, languages, dev tools, coding agents, and the Agent Flywheel coordination stack.
 
 ### Components
 
@@ -377,7 +377,7 @@ These are installed on target VPS (not development machine).
 - **Supabase CLI** — Supabase management
 - **Vercel CLI** — Vercel deployment
 
-**Dicklesworthstone Stack (10 tools + utilities):**
+**Agent Flywheel Stack (10 tools + utilities):**
 1. **ntm** — Named Tmux Manager (agent cockpit)
 2. **mcp_agent_mail** — Agent coordination via mail-like messaging
 3. **ultimate_bug_scanner** (`ubs`) — Bug scanning with guardrails

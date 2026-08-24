@@ -20,7 +20,7 @@ Here's what's installed on your VPS:
   - Claude Code (`cc`)
   - Codex CLI (`cod`)
   - Antigravity CLI (`agy`)
-- **The Dicklesworthstone stack** for agent coordination and memory
+- **The Agent Flywheel stack** for agent coordination and memory
 
 ---
 

@@ -98,7 +98,7 @@ readonly RECOMMENDED_TOOLS=(
     "fly"
     "docker"
     
-    # Dicklesworthstone stack
+    # Agent Flywheel stack
     "ntm"
     "mcp_agent_mail"
     "ubs"

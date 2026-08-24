@@ -32,7 +32,7 @@ That's it! This updates:
 - Coding agents (Claude, Codex, Antigravity)
 - Cloud CLIs (Wrangler, Supabase, Vercel)
 - Language runtimes (Bun, Rust, uv)
-- Dicklesworthstone stack tools (ntm, slb, ubs, br, bv, etc.)
+- Agent Flywheel stack tools (ntm, slb, ubs, br, bv, etc.)
 
 ---
 

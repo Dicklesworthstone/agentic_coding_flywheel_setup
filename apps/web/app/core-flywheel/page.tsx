@@ -787,7 +787,7 @@ function FooterCTA() {
         </h2>
 
         <p className="mx-auto mt-8 max-w-2xl text-base sm:text-lg text-zinc-400 leading-relaxed font-light">
-          Once the core loop feels natural, the full methodology adds richer planning workflows, memory systems, prompt libraries, and the complete Dicklesworthstone stack.
+          Once the core loop feels natural, the full methodology adds richer planning workflows, memory systems, prompt libraries, and the complete Agent Flywheel stack.
         </p>
 
         <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">

@@ -302,7 +302,7 @@ The [Agentic Coding Flywheel Setup (ACFS)](https://github.com/Dicklesworthstone/
 4. Type `onboard` and learn the workflow
 5. Start vibe coding with AI agents immediately
 
-The installer is idempotent (safe to re-run), checkpointed (resumes on failure), and handles connection drops. It installs the complete Dicklesworthstone stack of 10 tools plus all coding agent CLIs.
+The installer is idempotent (safe to re-run), checkpointed (resumes on failure), and handles connection drops. It installs the complete Agent Flywheel stack of 10 tools plus all coding agent CLIs.
 
 ### The VPS Environment
 

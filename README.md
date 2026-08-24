@@ -687,7 +687,7 @@ acfs-update --bootstrap-self-update
 --cloud-only     Only update cloud CLIs
 --shell-only     Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
 --runtime-only   Only update runtimes (bun, rust, uv, go)
---stack          Include Dicklesworthstone stack (enabled by default)
+--stack          Include Agent Flywheel stack (enabled by default)
 ```
 
 **Skip Categories:**
@@ -1451,7 +1451,7 @@ $ acfs doctor
 ║   ✔ supabase 2.23.4                                           ║
 ║   ✔ vercel 41.7.6                                             ║
 ║                                                               ║
-║ Dicklesworthstone Stack                                       ║
+║ Agent Flywheel Stack                                       ║
 ║   ✔ ntm 0.3.2                                                 ║
 ║   ✔ slb 0.2.1                                                 ║
 ║   ✔ ubs 0.1.8                                                 ║
@@ -1483,7 +1483,7 @@ Doctor checks are generated from the manifest (`scripts/generated/doctor_checks.
 **Example output with fix suggestion:**
 ```
   ✗ tools.lazygit - Lazygit terminal UI not found
-    Fix: acfs install --only tools.lazygit
+    Fix: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only tools.lazygit
 ```
 
 This architecture ensures doctor checks stay in sync with the installer—if a tool is in the manifest, it will be verified.
@@ -1964,7 +1964,7 @@ update_rust()      # rustup update stable
 update_uv()        # uv self update
 update_go()        # Go toolchain update
 update_shell()     # OMZ, P10K, plugins, Atuin, Zoxide
-update_stack()     # Dicklesworthstone stack tools
+update_stack()     # Agent Flywheel stack tools
 
 # Features:
 # - Automatic logging to ~/.acfs/logs/updates/
@@ -2491,7 +2491,7 @@ The checksum candidate check uses the canonical updater output. If the generated
 
 ### Stack Provenance Report (`scripts/stack-provenance-report.sh`)
 
-Use the stack provenance report when reviewing Dicklesworthstone stack tool freshness before release:
+Use the stack provenance report when reviewing Agent Flywheel stack tool freshness before release:
 
 ```bash
 bash scripts/stack-provenance-report.sh --json
@@ -3098,7 +3098,7 @@ It will skip already-completed phases and resume where it left off.
 Use the built-in update command:
 ```bash
 acfs update                  # Update all standard components
-acfs update --stack          # Include Dicklesworthstone stack
+acfs update --stack          # Include Agent Flywheel stack
 acfs update --agents-only    # Just update AI agents
 ```
 
@@ -4299,22 +4299,22 @@ Doctor checks are generated directly from the manifest, so they verify the exact
 
 ```
   ✗ tools.lazygit - Lazygit terminal UI not found
-    Fix: acfs install --only tools.lazygit
+    Fix: curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only tools.lazygit
 ```
 
 **Solutions**:
 
 1. **Re-run the specific module** (use the fix suggestion):
    ```bash
-   acfs install --only tools.lazygit   # Install just that tool
-   acfs install --only lang.go         # Install a language runtime
-   acfs install --only stack.dcg       # Install a stack tool
+   curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only tools.lazygit
+   curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only lang.go
+   curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only stack.dcg
    ```
 
 2. **Re-run an entire phase** (for multiple failures in one category):
    ```bash
-   acfs install --only-phase cli     # Re-run CLI tools
-   acfs install --only-phase stack   # Re-run stack tools
+   curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only-phase cli
+   curl -fsSL https://agent-flywheel.com/install | bash -s -- --yes --force-reinstall --only-phase stack
    ```
 
 3. **Run auto-fix mode** (applies safe, deterministic fixes):
@@ -4593,7 +4593,7 @@ ACFS is optimal when you need:
 
 ---
 
-## The Dicklesworthstone Stack Philosophy
+## The Agent Flywheel Stack Philosophy
 
 The 10-tool stack included in ACFS isn't random—each tool addresses a specific problem discovered through extensive multi-agent development experience.
 

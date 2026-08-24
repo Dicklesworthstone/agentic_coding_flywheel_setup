@@ -43,7 +43,7 @@ const TERMINAL_LINES = [
   { type: "output", text: "▸ Installing bun, uv, rust, go..." },
   { type: "output", text: "▸ Installing Claude Code, Codex CLI, Antigravity CLI..." },
   { type: "output", text: "▸ Configuring tmux, ripgrep, lazygit..." },
-  { type: "output", text: "▸ Setting up Dicklesworthstone stack..." },
+  { type: "output", text: "▸ Setting up Agent Flywheel stack..." },
   { type: "success", text: "✓ Setup complete! Run 'onboard' to get started." },
 ];
 

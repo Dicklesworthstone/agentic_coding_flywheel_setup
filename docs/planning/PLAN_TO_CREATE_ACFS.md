@@ -234,11 +234,11 @@ modules:
 7. **db.** - Databases (postgres18)
 8. **cloud.** - Cloud CLIs (vault, wrangler, supabase, vercel)
 9. **agents.** - Coding agent CLIs (claude, codex, gemini)
-10. **stack.** - Dicklesworthstone stack (all 8 tools)
+10. **stack.** - Agent Flywheel stack (all 8 tools)
 
 ---
 
-## Part 6: The Dicklesworthstone Stack
+## Part 6: The Agent Flywheel Stack
 
 ### All 8 Tools
 
@@ -362,7 +362,7 @@ Cloud/DB
   PASS ✅ postgres (psql 18.x)
   ...
 
-Dicklesworthstone stack
+Agent Flywheel stack
   PASS ✅ ntm (available)
   PASS ✅ slb (available)
   ...
@@ -433,7 +433,7 @@ Stable IDs for mapping to website checklist:
 ### Milestone 2: Full Flywheel Stack
 
 **Deliverables:**
-- All 8 Dicklesworthstone tools installed and configured
+- All 8 Agent Flywheel tools installed and configured
 - `acfs doctor` shows green across the board
 
 ### Milestone 3: Polished Onboarding TUI

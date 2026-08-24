@@ -139,7 +139,7 @@ export function KeepingUpdatedLesson() {
 
           <UpdatePattern
             title="Include Stack Tools"
-            description="The Dicklesworthstone stack (ntm, slb, ubs, etc.) is skipped by default because it takes longer. Include it with:"
+            description="The Agent Flywheel stack (ntm, slb, ubs, etc.) is skipped by default because it takes longer. Include it with:"
             command="acfs-update --stack"
           />
         </div>

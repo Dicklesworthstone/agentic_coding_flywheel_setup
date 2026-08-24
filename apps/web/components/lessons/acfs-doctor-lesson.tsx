@@ -158,7 +158,7 @@ acfs update
 
 # What the nightly update does:
 # 1. Pull latest ACFS configs
-# 2. Update Dicklesworthstone stack tools (cargo install)
+# 2. Update Agent Flywheel stack tools (cargo install)
 # 3. Update global Bun packages
 # 4. Update Go binaries
 # 5. Run acfs doctor to verify

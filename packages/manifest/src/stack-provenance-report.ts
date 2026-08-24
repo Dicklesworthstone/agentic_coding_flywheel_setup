@@ -792,7 +792,7 @@ function parseArgs(args: string[]): CliOptions {
 function printUsage(): void {
   console.log(`Usage: scripts/stack-provenance-report.sh [--json] [--quiet] [--network=skip|check]
 
-Reports local and upstream provenance for ACFS Dicklesworthstone stack tools.
+Reports local and upstream provenance for ACFS Agent Flywheel stack tools.
 
 Options:
   --network=skip             Offline mode. Report local manifest/checksum consistency.

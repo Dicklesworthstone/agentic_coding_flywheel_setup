@@ -52,7 +52,7 @@ export function SafetyToolsLesson() {
       >
         <Paragraph>
           AI agents are powerful but can cause damage if misused. The
-          Dicklesworthstone stack includes three safety tools:
+          Agent Flywheel stack includes three safety tools:
         </Paragraph>
 
         <div className="mt-8">

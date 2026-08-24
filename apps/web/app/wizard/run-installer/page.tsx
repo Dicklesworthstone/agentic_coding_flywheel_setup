@@ -86,7 +86,7 @@ const WHAT_IT_INSTALLS = [
     items: ["PostgreSQL 18", "Vault", "Wrangler", "Supabase CLI", "Vercel CLI"],
   },
   {
-    category: "Dicklesworthstone Stack",
+    category: "Agent Flywheel Stack",
     items: ["ntm", "mcp_agent_mail", "beads_viewer", "and 15+ more tools"],
   },
 ];

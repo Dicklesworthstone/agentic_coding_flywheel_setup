@@ -6156,7 +6156,7 @@ update_stack() {
         return 0
     fi
 
-    log_section "Dicklesworthstone Stack"
+    log_section "Agent Flywheel Stack"
 
     if ! update_require_security; then
         log_item "fail" "stack updates" "security verification unavailable (missing security.sh/checksums.yaml)"
@@ -6892,8 +6892,8 @@ CATEGORY OPTIONS (select what to update):
   --cloud-only       Only update cloud CLIs (Wrangler, Supabase, Vercel, gh, gcloud)
   --shell-only       Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
   --runtime-only     Only update runtimes (Bun, Rust, uv, Go)
-  --stack-only       Only update Dicklesworthstone stack tools
-  --stack            Include Dicklesworthstone stack tools (enabled by default)
+  --stack-only       Only update Agent Flywheel stack tools
+  --stack            Include Agent Flywheel stack tools (enabled by default)
 
 SKIP OPTIONS (exclude categories from update):
   --no-self-update   Skip ACFS self-update
@@ -6902,7 +6902,7 @@ SKIP OPTIONS (exclude categories from update):
   --no-cloud         Skip cloud CLI updates
   --no-shell         Skip shell tool updates
   --no-runtime       Skip runtime updates (Bun, Rust, uv, Go)
-  --no-stack         Skip Dicklesworthstone stack tool updates
+  --no-stack         Skip Agent Flywheel stack tool updates
 
 BEHAVIOR OPTIONS:
   --bootstrap-self-update
@@ -6921,7 +6921,7 @@ EXAMPLES:
   # Standard update (EVERYTHING: apt, runtimes, shell, agents, cloud, stack)
   acfs-update
 
-  # Skip Dicklesworthstone stack updates (faster)
+  # Skip Agent Flywheel stack updates (faster)
   acfs-update --no-stack
 
   # Only update agents
@@ -6930,7 +6930,7 @@ EXAMPLES:
   # Only update runtimes
   acfs-update --runtime-only
 
-  # Only update Dicklesworthstone stack tools
+  # Only update Agent Flywheel stack tools
   acfs-update --stack-only
 
   # Update everything except apt (faster)
@@ -6966,7 +6966,7 @@ WHAT EACH CATEGORY UPDATES:
             GitHub CLI (gh extension upgrade --all)
             Google Cloud SDK (gcloud components update)
   runtime:  Bun (bun upgrade), Rust (rustup update), uv (uv self update), Go (apt-managed)
-  stack:    Dicklesworthstone stack tools (verified upstream installers)
+  stack:    Agent Flywheel stack tools (verified upstream installers)
             Installs missing tools and updates existing ones automatically:
             NTM, Agent Mail, Meta Skill, APR, pt, xf, UBS, BV, BR, CASS, CM,
             CAAM, SLB, RU, DCG, RCH, GIIL, CSCTF, SRPS, TRU, RANO, MDWB, S2P, Brenner Bot,

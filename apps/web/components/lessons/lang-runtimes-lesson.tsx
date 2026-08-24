@@ -57,7 +57,7 @@ export function LangRuntimesLesson() {
             <FeatureCard
               icon={<Cog className="h-5 w-5" />}
               title="Rust"
-              description="Systems language — cargo for the Dicklesworthstone stack"
+              description="Systems language — cargo for the Agent Flywheel stack"
               gradient="from-red-500/20 to-orange-500/20"
             />
             <FeatureCard
@@ -182,7 +182,7 @@ uv python list`}
         delay={0.25}
       >
         <Paragraph>
-          The Dicklesworthstone stack (NTM, BV, CAAM, DCG, etc.) is built in
+          The Agent Flywheel stack (NTM, BV, CAAM, DCG, etc.) is built in
           Rust. Cargo is the build system, package manager, and test runner.
         </Paragraph>
 
@@ -238,7 +238,7 @@ rch exec -- cargo test`}
       >
         <Paragraph>
           Many DevOps and cloud tools are written in Go (lazygit, lazydocker,
-          goreleaser). Go is also used to build some Dicklesworthstone tools
+          goreleaser). Go is also used to build some Agent Flywheel tools
           (SLB, DSR).
         </Paragraph>
 

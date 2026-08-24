@@ -91,7 +91,7 @@ export const COMMAND_CATEGORIES: Array<{
   {
     id: "stack",
     label: "Stack",
-    description: "Dicklesworthstone tools for agent workflows",
+    description: "Agent Flywheel tools for agent workflows",
   },
   {
     id: "languages",

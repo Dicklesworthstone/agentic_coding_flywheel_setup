@@ -958,8 +958,9 @@ print_install_summary() {
             echo "  - $tool: $error"
         done
         echo ""
-        echo "To retry failed tools:"
-        echo "  acfs install --retry-failed"
+        echo "To repair failed tools:"
+        echo "  acfs doctor"
+        echo "Then run the manifest-bound Fix command shown for each missing tool."
     fi
 }
 

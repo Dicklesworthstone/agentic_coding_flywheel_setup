@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC1091
 # ============================================================
-# ACFS Installer - Dicklesworthstone Stack Library
+# ACFS Installer - Agent Flywheel Stack Library
 # Installs all 23 Dicklesworthstone tools + utilities
 # ============================================================
 
@@ -2565,7 +2565,7 @@ verify_stack() {
     local installed_count=0
     local total_count=${#STACK_COMMANDS[@]}
 
-    log_detail "Verifying Dicklesworthstone stack..."
+    log_detail "Verifying Agent Flywheel stack..."
 
     for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr ee fmd pi pfr; do
         local cmd="${STACK_COMMANDS[$tool]}"
@@ -2616,7 +2616,7 @@ verify_stack_help() {
 
 # Get versions of installed stack tools (for doctor output)
 get_stack_versions() {
-    echo "Dicklesworthstone Stack Versions:"
+    echo "Agent Flywheel Stack Versions:"
 
     for tool in ntm mcp_agent_mail ubs bv br cass cm caam slb ru dcg rch pt fsfs sbh casr dsr asb pcr ee fmd pi pfr; do
         local cmd="${STACK_COMMANDS[$tool]}"
@@ -2636,7 +2636,7 @@ get_stack_versions() {
 
 # Install all stack tools (called by install.sh)
 install_all_stack() {
-    log_step "7/8" "Installing Dicklesworthstone stack..."
+    log_step "7/8" "Installing Agent Flywheel stack..."
 
     # Install in recommended order (original 10 tools)
     install_ntm
@@ -2668,7 +2668,7 @@ install_all_stack() {
     # Verify installation
     verify_stack
 
-    log_success "Dicklesworthstone stack installation complete"
+    log_success "Agent Flywheel stack installation complete"
 }
 
 # ============================================================
