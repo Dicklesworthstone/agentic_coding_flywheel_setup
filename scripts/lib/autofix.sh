@@ -1241,32 +1241,33 @@ autofix_close_fd() {
     local fd="${1:-}"
     if [[ -n "$fd" && "$fd" =~ ^[0-9]+$ ]]; then
         case "$fd" in
-            201) exec 201>&- 2>/dev/null || true ;;
-            202) exec 202>&- 2>/dev/null || true ;;
-            203) exec 203>&- 2>/dev/null || true ;;
-            199) exec 199>&- 2>/dev/null || true ;;
-            198) exec 198>&- 2>/dev/null || true ;;
+            9) exec 9>&- 2>/dev/null || true ;;
+            8) exec 8>&- 2>/dev/null || true ;;
+            7) exec 7>&- 2>/dev/null || true ;;
+            6) exec 6>&- 2>/dev/null || true ;;
             *) eval "exec ${fd}>&-" 2>/dev/null || true ;;
         esac
     fi
 }
 
 # Open a lock file on an available file descriptor (probing candidate descriptors
-# to avoid colliding with callers or other ACFS libraries such as state.sh FD 200)
+# 9, 8, 7, 6 to avoid colliding with callers or other ACFS libraries such as state.sh FD 200).
+# Takes target file and variable name to assign descriptor to without a subshell fork.
 autofix_open_lock_fd() {
     local target_file="$1"
+    local _out_var="${2:-ACFS_AUTOFIX_LOCK_FD}"
     local candidate_fd
-    for candidate_fd in 201 202 203 199 198; do
+    for candidate_fd in 9 8 7 6; do
         if ! { true >&"$candidate_fd"; } 2>/dev/null; then
             case "$candidate_fd" in
-                201) exec 201>"$target_file" 2>/dev/null && { echo "201"; return 0; } ;;
-                202) exec 202>"$target_file" 2>/dev/null && { echo "202"; return 0; } ;;
-                203) exec 203>"$target_file" 2>/dev/null && { echo "203"; return 0; } ;;
-                199) exec 199>"$target_file" 2>/dev/null && { echo "199"; return 0; } ;;
-                198) exec 198>"$target_file" 2>/dev/null && { echo "198"; return 0; } ;;
+                9) exec 9>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "9"; return 0; } ;;
+                8) exec 8>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "8"; return 0; } ;;
+                7) exec 7>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "7"; return 0; } ;;
+                6) exec 6>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "6"; return 0; } ;;
             esac
         fi
     done
+    printf -v "$_out_var" '%s' ""
     return 1
 }
 
@@ -1314,7 +1315,8 @@ repair_state_files() {
             log_error "[REPAIR] Cannot secure autofix backup directory"
             return 1
         fi
-        managed_lock_fd="$(autofix_open_lock_fd "$ACFS_LOCK_FILE")" || managed_lock_fd=""
+        managed_lock_fd=""
+        autofix_open_lock_fd "$ACFS_LOCK_FILE" managed_lock_fd || managed_lock_fd=""
         if [[ -n "$managed_lock_fd" ]] && ! autofix_set_private_mode 600 "$ACFS_LOCK_FILE"; then
             autofix_release_managed_repair_lock "$managed_lock_fd"
             log_error "[REPAIR] Cannot secure autofix lock file"
@@ -1656,7 +1658,7 @@ start_autofix_session() {
 
     # Acquire lock (prevent concurrent modifications)
     ACFS_AUTOFIX_LOCK_FD=""
-    ACFS_AUTOFIX_LOCK_FD="$(autofix_open_lock_fd "$ACFS_LOCK_FILE")" || ACFS_AUTOFIX_LOCK_FD=""
+    autofix_open_lock_fd "$ACFS_LOCK_FILE" ACFS_AUTOFIX_LOCK_FD || ACFS_AUTOFIX_LOCK_FD=""
     if [[ -n "$ACFS_AUTOFIX_LOCK_FD" ]]; then
         if ! autofix_set_private_mode 600 "$ACFS_LOCK_FILE"; then
             log_error "Could not secure autofix lock file"

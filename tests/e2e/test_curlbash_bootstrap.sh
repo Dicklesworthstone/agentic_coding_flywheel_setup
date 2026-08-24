@@ -52,7 +52,71 @@ assert_ok() {
     fi
 }
 
+assert_source_contains() {
+    local desc="$1"
+    local needle="$2"
+    if grep -Fq -- "$needle" <<< "$HANDOFF_SOURCE"; then
+        echo "  PASS: $desc"
+        ((PASS++)) || true
+    else
+        echo "  FAIL: $desc"
+        ((FAIL++)) || true
+    fi
+}
+
+assert_source_before() {
+    local desc="$1"
+    local first="$2"
+    local second="$3"
+    local first_line=""
+    local second_line=""
+    first_line="$(grep -nF -- "$first" <<< "$HANDOFF_SOURCE" | head -n 1 | cut -d: -f1 || true)"
+    second_line="$(grep -nF -- "$second" <<< "$HANDOFF_SOURCE" | head -n 1 | cut -d: -f1 || true)"
+    if [[ "$first_line" =~ ^[0-9]+$ ]] \
+        && [[ "$second_line" =~ ^[0-9]+$ ]] \
+        && ((first_line < second_line)); then
+        echo "  PASS: $desc"
+        ((PASS++)) || true
+    else
+        echo "  FAIL: $desc"
+        ((FAIL++)) || true
+    fi
+}
+
 echo "=== E2E: curl|bash Bootstrap Path ==="
+echo ""
+
+# ────────────────────────────────────────
+# 0. Freeze the verified-child handoff split
+# ────────────────────────────────────────
+echo "Step 0: Checking verified-child handoff source contract..."
+HANDOFF_SOURCE="$(sed -n '/^acfs_run_verified_bootstrap_installer() {$/,/^}$/p' "$REPO_ROOT/install.sh")"
+assert_source_contains \
+    "Prompt-capable handoff preserves the verified tree" \
+    "log_warn \"Interactive verified handoff will preserve its bootstrap tree: \$ACFS_BOOTSTRAP_DIR\""
+assert_source_contains \
+    "Prompt-capable handoff is foreground and returns the child status" \
+    '<&0 >&1 2>&2; then'
+assert_source_before \
+    "Prompt-capable handoff resets inherited signal dispositions" \
+    '--default-signal=HUP' \
+    "return \"\$interactive_child_status\""
+assert_source_before \
+    "Prompt-capable handoff returns before supervision-only tool resolution" \
+    "return \"\$interactive_child_status\"" \
+    "ps_bin=\"\$(acfs_early_system_binary_path ps 2>/dev/null || true)\""
+assert_source_contains \
+    "--yes selects the non-prompting supervised path" \
+    "if [[ \"\${YES_MODE:-false}\" == \"true\" ]]"
+assert_source_contains \
+    "Read-only dry-run selects the non-prompting supervised path" \
+    "|| [[ \"\${DRY_RUN:-false}\" == \"true\" ]]"
+assert_source_contains \
+    "Non-prompting modes disable the prompt-capable branch" \
+    'prompt_capable_handoff=false'
+assert_source_contains \
+    "Non-prompting handoff uses setsid supervision" \
+    "\"\$setsid_bin\" --wait \\"
 echo ""
 
 # ────────────────────────────────────────
