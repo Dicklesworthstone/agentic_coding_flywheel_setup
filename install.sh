@@ -11377,26 +11377,21 @@ main() {
         # Always update manifest, checksums.yaml, and VERSION after all phases complete
         # This ensures resume installs get fresh metadata even if finalize was previously completed
         # Related: PR #44 - fix checksums.yaml becoming stale on resume installs
-        if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -d "$ACFS_BOOTSTRAP_DIR" ]]; then
-            if [[ -f "$ACFS_BOOTSTRAP_DIR/checksums.yaml" ]]; then
-                if [[ -n "${ACFS_CHECKSUMS_REF:-}" && -n "${ACFS_REF_INPUT:-}" && "$ACFS_CHECKSUMS_REF" != "$ACFS_REF_INPUT" ]]; then
-                    log_detail "Refreshing checksums.yaml from ref '${ACFS_CHECKSUMS_REF}'"
-                    install_checksums_yaml "$ACFS_HOME/checksums.yaml" || true
-                    $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
-                else
-                    log_detail "Ensuring checksums.yaml is up to date"
-                    $SUDO cp -f "$ACFS_BOOTSTRAP_DIR/checksums.yaml" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
-                    $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
-                fi
+        local metadata_source_root="${SCRIPT_DIR:-${ACFS_BOOTSTRAP_DIR:-}}"
+        if [[ -n "$metadata_source_root" ]] && [[ -d "$metadata_source_root" ]]; then
+            if [[ -f "$metadata_source_root/checksums.yaml" ]]; then
+                log_detail "Ensuring checksums.yaml is up to date"
+                install_checksums_yaml "$ACFS_HOME/checksums.yaml" || true
+                $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" 2>/dev/null || true
             fi
-            if [[ -f "$ACFS_BOOTSTRAP_DIR/VERSION" ]]; then
+            if [[ -f "$metadata_source_root/VERSION" ]]; then
                 log_detail "Ensuring VERSION is up to date"
-                $SUDO cp -f "$ACFS_BOOTSTRAP_DIR/VERSION" "$ACFS_HOME/VERSION" 2>/dev/null || true
+                install_asset "VERSION" "$ACFS_HOME/VERSION" || true
                 $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/VERSION" 2>/dev/null || true
             fi
-            if [[ -f "$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml" ]]; then
+            if [[ -f "$metadata_source_root/acfs.manifest.yaml" ]]; then
                 log_detail "Ensuring acfs.manifest.yaml is up to date"
-                $SUDO cp -f "$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml" "$ACFS_HOME/acfs.manifest.yaml" 2>/dev/null || true
+                install_asset "acfs.manifest.yaml" "$ACFS_HOME/acfs.manifest.yaml" || true
                 $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/acfs.manifest.yaml" 2>/dev/null || true
             fi
         fi
