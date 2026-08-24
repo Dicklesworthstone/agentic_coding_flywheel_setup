@@ -315,6 +315,41 @@ test_live_path_still_works_without_pack() {
     pass "live_path_still_works_without_pack"
 }
 
+test_artifact_swap_before_emit_is_refused() {
+    local pack_root=""
+    local artifact_path=""
+    local output_file="$TEST_ROOT/swap-before-emit.out"
+    local error_file="$TEST_ROOT/swap-before-emit.err"
+
+    pack_root="$(write_pack "swap-before-emit" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    artifact_path="$pack_root/artifacts/fixture.module/${TOOL}-install.sh"
+
+    # Deterministically model a concurrent replacement at the old check/use
+    # boundary. The fixed consumer snapshots first, so these bytes are hashed
+    # and refused. The old consumer hashed the original and emitted this swap.
+    acfs_security_cat_file() {
+        local file="$1"
+        if [[ "$file" == "$artifact_path" ]]; then
+            printf '%s' 'tampered after verification' > "$file"
+        fi
+        /bin/cat "$file"
+    }
+
+    if verify_with_pack "$pack_root" "$output_file" "$error_file"; then
+        fail "artifact_swap_before_emit_is_refused" "verify_checksum accepted bytes swapped after pathname validation"
+        return
+    fi
+    [[ ! -s "$output_file" ]] || {
+        fail "artifact_swap_before_emit_is_refused" "unverified bytes escaped to stdout"
+        return
+    }
+    grep -Fq "code=pack_hash_mismatch" "$error_file" || {
+        fail "artifact_swap_before_emit_is_refused" "expected pack_hash_mismatch in error log"
+        return
+    }
+    pass "artifact_swap_before_emit_is_refused"
+}
+
 run_all_tests() {
     test_valid_pack_uses_local_artifact
     test_stale_pack_is_refused
@@ -324,6 +359,7 @@ run_all_tests() {
     test_unsupported_arch_is_refused
     test_missing_pack_fails_closed
     test_live_path_still_works_without_pack
+    test_artifact_swap_before_emit_is_refused
 
     echo ""
     echo "Offline artifact pack consumer tests: $TESTS_PASSED passed, $TESTS_FAILED failed"

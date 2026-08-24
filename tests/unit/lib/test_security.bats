@@ -316,7 +316,9 @@ EOF
         chmod +x "$fake_bin/$tool"
     done
 
-    run env PATH="$fake_bin:/usr/bin:/bin" /usr/bin/bash -s -- "$security_lib" "$probe_file" "$marker_dir" <<'EOF_TRUSTED_CAT'
+    local system_bash
+    system_bash="$(command -v bash)"
+    run env PATH="$fake_bin:/usr/bin:/bin" "$system_bash" -s -- "$security_lib" "$probe_file" "$marker_dir" <<'EOF_TRUSTED_CAT'
 set -euo pipefail
 security_lib="$1"
 probe_file="$2"
@@ -351,14 +353,16 @@ EOF_TRUSTED_CAT
 
     mkdir -p "$fake_bin"
     cat > "$fake_bin/bash" <<EOF
-#!/usr/bin/bash
+#!/usr/bin/env bash
 : > "$marker"
 printf 'poisoned bash\n'
 exit 0
 EOF
     chmod +x "$fake_bin/bash"
 
-    run env PATH="$fake_bin:/usr/bin:/bin" /usr/bin/bash -s -- "$security_lib" "$probe_file" "$marker" <<'EOF_TRUSTED_PIPE_BASH'
+    local system_bash
+    system_bash="$(command -v bash)"
+    run env PATH="$fake_bin:/usr/bin:/bin" "$system_bash" -s -- "$security_lib" "$probe_file" "$marker" <<'EOF_TRUSTED_PIPE_BASH'
 set -euo pipefail
 security_lib="$1"
 probe_file="$2"
@@ -388,7 +392,9 @@ EOF_TRUSTED_PIPE_BASH
     local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
     local marker="$BATS_TEST_TMPDIR/partial-installer-executed"
 
-    run /usr/bin/bash -s -- "$security_lib" "$marker" <<'EOF_NO_PARTIAL_EXECUTION'
+    local system_bash
+    system_bash="$(command -v bash)"
+    run "$system_bash" -s -- "$security_lib" "$marker" <<'EOF_NO_PARTIAL_EXECUTION'
 set -euo pipefail
 security_lib="$1"
 marker="$2"
@@ -434,14 +440,16 @@ EOF_NO_PARTIAL_EXECUTION
 
     mkdir -p "$fake_bin"
     cat > "$fake_bin/bash" <<EOF
-#!/usr/bin/bash
+#!/usr/bin/env bash
 : > "$marker"
 printf 'poisoned recovery bash\n'
 exit 0
 EOF
     chmod +x "$fake_bin/bash"
 
-    run env PATH="$fake_bin:/usr/bin:/bin" /usr/bin/bash -s -- "$security_lib" "$probe_file" "$marker" <<'EOF_TRUSTED_FILE_BASH'
+    local system_bash
+    system_bash="$(command -v bash)"
+    run env PATH="$fake_bin:/usr/bin:/bin" "$system_bash" -s -- "$security_lib" "$probe_file" "$marker" <<'EOF_TRUSTED_FILE_BASH'
 set -euo pipefail
 security_lib="$1"
 probe_file="$2"

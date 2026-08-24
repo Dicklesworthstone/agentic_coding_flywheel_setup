@@ -871,8 +871,10 @@ acfs_offline_pack_verify_artifact() {
     local artifact_sha=""
     local size_bytes=""
     local artifact_file=""
+    local artifact_snapshot=""
     local actual_sha=""
     local actual_size=""
+    local emit_status=0
 
     pack_info="$(acfs_offline_pack_locate "$name")" || return 1
     pack_root="${pack_info%%$'\t'*}"
@@ -932,33 +934,53 @@ acfs_offline_pack_verify_artifact() {
         return 1
     fi
 
-    actual_sha="$(calculate_file_sha256 "$artifact_file")" || {
+    # The pack can live on removable or otherwise shared storage. Snapshot the
+    # artifact into a private file before verification so a concurrent rename
+    # cannot swap different bytes into the later stdout read (TOCTOU).
+    artifact_snapshot="$(acfs_security_mktemp "/tmp/acfs-offline-artifact.XXXXXX" 2>/dev/null)" || {
+        acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to create a private snapshot for $rel_path"
+        return 1
+    }
+    if ! acfs_security_cat_file "$artifact_file" > "$artifact_snapshot"; then
+        acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to snapshot artifact $rel_path"
+        _acfs_remove_temp_files "$artifact_snapshot"
+        return 1
+    fi
+
+    actual_sha="$(calculate_file_sha256 "$artifact_snapshot")" || {
         acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to checksum artifact $rel_path"
+        _acfs_remove_temp_files "$artifact_snapshot"
         return 1
     }
     if [[ "$artifact_sha" != "$expected_sha256" ]]; then
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "manifest sha256 for $rel_path does not match checksums.yaml"
+        _acfs_remove_temp_files "$artifact_snapshot"
         return 1
     fi
     if [[ "$actual_sha" != "$expected_sha256" ]]; then
         acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path does not match expected sha256"
+        _acfs_remove_temp_files "$artifact_snapshot"
         return 1
     fi
 
     if [[ -n "$size_bytes" && "$size_bytes" != "null" ]]; then
-        actual_size="$(acfs_security_file_size "$artifact_file")" || {
+        actual_size="$(acfs_security_file_size "$artifact_snapshot")" || {
             acfs_offline_pack_error "pack_hash_mismatch" "$name" "failed to measure artifact $rel_path"
+            _acfs_remove_temp_files "$artifact_snapshot"
             return 1
         }
         if [[ "$actual_size" != "$size_bytes" ]]; then
             acfs_offline_pack_error "pack_hash_mismatch" "$name" "artifact $rel_path does not match declared size"
+            _acfs_remove_temp_files "$artifact_snapshot"
             return 1
         fi
     fi
 
     log_detail "offline_pack_hit tool=$name module=$module_id artifact=$rel_path"
     log_success "Verified offline artifact: $name"
-    acfs_security_cat_file "$artifact_file"
+    acfs_security_cat_file "$artifact_snapshot" || emit_status=$?
+    _acfs_remove_temp_files "$artifact_snapshot"
+    return "$emit_status"
 }
 
 # Fetch content and calculate checksum (using temp file)

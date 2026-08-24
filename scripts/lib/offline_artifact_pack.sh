@@ -532,6 +532,23 @@ offline_pack_trim_yaml_scalar() {
     printf '%s\n' "$value"
 }
 
+offline_pack_module_id_is_valid() {
+    local module_id="${1:-}"
+    [[ "$module_id" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$ ]]
+}
+
+offline_pack_installer_key_is_valid() {
+    local tool="${1:-}"
+    [[ "$tool" =~ ^[a-z][a-z0-9_]*$ ]]
+}
+
+offline_pack_installer_runner_is_valid() {
+    case "${1:-}" in
+        bash|sh) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 offline_pack_load_checksums() {
     local file="$1"
     local line=""
@@ -607,8 +624,30 @@ offline_pack_load_manifest_modules() {
 
     while IFS=$'\t' read -r module_id tool runner args_raw; do
         [[ -n "$module_id" ]] || continue
+
+        # Keep the standalone Bash reader on the same security boundary as the
+        # canonical TypeScript manifest schema. Module IDs become directory
+        # components below, so accepting a schema-invalid ID here would turn a
+        # malformed --manifest-file into a path traversal primitive.
+        if ! offline_pack_module_id_is_valid "$module_id"; then
+            offline_pack_add_error "pack_malformed_manifest: invalid module id $module_id"
+            continue
+        fi
+        if [[ -n "${OFFLINE_PACK_MODULE_KNOWN[$module_id]:-}" ]]; then
+            offline_pack_add_error "pack_malformed_manifest: duplicate module id $module_id"
+            continue
+        fi
+
         OFFLINE_PACK_MODULE_KNOWN["$module_id"]=1
         if [[ -n "$tool" ]]; then
+            if ! offline_pack_installer_key_is_valid "$tool"; then
+                offline_pack_add_error "pack_malformed_manifest: invalid verified_installer tool for $module_id"
+                continue
+            fi
+            if ! offline_pack_installer_runner_is_valid "$runner"; then
+                offline_pack_add_error "pack_malformed_manifest: invalid verified_installer runner for $module_id"
+                continue
+            fi
             OFFLINE_PACK_MODULE_TOOL["$module_id"]="$tool"
             OFFLINE_PACK_MODULE_RUNNER["$module_id"]="$runner"
             OFFLINE_PACK_MODULE_ARGS_RAW["$module_id"]="$args_raw"
@@ -675,6 +714,10 @@ offline_pack_select_modules() {
     fi
 
     for module_id in "${OFFLINE_PACK_SELECTED_MODULES[@]}"; do
+        if ! offline_pack_module_id_is_valid "$module_id"; then
+            offline_pack_add_error "pack_malformed_manifest: invalid module id $module_id"
+            continue
+        fi
         if [[ -z "${OFFLINE_PACK_MODULE_KNOWN[$module_id]:-}" ]]; then
             offline_pack_add_error "pack_unknown_module: $module_id"
             continue
@@ -858,6 +901,10 @@ offline_pack_download_artifacts() {
     local fetch_status=0
 
     for module_id in "${OFFLINE_PACK_SELECTED_MODULES[@]}"; do
+        if ! offline_pack_module_id_is_valid "$module_id"; then
+            offline_pack_add_error "pack_malformed_manifest: invalid module id $module_id"
+            return 1
+        fi
         tool="${OFFLINE_PACK_MODULE_TOOL[$module_id]:-}"
         [[ -n "$tool" ]] || continue
         url="${OFFLINE_PACK_INSTALLER_URL[$tool]:-}"

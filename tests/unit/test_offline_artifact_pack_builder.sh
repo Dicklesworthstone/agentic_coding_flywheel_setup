@@ -77,6 +77,8 @@ fail() {
 write_fixture_source() {
     local name="$1"
     local mode="${2:-valid}"
+    local module_id="${3:-stack.rch}"
+    local runner="${4:-bash}"
     local source_root="$ARTIFACT_DIR/$name/source"
     local artifact_file="$ARTIFACT_DIR/$name/rch-install.sh"
     local artifact_sha=""
@@ -103,7 +105,7 @@ write_fixture_source() {
             ;;
     esac
 
-    cat > "$source_root/acfs.manifest.yaml" <<'YAML'
+    cat > "$source_root/acfs.manifest.yaml" <<YAML
 version: 2
 name: fixture
 id: acfs
@@ -118,7 +120,7 @@ modules:
     install: []
     verify: []
 
-  - id: stack.rch
+  - id: $module_id
     description: Remote compilation helper
     category: stack
     phase: 9
@@ -127,7 +129,7 @@ modules:
     enabled_by_default: true
     verified_installer:
       tool: rch
-      runner: bash
+      runner: $runner
       args: ["--easy-mode"]
     install: []
     verify: []
@@ -309,6 +311,66 @@ test_non_verified_module_is_refused() {
     pass "non_verified_module_is_refused"
 }
 
+test_invalid_module_id_cannot_escape_pack_root() {
+    local source_root output_dir escaped_path output status
+    local malicious_id="../../../escaped"
+    source_root="$(write_fixture_source invalid-module valid "$malicious_id")"
+    output_dir="$ARTIFACT_DIR/invalid-module/output"
+    escaped_path="$ARTIFACT_DIR/invalid-module/escaped"
+
+    output="$(run_pack invalid-module build --json --source-root "$source_root" --output "$output_dir" --module "$malicious_id")"
+    status="$(cat "$ARTIFACT_DIR/invalid-module.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_malformed_manifest: invalid module id"))
+    ' <<<"$output" >/dev/null || return 1
+    [[ ! -e "$output_dir" ]] || return 1
+    [[ ! -e "$escaped_path" ]] || return 1
+
+    pass "invalid_module_id_cannot_escape_pack_root"
+}
+
+test_duplicate_module_id_is_refused() {
+    local source_root output status
+    source_root="$(write_fixture_source duplicate-module valid)"
+    cat >> "$source_root/acfs.manifest.yaml" <<'YAML'
+
+  - id: stack.rch
+    description: Duplicate module
+    install: []
+    verify: []
+YAML
+
+    output="$(run_pack duplicate-module build --dry-run --json --source-root "$source_root" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/duplicate-module.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_malformed_manifest: duplicate module id stack.rch"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "duplicate_module_id_is_refused"
+}
+
+test_invalid_verified_installer_runner_is_refused() {
+    local source_root output status
+    source_root="$(write_fixture_source invalid-runner valid stack.rch python)"
+
+    output="$(run_pack invalid-runner build --dry-run --json --source-root "$source_root" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/invalid-runner.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_malformed_manifest: invalid verified_installer runner for stack.rch"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "invalid_verified_installer_runner_is_refused"
+}
+
 test_best_effort_records_download_failure() {
     local source_root output_dir output status manifest
     source_root="$(write_fixture_source best-effort missing)"
@@ -361,6 +423,9 @@ run_all_tests() {
         test_checksum_mismatch_fails_closed
         test_unknown_module_is_refused
         test_non_verified_module_is_refused
+        test_invalid_module_id_cannot_escape_pack_root
+        test_duplicate_module_id_is_refused
+        test_invalid_verified_installer_runner_is_refused
         test_best_effort_records_download_failure
         test_timeout_option_is_validated_and_recorded
     )

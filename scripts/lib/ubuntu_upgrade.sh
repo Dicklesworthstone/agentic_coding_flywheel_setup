@@ -1331,7 +1331,7 @@ upgrade_setup_infrastructure() {
 
     # Create directory structure
     mkdir -p "${ACFS_RESUME_DIR}/lib"
-    mkdir -p /var/log/acfs
+    mkdir -p /var/log/acfs 2>/dev/null || true
 
     # Copy required library files
     log_detail "Copying library files..."
@@ -1454,7 +1454,28 @@ else
         CURL_ARGS=(--proto '=https' --proto-redir '=https' -fsSL)
     fi
 
-    curl "\${CURL_ARGS[@]}" "\${INSTALL_URL}" | bash -s -- "\${INSTALL_ARGS[@]}"
+    STAGED_INSTALLER=""
+    cleanup_staged_installer() {
+        if [[ -n "\${STAGED_INSTALLER:-}" && -f "\${STAGED_INSTALLER}" ]]; then
+            rm -f "\${STAGED_INSTALLER}"
+        fi
+    }
+    trap cleanup_staged_installer EXIT INT TERM HUP
+
+    STAGED_INSTALLER="\$(mktemp /tmp/acfs-continue-installer.XXXXXX)" || {
+        echo "Failed to create staging file for resume installer" >&2
+        exit 1
+    }
+
+    if ! curl "\${CURL_ARGS[@]}" "\${INSTALL_URL}" > "\${STAGED_INSTALLER}"; then
+        curl_status=\$?
+        echo "Failed to fetch installer from \${INSTALL_URL} (exit code: \${curl_status})" >&2
+        exit "\${curl_status}"
+    fi
+
+    chmod 0444 "\${STAGED_INSTALLER}" || true
+
+    bash "\${STAGED_INSTALLER}" "\${INSTALL_ARGS[@]}"
 fi
 
 echo "ACFS installation complete!"
