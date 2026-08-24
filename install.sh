@@ -2572,8 +2572,7 @@ EOF
                 fi
                 ;;
             *)
-                log_warn "Unknown option: $1"
-                shift
+                log_fatal "Unknown option: $1"
                 ;;
         esac
     done
@@ -5487,84 +5486,6 @@ acfs_run_verified_upstream_script_as_target_with_env() {
 
     local staged_installer=""
 
-    if [[ "$actual_sha256" != "$expected_sha256" ]]; then
-        # Checksum mismatch - but this might be due to CDN caching of our checksums.yaml.
-        # Try fetching FRESH checksums directly via GitHub API (bypasses all CDN caching).
-        log_detail "Checksum mismatch for '$tool' - fetching fresh checksums via GitHub API..."
-
-        local fresh_content
-        fresh_content="$(acfs_fetch_fresh_checksums_via_api)" || {
-            log_detail "GitHub API fallback failed, cannot verify with fresh checksums"
-            log_error "Security error: checksum mismatch for '$tool'"
-            log_detail "URL: $url"
-            log_detail "Expected: $expected_sha256"
-            log_detail "Actual:   $actual_sha256"
-            log_error "Refusing to execute unverified installer script."
-            return 1
-        }
-
-        # Parse fresh checksums and get the updated installer contract.  The
-        # URL can change during migrations, such as mcp_agent_mail ->
-        # mcp_agent_mail_rust, so re-fetch before comparing against the fresh
-        # hash when the contract moved.
-        if ! acfs_parse_checksums_content "$fresh_content"; then
-            log_error "Fresh checksums.yaml contains no valid installer checksums"
-            return 1
-        fi
-        local fresh_url="${ACFS_UPSTREAM_URLS[$tool]:-$url}"
-        local fresh_expected_sha256="${ACFS_UPSTREAM_SHA256[$tool]:-}"
-
-        if [[ -z "$fresh_url" ]]; then
-            log_error "Fresh checksums.yaml missing URL for '$tool'"
-            return 1
-        fi
-        if [[ -z "$fresh_expected_sha256" ]]; then
-            log_error "Fresh checksums.yaml missing entry for '$tool'"
-            return 1
-        fi
-
-        if [[ "$fresh_url" != "$url" ]]; then
-            log_detail "Fresh checksums changed URL for '$tool'; refetching installer..."
-            content_with_sentinel="$(
-                acfs_fetch_url_content "$fresh_url" || exit $?
-                printf '%s' "$sentinel"
-            )" || return 1
-
-            if [[ "$content_with_sentinel" != *"$sentinel" ]]; then
-                log_error "Failed to fetch upstream URL: $fresh_url"
-                return 1
-            fi
-
-            url="$fresh_url"
-            content="${content_with_sentinel%"$sentinel"}"
-            actual_sha256="$(printf '%s' "$content" | acfs_calculate_sha256)" || return 1
-        fi
-        expected_sha256="$fresh_expected_sha256"
-
-        # Re-verify with fresh checksum
-        if [[ "$actual_sha256" == "$expected_sha256" ]]; then
-            log_success "Verified '$tool' with fresh checksums from GitHub API"
-            # Note: ACFS_UPSTREAM_SHA256 already updated by acfs_parse_checksums_content above
-        else
-            # Still doesn't match even with fresh checksums - this is a real problem
-            log_error "Security error: checksum mismatch for '$tool' (verified with fresh checksums)"
-            log_detail "URL: $url"
-            log_detail "Expected (fresh): $expected_sha256"
-            log_detail "Actual:           $actual_sha256"
-            log_error "Refusing to execute unverified installer script."
-            log_error "This could indicate:"
-            log_error "  1. Upstream changed their installer very recently (wait and retry)"
-            log_error "  2. Potential tampering (investigate before proceeding)"
-            log_error "  3. Network issue corrupting downloads (retry on different network)"
-
-            if [[ "${ACFS_STRICT_MODE:-false}" == "true" ]]; then
-                log_fatal "Strict mode: aborting due to checksum mismatch for '$tool'"
-            fi
-
-            return 1
-        fi
-    fi
-
     # Upstream installers stage downloads in TMPDIR and some enforce multi-GB
     # free-space floors. On systems where /tmp is a small tmpfs (common on
     # Arch/Omarchy laptops), stage on real disk instead.
@@ -5611,15 +5532,29 @@ acfs_run_verified_upstream_script_as_target_with_env() {
         log_detail "Low space on /tmp ($(( tmp_avail_kb / 1024 ))MB); staging upstream installers in $acfs_tmpdir"
     fi
 
+    acfs_stage_verified_installer \
+        staged_installer "$url" "$expected_sha256" "$tool" || return $?
+
+    # Keep the established `runner -s -- args...` contract: the verified file
+    # is the runner's stdin, so argument numbering and installers that read
+    # their own script stream behave exactly as they did on the live-fetch
+    # path. Capture status so the staging file is removed on both outcomes.
+    local run_status=0
     if [[ -n "$runner_env_assignment" && -n "$tmpdir_assignment" ]]; then
-        printf '%s' "$content" | run_as_target_runner env "$runner_env_assignment" "$tmpdir_assignment" "$runner" -s -- "$@"
+        run_as_target_runner env "$runner_env_assignment" "$tmpdir_assignment" \
+            "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     elif [[ -n "$tmpdir_assignment" ]]; then
-        printf '%s' "$content" | run_as_target_runner env "$tmpdir_assignment" "$runner" -s -- "$@"
+        run_as_target_runner env "$tmpdir_assignment" \
+            "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     elif [[ -n "$runner_env_assignment" ]]; then
-        printf '%s' "$content" | run_as_target_runner env "$runner_env_assignment" "$runner" -s -- "$@"
+        run_as_target_runner env "$runner_env_assignment" \
+            "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     else
-        printf '%s' "$content" | run_as_target_runner "$runner" -s -- "$@"
+        run_as_target_runner "$runner" -s -- "$@" < "$staged_installer" || run_status=$?
     fi
+
+    _acfs_remove_temp_files "$staged_installer"
+    return "$run_status"
 }
 
 acfs_run_verified_upstream_script_as_target() {

@@ -66,6 +66,10 @@ log_info() { :; }
 log_warn() { :; }
 log_error() { :; }
 log_detail() { :; }
+log_fatal() {
+    printf 'fatal: %s\n' "$*" >&2
+    exit 1
+}
 
 # Source just the generate_resume_hint function from install.sh
 # We extract it rather than sourcing the full install.sh to avoid side effects
@@ -359,6 +363,33 @@ test_checksums_ref_survives_ref_parse_order() {
 
     if [[ "$ACFS_CHECKSUMS_REF" != "explicit-checksums" ]]; then
         log "  Expected explicit checksums ref to apply after --ref, got: $ACFS_CHECKSUMS_REF"
+        return 1
+    fi
+
+    return 0
+}
+
+test_verified_installer_cache_parse_forms() {
+    setup_parse_args_env
+    parse_args --verified-installer-cache "cache parent" --print-plan
+    if [[ "$ACFS_VERIFIED_INSTALLER_CACHE" != "cache parent" ]]; then
+        log "  Expected split cache flag value, got: $ACFS_VERIFIED_INSTALLER_CACHE"
+        return 1
+    fi
+
+    setup_parse_args_env
+    parse_args --verified-installer-cache="cache root" --print-plan
+    if [[ "$ACFS_VERIFIED_INSTALLER_CACHE" != "cache root" ]]; then
+        log "  Expected equals cache flag value, got: $ACFS_VERIFIED_INSTALLER_CACHE"
+        return 1
+    fi
+
+    return 0
+}
+
+test_obsolete_offline_pack_flag_is_rejected() {
+    if (setup_parse_args_env; parse_args --offline-pack /tmp/obsolete); then
+        log "  Expected obsolete --offline-pack to fail closed"
         return 1
     fi
 
@@ -683,7 +714,7 @@ test_print_resume_hint_fallback_uses_fail_closed_curl() {
     generate_resume_hint() { return 1; }
     print_resume_hint "languages" "install_rust"
 
-    if [[ "$STATE_SET_RESUME_HINT_VALUE" != "curl -fsSL https://acfs.sh | bash -s -- --resume --yes" ]]; then
+    if [[ "$STATE_SET_RESUME_HINT_VALUE" != "curl -q -fsSL https://acfs.sh | bash -s -- --resume --yes" ]]; then
         log "  Expected fail-closed curl fallback resume hint, got: $STATE_SET_RESUME_HINT_VALUE"
         rm -f "$ACFS_STATE_FILE"
         unset -f generate_resume_hint
@@ -766,6 +797,8 @@ main() {
     run_test test_custom_ref
     run_test test_custom_ref_shell_escaped
     run_test test_checksums_ref_survives_ref_parse_order
+    run_test test_verified_installer_cache_parse_forms
+    run_test test_obsolete_offline_pack_flag_is_rejected
     run_test test_custom_checksums_ref_resume_hint
     run_test test_verified_installer_cache_parent_is_normalized_for_resume_hint
     run_test test_safe_mode
