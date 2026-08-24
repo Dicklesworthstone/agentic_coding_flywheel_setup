@@ -228,13 +228,32 @@ swarm_packet_limit_text() {
 swarm_packet_sanitize_context_text() {
     local text="$1"
 
+    # Two concerns, one pass:
+    #  1. Neutralize dangerous command examples so a packet can never teach
+    #     an agent a forbidden command verbatim.
+    #  2. Redact secret-shaped values. cass/cm excerpts replay agent session
+    #     history, which can contain tokens or passwords that were echoed in
+    #     past sessions; a work packet is handed to other agents and must
+    #     not carry live credentials. Token shapes mirror the sensitive-value
+    #     scan in swarm_inventory.sh.
     printf '%s' "$text" | sed -E \
         -e 's/rm[[:space:]]+-rf/[unsafe cleanup command redacted]/g' \
         -e 's/git[[:space:]]+reset[[:space:]]+--hard/[destructive git command redacted]/g' \
         -e 's/git[[:space:]]+clean[[:space:]]+-fd/[destructive git cleanup command redacted]/g' \
         -e 's/^([[:space:]]*)bv([[:space:]]*)$/\1bv --robot-next\2/g' \
         -e 's/^([[:space:]]*)bd[[:space:]]+/\1br /g' \
-        -e 's/^([[:space:]]*)cargo[[:space:]]+(test|build|clippy)/\1rch exec -- cargo \2/g'
+        -e 's/^([[:space:]]*)cargo[[:space:]]+(test|build|clippy)/\1rch exec -- cargo \2/g' \
+        -e 's/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/[github token redacted]/g' \
+        -e 's/github_pat_[A-Za-z0-9_]{20,}/[github token redacted]/g' \
+        -e 's/tskey-[A-Za-z0-9-]{10,}/[tailscale key redacted]/g' \
+        -e 's/sk-[A-Za-z0-9_-]{20,}/[api key redacted]/g' \
+        -e 's/hvs\.[A-Za-z0-9_-]{20,}/[vault token redacted]/g' \
+        -e 's/xox[bpsar]-[A-Za-z0-9-]{10,}/[slack token redacted]/g' \
+        -e 's/AKIA[0-9A-Z]{16}/[aws key id redacted]/g' \
+        -e 's/-----BEGIN [A-Z ]*PRIVATE KEY-----/[private key redacted]/g' \
+        -e 's/([Aa]uthorization:[[:space:]]*)(Bearer|Basic)[[:space:]]+[A-Za-z0-9._~+\/=-]+/\1[credential redacted]/g' \
+        -e 's/(([A-Z0-9_]*(PASSWORD|SECRET|TOKEN|API_?KEY|ACCESS_KEY|PRIVATE_KEY)[A-Z0-9_]*)[[:space:]]*[=:][[:space:]]*)[^[:space:]"'"'"']+/\1[redacted]/g' \
+        -e 's/("(password|passwd|secret|token|api_key|apikey|access_key|private_key)"[[:space:]]*:[[:space:]]*")[^"]*(")/\1[redacted]\3/g'
 }
 
 swarm_packet_collect_tool_context() {
