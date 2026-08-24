@@ -765,12 +765,7 @@ doctor_fix_run_rollback_command() {
     fi
 
     rollback_env_args=(
-        -u BASH_ENV
-        -u ENV
-        -u SHELLOPTS
-        -u BASHOPTS
-        -u CDPATH
-        -u GLOBIGNORE
+        -i
         PATH="$rollback_path"
         "$bash_bin"
         --noprofile
@@ -876,6 +871,8 @@ doctor_fix_build_runtime_env_args() {
     local runtime_home=""
     local runtime_path=""
     local runtime_user=""
+    local tmpdir_leaf=""
+    local tmpdir_prefix=""
 
     _env_args_ref=()
     runtime_home="$(doctor_fix_runtime_home 2>/dev/null || true)"
@@ -894,7 +891,10 @@ doctor_fix_build_runtime_env_args() {
         "TARGET_USER=$runtime_user" \
         "TARGET_HOME=$runtime_home" \
         "HOME=$runtime_home" \
-        "PATH=$runtime_path"
+        "PATH=$runtime_path" \
+        "USER=$runtime_user" \
+        "LOGNAME=$runtime_user" \
+        "LANG=C.UTF-8"
     )
     if [[ -n "$extra_env_assignment" ]]; then
         local env_assignment=""
@@ -902,6 +902,29 @@ doctor_fix_build_runtime_env_args() {
             [[ -n "$env_assignment" ]] || continue
             doctor_fix_parse_env_assignment "$env_assignment" env_name env_value || return $?
             if [[ -n "$env_name" ]]; then
+                case "$env_name" in
+                    TMPDIR)
+                        tmpdir_prefix="$runtime_home/.cache/acfs/installer-tmp/"
+                        tmpdir_leaf="${env_value#"$tmpdir_prefix"}"
+                        if [[ "$env_value" != "$tmpdir_prefix"* ]] \
+                            || [[ -z "$tmpdir_leaf" || "$tmpdir_leaf" == */* ]] \
+                            || [[ "$tmpdir_leaf" == "." || "$tmpdir_leaf" == ".." ]] \
+                            || [[ "$tmpdir_leaf" == *[!A-Za-z0-9._-]* ]]; then
+                            doctor_fix_log WARN "Refusing installer TMPDIR outside the ACFS runtime cache"
+                            return 1
+                        fi
+                        ;;
+                    RU_NON_INTERACTIVE|AM_INSTALL_SKIP_MCP_SETUP|AM_INSTALL_SKIP_REMOTE_HTTP_READINESS)
+                        if [[ "$env_value" != "1" ]]; then
+                            doctor_fix_log WARN "Refusing invalid installer environment value for $env_name"
+                            return 1
+                        fi
+                        ;;
+                    *)
+                        doctor_fix_log WARN "Refusing unsupported installer environment variable: $env_name"
+                        return 1
+                        ;;
+                esac
                 _env_args_ref+=("$env_name=$env_value")
             fi
         done <<< "$extra_env_assignment"
@@ -934,19 +957,19 @@ doctor_fix_run_in_runtime_context() {
     runtime_user="${env_args[0]#TARGET_USER=}"
     current_user="$(doctor_fix_current_user 2>/dev/null || true)"
     if [[ "$current_user" == "$runtime_user" ]]; then
-        "$env_bin" "${env_args[@]}" "$@"
+        "$env_bin" -i "${env_args[@]}" "$@"
         return $?
     fi
 
     runuser_bin="$(doctor_fix_system_binary_path runuser 2>/dev/null || true)"
     if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
-        "$runuser_bin" -u "$runtime_user" -- "$env_bin" "${env_args[@]}" "$@"
+        "$runuser_bin" -u "$runtime_user" -- "$env_bin" -i "${env_args[@]}" "$@"
         return $?
     fi
 
     sudo_bin="$(doctor_fix_system_binary_path sudo 2>/dev/null || true)"
     if [[ -n "$sudo_bin" ]]; then
-        "$sudo_bin" -n -u "$runtime_user" "$env_bin" "${env_args[@]}" "$@"
+        "$sudo_bin" -n -u "$runtime_user" "$env_bin" -i "${env_args[@]}" "$@"
         return $?
     fi
 
@@ -1032,6 +1055,8 @@ doctor_fix_prepare_target_installer_tmpdir() {
     local tmpdir=""
     local tmpdir_parent=""
     local tmpdir_template=""
+    local mkdir_bin=""
+    local mktemp_bin=""
 
     [[ -n "$tool" ]] || {
         doctor_fix_log WARN "doctor_fix_prepare_target_installer_tmpdir requires a tool name"
@@ -1059,12 +1084,19 @@ doctor_fix_prepare_target_installer_tmpdir() {
             ;;
     esac
 
-    doctor_fix_run_in_runtime_context "" mkdir -p "$tmpdir_parent" || {
+    mkdir_bin="$(doctor_fix_system_binary_path mkdir 2>/dev/null || true)"
+    mktemp_bin="$(doctor_fix_system_binary_path mktemp 2>/dev/null || true)"
+    if [[ -z "$mkdir_bin" || -z "$mktemp_bin" ]]; then
+        doctor_fix_log WARN "Unable to resolve trusted temp-directory tools"
+        return 1
+    fi
+
+    doctor_fix_run_in_runtime_context "" "$mkdir_bin" -p "$tmpdir_parent" || {
         doctor_fix_log WARN "Failed to prepare installer TMPDIR parent: $tmpdir_parent"
         return 1
     }
 
-    tmpdir="$(doctor_fix_run_in_runtime_context "" mktemp -d "$tmpdir_template" 2>/dev/null)" || tmpdir=""
+    tmpdir="$(doctor_fix_run_in_runtime_context "" "$mktemp_bin" -d "$tmpdir_template" 2>/dev/null)" || tmpdir=""
     if [[ -n "$tmpdir" ]]; then
         printf '%s\n' "$tmpdir"
         return 0
@@ -1776,12 +1808,17 @@ fix_stack_install() {
     local installed_path=""
     local rollback_command=""
     local runtime_home=""
-    local runtime_path=""
+    local bash_bin=""
 
     runtime_home="$(doctor_fix_runtime_home)"
-    runtime_path="$(doctor_fix_runtime_path 2>/dev/null || true)"
-    if [[ -z "$runtime_home" || -z "$runtime_path" ]]; then
+    if [[ -z "$runtime_home" ]]; then
         doctor_fix_log ERROR "Failed to resolve runtime environment for $binary_name install"
+        FIX_FAILED=$((FIX_FAILED + 1))
+        return 1
+    fi
+    bash_bin="$(doctor_fix_system_binary_path bash 2>/dev/null || true)"
+    if [[ -z "$bash_bin" ]]; then
+        doctor_fix_log ERROR "Failed to resolve trusted Bash for $binary_name install"
         FIX_FAILED=$((FIX_FAILED + 1))
         return 1
     fi
@@ -1804,7 +1841,8 @@ fix_stack_install() {
     # and PATH resolution match the target account instead of the caller shell.
     if (
         cd "$runtime_home" &&
-        env HOME="$runtime_home" PATH="$runtime_path" bash -c "$install_cmd"
+        doctor_fix_run_in_runtime_context "" \
+            "$bash_bin" --noprofile --norc -p -c "$install_cmd"
     ) 2>/dev/null; then
         hash -r
         installed_path="$(doctor_fix_binary_path "$binary_name" 2>/dev/null || true)"

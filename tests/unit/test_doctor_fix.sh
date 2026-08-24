@@ -538,6 +538,7 @@ test_doctor_fix_run_rollback_command_uses_system_bash_and_clean_path() {
     local temp_bin=""
     local marker=""
     local poison_marker=""
+    local inherited_env_marker=""
     local old_path=""
     local status=0
 
@@ -545,6 +546,7 @@ test_doctor_fix_run_rollback_command_uses_system_bash_and_clean_path() {
     temp_bin="$temp_dir/bin"
     marker="$temp_dir/rollback-ran"
     poison_marker="$temp_dir/poison-ran"
+    inherited_env_marker="$temp_dir/inherited-env"
     mkdir -p "$temp_bin"
 
     cat > "$temp_bin/bash" <<EOF
@@ -567,8 +569,12 @@ EOF
 
     old_path="$PATH"
     PATH="$temp_bin"
-    doctor_fix_run_rollback_command "dirname /tmp/example > '$marker'" false >/dev/null 2>&1
+    export ACFS_ROLLBACK_POISON="caller-value"
+    doctor_fix_run_rollback_command \
+        "dirname /tmp/example > '$marker'; printf '%s' \"\${ACFS_ROLLBACK_POISON:-unset}\" > '$inherited_env_marker'" \
+        false >/dev/null 2>&1
     status=$?
+    unset ACFS_ROLLBACK_POISON
     PATH="$old_path"
 
     if [[ $status -ne 0 ]]; then
@@ -581,6 +587,10 @@ EOF
     fi
     if [[ "$(cat "$marker" 2>/dev/null)" != "/tmp" ]]; then
         echo "  Rollback command did not run through the expected system utilities"
+        return 1
+    fi
+    if [[ "$(cat "$inherited_env_marker" 2>/dev/null)" != "unset" ]]; then
+        echo "  Rollback command inherited caller-controlled environment state"
         return 1
     fi
 
@@ -702,8 +712,7 @@ EOF
     fi
     sudo_args="$(<"$sudo_log")"
     expected_prefix="-n $resolved_env_bin"
-    expected_prefix+=" -u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS"
-    expected_prefix+=" -u CDPATH -u GLOBIGNORE"
+    expected_prefix+=" -i"
     expected_prefix+=" PATH=/usr/sbin:/usr/bin:/sbin:/bin"
     expected_prefix+=" $resolved_bash_bin --noprofile --norc -p -c "
     if [[ "$sudo_args" != "$expected_prefix"* ]]; then
@@ -2136,6 +2145,52 @@ chmod +x "$PWD/.local/bin/codex-pwd-bin"'
     return 0
 }
 
+test_fix_stack_install_uses_trusted_shell_and_clean_environment() (
+    setup_test_env
+    export PATH="$HOME/.local/bin:$PATH"
+
+    local fake_bash_marker="$ACFS_STATE_DIR/fake-bash-ran"
+    local bash_env_marker="$ACFS_STATE_DIR/bash-env-ran"
+    local bash_env_file="$ACFS_STATE_DIR/bash-env"
+    cat > "$HOME/.local/bin/bash" <<EOF
+#!/bin/bash
+/usr/bin/touch "$fake_bash_marker"
+exec /bin/bash "\$@"
+EOF
+    chmod +x "$HOME/.local/bin/bash"
+    printf '/usr/bin/touch %q\n' "$bash_env_marker" > "$bash_env_file"
+    export BASH_ENV="$bash_env_file"
+
+    start_autofix_session >/dev/null || {
+        echo "  Failed to start autofix session"
+        cleanup_test_env
+        return 1
+    }
+
+    if ! fix_stack_install "agent.codex" "codex-clean-env-bin" \
+        "printf '#!/bin/bash\\nexit 0\\n' > \"\$HOME/.local/bin/codex-clean-env-bin\" && chmod +x \"\$HOME/.local/bin/codex-clean-env-bin\"" \
+        >/dev/null 2>&1; then
+        echo "  fix_stack_install should succeed through trusted system Bash"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ -e "$fake_bash_marker" || -e "$bash_env_marker" ]]; then
+        echo "  fix_stack_install executed a caller-controlled shell startup path"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ ! -x "$HOME/.local/bin/codex-clean-env-bin" ]]; then
+        echo "  fix_stack_install did not create the expected binary in a clean environment"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+)
+
 test_fix_stack_install_fails_when_binary_missing_after_successful_command() {
     setup_test_env
     export PATH="$HOME/.local/bin:$PATH"
@@ -2415,14 +2470,16 @@ EOF
     return 0
 }
 
-test_doctor_fix_build_runtime_env_args_accepts_multiple_env_assignments() {
+test_doctor_fix_build_runtime_env_args_accepts_allowlisted_env_assignments() {
     setup_test_env
     export TARGET_HOME="$ACFS_STATE_DIR/target-home"
-    mkdir -p "$TARGET_HOME/.local/bin"
+    local installer_tmpdir="$TARGET_HOME/.cache/acfs/installer-tmp/cass.test"
+    mkdir -p "$TARGET_HOME/.local/bin" "$installer_tmpdir"
 
     local -a env_args=()
-    if ! doctor_fix_build_runtime_env_args env_args $'FIRST_ENV=one\nSECOND_ENV=two words'; then
-        echo "  runtime env builder should accept newline-separated installer env assignments"
+    if ! doctor_fix_build_runtime_env_args env_args \
+        $'AM_INSTALL_SKIP_MCP_SETUP=1\nAM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1\n'"TMPDIR=$installer_tmpdir"; then
+        echo "  runtime env builder should accept newline-separated allowlisted assignments"
         cleanup_test_env
         return 1
     fi
@@ -2433,14 +2490,59 @@ test_doctor_fix_build_runtime_env_args_accepts_multiple_env_assignments() {
         return 1
     fi
 
-    if [[ " ${env_args[*]} " != *" FIRST_ENV=one "* ]]; then
-        echo "  runtime env args should include FIRST_ENV"
+    if [[ " ${env_args[*]} " != *" AM_INSTALL_SKIP_MCP_SETUP=1 "* ]]; then
+        echo "  runtime env args should include AM_INSTALL_SKIP_MCP_SETUP"
         cleanup_test_env
         return 1
     fi
 
-    if [[ " ${env_args[*]} " != *" SECOND_ENV=two words "* ]]; then
-        echo "  runtime env args should include SECOND_ENV with spaces preserved"
+    if [[ " ${env_args[*]} " != *" AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1 "* ]]; then
+        echo "  runtime env args should include AM_INSTALL_SKIP_REMOTE_HTTP_READINESS"
+        cleanup_test_env
+        return 1
+    fi
+
+    if [[ " ${env_args[*]} " != *" TMPDIR=$installer_tmpdir "* ]]; then
+        echo "  runtime env args should include the target-owned installer TMPDIR"
+        cleanup_test_env
+        return 1
+    fi
+
+    cleanup_test_env
+    return 0
+}
+
+test_doctor_fix_build_runtime_env_args_rejects_shell_startup_overrides() {
+    setup_test_env
+
+    local -a env_args=()
+    if doctor_fix_build_runtime_env_args env_args 'BASH_ENV=/tmp/untrusted-startup'; then
+        echo "  runtime env builder accepted BASH_ENV"
+        cleanup_test_env
+        return 1
+    fi
+
+    if doctor_fix_build_runtime_env_args env_args 'PATH=/tmp/untrusted-bin'; then
+        echo "  runtime env builder accepted a PATH override"
+        cleanup_test_env
+        return 1
+    fi
+
+    if doctor_fix_build_runtime_env_args env_args 'LD_PRELOAD=/tmp/untrusted-library.so'; then
+        echo "  runtime env builder accepted LD_PRELOAD"
+        cleanup_test_env
+        return 1
+    fi
+
+    if doctor_fix_build_runtime_env_args env_args 'RU_NON_INTERACTIVE=0'; then
+        echo "  runtime env builder accepted an invalid allowlisted value"
+        cleanup_test_env
+        return 1
+    fi
+
+    export TARGET_HOME="$ACFS_STATE_DIR/target-home"
+    if doctor_fix_build_runtime_env_args env_args "TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/../outside"; then
+        echo "  runtime env builder accepted a traversal-bearing TMPDIR"
         cleanup_test_env
         return 1
     fi
@@ -4426,6 +4528,7 @@ main() {
     run_test test_fix_stack_install_applies_and_records_change
     run_test test_fix_stack_install_uses_target_runtime_home
     run_test test_fix_stack_install_runs_from_target_runtime_home
+    run_test test_fix_stack_install_uses_trusted_shell_and_clean_environment
     run_test test_fix_stack_install_fails_when_binary_missing_after_successful_command
     run_test test_fix_stack_install_removes_binary_when_record_change_fails
 
@@ -4434,7 +4537,8 @@ main() {
     run_test test_fix_verified_install_uses_target_runtime_home
     run_test test_fix_verified_install_dry_run
     run_test test_dispatch_fix_routes_cass_with_target_tmpdir
-    run_test test_doctor_fix_build_runtime_env_args_accepts_multiple_env_assignments
+    run_test test_doctor_fix_build_runtime_env_args_accepts_allowlisted_env_assignments
+    run_test test_doctor_fix_build_runtime_env_args_rejects_shell_startup_overrides
     run_test test_fix_verified_install_ignores_gcloud_bv_shadow
     run_test test_fix_verified_install_ms_arm64_fallback_uses_cargo
     run_test test_fix_verified_install_removes_binary_when_record_change_fails

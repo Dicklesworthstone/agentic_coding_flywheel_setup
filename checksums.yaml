@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-# checksums.yaml - Auto-generated 2026-08-24T02:46:14-04:00
-=======
 # checksums.yaml - Auto-generated 2026-08-24T05:44:09-04:00
->>>>>>> 81aaaab7 (feat(manifest): expand plugin schema validation and manifest generation)
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:

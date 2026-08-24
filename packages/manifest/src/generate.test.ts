@@ -885,6 +885,25 @@ describe('Generated script headers', () => {
     }
   });
 
+  test('internal checksums cover state-mutating repair and upgrade modules', () => {
+    const content = readFileSync(resolve(GENERATED_DIR, 'internal_checksums.sh'), 'utf-8');
+    const checksummedPaths = new Set(
+      content.split('\n').flatMap((line) => {
+        const match = line.match(/^\s*\[([^\]]+)]="[a-f0-9]{64}"\s*$/);
+        return match ? [match[1]] : [];
+      })
+    );
+    for (const path of [
+      'scripts/lib/autofix.sh',
+      'scripts/lib/autofix_existing.sh',
+      'scripts/lib/autofix_unattended.sh',
+      'scripts/lib/autofix_version_managers.sh',
+      'scripts/lib/ubuntu_upgrade.sh',
+    ]) {
+      expect(checksummedPaths.has(path)).toBe(true);
+    }
+  });
+
   test('generated system-binary resolvers exclude locally managed prefixes', () => {
     const manifestResult = parseManifestFile(MANIFEST_PATH);
     expect(manifestResult.success).toBe(true);

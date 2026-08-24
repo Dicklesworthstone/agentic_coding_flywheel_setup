@@ -867,6 +867,64 @@ test_upgrade_lock_rejects_contender_without_truncating_pid() {
     fi
 }
 
+test_retry_with_backoff_is_argv_only_and_skips_terminal_sleep() {
+    log_test "Upgrade Retry Uses Argv and Skips Terminal Sleep"
+
+    local attempts=0
+    local injected=0
+    local original_system_binary_path=""
+    local -a observed_delays=()
+    original_system_binary_path="$(declare -f ubuntu_system_binary_path)"
+
+    retry_failure_probe() {
+        attempts=$((attempts + 1))
+        return 1
+    }
+    retry_injected_probe() {
+        injected=1
+        return 0
+    }
+    ubuntu_system_binary_path() {
+        [[ "${1:-}" == "sleep" ]] || return 1
+        printf '%s\n' "retry_sleep_probe"
+    }
+    retry_sleep_probe() {
+        observed_delays+=("${1:-}")
+    }
+
+    if ubuntu_retry_with_backoff 3 1 -- retry_failure_probe >/dev/null 2>&1; then
+        log_fail "permanently failing retry probe should fail"
+    elif [[ $attempts -ne 3 ]]; then
+        log_fail "retry probe ran $attempts times instead of 3"
+    elif [[ "${observed_delays[*]}" != "1 2" ]]; then
+        log_fail "retry delays were '${observed_delays[*]}' instead of '1 2'"
+    else
+        log_pass "retry performs exact attempts without a terminal sleep"
+    fi
+
+    attempts=0
+    observed_delays=()
+    if ubuntu_retry_with_backoff ':; retry_injected_probe' 1 0 >/dev/null 2>&1; then
+        log_fail "string-form retry command should not be evaluated"
+    elif [[ $injected -ne 0 ]]; then
+        log_fail "string-form retry command executed injected shell syntax"
+    else
+        log_pass "retry treats command input as argv without shell evaluation"
+    fi
+
+    attempts=0
+    if ubuntu_retry_with_backoff 0 0 -- retry_failure_probe >/dev/null 2>&1; then
+        log_fail "retry should reject a zero-attempt configuration"
+    elif [[ $attempts -ne 0 ]]; then
+        log_fail "invalid zero-attempt configuration still executed the command"
+    else
+        log_pass "retry rejects a zero-attempt configuration before execution"
+    fi
+
+    unset -f retry_failure_probe retry_injected_probe retry_sleep_probe ubuntu_system_binary_path
+    eval "$original_system_binary_path"
+}
+
 # ============================================================
 # State Function Tests
 # ============================================================
@@ -985,6 +1043,10 @@ run_all_tests() {
 
     echo "--- Upgrade Lock Tests ---"
     test_upgrade_lock_rejects_contender_without_truncating_pid || true
+    echo ""
+
+    echo "--- Retry Tests ---"
+    test_retry_with_backoff_is_argv_only_and_skips_terminal_sleep || true
     echo ""
 
     echo "--- State Function Tests ---"
