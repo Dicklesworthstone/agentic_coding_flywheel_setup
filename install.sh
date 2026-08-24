@@ -5426,12 +5426,22 @@ normalize_user() {
         if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
             acfs_sudoers_file="90-acfs"
         fi
+        # Validate with visudo BEFORE the drop-in goes live: an invalid file in
+        # /etc/sudoers.d breaks sudo machine-wide, so it is staged in a temp
+        # file, checked, and only then installed with the final mode.
+        local sudoers_tmp=""
+        sudoers_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-sudoers.XXXXXX" 2>/dev/null)" || {
+            log_error "Unable to create a temporary file for the sudoers drop-in"
+            return 1
+        }
         try_step_eval "Configuring passwordless sudo" \
-            "echo '$TARGET_USER ALL=(ALL) NOPASSWD:ALL' | $SUDO tee /etc/sudoers.d/$acfs_sudoers_file > /dev/null" || return 1
-        try_step "Setting sudoers file permissions" $SUDO chmod 440 "/etc/sudoers.d/$acfs_sudoers_file" || return 1
-        if command_exists visudo && ! $SUDO visudo -c -f "/etc/sudoers.d/$acfs_sudoers_file" >/dev/null 2>&1; then
-            log_fatal "Invalid sudoers file generated at /etc/sudoers.d/$acfs_sudoers_file"
+            "printf '%s ALL=(ALL) NOPASSWD:ALL\n' '$TARGET_USER' > '$sudoers_tmp' && $SUDO chmod 440 '$sudoers_tmp'" || { rm -f "$sudoers_tmp"; return 1; }
+        if command_exists visudo && ! $SUDO visudo -c -f "$sudoers_tmp" >/dev/null 2>&1; then
+            rm -f "$sudoers_tmp"
+            log_fatal "Generated sudoers content failed visudo validation; /etc/sudoers.d/$acfs_sudoers_file was left untouched"
         fi
+        try_step "Installing sudoers drop-in" $SUDO install -m 0440 -o root -g root "$sudoers_tmp" "/etc/sudoers.d/$acfs_sudoers_file" || { rm -f "$sudoers_tmp"; return 1; }
+        rm -f "$sudoers_tmp"
     elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
         # Safe mode on Arch: wheel membership alone grants nothing because the
         # stock /etc/sudoers ships `%wheel` commented out (Ubuntu's `sudo` group
@@ -5439,12 +5449,20 @@ normalize_user() {
         # sudo at all. Omarchy already enables %wheel, so this is a no-op there.
         if ! $SUDO grep -Eqs '^[[:space:]]*%wheel[[:space:]]+ALL=' /etc/sudoers /etc/sudoers.d/* 2>/dev/null; then
             log_detail "Enabling password-prompted sudo for the wheel group"
+            # Same stage-validate-install sequence as the vibe-mode drop-in.
+            local wheel_sudoers_tmp=""
+            wheel_sudoers_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-sudoers-wheel.XXXXXX" 2>/dev/null)" || {
+                log_error "Unable to create a temporary file for the wheel sudoers drop-in"
+                return 1
+            }
             try_step_eval "Configuring wheel sudo access" \
-                "echo '%wheel ALL=(ALL:ALL) ALL' | $SUDO tee /etc/sudoers.d/90-acfs-wheel > /dev/null" || return 1
-            try_step "Setting sudoers file permissions" $SUDO chmod 440 /etc/sudoers.d/90-acfs-wheel || return 1
-            if command_exists visudo && ! $SUDO visudo -c -f /etc/sudoers.d/90-acfs-wheel >/dev/null 2>&1; then
-                log_fatal "Invalid sudoers file generated at /etc/sudoers.d/90-acfs-wheel"
+                "printf '%%wheel ALL=(ALL:ALL) ALL\n' > '$wheel_sudoers_tmp' && $SUDO chmod 440 '$wheel_sudoers_tmp'" || { rm -f "$wheel_sudoers_tmp"; return 1; }
+            if command_exists visudo && ! $SUDO visudo -c -f "$wheel_sudoers_tmp" >/dev/null 2>&1; then
+                rm -f "$wheel_sudoers_tmp"
+                log_fatal "Generated wheel sudoers content failed visudo validation; /etc/sudoers.d/90-acfs-wheel was left untouched"
             fi
+            try_step "Installing wheel sudoers drop-in" $SUDO install -m 0440 -o root -g root "$wheel_sudoers_tmp" /etc/sudoers.d/90-acfs-wheel || { rm -f "$wheel_sudoers_tmp"; return 1; }
+            rm -f "$wheel_sudoers_tmp"
         fi
     fi
 
