@@ -699,13 +699,21 @@ _agent_install_agy_locked_launchers() {
         return 1
     fi
 
+    local agy_q=""
+    local agy_real_q=""
     printf -v source_file_q '%q' "$source_file"
     printf -v target_bin_q '%q' "$target_bin"
     printf -v agy_locked_q '%q' "$target_bin/agy-locked"
+    printf -v agy_q '%q' "$target_bin/agy"
+    printf -v agy_real_q '%q' "$target_bin/agy-real"
     printf -v gmi_q '%q' "$target_bin/gmi"
 
     _agent_run_as_user "mkdir -p $target_bin_q" || return 1
+    if _agent_run_as_user "test -f $agy_q && ! test -L $agy_q" 2>/dev/null && ! _agent_run_as_user "cmp -s $agy_q $source_file_q" 2>/dev/null; then
+        _agent_run_as_user "mv -f $agy_q $agy_real_q" || true
+    fi
     _agent_run_as_user "install -m 0755 $source_file_q $agy_locked_q" || return 1
+    _agent_run_as_user "install -m 0755 $source_file_q $agy_q" || return 1
     _agent_run_as_user "install -m 0755 $source_file_q $gmi_q" || return 1
     return 0
 }
@@ -1287,7 +1295,7 @@ upgrade_antigravity_cli() {
     local agy_bin_q=""
 
     target_home="$(_agent_target_home "$target_user")"
-    agy_bin="$(_agent_find_target_executable "$ANTIGRAVITY_BIN" "$target_home" 2>/dev/null || true)"
+    agy_bin="$(_agent_find_target_executable "agy-real" "$target_home" 2>/dev/null || _agent_find_target_executable "$ANTIGRAVITY_BIN" "$target_home" 2>/dev/null || true)"
 
     if [[ -z "$agy_bin" ]]; then
         log_detail "Antigravity CLI not installed; installing..."

@@ -1068,7 +1068,7 @@ modules:
       - base.system
     installed_check:
       run_as: target_user
-      command: 'target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"; test -x "$target_bin/agy" && test -x "$target_bin/agy-locked" && test -x "$target_bin/gmi"'
+      command: 'target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"; test -x "$target_bin/agy" && test -x "$target_bin/agy-locked" && test -x "$target_bin/agy-real" && test -x "$target_bin/gmi"'
     # agy is a standalone self-updating native binary (no bun/node runtime needed).
     # The installer is supply-chain-verified via the external-installer checksum store
     # (checksums.yaml -> antigravity); it SHA512-verifies the downloaded binary itself,
@@ -1096,7 +1096,11 @@ modules:
         fi
 
         mkdir -p "$target_bin"
+        if [[ -f "$target_bin/agy" && ! -L "$target_bin/agy" ]] && ! cmp -s "$target_bin/agy" "$source_file"; then
+          mv -f "$target_bin/agy" "$target_bin/agy-real"
+        fi
         install -m 0755 "$source_file" "$target_bin/agy-locked"
+        install -m 0755 "$source_file" "$target_bin/agy"
         install -m 0755 "$source_file" "$target_bin/gmi"
 
         if "$target_bin/agy-locked" --acfs-prime-settings; then
@@ -1110,6 +1114,7 @@ modules:
         target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
         test -x "$target_bin/agy"
         test -x "$target_bin/agy-locked"
+        test -x "$target_bin/agy-real"
         test -x "$target_bin/gmi"
         python3 - <<'PY'
         import json

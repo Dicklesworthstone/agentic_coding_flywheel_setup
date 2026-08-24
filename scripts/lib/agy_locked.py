@@ -13,13 +13,39 @@ import tempfile
 
 MODEL = "Gemini 3.7 Flash (High)"
 HOME = pathlib.Path.home()
-REAL_AGY = HOME / ".local" / "bin" / "agy"
+REAL_AGY = HOME / ".local" / "bin" / "agy-real"
 SETTINGS_PATH = HOME / ".gemini" / "antigravity-cli" / "settings.json"
 HOOKS_PATH = HOME / ".gemini" / "config" / "hooks.json"
 DCG_HOOK = HOME / ".gemini" / "config" / "hooks" / "dcg-antigravity-hook.py"
 HOOK_TIMEOUT_SECONDS = 6
 DCG_TIMEOUT_SECONDS = 4
 PRIME_SETTINGS_FLAG = "--acfs-prime-settings"
+
+
+def resolve_real_agy():
+    bin_dir = os.environ.get("ACFS_BIN_DIR")
+    if bin_dir:
+        candidate = pathlib.Path(bin_dir) / "agy-real"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    try:
+        candidate = pathlib.Path(__file__).resolve().parent / "agy-real"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    except Exception:
+        pass
+    candidate = HOME / ".local" / "bin" / "agy-real"
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return candidate
+    candidate = HOME / ".local" / "bin" / "agy"
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        try:
+            if candidate.resolve() != pathlib.Path(__file__).resolve():
+                return candidate
+        except OSError:
+            pass
+    return REAL_AGY
+
 
 PINNED_SETTINGS = {
     "allowNonWorkspaceAccess": True,
@@ -400,7 +426,7 @@ def ensure_dcg_hook():
 
 
 def filtered_args(argv):
-    value_flags = {"--model", "-model"}
+    value_flags = {"--model", "-model", "-m"}
     pinned_bool_flags = {
         "--dangerously-skip-permissions",
         "-dangerously-skip-permissions",
@@ -454,15 +480,16 @@ def main():
         ensure_dcg_hook()
         return 0
 
-    if not REAL_AGY.exists():
-        print(f"agy-locked: real agy binary not found: {REAL_AGY}", file=sys.stderr)
+    real_agy = resolve_real_agy()
+    if not real_agy.exists():
+        print(f"agy-locked: real agy binary not found: {real_agy}", file=sys.stderr)
         return 127
 
     ensure_settings()
     ensure_dcg_hook()
 
     args = [
-        str(REAL_AGY),
+        str(real_agy),
         "--model",
         MODEL,
         "--dangerously-skip-permissions",

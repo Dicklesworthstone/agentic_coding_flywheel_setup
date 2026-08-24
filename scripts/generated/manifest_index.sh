@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="b0e1c20584dd3e6e5b5c7fec9be7aa226df96088dff1dc68e821c1d213488aa0"
+ACFS_MANIFEST_SHA256="b9e1f7f69d308ab2dd5c25d085930512a8deaf5ea907dabd685818a2742dece6"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -737,7 +737,7 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK=(
   ['agents.claude']="test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/claude\" || test -x \"\$HOME/.local/bin/claude\""
   ['agents.codex']="test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/codex\" || test -x \"\$HOME/.local/bin/codex\""
   ['agents.gemini']="test -x \"\${ACFS_BIN_DIR:-\$HOME/.local/bin}/gemini\" || test -x \"\$HOME/.local/bin/gemini\""
-  ['agents.antigravity']="target_bin=\"\${ACFS_BIN_DIR:-\$HOME/.local/bin}\"; test -x \"\$target_bin/agy\" && test -x \"\$target_bin/agy-locked\" && test -x \"\$target_bin/gmi\""
+  ['agents.antigravity']="target_bin=\"\${ACFS_BIN_DIR:-\$HOME/.local/bin}\"; test -x \"\$target_bin/agy\" && test -x \"\$target_bin/agy-locked\" && test -x \"\$target_bin/agy-real\" && test -x \"\$target_bin/gmi\""
   ['agents.opencode']="command -v opencode"
   ['agents.omp']="command -v omp"
   ['agents.grok']="command -v grok"

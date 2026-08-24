@@ -5254,14 +5254,18 @@ update_install_agy_locked_launchers() {
             return 0
         fi
         update_run_in_target_context "" mkdir -p "$target_bin" || return 1
+        if [[ -f "$target_bin/agy" && ! -L "$target_bin/agy" ]] && ! cmp -s "$target_bin/agy" "$source_file"; then
+            update_run_in_target_context "" mv -f "$target_bin/agy" "$target_bin/agy-real" || return 1
+        fi
         update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/agy-locked" || return 1
+        update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/agy" || return 1
         update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/gmi" || return 1
         if update_run_in_target_context "" "$target_bin/agy-locked" --acfs-prime-settings; then
             log_item "fix" "Antigravity locked settings" "model, permissions, and dcg hook primed"
         else
             log_item "warn" "Antigravity locked settings" "will be primed on next agy launch"
         fi
-        log_item "fix" "agy locked launchers" "$target_bin/agy-locked, $target_bin/gmi"
+        log_item "fix" "agy locked launchers" "$target_bin/agy, $target_bin/agy-locked, $target_bin/gmi"
         return 0
     done
 
@@ -5441,10 +5445,15 @@ update_agents() {
     fi
 
     # Antigravity CLI is a standalone native binary; keep the real binary updated
-    # and refresh the ACFS locked launchers (`agy-locked` and `gmi`).
-    if update_binary_exists agy; then
-        local agy_bin=""
+    # and refresh the ACFS locked launchers (`agy-locked`, `agy`, and `gmi`).
+    local agy_bin=""
+    if update_binary_exists agy-real; then
+        agy_bin="$(update_binary_path agy-real 2>/dev/null || true)"
+    elif update_binary_exists agy; then
         agy_bin="$(update_binary_path agy 2>/dev/null || true)"
+    fi
+
+    if [[ -n "$agy_bin" ]]; then
         capture_version_before "agy"
         run_cmd "Antigravity CLI" update_run_in_target_context "" "$agy_bin" update
         if capture_version_after "agy"; then

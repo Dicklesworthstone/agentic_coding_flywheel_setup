@@ -57,11 +57,15 @@ check "acfs.zshrc maps agy to the locked launcher" \
 check "acfs.zshrc maps gmi to the locked agy launcher" \
   "grep -q \"alias gmi='\\\$HOME/.local/bin/agy-locked'\" acfs/zsh/acfs.zshrc"
 check "uca updates agy instead of gemini-cli" \
-  "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q 'agy\" update' && ! grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q '@google/gemini-cli'"
+  "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -qE 'agy(-real)?\" update' && ! grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q '@google/gemini-cli'"
 check "uca re-primes locked Antigravity settings after update" \
   "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q 'agy-locked\" --acfs-prime-settings'"
 check "agy locked launcher pins the required model" \
   "grep -q 'MODEL = \"Gemini 3.7 Flash (High)\"' scripts/lib/agy_locked.py"
+check "agy locked launcher strips -m and -model flags" \
+  "python3 -c 'import sys; sys.path.insert(0, \"scripts/lib\"); import agy_locked; res = agy_locked.filtered_args([\"-m\", \"foo\", \"-m=bar\", \"--model=baz\", \"--model\", \"qux\", \"prompt\"]); assert res == [\"prompt\"], f\"got {res}\"'"
+check "agy locked launcher points to agy-real" \
+  "grep -q 'REAL_AGY = HOME / \".local\" / \"bin\" / \"agy-real\"' scripts/lib/agy_locked.py"
 check "agy locked launcher pins always-proceed tool permission" \
   "grep -q '\"toolPermission\": \"always-proceed\"' scripts/lib/agy_locked.py"
 check "agy locked launcher installs dcg hook support" \

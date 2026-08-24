@@ -8170,10 +8170,21 @@ install_languages() {
 install_agy_locked_launchers() {
     acfs_ensure_primary_bin_dir 2>/dev/null || true
 
+    local source_asset=""
+    source_asset="$(find_asset "scripts/lib/agy_locked.py" 2>/dev/null || true)"
+    if [[ -z "$source_asset" || ! -f "$source_asset" ]]; then
+        source_asset="${ACFS_SCRIPT_DIR:-$REPO_ROOT}/scripts/lib/agy_locked.py"
+    fi
+
+    if [[ -f "$ACFS_BIN_DIR/agy" && ! -L "$ACFS_BIN_DIR/agy" ]] && [[ -f "$source_asset" ]] && ! cmp -s "$ACFS_BIN_DIR/agy" "$source_asset"; then
+        try_step "Relocating real agy binary" $SUDO mv -f "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/agy-real" || true
+    fi
+
     try_step "Installing agy locked launcher" install_asset "scripts/lib/agy_locked.py" "$ACFS_BIN_DIR/agy-locked" || return 1
+    try_step "Installing agy PATH shim" install_asset "scripts/lib/agy_locked.py" "$ACFS_BIN_DIR/agy" || return 1
     try_step "Installing gmi Antigravity launcher" install_asset "scripts/lib/agy_locked.py" "$ACFS_BIN_DIR/gmi" || return 1
-    try_step "Setting agy launcher permissions" $SUDO chmod 0755 "$ACFS_BIN_DIR/agy-locked" "$ACFS_BIN_DIR/gmi" || return 1
-    try_step "Setting agy launcher ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_BIN_DIR/agy-locked" "$ACFS_BIN_DIR/gmi" || true
+    try_step "Setting agy launcher permissions" $SUDO chmod 0755 "$ACFS_BIN_DIR/agy-locked" "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/gmi" || return 1
+    try_step "Setting agy launcher ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_BIN_DIR/agy-locked" "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/gmi" || true
 }
 
 install_agents_phase() {
@@ -10499,6 +10510,7 @@ run_smoke_test() {
     [[ -x "$TARGET_HOME/.bun/bin/codex" || -x "$ACFS_BIN_DIR/codex" ]] || missing_agents+=("codex")
     [[ -x "$ACFS_BIN_DIR/agy" || -x "$TARGET_HOME/.local/bin/agy" ]] || missing_agents+=("agy")
     [[ -x "$ACFS_BIN_DIR/agy-locked" || -x "$TARGET_HOME/.local/bin/agy-locked" ]] || missing_agents+=("agy-locked")
+    [[ -x "$ACFS_BIN_DIR/agy-real" || -x "$TARGET_HOME/.local/bin/agy-real" ]] || missing_agents+=("agy-real")
     if [[ ${#missing_agents[@]} -eq 0 ]]; then
         echo "✅ Agents: claude, codex, agy" >&2
         ((critical_passed += 1))

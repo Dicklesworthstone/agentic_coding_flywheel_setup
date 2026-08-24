@@ -1296,7 +1296,11 @@ if [[ -z "$source_file" ]]; then
 fi
 
 mkdir -p "$target_bin"
+if [[ -f "$target_bin/agy" && ! -L "$target_bin/agy" ]] && ! cmp -s "$target_bin/agy" "$source_file"; then
+  mv -f "$target_bin/agy" "$target_bin/agy-real"
+fi
 install -m 0755 "$source_file" "$target_bin/agy-locked"
+install -m 0755 "$source_file" "$target_bin/agy"
 install -m 0755 "$source_file" "$target_bin/gmi"
 
 if "$target_bin/agy-locked" --acfs-prime-settings; then
@@ -1320,6 +1324,7 @@ INSTALL_AGENTS_ANTIGRAVITY
 target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
 test -x "$target_bin/agy"
 test -x "$target_bin/agy-locked"
+test -x "$target_bin/agy-real"
 test -x "$target_bin/gmi"
 python3 - <<'PY'
 import json

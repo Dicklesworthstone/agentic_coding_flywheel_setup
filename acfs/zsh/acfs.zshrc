@@ -227,7 +227,7 @@ else
 fi
 
 # Update agent CLIs
-alias uca='(curl -fsSL https://claude.ai/install.sh | bash -s -- latest) && ("$HOME/.bun/bin/bun" install -g --trust @openai/codex@latest || "$HOME/.bun/bin/bun" install -g --trust @openai/codex) && "$HOME/.local/bin/agy" update && "$HOME/.local/bin/agy-locked" --acfs-prime-settings'
+alias uca='(curl -fsSL https://claude.ai/install.sh | bash -s -- latest) && ("$HOME/.bun/bin/bun" install -g --trust @openai/codex@latest || "$HOME/.bun/bin/bun" install -g --trust @openai/codex) && ("$HOME/.local/bin/agy-real" update 2>/dev/null || "$HOME/.local/bin/agy" update) && "$HOME/.local/bin/agy-locked" --acfs-prime-settings'
 
 # --- Custom functions ---
 mkcd() { mkdir -p "$1" && cd "$1" || return; }
