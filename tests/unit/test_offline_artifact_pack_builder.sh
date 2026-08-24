@@ -743,6 +743,50 @@ test_uncreatable_output_emits_structured_refusal() {
     pass "uncreatable_output_emits_structured_refusal"
 }
 
+test_supported_no_target_directory_failure_never_uses_weaker_fallback() {
+    if ! (
+        source "$OFFLINE_PACK_SH"
+        calls=0
+        offline_pack_mv_supports_no_target_directory() { return 0; }
+        offline_pack_mv() {
+            calls=$((calls + 1))
+            return 1
+        }
+
+        ! offline_pack_publish_staging "/nonexistent/acfs-staging" "/nonexistent/acfs-pack"
+        [[ "$calls" -eq 1 ]]
+    ); then
+        return 1
+    fi
+
+    pass "supported_no_target_directory_failure_never_uses_weaker_fallback"
+}
+
+test_bsd_publish_race_is_detected_after_nested_move() {
+    local race_root="$ARTIFACT_DIR/publish-race"
+    local staging_root="$race_root/.acfs-installer-cache.build.fixture"
+    local pack_root="$race_root/acfs-installer-cache"
+
+    mkdir -p "$staging_root" "$pack_root"
+    printf '{"builder":"ours"}\n' > "$staging_root/manifest.json"
+    printf '{"builder":"racer"}\n' > "$pack_root/manifest.json"
+
+    if ! (
+        source "$OFFLINE_PACK_SH"
+        offline_pack_mv_supports_no_target_directory() { return 1; }
+        OFFLINE_PACK_STAGING_ROOT="$staging_root"
+
+        ! offline_pack_publish_staging "$staging_root" "$pack_root"
+        [[ "$OFFLINE_PACK_STAGING_ROOT" == "$pack_root/${staging_root##*/}" ]]
+        [[ -f "$OFFLINE_PACK_STAGING_ROOT/manifest.json" ]]
+        [[ "$(<"$pack_root/manifest.json")" == '{"builder":"racer"}' ]]
+    ); then
+        return 1
+    fi
+
+    pass "bsd_publish_race_is_detected_after_nested_move"
+}
+
 run_all_tests() {
     local test_name=""
     local tests=(
@@ -770,6 +814,8 @@ run_all_tests() {
         test_timeout_option_is_validated_and_recorded
         test_invalid_ubuntu_target_is_refused_before_publication
         test_uncreatable_output_emits_structured_refusal
+        test_supported_no_target_directory_failure_never_uses_weaker_fallback
+        test_bsd_publish_race_is_detected_after_nested_move
     )
 
     for test_name in "${tests[@]}"; do

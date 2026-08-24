@@ -259,6 +259,39 @@ offline_pack_mv() {
     "$mv_bin" "$@"
 }
 
+offline_pack_mv_supports_no_target_directory() {
+    local mv_bin=""
+    local help_output=""
+
+    mv_bin="$(offline_pack_required_binary_path mv)" || return $?
+    help_output="$("$mv_bin" --help 2>&1 || true)"
+    [[ "$help_output" == *"--no-target-directory"* ]]
+}
+
+offline_pack_publish_staging() {
+    local staging_root="$1"
+    local pack_root="$2"
+    local nested_staging="$pack_root/${staging_root##*/}"
+
+    if offline_pack_mv_supports_no_target_directory; then
+        # GNU mv: never reinterpret an existing destination as a directory.
+        offline_pack_mv -T -n -- "$staging_root" "$pack_root" || return 1
+    else
+        # BSD/macOS mv has no -T. Refuse a destination already visible before
+        # the move, then detect the remaining race where it appears between
+        # this check and mv and staging is nested inside it.
+        [[ ! -e "$pack_root" ]] || return 1
+        offline_pack_mv -n -- "$staging_root" "$pack_root" || return 1
+    fi
+
+    if [[ ! -e "$staging_root" && -e "$nested_staging" ]]; then
+        OFFLINE_PACK_STAGING_ROOT="$nested_staging"
+        return 1
+    fi
+
+    [[ ! -e "$staging_root" && -f "$pack_root/manifest.json" ]]
+}
+
 offline_pack_cp() {
     local cp_bin=""
 
@@ -1620,15 +1653,7 @@ offline_pack_main() {
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
     fi
-    # GNU mv's -T prevents a racing destination directory from turning this
-    # rename into "move staging inside destination". -n prevents replacement;
-    # fall back to standard mv -n on BSD/macOS where -T is not supported.
-    # Because GNU mv reports a no-clobber skip as success, also require that the
-    # staging pathname disappeared and the final acceptance marker exists.
-    if { ! offline_pack_mv -T -n -- "$staging_root" "$pack_root" 2>/dev/null \
-            && ! offline_pack_mv -n -- "$staging_root" "$pack_root"; } \
-        || [[ -e "$staging_root" ]] \
-        || [[ ! -f "$pack_root/manifest.json" ]]; then
+    if ! offline_pack_publish_staging "$staging_root" "$pack_root"; then
         offline_pack_add_error "pack_publish_failed: unable to publish completed cache at $pack_root"
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
