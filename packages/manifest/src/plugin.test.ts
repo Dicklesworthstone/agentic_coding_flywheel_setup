@@ -20,6 +20,8 @@ import {
   generateWebTools,
   generateWebCommands,
   collectPluginInputPaths,
+  enforcePluginActivationBoundary,
+  PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE,
 } from './generate.js';
 import { ModuleSchema } from './schema.js';
 import type { Manifest } from './types.js';
@@ -1273,6 +1275,13 @@ describe('loadPluginManifestFromFile', () => {
 });
 
 describe('collectPluginInputPaths', () => {
+  test('keeps unbound plugin paths behind the activation trust boundary', () => {
+    expect(() => enforcePluginActivationBoundary([])).not.toThrow();
+    expect(() => enforcePluginActivationBoundary(['/tmp/plugin.json'])).toThrow(
+      PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE,
+    );
+  });
+
   test('accepts documented control flags but rejects unknown arguments', () => {
     expect(
       collectPluginInputPaths(
@@ -1444,12 +1453,14 @@ describe('Installer, doctor, and web metadata generation from validated plugins'
 });
 
 describe('Documentation plugin example fixtures', () => {
-  test('safe plugin example in plugin-review-workflow.md validates successfully', () => {
+  test('schema fixture validates only with explicit synthetic trust bindings', () => {
     const docPath = resolve(__dirname, '../../../docs/operations/plugin-review-workflow.md');
     const docContent = readFileSync(docPath, 'utf-8');
 
-    // Extract JSON code block under "Safe Plugin Example"
-    const jsonMatch = docContent.match(/```json\n([\s\S]*?)\n```/);
+    expect(docContent).toMatch(/does not\s+>\s*activate or install plugins/);
+    const jsonMatch = docContent.match(
+      /### Safe Plugin Schema Fixture[\s\S]*?```json\n([\s\S]*?)\n```/,
+    );
     expect(jsonMatch).not.toBeNull();
     const parsed = JSON.parse(jsonMatch![1]);
 

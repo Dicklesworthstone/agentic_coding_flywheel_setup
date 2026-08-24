@@ -30,7 +30,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import {
   parseManifestString,
-  validateManifest as validateManifestSchema,
   validateManifestData,
 } from './parser.js';
 import {
@@ -39,12 +38,6 @@ import {
   validateVerifiedInstallerChecksums,
   type InstallerChecksumEntry,
 } from './validate.js';
-import {
-  loadPluginManifestFromFile,
-  mergeValidatedPlugins,
-  formatPluginDiagnostics,
-  type PluginValidationResult,
-} from './plugin.js';
 import {
   getModuleCategory,
   resolveModuleCategory,
@@ -3026,6 +3019,20 @@ export function collectPluginInputPaths(
   return paths;
 }
 
+export const PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE =
+  'Plugin package activation is not implemented: generation must first bind an ' +
+  'archive digest, an independent maintainer review record, and an explicit target.';
+
+/**
+ * Keep the validator and generator seams available to unit tests without
+ * presenting an unbound plugin file as trusted installation input.
+ */
+export function enforcePluginActivationBoundary(pluginPaths: readonly string[]): void {
+  if (pluginPaths.length > 0) {
+    throw new Error(PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE);
+  }
+}
+
 /**
  * Show help message
  */
@@ -3039,8 +3046,6 @@ Options:
   --verbose      Show more details (with --dry-run: show content previews)
   --validate     Validate manifest and checksums coverage, exit with status
   --diff         Show diff between current and generated files
-  --plugin       Path to a plugin package JSON file (can be repeated)
-  --plugins-dir  Directory containing plugin package files
   --help         Show this help message
 
 Examples:
@@ -3048,7 +3053,10 @@ Examples:
   bun run generate --dry-run       # Preview generation
   bun run generate --validate      # Check for issues (CI friendly)
   bun run generate --diff          # Show what would change
-  bun run generate --plugin ./pkg.json # Include plugin in generation
+
+Plugin activation is not yet available. The schema validator remains a
+library-level review seam until archive, review-record, and target bindings are
+implemented.
 `);
 }
 
@@ -3157,109 +3165,25 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Explicit plugin inputs are a trust-boundary contract. A missing value or
-  // unreadable/empty directory must never degrade to first-party-only output.
-  let pluginPaths: string[];
+  // Input discovery is retained for the future package loader, but a bare JSON
+  // path cannot supply the archive hash, independent review record, or target
+  // tuple required by the plugin trust contract. Refuse before reading or
+  // emitting any plugin-derived content.
   try {
-    pluginPaths = collectPluginInputPaths(args);
+    const pluginPaths = collectPluginInputPaths(args);
+    enforcePluginActivationBoundary(pluginPaths);
   } catch (error) {
     console.error(`Plugin input error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
 
-  let effectiveManifest = manifest;
-  if (pluginPaths.length > 0) {
-    const pluginResults: PluginValidationResult[] = [];
-    const existingPluginModuleIds: string[] = [];
-
-    for (const [pluginIndex, resolvedPath] of pluginPaths.entries()) {
-      console.log(`Validating plugin manifest ${pluginIndex + 1}/${pluginPaths.length}`);
-      const result = loadPluginManifestFromFile(resolvedPath, {
-        firstPartyManifest: manifest,
-        installers,
-        existingPluginModuleIds,
-      });
-
-      if (!result.valid) {
-        console.error('');
-        console.error(formatPluginDiagnostics(result));
-        console.error('');
-        process.exit(1);
-      }
-
-      for (const m of result.manifestModules) {
-        existingPluginModuleIds.push(m.id);
-      }
-      pluginResults.push(result);
-      console.log(
-        `✓ Plugin package "${result.package?.packageId ?? '<validated>'}" validated (${result.manifestModules.length} module(s))`
-      );
-    }
-
-    effectiveManifest = mergeValidatedPlugins(manifest, pluginResults);
-
-    // A plugin is first validated in isolation, but generation consumes the
-    // merged graph. Re-run every first-party invariant over that exact graph so
-    // no composition bug can bypass schema, dependency, orchestration, function
-    // name, runner, or checksum policy.
-    const mergedBasicValidation = validateManifestSchema(effectiveManifest);
-    if (!mergedBasicValidation.valid) {
-      console.error('');
-      console.error(
-        `Merged manifest validation failed with ${mergedBasicValidation.errors.length} error(s):`
-      );
-      for (const error of mergedBasicValidation.errors) {
-        console.error(`- ${error.path}: ${error.message}`);
-      }
-      console.error('');
-      process.exit(1);
-    }
-
-    const mergedAdvancedValidation = validateManifestAdvanced(effectiveManifest);
-    if (!mergedAdvancedValidation.valid) {
-      console.error('');
-      console.error(formatValidationErrors(mergedAdvancedValidation));
-      console.error('');
-      process.exit(1);
-    }
-
-    const mergedChecksumErrors = validateVerifiedInstallerChecksums(
-      effectiveManifest,
-      installers
-    );
-    if (mergedChecksumErrors.length > 0) {
-      console.error('Merged verified installer checksum validation failed:');
-      for (const error of mergedChecksumErrors) {
-        console.error(`- [${error.code}] ${error.message}`);
-      }
-      process.exit(1);
-    }
-
-    if (mergedBasicValidation.warnings.length > 0) {
-      console.error('');
-      console.error(
-        `Merged manifest validation warnings (${mergedBasicValidation.warnings.length}):`
-      );
-      for (const warning of mergedBasicValidation.warnings) {
-        console.error(`- ${warning.path}: ${warning.message}`);
-      }
-      console.error('');
-    }
-
-    console.log(
-      `Merged ${pluginResults.length} plugin package(s) (${existingPluginModuleIds.length} total plugin modules)`
-    );
-    console.log('');
-  }
+  const effectiveManifest = manifest;
 
   // --validate mode: validation already passed, print success and exit
   if (validateOnly) {
     console.log('✓ Manifest schema valid');
     console.log('✓ Manifest dependency graph valid');
     console.log('✓ Checksums.yaml coverage complete');
-    if (pluginPaths.length > 0) {
-      console.log(`✓ Plugin packages valid (${pluginPaths.length} package(s))`);
-    }
     console.log('');
     console.log('Validation passed.');
     process.exit(0);
