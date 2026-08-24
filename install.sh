@@ -237,6 +237,7 @@ ACFS_TRUSTED_INTERNAL_SOURCE_ROOT=""
 # and deliberately not exported. The source-kind variables are hint-only and
 # confer no trust or execution authority.
 ACFS_BOOTSTRAP_SUPERVISOR=false
+ACFS_BOOTSTRAP_CHILD_PID=""
 ACFS_VERIFIED_BOOTSTRAP_SOURCE="${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}"
 ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}"
 
@@ -1692,6 +1693,15 @@ _ACFS_SIGNAL_RECEIVED=""
 
 _acfs_signal_handler() {
     _ACFS_SIGNAL_RECEIVED="$1"
+    # A streamed verifier waits on the archive-attested installer. Forward a
+    # direct signal to that child and wait for it to stop before EXIT cleanup
+    # removes the source tree from underneath it.
+    if [[ "${ACFS_BOOTSTRAP_CHILD_PID:-}" =~ ^[0-9]+$ ]] \
+        && kill -0 "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null; then
+        kill -s "$1" "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true
+        wait "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true
+        ACFS_BOOTSTRAP_CHILD_PID=""
+    fi
     # Exit with 128+signum (standard convention) to trigger the EXIT trap.
     case "$1" in
         TERM) exit 143 ;;
@@ -2080,7 +2090,7 @@ acfs_select_bootstrap_archive_file() {
     fi
     if [[ -L "$BOOTSTRAP_ARCHIVE_PATH" ]] \
         || [[ ! -f "$BOOTSTRAP_ARCHIVE_PATH" ]] \
-        || [[ ! "$BOOTSTRAP_ARCHIVE_PATH" -ef "/dev/fd/$BOOTSTRAP_ARCHIVE_FD" ]]; then
+        || { [[ -L "/dev/fd/$BOOTSTRAP_ARCHIVE_FD" ]] && [[ ! "$BOOTSTRAP_ARCHIVE_PATH" -ef "/dev/fd/$BOOTSTRAP_ARCHIVE_FD" ]]; }; then
         exec {BOOTSTRAP_ARCHIVE_FD}<&-
         BOOTSTRAP_ARCHIVE_FD=""
         log_fatal "$flag archive changed while it was being selected: $value"
@@ -2105,6 +2115,25 @@ acfs_normalize_offline_pack_configuration() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
+            --help|-h)
+                cat <<'EOF'
+ACFS - Agentic Coding Flywheel Setup Installer
+
+Usage:
+  curl -fsSL https://flywheel.agenticcoding.org/install.sh | bash -s -- [options]
+  bash install.sh [options]
+
+Options:
+  --yes, -y               Non-interactive mode (accept defaults)
+  --mode <vibe|safe>      Install profile (default: vibe)
+  --dry-run               Preview changes without applying
+  --print                 Print script without running
+  --resume                Resume interrupted installation
+  --force-reinstall       Force reinstall of all modules
+  --help, -h              Show this help message
+EOF
+                exit 0
+                ;;
             --yes|-y)
                 YES_MODE=true
                 shift
@@ -2327,7 +2356,7 @@ parse_args() {
             --webhook|--webhook=*)
                 # Webhook URL for install completion notification (bd-2zqr)
                 if [[ "$1" == "--webhook" ]]; then
-                    if [[ -z "${2:-}" ]]; then
+                    if [[ -z "${2:-}" || "$2" == -* ]]; then
                         log_fatal "--webhook requires a URL (e.g., --webhook https://hooks.slack.com/...)"
                     fi
                     export ACFS_WEBHOOK_URL="$2"
@@ -2335,6 +2364,9 @@ parse_args() {
                 else
                     # Handle --webhook=https://... format
                     export ACFS_WEBHOOK_URL="${1#*=}"
+                    if [[ -z "$ACFS_WEBHOOK_URL" ]]; then
+                        log_fatal "--webhook requires a URL (e.g., --webhook=https://hooks.slack.com/...)"
+                    fi
                     shift
                 fi
                 ;;
@@ -2993,7 +3025,7 @@ run_preflight_checks() {
         return 1
     fi
     if [[ -L "$preflight_script" ]] \
-        || [[ ! "$preflight_script" -ef "/dev/fd/$preflight_hash_fd" ]] \
+        || { [[ -L "/dev/fd/$preflight_hash_fd" ]] && [[ ! "$preflight_script" -ef "/dev/fd/$preflight_hash_fd" ]]; } \
         || [[ ! "/dev/fd/$preflight_hash_fd" -ef "/dev/fd/$preflight_exec_fd" ]]; then
         exec {preflight_hash_fd}<&-
         exec {preflight_exec_fd}<&-
@@ -3563,7 +3595,7 @@ acfs_verify_internal_checksums_data() {
         printf 'ERROR: Internal checksum ledger could not be bound\n' >&2
         return 1
     fi
-    if [[ ! "$ledger_path" -ef "/dev/fd/$ledger_parse_fd" ]] \
+    if { [[ -L "/dev/fd/$ledger_parse_fd" ]] && [[ ! "$ledger_path" -ef "/dev/fd/$ledger_parse_fd" ]]; } \
         || [[ ! "/dev/fd/$ledger_parse_fd" -ef "/dev/fd/$ledger_hash_fd" ]]; then
         exec {ledger_parse_fd}<&-
         exec {ledger_hash_fd}<&-
@@ -3959,8 +3991,27 @@ acfs_run_verified_bootstrap_installer() {
     child_args+=(--ref "$child_ref" --checksums-ref "$child_checksums_ref")
 
     log_detail "Handing execution to the verified archive installer"
+    local source_kind="remote"
+    local original_archive_path=""
+    if [[ "$source_is_local_archive" == "true" ]]; then
+        source_kind="local_archive"
+        original_archive_path="$BOOTSTRAP_ARCHIVE_PATH"
+    fi
+
+    local child_status=0
     ACFS_LOCAL_ARCHIVE_SOURCE="$source_is_local_archive" \
-        "$bash_bin" --noprofile --norc -p "$verified_installer" "${child_args[@]}"
+    ACFS_VERIFIED_BOOTSTRAP_SOURCE="$source_kind" \
+    ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="$original_archive_path" \
+        "$bash_bin" --noprofile --norc -p "$verified_installer" "${child_args[@]}" \
+        <&0 >&1 2>&2 &
+    ACFS_BOOTSTRAP_CHILD_PID=$!
+    if wait "$ACFS_BOOTSTRAP_CHILD_PID"; then
+        child_status=0
+    else
+        child_status=$?
+    fi
+    ACFS_BOOTSTRAP_CHILD_PID=""
+    return "$child_status"
 }
 
 _acfs_install_asset_has_symlink_component_under_prefix() {
@@ -10602,6 +10653,7 @@ main() {
         # from one immutable repository object. The outer process waits so its
         # process-minted cleanup authority remains responsible for the temp tree.
         local verified_child_status=0
+        ACFS_BOOTSTRAP_SUPERVISOR=true
         if acfs_run_verified_bootstrap_installer "$@"; then
             verified_child_status=0
         else
@@ -10648,15 +10700,17 @@ main() {
             _acfs_lock_fd=198
         fi
         if [[ -n "$_acfs_lock_fd" ]]; then
-            if ! flock -n "$_acfs_lock_fd"; then
-                # Another installer holds the lock. Rather than failing outright,
-                # attach to its live progress (and show how to watch it). (#301)
-                if acfs_attach_to_running_install "$_acfs_lock_file" "$_acfs_lock_dir/logs"; then
-                    # We followed the other installer to completion (interactive).
-                    exit 0
+            if command -v flock &>/dev/null; then
+                if ! flock -n "$_acfs_lock_fd"; then
+                    # Another installer holds the lock. Rather than failing outright,
+                    # attach to its live progress (and show how to watch it). (#301)
+                    if acfs_attach_to_running_install "$_acfs_lock_file" "$_acfs_lock_dir/logs"; then
+                        # We followed the other installer to completion (interactive).
+                        exit 0
+                    fi
+                    log_error "Wait for it to finish, then retry. Lock file: $_acfs_lock_file"
+                    exit 1
                 fi
-                log_error "Wait for it to finish, then retry. Lock file: $_acfs_lock_file"
-                exit 1
             fi
             acfs_remember_install_lock "$_acfs_lock_fd" "$_acfs_lock_file"
         else

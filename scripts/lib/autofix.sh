@@ -11,7 +11,9 @@ _ACFS_AUTOFIX_SOURCED=1
 # only through install.sh. Never let a root caller's PATH select the journal,
 # backup, or rollback utilities used below. Non-root callers retain their PATH
 # so target-user version-manager checks can still find user-installed tools.
-readonly AUTOFIX_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+if [[ -z "${AUTOFIX_PRIVILEGED_PATH:-}" ]]; then
+    readonly AUTOFIX_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+fi
 if [[ "$EUID" -eq 0 ]]; then
     export PATH="$AUTOFIX_PRIVILEGED_PATH"
 fi

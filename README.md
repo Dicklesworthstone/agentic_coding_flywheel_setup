@@ -3797,7 +3797,7 @@ This ensures the state file is never partially written, even if the process is k
 | Failure Type | Detection | Recovery |
 |--------------|-----------|----------|
 | Network timeout | curl exit code 28 | Retried on a fixed 0s/5s/15s schedule |
-| APT lock held | `apt-get` fails with a lock error | Step fails with a clear error; wait for unattended-upgrades to finish, then re-run (the install resumes) |
+| APT lock held | `apt-get` waits via `DPkg::Lock::Timeout=120` | Waits up to 120s for unattended-upgrades; on timeout the step fails and a re-run resumes the install |
 | Disk full | df check before write | Abort with clear error |
 | Out of memory | OOM killer | Resume picks up from last phase |
 | SSH disconnect | N/A (session dies) | Resume on reconnect |

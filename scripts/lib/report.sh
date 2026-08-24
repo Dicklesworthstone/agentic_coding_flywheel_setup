@@ -178,7 +178,7 @@ report_build_resume_command() {
 
     local install_url=""
     local install_url_q=""
-    local curl_cmd="curl -fsSL"
+    local curl_cmd="curl -q -fsSL"
     local local_install=""
     local resume_arg=""
     local resume_arg_q=""
@@ -187,7 +187,7 @@ report_build_resume_command() {
     local -a resume_args=(--resume)
 
     if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
-        curl_cmd="curl --proto '=https' --proto-redir '=https' -fsSL"
+        curl_cmd="curl -q --proto '=https' --proto-redir '=https' -fsSL"
     fi
 
     if [[ "${MODE:-vibe}" != "vibe" ]]; then
@@ -222,6 +222,10 @@ report_build_resume_command() {
     elif [[ "$resume_ref_pinned_from_commit" == "true" && -n "${ACFS_CHECKSUMS_REF:-}" && "$ACFS_CHECKSUMS_REF" != "main" ]]; then
         resume_args+=(--checksums-ref "$ACFS_CHECKSUMS_REF")
     fi
+    if [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == "local_archive" ]] \
+        && [[ -n "${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}" ]]; then
+        resume_args+=(--bootstrap-archive "$ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH")
+    fi
 
     # Keep this fallback in parity with install.sh's canonical resume builder.
     # Standalone report tests source this file without the installer, so guard
@@ -244,10 +248,17 @@ report_build_resume_command() {
     fi
     [[ "${NO_DEPS:-false}" == "true" ]] && resume_args+=(--no-deps)
 
-    if [[ -n "${SCRIPT_DIR:-}" ]]; then
+    local logical_streamed=false
+    if [[ -z "${SCRIPT_DIR:-}" ]] \
+        || [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == "remote" ]] \
+        || [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == "local_archive" ]]; then
+        logical_streamed=true
+    fi
+
+    if [[ "$logical_streamed" != "true" ]]; then
         local_install="${SCRIPT_DIR%/}/install.sh"
         printf -v local_install '%q' "$local_install"
-        resume_cmd="bash $local_install"
+        resume_cmd="bash -p $local_install"
     else
         if [[ -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
             install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_COMMIT_SHA_FULL}/install.sh"
@@ -259,7 +270,7 @@ report_build_resume_command() {
             install_url="https://acfs.sh"
         fi
         printf -v install_url_q '%q' "$install_url"
-        resume_cmd="${curl_cmd} ${install_url_q} | bash -s --"
+        resume_cmd="${curl_cmd} ${install_url_q} | bash -p -s --"
     fi
 
     for resume_arg in "${resume_args[@]}"; do

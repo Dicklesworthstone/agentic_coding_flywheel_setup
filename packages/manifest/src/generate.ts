@@ -52,6 +52,7 @@ const MANIFEST_PATH = join(PROJECT_ROOT, 'acfs.manifest.yaml');
 const OUTPUT_DIR = join(PROJECT_ROOT, 'scripts/generated');
 const WEB_OUTPUT_DIR = join(PROJECT_ROOT, 'apps/web/lib/generated');
 const CHECKSUMS_PATH = join(PROJECT_ROOT, 'checksums.yaml');
+const VERSION_PATH = join(PROJECT_ROOT, 'VERSION');
 
 export function findUnexpectedGeneratedPaths(
   expectedPaths: Iterable<string>,
@@ -63,15 +64,18 @@ export function findUnexpectedGeneratedPaths(
     .sort();
 }
 
-function readRegularFileNoFollow(path: string, label: string): Buffer {
+function inspectRegularFileNoFollow(
+  path: string,
+  label: string,
+): { content: Buffer; mode: number } {
   let fd: number | undefined;
   try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.nlink !== 1) {
       throw new Error(`${label} is not a single-link regular file: ${path}`);
     }
-    return readFileSync(fd);
+    return { content: readFileSync(fd), mode: stat.mode & 0o777 };
   } catch (error) {
     if (error instanceof Error && error.message.startsWith(`${label} is not`)) {
       throw error;
@@ -80,6 +84,10 @@ function readRegularFileNoFollow(path: string, label: string): Buffer {
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
+}
+
+function readRegularFileNoFollow(path: string, label: string): Buffer {
+  return inspectRegularFileNoFollow(path, label).content;
 }
 
 function assertSafeGeneratedDirectory(directory: string): void {
@@ -1178,14 +1186,13 @@ function assertInputSnapshotUnchanged(path: string, snapshot: Buffer, label: str
   }
 }
 
-function readProjectVersion(): string {
-  const versionPath = join(PROJECT_ROOT, 'VERSION');
-  if (!existsSync(versionPath)) {
-    return '0.0.0-dev';
+function readProjectVersion(): { value: string; snapshot: Buffer } {
+  const snapshot = readRegularFileNoFollow(VERSION_PATH, 'VERSION');
+  const value = snapshot.toString('utf-8').trim();
+  if (!value) {
+    throw new Error('VERSION must contain a non-empty version');
   }
-
-  const version = readRegularFileNoFollow(versionPath, 'VERSION').toString('utf-8').trim();
-  return version || '0.0.0-dev';
+  return { value, snapshot };
 }
 
 function sortModulesByPhaseAndDependency(manifest: Manifest): Module[] {
@@ -1944,7 +1951,8 @@ function generateManifestIndex(manifest: Manifest, manifestSha256: string): stri
  * Computes SHA256 for critical internal scripts and emits a bash associative array.
  */
 function generateInternalChecksums(
-  generatedFiles: ReadonlyMap<string, { content: string; mode: number }>
+  generatedFiles: ReadonlyMap<string, { content: string; mode: number }>,
+  boundStaticSnapshots: ReadonlyMap<string, Buffer>,
 ): { content: string; staticSnapshots: ReadonlyMap<string, Buffer> } {
   const lines: string[] = [INTERNAL_CHECKSUMS_HEADER];
   const staticSnapshots = new Map<string, Buffer>();
@@ -1964,7 +1972,8 @@ function generateInternalChecksums(
       if (relPath.startsWith('scripts/generated/')) {
         throw new Error(`Generated checksum input was not produced in this run: ${relPath}`);
       }
-      content = readRegularFileNoFollow(absPath, `Internal checksum input ${relPath}`);
+      content = boundStaticSnapshots.get(absPath)
+        ?? readRegularFileNoFollow(absPath, `Internal checksum input ${relPath}`);
       staticSnapshots.set(absPath, content);
     }
     const hash = createHash('sha256').update(content).digest('hex');
@@ -2952,6 +2961,12 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  const projectVersion = readProjectVersion();
+  const boundStaticSnapshots = new Map<string, Buffer>([
+    [MANIFEST_PATH, manifestBytes],
+    [CHECKSUMS_PATH, checksumsBytes],
+  ]);
+
   // Build map of all files we would generate
   const filesToGenerate: Map<string, { content: string; mode: number }> = new Map();
 
@@ -2988,7 +3003,7 @@ async function main(): Promise<void> {
   let internalChecksumSnapshots: ReadonlyMap<string, Buffer> = new Map();
   {
     const filepath = join(OUTPUT_DIR, 'internal_checksums.sh');
-    const generated = generateInternalChecksums(filesToGenerate);
+    const generated = generateInternalChecksums(filesToGenerate, boundStaticSnapshots);
     internalChecksumSnapshots = generated.staticSnapshots;
     filesToGenerate.set(filepath, { content: generated.content, mode: 0o644 });
   }
@@ -2999,7 +3014,7 @@ async function main(): Promise<void> {
     filesToGenerate.set(modulesPath, {
       content: generateWebModules(
         manifest,
-        readProjectVersion(),
+        projectVersion.value,
         manifestSha256,
         computeContentSha256(checksumsBytes),
       ),
@@ -3022,11 +3037,33 @@ async function main(): Promise<void> {
     filesToGenerate.set(indexPath, { content: generateWebIndex(), mode: 0o644 });
   }
 
-  assertInputSnapshotUnchanged(MANIFEST_PATH, manifestBytes, 'Manifest');
-  assertInputSnapshotUnchanged(CHECKSUMS_PATH, checksumsBytes, 'Verified installer checksums');
-  for (const [path, snapshot] of internalChecksumSnapshots) {
-    assertInputSnapshotUnchanged(path, snapshot, `Internal checksum input ${relative(PROJECT_ROOT, path)}`);
+  const allInputSnapshots = new Map<string, Buffer>(internalChecksumSnapshots);
+  allInputSnapshots.set(MANIFEST_PATH, manifestBytes);
+  allInputSnapshots.set(CHECKSUMS_PATH, checksumsBytes);
+  allInputSnapshots.set(VERSION_PATH, projectVersion.snapshot);
+  const assertAllInputSnapshotsUnchanged = (): void => {
+    for (const [path, snapshot] of allInputSnapshots) {
+      const label = path === MANIFEST_PATH
+        ? 'Manifest'
+        : path === CHECKSUMS_PATH
+          ? 'Verified installer checksums'
+          : path === VERSION_PATH
+            ? 'VERSION'
+            : `Internal checksum input ${relative(PROJECT_ROOT, path)}`;
+      assertInputSnapshotUnchanged(path, snapshot, label);
+    }
+  };
+  assertAllInputSnapshotsUnchanged();
+
+  for (const directory of [OUTPUT_DIR, WEB_OUTPUT_DIR]) {
+    if (existsSync(directory)) assertSafeGeneratedDirectory(directory);
   }
+  const actualPaths = [OUTPUT_DIR, WEB_OUTPUT_DIR].flatMap((directory) =>
+    existsSync(directory)
+      ? readdirSync(directory).map((name) => join(directory, name))
+      : []
+  );
+  const stalePaths = findUnexpectedGeneratedPaths(filesToGenerate.keys(), actualPaths);
 
   // --diff mode: compare against existing files
   if (diffMode) {
@@ -3034,13 +3071,24 @@ async function main(): Promise<void> {
     console.log('Comparing generated content against existing files...');
     console.log('');
 
-    for (const [filepath, { content }] of filesToGenerate) {
+    for (const [filepath, { content, mode }] of filesToGenerate) {
       const filename = filepath.startsWith(WEB_OUTPUT_DIR)
         ? 'web/' + filepath.replace(WEB_OUTPUT_DIR + '/', '')
         : filepath.replace(OUTPUT_DIR + '/', '');
       if (existsSync(filepath)) {
-        const existing = readFileSync(filepath, 'utf-8');
-        if (existing !== content) {
+        let existing: string | undefined;
+        let actualMode: number | undefined;
+        try {
+          const inspected = inspectRegularFileNoFollow(filepath, `Generated output ${filename}`);
+          existing = inspected.content.toString('utf-8');
+          actualMode = inspected.mode;
+        } catch (error) {
+          hasDiff = true;
+          console.log(`[DIFF] ${filename} (unsafe output type)`);
+          if (verbose) console.log(`       ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        }
+        if (existing !== content || (process.platform !== 'win32' && actualMode !== mode)) {
           hasDiff = true;
           console.log(`[DIFF] ${filename}`);
           if (verbose) {
@@ -3048,6 +3096,11 @@ async function main(): Promise<void> {
             const existingLines = existing.split('\n').length;
             const newLines = content.split('\n').length;
             console.log(`       Existing: ${existingLines} lines, Generated: ${newLines} lines`);
+            if (process.platform !== 'win32' && actualMode !== mode) {
+              console.log(
+                `       Mode: ${actualMode?.toString(8) ?? 'unknown'} (expected ${mode.toString(8)})`
+              );
+            }
           }
         } else {
           console.log(`[OK]   ${filename}`);
@@ -3058,19 +3111,12 @@ async function main(): Promise<void> {
       }
     }
 
-    const actualPaths = [OUTPUT_DIR, WEB_OUTPUT_DIR].flatMap((directory) =>
-      existsSync(directory)
-        ? readdirSync(directory).map((name) => join(directory, name))
-        : []
-    );
-    for (const stalePath of findUnexpectedGeneratedPaths(
-      filesToGenerate.keys(),
-      actualPaths,
-    )) {
+    for (const stalePath of stalePaths) {
       hasDiff = true;
       console.log(`[STALE] ${relative(PROJECT_ROOT, stalePath)}`);
     }
 
+    assertAllInputSnapshotsUnchanged();
     console.log('');
     if (hasDiff) {
       console.log('Generated files would change. Run without --diff to update.');
@@ -3094,9 +3140,18 @@ async function main(): Promise<void> {
         console.log('---');
       }
     }
+    assertAllInputSnapshotsUnchanged();
     console.log('');
     console.log('Dry run complete. No files written.');
     process.exit(0);
+  }
+
+  if (stalePaths.length > 0) {
+    throw new Error(
+      `Refusing generation while stale artifacts require explicit removal approval: ${stalePaths
+        .map((path) => relative(PROJECT_ROOT, path))
+        .join(', ')}`
+    );
   }
 
   // Normal generation mode: write all files
@@ -3116,6 +3171,7 @@ async function main(): Promise<void> {
     console.log(`Generated: ${filename}`);
     generatedFiles.push(filepath);
   }
+  assertAllInputSnapshotsUnchanged();
 
   console.log('');
   console.log(`Generated ${generatedFiles.length} files (${OUTPUT_DIR} + ${WEB_OUTPUT_DIR})`);

@@ -171,8 +171,40 @@ INTERNAL_CHECKSUM_REQUIRED_PATHS=(
     scripts/generated/install_acfs.sh
 )
 
-if $JSON_MODE && ! command -v jq &>/dev/null; then
-    log_error "jq is required for --json output"
+# Closed publication set. Auto-fix may stage and commit only these exact files;
+# matching extensions or directory-wide pathspecs are not an authority boundary.
+GENERATED_OUTPUT_PATHS=(
+    scripts/generated/doctor_checks.sh
+    scripts/generated/install_acfs.sh
+    scripts/generated/install_agents.sh
+    scripts/generated/install_all.sh
+    scripts/generated/install_base.sh
+    scripts/generated/install_cli.sh
+    scripts/generated/install_cloud.sh
+    scripts/generated/install_db.sh
+    scripts/generated/install_filesystem.sh
+    scripts/generated/install_lang.sh
+    scripts/generated/install_network.sh
+    scripts/generated/install_shell.sh
+    scripts/generated/install_stack.sh
+    scripts/generated/install_tools.sh
+    scripts/generated/install_users.sh
+    scripts/generated/internal_checksums.sh
+    scripts/generated/manifest_index.sh
+    apps/web/lib/generated/manifest-commands.ts
+    apps/web/lib/generated/manifest-lessons-index.ts
+    apps/web/lib/generated/manifest-modules.ts
+    apps/web/lib/generated/manifest-tldr.ts
+    apps/web/lib/generated/manifest-tools.ts
+    apps/web/lib/generated/manifest-web-index.ts
+)
+
+if ! command -v jq &>/dev/null; then
+    log_error "jq is required for structured manifest/config validation"
+    exit 3
+fi
+if ! command -v bun &>/dev/null; then
+    log_error "bun is required; generated-artifact and semantic drift checks cannot be skipped"
     exit 3
 fi
 
@@ -295,13 +327,13 @@ extract_repo_mcp_config_url() {
 
     case "$rel_path" in
         .claude/settings.local.json|cline.mcp.json|cursor.mcp.json|windsurf.mcp.json)
-            jq -r '.mcpServers["mcp-agent-mail"].url // empty' "$abs_path" 2>/dev/null || true
+            jq -er '.mcpServers["mcp-agent-mail"].url // empty' "$abs_path" 2>/dev/null
             ;;
         gemini.mcp.json)
-            jq -r '.mcpServers["mcp-agent-mail"].httpUrl // .mcpServers["mcp-agent-mail"].url // empty' "$abs_path" 2>/dev/null || true
+            jq -er '.mcpServers["mcp-agent-mail"].httpUrl // .mcpServers["mcp-agent-mail"].url // empty' "$abs_path" 2>/dev/null
             ;;
         opencode.json)
-            jq -r '.mcp["mcp-agent-mail"].url // empty' "$abs_path" 2>/dev/null || true
+            jq -er '.mcp["mcp-agent-mail"].url // empty' "$abs_path" 2>/dev/null
             ;;
         *)
             return 1
@@ -331,11 +363,6 @@ check_generated_artifact_drift() {
     GENERATED_ARTIFACT_DRIFT_COUNT=0
     GENERATED_ARTIFACT_STALE_FILES=()
     GENERATED_ARTIFACT_STALE_COUNT=0
-
-    if ! command -v bun &>/dev/null; then
-        log "Warning: bun not found; skipping generate:diff validation"
-        return 0
-    fi
 
     set +e
     diff_output="$(
@@ -403,11 +430,6 @@ check_manifest_contract_drift() {
     MANIFEST_CONTRACT_DRIFT_COUNT=0
     MANIFEST_CONTRACT_CHECKED=0
 
-    if ! command -v bun &>/dev/null; then
-        log "Warning: bun not found; skipping manifest drift contract validation"
-        return 0
-    fi
-
     set +e
     contract_output="$(
         cd "$REPO_ROOT/packages/manifest" &&
@@ -474,31 +496,32 @@ check_repo_mcp_config_drift() {
     for rel_path in "${REPO_MCP_CONFIG_FILES[@]}"; do
         abs_path="$REPO_ROOT/$rel_path"
 
-        if [[ ! -f "$abs_path" ]]; then
+        if [[ ! -f "$abs_path" || -L "$abs_path" ]]; then
+            REPO_MCP_CONFIG_DRIFT_COUNT=$((REPO_MCP_CONFIG_DRIFT_COUNT + 1))
+            REPO_MCP_CONFIG_DRIFT_FILES+=("$rel_path")
+            if [[ "$record_drift" == "true" ]]; then
+                DRIFT_DETECTED=true
+                DRIFT_REASONS+=("Repo MCP config missing or unsafe: $rel_path")
+            fi
             continue
         fi
 
         REPO_MCP_CONFIGS_CHECKED=$((REPO_MCP_CONFIGS_CHECKED + 1))
-        configured_url="$(extract_repo_mcp_config_url "$rel_path" "$abs_path" || true)"
-        if [[ -n "$configured_url" ]]; then
-            if [[ "$configured_url" == "$EXPECTED_AGENT_MAIL_MCP_URL" ]]; then
-                continue
-            fi
+        if ! configured_url="$(extract_repo_mcp_config_url "$rel_path" "$abs_path")"; then
             REPO_MCP_CONFIG_DRIFT_COUNT=$((REPO_MCP_CONFIG_DRIFT_COUNT + 1))
             REPO_MCP_CONFIG_DRIFT_FILES+=("$rel_path")
             if [[ "$record_drift" == "true" ]]; then
                 DRIFT_DETECTED=true
-                DRIFT_REASONS+=("Repo MCP config drift: $rel_path uses $configured_url (expected $EXPECTED_AGENT_MAIL_MCP_URL)")
+                DRIFT_REASONS+=("Repo MCP config malformed or unreadable: $rel_path")
             fi
             continue
         fi
-
-        if ! grep -Fq "$EXPECTED_AGENT_MAIL_MCP_URL" "$abs_path"; then
+        if [[ "$configured_url" != "$EXPECTED_AGENT_MAIL_MCP_URL" ]]; then
             REPO_MCP_CONFIG_DRIFT_COUNT=$((REPO_MCP_CONFIG_DRIFT_COUNT + 1))
             REPO_MCP_CONFIG_DRIFT_FILES+=("$rel_path")
             if [[ "$record_drift" == "true" ]]; then
                 DRIFT_DETECTED=true
-                DRIFT_REASONS+=("Repo MCP config drift: $rel_path should contain $EXPECTED_AGENT_MAIL_MCP_URL")
+                DRIFT_REASONS+=("Repo MCP config drift: $rel_path uses ${configured_url:-<missing>} (expected $EXPECTED_AGENT_MAIL_MCP_URL)")
             fi
         fi
     done
@@ -745,16 +768,12 @@ fi
 # Auto-fix: regenerate, commit, push
 log "Auto-fixing manifest drift..."
 
-# Check prerequisites for fix
-if ! command -v bun &>/dev/null; then
-    log_error "bun not found - cannot regenerate"
-    exit 2
-fi
-
 generation_dirty_sources() {
-    cd "$REPO_ROOT"
-    git status --porcelain -- \
+    local status_output=""
+    cd "$REPO_ROOT" || return 1
+    if ! status_output="$(git status --porcelain -- \
         install.sh \
+        VERSION \
         scripts/preflight.sh \
         scripts/lib \
         scripts/acfs-global \
@@ -765,8 +784,13 @@ generation_dirty_sources() {
         README.md \
         acfs/onboard/lessons \
         packages/onboard/onboard.sh \
-        packages/manifest 2>/dev/null \
-        | grep -v '^[?][?]' || true
+        packages/manifest 2>/dev/null)"; then
+        return 1
+    fi
+    while IFS= read -r status_line; do
+        [[ "$status_line" == '?? '* ]] && continue
+        [[ -n "$status_line" ]] && printf '%s\n' "$status_line"
+    done <<< "$status_output"
 }
 
 # Synchronize before deriving any artifact. Rebasing after verification could
@@ -777,6 +801,10 @@ if [[ "$current_branch" != "main" ]]; then
     log_error "--fix only runs on main (current: ${current_branch:-detached})"
     exit 2
 fi
+if ! git diff --cached --quiet; then
+    log_error "Refusing --fix with pre-existing staged changes; generated publication requires an isolated index"
+    exit 2
+fi
 
 # Refuse to fix if any tracked source file (anything contributing to
 # ACFS_INTERNAL_CHECKSUMS, verified-installer checksum validation, or the
@@ -785,7 +813,10 @@ fi
 # we'd push generated artifacts that don't match what's actually committed,
 # which is the failure mode that broke Pinned Ref Smoke and the offline
 # bootstrap installer tests on c55a89eb.
-DIRTY_SOURCES="$(generation_dirty_sources)"
+if ! DIRTY_SOURCES="$(generation_dirty_sources)"; then
+    log_error "Unable to inspect tracked generation sources"
+    exit 2
+fi
 if [[ -n "$DIRTY_SOURCES" ]]; then
     log_error "Refusing to auto-fix: tracked source files have uncommitted changes."
     log_error "Otherwise generated checksums would capture working-tree state and"
@@ -796,14 +827,21 @@ if [[ -n "$DIRTY_SOURCES" ]]; then
     done <<< "$DIRTY_SOURCES"
     exit 2
 fi
-
 if ! git pull --rebase origin main; then
     log_error "Pull --rebase failed before regeneration; no generated files were changed"
     exit 2
 fi
-DIRTY_SOURCES="$(generation_dirty_sources)"
+if ! DIRTY_SOURCES="$(generation_dirty_sources)"; then
+    log_error "Unable to inspect tracked generation sources after synchronization"
+    exit 2
+fi
 if [[ -n "$DIRTY_SOURCES" ]]; then
     log_error "Tracked generation sources changed while synchronizing; refusing to generate"
+    exit 2
+fi
+FIX_BASE_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
+if [[ ! "$FIX_BASE_HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+    log_error "Unable to pin HEAD after synchronization"
     exit 2
 fi
 
@@ -814,7 +852,10 @@ if ! bun run generate >&2; then
     exit 2
 fi
 
-DIRTY_SOURCES="$(generation_dirty_sources)"
+if ! DIRTY_SOURCES="$(generation_dirty_sources)"; then
+    log_error "Unable to inspect tracked generation sources after generation"
+    exit 2
+fi
 if [[ -n "$DIRTY_SOURCES" ]]; then
     log_error "Tracked generation sources changed during generation; refusing to commit artifacts"
     while IFS= read -r _line; do
@@ -900,29 +941,68 @@ fi
 # Commit and push
 cd "$REPO_ROOT"
 
-# Stage tracked generated files plus any *new* generator outputs, but never
-# stray untracked files (editor backups, half-written scratch) that other
-# agents may have left in these shared directories.
-git add -u scripts/generated/
-if [[ -d "$REPO_ROOT/apps/web/lib/generated" ]]; then
-    git add -u apps/web/lib/generated/
-fi
-while IFS= read -r new_generated; do
-    [[ -n "$new_generated" ]] || continue
-    case "$new_generated" in
-        scripts/generated/*.sh|apps/web/lib/generated/*.ts) git add -- "$new_generated" ;;
-        *) log "Skipping untracked non-generated file: $new_generated" ;;
-    esac
-done < <(git ls-files --others --exclude-standard -- scripts/generated apps/web/lib/generated 2>/dev/null)
+# Stage only the closed publication set, after proving every member is a real
+# file. This cannot stage deletions, nested surprises, or extension-matching
+# scratch files left by another process.
+for generated_path in "${GENERATED_OUTPUT_PATHS[@]}"; do
+    if [[ ! -f "$REPO_ROOT/$generated_path" || -L "$REPO_ROOT/$generated_path" ]]; then
+        log_error "Generated publication member is missing or unsafe: $generated_path"
+        exit 2
+    fi
+done
+git add -- "${GENERATED_OUTPUT_PATHS[@]}"
 
-if git diff --cached --quiet -- scripts/generated apps/web/lib/generated; then
+if git diff --cached --quiet -- "${GENERATED_OUTPUT_PATHS[@]}"; then
     log "No generated artifact changes after regeneration (already up to date)"
     exit 0
 fi
 
-DIRTY_SOURCES="$(generation_dirty_sources)"
+declare -A allowed_generated_paths=()
+for generated_path in "${GENERATED_OUTPUT_PATHS[@]}"; do
+    allowed_generated_paths["$generated_path"]=1
+done
+while IFS= read -r staged_path; do
+    [[ -n "$staged_path" ]] || continue
+    if [[ -z "${allowed_generated_paths[$staged_path]+present}" ]]; then
+        log_error "Unexpected staged path entered generated publication: $staged_path"
+        exit 2
+    fi
+done < <(git diff --cached --name-only)
+if [[ -n "$(git diff --cached --name-only --diff-filter=D -- "${GENERATED_OUTPUT_PATHS[@]}")" ]]; then
+    log_error "Refusing to commit a generated-file deletion"
+    exit 2
+fi
+
+if ! DIRTY_SOURCES="$(generation_dirty_sources)"; then
+    log_error "Unable to inspect tracked generation sources before commit"
+    exit 2
+fi
 if [[ -n "$DIRTY_SOURCES" ]]; then
     log_error "Tracked generation sources changed before commit; leaving generated files staged for inspection"
+    exit 2
+fi
+
+if [[ "$(git rev-parse HEAD 2>/dev/null || true)" != "$FIX_BASE_HEAD" ]]; then
+    log_error "HEAD changed during generated publication; refusing to commit"
+    exit 2
+fi
+if ! check_generated_artifact_drift false \
+    || [[ "$GENERATED_ARTIFACT_DRIFT_COUNT" -gt 0 ]]; then
+    log_error "Generated output changed between verification and staging"
+    exit 2
+fi
+if ! git diff --quiet -- "${GENERATED_OUTPUT_PATHS[@]}"; then
+    log_error "Generated worktree bytes changed after staging"
+    exit 2
+fi
+STAGED_GENERATED_FINGERPRINT="$(git ls-files -s -- "${GENERATED_OUTPUT_PATHS[@]}" | sha256sum | awk '{print $1}')"
+if [[ ! "$STAGED_GENERATED_FINGERPRINT" =~ ^[0-9a-f]{64}$ ]]; then
+    log_error "Unable to fingerprint staged generated objects"
+    exit 2
+fi
+if [[ "$(git rev-parse HEAD 2>/dev/null || true)" != "$FIX_BASE_HEAD" ]] \
+    || [[ "$(git ls-files -s -- "${GENERATED_OUTPUT_PATHS[@]}" | sha256sum | awk '{print $1}')" != "$STAGED_GENERATED_FINGERPRINT" ]]; then
+    log_error "HEAD or staged generated objects changed immediately before commit"
     exit 2
 fi
 
@@ -933,7 +1013,20 @@ Detected by check-manifest-drift.sh.
 Regenerated installer and web generated artifacts via `bun run generate`
 to sync ACFS_MANIFEST_SHA256 and internal checksums with source files.
 COMMIT_MSG
-)" -- scripts/generated apps/web/lib/generated
+)"
+
+while IFS= read -r committed_path; do
+    [[ -n "$committed_path" ]] || continue
+    if [[ -z "${allowed_generated_paths[$committed_path]+present}" ]]; then
+        log_error "Generated commit contains an unexpected path: $committed_path"
+        exit 2
+    fi
+done < <(git diff-tree --no-commit-id --name-only -r HEAD)
+if ! check_generated_artifact_drift false \
+    || [[ "$GENERATED_ARTIFACT_DRIFT_COUNT" -gt 0 ]]; then
+    log_error "Generated artifacts are not clean after commit; refusing to push"
+    exit 2
+fi
 
 # Push to main first, then mirror to master for legacy compatibility
 if ! git push origin HEAD:main; then
