@@ -1451,7 +1451,7 @@ $ acfs doctor
 ║   ✔ supabase 2.23.4                                           ║
 ║   ✔ vercel 41.7.6                                             ║
 ║                                                               ║
-║ Agent Flywheel Stack                                       ║
+║ Agent Flywheel Stack                                          ║
 ║   ✔ ntm 0.3.2                                                 ║
 ║   ✔ slb 0.2.1                                                 ║
 ║   ✔ ubs 0.1.8                                                 ║

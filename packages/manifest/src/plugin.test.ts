@@ -876,6 +876,29 @@ describe('validatePluginPackage', () => {
     }));
   });
 
+  test('rejects hostile array prototypes without invoking inherited methods', () => {
+    const plugin = validPlugin();
+    const modules = plugin.modules as unknown[];
+    let inheritedMethodInvoked = false;
+    const hostilePrototype = Object.create(Array.prototype) as Record<string, unknown>;
+    Object.defineProperty(hostilePrototype, 'map', {
+      value() {
+        inheritedMethodInvoked = true;
+        throw new Error('inherited array method must not execute');
+      },
+    });
+    Object.setPrototypeOf(modules, hostilePrototype);
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(inheritedMethodInvoked).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('standard JSON arrays'),
+    }));
+  });
+
   test('bounds direct object validation by JSON node count', () => {
     const plugin = validPlugin();
     plugin.extensions = {

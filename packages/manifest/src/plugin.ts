@@ -387,11 +387,12 @@ function inspectPluginInputStructure(
           candidate.path
         );
       }
-      if (!arrayValue) {
-        const prototype = Object.getPrototypeOf(candidate.value);
-        if (prototype !== Object.prototype && prototype !== null) {
-          return refuse('Plugin manifest must contain only plain JSON objects', candidate.path);
-        }
+      const prototype = Object.getPrototypeOf(candidate.value);
+      if (arrayValue && prototype !== Array.prototype) {
+        return refuse('Plugin manifest must contain only standard JSON arrays', candidate.path);
+      }
+      if (!arrayValue && prototype !== Object.prototype && prototype !== null) {
+        return refuse('Plugin manifest must contain only plain JSON objects', candidate.path);
       }
 
       const descriptors = Object.getOwnPropertyDescriptors(candidate.value);
