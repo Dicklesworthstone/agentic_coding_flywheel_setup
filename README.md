@@ -4448,11 +4448,12 @@ installers:
 The verification process:
 
 ```
-1. Download script to memory (not disk)
-2. Calculate SHA256 of downloaded bytes
-3. Compare against stored checksum
-4. If match: execute
-5. If mismatch: abort with warning
+1. Download into an installer-owned private temporary file
+2. Calculate SHA256 from those staged bytes
+3. Compare against the reviewed checksum metadata
+4. If it matches, copy the verified bytes into a read-only staging file
+5. Execute that exact staging file with a trusted Bash or sh binary
+6. If any step fails or the hash differs, refuse execution
 ```
 
 A mismatch could mean:

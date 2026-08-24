@@ -623,6 +623,57 @@ EOF
     assert_output "existing-native-sentinel"
 }
 
+@test "native conversion: malformed Claude index cannot publish the staged target" {
+    local test_home
+    test_home=$(create_temp_dir)
+    export HOME="$test_home"
+    export CLAUDE_HOME="$HOME/.claude"
+
+    local canonical
+    canonical=$(create_temp_file '{
+        "workspace": "/data/project",
+        "source_session_id": "source-id",
+        "messages": [{"role":"user","content":"hello","timestamp":"2026-03-03T01:00:00Z"}]
+    }')
+
+    local target_dir="$CLAUDE_HOME/projects/-data-project"
+    local target_file="$target_dir/fixed-id.jsonl"
+    mkdir -p "$target_dir"
+    printf '%s\n' '{malformed' > "$target_dir/sessions-index.json"
+
+    run write_native_claude_from_canonical "$canonical" "/data/project" "fixed-id" false
+    assert_failure
+    assert_output --partial "Failed to update Claude sessions-index"
+    [[ ! -e "$target_file" ]]
+}
+
+@test "native conversion: malformed Gemini logs cannot publish the staged target" {
+    local test_home
+    test_home=$(create_temp_dir)
+    export HOME="$test_home"
+    export GEMINI_HOME="$HOME/.gemini"
+
+    local canonical
+    canonical=$(create_temp_file '{
+        "workspace": "/data/project",
+        "source_session_id": "source-id",
+        "project_hash": "project-hash",
+        "messages": [{"role":"user","content":"hello","timestamp":"2026-03-03T01:00:00Z"}]
+    }')
+
+    local root_dir="$GEMINI_HOME/tmp/project"
+    mkdir -p "$root_dir"
+    printf '%s\n' '/data/project' > "$root_dir/.project_root"
+    printf '%s\n' '{malformed' > "$root_dir/logs.json"
+
+    run write_native_gemini_from_canonical "$canonical" "/data/project" "fixed-id" false
+    assert_failure
+    assert_output --partial "Refusing to replace malformed Gemini logs file"
+    if compgen -G "$root_dir/chats/session-*-fixed-id.json" >/dev/null; then
+        fail "Gemini target was published before logs metadata validated"
+    fi
+}
+
 @test "convert_session_native: preserves caller RETURN trap" {
     local test_home
     test_home=$(create_temp_dir)

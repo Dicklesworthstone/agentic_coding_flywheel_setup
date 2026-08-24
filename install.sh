@@ -4157,27 +4157,17 @@ acfs_run_verified_bootstrap_installer() {
         return 1
     fi
 
-    # The verified child runs in a new session and therefore cannot retain a
-    # controlling terminal. Normal curl|bash input is a pipe already; refuse a
-    # TTY-backed streamed invocation instead of silently breaking its prompts.
-    if [[ -t 0 ]]; then
-        log_error "Verified streamed bootstrap cannot preserve interactive terminal input"
-        log_error "Re-run with --yes through the documented curl pipeline, or use a local checkout"
-        return 1
-    fi
-
-    # Even with piped stdin, an ordinary curl invocation can still prompt via
-    # /dev/tty. setsid intentionally removes that controlling terminal, so only
-    # hand off install modes that are already guaranteed not to prompt.
-    if [[ "${YES_MODE:-false}" != "true" ]] \
-        && [[ "${DRY_RUN:-false}" != "true" ]] \
-        && [[ "${PRINT_MODE:-false}" != "true" ]] \
-        && [[ "${LIST_MODULES:-false}" != "true" ]] \
-        && [[ "${PRINT_PLAN_MODE:-false}" != "true" ]] \
-        && [[ "${RESET_STATE_ONLY:-false}" != "true" ]]; then
-        log_error "Verified streamed bootstrap requires --yes for an install run"
-        log_error "Use a local checkout when interactive prompts are required"
-        return 1
+    # A setsid child cannot use the caller's controlling terminal. Keep the
+    # documented prompt-capable curl flow in the existing session; non-prompting
+    # modes use the stronger process-group supervisor below.
+    local prompt_capable_handoff=true
+    if [[ "${YES_MODE:-false}" == "true" ]] \
+        || [[ "${DRY_RUN:-false}" == "true" ]] \
+        || [[ "${PRINT_MODE:-false}" == "true" ]] \
+        || [[ "${LIST_MODULES:-false}" == "true" ]] \
+        || [[ "${PRINT_PLAN_MODE:-false}" == "true" ]] \
+        || [[ "${RESET_STATE_ONLY:-false}" == "true" ]]; then
+        prompt_capable_handoff=false
     fi
 
     if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]] \
@@ -4254,6 +4244,26 @@ acfs_run_verified_bootstrap_installer() {
     if [[ "$source_is_local_archive" == "true" ]]; then
         source_kind="local_archive"
         original_archive_path="$BOOTSTRAP_ARCHIVE_PATH"
+    fi
+
+    if [[ "$prompt_capable_handoff" == "true" ]]; then
+        # A foreground child retains /dev/tty behavior and receives terminal
+        # signals naturally. Its descendant tree has no dedicated group that we
+        # can prove quiescent, so preserve the bounded verified tree on every
+        # exit instead of risking use-after-cleanup.
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        log_warn "Interactive verified handoff will preserve its bootstrap tree: $ACFS_BOOTSTRAP_DIR"
+        local interactive_child_status=0
+        if ACFS_LOCAL_ARCHIVE_SOURCE="$source_is_local_archive" \
+            ACFS_VERIFIED_BOOTSTRAP_SOURCE="$source_kind" \
+            ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="$original_archive_path" \
+            "$bash_bin" --noprofile --norc -p "$verified_installer" "${child_args[@]}" \
+            <&0 >&1 2>&2; then
+            interactive_child_status=0
+        else
+            interactive_child_status=$?
+        fi
+        return "$interactive_child_status"
     fi
 
     ACFS_BOOTSTRAP_PS_BIN="$ps_bin"
