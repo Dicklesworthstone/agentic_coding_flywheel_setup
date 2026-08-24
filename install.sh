@@ -48,28 +48,41 @@ set -euo pipefail
 # This installer uses bash 4+ features (associative arrays `declare -A`, etc.).
 # macOS ships bash 3.2 (2007) at /bin/bash, so `curl ... | bash` there would
 # otherwise die deep inside the script with a cryptic syntax error. Detect an
-# old interpreter early, re-exec under a newer bash if one is on PATH (e.g.
-# Homebrew's), and otherwise fail with an actionable message. Only bash 3.2-safe
-# syntax is permitted in this block.
+# old interpreter early, re-exec a local install.sh under a newer bash if one is
+# on PATH (e.g. Homebrew's), and otherwise fail with an actionable message. A
+# curl pipe has no reusable script path, so it must be restarted explicitly
+# with the newer interpreter. Only bash 3.2-safe syntax is permitted here.
 # ============================================================
-if [ -z "${ACFS_BASH_REEXEC:-}" ] && [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
-    for _acfs_newer_bash in \
-        /opt/homebrew/bin/bash \
-        /usr/local/bin/bash \
-        "$(command -v bash 2>/dev/null || true)"; do
-        if [ -n "$_acfs_newer_bash" ] && [ -x "$_acfs_newer_bash" ]; then
-            # Probe the candidate's major version without running bash 4 syntax.
-            _acfs_cand_major="$("$_acfs_newer_bash" -c 'echo "${BASH_VERSINFO:-0}"' 2>/dev/null || echo 0)"
-            if [ "${_acfs_cand_major:-0}" -ge 4 ] && [ "$_acfs_newer_bash" != "$BASH" ]; then
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || {
+    [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -lt 4 ]
+}; then
+    if [ -z "${ACFS_BASH_REEXEC:-}" ] && [ -r "$0" ]; then
+        case "$0" in
+            *.sh) _acfs_can_reexec=true ;;
+            *) _acfs_can_reexec=false ;;
+        esac
+    else
+        _acfs_can_reexec=false
+    fi
+    if [ "$_acfs_can_reexec" = true ]; then
+        for _acfs_newer_bash in \
+            /opt/homebrew/bin/bash \
+            /usr/local/bin/bash \
+            "$(command -v bash 2>/dev/null || true)"; do
+            if [ -n "$_acfs_newer_bash" ] && [ -x "$_acfs_newer_bash" ] \
+                && [ "$_acfs_newer_bash" != "${BASH:-}" ] \
+                && "$_acfs_newer_bash" -c '[ "${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 4 ]; }' 2>/dev/null; then
                 export ACFS_BASH_REEXEC=1
                 exec "$_acfs_newer_bash" "$0" "$@"
             fi
-        fi
-    done
+        done
+    fi
     printf '%s\n' "ERROR: ACFS requires bash 4.4+ (found ${BASH_VERSION:-unknown})." >&2
     printf '%s\n' "ACFS officially supports Ubuntu 22.04+; on macOS install a newer bash first:" >&2
     printf '%s\n' "    brew install bash" >&2
     printf '%s\n' "    PATH=\"/opt/homebrew/bin:\$PATH\" bash install.sh" >&2
+    printf '%s\n' "For a curl pipeline, pipe directly to the newer interpreter:" >&2
+    printf '%s\n' "    curl -fsSL <installer-url> | /opt/homebrew/bin/bash -s -- --yes --mode vibe" >&2
     exit 1
 fi
 
@@ -2862,13 +2875,8 @@ acfs_curl_with_retry() {
         max_attempts="${#ACFS_CURL_RETRY_DELAYS[@]}"
     fi
 
+    local retries=$((max_attempts - 1))
     for ((attempt=0; attempt<max_attempts; attempt++)); do
-        delay="${ACFS_CURL_RETRY_DELAYS[$attempt]}"
-        if (( attempt > 0 )); then
-            log_detail "Retry ${attempt}/${max_attempts} (waiting ${delay}s)..."
-            sleep "$delay"
-        fi
-
         # Capture response headers alongside the body so an HTTP failure can
         # be classified by STATUS rather than by curl's catch-all exit 22.
         local hdr_file=""
@@ -2886,36 +2894,41 @@ acfs_curl_with_retry() {
             return 0
         fi
 
+        local retryable=1
+        local server_delay=""
+        local http_status=""
         if acfs_is_retryable_curl_exit_code "$exit_code"; then
-            [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
-            continue
-        fi
-
-        if (( exit_code == 22 )) && [[ -n "$hdr_file" && -s "$hdr_file" ]]; then
-            local http_status=""
+            retryable=0
+        elif (( exit_code == 22 )) && [[ -n "$hdr_file" && -s "$hdr_file" ]]; then
             http_status="$(grep -oE '^HTTP/[0-9.]+ [0-9]{3}' "$hdr_file" 2>/dev/null \
                 | tail -1 | awk '{print $2}')" || http_status=""
             if [[ -n "$http_status" ]] && acfs_is_retryable_http_status "$http_status"; then
-                local server_delay=""
                 server_delay="$(acfs_retry_after_seconds "$hdr_file")"
-                rm -f "$hdr_file" 2>/dev/null
-                if [[ -n "$server_delay" ]]; then
-                    log_detail "HTTP ${http_status}; honouring Retry-After: ${server_delay}s"
-                    sleep "$server_delay"
-                else
-                    log_detail "HTTP ${http_status}; retrying with backoff"
-                fi
-                continue
+                retryable=0
             elif [[ -n "$http_status" ]]; then
                 log_detail "HTTP ${http_status} is not retryable"
             fi
         fi
 
         [[ -n "$hdr_file" ]] && rm -f "$hdr_file" 2>/dev/null
-        return "$exit_code"
+        if (( retryable != 0 )); then
+            return "$exit_code"
+        fi
+        if (( attempt + 1 >= max_attempts )); then
+            break
+        fi
+
+        delay="${ACFS_CURL_RETRY_DELAYS[$((attempt + 1))]}"
+        if [[ -n "$server_delay" ]]; then
+            delay="$server_delay"
+            log_detail "Retry $((attempt + 1))/${retries} after HTTP ${http_status} (honouring Retry-After: ${delay}s)..."
+        else
+            log_detail "Retry $((attempt + 1))/${retries} (waiting ${delay}s)..."
+        fi
+        sleep "$delay"
     done
 
-    return 1
+    return "$exit_code"
 }
 
 acfs_calculate_file_sha256() {
@@ -5251,8 +5264,14 @@ ensure_base_deps() {
         # confirmation, at the first real package install.
         local -a arch_base_missing=()
         local arch_base_pkg=""
+        local pacman_bin=""
+        pacman_bin="$(acfs_early_system_binary_path pacman 2>/dev/null || true)"
+        if [[ -z "$pacman_bin" ]]; then
+            log_error "pacman not found; cannot inspect Arch base dependencies"
+            return 1
+        fi
         for arch_base_pkg in curl git ca-certificates unzip tar xz jq base-devel sudo gnupg openssl pkgconf; do
-            if ! pacman -Qq "$arch_base_pkg" &>/dev/null && ! pacman -Qg "$arch_base_pkg" &>/dev/null; then
+            if ! "$pacman_bin" -Qq "$arch_base_pkg" &>/dev/null && ! "$pacman_bin" -Qg "$arch_base_pkg" &>/dev/null; then
                 arch_base_missing+=("$arch_base_pkg")
             fi
         done
