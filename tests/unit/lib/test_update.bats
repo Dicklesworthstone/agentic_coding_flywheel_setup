@@ -9003,11 +9003,13 @@ EOF
         export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
         export VERCEL_TOKEN="vercel-secret-sentinel"
         export SUPABASE_ACCESS_TOKEN="supabase-secret-sentinel"
+        export CLOUDFLARE_API_TOKEN="cloudflare-secret-sentinel"
         source "$SERVICES_SETUP_PATH"
 
         HAS_GUM=false
         SERVICE_STATUS[vercel]="installed"
         SERVICE_STATUS[supabase]="installed"
+        SERVICE_STATUS[wrangler]="installed"
         find_user_bin() { printf "/usr/bin/true\n"; }
         services_setup_system_binary_path() {
             [[ "$1" == "bash" ]] || return 1
@@ -9017,32 +9019,250 @@ EOF
         gum_error() { printf "error:%s\n" "$*" >&2; }
         gum_success() { :; }
         gum_confirm() { return 0; }
-        read() { :; }
+        read() { printf "unexpected read\n" >&2; return 99; }
         check_vercel_status() { SERVICE_STATUS[vercel]="configured"; }
         check_supabase_status() { SERVICE_STATUS[supabase]="configured"; }
         run_as_user() {
             local arg=""
             for arg in "$@"; do
                 case "$arg" in
-                    *vercel-secret-sentinel*|*supabase-secret-sentinel*)
+                    *vercel-secret-sentinel*|*supabase-secret-sentinel*|*cloudflare-secret-sentinel*)
                         printf "secret leaked in argv\n" >&2
                         return 91
                         ;;
                 esac
                 printf "arg=<%s>\n" "$arg"
             done
+            if [[ "${1:-}" == "/usr/bin/true" && "${2:-}" == "whoami" ]]; then
+                return 1
+            fi
         }
 
         setup_vercel
         setup_supabase
+        setup_wrangler
     '
 
     assert_success
     refute_output --partial "secret leaked in argv"
+    refute_output --partial "unexpected read"
     refute_output --partial "login --token"
+    refute_output --partial 'env CLOUDFLARE_API_TOKEN='
     assert_output --partial 'exec "$0" whoami'
     assert_output --partial 'arg=<login>'
     assert_output --partial 'arg=<--no-browser>'
+
+    run grep -F 'run_as_user env CLOUDFLARE_API_TOKEN=' "$services_setup"
+    assert_failure
+    run grep -F 'export CLOUDFLARE_API_TOKEN="$acfs_tok"' "$services_setup"
+    assert_success
+}
+
+@test "services setup maps standalone --yes to safe batch setup" {
+    local services_setup="$PROJECT_ROOT/scripts/services-setup.sh"
+
+    run env SERVICES_SETUP_PATH="$services_setup" bash -c '
+        source "$SERVICES_SETUP_PATH"
+        maybe_run_cli_action --yes
+        init_target_context() { :; }
+        check_all_status() { :; }
+        setup_all_unconfigured() { printf "batch-called\n"; }
+        run_cli_action
+        printf "action=%s noninteractive=%s\n" "$SERVICES_SETUP_ACTION" "$SERVICES_SETUP_NONINTERACTIVE"
+    '
+    assert_success
+    assert_output --partial "batch-called"
+    assert_output --partial "action=setup-all noninteractive=true"
+
+    run grep -F 'requires interactive OAuth; skipping in --yes mode' "$services_setup"
+    assert_success
+    run grep -F 'requires interactive device authentication; skipping in --yes mode' "$services_setup"
+    assert_success
+}
+
+@test "installer sudoers staging is argv-only and fail-closed on missing visudo" {
+    local installer="$PROJECT_ROOT/install.sh"
+    local helper=""
+
+    helper="$(sed -n '/^acfs_install_sudoers_dropin() {$/,/^}$/p' "$installer")"
+    [[ -n "$helper" ]] || fail "sudoers helper not found"
+    [[ "$helper" == *'acfs_early_system_binary_path visudo'* ]]
+    [[ "$helper" == *'/tmp/acfs-sudoers.XXXXXX'* ]]
+    [[ "$helper" == *'if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$install_bin" || -z "$rm_bin" || -z "$visudo_bin" ]]'* ]]
+    [[ "$helper" == *'"$visudo_bin" -c -f "$staged_file"'* ]]
+    [[ "$helper" == *'destination_name="${destination#/etc/sudoers.d/}"'* ]]
+    [[ "$helper" == *'"$destination_name" == *[!A-Za-z0-9._-]*'* ]]
+    [[ "$helper" != *'${TMPDIR'* ]]
+    [[ "$helper" != *'try_step_eval'* ]]
+
+    run grep -F 'acfs_install_sudoers_dropin' "$installer"
+    assert_success
+    run grep -F "printf '%s ALL=(ALL) NOPASSWD:ALL" "$installer"
+    assert_failure
+}
+
+@test "installer peer fixes preserve failure and trusted-path contracts" {
+    local installer="$PROJECT_ROOT/install.sh"
+    local base_block=""
+    local stack_block=""
+    local config_helper=""
+    local config_merge_helper=""
+
+    base_block="$(sed -n '/^ensure_base_deps() {$/,/^}$/p' "$installer")"
+    [[ "$base_block" == *'acfs_early_system_binary_path pacman'* ]]
+    [[ "$base_block" == *'"$pacman_bin" -Qq'* ]]
+    [[ "$base_block" != *'if ! pacman -Qq'* ]]
+
+    stack_block="$(sed -n '/^install_stack_phase() {$/,/^}$/p' "$installer")"
+    [[ "$stack_block" == *'if [[ "$stack_phase_rc" -ne 0 ]]'* ]]
+    [[ "$stack_block" == *'return "$stack_phase_rc"'* ]]
+
+    config_helper="$(sed -n '/^acfs_resolve_existing_config_write_path() {$/,/^}$/p' "$installer")"
+    [[ "$config_helper" == *'acfs_early_system_binary_path readlink'* ]]
+    [[ "$config_helper" == *'"$readlink_bin" -f -- "$path"'* ]]
+    config_merge_helper="$(sed -n '/^acfs_merge_existing_json_config_as_target() {$/,/^}$/p' "$installer")"
+    [[ "$config_merge_helper" == *'acfs_early_system_binary_path mktemp'* ]]
+    [[ "$config_merge_helper" == *'run_as_target "$mktemp_bin" "${write_path}.tmp.XXXXXX"'* ]]
+    [[ "$config_merge_helper" == *'run_as_target "$mv_bin" -f -- "$temp_path" "$write_path"'* ]]
+    [[ "$config_merge_helper" != *'.tmp.$$'* ]]
+    run grep -F 'readlink -f "$claude_settings_file" 2>/dev/null || printf' "$installer"
+    assert_failure
+    run grep -F 'tmp_settings="${claude_settings_write_path}.tmp.$$"' "$installer"
+    assert_failure
+}
+
+@test "installer enforces its documented Bash 4.4 minimum" {
+    local installer="$PROJECT_ROOT/install.sh"
+    local guard=""
+
+    guard="$(sed -n '/^# Bash version guard/,/^# Enable shell tracing/p' "$installer")"
+    [[ "$guard" == *'${BASH_VERSINFO[0]:-0}" -lt 4'* ]]
+    [[ "$guard" == *'${BASH_VERSINFO[1]:-0}" -lt 4'* ]]
+    [[ "$guard" == *'${BASH_VERSINFO[1]:-0}" -ge 4'* ]]
+    [[ "$guard" == *'*.sh) _acfs_can_reexec=true'* ]]
+    [[ "$guard" == *'pipe directly to the newer interpreter'* ]]
+    [[ "$guard" != *'_acfs_cand_major'* ]]
+}
+
+@test "installer retry loops sleep once between attempts and never after exhaustion" {
+    local installer_retry=""
+    local security_retry=""
+    local retry_body=""
+
+    installer_retry="$(sed -n '/^acfs_curl_with_retry() {$/,/^}$/p' "$PROJECT_ROOT/install.sh")"
+    security_retry="$(sed -n '/^acfs_download_to_file() {$/,/^}$/p' "$PROJECT_ROOT/scripts/lib/security.sh")"
+
+    for retry_body in "$installer_retry" "$security_retry"; do
+        [[ "$retry_body" == *'if (( attempt + 1 >= max_attempts ))'* ]]
+        [[ "$retry_body" == *'delay="${ACFS_CURL_RETRY_DELAYS[$((attempt + 1))]}"'* ]]
+        [[ "$retry_body" == *'delay="$server_delay"'* ]]
+        [[ "$(grep -c 'sleep "\$delay"' <<< "$retry_body")" -eq 1 ]]
+        [[ "$retry_body" != *'sleep "$server_delay"'* ]]
+    done
+    [[ "$installer_retry" == *'return "$exit_code"'* ]]
+    [[ "$security_retry" == *'return "$status"'* ]]
+}
+
+@test "support redaction and generated-file staging fail closed portably" {
+    local support="$PROJECT_ROOT/scripts/lib/support.sh"
+    local private_key_redactor=""
+    local bundle_redactor=""
+    local hook="$PROJECT_ROOT/scripts/hooks/pre-commit"
+
+    private_key_redactor="$(sed -n '/^redact_private_key_blocks() {$/,/^}$/p' "$support")"
+    bundle_redactor="$(sed -n '/^redact_bundle() {$/,/^}$/p' "$support")"
+    [[ "$private_key_redactor" == *'mktemp "${file}.redacted.XXXXXX") || return 1'* ]]
+    [[ "$private_key_redactor" == *'return 1'* ]]
+    [[ "$private_key_redactor" != *'|| return 0'* ]]
+    [[ "$bundle_redactor" == *'if ! redact_file "$file"'* ]]
+    run grep -F 'if ! redact_bundle "$bundle_dir"' "$support"
+    assert_success
+    run grep -F "before_hash=\$(md5sum \"\$file\" 2>/dev/null | awk '{print \$1}') || return 0" "$support"
+    assert_failure
+
+    run grep -F 'xargs -r' "$hook"
+    assert_failure
+    run grep -F 'while IFS= read -r generated_file' "$hook"
+    assert_success
+}
+
+@test "preflight buffers TOON output before falling back to JSON" {
+    local preflight="$PROJECT_ROOT/scripts/preflight.sh"
+
+    run grep -F 'local toon_output=""' "$preflight"
+    assert_success
+    run grep -F "if toon_output=\"\$(printf '%s\\n' \"\$toon_json\" | tru --encode)\"; then" "$preflight"
+    assert_success
+    run grep -F "printf '%s\\n' \"\$toon_output\"" "$preflight"
+    assert_success
+    run grep -F "printf '%s\\n' \"\$toon_json\"" "$preflight"
+    assert_success
+    run grep -F 'emit_json_summary | tru --encode' "$preflight"
+    assert_failure
+    run grep -F 'tru --encode || printf' "$preflight"
+    assert_failure
+}
+
+@test "password setup hides secrets without hiding chpasswd diagnostics" {
+    local installer_block=""
+    local user_block=""
+
+    installer_block="$(sed -n '/local chpasswd_xtrace_was_on=0/,+8p' "$PROJECT_ROOT/install.sh")"
+    user_block="$(sed -n '/local chpasswd_xtrace_was_on=0/,+8p' "$PROJECT_ROOT/scripts/lib/user.sh")"
+
+    for password_block in "$installer_block" "$user_block"; do
+        [[ "$password_block" == *'set +x'* ]]
+        [[ "$password_block" == *'chpasswd || chpasswd_rc=$?'* ]]
+        [[ "$password_block" == *'[[ "$chpasswd_rc" -eq 0 ]]'* ]]
+        [[ "$password_block" != *'} 2>/dev/null'* ]]
+    done
+}
+
+@test "verified installer staging rejects shared non-sticky directories fail-closed" {
+    local update="$PROJECT_ROOT/scripts/lib/update.sh"
+    local helper=""
+
+    helper="$(sed -n '/^update_create_target_readable_temp_file() {$/,/^}$/p' "$update")"
+    [[ "$helper" == *'-z "$stat_bin"'* ]]
+    [[ "$helper" == *"-c '%a'"* ]]
+    [[ "$helper" == *'dir_mode_value=$((8#$dir_mode))'* ]]
+    [[ "$helper" == *'(dir_mode_value & 0022) != 0'* ]]
+    [[ "$helper" == *'! -k "$tmpdir_candidate"'* ]]
+    [[ "$helper" != *"-c '%A'"* ]]
+}
+
+@test "services setup recognizes quoted and chained DCG command tokens" {
+    local services_setup="$PROJECT_ROOT/scripts/services-setup.sh"
+    local regex=""
+
+    regex="$(sed -n "s/^[[:space:]]*local dcg_command_pattern='\\(.*\\)'$/\\1/p" "$services_setup" | head -n 1)"
+    [[ -n "$regex" ]] || fail "DCG command regex not found"
+    run jq -n \
+        --arg re "$regex" \
+        --arg bare 'dcg test "$CLAUDE_TOOL_INPUT"' \
+        --arg quoted '"/home/acfs/.local/bin/dcg" test' \
+        --arg chained 'prepare && dcg; finish' \
+        --arg unrelated '/home/acfs/bin/dcg_notify.sh' \
+        '$bare | test($re) and ($quoted | test($re)) and ($chained | test($re)) and (($unrelated | test($re)) | not)'
+    assert_success
+    assert_output "true"
+}
+
+@test "agy atomic writes preserve config symlinks and mode before replace" {
+    local launcher="$PROJECT_ROOT/scripts/lib/agy_locked.py"
+    local writer=""
+
+    writer="$(sed -n '/^def write_text_if_changed(path, value, mode=None):$/,/^def write_json_if_changed/p' "$launcher")"
+    [[ "$writer" == *'if path.is_symlink():'* ]]
+    [[ "$writer" == *'path = path.resolve(strict=True)'* ]]
+    [[ "$writer" == *'except (OSError, RuntimeError) as exc:'* ]]
+    [[ "$writer" == *'tempfile.NamedTemporaryFile('* ]]
+    [[ "$writer" == *'dir=path.parent'* ]]
+    [[ "$writer" == *'delete=False'* ]]
+    [[ "$writer" == *'os.fsync(tmp_file.fileno())'* ]]
+    [[ "$writer" == *'os.fchmod(tmp_file.fileno(), mode)'* ]]
+    [[ "$writer" == *'os.replace(tmp_path, path)'* ]]
+    [[ "$writer" == *'tmp_path.unlink()'* ]]
 }
 
 @test "acfs services start propagates an unhealthy existing session" {
@@ -9059,6 +9279,36 @@ EOF
     ' _ "$services"
     assert_failure 23
     assert_output --partial "checking actual service health"
+}
+
+@test "acfs services reuses an external owner without requiring am or failing stop" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _initialize_bins() {
+            _AM_BIN=""
+            _CM_BIN="/usr/bin/true"
+            _CASS_BIN="/usr/bin/true"
+            _CURL_BIN="/usr/bin/true"
+        }
+        _require_tmux() { :; }
+        _session_exists() { return 1; }
+        _agent_mail_is_healthy() { return 0; }
+        _native_agent_mail_unit_available() { return 1; }
+        _native_agent_mail_is_active() { return 1; }
+        _validate_http_endpoints() { :; }
+        _DRY_RUN=true
+        cmd_start || exit $?
+        _DRY_RUN=false
+        cmd_stop
+    ' _ "$services"
+
+    assert_success
+    refute_output --partial "Missing binary: am"
+    assert_output --partial "Would reuse or start Agent Mail"
+    assert_output --partial "it was left untouched"
 }
 
 @test "acfs services socket probe includes the requested host" {
