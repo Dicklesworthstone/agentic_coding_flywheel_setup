@@ -27,10 +27,19 @@ if git diff --cached --name-only | grep -qE '^(acfs\.manifest\.yaml|packages/man
         exit 1
     }
 
-    # Stage regenerated files
-    git add scripts/generated/
+    # Stage regenerated files (tracked only, plus new generator outputs; never
+    # stray untracked files another agent left in these shared directories)
+    git add -u scripts/generated/
+    while IFS= read -r generated_file; do
+        [[ "$generated_file" == scripts/generated/*.sh ]] || continue
+        git add -- "$generated_file"
+    done < <(git ls-files --others --exclude-standard -- scripts/generated 2>/dev/null)
     if [[ -d apps/web/lib/generated ]]; then
-        git add apps/web/lib/generated/
+        git add -u apps/web/lib/generated/
+        while IFS= read -r generated_file; do
+            [[ "$generated_file" == apps/web/lib/generated/*.ts ]] || continue
+            git add -- "$generated_file"
+        done < <(git ls-files --others --exclude-standard -- apps/web/lib/generated 2>/dev/null)
         echo "✅ Regenerated and staged scripts/generated/ and apps/web/lib/generated/"
     else
         echo "✅ Regenerated and staged scripts/generated/"

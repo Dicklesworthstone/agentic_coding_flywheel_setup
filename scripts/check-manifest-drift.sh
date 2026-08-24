@@ -684,10 +684,28 @@ fi
 # Commit and push
 cd "$REPO_ROOT"
 
-git add scripts/generated/
-if [[ -d "$REPO_ROOT/apps/web/lib/generated" ]]; then
-    git add apps/web/lib/generated/
+# --fix commits and pushes to main; refuse to do that from any other branch
+# (it used to push a feature branch or detached HEAD to origin/main).
+current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+if [[ "$current_branch" != "main" ]]; then
+    log_error "--fix only runs on main (current: ${current_branch:-detached}); regenerated files left unstaged"
+    exit 2
 fi
+
+# Stage tracked generated files plus any *new* generator outputs, but never
+# stray untracked files (editor backups, half-written scratch) that other
+# agents may have left in these shared directories.
+git add -u scripts/generated/
+if [[ -d "$REPO_ROOT/apps/web/lib/generated" ]]; then
+    git add -u apps/web/lib/generated/
+fi
+while IFS= read -r new_generated; do
+    [[ -n "$new_generated" ]] || continue
+    case "$new_generated" in
+        scripts/generated/*.sh|apps/web/lib/generated/*.ts) git add -- "$new_generated" ;;
+        *) log "Skipping untracked non-generated file: $new_generated" ;;
+    esac
+done < <(git ls-files --others --exclude-standard -- scripts/generated apps/web/lib/generated 2>/dev/null)
 
 if git diff --cached --quiet; then
     log "No generated artifact changes after regeneration (already up to date)"
