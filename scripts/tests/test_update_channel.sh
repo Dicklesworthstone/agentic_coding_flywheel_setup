@@ -156,11 +156,11 @@ else
 fi
 
 # ============================================================
-section "Test 3b: Gemini dry-run skips nvm warnings cleanly"
+section "Test 3b: Antigravity dry-run previews locked launchers without mutation"
 # ============================================================
-gemini_dry_run_output=$(
+agy_dry_run_output=$(
     bash -c '
-        temp_home="${TMPDIR:-/tmp}/acfs-gemini-dry-run.$$"
+        temp_home="${TMPDIR:-/tmp}/acfs-agy-dry-run.$$"
         mkdir -p "$temp_home/.bun/bin"
         printf "#!/usr/bin/env bash\nexit 0\n" > "$temp_home/.bun/bin/bun"
         chmod +x "$temp_home/.bun/bin/bun"
@@ -187,24 +187,32 @@ gemini_dry_run_output=$(
         declare -gA VERSION_AFTER=()
 
         log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
-        update_binary_exists() { [[ "$1" == "gemini" ]]; }
+        update_binary_exists() { [[ "$1" == "agy" ]]; }
+        update_binary_path() {
+            case "$1" in
+                agy) printf "%s\n" "/usr/bin/agy" ;;
+                bun) printf "%s\n" "$HOME/.bun/bin/bun" ;;
+                *) return 1 ;;
+            esac
+        }
         capture_version_before() { return 0; }
         capture_version_after() { return 1; }
-        run_cmd_bun_with_retry() { log_item "skip" "$1" "dry-run"; return 0; }
-        update_has_nvm_node() { return 1; }
-        update_nvm_node_bin_dir() { echo "update_nvm_node_bin_dir should not be called in gemini dry-run" >&2; return 1; }
-        update_ensure_gemini_patch_node() { echo "update_ensure_gemini_patch_node should not be called in gemini dry-run" >&2; return 1; }
+        update_run_in_target_context() {
+            echo "update_run_in_target_context should not run during dry-run" >&2
+            return 99
+        }
 
         update_agents
     ' 2>&1
 ) || true
 
-if echo "$gemini_dry_run_output" | grep -q '^warn|Node\.js runtime for Gemini patch|'; then
-    fail "Gemini dry-run emitted a misleading nvm warning: $gemini_dry_run_output"
-elif echo "$gemini_dry_run_output" | grep -q '^skip|Gemini CLI patches|dry-run: would apply after ensuring nvm + latest Node.js when needed$'; then
-    pass "Gemini dry-run skips patch warnings and reports predictive skip"
+if echo "$agy_dry_run_output" | grep -q 'should not run during dry-run'; then
+    fail "Antigravity dry-run executed a mutating target command: $agy_dry_run_output"
+elif echo "$agy_dry_run_output" | grep -q '^skip|Antigravity CLI|dry-run:' \
+    && echo "$agy_dry_run_output" | grep -q '^skip|agy locked launchers|dry-run$'; then
+    pass "Antigravity dry-run previews the CLI and locked launchers without mutation"
 else
-    fail "Gemini dry-run skip output missing or changed unexpectedly: $gemini_dry_run_output"
+    fail "Antigravity dry-run preview output missing or changed unexpectedly: $agy_dry_run_output"
 fi
 
 # ============================================================
@@ -410,7 +418,7 @@ else
 fi
 
 # ============================================================
-section "Test 3g: ACFS self-update repairs upstream-derived dirty checkout"
+section "Test 3g: ACFS self-update preserves upstream-looking dirty checkout"
 # ============================================================
 self_update_repair_output=$(
     bash -c '
@@ -479,12 +487,14 @@ self_update_repair_output=$(
     ' 2>&1
 ) || true
 
-if echo "$self_update_repair_output" | grep -q '^fix|ACFS self-update|tracked changes match upstream history; completing fast-forward$' \
-    && echo "$self_update_repair_output" | grep -q '^STATUS_CLEAN=yes$' \
-    && [[ "$(echo "$self_update_repair_output" | sed -n 's/^HEAD=//p' | tail -1)" == "$(echo "$self_update_repair_output" | sed -n 's/^REMOTE=//p' | tail -1)" ]]; then
-    pass "ACFS self-update fast-forwards dirty checkouts when changes are upstream-derived"
+if echo "$self_update_repair_output" | grep -q '^warn|ACFS self-update|BLOCKED:' \
+    && echo "$self_update_repair_output" | grep -q '^STATUS_CLEAN=no$' \
+    && [[ "$(echo "$self_update_repair_output" | sed -n 's/^HEAD=//p' | tail -1)" != "$(echo "$self_update_repair_output" | sed -n 's/^REMOTE=//p' | tail -1)" ]] \
+    && echo "$self_update_repair_output" | grep -q '^ M scripts/generated/install_all.sh$' \
+    && echo "$self_update_repair_output" | grep -q '^ M scripts/lib/update.sh$'; then
+    pass "ACFS self-update preserves dirty tracked files even when their bytes match upstream history"
 else
-    fail "ACFS self-update did not repair upstream-derived dirty checkout: $self_update_repair_output"
+    fail "ACFS self-update modified or misreported an upstream-looking dirty checkout: $self_update_repair_output"
 fi
 
 # ============================================================

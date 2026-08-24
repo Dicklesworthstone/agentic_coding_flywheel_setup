@@ -1750,7 +1750,7 @@ EOF
     [[ ! -f "$HOME/apr-ran" ]]
 }
 
-@test "self-update dirty fast-forward uses the selected remote branch" {
+@test "self-update preserves dirty tracked files even when they match upstream history" {
     local temp_root
     local seed_repo
     local origin_repo
@@ -1758,7 +1758,6 @@ EOF
     local intermediate_commit
     local local_head
     local remote_head
-    local upstream_ref
 
     temp_root="$(create_temp_dir)"
     seed_repo="$temp_root/seed"
@@ -1777,41 +1776,49 @@ EOF
     git clone "$origin_repo" "$work_repo" >/dev/null 2>&1
     git -C "$seed_repo" remote add origin "$origin_repo"
 
-    git -C "$seed_repo" switch -c release/test >/dev/null
     printf "intermediate-update\n" > "$seed_repo/scripts/lib/update.sh"
     git -C "$seed_repo" add scripts/lib/update.sh
     git -C "$seed_repo" commit -m intermediate >/dev/null
     intermediate_commit="$(git -C "$seed_repo" rev-parse HEAD)"
-    git -C "$seed_repo" push origin release/test >/dev/null 2>&1
+    git -C "$seed_repo" push origin main >/dev/null 2>&1
 
     printf "final-update\n" > "$seed_repo/scripts/lib/update.sh"
     git -C "$seed_repo" add scripts/lib/update.sh
     git -C "$seed_repo" commit -m final >/dev/null
-    git -C "$seed_repo" push origin release/test >/dev/null 2>&1
+    git -C "$seed_repo" push origin main >/dev/null 2>&1
 
-    git -C "$work_repo" fetch origin release/test >/dev/null 2>&1
+    git -C "$work_repo" fetch origin main >/dev/null 2>&1
     git -C "$work_repo" show "$intermediate_commit:scripts/lib/update.sh" > "$work_repo/scripts/lib/update.sh"
 
     ACFS_REPO_ROOT="$work_repo"
     ACFS_HOME="$work_repo"
+    SCRIPT_DIR="$work_repo/scripts/lib"
     UPDATE_LOG_FILE="/dev/null"
+    UPDATE_SELF=true
+    ACFS_SELF_UPDATE_DONE=false
+    DRY_RUN=false
+    ACFS_VERSION_DISPLAY="vtest"
     NO_COLOR=1
     RED="" GREEN="" YELLOW="" CYAN="" BOLD="" DIM="" NC=""
 
     log_item() { printf "%s|%s|%s\n" "$1" "$2" "${3:-}"; }
+    is_expected_acfs_origin_url() { return 0; }
+    sync_acfs_deployed() { return 0; }
+    sync_acfs_global_wrapper() { return 0; }
+    sync_acfs_global_command_links() { return 0; }
     update_runtime_acfs_home() { printf "%s\n" "$work_repo"; }
 
     local_head="$(git -C "$work_repo" rev-parse HEAD)"
-    remote_head="$(git -C "$work_repo" rev-parse origin/release/test)"
+    remote_head="$(git -C "$work_repo" rev-parse origin/main)"
 
-    run _acfs_try_upstream_derived_dirty_fast_forward "main" "$local_head" "$remote_head" "release/test"
+    run update_acfs_self
     assert_success
-    assert_output --partial "fix|ACFS self-update|tracked changes match upstream history; completing fast-forward"
+    assert_output --partial "warn|ACFS self-update|BLOCKED:"
 
-    [[ "$(git -C "$work_repo" rev-parse HEAD)" == "$remote_head" ]]
-    [[ -z "$(git -C "$work_repo" status --porcelain --untracked-files=no)" ]]
-    upstream_ref="$(git -C "$work_repo" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}')"
-    [[ "$upstream_ref" == "origin/release/test" ]]
+    [[ "$(git -C "$work_repo" rev-parse HEAD)" == "$local_head" ]]
+    [[ "$local_head" != "$remote_head" ]]
+    [[ "$(cat "$work_repo/scripts/lib/update.sh")" == "intermediate-update" ]]
+    [[ -n "$(git -C "$work_repo" status --porcelain --untracked-files=no)" ]]
 }
 
 @test "apt_lock_is_held: uses plain fuser when accessible" {
