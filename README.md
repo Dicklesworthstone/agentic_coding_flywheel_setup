@@ -1121,14 +1121,14 @@ Plan (Beads) ──> Coordinate (Agent Mail) ──> Execute (NTM + Agents)
 | Memory-Augmented Debugging | Past solutions for current bugs | 15 min |
 | Coordinated Feature Dev | Multiple agents, one feature | 2+ hours |
 
-### Tool Status Page
+### Tool Catalog (TL;DR page)
 
-The [Tool Status page](https://agent-flywheel.com/tools) provides a searchable catalog of all installed tools:
+The [TL;DR page](https://agent-flywheel.com/tldr) is the searchable catalog of installed tools (the old `/tools` page was folded into it and now redirects there):
 
-- **Search & Filter**: Find tools by name, CLI command, features, or tech stack
-- **Category Browsing**: Filter by "Flywheel Stack" (core agentic tools) or "Utilities"
-- **Tool Details**: Each card shows the tool name, CLI command, GitHub stars, features, and tech stack
-- **Live Data**: Content is auto-generated from `acfs.manifest.yaml` — never manually edited
+- **Search & Filter**: A search box (press `/` to focus) filters tools by name, CLI command, or description
+- **Tool Details**: Each card shows the tool's tagline, its CLI command as a chip, and a copyable example invocation
+- **Synergy Diagram**: An interactive diagram shows how the flywheel tools feed each other
+- **Live Data**: Cards are generated from `acfs.manifest.yaml` — manifest tools without a hand-curated entry are auto-appended so the page can never silently omit a tool
 
 This page helps users discover tools they may not know about and understand how each fits into the agentic coding workflow.
 
@@ -1379,22 +1379,24 @@ Vault is installed by default (skip with `--skip-vault`). ACFS installs the Vaul
 
 Supabase networking note: some Supabase projects expose the **direct Postgres host over IPv6-only** (often on free tiers). If your VPS/network is **IPv4-only**, use the Supabase **pooler** connection string instead (or upgrade/configure networking for direct IPv4).
 
-### Dicklesworthstone Stack (10 Tools)
+### Agent Flywheel Stack (Core Tools)
 
-The complete suite of tools for professional agentic workflows:
+The core suite of tools for professional agentic workflows:
 
 | # | Tool | Command | Description |
 |---|------|---------|-------------|
 | 1 | **Named Tmux Manager** | `ntm` | Agent cockpit—spawn, orchestrate, monitor tmux sessions |
-| 2 | **MCP Agent Mail** | `am` | Agent coordination via mail-like messaging (Rust binary) |
-| 3 | **Ultimate Bug Scanner** | `ubs` | Bug scanning with guardrails |
+| 2 | **MCP Agent Mail** | `am` | Agent coordination via mail-like messaging (Rust rewrite) |
+| 3 | **BeadsRust** | `br` | Dependency-aware issue tracker for agents (Rust implementation) |
 | 4 | **Beads Viewer** | `bv` | Task management TUI with graph analysis |
-| 5 | **Coding Agent Session Search** | `cass` | Unified agent history search |
+| 5 | **Coding Agent Session Search** | `cass` | Unified agent history search (CASS) |
 | 6 | **CASS Memory System** | `cm` | Procedural memory for agents |
-| 7 | **Coding Agent Account Manager** | `caam` | Agent auth switching |
-| 8 | **Simultaneous Launch Button** | `slb` | Two-person rule for dangerous commands |
-| 9 | **Destructive Command Guard** | `dcg` | Claude Code hook blocking dangerous git/fs commands |
-| 10 | **Repo Updater** | `ru` | Multi-repo sync + AI-driven commit automation |
+| 7 | **Ultimate Bug Scanner** | `ubs` | Bug scanning with guardrails |
+| 8 | **Destructive Command Guard** | `dcg` | Claude Code hook blocking dangerous git/fs commands |
+| 9 | **Repo Updater** | `ru` | Multi-repo sync + AI-driven commit automation |
+| 10 | **Remote Compilation Helper** | `rch` | Transparent build offloading to faster machines |
+| 11 | **Coding Agent Account Manager** | `caam` | Agent auth switching |
+| 12 | **Simultaneous Launch Button** | `slb` | Two-person rule for dangerous commands |
 
 ### Bundled Utilities
 
