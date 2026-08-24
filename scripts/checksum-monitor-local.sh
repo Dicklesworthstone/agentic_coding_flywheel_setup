@@ -82,11 +82,19 @@ _alert_fail_closed_streak() {
             --body "$alert_msg" >>"$LOG_FILE" 2>&1 \
             && log "commented on existing monitoring issue #$existing" || true
     else
-        gh issue create --repo "$repo_slug" \
+        if gh issue create --repo "$repo_slug" \
             --title "🚨 Checksum monitor failing closed - checksums unmonitored" \
             --label monitoring \
-            --body "$alert_msg" >>"$LOG_FILE" 2>&1 \
-            && log "created monitoring alert issue" || true
+            --body "$alert_msg" >>"$LOG_FILE" 2>&1; then
+            log "created monitoring alert issue"
+        else
+            # The label exists in the canonical repo; if it is ever missing,
+            # an unlabeled alert (dedupe degraded) beats no alert at all.
+            gh issue create --repo "$repo_slug" \
+                --title "🚨 Checksum monitor failing closed - checksums unmonitored" \
+                --body "$alert_msg" >>"$LOG_FILE" 2>&1 \
+                && log "created monitoring alert issue (unlabeled fallback)" || true
+        fi
     fi
 }
 
