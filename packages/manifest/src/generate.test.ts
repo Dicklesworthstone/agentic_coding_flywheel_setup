@@ -290,6 +290,39 @@ describe('Generated category scripts exist', () => {
 });
 
 describe('Generated verified installer args', () => {
+  test('legacy verified-installer calls have matching manifest producers', () => {
+    const parseResult = parseManifestFile(MANIFEST_PATH);
+    expect(parseResult.success).toBe(true);
+    if (!parseResult.success || !parseResult.data) {
+      throw new Error(`Failed to parse manifest: ${parseResult.error?.message}`);
+    }
+
+    const installContent = readFileSync(resolve(PROJECT_ROOT, 'install.sh'), 'utf-8');
+    const legacyCalls = Array.from(
+      installContent.matchAll(
+        /\bacfs_run_verified_upstream_script_as_target(?:_with_env)?\s+"([a-z][a-z0-9_]*)"\s+"(bash|sh)"/g
+      ),
+      (match) => ({ tool: match[1], runner: match[2] })
+    );
+    const producers = new Map(
+      parseResult.data.modules.flatMap((module) =>
+        module.verified_installer
+          ? [[module.verified_installer.tool, module.verified_installer.runner] as const]
+          : []
+      )
+    );
+
+    expect(legacyCalls.length).toBeGreaterThan(0);
+    expect(
+      Array.from(new Set(legacyCalls.map(({ tool }) => tool))).filter(
+        (tool) => !producers.has(tool)
+      )
+    ).toEqual([]);
+    for (const { tool, runner } of legacyCalls) {
+      expect(producers.get(tool)).toBe(runner);
+    }
+  });
+
   test('generated verified installers never stream verification output into an interpreter', () => {
     for (const filename of [
       'install_shell.sh',
@@ -511,14 +544,21 @@ describe('Generated verified installer args', () => {
     expect(stackContent).toContain('run_as_target_runner \'bash\' "$verified_installer_file" "${fsfs_installer_args[@]}"');
   });
 
-  test('stack.slb Go PATH setup ignores commented PATH examples', () => {
+  test('stack.slb uses the checksum-verified installer path', () => {
     const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
     expect(existsSync(stackPath)).toBe(true);
     const stackContent = readFileSync(stackPath, 'utf-8');
+    const slbStart = stackContent.indexOf('acfs_generated_install_stack_slb() {');
+    const nextModule = stackContent.indexOf('\nacfs_generated_install_stack_', slbStart + 1);
+    const slbContent = stackContent.slice(slbStart, nextModule);
 
-    expect(stackContent).toContain('acfs_has_active_go_bin_path() {');
-    expect(stackContent).toContain('if ! acfs_has_active_go_bin_path ~/.zshrc; then');
-    expect(stackContent).not.toContain("grep -q 'export PATH=.*\\$HOME/go/bin' ~/.zshrc");
+    expect(slbStart).toBeGreaterThanOrEqual(0);
+    expect(nextModule).toBeGreaterThan(slbStart);
+    expect(slbContent).toContain('local tool="slb"');
+    expect(slbContent).toContain('verify_checksum "$url" "$expected_sha256" "$tool"');
+    expect(slbContent).toContain(`run_as_target_runner 'bash' "$verified_installer_file"`);
+    expect(slbContent).not.toContain('git clone');
+    expect(slbContent).not.toContain('SLB_TMP');
   });
 
   test('stack.pcr emits a pre-install Claude check before the verified installer', () => {

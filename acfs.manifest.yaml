@@ -2459,36 +2459,10 @@ modules:
     installed_check:
       run_as: target_user
       command: "command -v slb"
-    install:
-      # go install fails due to module path mismatch (go.mod says github.com/Dicklesworthstone/slb
-      # but repo is at github.com/Dicklesworthstone/simultaneous_launch_button)
-      # Build from source instead:
-      - |
-        mkdir -p ~/go/bin
-        SLB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/slb_build.XXXXXX")"
-        trap 'rm -rf "$SLB_TMP"' EXIT
-        cd "$SLB_TMP"
-        git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git .
-        go build -o ~/go/bin/slb ./cmd/slb
-        cd ..
-        rm -rf "$SLB_TMP"
-        # Add ~/go/bin to PATH if not already present
-        acfs_has_active_go_bin_path() {
-          local file="${1:-}"
-          [[ -f "$file" ]] || return 1
-
-          awk '
-              /^[[:space:]]*#/ { next }
-              /^[[:space:]]*(export[[:space:]]+)?PATH[[:space:]]*=/ && index($0, "$HOME/go/bin") { found=1; exit }
-              END { exit(found ? 0 : 1) }
-          ' "$file" 2>/dev/null
-        }
-
-        if ! acfs_has_active_go_bin_path ~/.zshrc; then
-          echo '' >> ~/.zshrc
-          echo '# Go binaries' >> ~/.zshrc
-          echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
-        fi
+    verified_installer:
+      tool: slb
+      runner: bash
+    install: []
     verify:
       # Use 'slb' alone (shows quick reference) since --help may have exit code issues
       # Need to source updated PATH for verification

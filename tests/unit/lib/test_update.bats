@@ -2537,14 +2537,42 @@ EOF
     local ran_content="$BATS_TEST_TMPDIR/ran-installer"
     local cleanup_args_file="$BATS_TEST_TMPDIR/cleanup-args"
     local live_fetch_marker="$BATS_TEST_TMPDIR/live-fetch-called"
+    local trusted_tools_dir="$BATS_TEST_TMPDIR/trusted-capacity-tools"
+    local trusted_df="$trusted_tools_dir/df"
+    local trusted_awk="$trusted_tools_dir/awk"
+    local trusted_df_args_file="$BATS_TEST_TMPDIR/trusted-df-args"
+    local trusted_awk_args_file="$BATS_TEST_TMPDIR/trusted-awk-args"
+    local shell_function_marker="$BATS_TEST_TMPDIR/capacity-shell-function-called"
     local target_tmpdir=""
     local -a stage_args=()
     local -a runner_args=()
     local -a cleanup_args=()
+    local -a trusted_df_args=()
+    local -a trusted_awk_args=()
 
     printf '%s' "$installer_body" > "$staged_installer"
-    mkdir -p "$HOME/explicit-installer-cache"
+    mkdir -p "$HOME/explicit-installer-cache" "$trusted_tools_dir"
     export ACFS_VERIFIED_INSTALLER_CACHE="$HOME/explicit-installer-cache"
+    export TEST_ACFS_TRUSTED_DF_ARGS_FILE="$trusted_df_args_file"
+    export TEST_ACFS_TRUSTED_AWK_ARGS_FILE="$trusted_awk_args_file"
+
+    cat > "$trusted_df" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\0' "$@" > "$TEST_ACFS_TRUSTED_DF_ARGS_FILE"
+[[ "$#" -eq 2 && "$1" == "-Pk" && "$2" == "/tmp" ]] || exit 64
+printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+printf 'mock 4096 1 1024 1%% /tmp\n'
+EOF
+    cat > "$trusted_awk" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\0' "$@" > "$TEST_ACFS_TRUSTED_AWK_ARGS_FILE"
+[[ "$#" -eq 1 && "$1" == 'NR==2{print $4}' ]] || exit 64
+IFS= read -r _header || exit 65
+IFS=' ' read -r _filesystem _blocks _used available _rest || exit 66
+[[ "$available" =~ ^[0-9]+$ ]] || exit 67
+printf '%s\n' "$available"
+EOF
+    chmod +x "$trusted_df" "$trusted_awk"
 
     eval "$(sed -n '/^acfs_run_verified_upstream_script_as_target_with_env()/,/^}$/p' "$installer")"
 
@@ -2553,11 +2581,17 @@ EOF
 
     acfs_load_upstream_checksums() { return 0; }
     df() {
-        printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
-        printf 'mock 4096 1 1024 1%% /tmp\n'
+        : > "$shell_function_marker"
+        return 98
+    }
+    awk() {
+        : > "$shell_function_marker"
+        return 98
     }
     acfs_early_system_binary_path() {
         case "${1:-}" in
+            df) printf '%s\n' "$trusted_df" ;;
+            awk) printf '%s\n' "$trusted_awk" ;;
             mkdir) printf '/bin/mkdir\n' ;;
             mktemp) printf '/usr/bin/mktemp\n' ;;
             *) return 1 ;;
@@ -2626,6 +2660,16 @@ EOF
     assert_equal "${#cleanup_args[@]}" "1"
     assert_equal "${cleanup_args[0]}" "$staged_installer"
     [[ ! -e "$live_fetch_marker" ]]
+    [[ ! -e "$shell_function_marker" ]]
+
+    mapfile -d '' -t trusted_df_args < "$trusted_df_args_file"
+    assert_equal "${#trusted_df_args[@]}" "2"
+    assert_equal "${trusted_df_args[0]}" "-Pk"
+    assert_equal "${trusted_df_args[1]}" "/tmp"
+
+    mapfile -d '' -t trusted_awk_args < "$trusted_awk_args_file"
+    assert_equal "${#trusted_awk_args[@]}" "1"
+    assert_equal "${trusted_awk_args[0]}" 'NR==2{print $4}'
 }
 
 @test "install.sh verified installer wrapper fails closed when cache staging fails" {
@@ -2636,6 +2680,7 @@ EOF
     local live_fetch_marker="$BATS_TEST_TMPDIR/stage-failure-live-fetch"
     local runner_marker="$BATS_TEST_TMPDIR/stage-failure-runner"
     local cleanup_marker="$BATS_TEST_TMPDIR/stage-failure-cleanup"
+    local capacity_probe_marker="$BATS_TEST_TMPDIR/stage-failure-capacity-probe"
     local -a stage_args=()
 
     mkdir -p "$HOME/explicit-installer-cache"
@@ -2647,9 +2692,9 @@ EOF
     declare -gA ACFS_UPSTREAM_SHA256=([example]="$expected_sha")
 
     acfs_load_upstream_checksums() { return 0; }
-    df() {
-        printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
-        printf 'mock 4194304 1 3145728 1%% /tmp\n'
+    acfs_early_system_binary_path() {
+        : > "$capacity_probe_marker"
+        return 1
     }
     acfs_stage_verified_installer() {
         printf '%s\0' "$@" > "$stage_args_file"
@@ -2690,6 +2735,7 @@ EOF
     [[ ! -e "$live_fetch_marker" ]]
     [[ ! -e "$runner_marker" ]]
     [[ ! -e "$cleanup_marker" ]]
+    [[ ! -e "$capacity_probe_marker" ]]
 }
 
 @test "update_require_security: does not probe bogus repo path when ACFS_REPO_ROOT is unset" {

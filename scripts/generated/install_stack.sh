@@ -2251,39 +2251,88 @@ acfs_generated_install_stack_slb() {
     log_step "Installing stack.slb"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: mkdir -p ~/go/bin (target_user)"
+        log_info "dry-run: verified installer: stack.slb"
     else
-        if ! run_as_target_shell <<'INSTALL_STACK_SLB'
-mkdir -p ~/go/bin
-SLB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/slb_build.XXXXXX")"
-trap 'rm -rf "$SLB_TMP"' EXIT
-cd "$SLB_TMP"
-git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git .
-go build -o ~/go/bin/slb ./cmd/slb
-cd ..
-rm -rf "$SLB_TMP"
-# Add ~/go/bin to PATH if not already present
-acfs_has_active_go_bin_path() {
-  local file="${1:-}"
-  [[ -f "$file" ]] || return 1
+        if ! {
+            # Try security-verified install (no unverified fallback; fail closed)
+            local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
-  awk '
-      /^[[:space:]]*#/ { next }
-      /^[[:space:]]*(export[[:space:]]+)?PATH[[:space:]]*=/ && index($0, "$HOME/go/bin") { found=1; exit }
-      END { exit(found ? 0 : 1) }
-  ' "$file" 2>/dev/null
-}
+                # Cleared per attempt so a stale reason from an earlier module can
+                # never be misattributed to this one.
+                ACFS_LAST_MODULE_FAILURE_REASON=""
+            if acfs_security_init; then
+                local known_installers_decl=""
+                # Check if KNOWN_INSTALLERS is available as an associative array (declare -A)
+                known_installers_decl="$(declare -p KNOWN_INSTALLERS 2>/dev/null || true)"
+                if [[ "$known_installers_decl" == declare\ -A* ]]; then
+                    local tool="slb"
+                    local url=""
+                    local expected_sha256=""
 
-if ! acfs_has_active_go_bin_path ~/.zshrc; then
-  echo '' >> ~/.zshrc
-  echo '# Go binaries' >> ~/.zshrc
-  echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
-fi
-INSTALL_STACK_SLB
-        then
-            log_warn "stack.slb: install command failed: mkdir -p ~/go/bin"
+                    # Safe access with explicit empty default
+                    url="${KNOWN_INSTALLERS[$tool]:-}"
+                    if ! expected_sha256="$(get_checksum "$tool")"; then
+                        log_error "stack.slb: get_checksum failed for tool '$tool'"
+                        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        expected_sha256=""
+                    fi
+
+                    if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "stack.slb: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "stack.slb: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "stack.slb: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "stack.slb: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
+                            install_success=true
+                        else
+                            log_error "stack.slb: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
+                        fi
+                    else
+                        if [[ -z "$url" ]]; then
+                            log_error "stack.slb: KNOWN_INSTALLERS[$tool] not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                        if [[ -z "$expected_sha256" ]]; then
+                            log_error "stack.slb: checksum for '$tool' not found"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        fi
+                    fi
+                else
+                    log_error "stack.slb: KNOWN_INSTALLERS array not available"
+                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                fi
+            else
+                log_error "stack.slb: acfs_security_init failed - check security.sh and checksums.yaml"
+                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
+            fi
+
+            # Verified install is required - no fallback
+            if [[ "$install_success" = "true" ]]; then
+                true
+            else
+                log_error "Verified install failed for stack.slb"
+                false
+            fi
+        }; then
+            log_warn "stack.slb: verified installer failed"
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "stack.slb" "install command failed: mkdir -p ~/go/bin"
+              record_skipped_tool "stack.slb" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "stack.slb"
             fi
