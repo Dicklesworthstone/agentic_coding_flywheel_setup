@@ -1974,7 +1974,18 @@ cleanup() {
     fi
 
     if acfs_bootstrap_dir_is_owned_temp "${ACFS_BOOTSTRAP_DIR:-}"; then
-        rm -rf -- "$ACFS_BOOTSTRAP_DIR" 2>/dev/null || true
+        if [[ "${ACFS_BOOTSTRAP_PRESERVE_TREE:-false}" == "true" ]] \
+            || [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]] \
+            || [[ -n "${ACFS_BOOTSTRAP_CHILD_PID:-}" ]] \
+            || [[ -n "${ACFS_BOOTSTRAP_CHILD_PGID:-}" ]]; then
+            # Removing the archive while an unobserved descendant may still be
+            # executing from it creates a use-after-cleanup race. Leak this one
+            # bounded temp tree instead and make the preservation visible.
+            log_warn "Preserving verified bootstrap tree because child quiescence is not proven: $ACFS_BOOTSTRAP_DIR"
+            _ACFS_BOOTSTRAP_DIR_OWNED=false
+        else
+            rm -rf -- "$ACFS_BOOTSTRAP_DIR" 2>/dev/null || true
+        fi
     fi
 
     if acfs_file_is_owned_temp \
@@ -4037,13 +4048,58 @@ bootstrap_repo_archive() {
 acfs_run_verified_bootstrap_installer() {
     local verified_installer="${ACFS_BOOTSTRAP_DIR:-}/install.sh"
     local bash_bin=""
+    local env_bin=""
+    local ps_bin=""
+    local setsid_bin=""
+    local sleep_bin=""
     bash_bin="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
+    env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
+    ps_bin="$(acfs_early_system_binary_path ps 2>/dev/null || true)"
+    setsid_bin="$(acfs_early_system_binary_path setsid 2>/dev/null || true)"
+    sleep_bin="$(acfs_early_system_binary_path sleep 2>/dev/null || true)"
 
     if [[ -z "${ACFS_BOOTSTRAP_DIR:-}" ]] \
         || ! acfs_bootstrap_dir_is_owned_temp "$ACFS_BOOTSTRAP_DIR" \
         || [[ ! -f "$verified_installer" || -L "$verified_installer" ]] \
-        || [[ -z "$bash_bin" ]]; then
+        || [[ -z "$bash_bin" ]] \
+        || [[ -z "$env_bin" ]] \
+        || [[ -z "$ps_bin" ]] \
+        || [[ -z "$setsid_bin" ]] \
+        || [[ -z "$sleep_bin" ]]; then
         log_error "Verified bootstrap installer is unavailable"
+        return 1
+    fi
+
+    # GNU env is needed to undo the SIGINT/SIGQUIT dispositions that Bash gives
+    # asynchronous commands when job control is disabled. util-linux setsid
+    # gives the child and every ordinary descendant a dedicated process group.
+    local env_help=""
+    local setsid_help=""
+    if ! env_help="$(LC_ALL=C "$env_bin" --help 2>&1)" \
+        || [[ "$env_help" != *"--default-signal"* ]]; then
+        log_error "Verified bootstrap handoff requires env --default-signal support"
+        return 1
+    fi
+    if ! setsid_help="$(LC_ALL=C "$setsid_bin" --help 2>&1)" \
+        || [[ "$setsid_help" != *"--wait"* ]]; then
+        log_error "Verified bootstrap handoff requires setsid --wait support"
+        return 1
+    fi
+
+    # The verified child runs in a new session and therefore cannot retain a
+    # controlling terminal. Normal curl|bash input is a pipe already; refuse a
+    # TTY-backed streamed invocation instead of silently breaking its prompts.
+    if [[ -t 0 ]]; then
+        log_error "Verified streamed bootstrap cannot preserve interactive terminal input"
+        log_error "Re-run with --yes through the documented curl pipeline, or use a local checkout"
+        return 1
+    fi
+
+    if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]] \
+        || [[ -n "${ACFS_BOOTSTRAP_CHILD_PID:-}" ]] \
+        || [[ -n "${ACFS_BOOTSTRAP_CHILD_PGID:-}" ]]; then
+        log_error "Verified bootstrap handoff is already active"
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
         return 1
     fi
 
@@ -4114,19 +4170,118 @@ acfs_run_verified_bootstrap_installer() {
         original_archive_path="$BOOTSTRAP_ARCHIVE_PATH"
     fi
 
-    local child_status=0
-    ACFS_LOCAL_ARCHIVE_SOURCE="$source_is_local_archive" \
-    ACFS_VERIFIED_BOOTSTRAP_SOURCE="$source_kind" \
-    ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="$original_archive_path" \
+    ACFS_BOOTSTRAP_PS_BIN="$ps_bin"
+    ACFS_BOOTSTRAP_SLEEP_BIN="$sleep_bin"
+    ACFS_BOOTSTRAP_CHILD_PID=""
+    ACFS_BOOTSTRAP_CHILD_PGID=""
+    ACFS_BOOTSTRAP_PENDING_SIGNAL=""
+    ACFS_BOOTSTRAP_SIGNAL_HANDLING=false
+    ACFS_BOOTSTRAP_PRESERVE_TREE=false
+
+    # With monitor mode off, the asynchronous launcher is not born a process-
+    # group leader, so setsid can transform that exact $! process without an
+    # intermediate fork. Restore the caller's monitor setting immediately.
+    local monitor_was_enabled=false
+    local monitor_restore_failed=false
+    case "$-" in
+        *m*)
+            monitor_was_enabled=true
+            if ! set +m; then
+                log_error "Unable to disable job control for verified bootstrap handoff"
+                return 1
+            fi
+            ;;
+    esac
+
+    ACFS_BOOTSTRAP_CHILD_STATE="SPAWNING"
+    "$env_bin" \
+        --default-signal=INT \
+        --default-signal=QUIT \
+        --default-signal=TERM \
+        --default-signal=HUP \
+        ACFS_LOCAL_ARCHIVE_SOURCE="$source_is_local_archive" \
+        ACFS_VERIFIED_BOOTSTRAP_SOURCE="$source_kind" \
+        ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="$original_archive_path" \
+        "$setsid_bin" --wait \
         "$bash_bin" --noprofile --norc -p "$verified_installer" "${child_args[@]}" \
         <&0 >&1 2>&2 &
     ACFS_BOOTSTRAP_CHILD_PID=$!
+
+    if [[ "$monitor_was_enabled" == "true" ]] && ! set -m; then
+        monitor_restore_failed=true
+    fi
+
+    # Do not trust $! as a group identity until the OS confirms that the exact
+    # launcher became its own process-group leader. Signals received during this
+    # window remain pending in the SPAWNING state.
+    local observed_pgid=""
+    local group_validated=false
+    local validation_attempt=0
+    for ((validation_attempt = 0; validation_attempt < 20; validation_attempt++)); do
+        observed_pgid="$("$ps_bin" -o pgid= -p "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true)"
+        observed_pgid="${observed_pgid//[[:space:]]/}"
+        if [[ "$observed_pgid" == "$ACFS_BOOTSTRAP_CHILD_PID" ]]; then
+            group_validated=true
+            break
+        fi
+        if ! builtin kill -0 "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null; then
+            break
+        fi
+        if ! "$sleep_bin" 0.25; then
+            break
+        fi
+    done
+
+    if [[ "$group_validated" != "true" ]]; then
+        # Descendants may exist even if the leader exited before publication.
+        # A direct TERM is the only safe best effort without a validated PGID;
+        # preserve the source tree because full quiescence cannot be proven.
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        builtin kill -TERM "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true
+        log_error "Verified bootstrap child did not establish its expected process group"
+        local unvalidated_pending_signal="${ACFS_BOOTSTRAP_PENDING_SIGNAL:-}"
+        if [[ -n "$unvalidated_pending_signal" ]]; then
+            _acfs_bootstrap_signal_exit "$unvalidated_pending_signal"
+        fi
+        return 1
+    fi
+
+    ACFS_BOOTSTRAP_CHILD_PGID="$ACFS_BOOTSTRAP_CHILD_PID"
+    ACFS_BOOTSTRAP_CHILD_STATE="RUNNING"
+
+    # Replay a signal that arrived in the fork-to-publication window only after
+    # the process-group capability is proven.
+    local pending_signal="${ACFS_BOOTSTRAP_PENDING_SIGNAL:-}"
+    ACFS_BOOTSTRAP_PENDING_SIGNAL=""
+    if [[ -n "$pending_signal" ]]; then
+        _acfs_signal_handler "$pending_signal"
+    fi
+
+    if [[ "$monitor_restore_failed" == "true" ]]; then
+        log_error "Unable to restore job control after verified bootstrap handoff"
+        _acfs_terminate_bootstrap_group || true
+        return 1
+    fi
+
+    local child_status=0
     if wait "$ACFS_BOOTSTRAP_CHILD_PID"; then
         child_status=0
     else
         child_status=$?
     fi
-    ACFS_BOOTSTRAP_CHILD_PID=""
+
+    # The group leader can exit while a descendant keeps executing archive
+    # bytes. Prove the entire group quiescent before granting cleanup authority.
+    if _acfs_wait_for_bootstrap_group_quiescence 20 0.25; then
+        _acfs_bootstrap_mark_quiescent
+    else
+        ACFS_BOOTSTRAP_PRESERVE_TREE=true
+        log_error "Verified bootstrap process group remained live after its leader exited"
+        if ((child_status == 0)); then
+            child_status=1
+        fi
+    fi
+
     return "$child_status"
 }
 

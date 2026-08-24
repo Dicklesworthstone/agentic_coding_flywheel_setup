@@ -1495,10 +1495,36 @@ write_native_claude_from_canonical() {
     acfs_session_require_new_destination "$target_dir" "$target_path" || return 1
 
     if [[ "$dry_run" != "true" ]]; then
+        (
         if ! mkdir -p "$target_dir"; then
             log_error "Failed to create Claude session directory: $target_dir"
             return 1
         fi
+        local lock_path=""
+        local flock_bin=""
+        # Keep the data-free lock file permanently; unlinking lock files creates
+        # split-lock races and would violate ACFS's no-deletion discipline.
+        lock_path="$(acfs_session_child_path "$target_dir" ".acfs-session-conversion.lock")" || return 1
+        flock_bin="$(acfs_session_system_binary_path flock 2>/dev/null || true)"
+        if [[ -z "$flock_bin" ]]; then
+            log_error "Trusted flock is required for concurrent-safe Claude session conversion"
+            return 1
+        fi
+        if [[ -L "$lock_path" ]] || { [[ -e "$lock_path" ]] && [[ ! -f "$lock_path" ]]; }; then
+            log_error "Refusing unsafe Claude session lock: $lock_path"
+            return 1
+        fi
+        umask 077
+        if ! exec 9>>"$lock_path"; then
+            log_error "Failed to open Claude session lock: $lock_path"
+            return 1
+        fi
+        if ! "$flock_bin" -x -w 30 9; then
+            log_error "Timed out waiting for Claude session conversion lock: $lock_path"
+            return 1
+        fi
+        acfs_session_require_new_destination "$target_dir" "$target_path" || return 1
+
         local target_tmp=""
         target_tmp=$(mktemp "${target_dir}/.${target_session_id}.XXXXXX.tmp") || {
             log_error "Failed to stage Claude session in: $target_dir"
@@ -1639,6 +1665,7 @@ write_native_claude_from_canonical() {
             log_error "Failed to publish Claude sessions-index: $index_file"
             return 1
         fi
+        ) || return 1
     fi
 
     printf '%s\n' "$target_path"
@@ -1795,10 +1822,36 @@ write_native_gemini_from_canonical() {
     acfs_session_require_new_destination "$chats_dir" "$target_path" || return 1
 
     if [[ "$dry_run" != "true" ]]; then
+        (
         if ! mkdir -p "$chats_dir"; then
             log_error "Failed to create Gemini session directory: $chats_dir"
             return 1
         fi
+        local lock_path=""
+        local flock_bin=""
+        # Keep the data-free lock file permanently; unlinking lock files creates
+        # split-lock races and would violate ACFS's no-deletion discipline.
+        lock_path="$(acfs_session_child_path "$root_dir" ".acfs-session-conversion.lock")" || return 1
+        flock_bin="$(acfs_session_system_binary_path flock 2>/dev/null || true)"
+        if [[ -z "$flock_bin" ]]; then
+            log_error "Trusted flock is required for concurrent-safe Gemini session conversion"
+            return 1
+        fi
+        if [[ -L "$lock_path" ]] || { [[ -e "$lock_path" ]] && [[ ! -f "$lock_path" ]]; }; then
+            log_error "Refusing unsafe Gemini session lock: $lock_path"
+            return 1
+        fi
+        umask 077
+        if ! exec 9>>"$lock_path"; then
+            log_error "Failed to open Gemini session lock: $lock_path"
+            return 1
+        fi
+        if ! "$flock_bin" -x -w 30 9; then
+            log_error "Timed out waiting for Gemini session conversion lock: $lock_path"
+            return 1
+        fi
+        acfs_session_require_new_destination "$chats_dir" "$target_path" || return 1
+
         if [[ -L "$project_root_file" ]] || { [[ -e "$project_root_file" ]] && [[ ! -f "$project_root_file" ]]; }; then
             log_error "Refusing unsafe Gemini project-root file: $project_root_file"
             return 1
@@ -1947,6 +2000,7 @@ write_native_gemini_from_canonical() {
         fi
 
         acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+        ) || return 1
     fi
 
     printf '%s\n' "$target_path"
