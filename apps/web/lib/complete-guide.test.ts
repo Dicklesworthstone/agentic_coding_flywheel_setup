@@ -52,7 +52,7 @@ describe("complete guide derived claims", () => {
   });
 
   test("intentional current-model exceptions remain explicit", () => {
-    expect(COMPLETE_GUIDE_MODELS.antigravity).toBe("Gemini 3.1 Pro (High)");
+    expect(COMPLETE_GUIDE_MODELS.antigravity).toBe("Gemini 3.7 Flash (High)");
     expect(COMPLETE_GUIDE_MODELS.restrictedPreview).toBe("Claude Mythos Preview");
     expect(pageSource).toContain("is not generally available");
     expect(pageSource).not.toContain("Grok Heavy");

@@ -1338,7 +1338,7 @@ except Exception as exc:
     raise SystemExit(1)
 
 expected = {
-    "model": "Gemini 3.1 Pro (High)",
+    "model": "Gemini 3.7 Flash (High)",
     "toolPermission": "always-proceed",
     "artifactReviewPolicy": "always-proceed",
     "enableTelemetry": False,

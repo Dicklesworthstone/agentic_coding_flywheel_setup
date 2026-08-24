@@ -892,7 +892,7 @@ Example output:
 ║  Quick Commands:                                              ║
 ║    cc    → Claude Code (dangerous mode)                       ║
 ║    cod   → Codex CLI (dangerous mode)                         ║
-║    agy   → Antigravity CLI (Gemini 3.1 Pro High)              ║
+║    agy   → Antigravity CLI (Gemini 3.7 Flash High)            ║
 ║    ntm   → Named Tmux Manager                                 ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -923,7 +923,7 @@ Example output:
 ║  Agents                                                        ║
 ║    cc   → claude --dangerously-skip-permissions                ║
 ║    cod  → codex --dangerously-bypass-approvals-and-sandbox     ║
-║    agy  → agy --model 'Gemini 3.1 Pro (High)'                  ║
+║    agy  → agy --model 'Gemini 3.7 Flash (High)'                ║
 ║                                                                ║
 ║  Git                                                           ║
 ║    gs   → git status                                           ║
@@ -1320,7 +1320,7 @@ Benefits for agentic workflows:
 alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
 
 # Codex with bypass and dangerous filesystem access
-alias cod='codex --dangerously-bypass-approvals-and-sandbox'
+alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.6-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
 
 # Antigravity CLI, model/settings/DCG locked by the ACFS launcher
 alias agy='$HOME/.local/bin/agy-locked'

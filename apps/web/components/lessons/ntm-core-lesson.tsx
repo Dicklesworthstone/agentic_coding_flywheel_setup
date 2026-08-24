@@ -330,7 +330,7 @@ const AGENTS: AgentPaneV2[] = [
   {
     id: "agy1",
     name: "Antigravity",
-    model: "Gemini 3.1 Pro (High)",
+    model: "Gemini 3.7 Flash (High)",
     flag: "--agy",
     color: "#8b5cf6",
     colorLight: "#c4b5fd",
@@ -338,7 +338,7 @@ const AGENTS: AgentPaneV2[] = [
     spawnStep: 4,
     angle: 210,
     terminalLines: [
-      '$ agy --model "Gemini 3.1 Pro (High)"',
+      '$ agy --model "Gemini 3.7 Flash (High)"',
       "Reading documentation...",
       "Cross-referencing APIs...",
       "Generating type stubs...",
@@ -355,7 +355,7 @@ const STEP_COMMANDS: Record<number, string> = {
   1: "Spawning Claude-1 (claude-sonnet-4-6)...",
   2: "Spawning Claude-2 (claude-sonnet-4-6)...",
   3: "Spawning Codex (codex-mini)...",
-  4: "Spawning Antigravity (Gemini 3.1 Pro)...",
+  4: "Spawning Antigravity (Gemini 3.7 Flash)...",
   5: 'ntm send myproject "Analyze this codebase"',
   6: "Agents working in parallel...",
   7: "All agents complete!",
@@ -1452,7 +1452,7 @@ function AgentRatioCard() {
         <RatioItem
           count="1"
           name="Antigravity"
-          reason="Different perspective (Gemini 3.1 Pro), good for docs"
+          reason="Different perspective (Gemini 3.7 Flash), good for docs"
           color="from-blue-500 to-purple-500"
         />
       </div>

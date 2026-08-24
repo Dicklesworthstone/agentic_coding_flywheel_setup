@@ -2,7 +2,7 @@
 # test_agy_ecosystem.sh — full-ecosystem end-to-end for the Antigravity CLI (agy)
 # migration (bead bd-47kjh.9, with the live ntm/spawn slice of bd-47kjh.4.3).
 #
-# Proves, on ONE real agy conversation pinned to "Gemini 3.1 Pro (High)", that
+# Proves, on ONE real agy conversation pinned to "Gemini 3.7 Flash (High)", that
 # every migrated surface recognizes agy together:
 #   1. agy headless round-trip (the conversation) + model-pin assertion
 #   2. a conversation db persists under ~/.gemini/antigravity-cli/conversations/

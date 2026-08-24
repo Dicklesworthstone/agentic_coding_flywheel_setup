@@ -144,7 +144,7 @@ function textFile(value: string): FixtureEntry {
 
 function antigravitySettings(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    model: 'Gemini 3.1 Pro (High)',
+    model: 'Gemini 3.7 Flash (High)',
     toolPermission: 'always-proceed',
     artifactReviewPolicy: 'always-proceed',
     enableTelemetry: false,

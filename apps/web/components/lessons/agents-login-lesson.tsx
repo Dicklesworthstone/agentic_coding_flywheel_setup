@@ -119,10 +119,13 @@ export function AgentsLoginLesson() {
           <AliasCard
             alias="cod"
             name="Codex CLI"
-            code="codex --dangerously-bypass-approvals-and-sandbox"
+            code={`codex --dangerously-bypass-approvals-and-sandbox --search \\
+  -m gpt-5.6-sol -c model_reasoning_effort=xhigh \\
+  -c model_reasoning_summary_format=experimental`}
             features={[
               "Bypass safety prompts",
               "No approval/sandbox checks",
+              "Model pinned to gpt-5.6-sol at xhigh effort",
             ]}
             gradient="from-emerald-500/20 to-teal-500/20"
           />
@@ -130,10 +133,10 @@ export function AgentsLoginLesson() {
           <AliasCard
             alias="agy"
             name="Antigravity CLI"
-            code={`agy --model "Gemini 3.1 Pro (High)" \\
+            code={`agy --model "Gemini 3.7 Flash (High)" \\
   --dangerously-skip-permissions`}
             features={[
-              'Model pinned to "Gemini 3.1 Pro (High)"',
+              'Model pinned to "Gemini 3.7 Flash (High)"',
               "Auto-approves tool permissions (no confirmations)",
               "Successor to the retired Gemini CLI",
             ]}
@@ -178,7 +181,7 @@ export function AgentsLoginLesson() {
           <LoginStep
             agent="Antigravity CLI"
             command="agy"
-            description="Run agy once and follow the prompts to authenticate with your Google account. The model is pinned to Gemini 3.1 Pro (High)."
+            description="Run agy once and follow the prompts to authenticate with your Google account. The model is pinned to Gemini 3.7 Flash (High)."
             gradient="from-blue-500/10 to-purple-500/10"
           />
 
@@ -723,7 +726,7 @@ const SCENARIOS: Scenario[] = [
           { text: "Opening browser for Google sign-in...", type: "info", delay: 500 },
           { text: "Visit: https://accounts.google.com/o/oauth2/...", type: "output", delay: 900 },
           { text: "Welcome to Antigravity CLI!", type: "info", delay: 1300 },
-          { text: "Model pinned: Gemini 3.1 Pro (High)", type: "success", delay: 1800 },
+          { text: "Model pinned: Gemini 3.7 Flash (High)", type: "success", delay: 1800 },
           { text: "Ready to chat as user@gmail.com", type: "success", delay: 2400 },
         ],
         result: "success",

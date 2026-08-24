@@ -345,7 +345,7 @@ export const jargonDictionary: Record<string, JargonTerm> = {
   "antigravity-cli": {
     term: "Antigravity CLI",
     short: "Google's current terminal coding assistant, launched with agy",
-    long: "Antigravity CLI is Google's current command-line coding agent. In this setup it launches through the `agy` command, with ACFS pinning the model to Gemini 3.1 Pro (High), always-proceed tool permissions, terminal rendering, telemetry off, and the DCG destructive-command guard wired in before each shell command. It replaces the retired Gemini CLI for new work while keeping old Gemini history readable through legacy tooling.",
+    long: "Antigravity CLI is Google's current command-line coding agent. In this setup it launches through the `agy` command, with ACFS pinning the model to Gemini 3.7 Flash (High), always-proceed tool permissions, terminal rendering, telemetry off, and the DCG destructive-command guard wired in before each shell command. It replaces the retired Gemini CLI for new work while keeping old Gemini history readable through legacy tooling.",
     analogy: "If Claude Code and Codex are two senior developers with different instincts, Antigravity is the Google-side third reviewer. It is most useful when you want another model family to inspect a plan, challenge assumptions, or work through a large codebase from a different angle.",
     why: "Having multiple AI assistants gives you flexibility. Antigravity provides the Google/Gemini model family as the third default agent in the Agent Flywheel setup, so you can compare approaches or assign different agents to parallel work.",
     related: ["ai-agents", "claude-code", "codex", "gemini-cli"],

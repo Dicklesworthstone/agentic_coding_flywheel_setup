@@ -144,7 +144,7 @@ export const SERVICES: Service[] = [
     shortDescription: 'Google AI coding agent launched with agy',
     requiresSubscription: true,
     subscriptionNote: 'Requires eligible Google/Gemini access',
-    whyNeeded: 'Third AI option. Uses Gemini 3.1 Pro (High) through Antigravity. Good for Google Cloud projects and fresh-perspective reviews.',
+    whyNeeded: 'Third AI option. Uses Gemini 3.7 Flash (High) through Antigravity. Good for Google Cloud projects and fresh-perspective reviews.',
     signupUrl: 'https://accounts.google.com/',
     supportsGoogleSso: true, // It IS Google
     postInstallCommand: 'agy',

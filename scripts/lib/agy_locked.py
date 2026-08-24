@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 
-MODEL = "Gemini 3.1 Pro (High)"
+MODEL = "Gemini 3.7 Flash (High)"
 HOME = pathlib.Path.home()
 REAL_AGY = HOME / ".local" / "bin" / "agy"
 SETTINGS_PATH = HOME / ".gemini" / "antigravity-cli" / "settings.json"

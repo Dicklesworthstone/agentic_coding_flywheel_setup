@@ -314,7 +314,7 @@ function credentialEnvPresent(env: Record<string, string | undefined>, names: st
 }
 
 const ANTIGRAVITY_EXPECTED_SETTINGS: Record<string, string | boolean> = {
-  model: 'Gemini 3.1 Pro (High)',
+  model: 'Gemini 3.7 Flash (High)',
   toolPermission: 'always-proceed',
   artifactReviewPolicy: 'always-proceed',
   enableTelemetry: false,

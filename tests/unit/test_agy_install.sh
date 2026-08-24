@@ -61,7 +61,7 @@ check "uca updates agy instead of gemini-cli" \
 check "uca re-primes locked Antigravity settings after update" \
   "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q 'agy-locked\" --acfs-prime-settings'"
 check "agy locked launcher pins the required model" \
-  "grep -q 'MODEL = \"Gemini 3.1 Pro (High)\"' scripts/lib/agy_locked.py"
+  "grep -q 'MODEL = \"Gemini 3.7 Flash (High)\"' scripts/lib/agy_locked.py"
 check "agy locked launcher pins always-proceed tool permission" \
   "grep -q '\"toolPermission\": \"always-proceed\"' scripts/lib/agy_locked.py"
 check "agy locked launcher installs dcg hook support" \

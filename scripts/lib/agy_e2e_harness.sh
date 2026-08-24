@@ -6,7 +6,7 @@
 # dcg guard, caam account) should SOURCE this file so they share:
 #   - structured JSON-line logging (one event per line) + a per-run artifact dir
 #   - skip-cleanly-if-agy-unauthenticated (e2e must never hard-fail in CI/headless)
-#   - a model-guard assertion (reuses agy_model_guard.sh — "Gemini 3.1 Pro (High)")
+#   - a model-guard assertion (reuses agy_model_guard.sh — "Gemini 3.7 Flash (High)")
 #   - a headless agy round-trip helper (the only non-interactive way to drive agy)
 #
 # Design notes:
@@ -97,7 +97,7 @@ agy_e2e_skip_if_unauth() {
 }
 
 # agy_e2e_required_model — echo the one allowed model string.
-agy_e2e_required_model() { printf '%s' "${AGY_REQUIRED_MODEL:-Gemini 3.1 Pro (High)}"; }
+agy_e2e_required_model() { printf '%s' "${AGY_REQUIRED_MODEL:-Gemini 3.7 Flash (High)}"; }
 
 # agy_e2e_assert_model <captured-output> — fail-closed: reject output that names a
 # forbidden model family. Delegates to agy_model_guard's agy_assert_output_model.
@@ -151,7 +151,7 @@ _agy_e2e_self_test() {
   local fails=0
   AGY_E2E_LOG=""  # stdout-only for the self-test
   printf 'agy_e2e_harness self-test\n'
-  [[ "$(agy_e2e_required_model)" == "Gemini 3.1 Pro (High)" ]] \
+  [[ "$(agy_e2e_required_model)" == "Gemini 3.7 Flash (High)" ]] \
     && echo "  ok   required model" || { echo "  FAIL required model"; fails=$((fails+1)); }
   # json log line is valid-ish (has ts/level/event + the custom key)
   local line; line="$(agy_e2e_log info unit_test foo=bar 2>&1 | tail -1)"

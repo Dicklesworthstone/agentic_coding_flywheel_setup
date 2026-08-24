@@ -25,7 +25,7 @@ describe("agents-login-lesson teaches agy, keeps gmi as legacy", () => {
 
   test("teaches the agy launcher on the pinned model", () => {
     expect(src).toContain("agy");
-    expect(src).toContain('Gemini 3.1 Pro (High)');
+    expect(src).toContain('Gemini 3.7 Flash (High)');
   });
 
   test("retains a labeled-legacy gmi note (no over-migration)", () => {

@@ -318,9 +318,9 @@ The installer is idempotent (safe to re-run), checkpointed (resumes on failure),
 
 ```bash
 alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
-alias cod='codex --dangerously-bypass-approvals-and-sandbox'
+alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.6-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
 # Antigravity CLI (successor to the retired Gemini CLI), model-pinned + auto-approve
-agy() { command agy --model "Gemini 3.1 Pro (High)" --dangerously-skip-permissions "$@"; }
+agy() { command agy --model "Gemini 3.7 Flash (High)" --dangerously-skip-permissions "$@"; }
 # Gemini CLI — LEGACY (retired 2026-06-18; kept only to read old ~/.gemini/tmp history)
 alias gmi='gemini --yolo'
 ```
@@ -1008,7 +1008,7 @@ Those guides also help explain why WezTerm is so convenient for this work. They 
 Why the ratio `--cc=2 --cod=1 --agy=1`?
 - **2 Claude** -- Great for architecture and complex reasoning; the workhorse
 - **1 Codex** -- Fast iteration and testing; complementary strengths
-- **1 Antigravity** -- Different perspective (Gemini 3.1 Pro); good for docs and review duty
+- **1 Antigravity** -- Different perspective (Gemini 3.7 Flash); good for docs and review duty
 
 For larger projects, scale up proportionally. The skills codify a **weighted allocation formula** based on bead backlog:
 

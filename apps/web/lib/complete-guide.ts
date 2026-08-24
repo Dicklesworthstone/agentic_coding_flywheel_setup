@@ -9,7 +9,7 @@ export const COMPLETE_GUIDE_MODELS = {
   claudeExecutor: "Claude Sonnet 5",
   claudeFallback: "Claude Opus 4.8",
   googlePlanner: "Gemini 3.1 Pro with Deep Think",
-  antigravity: "Gemini 3.1 Pro (High)",
+  antigravity: "Gemini 3.7 Flash (High)",
   xaiPlanner: "Grok 4.5",
   restrictedPreview: "Claude Mythos Preview",
 } as const;

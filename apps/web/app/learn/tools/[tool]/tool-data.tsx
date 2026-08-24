@@ -152,7 +152,7 @@ const RAW_TOOLS: Record<ToolId, ToolCard> = {
   "antigravity-cli": {
     id: "antigravity-cli",
     title: "Antigravity CLI",
-    tagline: "Google's coding agent, pinned to Gemini 3.1 Pro (High) - fresh-eyes docs & review",
+    tagline: "Google's coding agent, pinned to Gemini 3.7 Flash (High) - fresh-eyes docs & review",
     icon: <Search className="h-8 w-8" aria-hidden="true" />,
     gradient: "from-blue-500/20 via-violet-500/20 to-purple-500/20",
     glowColor: "rgba(139,92,246,0.4)",
