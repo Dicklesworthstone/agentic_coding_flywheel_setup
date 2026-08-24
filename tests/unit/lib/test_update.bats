@@ -8996,7 +8996,7 @@ EOF
 @test "services setup keeps cloud access tokens out of child argv" {
     local services_setup="$PROJECT_ROOT/scripts/services-setup.sh"
 
-    run env SERVICES_SETUP_PATH="$services_setup" /usr/bin/bash -c '
+    run env SERVICES_SETUP_PATH="$services_setup" "$BASH" -c '
         set -euo pipefail
         export TARGET_USER="acfs-test"
         export TARGET_HOME="/tmp/acfs-token-argv-test"
@@ -9008,7 +9008,7 @@ EOF
         HAS_GUM=false
         SERVICE_STATUS[vercel]="installed"
         SERVICE_STATUS[supabase]="installed"
-        find_user_bin() { printf "/fake/%s\n" "$1"; }
+        find_user_bin() { printf "/usr/bin/true\n"; }
         services_setup_system_binary_path() {
             [[ "$1" == "bash" ]] || return 1
             printf "/bin/bash\n"
@@ -9040,7 +9040,7 @@ EOF
     assert_success
     refute_output --partial "secret leaked in argv"
     refute_output --partial "login --token"
-    assert_output --partial 'arg=<whoami>'
+    assert_output --partial 'exec "$0" whoami'
     assert_output --partial 'arg=<login>'
     assert_output --partial 'arg=<--no-browser>'
 }
