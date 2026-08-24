@@ -1326,6 +1326,20 @@ run_with_timeout() {
     return $status
 }
 
+# Cache entries are scoped by the runtime home so that e.g. root running
+# doctor for different TARGET_USERs (or for itself and a target user) never
+# reads another user's cached verdicts (gh_auth etc.).
+_doctor_cache_scope_suffix() {
+    if [[ -z "${_DOCTOR_CACHE_SCOPE:-}" ]]; then
+        local scope_home=""
+        scope_home="$(doctor_runtime_home 2>/dev/null || true)"
+        [[ -n "$scope_home" ]] || scope_home="${HOME:-/}"
+        _DOCTOR_CACHE_SCOPE="$(printf '%s' "$scope_home" | cksum 2>/dev/null | awk '{print $1}')"
+        [[ -n "$_DOCTOR_CACHE_SCOPE" ]] || _DOCTOR_CACHE_SCOPE="0"
+    fi
+    printf '%s' "$_DOCTOR_CACHE_SCOPE"
+}
+
 # Store a successful check result in cache
 # Usage: cache_result <key> <value>
 cache_result() {
@@ -1335,8 +1349,16 @@ cache_result() {
     # Skip if caching disabled
     [[ "$NO_CACHE" == "true" ]] && return 0
 
+    local scoped_key="${key}.$(_doctor_cache_scope_suffix)"
     mkdir -p "$CACHE_DIR"
-    echo "$value" > "$CACHE_DIR/$key"
+    # Write via temp + rename so a concurrent doctor run (or a crash) can
+    # never leave a truncated cache entry for get_cached_result to trust.
+    local tmp_file="$CACHE_DIR/.${scoped_key}.tmp.$$"
+    if printf '%s\n' "$value" > "$tmp_file" 2>/dev/null; then
+        mv -f "$tmp_file" "$CACHE_DIR/$scoped_key" 2>/dev/null || rm -f "$tmp_file" 2>/dev/null
+    else
+        rm -f "$tmp_file" 2>/dev/null
+    fi
 }
 
 # Get a cached result if it exists and is fresh

@@ -647,8 +647,15 @@ doctor_fix_remove_exact_line_and_next() {
     local escaped_line=""
 
     [[ -f "$file" ]] || return 1
+    # sed -i rewrites via a temp file + rename, which replaces the target
+    # inode: on a symlinked ~/.zshrc (common with dotfile managers) that
+    # silently swaps the symlink for a detached plain file. Resolve the
+    # symlink and edit the real target instead.
+    local real_file=""
+    real_file="$(readlink -f -- "$file" 2>/dev/null || true)"
+    [[ -n "$real_file" && -f "$real_file" ]] || real_file="$file"
     escaped_line="$(doctor_fix_sed_literal "$line")"
-    sed -i "\\|^${escaped_line}$|,+1d" "$file"
+    sed -i "\\|^${escaped_line}$|,+1d" "$real_file"
 }
 
 doctor_fix_file_has_active_acfs_zshrc_source() {

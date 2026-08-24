@@ -134,7 +134,10 @@ ACFS provides a **reproducible, idempotent** setup that ensures every team membe
 
 ## Architecture & Design
 
-ACFS is built around a **single source of truth**: the manifest file. Everything else—the installer scripts, doctor checks, website content—derives from this central definition. This architecture ensures consistency and makes the system easy to extend.
+ACFS centers its tool inventory and generated module metadata on the manifest.
+Generated installer libraries and doctor checks derive from it, while
+`install.sh` and several orchestration libraries retain explicit authored
+handoffs. Drift checks cover the seam between those two layers.
 
 ### One-Page System Data Flow
 
@@ -276,7 +279,10 @@ flowchart TB
 
 ## The Manifest System
 
-`acfs.manifest.yaml` is the **single source of truth** for all tools installed by ACFS. It defines what gets installed, how to install it, and how to verify the installation worked.
+`acfs.manifest.yaml` is the canonical inventory for generated ACFS modules. It
+defines their installation and verification metadata; authored orchestration
+remains responsible for bootstrap, lifecycle, and registered non-generated
+handoffs.
 
 ### Manifest Structure
 
