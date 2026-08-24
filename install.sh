@@ -4335,10 +4335,10 @@ acfs_run_verified_bootstrap_installer() {
 
     if [[ "$group_validated" != "true" ]]; then
         # Descendants may exist even if the leader exited before publication.
-        # A direct TERM is the only safe best effort without a validated PGID;
-        # preserve the source tree because full quiescence cannot be proven.
+        # Do not signal a bare numeric PID after validation failed: it may have
+        # exited and been reused. Preserve the source tree because full child
+        # identity and quiescence cannot be proven.
         ACFS_BOOTSTRAP_PRESERVE_TREE=true
-        builtin kill -TERM "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true
         log_error "Verified bootstrap child did not establish its expected process group"
         local unvalidated_pending_signal="${ACFS_BOOTSTRAP_PENDING_SIGNAL:-}"
         if [[ -n "$unvalidated_pending_signal" ]]; then
