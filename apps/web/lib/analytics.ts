@@ -18,7 +18,7 @@ import {
   containsIPAddress,
   looksLikeOpaqueCredential,
 } from './inputValidation';
-import { TOTAL_STEPS } from './wizardSteps';
+const TOTAL_STEPS = 13;
 
 // Types for GA4 events
 declare global {
@@ -294,8 +294,16 @@ const getClientId = (): string => {
  * Server-side event tracking via Measurement Protocol
  * Bypasses ad blockers for reliable tracking
  */
+export const SERVER_ANALYTICS_EVENT_NAMES = [
+  'conversion',
+  'lesson_complete',
+  'lesson_funnel_complete',
+] as const;
+
+export type ServerAnalyticsEventName = typeof SERVER_ANALYTICS_EVENT_NAMES[number];
+
 export const sendServerEvent = async (
-  eventName: string,
+  eventName: ServerAnalyticsEventName,
   params?: Record<string, string | number | boolean>
 ): Promise<void> => {
   if (!isAnalyticsPrivacyAllowed()) return;

@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  analyticsPayloadIsPrivacySafe,
+  SERVER_ANALYTICS_EVENT_NAMES,
+} from '@/lib/analytics';
 
 const GA_MEASUREMENT_ID_RAW = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const GA_API_SECRET_RAW = process.env.GA_API_SECRET;
@@ -65,6 +69,7 @@ const MAX_USER_PROPERTIES = 10;
 const MAX_USER_PROPERTY_KEY_LENGTH = 24;
 const MAX_USER_PROPERTY_STRING_LENGTH = 120;
 const GA_FETCH_TIMEOUT_MS = 3000;
+const ALLOWED_SERVER_EVENT_NAMES = new Set<string>(SERVER_ANALYTICS_EVENT_NAMES);
 
 class PayloadTooLargeError extends Error {
   override name = 'PayloadTooLargeError';
@@ -97,29 +102,34 @@ async function readJsonBodyWithLimit(request: NextRequest): Promise<unknown> {
     }
   }
 
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
   let bytesRead = 0;
   let text = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (!value) continue;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
 
-    bytesRead += value.byteLength;
-    if (bytesRead > MAX_REQUEST_BODY_BYTES) {
-      try {
-        await reader.cancel();
-      } catch {
-        // ignore
+      bytesRead += value.byteLength;
+      if (bytesRead > MAX_REQUEST_BODY_BYTES) {
+        try {
+          await reader.cancel();
+        } catch {
+          // ignore
+        }
+        throw new PayloadTooLargeError();
       }
-      throw new PayloadTooLargeError();
+
+      text += decoder.decode(value, { stream: true });
     }
 
-    text += decoder.decode(value, { stream: true });
+    text += decoder.decode();
+  } catch (error) {
+    if (error instanceof PayloadTooLargeError) throw error;
+    throw new SyntaxError('Request body must be valid UTF-8 JSON');
   }
-
-  text += decoder.decode();
   try {
     return JSON.parse(text) as unknown;
   } catch (error) {
@@ -267,9 +277,9 @@ function isRateLimited(ip: string): boolean {
 }
 
 // Validate event name: alphanumeric and underscores only, starts with letter
-function isValidEventName(name: string): boolean {
+export function isValidServerEventName(name: string): boolean {
   if (!name || name.length > MAX_EVENT_NAME_LENGTH) return false;
-  return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(name);
+  return /^[a-z][a-z0-9_]*$/.test(name) && ALLOWED_SERVER_EVENT_NAMES.has(name);
 }
 
 // Validate client_id: reasonable format and length
@@ -287,6 +297,28 @@ function isValidUserId(userId: string): boolean {
 function isValidParamKey(key: string): boolean {
   if (!key || key.length > MAX_PARAM_KEY_LENGTH) return false;
   return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(key);
+}
+
+export function serverEventParamsArePrivacySafe(params: unknown): boolean {
+  if (typeof params === 'undefined') return true;
+  if (!isPlainObject(params)) return false;
+
+  const entries = Object.entries(params);
+  if (entries.length > MAX_PARAM_KEYS_PER_EVENT) return false;
+
+  return entries.every(([key, value]) => {
+    if (!isValidParamKey(key)) return false;
+    if (typeof value === 'string') {
+      return value.length <= MAX_PARAM_STRING_LENGTH
+        && analyticsPayloadIsPrivacySafe({ [key]: value });
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value)
+        && analyticsPayloadIsPrivacySafe({ [key]: value });
+    }
+    return typeof value === 'boolean'
+      && analyticsPayloadIsPrivacySafe({ [key]: value });
+  });
 }
 
 function sanitizeEventParams(params: unknown): Record<string, string | number | boolean> {
@@ -349,9 +381,39 @@ function sanitizeUserProperties(
   return count > 0 ? sanitized : undefined;
 }
 
+export function serverUserPropertiesArePrivacySafe(userProperties: unknown): boolean {
+  if (typeof userProperties === 'undefined') return true;
+  if (!isPlainObject(userProperties)) return false;
+
+  const entries = Object.entries(userProperties);
+  if (entries.length > MAX_USER_PROPERTIES) return false;
+
+  return entries.every(([key, wrappedValue]) => {
+    if (!key || key.length > MAX_USER_PROPERTY_KEY_LENGTH) return false;
+    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) return false;
+    if (!isPlainObject(wrappedValue)) return false;
+    const wrappedEntries = Object.entries(wrappedValue);
+    if (wrappedEntries.length !== 1 || wrappedEntries[0]?.[0] !== 'value') return false;
+
+    const rawValue = wrappedValue.value;
+    if (typeof rawValue === 'string') {
+      return rawValue.length <= MAX_USER_PROPERTY_STRING_LENGTH
+        && analyticsPayloadIsPrivacySafe({ [key]: rawValue });
+    }
+    return typeof rawValue === 'number'
+      && Number.isFinite(rawValue)
+      && analyticsPayloadIsPrivacySafe({ [key]: rawValue });
+  });
+}
+
 interface EventPayload {
   name: string;
   params?: Record<string, string | number | boolean>;
+}
+
+export function isJsonContentType(value: string | null): boolean {
+  const mediaType = value?.split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'application/json';
 }
 
 /**
@@ -362,8 +424,7 @@ interface EventPayload {
  * Body: { client_id, events: [{ name, params }], user_id?, user_properties? }
  */
 export async function POST(request: NextRequest) {
-  const contentType = request.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
+  if (!isJsonContentType(request.headers.get('content-type'))) {
     return NextResponse.json({ error: 'Unsupported content type' }, { status: 415 });
   }
 
@@ -434,11 +495,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (userId !== undefined) {
-      if (typeof userId !== 'string' || !isValidUserId(userId)) {
+      if (
+        typeof userId !== 'string'
+        || !isValidUserId(userId)
+        || !analyticsPayloadIsPrivacySafe({ user_id: userId })
+      ) {
         return NextResponse.json({ error: 'Invalid user_id format' }, { status: 400 });
       }
     }
 
+    if (!serverUserPropertiesArePrivacySafe(userProperties)) {
+      return NextResponse.json({ error: 'Unsafe user_properties payload' }, { status: 400 });
+    }
     const sanitizedUserProperties = sanitizeUserProperties(userProperties);
 
     const sanitizedEvents: EventPayload[] = [];
@@ -448,11 +516,14 @@ export async function POST(request: NextRequest) {
       if (!isPlainObject(event) || typeof event.name !== 'string') {
         return NextResponse.json({ error: 'Invalid event payload' }, { status: 400 });
       }
-      if (!isValidEventName(event.name)) {
+      if (!isValidServerEventName(event.name)) {
         return NextResponse.json(
           { error: `Invalid event name: ${event.name?.slice(0, 20)}` },
           { status: 400 }
         );
+      }
+      if (!serverEventParamsArePrivacySafe(event.params)) {
+        return NextResponse.json({ error: 'Unsafe event params' }, { status: 400 });
       }
       sanitizedEvents.push({ name: event.name, params: sanitizeEventParams(event.params) });
     }
@@ -502,8 +573,8 @@ export async function POST(request: NextRequest) {
           signal: controller.signal,
         }
       );
-    } catch (e) {
-      console.error('GA4 MP fetch error:', e);
+    } catch {
+      console.error('GA4 MP fetch failed');
       response = undefined;
     } finally {
       clearTimeout(timeout);
@@ -511,8 +582,7 @@ export async function POST(request: NextRequest) {
 
     if (!response || !response.ok) {
       const status = response ? response.status : 504;
-      const text = response ? await response.text() : 'Timeout or network error';
-      console.error('GA4 MP error:', status, text);
+      console.error('GA4 MP request failed with status:', status);
       return NextResponse.json(
         { error: 'Failed to send to analytics' },
         { status: 502 }
