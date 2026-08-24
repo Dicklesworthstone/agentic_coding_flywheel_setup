@@ -280,7 +280,10 @@ check_checksum_candidate() {
     set -e
 
     if [[ "$status" -ne 0 ]]; then
-        record_check "checksum_candidate" "Verified-installer checksum candidate" "warn" "checksum updater failed; run scripts/lib/security.sh --update-checksums for details" "$command"
+        # --network=check was requested explicitly; a failed updater means the
+        # security boundary could not be verified, which is a gate failure,
+        # not a warning.
+        record_check "checksum_candidate" "Verified-installer checksum candidate" "fail" "checksum updater failed; run scripts/lib/security.sh --update-checksums for details" "$command"
         return 0
     fi
 
@@ -303,7 +306,22 @@ changed_files() {
         printf '%s\n' "$ACFS_RELEASE_DOCTOR_CHANGED_FILES"
         return 0
     fi
-    (cd "$REPO_ROOT" && git diff --name-only HEAD -- 2>/dev/null || true)
+    # Uncommitted changes plus everything committed since the last release
+    # tag (or origin/main when there is no tag). The branch-policy check
+    # requires a clean tree, so "uncommitted only" could never see apps/web
+    # changes in a release-ready tree and web checks were always skipped.
+    (
+        cd "$REPO_ROOT" || exit 0
+        git diff --name-only HEAD -- 2>/dev/null || true
+        local base=""
+        base="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+        if [[ -z "$base" ]] && git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+            base="origin/main"
+        fi
+        if [[ -n "$base" ]]; then
+            git diff --name-only "$base"...HEAD -- 2>/dev/null || true
+        fi
+    ) | sort -u
 }
 
 should_run_web_checks() {

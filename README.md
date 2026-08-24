@@ -407,8 +407,12 @@ The verification report distinguishes these cases:
 
 To update after verifying a legitimate upstream change:
 ```bash
-./scripts/lib/security.sh --update-checksums > checksums.yaml
-git diff checksums.yaml  # Review what changed
+# Write to a candidate file first: redirecting straight onto checksums.yaml
+# truncates it before the script runs, so a single fetch error would leave
+# it empty and every verified installer would fail closed.
+./scripts/lib/security.sh --update-checksums > /tmp/acfs-checksums.candidate.yaml
+diff -u checksums.yaml /tmp/acfs-checksums.candidate.yaml   # Review what changed
+cp /tmp/acfs-checksums.candidate.yaml checksums.yaml
 git commit -m "chore: update upstream checksums"
 ```
 
@@ -472,16 +476,16 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_f
 graph TD
     %%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e8f5e9', 'lineColor': '#90a4ae'}}}%%
 
-    A["Phase 1: User Normalization<br/><small>Create ubuntu user, migrate SSH keys</small>"]
-    B["Phase 2: APT Packages<br/><small>Essential system packages</small>"]
+    A["Phase 1: User Setup<br/><small>Create ubuntu user, migrate SSH keys, sudo</small>"]
+    B["Phase 2: Filesystem<br/><small>/data/projects, ~/.acfs layout</small>"]
     C["Phase 3: Shell Setup<br/><small>zsh, oh-my-zsh, powerlevel10k</small>"]
-    D["Phase 4: CLI Tools<br/><small>ripgrep, fzf, lazygit, etc.</small>"]
-    E["Phase 5: Language Runtimes<br/><small>bun, uv, rust, go</small>"]
+    D["Phase 4: CLI Tools<br/><small>ripgrep, fzf, lazygit, Tailscale, etc.</small>"]
+    E["Phase 5: Language Runtimes<br/><small>bun, uv, rust, go, nvm</small>"]
     F["Phase 6: AI Agents<br/><small>claude, codex, agy</small>"]
-    G["Phase 7: Cloud Tools<br/><small>vault, wrangler, supabase, vercel</small>"]
-    H["Phase 8: Dicklesworthstone Stack<br/><small>ntm, dcg, ru, ubs, mcp_agent_mail, etc.</small>"]
-    I["Phase 9: Configuration<br/><small>Deploy acfs.zshrc, tmux.conf</small>"]
-    J["Phase 10: Verification<br/><small>acfs doctor</small>"]
+    G["Phase 7: Cloud & Database<br/><small>PostgreSQL, vault, wrangler, supabase, vercel</small>"]
+    H["Phase 8: Flywheel Stack<br/><small>ntm, agent mail, br, bv, ubs, dcg, ru, etc.</small>"]
+    I["Phase 9: Finalize<br/><small>Deploy acfs.zshrc, tmux.conf, agent guide</small>"]
+    J["Post-install smoke test<br/><small>critical checks; then run acfs doctor</small>"]
 
     A --> B --> C --> D --> E --> F --> G --> H --> I --> J
 
@@ -533,7 +537,7 @@ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_f
 This checks:
 - OS compatibility (Ubuntu 22.04+ or Arch-family: Arch, Omarchy; installer upgrades Ubuntu to 25.10)
 - Architecture (x86_64 or ARM64)
-- Memory and disk space (minimum 4GB RAM, 10GB free disk)
+- Memory and disk space (warns below 4GB RAM; fails below 20GB free disk)
 - Network connectivity to required URLs
 - Cached `checksums.yaml` availability for verified upstream installers
 - APT lock status
@@ -564,8 +568,8 @@ candidate="/tmp/acfs-checksums.$$.candidate.yaml"
 | "timeout contacting github.com" | Network, proxy, or provider route is slow | Retry with `--network=check`; if it persists after install bootstrap, run `acfs support-bundle` |
 | "APT mirror slow or unreachable" | Regional mirror down | Edit `/etc/apt/sources.list` to use `archive.ubuntu.com` |
 | "checksum candidate differs" | Upstream verified installer content changed | Review the diff; do not install from unverified fallback sources |
-| "APT lock held" | Another apt process running | Wait for it to finish; reboot and resume if it remains stuck |
-| "Insufficient disk space" | Less than 10GB free | Clean up with `sudo apt autoremove` or expand disk |
+| "APT is locked by another process" | Another apt process running (usually unattended-upgrades on a fresh VPS) | Wait for it to finish; reboot and resume if it remains stuck |
+| "Need at least 20GB free" | Less than 20GB free disk (a hard failure; low RAM only warns) | Clean up with `sudo apt autoremove` or expand disk |
 
 ### Console Output
 
@@ -1556,7 +1560,8 @@ All changes made by `--fix` can be undone:
 ```bash
 acfs undo --list      # List all changes
 acfs undo chg_0001    # Undo specific change
-acfs undo --all       # Undo all changes from last session
+acfs undo --all       # Undo all changes from the most recent fix session
+acfs undo --everything  # Undo every recorded change across all sessions
 ```
 
 ---
@@ -2401,7 +2406,7 @@ curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/chat_shared_conve
 
 ## CI/CD
 
-ACFS uses GitHub Actions for continuous integration:
+ACFS does not use GitHub Actions: every workflow under `.github/workflows/` is disabled, and the checks below run locally or on the maintainer's own machines (`scripts/release-doctor.sh`, `scripts/checksum-monitor-local.sh` on a systemd timer, the Docker and QEMU factory harnesses, and `dsr` for releases). The workflow descriptions that follow document what each disabled workflow used to do and what replaced it.
 
 ### Installer Testing (`installer.yml`)
 
@@ -2494,17 +2499,13 @@ jobs:
     - Deploy to Vercel (production)
 ```
 
-### Automated Checksum + Drift Repair (`checksum-monitor.yml`)
+### Automated Checksum + Drift Repair (`scripts/checksum-monitor-local.sh`)
 
-ACFS automatically monitors upstream installers for changes, and also repairs generated artifact checksum drift:
+ACFS monitors upstream installers for changes and repairs generated-artifact checksum drift from a local systemd timer (every 15 minutes, in a dedicated clone on a maintainer box), not from GitHub Actions; the retired `checksum-monitor.yml` did the same job and is kept only for reference.
 
-```yaml
-# Runs every 15 minutes + on upstream changes
-schedule: "*/15 * * * *"
-triggers:
-  - Schedule (every 15 minutes)
-  - Webhook from upstream repos (repository_dispatch)
-  - Pushes touching installer/checksum/generator files
+```text
+scripts/checksum-monitor-local.sh      # the monitor
+scripts/systemd/acfs-checksum-monitor.* # timer + service templates
 ```
 
 **How It Works:**
@@ -2523,18 +2524,14 @@ triggers:
 
 The monitor **fails closed** when verification returns fetch errors or skipped entries; it will not emit partial/placeholder checksum updates.
 
-**Trusted Tools (Auto-Update Enabled):**
-- Dicklesworthstone stack tools (ntm, cass, cm, ubs, slb, dcg, caam, bv, agent-mail, ru)
-- These are maintained by the same author, so upstream changes are implicitly trusted
+**What gets auto-updated:** every changed installer hash — first-party and third-party alike — is regenerated with the canonical updater, committed, and pushed. The monitor fails closed (no partial update) if any fetch fails or any entry is skipped.
 
-**Non-Trusted Tools (Manual Review Required):**
-- Third-party installers (bun, uv, rust, oh-my-zsh, atuin, zoxide, nvm)
-- Changes trigger a GitHub issue with diff details for human review
+**What gets flagged for review:** when the changed set includes a third-party installer (anything whose URL is not under the Dicklesworthstone GitHub org: bun, uv, rustup, oh-my-zsh, atuin, zoxide, nvm, claude, antigravity, opencode, omp, grok), the monitor opens a GitHub issue with the diff after the update lands, so a human reviews the new upstream script post-hoc. First-party tool changes are committed without an issue.
 
-This ensures:
-- **Security**: Third-party changes are reviewed before deployment
-- **Velocity**: Internal tool updates are deployed automatically
-- **Auditability**: All changes tracked via git commits
+This gives:
+- **Velocity**: a fresh install is never broken by a stale hash for long
+- **Auditability**: every hash change is a git commit, and third-party changes get an issue for review
+- **Fail-closed behavior**: on fetch errors nothing is committed
 
 **Upstream Repo Dispatch (Fast Path):**
 - ACFS-owned tool repos emit a `repository_dispatch` event (`upstream-changed`) when their `install.sh` changes or a release is published.
@@ -2860,8 +2857,12 @@ shellcheck install.sh scripts/lib/*.sh
 # Verify all checksums
 ./scripts/lib/security.sh --verify
 
-# Update checksums after reviewing upstream changes
-./scripts/lib/security.sh --update-checksums > checksums.yaml
+# Update checksums after reviewing upstream changes (candidate file first;
+# never redirect onto checksums.yaml directly)
+./scripts/lib/security.sh --update-checksums > /tmp/acfs-checksums.candidate.yaml
+diff -u checksums.yaml /tmp/acfs-checksums.candidate.yaml || [[ $? -eq 1 ]]
+# After reviewing and accepting the diff:
+cp /tmp/acfs-checksums.candidate.yaml checksums.yaml
 ```
 
 ### Manifest Validation

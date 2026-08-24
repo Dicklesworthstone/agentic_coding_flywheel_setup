@@ -157,7 +157,9 @@ acfs_security_sort_lines() {
     local sort_bin=""
 
     sort_bin="$(acfs_security_required_binary_path sort)" || return $?
-    "$sort_bin"
+    # Locale-independent ordering so a maintainer laptop (en_US.UTF-8) and the
+    # systemd monitor (no locale) produce byte-identical checksums.yaml.
+    LC_ALL=C "$sort_bin"
 }
 
 acfs_security_date() {
@@ -309,13 +311,6 @@ acfs_download_to_file() {
     local attempt delay status=0
 
     for ((attempt=0; attempt<max_attempts; attempt++)); do
-        delay="${ACFS_CURL_RETRY_DELAYS[$attempt]}"
-
-        if (( attempt > 0 )); then
-            log_info "Retry ${attempt}/${retries} for fetching ${name} (waiting ${delay}s)..."
-            sleep "$delay"
-        fi
-
         # Capture response headers alongside the body so an HTTP failure can be
         # classified by STATUS rather than by curl's catch-all exit 22.
         local hdr_file=""
@@ -335,24 +330,18 @@ acfs_download_to_file() {
         fi
 
         local retryable=1
+        local server_delay=""
+        local http_status=""
         if acfs_is_retryable_curl_exit_code "$status"; then
             retryable=0
         elif (( status == 22 )) && [[ -n "$hdr_file" ]]; then
             # curl exit 22 == "HTTP >= 400". Read the actual status line to tell
             # a retryable 429/503 from a fatal 404/403.
-            local http_status=""
             http_status="$(grep -oE '^HTTP/[0-9.]+ [0-9]{3}' "$hdr_file" 2>/dev/null \
                 | tail -1 | awk '{print $2}' || true)"
             if [[ -n "$http_status" ]] && acfs_is_retryable_http_status "$http_status"; then
                 retryable=0
-                local server_delay=""
                 server_delay="$(acfs_retry_after_seconds "$hdr_file")"
-                if [[ -n "$server_delay" ]]; then
-                    log_info "HTTP ${http_status} for ${name}; honouring Retry-After: ${server_delay}s"
-                    sleep "$server_delay"
-                else
-                    log_info "HTTP ${http_status} for ${name}; retrying with backoff"
-                fi
             elif [[ -n "$http_status" ]]; then
                 log_error "HTTP ${http_status} for ${name} is not retryable"
             fi
@@ -363,10 +352,22 @@ acfs_download_to_file() {
         if (( retryable != 0 )); then
             return "$status"
         fi
+        if (( attempt + 1 >= max_attempts )); then
+            break
+        fi
+
+        delay="${ACFS_CURL_RETRY_DELAYS[$((attempt + 1))]}"
+        if [[ -n "$server_delay" ]]; then
+            delay="$server_delay"
+            log_info "Retry $((attempt + 1))/${retries} for fetching ${name} after HTTP ${http_status} (honouring Retry-After: ${delay}s)..."
+        else
+            log_info "Retry $((attempt + 1))/${retries} for fetching ${name} (waiting ${delay}s)..."
+        fi
+        sleep "$delay"
     done
 
     log_error "Failed to download $name after $max_attempts attempts (exit code $status)"
-    return 1
+    return "$status"
 }
 
 # Checksums file location.
@@ -1095,7 +1096,8 @@ verify_checksum() {
             printf "  Fix:\n" >&2
             printf "    - End users: update ACFS to refresh checksums.yaml (re-run install.sh / update scripts)\n" >&2
             printf "    - Maintainers: regenerate checksums.yaml with:\n" >&2
-            printf "        ./scripts/lib/security.sh --update-checksums > checksums.yaml\n" >&2
+            printf "        ./scripts/lib/security.sh --update-checksums > /tmp/acfs-checksums.candidate.yaml\n" >&2
+            printf "        diff -u checksums.yaml /tmp/acfs-checksums.candidate.yaml   # review, then copy over\n" >&2
             status=1
         fi
     elif [[ "$status" -eq 0 ]]; then
@@ -2107,7 +2109,8 @@ verify_all_installers() {
         echo "  - Potential security issue (rare)"
         echo ""
         echo "To update checksums after review:"
-        echo "  ./scripts/lib/security.sh --update-checksums > checksums.yaml"
+        echo "  ./scripts/lib/security.sh --update-checksums > /tmp/acfs-checksums.candidate.yaml"
+        echo "  diff -u checksums.yaml /tmp/acfs-checksums.candidate.yaml   # review, then copy over"
         return 1
     fi
 }
@@ -2283,7 +2286,9 @@ Options:
 
 Examples:
   ./security.sh --print
-  ./security.sh --update-checksums > checksums.yaml
+  ./security.sh --update-checksums > /tmp/acfs-checksums.candidate.yaml   # never redirect onto checksums.yaml:
+                                                                        # the shell truncates it before this runs,
+                                                                        # so any fetch error leaves it empty
   ./security.sh --verify
   ./security.sh --verify --json
   ./security.sh --checksum https://bun.sh/install
