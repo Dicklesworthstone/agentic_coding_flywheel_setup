@@ -3,6 +3,14 @@
 // Regenerate: bun run generate (from packages/manifest)
 // ============================================================
 
+export interface ManifestPluginProvenance {
+  packageId: string;
+  version: string;
+  pluginSha256: string;
+  sourceRef: string;
+  sourceCommit: string;
+}
+
 export interface ManifestModuleMetadata {
   id: string;
   description: string;
@@ -12,6 +20,7 @@ export interface ManifestModuleMetadata {
   tags: string[];
   enabledByDefault: boolean;
   optional: boolean;
+  plugin?: ManifestPluginProvenance;
 }
 
 export type ManifestSelectionProfileId = "full" | "safe" | "vibe" | "minimal" | "agents-only" | "cloud-only" | "stack-only";

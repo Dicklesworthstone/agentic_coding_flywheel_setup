@@ -36,6 +36,12 @@ import {
   type InstallerChecksumEntry,
 } from './validate.js';
 import {
+  loadPluginPackageFromFile,
+  mergeValidatedPlugins,
+  formatPluginDiagnostics,
+  type PluginValidationResult,
+} from './plugin.js';
+import {
   getModuleCategory,
   resolveModuleCategory,
   getModulesByCategory,
@@ -1850,7 +1856,7 @@ function generatePostInstallMessage(module: Module): string[] {
 /**
  * Generate manifest index script (data-only, deterministic)
  */
-function generateManifestIndex(manifest: Manifest, manifestSha256: string): string {
+export function generateManifestIndex(manifest: Manifest, manifestSha256: string): string {
   const orderedModules = sortModulesByPhaseAndDependency(manifest);
   const lines: string[] = [MANIFEST_INDEX_HEADER];
 
@@ -1906,7 +1912,7 @@ function generateManifestIndex(manifest: Manifest, manifestSha256: string): stri
 
   lines.push('declare -gA ACFS_MODULE_CATEGORY=(');
   for (const module of orderedModules) {
-    const category = module.category ?? getModuleCategory(module.id);
+    const category = resolveModuleCategory(module);
     lines.push(`  ['${module.id}']="${escapeBash(category)}"`);
   }
   lines.push(')');
@@ -1954,6 +1960,34 @@ function generateManifestIndex(manifest: Manifest, manifestSha256: string): stri
   lines.push(')');
   lines.push('');
 
+  // Plugin provenance metadata (bd-vv8x5)
+  lines.push('declare -gA ACFS_MODULE_PLUGIN_PACKAGE=(');
+  for (const module of orderedModules) {
+    if (module.plugin) {
+      lines.push(`  ['${module.id}']="${escapeBash(module.plugin.packageId)}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('declare -gA ACFS_MODULE_PLUGIN_VERSION=(');
+  for (const module of orderedModules) {
+    if (module.plugin) {
+      lines.push(`  ['${module.id}']="${escapeBash(module.plugin.version)}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('declare -gA ACFS_MODULE_PLUGIN_SHA256=(');
+  for (const module of orderedModules) {
+    if (module.plugin) {
+      lines.push(`  ['${module.id}']="${escapeBash(module.plugin.pluginSha256)}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
   // Mark that the index is fully loaded (used by acfs_resolve_selection)
   lines.push('ACFS_MANIFEST_INDEX_LOADED=true');
   lines.push('');
@@ -1965,7 +1999,7 @@ function generateManifestIndex(manifest: Manifest, manifestSha256: string): stri
  * Generate internal script checksums file (bd-3tpl).
  * Computes SHA256 for critical internal scripts and emits a bash associative array.
  */
-function generateInternalChecksums(
+export function generateInternalChecksums(
   generatedFiles: ReadonlyMap<string, { content: string; mode: number }>,
   boundStaticSnapshots: ReadonlyMap<string, Buffer>,
 ): { content: string; staticSnapshots: ReadonlyMap<string, Buffer> } {
@@ -1978,11 +2012,9 @@ function generateInternalChecksums(
   for (const relPath of INTERNAL_SCRIPTS_TO_CHECKSUM) {
     const absPath = join(PROJECT_ROOT, relPath);
     const pendingGeneratedFile = generatedFiles.get(absPath);
-    let content: string | Buffer;
+    let content: Buffer;
     if (pendingGeneratedFile) {
-      // Generated scripts must be hashed from this run's in-memory output,
-      // never from potentially stale files left by an earlier generation.
-      content = pendingGeneratedFile.content;
+      content = Buffer.from(pendingGeneratedFile.content, 'utf-8');
     } else {
       if (relPath.startsWith('scripts/generated/')) {
         throw new Error(`Generated checksum input was not produced in this run: ${relPath}`);
@@ -2006,7 +2038,7 @@ function generateInternalChecksums(
 /**
  * Generate a category install script
  */
-function generateCategoryScript(manifest: Manifest, category: ModuleCategory): string {
+export function generateCategoryScript(manifest: Manifest, category: ModuleCategory): string {
   // Sort the complete dependency graph before filtering. Category-local
   // sorting silently discards cross-category edges such as agents -> lang.
   const sortedModules = sortModulesByPhaseAndDependency(manifest).filter(
@@ -2072,7 +2104,7 @@ function generateCategoryScript(manifest: Manifest, category: ModuleCategory): s
 /**
  * Generate doctor checks script
  */
-function generateDoctorChecks(manifest: Manifest): string {
+export function generateDoctorChecks(manifest: Manifest): string {
   const lines: string[] = [HEADER];
   lines.push('# Doctor checks generated from manifest');
   lines.push('# Format: ID<TAB>DESCRIPTION<TAB>CHECK_COMMAND<TAB>REQUIRED/OPTIONAL<TAB>RUN_AS');
@@ -2495,6 +2527,15 @@ function generateWebModules(
   const modules = sortModulesByPhaseAndDependency(manifest);
   const lines: string[] = [TS_HEADER];
 
+  lines.push('export interface ManifestPluginProvenance {');
+  lines.push('  packageId: string;');
+  lines.push('  version: string;');
+  lines.push('  pluginSha256: string;');
+  lines.push('  sourceRef: string;');
+  lines.push('  sourceCommit: string;');
+  lines.push('}');
+  lines.push('');
+
   lines.push('export interface ManifestModuleMetadata {');
   lines.push('  id: string;');
   lines.push('  description: string;');
@@ -2504,6 +2545,7 @@ function generateWebModules(
   lines.push('  tags: string[];');
   lines.push('  enabledByDefault: boolean;');
   lines.push('  optional: boolean;');
+  lines.push('  plugin?: ManifestPluginProvenance;');
   lines.push('}');
   lines.push('');
 
@@ -2544,6 +2586,15 @@ function generateWebModules(
     lines.push(`    tags: ${formatTsArray(module.tags ?? [], 4)},`);
     lines.push(`    enabledByDefault: ${module.enabled_by_default ? 'true' : 'false'},`);
     lines.push(`    optional: ${module.optional ? 'true' : 'false'},`);
+    if (module.plugin) {
+      lines.push('    plugin: {');
+      lines.push(`      packageId: "${escapeTs(module.plugin.packageId)}",`);
+      lines.push(`      version: "${escapeTs(module.plugin.version)}",`);
+      lines.push(`      pluginSha256: "${escapeTs(module.plugin.pluginSha256)}",`);
+      lines.push(`      sourceRef: "${escapeTs(module.plugin.sourceRef)}",`);
+      lines.push(`      sourceCommit: "${escapeTs(module.plugin.sourceCommit)}",`);
+      lines.push('    },');
+    }
     lines.push('  },');
   }
   lines.push('];');
@@ -2597,6 +2648,7 @@ function generateWebTools(manifest: Manifest): string {
   lines.push('  commandExample?: string;');
   lines.push('  lessonSlug?: string;');
   lines.push('  tldrSnippet?: string;');
+  lines.push('  plugin?: ManifestPluginProvenance;');
   lines.push('}');
   lines.push('');
 
@@ -2640,6 +2692,15 @@ function generateWebTools(manifest: Manifest): string {
     }
     if (web.tldr_snippet) {
       lines.push(`    tldrSnippet: "${escapeTs(web.tldr_snippet)}",`);
+    }
+    if (module.plugin) {
+      lines.push('    plugin: {');
+      lines.push(`      packageId: "${escapeTs(module.plugin.packageId)}",`);
+      lines.push(`      version: "${escapeTs(module.plugin.version)}",`);
+      lines.push(`      pluginSha256: "${escapeTs(module.plugin.pluginSha256)}",`);
+      lines.push(`      sourceRef: "${escapeTs(module.plugin.sourceRef)}",`);
+      lines.push(`      sourceCommit: "${escapeTs(module.plugin.sourceCommit)}",`);
+      lines.push('    },');
     }
     lines.push('  },');
   }
@@ -2817,7 +2878,7 @@ function generateWebIndex(): string {
   const lines: string[] = [TS_HEADER];
 
   lines.push("export { manifestModules, manifestSelectionProfiles, manifestProvenance } from './manifest-modules';");
-  lines.push("export type { ManifestModuleMetadata, ManifestSelectionProfile, ManifestSelectionProfileId, ManifestProvenanceMetadata } from './manifest-modules';");
+  lines.push("export type { ManifestModuleMetadata, ManifestSelectionProfile, ManifestSelectionProfileId, ManifestProvenanceMetadata, ManifestPluginProvenance } from './manifest-modules';");
   lines.push('');
   lines.push("export { manifestTools } from './manifest-tools';");
   lines.push("export type { ManifestWebTool } from './manifest-tools';");

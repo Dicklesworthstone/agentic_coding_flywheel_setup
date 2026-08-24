@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { ModuleWebMetadataSchema } from './schema.js';
 import type { InstallerChecksumEntry } from './validate.js';
@@ -1368,3 +1371,101 @@ export function formatPluginDiagnostics(result: PluginValidationResult): string 
   lines.push(`Total: ${result.diagnostics.length} diagnostic(s)`);
   return lines.join('\n');
 }
+
+/**
+ * Safely read and validate a plugin package file from disk.
+ */
+export function loadPluginPackageFromFile(
+  filePath: string,
+  options: Omit<PluginValidationOptions, 'packageSha256'>
+): PluginValidationResult {
+  let fd: number | undefined;
+  let fileBytes: Buffer;
+  try {
+    fd = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1) {
+      return {
+        valid: false,
+        diagnostics: [
+          {
+            code: 'plugin_missing_required_field',
+            message: `Plugin file is not a single-link regular file: ${filePath}`,
+            path: '<file>',
+            severity: 'error',
+          },
+        ],
+        manifestModules: [],
+      };
+    }
+    fileBytes = readFileSync(fd);
+  } catch (error) {
+    return {
+      valid: false,
+      diagnostics: [
+        {
+          code: 'plugin_missing_required_field',
+          message: `Plugin file could not be opened safely: ${filePath} (${error instanceof Error ? error.message : String(error)})`,
+          path: '<file>',
+          severity: 'error',
+        },
+      ],
+      manifestModules: [],
+    };
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+
+  const packageSha256 = createHash('sha256').update(fileBytes).digest('hex');
+  const text = fileBytes.toString('utf-8');
+  let parsed: unknown;
+  try {
+    if (filePath.endsWith('.json')) {
+      parsed = JSON.parse(text);
+    } else {
+      parsed = parseYaml(text);
+    }
+  } catch (parseError) {
+    return {
+      valid: false,
+      diagnostics: [
+        {
+          code: 'plugin_missing_required_field',
+          message: `Plugin file contains invalid syntax: ${filePath} (${parseError instanceof Error ? parseError.message : String(parseError)})`,
+          path: '<root>',
+          severity: 'error',
+        },
+      ],
+      manifestModules: [],
+    };
+  }
+
+  return validatePluginPackage(parsed, {
+    ...options,
+    packageSha256,
+  });
+}
+
+/**
+ * Merges validated plugin modules into a first-party manifest.
+ * Throws an Error if any plugin result is invalid.
+ */
+export function mergeValidatedPlugins(
+  firstPartyManifest: Manifest,
+  pluginResults: readonly PluginValidationResult[]
+): Manifest {
+  const allModules = [...firstPartyManifest.modules];
+
+  for (const result of pluginResults) {
+    if (!result.valid) {
+      throw new Error(`Cannot merge invalid plugin: ${formatPluginDiagnostics(result)}`);
+    }
+    allModules.push(...result.manifestModules);
+  }
+
+  return {
+    ...firstPartyManifest,
+    modules: allModules,
+  };
+}
+

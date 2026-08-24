@@ -4,7 +4,7 @@
 // ============================================================
 
 export { manifestModules, manifestSelectionProfiles, manifestProvenance } from './manifest-modules';
-export type { ManifestModuleMetadata, ManifestSelectionProfile, ManifestSelectionProfileId, ManifestProvenanceMetadata } from './manifest-modules';
+export type { ManifestModuleMetadata, ManifestSelectionProfile, ManifestSelectionProfileId, ManifestProvenanceMetadata, ManifestPluginProvenance } from './manifest-modules';
 
 export { manifestTools } from './manifest-tools';
 export type { ManifestWebTool } from './manifest-tools';

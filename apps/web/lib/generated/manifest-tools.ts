@@ -24,6 +24,7 @@ export interface ManifestWebTool {
   commandExample?: string;
   lessonSlug?: string;
   tldrSnippet?: string;
+  plugin?: ManifestPluginProvenance;
 }
 
 export const manifestTools: ManifestWebTool[] = [

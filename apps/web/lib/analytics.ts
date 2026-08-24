@@ -71,7 +71,9 @@ type AnalyticsPrivacyWindow = Window & {
 /** Permanently disable analytics for the lifetime of the current document. */
 export function disableAnalyticsForDocument(): void {
   if (typeof window === 'undefined') return;
-  const analyticsWindow = window as AnalyticsPrivacyWindow;
+  // TS rejects a direct Window -> AnalyticsPrivacyWindow assertion because of
+  // the template-literal index signature; route through unknown as it suggests.
+  const analyticsWindow = window as unknown as AnalyticsPrivacyWindow;
   analyticsWindow.__acfsAnalyticsDocumentTainted = true;
   if (GA_MEASUREMENT_ID) {
     analyticsWindow[`ga-disable-${GA_MEASUREMENT_ID}`] = true;

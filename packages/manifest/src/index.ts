@@ -83,6 +83,8 @@ export type {
 export {
   validatePluginPackage,
   formatPluginDiagnostics,
+  loadPluginPackageFromFile,
+  mergeValidatedPlugins,
 } from './plugin.js';
 
 export type {

@@ -862,4 +862,13 @@ declare -gA ACFS_MODULE_INSTALLED_CHECK_RUN_AS=(
   ['acfs.nightly']="target_user"
 )
 
+declare -gA ACFS_MODULE_PLUGIN_PACKAGE=(
+)
+
+declare -gA ACFS_MODULE_PLUGIN_VERSION=(
+)
+
+declare -gA ACFS_MODULE_PLUGIN_SHA256=(
+)
+
 ACFS_MANIFEST_INDEX_LOADED=true
