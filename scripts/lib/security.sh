@@ -1206,16 +1206,15 @@ _acfs_offline_pack_verify_artifact_snapshot() {
     jq_bin="$(acfs_offline_pack_jq_bin)" || return 1
     arch="$(acfs_offline_pack_current_arch)" || return 1
     if ! artifact_tsv="$("$jq_bin" -r --arg key "$name" --arg url "$url" --arg sha "$expected_sha256" --arg arch "$arch" '
-        def artifact_arch: (.architecture // .platform.arch // "");
         [
             .artifacts[]?
             | select(.kind == "verified_installer_entrypoint" and .verifiedInstallerKey == $key)
-            | select((.sourceUrl // "") == $url)
-            | select(((.sha256 // "") == $sha) or ((.checksumsYamlSha256 // "") == $sha))
-            | select(artifact_arch == $arch)
+            | select(.sourceUrl == $url)
+            | select(.sha256 == $sha)
+            | select(.architecture == $arch)
         ]
         | first // empty
-        | if type == "object" then [.moduleId, .path, (.sha256 // ""), ((.sizeBytes // "") | tostring)] | @tsv else empty end
+        | if type == "object" then [.moduleId, .path, .sha256, (.sizeBytes | tostring)] | @tsv else empty end
     ' "$manifest_file")"; then
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to resolve cached entrypoint"
         return 1

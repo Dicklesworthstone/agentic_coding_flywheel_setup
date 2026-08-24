@@ -3079,8 +3079,8 @@ sync_acfs_deployed() {
     [[ -n "$acfs_home" ]] || return 0
 
     # When the repo IS ~/.acfs (self-managed git-checkout installs), the
-    # identity-path files (scripts/lib, scripts/generated, checksums.yaml,
-    # VERSION, ...) are already fresh from the git pull and are skipped below
+    # identity-path files (scripts/lib, scripts/generated, acfs.manifest.yaml,
+    # checksums.yaml, VERSION, ...) are already fresh from the git pull and are skipped below
     # by the git-tracked target guard. The REMAPPED pairs, however, still
     # need deploying on that topology (acfs/onboard/lessons/*.md ->
     # onboard/lessons/, packages/onboard/onboard.sh -> onboard/onboard.sh,
@@ -3270,7 +3270,10 @@ sync_acfs_deployed() {
         "scripts/lib/newproj_screens/screen_welcome.sh:scripts/lib/newproj_screens/screen_welcome.sh"
         "scripts/templates/acfs-nightly-update.service:scripts/templates/acfs-nightly-update.service"
         "scripts/templates/acfs-nightly-update.timer:scripts/templates/acfs-nightly-update.timer"
+        "acfs.manifest.yaml:acfs.manifest.yaml"
         "checksums.yaml:checksums.yaml"
+        "scripts/completions/_acfs:completions/_acfs"
+        "scripts/completions/acfs.bash:completions/acfs.bash"
         "acfs/zsh/acfs.zshrc:zsh/acfs.zshrc"
         "acfs/zsh/p10k.zsh:zsh/p10k.zsh"
         "VERSION:VERSION"

@@ -1062,7 +1062,7 @@ print_acfs_help() {
     echo "  swarm calibration   Artifact-backed capacity calibration report"
     echo "  swarm inventory     Local host inventory report/import/export/validate"
     echo "  provisioning-packet Validate/render provider provisioning packet JSON"
-    echo "  offline-pack        Build verified offline artifact packs"
+    echo "  installer-cache     Build a verified installer entrypoint cache"
     echo "  coordinate doctor   Alias for swarm doctor"
     echo "  cheatsheet          Command reference (aliases, shortcuts)"
     echo "  changelog [options] Show recent project changes"
@@ -5014,7 +5014,7 @@ main() {
             echo "Error: provisioning_packet.sh not found" >&2
             return 1
             ;;
-        offline-pack|artifact-pack)
+        installer-cache)
             shift
             local offline_artifact_pack_script=""
             offline_artifact_pack_script="$(_acfs_doctor_find_lib_script "offline_artifact_pack.sh" 2>/dev/null || true)"

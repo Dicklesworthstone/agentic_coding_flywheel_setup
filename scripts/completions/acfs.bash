@@ -8,7 +8,7 @@ _acfs_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="newproj new services svc services-setup setup doctor check session sessions update status continue progress info i capacity cap policy-lint policy_lint credential-preflight credential_preflight secrets-preflight secrets_preflight swarm swarm-plan swarm_plan swarm-status swarm_status swarm-simulate swarm_simulate swarm-packet swarm_packet swarm-assign swarm_assign swarm-convergence swarm_convergence swarm-calibration swarm_calibration swarm-inventory swarm_inventory provisioning-packet provider-packet offline-pack artifact-pack coordinate coord cheatsheet cs changelog changes log export-config export dashboard dash support-bundle bundle version help"
+    local commands="newproj new services svc services-setup setup doctor check session sessions update status continue progress info i capacity cap policy-lint policy_lint credential-preflight credential_preflight secrets-preflight secrets_preflight swarm swarm-plan swarm_plan swarm-status swarm_status swarm-simulate swarm_simulate swarm-packet swarm_packet swarm-assign swarm_assign swarm-convergence swarm_convergence swarm-calibration swarm_calibration swarm-inventory swarm_inventory provisioning-packet provider-packet installer-cache coordinate coord cheatsheet cs changelog changes log export-config export dashboard dash support-bundle bundle version help"
 
     # Subcommand-specific flags
     local newproj_flags="-i --interactive --no-br --no-claude --no-agents -h --help"
@@ -29,7 +29,7 @@ _acfs_completions() {
     local swarm_calibration_flags="--json --markdown --artifact-dir --rch-file -h --help"
     local swarm_inventory_flags="report import export validate --json --markdown --inventory --input --output --format --artifact-dir -h --help"
     local provisioning_packet_flags="--json --markdown --file --packet -h --help"
-    local offline_pack_flags="build --json --markdown --output --module --dry-run --best-effort --source-root --manifest-file --checksums-file --arch --ubuntu-version --timeout --expires-days -h --help"
+    local installer_cache_flags="build --json --markdown --output --module --dry-run --best-effort --source-root --manifest-file --checksums-file --arch --ubuntu-version --timeout --expires-days -h --help"
     local coordinate_subcommands="doctor preflight help"
     local cheatsheet_flags="--json"
     local changelog_flags="--all --since --json -h --help"
@@ -50,7 +50,7 @@ _acfs_completions() {
     local cmd=""
     for ((i=1; i < cword; i++)); do
         case "${words[i]}" in
-            newproj|new|services|svc|services-setup|setup|doctor|check|session|sessions|update|status|continue|progress|info|i|capacity|cap|policy-lint|policy_lint|credential-preflight|credential_preflight|secrets-preflight|secrets_preflight|swarm|swarm-plan|swarm_plan|swarm-status|swarm_status|swarm-simulate|swarm_simulate|swarm-packet|swarm_packet|swarm-assign|swarm_assign|swarm-convergence|swarm_convergence|swarm-calibration|swarm_calibration|swarm-inventory|swarm_inventory|provisioning-packet|provider-packet|offline-pack|artifact-pack|coordinate|coord|cheatsheet|cs|changelog|changes|log|export-config|export|dashboard|dash|support-bundle|bundle|version|help)
+            newproj|new|services|svc|services-setup|setup|doctor|check|session|sessions|update|status|continue|progress|info|i|capacity|cap|policy-lint|policy_lint|credential-preflight|credential_preflight|secrets-preflight|secrets_preflight|swarm|swarm-plan|swarm_plan|swarm-status|swarm_status|swarm-simulate|swarm_simulate|swarm-packet|swarm_packet|swarm-assign|swarm_assign|swarm-convergence|swarm_convergence|swarm-calibration|swarm_calibration|swarm-inventory|swarm_inventory|provisioning-packet|provider-packet|installer-cache|coordinate|coord|cheatsheet|cs|changelog|changes|log|export-config|export|dashboard|dash|support-bundle|bundle|version|help)
                 cmd="${words[i]}"
                 break
                 ;;
@@ -90,8 +90,8 @@ _acfs_completions() {
             mapfile -t COMPREPLY < <(compgen -W "$provisioning_packet_flags" -- "$cur")
             return
             ;;
-        offline-pack|artifact-pack)
-            mapfile -t COMPREPLY < <(compgen -W "$offline_pack_flags" -- "$cur")
+        installer-cache)
+            mapfile -t COMPREPLY < <(compgen -W "$installer_cache_flags" -- "$cur")
             return
             ;;
         swarm)

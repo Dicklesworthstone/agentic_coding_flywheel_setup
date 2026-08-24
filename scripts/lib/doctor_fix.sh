@@ -1766,9 +1766,18 @@ dispatch_fix() {
                 "bun install -g --trust @google/gemini-cli@latest"
             ;;
 
-        # Agent aliases/functions (fixes #163)
+        # Agent aliases/functions (fixes #163). The agent.alias.* checks grep
+        # the shipped ~/.acfs/zsh/acfs.zshrc for the alias definition itself;
+        # fix_acfs_sourcing only ensures ~/.zshrc sources that file and cannot
+        # add a missing alias to it — only refreshing ~/.acfs (acfs update)
+        # can. Report the hint as a manual fix instead of running an
+        # irrelevant fixer and counting the warn as repaired.
         agent.alias.*)
-            fix_acfs_sourcing "$check_id"
+            if [[ -n "$fix_hint" ]]; then
+                FIXES_MANUAL+=("$check_id|Requires manual action|$fix_hint")
+            fi
+            FIX_MANUAL=$((FIX_MANUAL + 1))
+            return 0
             ;;
 
         # Manual fixes (log suggestion only)

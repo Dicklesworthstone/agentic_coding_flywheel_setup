@@ -743,7 +743,30 @@ acfs update                  # Update all tools
 acfs services status         # Check Agent Mail, CM, and CASS daemons
 acfs services-setup          # Configure agent credentials
 acfs continue                # View upgrade progress after reboot
+acfs installer-cache build   # Cache checksum-pinned installer entrypoints
 ```
+
+### `acfs installer-cache build` — Verified Installer Entrypoint Cache
+
+Build a portable `acfs-installer-cache/` directory containing the
+checksum-pinned upstream installer scripts selected from `acfs.manifest.yaml`.
+On Ubuntu, pass either that directory or its parent to a later installation:
+
+```bash
+acfs installer-cache build --output /mnt/acfs-cache
+./install.sh --yes --verified-installer-cache /mnt/acfs-cache
+```
+
+Explicit cache selection is fail-closed: if a required cached entrypoint is
+missing, stale, malformed, for another Ubuntu/architecture target, or does not
+match the current manifest and `checksums.yaml`, ACFS refuses it instead of
+fetching that entrypoint live.
+
+This is not a complete offline installer. The cached entrypoint scripts still
+need network access for release archives, package registries, Git repositories,
+APT packages, and other transitive payloads. The initial ACFS bootstrap is also
+separate; use `--bootstrap-archive` for that layer. The roadmap below retains
+full pre-downloaded package bundles as future work.
 
 ### `acfs newproj` — New Project Wizard
 
@@ -3268,7 +3291,10 @@ The generator uses a **template expansion** pattern:
 4. **Generate** — Emit Bash scripts with consistent structure
 5. **Verify** — Generate doctor checks from verification commands
 
-This ensures the manifest is the **single source of truth**—no drift between documentation, installer, and verification.
+The manifest is the source of truth for generated modules and their verification
+metadata. Explicitly authored orchestration handoffs remain in `install.sh` and
+the installer libraries, so generator drift checks and integration tests are
+still required across that boundary.
 
 ### Code Generator Architecture
 
@@ -4644,6 +4670,7 @@ ACFS supports various configuration mechanisms for advanced users.
 | `ACFS_HOME` | `~/.acfs` | Configuration directory |
 | `ACFS_REF` | `main` | Git ref to install from (tag, branch, or commit SHA) |
 | `ACFS_CHECKSUMS_REF` | `main` (when pinned) / `ACFS_REF` (when branch) | Ref used to fetch `checksums.yaml` |
+| `ACFS_VERIFIED_INSTALLER_CACHE` | unset | `acfs-installer-cache/` directory, or its parent; when set, verified installer entrypoint acquisition is fail-closed to that cache |
 | `ACFS_LOG_DIR` | `/var/log/acfs` | Log directory |
 | `TARGET_USER` | `ubuntu` | User to configure |
 | `TARGET_HOME` | Resolved from `TARGET_USER` | User home directory (or explicit override) |
@@ -4680,6 +4707,7 @@ The installer supports extensive command-line customization:
 --strict               # Abort on any error (vs. continue with warnings)
 --ref <ref>            # Git ref to install from (branch, tag, or commit SHA)
 --checksums-ref <ref>  # Fetch checksums.yaml from this ref (default: main for pinned tags/SHAs)
+--verified-installer-cache <dir> # Require checksum-pinned installer entrypoints from this cache (Ubuntu only; transitive downloads still use the network)
 ```
 
 **Resume & State:**
