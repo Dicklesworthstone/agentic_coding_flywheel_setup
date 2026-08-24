@@ -8456,6 +8456,49 @@ acfs_resolve_existing_config_write_path() {
     printf '%s\n' "$resolved"
 }
 
+acfs_merge_existing_json_config_as_target() {
+    local path="${1:-}"
+    local jq_filter="${2:-}"
+    local write_path=""
+    local bash_bin=""
+    local jq_bin=""
+    local mktemp_bin=""
+    local mv_bin=""
+    local rm_bin=""
+    local temp_path=""
+
+    [[ -n "$path" && -n "$jq_filter" ]] || return 1
+    write_path="$(acfs_resolve_existing_config_write_path "$path" 2>/dev/null || true)"
+    [[ -n "$write_path" ]] || return 1
+
+    bash_bin="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
+    jq_bin="$(acfs_early_system_binary_path jq 2>/dev/null || true)"
+    mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
+    mv_bin="$(acfs_early_system_binary_path mv 2>/dev/null || true)"
+    rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
+    [[ -n "$bash_bin" && -n "$jq_bin" && -n "$mktemp_bin" && -n "$mv_bin" && -n "$rm_bin" ]] || return 1
+
+    # Create the staging file as the target user, exclusively and beside the
+    # destination. A predictable .tmp.$$ name could be pre-created as a
+    # symlink and redirect jq's output into an unrelated target-user file.
+    temp_path="$(run_as_target "$mktemp_bin" "${write_path}.tmp.XXXXXX" 2>/dev/null || true)"
+    case "$temp_path" in
+        "${write_path}.tmp."*) ;;
+        *) return 1 ;;
+    esac
+
+    if ! run_as_target "$bash_bin" -c '"$1" "$2" "$3" > "$4"' \
+            _ "$jq_bin" "$jq_filter" "$write_path" "$temp_path"; then
+        run_as_target "$rm_bin" -f -- "$temp_path" 2>/dev/null || true
+        return 1
+    fi
+    if ! run_as_target "$mv_bin" -f -- "$temp_path" "$write_path"; then
+        run_as_target "$rm_bin" -f -- "$temp_path" 2>/dev/null || true
+        return 1
+    fi
+    return 0
+}
+
 finalize() {
     set_phase "finalize" "Final Wiring"
     log_step "9/9" "Finalizing installation..."
@@ -8692,15 +8735,11 @@ finalize() {
             # A dotfiles-managed symlink must be edited in place: the jq+mv
             # pipeline below would otherwise replace the symlink with a
             # detached regular file and silently orphan the user's dotfiles.
-            if [[ -L "$claude_settings_file" ]]; then
-                claude_settings_file="$(readlink -f "$claude_settings_file" 2>/dev/null || printf '%s' "$claude_settings_file")"
-            fi
-            local tmp_settings="${claude_settings_file}.tmp.$$"
-            if run_as_target bash -c "jq '.skipDangerousModePermissionPrompt = true' \"\$1\" > \"\$2\" && mv \"\$2\" \"\$1\"" \
-                    _ "$claude_settings_file" "$tmp_settings" 2>/dev/null; then
+            if acfs_merge_existing_json_config_as_target \
+                    "$claude_settings_file" '.skipDangerousModePermissionPrompt = true'; then
                 log_detail "Claude workspace trust configured"
             else
-                run_as_target rm -f "$tmp_settings" 2>/dev/null || true
+                log_warn "Could not safely update $claude_settings_file; leaving it untouched"
             fi
         elif [[ ! -f "$claude_settings_file" ]]; then
             # Create minimal settings with trust enabled
@@ -8743,15 +8782,10 @@ CLAUDE_TRUST_EOF
             # the temp file is created with target-user ownership (not root).
             # Edit a symlinked settings.json in place (see the workspace-trust
             # merge above).
-            if [[ -L "$claude_retention_settings_file" ]]; then
-                claude_retention_settings_file="$(readlink -f "$claude_retention_settings_file" 2>/dev/null || printf '%s' "$claude_retention_settings_file")"
-            fi
-            local tmp_retention="${claude_retention_settings_file}.tmp.retention.$$"
-            if run_as_target bash -c "jq \"\$3\" \"\$1\" > \"\$2\" && mv \"\$2\" \"\$1\"" \
-                    _ "$claude_retention_settings_file" "$tmp_retention" "$ACFS_CLAUDE_RETENTION_JQ_FILTER" 2>/dev/null; then
+            if acfs_merge_existing_json_config_as_target \
+                    "$claude_retention_settings_file" "$ACFS_CLAUDE_RETENTION_JQ_FILTER"; then
                 log_detail "Claude session retention configured (cleanupPeriodDays kept explicit; default 30-day pruning disabled)"
             else
-                run_as_target rm -f "$tmp_retention" 2>/dev/null || true
                 log_warn "Could not update ~/.claude/settings.json with cleanupPeriodDays; Claude Code will prune session transcripts after 30 days"
             fi
         else
