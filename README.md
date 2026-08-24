@@ -930,8 +930,8 @@ Example output:
 
 **Design Philosophy:**
 - **Speed**: Must complete in <1 second
-- **Read-only**: Never verifies or tests (that's doctor's job)
-- **Offline**: No network calls required
+- **Read-only**: Never verifies or tests (that's doctor's job). The one write it makes is benign: successful IP lookups are cached for an hour at `~/.acfs/cache/ip_address` so repeat runs stay fast
+- **Offline**: No network calls; IP discovery reads local interfaces and routing tables only
 - **Fallback**: Graceful degradation if data missing
 
 ### `acfs cheatsheet` — Alias Discovery
@@ -1077,7 +1077,7 @@ The [Command Reference](https://agent-flywheel.com/learn/commands) documents eve
 | **Search** | `rg`, `fd`, `sg`, `fzf` |
 | **Git** | `lg`, `gh`, `git-lfs` |
 | **System** | `z`, `bat`, `lsd`, `atuin`, `tmux` |
-| **Stack** | `ntm`, `bv`, `am`, `cass`, `cm`, `ubs`, `slb`, `caam`, `dcg`, `ru` |
+| **Stack** | `ntm`, `am`, `br`, `bv`, `cass`, `cm`, `ubs`, `dcg`, `ru`, `rch`, `slb`, `caam` |
 | **Languages** | `bun`, `uv`, `cargo`, `go` |
 | **Cloud** | `wrangler`, `supabase`, `vercel`, `vault` |
 

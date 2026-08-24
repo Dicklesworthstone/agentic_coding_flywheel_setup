@@ -13,8 +13,13 @@
 #
 # Design Philosophy:
 #   - Speed: Must complete in <1 second
-#   - Read-only: Never verify/test anything (doctor does that)
-#   - Offline: No network calls required
+#   - Read-only: Never verify/test anything (doctor does that). One benign
+#     write exception: successful IP lookups are cached for an hour at
+#     <acfs_home>/cache/ip_address so repeat runs stay fast. The swarm
+#     summary shells out to swarm_status.sh --json under tight timeouts,
+#     which is itself read-only.
+#   - Offline: No network calls required (IP discovery reads local
+#     interfaces/routing tables only)
 #   - Fallback: Graceful degradation if data missing
 #
 # Related beads:
