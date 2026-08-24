@@ -253,9 +253,22 @@ swarm_inventory_validation_json() {
             | paths as $p
             | select(($p | length) > 0 and (($p[-1] | type) == "string"))
             | ($p[-1] | ascii_downcase) as $key
-            | select(sensitive_names | index($key))
+            # Exact names, plus any key that merely contains a sensitive stem
+            # (ip_address, tailscale_ip, ssh_host, api_key, apiKey, home_dir,
+            # notes_password ...). The exact-match list alone let all of
+            # those through while the docs promised they were rejected.
+            | select((sensitive_names | index($key))
+                     or ($key | test("(^|[_.-])(host|hostname|ip|ipv4|ipv6|addr|address|ssh|key|token|secret|pass|passwd|password|cred|credential|home|path|user)([_.-]|$)"))
+                     or ($p[-1] | test("[a-z](Host|Ip|Addr|Key|Token|Secret|Pass|Cred|Home|Path|User)([A-Z]|$)")))
             | pathstr($p)
-          ] as $sensitive_paths
+          ] + [
+            # Values that look like network endpoints or credentials, whatever
+            # the key is called (free-text notes are the usual leak).
+            $inventory
+            | paths(type == "string") as $p
+            | select(getpath($p) | test("(^|[^0-9.])[0-9]{1,3}(\\.[0-9]{1,3}){3}([^0-9.]|$)|[0-9a-f]{0,4}(:[0-9a-f]{0,4}){5,7}|(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_|tskey-|sk-[A-Za-z0-9]{20,}|hvs\\.|xox[bpsar]-|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY|(ssh|scp) +[A-Za-z0-9._-]+@"; "i"))
+            | pathstr($p)
+          ] | unique) as $sensitive_paths
         | ($host_list | map(select((.id | type) == "string") | .id) | group_by(.) | map(select(length > 1) | .[0])) as $duplicates
         | [
             $host_list | to_entries[] | . as $entry

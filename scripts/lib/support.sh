@@ -2842,7 +2842,7 @@ redact_private_key_blocks() {
     local file="$1"
     local tmp_file=""
 
-    tmp_file=$(mktemp "${file}.redacted.XXXXXX") || return 0
+    tmp_file=$(mktemp "${file}.redacted.XXXXXX") || return 1
     if awk '
         /^[[:space:]]*-----BEGIN [^-]*PRIVATE KEY[^-]*-----[[:space:]]*$/ {
             if (!in_private_key) {
@@ -2863,13 +2863,18 @@ redact_private_key_blocks() {
         }
     ' "$file" > "$tmp_file" 2>/dev/null; then
         if ! cmp -s "$file" "$tmp_file" 2>/dev/null; then
-            mv "$tmp_file" "$file" 2>/dev/null || rm -f "$tmp_file"
+            if ! mv "$tmp_file" "$file" 2>/dev/null; then
+                rm -f "$tmp_file" 2>/dev/null || true
+                return 1
+            fi
         else
-            rm -f "$tmp_file"
+            rm -f "$tmp_file" 2>/dev/null || return 1
         fi
     else
-        rm -f "$tmp_file"
+        rm -f "$tmp_file" 2>/dev/null || true
+        return 1
     fi
+    return 0
 }
 
 # Redact sensitive values from a single text file in-place.
@@ -2881,16 +2886,19 @@ redact_file() {
     # Skip binary files (check first 512 bytes for null bytes)
     # -a forces grep to treat input as text (otherwise it silently skips binary data)
     if head -c 512 "$file" 2>/dev/null | grep -qaP '\x00'; then
-        printf '<REDACTED:binary_file>\n' > "$file" 2>/dev/null || return 0
+        printf '<REDACTED:binary_file>\n' > "$file" 2>/dev/null || return 1
         REDACTION_COUNT=$((REDACTION_COUNT + 1))
         return 0
     fi
 
     # Count lines before redaction for diff
     local before_hash
-    before_hash=$(md5sum "$file" 2>/dev/null | awk '{print $1}') || return 0
+    before_hash=$(md5sum "$file" 2>/dev/null | awk '{print $1}') || before_hash=""
 
-    redact_private_key_blocks "$file"
+    if ! redact_private_key_blocks "$file"; then
+        printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+        return 1
+    fi
 
     # Apply redaction patterns using sed -E (extended regex)
     # Order: specific patterns first, then generic catch-alls
@@ -2905,7 +2913,14 @@ redact_file() {
         -e 's/eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}/<REDACTED:jwt>/g' \
         -e 's#([A-Za-z][A-Za-z0-9+.-]*://)([^/@[:space:]]*):([^/@[:space:]]+)@#\1<REDACTED:credentials>@#g' \
         -e "s/(Generated password for '?[A-Za-z_][A-Za-z0-9._-]*'?[[:space:]]*:[[:space:]]*)[^[:space:]<>]{4,}/\1<REDACTED:password>/g" \
-        "$file" 2>/dev/null || return 0
+        -e "s/^(\+[^|]*echo[[:space:]]+['\"]?[A-Za-z_][A-Za-z0-9._-]*):[^[:space:]|'\"]+(['\"]?[[:space:]]*\|.*chpasswd)/\1:<REDACTED:password>\2/" \
+        -e "s/^(\+.*(PASSWORD|PASSWD|TOKEN|SECRET|API_KEY)[A-Za-z0-9_]*=)[^[:space:]]+/\1<REDACTED:xtrace_assignment>/" \
+        "$file" 2>/dev/null || {
+            # Fail closed: a sed error used to skip the remaining redaction
+            # batches while manifest.json still claimed redaction was applied.
+            printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+            return 1
+        }
 
     # JSON-style secrets: "key_name": "value"
     sed -E -i \
@@ -2917,7 +2932,12 @@ redact_file() {
         -e 's/"([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))"[[:space:]]*:[[:space:]]*"([^"<>]{8,})"/"\1": "<REDACTED:generic_secret>"/g' \
         -e 's/"(body_md|body_text|thread_snippet|message_snippet|mail_snippet|message_preview)"[[:space:]]*:[[:space:]]*"([^"]*)"/"\1": "<REDACTED:message_snippet>"/g' \
         -e 's#"(command|command_line|cmd|cwd|path|project_key|working_directory)"([[:space:]]*:[[:space:]]*")([^"]*)/(home|Users)/[A-Za-z0-9._-]+/[A-Za-z0-9._~+@%/=-]+([^"]*)"#"\1"\2\3/<REDACTED:path>\5"#g' \
-        "$file" 2>/dev/null || return 0
+        "$file" 2>/dev/null || {
+            # Fail closed: a sed error used to skip the remaining redaction
+            # batches while manifest.json still claimed redaction was applied.
+            printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+            return 1
+        }
 
     # Shell-style quoted secrets can contain spaces. Redact the full quoted
     # value before the unquoted catch-alls below see only the first word.
@@ -2928,7 +2948,12 @@ redact_file() {
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\3"<REDACTED:generic_secret>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\3"<REDACTED:password>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\3"<REDACTED:generic_secret>"/g' \
-        "$file" 2>/dev/null || return 0
+        "$file" 2>/dev/null || {
+            # Fail closed: a sed error used to skip the remaining redaction
+            # batches while manifest.json still claimed redaction was applied.
+            printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+            return 1
+        }
 
     sed -E -i \
         -e "s/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\2'<REDACTED:\1>'/g" \
@@ -2937,7 +2962,12 @@ redact_file() {
         -e "s/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\3'<REDACTED:generic_secret>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\3'<REDACTED:password>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\3'<REDACTED:generic_secret>'/g" \
-        "$file" 2>/dev/null || return 0
+        "$file" 2>/dev/null || {
+            # Fail closed: a sed error used to skip the remaining redaction
+            # batches while manifest.json still claimed redaction was applied.
+            printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+            return 1
+        }
 
     # Generic key=value secrets (case-insensitive would need per-line processing;
     # instead match common casings)
@@ -2948,7 +2978,12 @@ redact_file() {
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{8,})/\1\3<REDACTED:generic_secret>/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{4,})/\1\3<REDACTED:password>/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{8,})/\1\3<REDACTED:generic_secret>/g' \
-        "$file" 2>/dev/null || return 0
+        "$file" 2>/dev/null || {
+            # Fail closed: a sed error used to skip the remaining redaction
+            # batches while manifest.json still claimed redaction was applied.
+            printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
+            return 1
+        }
 
     # Check if file changed
     local after_hash
@@ -2972,7 +3007,10 @@ redact_bundle() {
 
     local file_count=0
     while IFS= read -r file; do
-        redact_file "$file"
+        if ! redact_file "$file"; then
+            log_error "Redaction failed for a collected bundle file; refusing to create an archive"
+            return 1
+        fi
         file_count=$((file_count + 1))
     done < <(find "$bundle_dir" -type f \( \
         -name '*.json' -o -name '*.jsonl' -o -name '*.log' -o -name '*.txt' \
@@ -3014,6 +3052,9 @@ main() {
     log_step "Collecting diagnostic data..."
 
     # Create bundle directory
+    # The bundle holds copies of ~/.zshrc, install logs, and doctor output
+    # before redaction runs; keep every file and directory owner-only.
+    umask 077
     mkdir -p "$bundle_dir" || {
         log_error "Cannot create bundle directory: $bundle_dir"
         exit 1
@@ -3108,7 +3149,10 @@ main() {
     fi
 
     # --- Redact sensitive data ---
-    redact_bundle "$bundle_dir"
+    if ! redact_bundle "$bundle_dir"; then
+        log_error "Support bundle redaction failed; no archive was created"
+        return 1
+    fi
 
     # --- Write manifest ---
     log_detail "Writing manifest..."
@@ -3120,6 +3164,7 @@ main() {
     # --- Create tar archive ---
     log_detail "Creating archive..."
     if tar -czf "$archive_path" -C "$OUTPUT_BASE" "$bundle_name" 2>/dev/null; then
+        chmod 600 "$archive_path" 2>/dev/null || true
         log_success "Bundle created: $archive_path"
         echo "$archive_path"
     else

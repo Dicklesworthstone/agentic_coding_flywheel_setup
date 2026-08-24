@@ -289,7 +289,17 @@ ensure_user() {
         passwd="$(_generate_random_password 2>/dev/null || true)"
         
         if [[ -n "$passwd" ]]; then
-            echo "$target:$passwd" | $SUDO chpasswd
+            # Keep the password out of any xtrace (ACFS_DEBUG) that lands in
+            # the install log and therefore in support bundles.
+            {
+                local chpasswd_xtrace_was_on=0
+                [[ $- == *x* ]] && chpasswd_xtrace_was_on=1
+                set +x
+                local chpasswd_rc=0
+                echo "$target:$passwd" | $SUDO chpasswd || chpasswd_rc=$?
+                if [[ "$chpasswd_xtrace_was_on" -eq 1 ]]; then set -x; fi
+                [[ "$chpasswd_rc" -eq 0 ]]
+            }
             
             # Print password so user isn't locked out of sudo in safe mode
             echo "" >&2

@@ -5400,7 +5400,19 @@ normalize_user() {
         else
             # Set password if user creation succeeded
             if [[ -n "$user_password" ]]; then
-                echo "$TARGET_USER:$user_password" | $SUDO chpasswd
+                # Never let ACFS_DEBUG's xtrace echo the password into the
+                # install log: support bundles ship that log, and the
+                # redaction patterns key on the "Generated password" phrasing,
+                # not on a traced "+ echo user:pw | chpasswd" line.
+                {
+                    local chpasswd_xtrace_was_on=0
+                    [[ $- == *x* ]] && chpasswd_xtrace_was_on=1
+                    set +x
+                    local chpasswd_rc=0
+                    echo "$TARGET_USER:$user_password" | $SUDO chpasswd || chpasswd_rc=$?
+                    if [[ "$chpasswd_xtrace_was_on" -eq 1 ]]; then set -x; fi
+                    [[ "$chpasswd_rc" -eq 0 ]]
+                }
                 
                 # Print password for the operator (important for safe mode)
                 echo "" >&2
@@ -5803,7 +5815,10 @@ setup_shell() {
     if [[ "$ACFS_DISTRO_FAMILY" != "arch" ]] && [[ "$omz_installed" != "true" ]]; then
         log_detail "Installing Oh My Zsh for $TARGET_USER"
         # Run as target user to install in their home
-        try_step "Installing Oh My Zsh" acfs_run_verified_upstream_script_as_target "ohmyzsh" "sh" --unattended || return 1
+        # --keep-zshrc: without it OMZ moves the user's real ~/.zshrc to
+        # .zshrc.pre-oh-my-zsh and writes its template, and ACFS then backs up
+        # the template as the "pre-acfs" copy.
+        try_step "Installing Oh My Zsh" acfs_run_verified_upstream_script_as_target "ohmyzsh" "sh" --unattended --keep-zshrc || return 1
     fi
 
     # Install Powerlevel10k theme
@@ -5835,6 +5850,11 @@ setup_shell() {
     # This prevents the p10k configuration wizard from launching on first login
     if [[ "$ACFS_DISTRO_FAMILY" != "arch" ]]; then
         log_detail "Installing Powerlevel10k configuration"
+        # ~/.p10k.zsh is user-tuned; keep a backup like ~/.zshrc gets instead
+        # of silently clobbering it on --force-reinstall or a state reset.
+        if [[ -f "$TARGET_HOME/.p10k.zsh" ]] && ! $SUDO cmp -s "$TARGET_HOME/.p10k.zsh" "$ACFS_BOOTSTRAP_DIR/acfs/zsh/p10k.zsh" 2>/dev/null; then
+            try_step "Backing up existing p10k config" $SUDO cp -a "$TARGET_HOME/.p10k.zsh" "$TARGET_HOME/.p10k.zsh.pre-acfs.$(date +%Y%m%d%H%M%S)" || log_warn "Could not back up existing ~/.p10k.zsh"
+        fi
         try_step "Installing p10k config" install_asset "acfs/zsh/p10k.zsh" "$TARGET_HOME/.p10k.zsh" || return 1
         try_step "Setting p10k config ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.p10k.zsh" || return 1
     fi
@@ -6414,10 +6434,16 @@ install_languages_legacy_tools() {
             if try_step "Installing ast-grep via cargo" run_as_target "$cargo_bin" install ast-grep --locked; then
                 log_success "ast-grep installed"
             else
-                log_fatal "Failed to install ast-grep (sg)"
+                # A from-source Rust build on a small VPS can OOM; that must
+                # not abort the whole install (agents, cloud, stack, finalize)
+                # — record it and move on. UBS degrades without sg; it does
+                # not fail.
+                log_error "Failed to install ast-grep (sg); continuing (recorded as a module failure)"
+                ACFS_MODULE_FAILURES+=("tools.ast_grep (cargo install failed)")
             fi
         else
-            log_fatal "Cargo not found at $cargo_bin (cannot install ast-grep)"
+            log_error "Cargo not found at $cargo_bin (cannot install ast-grep); continuing"
+            ACFS_MODULE_FAILURES+=("tools.ast_grep (cargo unavailable)")
         fi
     fi
 
@@ -6670,8 +6696,12 @@ install_agents_phase() {
     local bun_bin="$TARGET_HOME/.bun/bin/bun"
 
     if [[ ! -x "$bun_bin" ]]; then
-        log_warn "Bun not found at $bun_bin, skipping agent CLI installation"
-        return 0
+        # Returning 0 here marked the agents phase complete with nothing
+        # installed; once the languages phase succeeded on resume, this phase
+        # was skipped forever and the user had no claude/codex/agy.
+        log_error "Bun not found at $bun_bin; the agents phase cannot run yet (it is retried on resume once the languages phase succeeds)"
+        ACFS_MODULE_FAILURES+=("agents (bun missing; languages phase must succeed first)")
+        return 1
     fi
 
     # Claude Code (install as target user)
@@ -7501,7 +7531,13 @@ NTM_CONFIG_EOF
     if [[ -f "${ACFS_LIB_DIR:-}/stack.sh" ]]; then
         # shellcheck source=scripts/lib/stack.sh
         source "$ACFS_LIB_DIR/stack.sh"
-        install_mcp_agent_mail || return 1
+        # Agent Mail failing (port 8765 held, slow readiness, no user
+        # systemd) must not abort the ~35 stack tools that follow; record it
+        # and let the phase report failure at the end so resume retries it.
+        install_mcp_agent_mail || {
+            ACFS_MODULE_FAILURES+=("stack.mcp_agent_mail (installer execution)")
+            stack_phase_rc=1
+        }
     else
         local am_cli_path="$TARGET_HOME/.local/bin/am"
         if binary_installed "mcp-agent-mail" || [[ -x "$am_cli_path" ]] || [[ -d "$TARGET_HOME/mcp_agent_mail" ]]; then
@@ -8020,27 +8056,13 @@ UNIT_EOF
         log_detail "Installing SLB (upstream)"
         try_step "Installing SLB (upstream)" acfs_run_verified_upstream_script_as_target "slb" "bash" || log_warn "SLB installation may have failed"
     else
-        log_detail "Installing SLB"
-        local slb_version="0.2.0"
-        local slb_arch="amd64"
-        [[ "$(uname -m)" == "aarch64" ]] && slb_arch="arm64"
-        local slb_deb="slb_${slb_version}_linux_${slb_arch}.deb"
-        local slb_url="https://github.com/Dicklesworthstone/slb/releases/download/v${slb_version}/${slb_deb}"
-        ACFS_TMP_SLB="$(mktemp -d "${TMPDIR:-/tmp}/acfs-slb.XXXXXX" 2>/dev/null)" || ACFS_TMP_SLB=""
-        if [[ -n "$ACFS_TMP_SLB" ]] && [[ -d "$ACFS_TMP_SLB" ]]; then
-            if acfs_curl -o "${ACFS_TMP_SLB}/${slb_deb}" "$slb_url" && \
-               $SUDO dpkg -i "${ACFS_TMP_SLB}/${slb_deb}"; then
-                log_success "SLB installed via .deb"
-            else
-                log_warn "SLB .deb install failed, trying upstream script"
-                try_step "Installing SLB (upstream)" acfs_run_verified_upstream_script_as_target "slb" "bash" || log_warn "SLB installation may have failed"
-            fi
-            rm -rf "$ACFS_TMP_SLB" 2>/dev/null || true
-            ACFS_TMP_SLB=""
-        else
-            log_warn "Failed to create temp directory for SLB, trying upstream script"
-            try_step "Installing SLB (upstream)" acfs_run_verified_upstream_script_as_target "slb" "bash" || log_warn "SLB installation may have failed"
-        fi
+        # The former .deb path fetched a pinned 0.2.0 GitHub release over
+        # HTTPS with no checksum and installed it as root via dpkg — the one
+        # stack tool that bypassed checksums.yaml, and a stale pin besides.
+        # Use the checksum-verified upstream installer like every other tool
+        # (the Arch branch above already does).
+        log_detail "Installing SLB (verified upstream installer)"
+        try_step "Installing SLB (upstream)" acfs_run_verified_upstream_script_as_target "slb" "bash" || log_warn "SLB installation may have failed"
     fi
 
     # RU (Repo Updater)
@@ -8341,12 +8363,34 @@ UNIT_EOF
         try_step "Installing Brenner Bot" acfs_run_verified_upstream_script_as_target "brenner_bot" "bash" --skip-cass || log_warn "Brenner Bot installation may have failed"
     fi
 
+    if [[ "$stack_phase_rc" -ne 0 ]]; then
+        log_warn "Stack phase finished with generated-module failures (see summary); the phase will be retried on resume"
+        return 1
+    fi
     log_success "Dicklesworthstone stack installed"
 }
 
 # ============================================================
 # Phase 9: Final wiring
 # ============================================================
+acfs_resolve_existing_config_write_path() {
+    local path="${1:-}"
+    local readlink_bin=""
+    local resolved=""
+
+    [[ -n "$path" && "$path" == /* && "$path" != "/" && -f "$path" ]] || return 1
+    if [[ ! -L "$path" ]]; then
+        printf '%s\n' "$path"
+        return 0
+    fi
+
+    readlink_bin="$(acfs_early_system_binary_path readlink 2>/dev/null || true)"
+    [[ -n "$readlink_bin" ]] || return 1
+    resolved="$("$readlink_bin" -f -- "$path" 2>/dev/null || true)"
+    [[ -n "$resolved" && "$resolved" == /* && "$resolved" != "/" && -f "$resolved" && ! -L "$resolved" ]] || return 1
+    printf '%s\n' "$resolved"
+}
+
 finalize() {
     set_phase "finalize" "Final Wiring"
     log_step "9/9" "Finalizing installation..."

@@ -559,11 +559,14 @@ function parseJsonProbe(candidate: AuthFileCandidate, fs: AgentReadinessFileSyst
     let parsed: unknown;
     try {
       parsed = JSON.parse(read.content ?? '');
-    } catch (error) {
+    } catch {
+      // Never include the parser's message: for auth files it can quote the
+      // offending token ("Unexpected identifier \"sk\"..."), which would put a
+      // credential fragment into the audit output.
       return {
         status: 'fail',
         path: candidate.path,
-        detail: `${candidate.label} is malformed JSON at ${redactPath(candidate.path, home)}: ${errorMessage(error)}`,
+        detail: `${candidate.label} is malformed JSON at ${redactPath(candidate.path, home)} (parser message withheld for an auth file)`,
         exists: true,
       };
     }
