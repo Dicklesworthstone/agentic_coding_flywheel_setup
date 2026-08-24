@@ -518,6 +518,38 @@ YAML
     pass "duplicate_checksum_installer_key_is_refused"
 }
 
+test_duplicate_module_selection_is_refused() {
+    local source_root output status
+    source_root="$(write_fixture_source duplicate-selection valid)"
+
+    output="$(run_pack duplicate-selection build --dry-run --json --source-root "$source_root" --module stack.rch --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/duplicate-selection.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_duplicate_module: module selected more than once: stack.rch"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "duplicate_module_selection_is_refused"
+}
+
+test_best_effort_does_not_downgrade_structural_errors() {
+    local source_root output status
+    source_root="$(write_fixture_source best-effort-structural valid)"
+
+    output="$(run_pack best-effort-structural build --dry-run --best-effort --json --source-root "$source_root" --module stack.nope)"
+    status="$(cat "$ARTIFACT_DIR/best-effort-structural.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_unknown_module: stack.nope"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "best_effort_does_not_downgrade_structural_errors"
+}
+
 test_clean_source_commit_cannot_claim_a_different_executing_builder() {
     local source_root output_dir output status
     source_root="$(write_fixture_source builder-mismatch valid)"
@@ -619,6 +651,8 @@ run_all_tests() {
         test_duplicate_module_id_is_refused
         test_invalid_module_markdown_reports_without_crashing
         test_duplicate_checksum_installer_key_is_refused
+        test_duplicate_module_selection_is_refused
+        test_best_effort_does_not_downgrade_structural_errors
         test_clean_source_commit_cannot_claim_a_different_executing_builder
         test_invalid_verified_installer_runner_is_refused
         test_best_effort_records_download_failure

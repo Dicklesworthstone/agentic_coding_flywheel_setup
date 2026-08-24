@@ -615,6 +615,49 @@ acfs_security_file_size() {
     printf '%s\n' "$output"
 }
 
+acfs_installer_cache_snapshot_regular_file() {
+    local source_file="$1"
+    local max_bytes="$2"
+    local temp_template="$3"
+    local error_code="$4"
+    local name="$5"
+    local label="$6"
+    local snapshot=""
+    local snapshot_size=""
+    local head_bin=""
+    local timeout_bin=""
+    local copy_limit=0
+
+    if [[ ! -f "$source_file" || -L "$source_file" || ! -r "$source_file" ]]; then
+        acfs_offline_pack_error "$error_code" "$name" "$label is not a regular readable non-symlink file"
+        return 1
+    fi
+    [[ "$max_bytes" =~ ^[1-9][0-9]*$ ]] || return 1
+
+    snapshot="$(acfs_security_mktemp "$temp_template" 2>/dev/null)" || {
+        acfs_offline_pack_error "$error_code" "$name" "failed to create a private snapshot for $label"
+        return 1
+    }
+    head_bin="$(acfs_security_required_binary_path head 2>/dev/null || true)"
+    timeout_bin="$(acfs_security_required_binary_path timeout 2>/dev/null || true)"
+    copy_limit=$((max_bytes + 1))
+    if [[ -z "$head_bin" || -z "$timeout_bin" ]] \
+        || ! "$timeout_bin" 5 "$head_bin" -c "$copy_limit" -- "$source_file" > "$snapshot"; then
+        acfs_offline_pack_error "$error_code" "$name" "failed to snapshot $label within policy bounds"
+        _acfs_remove_temp_files "$snapshot"
+        return 1
+    fi
+
+    snapshot_size="$(acfs_security_file_size "$snapshot" 2>/dev/null || true)"
+    if [[ ! "$snapshot_size" =~ ^[0-9]+$ || "$snapshot_size" -gt "$max_bytes" ]]; then
+        acfs_offline_pack_error "$error_code" "$name" "$label exceeds the $max_bytes-byte policy limit"
+        _acfs_remove_temp_files "$snapshot"
+        return 1
+    fi
+
+    printf '%s\n' "$snapshot"
+}
+
 acfs_offline_pack_requested() {
     [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]
 }
@@ -1023,32 +1066,20 @@ acfs_offline_pack_verify_artifact() {
     local pack_root=""
     local manifest_source=""
     local manifest_snapshot=""
-    local manifest_size=""
-    local head_bin=""
-    local timeout_bin=""
     local status=0
 
     pack_info="$(acfs_offline_pack_locate "$name")" || return 1
     pack_root="${pack_info%%$'\t'*}"
     manifest_source="${pack_info#*$'\t'}"
-    manifest_snapshot="$(acfs_security_mktemp "/tmp/acfs-installer-cache-manifest.XXXXXX" 2>/dev/null)" || {
-        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to create a private manifest snapshot"
-        return 1
-    }
-    head_bin="$(acfs_security_required_binary_path head 2>/dev/null || true)"
-    timeout_bin="$(acfs_security_required_binary_path timeout 2>/dev/null || true)"
-    if [[ -z "$head_bin" || -z "$timeout_bin" ]] \
-        || ! "$timeout_bin" 5 "$head_bin" -c 8388609 -- "$manifest_source" > "$manifest_snapshot"; then
-        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to snapshot manifest.json within policy bounds"
-        _acfs_remove_temp_files "$manifest_snapshot"
-        return 1
-    fi
-    manifest_size="$(acfs_security_file_size "$manifest_snapshot" 2>/dev/null || true)"
-    if [[ ! "$manifest_size" =~ ^[0-9]+$ || "$manifest_size" -gt 8388608 ]]; then
-        acfs_offline_pack_error "pack_malformed_manifest" "$name" "manifest.json exceeds the 8 MiB policy limit"
-        _acfs_remove_temp_files "$manifest_snapshot"
-        return 1
-    fi
+    manifest_snapshot="$(
+        acfs_installer_cache_snapshot_regular_file \
+            "$manifest_source" \
+            8388608 \
+            "/tmp/acfs-installer-cache-manifest.XXXXXX" \
+            "pack_malformed_manifest" \
+            "$name" \
+            "manifest.json"
+    )" || return 1
 
     _acfs_offline_pack_verify_artifact_snapshot \
         "$pack_root" "$manifest_snapshot" "$url" "$expected_sha256" "$name" || status=$?

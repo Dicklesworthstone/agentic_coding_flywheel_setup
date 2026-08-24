@@ -950,7 +950,16 @@ offline_pack_iso_now() {
 }
 
 offline_pack_iso_expires() {
-    offline_pack_date -u -d "$OFFLINE_PACK_EXPIRES_DAYS days" +%Y-%m-%dT%H:%M:%SZ
+    local days="${OFFLINE_PACK_EXPIRES_DAYS:-7}"
+    local result=""
+    result="$(offline_pack_date -u -d "$days days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        result="$(offline_pack_date -u -v+"${days}"d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+    fi
+    if [[ -z "$result" ]] && command -v python3 &>/dev/null; then
+        result="$(python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=$days)).strftime('%Y-%m-%dT%H:%M:%SZ'))" 2>/dev/null || true)"
+    fi
+    printf '%s\n' "$result"
 }
 
 offline_pack_output_dir_is_empty() {
