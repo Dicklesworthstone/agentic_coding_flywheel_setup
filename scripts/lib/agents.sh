@@ -181,6 +181,24 @@ _agent_system_binary_path() {
     return 1
 }
 
+_agent_resolve_existing_config_write_path() {
+    local path="${1:-}"
+    local readlink_bin=""
+    local resolved=""
+
+    [[ -n "$path" && "$path" == /* && "$path" != "/" && -f "$path" ]] || return 1
+    if [[ ! -L "$path" ]]; then
+        printf '%s\n' "$path"
+        return 0
+    fi
+
+    readlink_bin="$(_agent_system_binary_path readlink 2>/dev/null || true)"
+    [[ -n "$readlink_bin" ]] || return 1
+    resolved="$("$readlink_bin" -f -- "$path" 2>/dev/null || true)"
+    [[ -n "$resolved" && "$resolved" == /* && "$resolved" != "/" && -f "$resolved" && ! -L "$resolved" ]] || return 1
+    printf '%s\n' "$resolved"
+}
+
 _agent_resolve_current_user() {
     local current_user=""
     local id_bin=""
@@ -1068,23 +1086,34 @@ GEMINI_EOF"
     local jq_bin_q=""
     jq_bin="$(_agent_system_binary_path jq 2>/dev/null || true)"
     if [[ -n "$jq_bin" ]]; then
+        local settings_write_file=""
         local mv_bin=""
         local mv_bin_q=""
+        local mktemp_bin=""
+        local mktemp_bin_q=""
         local rm_bin=""
         local rm_bin_q=""
-        local tmp_file="$settings_dir/.settings.tmp.$$"
+        local tmp_file=""
         local tmp_file_q=""
+        local tmp_template_q=""
         local needs_update=false
+        settings_write_file="$(_agent_resolve_existing_config_write_path "$settings_file" 2>/dev/null || true)"
         mv_bin="$(_agent_system_binary_path mv 2>/dev/null || true)"
+        mktemp_bin="$(_agent_system_binary_path mktemp 2>/dev/null || true)"
         rm_bin="$(_agent_system_binary_path rm 2>/dev/null || true)"
-        if [[ -z "$mv_bin" || -z "$rm_bin" ]]; then
-            log_detail "mv/rm not available; skipping Gemini settings merge"
+        if [[ -z "$settings_write_file" ]]; then
+            log_warn "Could not safely resolve Gemini settings path; leaving it untouched"
             return 0
         fi
+        if [[ -z "$mv_bin" || -z "$mktemp_bin" || -z "$rm_bin" ]]; then
+            log_detail "mktemp/mv/rm not available; skipping Gemini settings merge"
+            return 0
+        fi
+        printf -v settings_file_q '%q' "$settings_write_file"
         printf -v jq_bin_q '%q' "$jq_bin"
         printf -v mv_bin_q '%q' "$mv_bin"
+        printf -v mktemp_bin_q '%q' "$mktemp_bin"
         printf -v rm_bin_q '%q' "$rm_bin"
-        printf -v tmp_file_q '%q' "$tmp_file"
 
         # Check if enableInteractiveShell is already set correctly
         local shell_value
@@ -1114,11 +1143,21 @@ GEMINI_EOF"
 
         if [[ "$needs_update" == "true" ]]; then
             log_detail "Configuring Gemini settings for tmux compatibility, OAuth, and MCP Agent Mail..."
+            printf -v tmp_template_q '%q' "${settings_write_file}.tmp.XXXXXX"
+            tmp_file="$(_agent_run_as_user "$mktemp_bin_q $tmp_template_q" 2>/dev/null || true)"
+            case "$tmp_file" in
+                "${settings_write_file}.tmp."*) ;;
+                *)
+                    log_warn "Could not create an exclusive Gemini settings staging file"
+                    return 0
+                    ;;
+            esac
+            printf -v tmp_file_q '%q' "$tmp_file"
             # Update shell settings, auth type, and MCP server config
-            if _agent_run_as_user "$jq_bin_q --arg http_url $am_mcp_url_q '.selectedType = \"oauth-personal\" | .tools = (.tools // {}) | .tools.shell = (.tools.shell // {}) | .tools.shell.enableInteractiveShell = false | .mcpServers = (.mcpServers // {}) | .mcpServers.\"mcp-agent-mail\" = {\"httpUrl\": \$http_url}' $settings_file_q > $tmp_file_q && $mv_bin_q $tmp_file_q $settings_file_q" 2>/dev/null; then
+            if _agent_run_as_user "$jq_bin_q --arg http_url $am_mcp_url_q '.selectedType = \"oauth-personal\" | .tools = (.tools // {}) | .tools.shell = (.tools.shell // {}) | .tools.shell.enableInteractiveShell = false | .mcpServers = (.mcpServers // {}) | .mcpServers.\"mcp-agent-mail\" = {\"httpUrl\": \$http_url}' $settings_file_q > $tmp_file_q && $mv_bin_q -- $tmp_file_q $settings_file_q" 2>/dev/null; then
                 log_detail "Gemini settings configured (OAuth + tmux + MCP Agent Mail)"
             else
-                _agent_run_as_user "$rm_bin_q -f $tmp_file_q" 2>/dev/null
+                _agent_run_as_user "$rm_bin_q -f -- $tmp_file_q" 2>/dev/null
                 log_warn "Could not update Gemini settings automatically"
             fi
         else

@@ -234,7 +234,9 @@ swarm_inventory_validation_json() {
         def err($code; $path; $message): {code: $code, path: $path, message: $message};
         def sensitive_names: [
           "hostname", "ip", "address", "ssh_key", "private_key", "token",
-          "password", "credential", "provider_api_key", "project_path", "home"
+          "password", "credential", "provider_api_key", "project_path", "home",
+          "username", "ssh_username", "sshusername", "provider_id", "providerid",
+          "provider_account_id", "provideraccountid", "account_id", "accountid"
         ];
         def role_ok($v): ($v | IN("swarm-controller", "swarm-worker", "rch-worker", "support", "disabled"));
         def status_ok($v): ($v | IN("active", "stale", "disabled", "unknown"));
@@ -259,7 +261,7 @@ swarm_inventory_validation_json() {
             # those through while the docs promised they were rejected.
             | select((sensitive_names | index($key))
                      or ($key | test("(^|[_.-])(host|hostname|ip|ipv4|ipv6|addr|address|ssh|key|token|secret|pass|passwd|password|cred|credential|home|path|user)([_.-]|$)"))
-                     or ($p[-1] | test("[a-z](Host|Ip|Addr|Key|Token|Secret|Pass|Cred|Home|Path|User)([A-Z]|$)")))
+                     or ($p[-1] | test("[a-z](Host|Ip|Addr|Key|Token|Secret|Pass|Cred|Home|Path|User|Username|AccountId|ProviderId|ProviderAccountId)([A-Z]|$)")))
             | pathstr($p)
           ] + [
             # Values that look like network endpoints or credentials, whatever

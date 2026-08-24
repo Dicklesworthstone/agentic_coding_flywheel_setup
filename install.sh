@@ -2932,20 +2932,29 @@ acfs_curl_with_retry() {
 }
 
 acfs_calculate_file_sha256() {
-    local file_path="$1"
+    local file_path="${1:-}"
+    local hash_bin=""
+    local hash_output=""
+    local hash=""
 
-    if command_exists sha256sum; then
-        sha256sum "$file_path" | cut -d' ' -f1
-        return 0
+    hash_bin="$(acfs_early_system_binary_path sha256sum 2>/dev/null || true)"
+    if [[ -n "$hash_bin" ]]; then
+        hash_output="$("$hash_bin" "$file_path")" || return 1
+    else
+        hash_bin="$(acfs_early_system_binary_path shasum 2>/dev/null || true)"
+        if [[ -z "$hash_bin" ]]; then
+            log_error "No trusted SHA256 tool available (need sha256sum or shasum)"
+            return 1
+        fi
+        hash_output="$("$hash_bin" -a 256 "$file_path")" || return 1
     fi
 
-    if command_exists shasum; then
-        shasum -a 256 "$file_path" | cut -d' ' -f1
-        return 0
+    hash="${hash_output%%[[:space:]]*}"
+    if [[ ! "$hash" =~ ^[0-9A-Fa-f]{64}$ ]]; then
+        log_error "Trusted SHA256 tool returned an invalid digest"
+        return 1
     fi
-
-    log_error "No SHA256 tool available (need sha256sum or shasum)"
-    return 1
+    printf '%s\n' "${hash,,}"
 }
 
 acfs_download_file_and_verify_sha256() {
@@ -5368,8 +5377,9 @@ acfs_install_sudoers_dropin() {
     local destination_name=""
     local mktemp_bin=""
     local chmod_bin=""
-    local install_bin=""
+    local mv_bin=""
     local rm_bin=""
+    local tee_bin=""
     local visudo_bin=""
     local staged_file=""
     local -a sudo_prefix=()
@@ -5390,42 +5400,45 @@ acfs_install_sudoers_dropin() {
 
     mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
     chmod_bin="$(acfs_early_system_binary_path chmod 2>/dev/null || true)"
-    install_bin="$(acfs_early_system_binary_path install 2>/dev/null || true)"
+    mv_bin="$(acfs_early_system_binary_path mv 2>/dev/null || true)"
     rm_bin="$(acfs_early_system_binary_path rm 2>/dev/null || true)"
+    tee_bin="$(acfs_early_system_binary_path tee 2>/dev/null || true)"
     visudo_bin="$(acfs_early_system_binary_path visudo 2>/dev/null || true)"
-    if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$install_bin" || -z "$rm_bin" || -z "$visudo_bin" ]]; then
-        log_error "Trusted mktemp, chmod, install, rm, and visudo executables are required for sudoers changes"
+    if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$mv_bin" || -z "$rm_bin" || -z "$tee_bin" || -z "$visudo_bin" ]]; then
+        log_error "Trusted mktemp, chmod, mv, rm, tee, and visudo executables are required for sudoers changes"
         return 1
     fi
     if [[ -n "${SUDO:-}" ]]; then
         sudo_prefix=("$SUDO")
     fi
 
-    # Use the fixed system temp directory, not caller-controlled TMPDIR. /tmp is
-    # sticky on supported systems, so another unprivileged user cannot replace
-    # this staged file between validation and installation.
-    staged_file="$("$mktemp_bin" /tmp/acfs-sudoers.XXXXXX 2>/dev/null || true)"
+    # Create the candidate as root in the destination directory. A non-root
+    # invoking user must never own the pathname that visudo validates and the
+    # privileged replacement later consumes; mode 0440 alone would not prevent
+    # its owner from chmod/write/unlink between those operations.
+    staged_file="$("${sudo_prefix[@]}" "$mktemp_bin" "/etc/sudoers.d/.${destination_name}.XXXXXX" 2>/dev/null || true)"
     if [[ -z "$staged_file" ]]; then
         log_error "Unable to create a temporary file for the sudoers drop-in"
         return 1
     fi
 
-    if ! printf '%s\n' "$content" > "$staged_file" || ! "$chmod_bin" 0440 "$staged_file"; then
-        "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
+    if ! printf '%s\n' "$content" | "${sudo_prefix[@]}" "$tee_bin" -- "$staged_file" >/dev/null \
+        || ! "${sudo_prefix[@]}" "$chmod_bin" 0440 "$staged_file"; then
+        "${sudo_prefix[@]}" "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
         log_error "Unable to stage sudoers content for validation"
         return 1
     fi
     if ! "${sudo_prefix[@]}" "$visudo_bin" -c -f "$staged_file" >/dev/null 2>&1; then
-        "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
+        "${sudo_prefix[@]}" "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
         log_error "Generated sudoers content failed validation; $destination was left untouched"
         return 1
     fi
-    if ! try_step "$description" "${sudo_prefix[@]}" "$install_bin" -m 0440 -o root -g root "$staged_file" "$destination"; then
-        "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
+    # Both paths are on /etc's filesystem, so rename replaces the validated
+    # drop-in atomically instead of unlinking the live file before a copy.
+    if ! try_step "$description" "${sudo_prefix[@]}" "$mv_bin" -f -- "$staged_file" "$destination"; then
+        "${sudo_prefix[@]}" "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
         return 1
     fi
-
-    "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
     return 0
 }
 

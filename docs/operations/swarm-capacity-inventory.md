@@ -168,8 +168,13 @@ Sensitive fields are forbidden at any depth:
 - `password`
 - `credential`
 - `provider_api_key`
+- `provider_id`
+- `provider_account_id`
+- `account_id`
 - `project_path`
 - `home`
+- `username`
+- `ssh_username`
 
 The implementation should reject these fields on import unless the operator
 passes an explicit future `--allow-sensitive-local-only` flag. Even then,

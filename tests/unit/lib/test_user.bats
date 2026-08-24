@@ -109,35 +109,67 @@ teardown() {
     fi
 }
 
-@test "enable_passwordless_sudo: writes sudoers" {
-    # Stub tee to write to file
-    local capture_file="$ACFS_TARGET_HOME/sudoers_capture"
-    cat > "$STUB_DIR/tee" <<EOF
-#!/bin/bash
-cat > "$capture_file"
+@test "enable_passwordless_sudo: validates staged content before install" {
+    local staged_file="$ACFS_TARGET_HOME/sudoers-stage"
+    stub_command "mktemp" "$staged_file" 0
+    spy_command "chmod"
+    spy_command "visudo"
+    cat > "$STUB_DIR/tee" <<'EOF'
+#!/usr/bin/env bash
+[[ "${1:-}" == "--" && -n "${2:-}" ]] || exit 2
+cat > "$2"
 EOF
     chmod +x "$STUB_DIR/tee"
-    
-    # Stub visudo to succeed
-    stub_command "visudo" "" 0
-    
+    spy_command "mv"
+    stub_command "rm" "" 0
+    user_system_binary_path() {
+        printf '%s/%s\n' "$STUB_DIR" "$1"
+    }
+
     run enable_passwordless_sudo
     assert_success
-    
-    run cat "$capture_file"
+
+    run cat "$staged_file"
     assert_output "testuser ALL=(ALL) NOPASSWD:ALL"
+
+    run cat "$STUB_DIR/visudo.log"
+    assert_output "-c -f $staged_file"
+
+    run cat "$STUB_DIR/mv.log"
+    assert_output "-f -- $staged_file /etc/sudoers.d/90-ubuntu-acfs"
 }
 
-@test "enable_passwordless_sudo: rejects invalid TARGET_USER before tee" {
+@test "enable_passwordless_sudo: leaves live drop-in untouched when validation fails" {
+    local staged_file="$ACFS_TARGET_HOME/invalid-sudoers-stage"
+    stub_command "mktemp" "$staged_file" 0
+    stub_command "chmod" "" 0
+    stub_command "tee" "" 0
+    spy_command "visudo" 1
+    spy_command "mv"
+    stub_command "rm" "" 0
+    user_system_binary_path() {
+        printf '%s/%s\n' "$STUB_DIR" "$1"
+    }
+
+    run enable_passwordless_sudo
+    assert_failure
+    assert_output --partial "was left untouched"
+
+    if [[ -f "$STUB_DIR/mv.log" ]] && [[ -s "$STUB_DIR/mv.log" ]]; then
+        fail "live sudoers replacement should not run when visudo rejects the staged file"
+    fi
+}
+
+@test "enable_passwordless_sudo: rejects invalid TARGET_USER before staging" {
     export TARGET_USER="../bad user"
-    spy_command "tee"
+    spy_command "mktemp"
 
     run enable_passwordless_sudo
     assert_failure
     assert_output --partial "Invalid TARGET_USER '../bad user'"
 
-    if [[ -f "$STUB_DIR/tee.log" ]] && [[ -s "$STUB_DIR/tee.log" ]]; then
-        fail "tee should not be called for invalid TARGET_USER"
+    if [[ -f "$STUB_DIR/mktemp.log" ]] && [[ -s "$STUB_DIR/mktemp.log" ]]; then
+        fail "mktemp should not be called for invalid TARGET_USER"
     fi
 }
 

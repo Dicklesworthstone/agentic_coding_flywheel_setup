@@ -485,6 +485,8 @@ install_tools_atuin() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -507,14 +509,24 @@ install_tools_atuin() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'env' 'ATUIN_NO_MODIFY_PATH=1' 'sh' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "tools.atuin: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "tools.atuin: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "tools.atuin: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "tools.atuin: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'env' 'ATUIN_NO_MODIFY_PATH=1' 'sh' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "tools.atuin: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "tools.atuin: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -533,6 +545,10 @@ install_tools_atuin() {
             else
                 log_error "tools.atuin: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -668,6 +684,8 @@ install_tools_zoxide() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -690,14 +708,24 @@ install_tools_zoxide() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'sh' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "tools.zoxide: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "tools.zoxide: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "tools.zoxide: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "tools.zoxide: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'sh' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "tools.zoxide: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "tools.zoxide: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -716,6 +744,10 @@ install_tools_zoxide() {
             else
                 log_error "tools.zoxide: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -877,6 +909,8 @@ install_utils_giil() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -899,14 +933,24 @@ install_utils_giil() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "utils.giil: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "utils.giil: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "utils.giil: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "utils.giil: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "utils.giil: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "utils.giil: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -925,6 +969,10 @@ install_utils_giil() {
             else
                 log_error "utils.giil: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -983,6 +1031,8 @@ install_utils_csctf() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1005,14 +1055,24 @@ install_utils_csctf() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "utils.csctf: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "utils.csctf: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "utils.csctf: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "utils.csctf: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "utils.csctf: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "utils.csctf: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1031,6 +1091,10 @@ install_utils_csctf() {
             else
                 log_error "utils.csctf: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1089,6 +1153,8 @@ install_utils_xf() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1111,14 +1177,24 @@ install_utils_xf() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' '--easy-mode'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "utils.xf: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "utils.xf: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "utils.xf: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "utils.xf: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file" '--easy-mode'; then
                             install_success=true
                         else
-                            log_error "utils.xf: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "utils.xf: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1137,6 +1213,10 @@ install_utils_xf() {
             else
                 log_error "utils.xf: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1195,6 +1275,8 @@ install_utils_toon_rust() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1217,14 +1299,24 @@ install_utils_toon_rust() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "utils.toon_rust: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "utils.toon_rust: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "utils.toon_rust: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "utils.toon_rust: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "utils.toon_rust: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "utils.toon_rust: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1243,6 +1335,10 @@ install_utils_toon_rust() {
             else
                 log_error "utils.toon_rust: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1301,6 +1397,8 @@ install_utils_rano() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1323,14 +1421,24 @@ install_utils_rano() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "utils.rano: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "utils.rano: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "utils.rano: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "utils.rano: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "utils.rano: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "utils.rano: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1349,6 +1457,10 @@ install_utils_rano() {
             else
                 log_error "utils.rano: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1407,6 +1519,8 @@ install_utils_mdwb() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1429,14 +1543,24 @@ install_utils_mdwb() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "utils.mdwb: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "utils.mdwb: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "utils.mdwb: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "utils.mdwb: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "utils.mdwb: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "utils.mdwb: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1455,6 +1579,10 @@ install_utils_mdwb() {
             else
                 log_error "utils.mdwb: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1513,6 +1641,8 @@ install_utils_s2p() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1535,14 +1665,24 @@ install_utils_s2p() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'env' 'RU_NON_INTERACTIVE=1' 'bash' '-s' '--' '--skip-cass'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "utils.s2p: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "utils.s2p: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "utils.s2p: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "utils.s2p: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'env' 'RU_NON_INTERACTIVE=1' 'bash' "$verified_installer_file" '--skip-cass'; then
                             install_success=true
                         else
-                            log_error "utils.s2p: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "utils.s2p: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1561,6 +1701,10 @@ install_utils_s2p() {
             else
                 log_error "utils.s2p: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback

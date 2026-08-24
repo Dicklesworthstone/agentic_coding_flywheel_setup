@@ -1564,9 +1564,10 @@ update_create_target_readable_temp_file() {
     local template=""
     local tmp_file=""
     local mktemp_bin=""
-    local mkdir_bin=""
     local chmod_bin=""
     local rm_bin=""
+    local dir_uid=""
+    local file_uid=""
     local -a candidate_dirs=()
     local -a templates=()
     local duplicate_template="false"
@@ -1583,19 +1584,21 @@ update_create_target_readable_temp_file() {
     esac
 
     mktemp_bin="$(update_system_binary_path mktemp 2>/dev/null || true)"
-    mkdir_bin="$(update_system_binary_path mkdir 2>/dev/null || true)"
     chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
     rm_bin="$(update_system_binary_path rm 2>/dev/null || true)"
     local stat_bin=""
     stat_bin="$(update_system_binary_path stat 2>/dev/null || true)"
-    if [[ -z "$mktemp_bin" || -z "$mkdir_bin" || -z "$chmod_bin" || -z "$rm_bin" || -z "$stat_bin" ]]; then
+    if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$rm_bin" || -z "$stat_bin" ]]; then
         echo "Trusted temp-file helpers unavailable" >&2
         return 1
     fi
 
-    candidate_dirs+=("${ACFS_UPDATE_TMPDIR:-}")
-    candidate_dirs+=("${TMPDIR:-}")
-    candidate_dirs+=("/data/tmp" "/var/tmp" "/tmp")
+    # Verified bytes are executed later under a different user identity. Keep
+    # the pathname anchored below fixed system-owned temp roots: validating
+    # only an environment-selected final directory is insufficient because an
+    # attacker who owns one of its ancestors can rename and replace that
+    # directory after validation. Never create or follow an override path here.
+    candidate_dirs+=("/tmp" "/var/tmp")
 
     for candidate in "${candidate_dirs[@]}"; do
         tmpdir_candidate="${candidate%/}"
@@ -1613,22 +1616,33 @@ update_create_target_readable_temp_file() {
         done
         [[ "$duplicate_template" == "false" ]] || continue
 
-        "$mkdir_bin" -p "$tmpdir_candidate" 2>/dev/null || continue
-        [[ -d "$tmpdir_candidate" && -w "$tmpdir_candidate" ]] || continue
+        [[ -d "$tmpdir_candidate" && ! -L "$tmpdir_candidate" && -w "$tmpdir_candidate" ]] || continue
         # The verified installer script is staged here and executed later as
         # the target user. In a world-writable directory without the sticky
-        # bit (e.g. a pre-existing 0777 /data/tmp) any local user could swap
+        # bit (for example, a misconfigured 0777 system temp root) any local user could swap
         # the file between verification and execution, so skip such dirs.
         # Group-writable shared directories have the same replacement risk.
         local dir_mode=""
         local dir_mode_value=0
         dir_mode="$("$stat_bin" -c '%a' "$tmpdir_candidate" 2>/dev/null || true)"
-        if [[ ! "$dir_mode" =~ ^[0-7]{3,4}$ ]]; then
+        dir_uid="$("$stat_bin" -c '%u' "$tmpdir_candidate" 2>/dev/null || true)"
+        if [[ ! "$dir_mode" =~ ^[0-7]{3,4}$ ]] || [[ ! "$dir_uid" =~ ^[0-9]+$ ]]; then
+            continue
+        fi
+        # An untrusted directory owner can chmod or rename the directory after
+        # this check even when its current mode is 0755. Root and the updater's
+        # own identity are the only owners that can safely anchor the path.
+        if [[ "$dir_uid" != "0" && "$dir_uid" != "$EUID" ]]; then
             continue
         fi
         dir_mode_value=$((8#$dir_mode))
-        if (( (dir_mode_value & 0022) != 0 )) && [[ ! -k "$tmpdir_candidate" ]]; then
-            continue
+        if (( (dir_mode_value & 0022) != 0 )); then
+            # Sticky directories protect a file from peer users, but the
+            # directory owner can still unlink/replace any entry. Ownership is
+            # trusted above; require sticky semantics against every peer user.
+            if [[ ! -k "$tmpdir_candidate" ]]; then
+                continue
+            fi
         fi
         templates+=("$tmpdir_candidate/${prefix}.XXXXXX")
     done
@@ -1637,14 +1651,19 @@ update_create_target_readable_temp_file() {
         tmp_file="$("$mktemp_bin" "$template" 2>/dev/null || true)"
         [[ -n "$tmp_file" ]] || continue
         if ! "$chmod_bin" 0755 "$tmp_file" 2>/dev/null; then
-            "$rm_bin" -f "$tmp_file" 2>/dev/null || true
+            "$rm_bin" -f -- "$tmp_file" 2>/dev/null || true
+            continue
+        fi
+        file_uid="$("$stat_bin" -c '%u' "$tmp_file" 2>/dev/null || true)"
+        if [[ ! -f "$tmp_file" || -L "$tmp_file" || "$file_uid" != "$EUID" ]]; then
+            "$rm_bin" -f -- "$tmp_file" 2>/dev/null || true
             continue
         fi
         if update_run_in_target_context "" test -r "$tmp_file" >/dev/null 2>&1; then
             printf '%s\n' "$tmp_file"
             return 0
         fi
-        "$rm_bin" -f "$tmp_file" 2>/dev/null || true
+        "$rm_bin" -f -- "$tmp_file" 2>/dev/null || true
     done
 
     echo "Failed to create a target-readable temp file for $prefix" >&2

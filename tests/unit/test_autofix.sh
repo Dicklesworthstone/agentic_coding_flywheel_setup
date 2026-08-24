@@ -1236,52 +1236,48 @@ test_start_autofix_session_clears_stale_session_marker() {
     return 0
 }
 
-test_start_autofix_session_rejects_preexisting_session_marker() {
+test_start_autofix_session_ignores_reused_pid_in_orphaned_marker() {
     setup_test_env
 
-    # A marker whose owning process is still alive means a real concurrent
-    # session: it must be rejected and left untouched.
+    # The marker's pid can be reused by an unrelated process. The flock is the
+    # ownership authority, so an available lock permits atomic replacement.
     sleep 300 &
     local live_pid=$!
 
     printf '{"id":"stale","start":"2026-01-01T00:00:00Z","pid":%s}\n' "$live_pid" > "$ACFS_STATE_DIR/.session"
 
-    if start_autofix_session >/dev/null 2>&1; then
-        echo "  start_autofix_session unexpectedly succeeded with a live preexisting session marker"
+    if ! start_autofix_session >/dev/null 2>&1; then
+        echo "  start_autofix_session mistook a reused live pid for lock ownership"
         kill "$live_pid" 2>/dev/null || true
         cleanup_test_env
         return 1
     fi
 
-    if [[ -n "${ACFS_SESSION_ID:-}" ]]; then
-        echo "  Failed start left a transient session ID behind"
+    if [[ -z "${ACFS_SESSION_ID:-}" ]]; then
+        echo "  Session started but no session ID was set"
         kill "$live_pid" 2>/dev/null || true
+        end_autofix_session >/dev/null 2>&1 || true
         cleanup_test_env
         return 1
     fi
 
-    if ! grep -q '"id":"stale"' "$ACFS_STATE_DIR/.session"; then
-        echo "  Failed start replaced the unresolved session marker"
+    if grep -q '"id":"stale"' "$ACFS_STATE_DIR/.session" 2>/dev/null; then
+        echo "  Orphaned marker with reused pid was not replaced"
         kill "$live_pid" 2>/dev/null || true
+        end_autofix_session >/dev/null 2>&1 || true
         cleanup_test_env
         return 1
     fi
+    if ! kill -0 "$live_pid" 2>/dev/null; then
+        echo "  Session recovery disturbed the unrelated process whose pid was reused"
+        end_autofix_session >/dev/null 2>&1 || true
+        cleanup_test_env
+        return 1
+    fi
+
+    end_autofix_session >/dev/null 2>&1 || true
     kill "$live_pid" 2>/dev/null || true
     wait "$live_pid" 2>/dev/null || true
-
-    exec 201>"$ACFS_LOCK_FILE" || {
-        echo "  Failed to open autofix lock file after rejecting unresolved session marker"
-        cleanup_test_env
-        return 1
-    }
-    if ! flock -n 201; then
-        echo "  Failed start left the autofix lock held after rejecting unresolved session marker"
-        eval "exec 201>&-"
-        cleanup_test_env
-        return 1
-    fi
-    flock -u 201 2>/dev/null || true
-    eval "exec 201>&-"
 
     cleanup_test_env
     return 0
@@ -2424,7 +2420,7 @@ main() {
     run_test test_init_autofix_state_fails_when_repair_fails
     run_test test_session_management
     run_test test_start_autofix_session_releases_lock_when_session_marker_write_fails
-    run_test test_start_autofix_session_rejects_preexisting_session_marker
+    run_test test_start_autofix_session_ignores_reused_pid_in_orphaned_marker
     run_test test_start_autofix_session_clears_stale_session_marker
     run_test test_start_autofix_session_clears_session_id_when_lock_is_held
     run_test test_end_autofix_session_preserves_marker_when_integrity_update_fails

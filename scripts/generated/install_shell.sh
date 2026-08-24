@@ -408,6 +408,8 @@ install_shell_omz() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -430,14 +432,24 @@ install_shell_omz() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'sh' '-s' '--' '--unattended' '--keep-zshrc'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "shell.omz: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "shell.omz: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "shell.omz: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "shell.omz: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'sh' "$verified_installer_file" '--unattended' '--keep-zshrc'; then
                             install_success=true
                         else
-                            log_error "shell.omz: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "shell.omz: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -456,6 +468,10 @@ install_shell_omz() {
             else
                 log_error "shell.omz: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback

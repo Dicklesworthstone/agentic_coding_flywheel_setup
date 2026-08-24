@@ -111,6 +111,10 @@ sensitive_inventory_fixture() {
     {
       "id": "local",
       "hostname": "secret.internal",
+      "sshUser": "ubuntu",
+      "sshUsername": "ubuntu",
+      "providerId": "provider-secret",
+      "provider_account_id": "acct-secret",
       "role": "swarm-controller",
       "status": "active",
       "last_probe_at": null,
@@ -331,7 +335,11 @@ test_validate_rejects_sensitive_fields() {
     jq -e '
       .status == "fail" and
       (.errors[] | select(.code == "forbidden_sensitive_field" and .path == "hosts[0].hostname")) and
-      (.forbidden_sensitive_field_paths | index("hosts[0].hostname"))
+      (.forbidden_sensitive_field_paths | index("hosts[0].hostname")) and
+      (.forbidden_sensitive_field_paths | index("hosts[0].sshUser")) and
+      (.forbidden_sensitive_field_paths | index("hosts[0].sshUsername")) and
+      (.forbidden_sensitive_field_paths | index("hosts[0].providerId")) and
+      (.forbidden_sensitive_field_paths | index("hosts[0].provider_account_id"))
     ' <<< "$output" >/dev/null || return 1
 
     pass "validate_rejects_sensitive_fields"

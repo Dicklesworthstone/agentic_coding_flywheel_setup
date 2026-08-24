@@ -335,18 +335,57 @@ ensure_user() {
 enable_passwordless_sudo() {
     local target="$TARGET_USER"
     local sudoers_file="/etc/sudoers.d/90-ubuntu-acfs"
+    local mktemp_bin=""
+    local chmod_bin=""
+    local mv_bin=""
+    local rm_bin=""
+    local tee_bin=""
+    local visudo_bin=""
+    local staged_file=""
+    local -a sudo_prefix=()
 
     user_require_valid_target_user "$target"
 
     log_detail "Enabling passwordless sudo for $target"
 
-    echo "$target ALL=(ALL) NOPASSWD:ALL" | $SUDO tee "$sudoers_file" > /dev/null
-    $SUDO chmod 440 "$sudoers_file"
+    mktemp_bin="$(user_system_binary_path mktemp 2>/dev/null || true)"
+    chmod_bin="$(user_system_binary_path chmod 2>/dev/null || true)"
+    mv_bin="$(user_system_binary_path mv 2>/dev/null || true)"
+    rm_bin="$(user_system_binary_path rm 2>/dev/null || true)"
+    tee_bin="$(user_system_binary_path tee 2>/dev/null || true)"
+    visudo_bin="$(user_system_binary_path visudo 2>/dev/null || true)"
+    if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$mv_bin" || -z "$rm_bin" || -z "$tee_bin" || -z "$visudo_bin" ]]; then
+        log_error "Trusted mktemp, chmod, mv, rm, tee, and visudo executables are required for sudoers changes"
+        return 1
+    fi
+    if [[ -n "${SUDO:-}" ]]; then
+        sudo_prefix=("$SUDO")
+    fi
 
-    # Validate sudoers file
-    if ! $SUDO visudo -c -f "$sudoers_file" &>/dev/null; then
-        log_error "Invalid sudoers file generated, removing"
-        $SUDO rm -f "$sudoers_file"
+    # The privileged identity creates and owns the candidate in the destination
+    # directory. The invoking user therefore cannot rewrite or replace the
+    # pathname after visudo validates it and before the atomic rename.
+    staged_file="$("${sudo_prefix[@]}" "$mktemp_bin" /etc/sudoers.d/.90-ubuntu-acfs.XXXXXX 2>/dev/null || true)"
+    if [[ -z "$staged_file" ]]; then
+        log_error "Unable to create a temporary file for the sudoers drop-in"
+        return 1
+    fi
+
+    if ! printf '%s\n' "$target ALL=(ALL) NOPASSWD:ALL" \
+        | "${sudo_prefix[@]}" "$tee_bin" -- "$staged_file" >/dev/null \
+        || ! "${sudo_prefix[@]}" "$chmod_bin" 0440 "$staged_file"; then
+        "${sudo_prefix[@]}" "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
+        log_error "Unable to stage sudoers content for validation"
+        return 1
+    fi
+    if ! "${sudo_prefix[@]}" "$visudo_bin" -c -f "$staged_file" >/dev/null 2>&1; then
+        "${sudo_prefix[@]}" "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
+        log_error "Generated sudoers content failed validation; $sudoers_file was left untouched"
+        return 1
+    fi
+    if ! "${sudo_prefix[@]}" "$mv_bin" -f -- "$staged_file" "$sudoers_file"; then
+        "${sudo_prefix[@]}" "$rm_bin" -f -- "$staged_file" 2>/dev/null || true
+        log_error "Unable to atomically install validated sudoers content"
         return 1
     fi
 

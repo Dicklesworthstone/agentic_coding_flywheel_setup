@@ -8748,6 +8748,50 @@ EOF
     assert_output 'http://127.0.0.1:8765/mcp/'
 }
 
+@test "configure_gemini_settings preserves symlinks and uses exclusive staging" {
+    source_lib "agents"
+
+    local target_home="$BATS_TEST_TMPDIR/gemini-symlink-home"
+    local settings_dir="$target_home/.gemini"
+    local backing_dir="$target_home/dotfiles"
+    local backing_file="$backing_dir/gemini-settings.json"
+    local settings_file="$settings_dir/settings.json"
+    local target_am="$target_home/mcp_agent_mail/am"
+    local readlink_bin=""
+    mkdir -p "$settings_dir" "$backing_dir" "$(dirname "$target_am")"
+
+    readlink_bin="$(_agent_system_binary_path readlink 2>/dev/null || true)"
+    [[ -n "$readlink_bin" ]] || skip "trusted readlink required"
+
+    cat > "$target_am" <<'EOF'
+#!/usr/bin/env bash
+printf 'am 0.2.39\n'
+EOF
+    chmod +x "$target_am"
+
+    cat > "$backing_file" <<'EOF'
+{"selectedType":"gemini-api-key","tools":{"shell":{"enableInteractiveShell":true}},"mcpServers":{}}
+EOF
+    ln -s "$backing_file" "$settings_file"
+    "$readlink_bin" -f -- "$settings_file" >/dev/null 2>&1 || skip "readlink -f required by Ubuntu target contract"
+
+    _agent_run_as_user() {
+        bash -c "$1"
+    }
+
+    run _configure_gemini_settings "$target_home"
+    assert_success
+    [[ -L "$settings_file" ]] || fail "Gemini settings symlink was replaced"
+
+    run jq -e '.selectedType == "oauth-personal" and .tools.shell.enableInteractiveShell == false' "$backing_file"
+    assert_success
+
+    run grep -F '.settings.tmp.$$' "$PROJECT_ROOT/scripts/lib/agents.sh"
+    assert_failure
+    run grep -F 'mktemp_bin_q $tmp_template_q' "$PROJECT_ROOT/scripts/lib/agents.sh"
+    assert_success
+}
+
 @test "configure_gemini_settings ignores PATH-poisoned jq" {
     source_lib "agents"
 
@@ -9087,12 +9131,16 @@ EOF
     helper="$(sed -n '/^acfs_install_sudoers_dropin() {$/,/^}$/p' "$installer")"
     [[ -n "$helper" ]] || fail "sudoers helper not found"
     [[ "$helper" == *'acfs_early_system_binary_path visudo'* ]]
-    [[ "$helper" == *'/tmp/acfs-sudoers.XXXXXX'* ]]
-    [[ "$helper" == *'if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$install_bin" || -z "$rm_bin" || -z "$visudo_bin" ]]'* ]]
+    [[ "$helper" == *'"/etc/sudoers.d/.${destination_name}.XXXXXX"'* ]]
+    [[ "$helper" == *'if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$mv_bin" || -z "$rm_bin" || -z "$tee_bin" || -z "$visudo_bin" ]]'* ]]
+    [[ "$helper" == *'"${sudo_prefix[@]}" "$mktemp_bin"'* ]]
+    [[ "$helper" == *'"${sudo_prefix[@]}" "$tee_bin" -- "$staged_file"'* ]]
     [[ "$helper" == *'"$visudo_bin" -c -f "$staged_file"'* ]]
+    [[ "$helper" == *'"$mv_bin" -f -- "$staged_file" "$destination"'* ]]
     [[ "$helper" == *'destination_name="${destination#/etc/sudoers.d/}"'* ]]
     [[ "$helper" == *'"$destination_name" == *[!A-Za-z0-9._-]*'* ]]
     [[ "$helper" != *'${TMPDIR'* ]]
+    [[ "$helper" != *'"$install_bin"'* ]]
     [[ "$helper" != *'try_step_eval'* ]]
 
     run grep -F 'acfs_install_sudoers_dropin' "$installer"
@@ -9129,6 +9177,46 @@ EOF
     assert_failure
     run grep -F 'tmp_settings="${claude_settings_write_path}.tmp.$$"' "$installer"
     assert_failure
+}
+
+@test "installer bootstrap checksum ignores PATH-poisoned hash tools" {
+    local installer="$PROJECT_ROOT/install.sh"
+    local fixture="$BATS_TEST_TMPDIR/checksum-fixture"
+    local poison_dir="$BATS_TEST_TMPDIR/checksum-poison-bin"
+    local poison_marker="$BATS_TEST_TMPDIR/checksum-poison-used"
+    local resolver_helper=""
+    local checksum_helper=""
+
+    resolver_helper="$(sed -n '/^acfs_early_system_binary_path() {$/,/^}$/p' "$installer")"
+    checksum_helper="$(sed -n '/^acfs_calculate_file_sha256() {$/,/^}$/p' "$installer")"
+    [[ -n "$resolver_helper" && -n "$checksum_helper" ]]
+
+    mkdir -p "$poison_dir"
+    printf 'abc' > "$fixture"
+    for tool in sha256sum shasum; do
+        cat > "$poison_dir/$tool" <<EOF
+#!/usr/bin/env bash
+: > "$poison_marker"
+printf '%064d  poison\n' 0
+EOF
+        chmod +x "$poison_dir/$tool"
+    done
+
+    eval "$resolver_helper"
+    eval "$checksum_helper"
+    export PATH="$poison_dir:$PATH"
+
+    run acfs_calculate_file_sha256 "$fixture"
+    assert_success
+    assert_output 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+    [[ ! -e "$poison_marker" ]] || fail "PATH-poisoned checksum tool was executed"
+
+    [[ "$checksum_helper" == *'acfs_early_system_binary_path sha256sum'* ]]
+    [[ "$checksum_helper" == *'acfs_early_system_binary_path shasum'* ]]
+    [[ "$checksum_helper" == *'^[0-9A-Fa-f]{64}$'* ]]
+    [[ "$checksum_helper" != *'command_exists sha256sum'* ]]
+    [[ "$checksum_helper" != *'sha256sum "$file_path" |'* ]]
+    [[ "$checksum_helper" != *'shasum -a 256 "$file_path" |'* ]]
 }
 
 @test "installer enforces its documented Bash 4.4 minimum" {
@@ -9228,6 +9316,8 @@ EOF
     [[ "$helper" == *'dir_mode_value=$((8#$dir_mode))'* ]]
     [[ "$helper" == *'(dir_mode_value & 0022) != 0'* ]]
     [[ "$helper" == *'! -k "$tmpdir_candidate"'* ]]
+    [[ "$helper" == *'if [[ "$dir_uid" != "0" && "$dir_uid" != "$EUID" ]]'* ]]
+    [[ "$helper" == *'! -f "$tmp_file" || -L "$tmp_file" || "$file_uid" != "$EUID"'* ]]
     [[ "$helper" != *"-c '%A'"* ]]
 }
 
@@ -12169,14 +12259,14 @@ SECURITY
     assert_output "755"
 }
 
-@test "update verified installer temp script uses explicit update temp fallback" {
+@test "update verified installer temp script ignores untrusted temp overrides" {
     local path_file="$BATS_TEST_TMPDIR/verified-installer-fallback-path"
     local private_tmp="$BATS_TEST_TMPDIR/private-tmp"
-    local shared_tmp="$BATS_TEST_TMPDIR/shared-tmp"
+    local override_tmp="$BATS_TEST_TMPDIR/override-tmp"
     declare -gA KNOWN_INSTALLERS=([test_tool]="https://example.test/install.sh")
-    mkdir -p "$private_tmp" "$shared_tmp"
+    mkdir -p "$private_tmp" "$override_tmp"
     export TMPDIR="$private_tmp"
-    export ACFS_UPDATE_TMPDIR="$shared_tmp"
+    export ACFS_UPDATE_TMPDIR="$override_tmp"
 
     update_require_security() { return 0; }
     get_checksum() { printf '%s\n' "abc123"; }
@@ -12188,12 +12278,12 @@ SECURITY
         case "${2:-}" in
             test)
                 [[ "${3:-}" == "-r" ]] || return 1
-                [[ "${4:-}" == "$shared_tmp/"* ]]
+                [[ "${4:-}" == /tmp/acfs-update-test_tool.* || "${4:-}" == /var/tmp/acfs-update-test_tool.* ]]
                 return $?
                 ;;
             bash)
                 printf '%s\n' "${3:-}" > "$path_file"
-                [[ "${3:-}" == "$shared_tmp/"* ]]
+                [[ "${3:-}" == /tmp/acfs-update-test_tool.* || "${3:-}" == /var/tmp/acfs-update-test_tool.* ]]
                 return $?
                 ;;
         esac
@@ -12205,7 +12295,9 @@ SECURITY
 
     run cat "$path_file"
     assert_success
-    [[ "$output" == "$shared_tmp/acfs-update-test_tool."* ]]
+    [[ "$output" != "$private_tmp/"* ]]
+    [[ "$output" != "$override_tmp/"* ]]
+    [[ "$output" == /tmp/acfs-update-test_tool.* || "$output" == /var/tmp/acfs-update-test_tool.* ]]
 }
 
 @test "update special MCP Agent Mail installer uses target-readable temp helper" {
@@ -12213,8 +12305,12 @@ SECURITY
 
     run grep -F 'tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)"' "$update"
     assert_success
-    run grep -F 'candidate_dirs+=("/data/tmp" "/var/tmp" "/tmp")' "$update"
+    run grep -F 'candidate_dirs+=("/tmp" "/var/tmp")' "$update"
     assert_success
+    run grep -F 'candidate_dirs+=("${ACFS_UPDATE_TMPDIR:-}")' "$update"
+    assert_failure
+    run grep -F 'candidate_dirs+=("${TMPDIR:-}")' "$update"
+    assert_failure
     run grep -F 'mktemp "${TMPDIR:-/tmp}/acfs-install-am.XXXXXX"' "$update"
     assert_failure
 }

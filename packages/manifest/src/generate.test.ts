@@ -232,6 +232,24 @@ describe('Generated category scripts exist', () => {
 });
 
 describe('Generated verified installer args', () => {
+  test('standard generated verified installers never stream into an interpreter', () => {
+    for (const filename of [
+      'install_shell.sh',
+      'install_lang.sh',
+      'install_tools.sh',
+      'install_agents.sh',
+      'install_stack.sh',
+    ]) {
+      const generatedPath = resolve(GENERATED_DIR, filename);
+      expect(existsSync(generatedPath)).toBe(true);
+      const generatedContent = readFileSync(generatedPath, 'utf-8');
+
+      expect(generatedContent).not.toContain(
+        'verify_checksum "$url" "$expected_sha256" "$tool" |'
+      );
+    }
+  });
+
   test('generated scripts detect the target user instead of hardcoding ubuntu', () => {
     const stackPath = resolve(GENERATED_DIR, 'install_stack.sh');
     expect(existsSync(stackPath)).toBe(true);
@@ -322,8 +340,12 @@ describe('Generated verified installer args', () => {
     const stackContent = readFileSync(stackPath, 'utf-8');
 
     expect(stackContent).toContain(
-      "run_as_target_runner 'env' 'RU_NON_INTERACTIVE=1' 'bash' '-s'"
+      `run_as_target_runner 'env' 'RU_NON_INTERACTIVE=1' 'bash' "$verified_installer_file"`
     );
+    expect(stackContent).not.toContain(
+      "verify_checksum \"$url\" \"$expected_sha256\" \"$tool\" | run_as_target_runner 'env' 'RU_NON_INTERACTIVE=1'"
+    );
+    expect(stackContent).toContain('_acfs_remove_temp_files "$verified_installer_file"');
   });
 
   test('stack.cass prepares and uses a target-owned installer TMPDIR', () => {
@@ -339,7 +361,13 @@ describe('Generated verified installer args', () => {
       'verified_installer_tmpdir="$(run_as_target mktemp -d "$verified_installer_tmpdir_template" 2>/dev/null)"'
     );
     expect(stackContent).toContain(
-      `run_as_target_runner 'env' "TMPDIR=$verified_installer_tmpdir" 'bash' '-s' '--' '--easy-mode' '--verify'`
+      `run_as_target_runner 'env' "TMPDIR=$verified_installer_tmpdir" 'bash' "$verified_installer_file" '--easy-mode' '--verify'`
+    );
+    expect(stackContent).toContain(
+      'verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"'
+    );
+    expect(stackContent).toContain(
+      '"$verified_installer_chmod_bin" 0444 "$verified_installer_file"'
     );
   });
 
@@ -409,7 +437,7 @@ describe('Generated verified installer args', () => {
     expect(stackContent).toContain('awk \'NR == 1 { print $1 }\'');
     expect(stackContent).toContain('--checksum "${fsfs_checksum,,}"');
     expect(stackContent).toContain('unable to resolve a FrankenSearch lite artifact with a checksum');
-    expect(stackContent).toContain('run_as_target_runner \'bash\' \'-s\' \'--\' "${fsfs_installer_args[@]}"');
+    expect(stackContent).toContain('run_as_target_runner \'bash\' "$verified_installer_file" "${fsfs_installer_args[@]}"');
   });
 
   test('stack.slb Go PATH setup ignores commented PATH examples', () => {

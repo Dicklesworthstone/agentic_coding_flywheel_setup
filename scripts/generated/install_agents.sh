@@ -369,6 +369,8 @@ install_agents_claude() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -391,14 +393,24 @@ install_agents_claude() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s' '--' 'latest'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "agents.claude: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "agents.claude: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "agents.claude: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "agents.claude: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file" 'latest'; then
                             install_success=true
                         else
-                            log_error "agents.claude: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "agents.claude: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -417,6 +429,10 @@ install_agents_claude() {
             else
                 log_error "agents.claude: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1186,6 +1202,8 @@ install_agents_antigravity() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1208,14 +1226,24 @@ install_agents_antigravity() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "agents.antigravity: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "agents.antigravity: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "agents.antigravity: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "agents.antigravity: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "agents.antigravity: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "agents.antigravity: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1234,6 +1262,10 @@ install_agents_antigravity() {
             else
                 log_error "agents.antigravity: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1360,6 +1392,8 @@ install_agents_opencode() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1382,14 +1416,24 @@ install_agents_opencode() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "agents.opencode: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "agents.opencode: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "agents.opencode: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "agents.opencode: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "agents.opencode: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "agents.opencode: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1408,6 +1452,10 @@ install_agents_opencode() {
             else
                 log_error "agents.opencode: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1647,6 +1695,8 @@ install_agents_omp() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1669,14 +1719,24 @@ install_agents_omp() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'sh' '-s' '--' '--binary'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "agents.omp: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "agents.omp: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "agents.omp: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "agents.omp: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'sh' "$verified_installer_file" '--binary'; then
                             install_success=true
                         else
-                            log_error "agents.omp: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "agents.omp: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1695,6 +1755,10 @@ install_agents_omp() {
             else
                 log_error "agents.omp: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback
@@ -1938,6 +2002,8 @@ install_agents_grok() {
         if ! {
             # Try security-verified install (no unverified fallback; fail closed)
             local install_success=false
+            local verified_installer_file=""
+            local verified_installer_chmod_bin=""
 
                 # Cleared per attempt so a stale reason from an earlier module can
                 # never be misattributed to this one.
@@ -1960,14 +2026,24 @@ install_agents_grok() {
                     fi
 
                     if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
-                        if verify_checksum "$url" "$expected_sha256" "$tool" | run_as_target_runner 'env' 'GROK_BIN_DIR='"$TARGET_HOME"'/.local/bin' 'bash' '-s'; then
+                        if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then
+                            log_error "agents.grok: failed to create verified installer staging file"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                            verified_installer_file=""
+                        elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then
+                            log_error "agents.grok: installer verification failed"
+                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"
+                        elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then
+                            log_error "agents.grok: trusted chmod not found for verified installer staging"
+                            ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+                        elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then
+                            log_error "agents.grok: failed to make verified installer staging file read-only"
+                            ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+                        elif run_as_target_runner 'env' 'GROK_BIN_DIR='"$TARGET_HOME"'/.local/bin' 'bash' "$verified_installer_file"; then
                             install_success=true
                         else
-                            log_error "agents.grok: verify_checksum or installer execution failed"
-                            # verify_checksum sets a specific reason (network/checksum) on
-                            # its own failure paths; only default here when it succeeded
-                            # and the piped installer script itself is what failed.
-                            : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"
+                            log_error "agents.grok: verified installer execution failed"
+                            ACFS_LAST_MODULE_FAILURE_REASON="installer execution"
                         fi
                     else
                         if [[ -z "$url" ]]; then
@@ -1986,6 +2062,10 @@ install_agents_grok() {
             else
                 log_error "agents.grok: acfs_security_init failed - check security.sh and checksums.yaml"
                 ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+            fi
+            if [[ -n "$verified_installer_file" ]]; then
+                _acfs_remove_temp_files "$verified_installer_file"
+                verified_installer_file=""
             fi
 
             # Verified install is required - no fallback

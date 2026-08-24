@@ -1031,20 +1031,12 @@ start_autofix_session() {
     fi
 
     if autofix_path_exists "$ACFS_STATE_DIR/.session"; then
-        # A marker whose owning process is gone is a leftover from an
-        # interrupted --fix (Ctrl-C, killed pane): nothing is running, and the
-        # flock above already guards true concurrency. Refusing here bricked
-        # both future --fix runs and `acfs undo` — the remedy itself.
-        local stale_pid=""
-        stale_pid="$(sed -nE 's/.*"pid"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$ACFS_STATE_DIR/.session" 2>/dev/null | head -1)"
-        if [[ -n "$stale_pid" ]] && [[ "$stale_pid" != "$$" ]] && kill -0 "$stale_pid" 2>/dev/null; then
-            log_error "Another autofix session (pid $stale_pid) is still running: $ACFS_STATE_DIR/.session"
-            autofix_release_session_lock
-            ACFS_SESSION_ID=""
-            return 1
-        fi
-        log_warn "Clearing stale autofix session marker left by an interrupted run (pid ${stale_pid:-unknown} is not running)"
-        rm -f "$ACFS_STATE_DIR/.session" 2>/dev/null || true
+        # The exclusive flock above is the concurrency authority. A marker can
+        # survive an interrupted run, and its numeric pid can later be reused
+        # by an unrelated live process; kill -0 cannot prove ownership. Since
+        # this process holds the lock, atomically replacing the orphaned marker
+        # below is safe and avoids a permanent false refusal.
+        log_warn "Replacing orphaned autofix session marker while holding the exclusive lock"
     fi
 
     # Write session start marker

@@ -519,12 +519,12 @@ function shellQuoteVerifiedInstallerArg(str: string): string {
 }
 
 /**
- * Build the pipe command from verified_installer.runner and args
+ * Build the command that executes a fully staged verified installer file.
  *
  * SECURITY: Uses shellQuote() to prevent command injection via args.
  * Runner must be in ALLOWED_RUNNERS (enforced by schema, validated here too).
  */
-function buildVerifiedInstallerPipe(module: Module): string {
+function buildVerifiedInstallerFileCommand(module: Module): string {
   const vi = module.verified_installer;
   if (!vi) return '';
 
@@ -536,39 +536,41 @@ function buildVerifiedInstallerPipe(module: Module): string {
     );
   }
 
-  const parts: string[] = [];
+  const parts: string[] = module.run_as === 'target_user' ? ['run_as_target_runner'] : [];
   const envVars = vi.env ?? [];
   const args = vi.args ?? [];
+  const tmpdirEnvValue = verifiedInstallerTmpdirEnvValue(module);
 
   if (envVars.length > 0) {
-    parts.push('env');
+    parts.push(shellQuote('env'));
     for (const envVar of envVars) {
-      parts.push(shellQuoteVerifiedInstallerArg(envVar));
+      if (tmpdirEnvValue && envVar.startsWith('TMPDIR=')) {
+        parts.push('"TMPDIR=$verified_installer_tmpdir"');
+      } else {
+        parts.push(shellQuoteVerifiedInstallerArg(envVar));
+      }
     }
   }
-  parts.push(vi.runner);
-
-  // No args: `echo ... | bash` / `echo ... | sh` already reads from stdin.
-  if (args.length === 0) {
-    return parts.join(' ');
-  }
+  parts.push(shellQuote(vi.runner));
 
   // Interpret args as: [runner_options..., '--', script_args...]
   // If no '--' is provided, treat all args as script args.
   const dashIndex = args.indexOf('--');
-  const runnerArgs = dashIndex === -1 ? [] : args.slice(0, dashIndex);
+  const runnerArgs = (dashIndex === -1 ? [] : args.slice(0, dashIndex))
+    .filter((arg) => arg !== '-s');
   const scriptArgs = dashIndex === -1 ? args : args.slice(dashIndex + 1);
-
-  if (!runnerArgs.includes('-s')) {
-    runnerArgs.unshift('-s');
-  }
 
   for (const arg of runnerArgs) {
     parts.push(shellQuoteVerifiedInstallerArg(arg));
   }
 
+  // The file is created by acfs_security_mktemp, populated only after
+  // verification succeeds, and made read-only before this command runs.
+  // Executing it by pathname prevents a late producer/read failure from
+  // feeding and executing only a prefix of the verified script.
+  parts.push('"$verified_installer_file"');
+
   if (scriptArgs.length > 0) {
-    parts.push(shellQuote('--'));
     for (const arg of scriptArgs) {
       parts.push(shellQuoteVerifiedInstallerArg(arg));
     }
@@ -1208,57 +1210,15 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     return lines;
   }
 
-  // Standard non-tmux installation
-  let execCmd: string;
-  if (module.run_as === 'target_user') {
-    // Use run_as_target_runner to switch user while preserving stdin
-    // When runner is bash/sh, we ALWAYS need -s to read from stdin (piped content)
-    // When there are args, we also need -- to separate bash flags from script args
-    const parts = ['run_as_target_runner'];
-
-    if (vi.env && vi.env.length > 0) {
-      parts.push(shellQuote('env'));
-      for (const envVar of vi.env) {
-        if (hasTmpdirEnv && envVar.startsWith('TMPDIR=')) {
-          parts.push('"TMPDIR=$verified_installer_tmpdir"');
-        } else {
-          parts.push(shellQuoteVerifiedInstallerArg(envVar));
-        }
-      }
-    }
-
-    parts.push(shellQuote(vi.runner));
-
-    const viArgs = vi.args ?? [];
-    const dashIndex = viArgs.indexOf('--');
-    const runnerArgs = dashIndex === -1 ? [] : viArgs.slice(0, dashIndex);
-    const scriptArgs = dashIndex === -1 ? viArgs : viArgs.slice(dashIndex + 1);
-
-    const needsStdinFlag = ['bash', 'sh'].includes(vi.runner);
-    if (needsStdinFlag && !runnerArgs.includes('-s')) {
-      runnerArgs.unshift('-s');
-    }
-
-    for (const arg of runnerArgs) {
-      parts.push(shellQuoteVerifiedInstallerArg(arg));
-    }
-
-    if (scriptArgs.length > 0) {
-      parts.push(shellQuote('--'));
-      for (const arg of scriptArgs) {
-        parts.push(shellQuoteVerifiedInstallerArg(arg));
-      }
-    }
-    
-    execCmd = parts.join(' ');
-  } else {
-    // Default/root: run directly
-    execCmd = buildVerifiedInstallerPipe(module);
-  }
+  // Standard non-tmux installation. The runner consumes a fully verified
+  // staging file, never a producer pipeline.
+  const execCmd = buildVerifiedInstallerFileCommand(module);
 
   const lines: string[] = [
     '# Try security-verified install (no unverified fallback; fail closed)',
     'local install_success=false',
+    'local verified_installer_file=""',
+    'local verified_installer_chmod_bin=""',
     ...(hasTmpdirEnv ? ['local verified_installer_env_ready=true'] : []),
     '',
   ];
@@ -1328,14 +1288,24 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     '        fi',
     '',
     '        if [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then',
-    `            if verify_checksum "$url" "$expected_sha256" "$tool" | ${execCmd}; then`,
+    '            if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then',
+    `                log_error "${escapeBash(module.id)}: failed to create verified installer staging file"`,
+    '                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
+    '                verified_installer_file=""',
+    '            elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then',
+    `                log_error "${escapeBash(module.id)}: installer verification failed"`,
+    '                : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"',
+    '            elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then',
+    `                log_error "${escapeBash(module.id)}: trusted chmod not found for verified installer staging"`,
+    '                ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"',
+    '            elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then',
+    `                log_error "${escapeBash(module.id)}: failed to make verified installer staging file read-only"`,
+    '                ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
+    `            elif ${execCmd}; then`,
     '                install_success=true',
     '            else',
-    `                log_error "${escapeBash(module.id)}: verify_checksum or installer execution failed"`,
-    '                # verify_checksum sets a specific reason (network/checksum) on',
-    '                # its own failure paths; only default here when it succeeded',
-    '                # and the piped installer script itself is what failed.',
-    '                : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"',
+    `                log_error "${escapeBash(module.id)}: verified installer execution failed"`,
+    '                ACFS_LAST_MODULE_FAILURE_REASON="installer execution"',
     '            fi',
     '        else',
     '            if [[ -z "$url" ]]; then',
@@ -1354,14 +1324,18 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     'else',
     ...securityInitFailureLines,
     'fi',
+    'if [[ -n "$verified_installer_file" ]]; then',
+    '    _acfs_remove_temp_files "$verified_installer_file"',
+    '    verified_installer_file=""',
+    'fi',
   ];
 
   const fsfsInstallerArgs = vi.args && vi.args.length > 0
     ? vi.args.map(a => shellQuoteVerifiedInstallerArg(a)).join(' ')
     : '';
   const fsfsExecCmd = module.run_as === 'target_user'
-    ? `run_as_target_runner ${shellQuote(vi.runner)} '-s' '--' "\${fsfs_installer_args[@]}"`
-    : `${shellQuote(vi.runner)} -s -- "\${fsfs_installer_args[@]}"`;
+    ? `run_as_target_runner ${shellQuote(vi.runner)} "$verified_installer_file" "\${fsfs_installer_args[@]}"`
+    : `${shellQuote(vi.runner)} "$verified_installer_file" "\${fsfs_installer_args[@]}"`;
   const fsfsVerifiedInstallAttemptLines: string[] = [
     '# Cleared per attempt so a stale reason from an earlier module can',
     '# never be misattributed to this one.',
@@ -1456,11 +1430,24 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     '            fi',
     '',
     '            if [[ "$fsfs_can_run" == "true" ]]; then',
-    `                if verify_checksum "$url" "$expected_sha256" "$tool" | ${fsfsExecCmd}; then`,
+    '                if ! verified_installer_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || [[ -z "$verified_installer_file" ]]; then',
+    `                    log_error "${escapeBash(module.id)}: failed to create verified installer staging file"`,
+    '                    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
+    '                    verified_installer_file=""',
+    '                elif ! verify_checksum "$url" "$expected_sha256" "$tool" > "$verified_installer_file"; then',
+    `                    log_error "${escapeBash(module.id)}: installer verification failed"`,
+    '                    : "${ACFS_LAST_MODULE_FAILURE_REASON:=checksum}"',
+    '                elif ! verified_installer_chmod_bin="$(acfs_generated_system_binary_path chmod 2>/dev/null)"; then',
+    `                    log_error "${escapeBash(module.id)}: trusted chmod not found for verified installer staging"`,
+    '                    ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"',
+    '                elif ! "$verified_installer_chmod_bin" 0444 "$verified_installer_file"; then',
+    `                    log_error "${escapeBash(module.id)}: failed to make verified installer staging file read-only"`,
+    '                    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
+    `                elif ${fsfsExecCmd}; then`,
     '                    install_success=true',
     '                else',
-    `                    log_error "${escapeBash(module.id)}: verify_checksum or installer execution failed"`,
-    '                    : "${ACFS_LAST_MODULE_FAILURE_REASON:=installer execution}"',
+    `                    log_error "${escapeBash(module.id)}: verified installer execution failed"`,
+    '                    ACFS_LAST_MODULE_FAILURE_REASON="installer execution"',
     '                fi',
     '            fi',
     '        else',
@@ -1480,6 +1467,10 @@ function generateVerifiedInstallerSnippet(module: Module): string[] {
     'else',
     `    log_error "${escapeBash(module.id)}: acfs_security_init failed - check security.sh and checksums.yaml"`,
     '    ACFS_LAST_MODULE_FAILURE_REASON="environment setup"',
+    'fi',
+    'if [[ -n "$verified_installer_file" ]]; then',
+    '    _acfs_remove_temp_files "$verified_installer_file"',
+    '    verified_installer_file=""',
     'fi',
   ];
 
@@ -1683,7 +1674,7 @@ function generateInstallCommands(module: Module): string[] {
 
   // If module has verified_installer, generate that first (before any install commands)
   // Note: verified_installer runs in current context since it needs access to security.sh
-  // The actual installer script is piped through the runner, so it runs correctly
+  // The verified bytes are staged completely before the runner opens the file.
   if (module.verified_installer) {
     const snippet = generateVerifiedInstallerSnippet(module);
     const summary = `verified installer: ${module.id}`;
