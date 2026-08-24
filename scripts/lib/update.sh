@@ -909,7 +909,7 @@ get_version() {
                 version="unknown"
             fi
             ;;
-        claude|codex|agy|gemini|omp|grok|wrangler|supabase|vercel)
+        claude|codex|agy|gemini|opencode|omp|grok|wrangler|supabase|vercel)
             tool_bin="$(update_binary_path "$tool" 2>/dev/null || true)"
             if [[ -n "$tool_bin" ]]; then
                 version=$("$tool_bin" --version 2>/dev/null | head -1 || echo "unknown")
@@ -1210,9 +1210,22 @@ update_run_command_capture_with_retry() {
 
     log_to_file "Running (captured with retry): $cmd_display"
 
+    # Capture through a temp file rather than $(...): command substitution
+    # blocks until the pipe reaches EOF, which never happens when an installer
+    # leaves a background daemon holding the inherited stdout (the exact hang
+    # run_cmd was rewritten to fix). A file capture returns as soon as the
+    # foreground child exits.
+    local capture_tmp=""
     while [[ $attempt -le $max_attempts ]]; do
         exit_code=0
-        output=$("$@" 2>&1) || exit_code=$?
+        capture_tmp="$(mktemp "${TMPDIR:-/tmp}/acfs-capture.XXXXXX" 2>/dev/null || true)"
+        if [[ -n "$capture_tmp" ]]; then
+            "$@" >"$capture_tmp" 2>&1 || exit_code=$?
+            output="$(<"$capture_tmp")"
+            rm -f "$capture_tmp" 2>/dev/null || true
+        else
+            output=$("$@" 2>&1) || exit_code=$?
+        fi
         UPDATE_LAST_COMMAND_OUTPUT="$output"
         [[ -n "$output" ]] && log_to_file "Output: $output"
         [[ "$VERBOSE" == "true" && "$QUIET" != "true" && -n "$output" ]] && printf "%s\n" "$output"
@@ -1863,8 +1876,13 @@ update_is_transient_failure_output() {
 
     [[ -n "$output" ]] || return 1
 
+    # HTTP status codes must be whole tokens: a bare '500' also matched
+    # version strings like 2.500.1, and a bare 'curl:' matched permanent
+    # failures such as 'curl: (22) ... 404', which then retried forever and
+    # were reported as 'upstream temporarily unavailable'. Only curl's network
+    # exit codes (DNS, connect, timeout, SSL, empty reply, recv) are transient.
     printf '%s\n' "$output" | grep -qiE \
-        'failed to map segment|ENOENT|EACCES|EAGAIN|Connection reset|timed out|rate limit|API rate limit exceeded|too many requests|429|503|502|500|TLS|temporary failure|connection refused|reset by peer|network is unreachable|could not resolve host|curl:|wget:|failed to download|download.*failed|unable to fetch some archives|could not fetch release info|version [^[:space:]]+ was not found'
+        'failed to map segment|ENOENT|EACCES|EAGAIN|Connection reset|timed out|rate limit|API rate limit exceeded|too many requests|(^|[^0-9.])(429|50[0-4])([^0-9.]|$)|TLS|temporary failure|connection refused|reset by peer|network is unreachable|could not resolve host|curl: \((6|7|28|35|52|56)\)|wget:|failed to download|download.*failed|unable to fetch some archives|could not fetch release info|version [^[:space:]]+ was not found'
 }
 
 update_retry_max_attempts() {
@@ -2443,6 +2461,8 @@ update_binary_path() {
         "$target_home/.bun/bin/$tool" \
         "$target_home/.cargo/bin/$tool" \
         "$target_home/.atuin/bin/$tool" \
+        "$target_home/.opencode/bin/$tool" \
+        "$target_home/.grok/bin/$tool" \
         "$target_home/go/bin/$tool" \
         "$target_home/google-cloud-sdk/bin/$tool" \
         "$target_home/bin/$tool" \
@@ -5301,7 +5321,12 @@ update_agents() {
         fi
     fi
 
-    if [[ "$bun_claude_detected" == "true" ]] && [[ "$FORCE_MODE" == "true" ]]; then
+    if [[ "$bun_claude_detected" == "true" ]] && [[ "$FORCE_MODE" == "true" ]] && [[ "$DRY_RUN" == "true" ]]; then
+        # Every other mutating path honours --dry-run; without this guard a
+        # preview run would uninstall bun's claude and then skip the replacement
+        # install, leaving no claude at all.
+        log_item "skip" "Claude Code" "dry-run: would remove bun-installed Claude ($claude_path) and install the native build"
+    elif [[ "$bun_claude_detected" == "true" ]] && [[ "$FORCE_MODE" == "true" ]]; then
         log_to_file "Removing bun-installed Claude to switch to native version: $claude_path"
         local bun_remove_bin=""
         bun_remove_bin="$(update_binary_path bun 2>/dev/null || true)"
@@ -5329,8 +5354,11 @@ update_agents() {
         if ! run_cmd_claude_update; then
             log_to_file "Claude update failed, attempting reinstall via official installer"
             if update_require_security; then
-                # INTENTIONAL: verified installer is the correct fallback for failed updates
-                run_cmd "Claude Code (reinstall)" update_run_verified_installer claude latest
+                # INTENTIONAL: verified installer is the correct fallback for failed updates.
+                # Keep the same watchdog as the first attempt: run_cmd cannot bound a
+                # shell function, and a hung claude.ai installer is exactly why the
+                # first attempt has a timeout (#125).
+                run_cmd "Claude Code (reinstall)" _run_claude_installer_with_timeout "${CLAUDE_INSTALLER_TIMEOUT:-300}"
             else
                 log_item "fail" "Claude Code" "update failed and reinstall unavailable (missing security.sh)"
             fi
@@ -5385,6 +5413,18 @@ update_agents() {
             log_item "skip" "Codex CLI" "dry-run"
         else
             for pkg in "@openai/codex@latest" "@openai/codex" "@openai/codex@$codex_fallback_version"; do
+                # The pinned fallback exists for fresh installs when the registry
+                # briefly 404s a new release. Never let it downgrade a newer,
+                # working codex just because the latest lookups failed.
+                if [[ "$pkg" == "@openai/codex@$codex_fallback_version" ]]; then
+                    local existing_codex_version=""
+                    existing_codex_version="$(printf '%s\n' "${VERSION_BEFORE[codex]:-}" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
+                    if [[ -n "$existing_codex_version" ]] && \
+                       [[ "$(printf '%s\n' "$codex_fallback_version" "$existing_codex_version" | sort -V | tail -1)" != "$codex_fallback_version" ]]; then
+                        log_to_file "Skipping pinned fallback $pkg: installed codex $existing_codex_version is newer"
+                        continue
+                    fi
+                fi
                 log_to_file "Trying bun install $pkg"
                 local attempt=1
                 while [[ $attempt -le $max_attempts ]]; do
@@ -5466,6 +5506,31 @@ update_agents() {
         fi
     else
         log_item "skip" "oh-my-pi (omp)" "not installed (use --force to install)"
+    fi
+
+    # OpenCode ships its own 'opencode upgrade'; prefer that, and fall back to
+    # the verified installer for fresh installs under --force. (Before this
+    # block the updater never touched opencode at all.)
+    if update_binary_exists opencode; then
+        local opencode_bin=""
+        opencode_bin="$(update_binary_path opencode 2>/dev/null || true)"
+        capture_version_before "opencode"
+        run_cmd "OpenCode" update_run_in_target_context "" "$opencode_bin" upgrade
+        if capture_version_after "opencode"; then
+            update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[opencode]}" "${VERSION_AFTER[opencode]}"
+        fi
+    elif [[ "$FORCE_MODE" == "true" ]]; then
+        capture_version_before "opencode"
+        if update_require_security; then
+            run_cmd "OpenCode (install)" update_run_verified_installer opencode
+            if capture_version_after "opencode"; then
+                update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[opencode]}" "${VERSION_AFTER[opencode]}"
+            fi
+        else
+            log_item "fail" "OpenCode" "not installed and install unavailable (missing security.sh/checksums.yaml)"
+        fi
+    else
+        log_item "skip" "OpenCode" "not installed (use --force to install)"
     fi
 
     # Grok CLI has no documented native self-update; refresh by re-running the
