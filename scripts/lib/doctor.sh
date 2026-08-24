@@ -2223,7 +2223,7 @@ check_shell() {
         check "shell.acfs_sourced" "ACFS sourced from .zshrc" "pass"
     else
         check "shell.acfs_sourced" "ACFS sourced from .zshrc" "warn" \
-            "~/.zshrc does not source ~/.acfs/zsh/acfs.zshrc (aliases and PATH not loaded in new shells)" \
+            "the ~/.zshrc does not source ~/.acfs/zsh/acfs.zshrc (aliases and PATH not loaded in new shells)" \
             "acfs doctor --fix --yes"
     fi
 
@@ -2237,7 +2237,7 @@ check_shell() {
         check "path.ordering" "PATH wiring in .zshrc" "pass"
     else
         check "path.ordering" "PATH wiring in .zshrc" "warn" \
-            "~/.zshrc has no ACFS loader and no ~/.local/bin PATH entry" \
+            "the ~/.zshrc has no ACFS loader and no ~/.local/bin PATH entry" \
             "acfs doctor --fix --yes"
     fi
 
