@@ -1476,7 +1476,7 @@ EOF
         esac
     }
     update_run_verified_installer_with_env() { return 0; }
-    update_run_slb_source_install() { return 0; }
+    update_run_slb_verified_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
 
     run update_stack
@@ -1525,7 +1525,7 @@ EOF
     }
     update_run_verified_installer_or_existing_on_transient() { return 0; }
     update_run_verified_installer_with_env() { return 0; }
-    update_run_slb_source_install() { return 0; }
+    update_run_slb_verified_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
 
     run update_stack
@@ -1573,7 +1573,7 @@ EOF
     update_binary_exists() { return 1; }
     update_run_verified_installer() { return 0; }
     update_run_verified_installer_with_env() { return 0; }
-    update_run_slb_source_install() { return 0; }
+    update_run_slb_verified_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
 
     run update_stack
@@ -1635,7 +1635,7 @@ EOF
         printf 'existing:%s\n' "$*" >> "$calls_file"
         return 1
     }
-    update_run_slb_source_install() { return 0; }
+    update_run_slb_verified_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
 
     run update_stack
@@ -1690,7 +1690,7 @@ EOF
     }
     update_run_verified_installer_or_existing_on_transient() { return 0; }
     update_run_verified_installer_with_env() { return 0; }
-    update_run_slb_source_install() { return 0; }
+    update_run_slb_verified_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
 
     run update_stack
@@ -1740,7 +1740,7 @@ EOF
         return 0
     }
     update_run_verified_installer_with_env() { return 0; }
-    update_run_slb_source_install() { return 0; }
+    update_run_slb_verified_install() { return 0; }
     update_run_fsfs_installer() { return 0; }
 
     run update_stack
