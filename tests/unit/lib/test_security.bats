@@ -384,6 +384,48 @@ EOF_TRUSTED_PIPE_BASH
     [[ ! -e "$marker" ]]
 }
 
+@test "fetch_and_run: never executes a prefix when verification fails after producing bytes" {
+    local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
+    local marker="$BATS_TEST_TMPDIR/partial-installer-executed"
+
+    run /usr/bin/bash -s -- "$security_lib" "$marker" <<'EOF_NO_PARTIAL_EXECUTION'
+set -euo pipefail
+security_lib="$1"
+marker="$2"
+
+# shellcheck source=/dev/null
+source "$security_lib"
+
+# Model a late producer failure: an interpreter pipeline would execute this
+# complete first command before learning that verification failed.
+verify_checksum() {
+    printf '%s\n' 'printf executed > "$1"'
+    return 91
+}
+
+set +e
+fetch_and_run "https://example.com/install.sh" "expected" "test" "$marker"
+status=$?
+set -e
+
+[[ "$status" -eq 91 ]]
+[[ ! -e "$marker" ]]
+EOF_NO_PARTIAL_EXECUTION
+
+    assert_success
+    [[ ! -e "$marker" ]]
+}
+
+@test "production verified installer call sites do not use producer pipelines" {
+    run grep -nE 'verify_checksum[^#]*\|' \
+        "$PROJECT_ROOT"/scripts/lib/*.sh \
+        "$PROJECT_ROOT"/scripts/generated/*.sh \
+        "$PROJECT_ROOT/acfs.manifest.yaml"
+
+    assert_failure
+    assert_output ""
+}
+
 @test "fetch_and_run_with_recovery: executes verified file with trusted bash" {
     local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
     local fake_bin="$BATS_TEST_TMPDIR/security-fake-recovery-bin"

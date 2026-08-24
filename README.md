@@ -3290,9 +3290,10 @@ function shellQuote(s: string): string {
 // Allowlisted runners only (belt-and-suspenders)
 const ALLOWED_RUNNERS = ['bash', 'sh'] as const;
 
-// Verified installer pipe construction
-function buildVerifiedInstallerPipe(module: Module, checksums: Checksums): string {
-  // Generates: curl -fsSL "$URL" | verify_checksum "$SHA256" | bash
+// Verified installer file-backed execution
+function buildVerifiedInstallerFileCommand(module: Module): string {
+  // Runs the interpreter only after the complete script is checksum-verified
+  // and staged in a read-only file.
 }
 ```
 

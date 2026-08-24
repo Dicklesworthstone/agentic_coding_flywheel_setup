@@ -670,7 +670,7 @@ _agent_run_verified_upstream_installer() {
     printf -v installer_sha_q '%q' "$installer_sha"
     printf -v tool_q '%q' "$tool"
     printf -v runner_q '%q' "$runner"
-    _agent_run_as_user "source $security_lib_q; verify_checksum $installer_url_q $installer_sha_q $tool_q | $runner_q"
+    _agent_run_as_user "source $security_lib_q; fetch_and_run_with_runner $runner_q $installer_url_q $installer_sha_q $tool_q"
 }
 
 _agent_install_agy_locked_launchers() {
@@ -801,7 +801,7 @@ _agent_ensure_nvm_node() {
     printf -v installer_url_q '%q' "$installer_url"
     printf -v installer_sha_q '%q' "$installer_sha"
     printf -v patch_tool_q '%q' "$patch_tool"
-    if ! _agent_run_as_user "source $security_lib_q; verify_checksum $installer_url_q $installer_sha_q $patch_tool_q | bash -s --"; then
+    if ! _agent_run_as_user "source $security_lib_q; fetch_and_run_with_runner bash $installer_url_q $installer_sha_q $patch_tool_q"; then
         log_warn "nvm installer verification failed; cannot prepare Node.js for Gemini patch"
         return 1
     fi
@@ -862,7 +862,7 @@ _agent_apply_verified_gemini_patch() {
     printf -v patch_url_q '%q' "$patch_url"
     printf -v patch_sha_q '%q' "$patch_sha"
     printf -v patch_tool_q '%q' "$patch_tool"
-    if _agent_run_as_user "export PATH=$node_bin_dir_q:\"\$PATH\"; source $security_lib_q; verify_checksum $patch_url_q $patch_sha_q $patch_tool_q | bash -s --"; then
+    if _agent_run_as_user "export PATH=$node_bin_dir_q:\"\$PATH\"; source $security_lib_q; fetch_and_run_with_runner bash $patch_url_q $patch_sha_q $patch_tool_q"; then
         return 0
     fi
 
@@ -904,7 +904,7 @@ install_claude_code() {
                 printf -v security_lib_q '%q' "$AGENTS_SCRIPT_DIR/security.sh"
                 printf -v url_q '%q' "$url"
                 printf -v sha_q '%q' "$sha"
-                if _agent_run_as_user "source $security_lib_q; verify_checksum $url_q $sha_q claude | bash -s -- latest"; then
+                if _agent_run_as_user "source $security_lib_q; fetch_and_run_with_runner bash $url_q $sha_q claude latest"; then
                     log_success "Claude Code installed (verified)"
                     return 0
                 fi

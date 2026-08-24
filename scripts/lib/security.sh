@@ -1115,14 +1115,109 @@ verify_checksum() {
     return "$status"
 }
 
-# Fetch and run with optional verification
-fetch_and_run() {
-    local url="$1"
-    local expected_sha256="${2:-}"
-    local name="${3:-installer}"
-    local bash_bin=""
-    shift 3 || true
+# Stage a fully verified installer in a target-readable, read-only file.
+#
+# The caller supplies the name of a variable that receives the staging path and
+# must remove that exact file with _acfs_remove_temp_files after execution. The
+# file lives in a trusted system temp directory rather than caller-controlled
+# TMPDIR so a privileged caller can safely hand it to the target user.
+#
+# Arguments:
+#   $1 - Output variable name
+#   $2 - URL
+#   $3 - Expected SHA256
+#   $4 - Name (for logging)
+acfs_stage_verified_installer() {
+    local staging_output_name="${1:-}"
+    local url="${2:-}"
+    local expected_sha256="${3:-}"
+    local name="${4:-installer}"
+    local staging_file=""
+    local chmod_bin=""
+    local verify_status=0
+
+    if [[ ! "$staging_output_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        log_error "Invalid output variable for verified installer staging"
+        return 1
+    fi
+    if ! printf -v "$staging_output_name" '%s' ""; then
+        log_error "Unable to initialize verified installer staging output"
+        return 1
+    fi
+
+    if [[ -z "$expected_sha256" ]]; then
+        log_error "Security Error: Missing checksum for $name"
+        ACFS_LAST_MODULE_FAILURE_REASON="checksum"
+        return 1
+    fi
+
+    staging_file="$(acfs_security_mktemp "/tmp/acfs-verified-installer.XXXXXX" 2>/dev/null)" || {
+        log_error "Failed to create verified installer staging file for $name"
+        ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+        return 1
+    }
+    if [[ -z "$staging_file" ]]; then
+        log_error "Verified installer staging returned an empty path for $name"
+        ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+        return 1
+    fi
+
+    if verify_checksum "$url" "$expected_sha256" "$name" > "$staging_file"; then
+        :
+    else
+        verify_status=$?
+        _acfs_remove_temp_files "$staging_file"
+        return "$verify_status"
+    fi
+
+    if chmod_bin="$(acfs_security_required_binary_path chmod)"; then
+        :
+    else
+        verify_status=$?
+        ACFS_LAST_MODULE_FAILURE_REASON="missing dependency"
+        _acfs_remove_temp_files "$staging_file"
+        return "$verify_status"
+    fi
+    if ! "$chmod_bin" 0444 "$staging_file"; then
+        log_error "Failed to make verified installer staging readable for $name"
+        ACFS_LAST_MODULE_FAILURE_REASON="environment setup"
+        _acfs_remove_temp_files "$staging_file"
+        return 1
+    fi
+
+    printf -v "$staging_output_name" '%s' "$staging_file"
+}
+
+# Execute a fully staged verified installer with a trusted shell interpreter.
+# Arguments:
+#   $1 - Runner (bash or sh)
+#   $2 - URL
+#   $3 - Expected SHA256
+#   $4 - Name (for logging)
+#   $@ - Additional args to pass to the installer
+fetch_and_run_with_runner() {
+    if [[ $# -lt 4 ]]; then
+        log_error "fetch_and_run_with_runner requires runner, URL, checksum, and name"
+        return 1
+    fi
+
+    local runner="${1:-}"
+    local url="${2:-}"
+    local expected_sha256="${3:-}"
+    local name="${4:-installer}"
+    local runner_bin=""
+    local verified_installer_file=""
+    local status=0
+    shift 4 || true
     local args=("$@")
+
+    case "$runner" in
+        bash|sh) ;;
+        *)
+            log_error "Unsupported verified installer runner: ${runner:-<empty>}"
+            return 1
+            ;;
+    esac
 
     if ! enforce_https "$url"; then
         return 1
@@ -1139,12 +1234,27 @@ fetch_and_run() {
         return 1
     fi
 
-    bash_bin="$(acfs_security_required_binary_path bash)" || return $?
+    runner_bin="$(acfs_security_required_binary_path "$runner")" || return $?
+    acfs_stage_verified_installer verified_installer_file "$url" "$expected_sha256" "$name" || return $?
 
-    (
-        set -o pipefail
-        verify_checksum "$url" "$expected_sha256" "$name" | "$bash_bin" -s -- "${args[@]}"
-    )
+    if "$runner_bin" "$verified_installer_file" "${args[@]}"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    _acfs_remove_temp_files "$verified_installer_file"
+    return "$status"
+}
+
+# Fetch and run with Bash after complete verification and staging.
+fetch_and_run() {
+    local url="$1"
+    local expected_sha256="${2:-}"
+    local name="${3:-installer}"
+    shift 3 || true
+
+    fetch_and_run_with_runner bash "$url" "$expected_sha256" "$name" "$@"
 }
 
 # ============================================================

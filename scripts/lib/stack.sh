@@ -828,11 +828,11 @@ _stack_run_verified_installer_with_env() {
     printf -v expected_sha256_q '%q' "$expected_sha256"
     printf -v tool_q '%q' "$tool"
 
-    local cmd="set -o pipefail; source $security_lib_q; verify_checksum $url_q $expected_sha256_q $tool_q | "
+    local cmd="source $security_lib_q; "
     if [[ -n "$env_assignment_rendered" ]]; then
         cmd+="$env_assignment_rendered"
     fi
-    cmd+="bash -s --"
+    cmd+="fetch_and_run_with_runner bash $url_q $expected_sha256_q $tool_q"
     if [[ ${#quoted_args[@]} -gt 0 ]]; then
         cmd+=" ${quoted_args[*]}"
     fi

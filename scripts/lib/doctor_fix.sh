@@ -951,6 +951,8 @@ doctor_fix_run_verified_installer_with_env() {
         shift
     fi
     local bash_bin=""
+    local verified_installer_file=""
+    local status=0
     local ms_arch=""
     ms_arch="$(uname -m 2>/dev/null || true)"
 
@@ -983,12 +985,16 @@ doctor_fix_run_verified_installer_with_env() {
     fi
 
     bash_bin="$(acfs_security_required_binary_path bash)" || return $?
+    acfs_stage_verified_installer verified_installer_file "$url" "$expected_sha256" "$tool" || return $?
 
-    (
-        set -o pipefail
-        verify_checksum "$url" "$expected_sha256" "$tool" | \
-            doctor_fix_run_in_runtime_context "$installer_env_assignment" "$bash_bin" -s -- "$@"
-    )
+    if doctor_fix_run_in_runtime_context "$installer_env_assignment" "$bash_bin" "$verified_installer_file" "$@"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    _acfs_remove_temp_files "$verified_installer_file"
+    return "$status"
 }
 
 doctor_fix_run_verified_installer() {

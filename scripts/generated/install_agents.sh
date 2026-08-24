@@ -1116,7 +1116,7 @@ if ! nvm_node="$(find_nvm_node)"; then
     echo "agents.gemini: missing verified installer metadata for nvm; skipping Gemini patch" >&2
     exit 0
   fi
-  if ! verify_checksum "$nvm_url" "$nvm_sha256" "nvm" | bash; then
+  if ! fetch_and_run_with_runner bash "$nvm_url" "$nvm_sha256" "nvm"; then
     echo "agents.gemini: nvm installer verification failed; skipping Gemini patch" >&2
     exit 0
   fi
@@ -1147,7 +1147,7 @@ if [[ -z "$patch_url" || -z "$patch_sha256" ]]; then
   echo "agents.gemini: missing verified installer metadata for gemini_patch; skipping Gemini patch" >&2
   exit 0
 fi
-if ! verify_checksum "$patch_url" "$patch_sha256" "gemini_patch" | bash; then
+if ! fetch_and_run_with_runner bash "$patch_url" "$patch_sha256" "gemini_patch"; then
   echo "agents.gemini: Gemini patch verification failed; skipping patch" >&2
   exit 0
 fi

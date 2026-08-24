@@ -258,10 +258,7 @@ install_ohmyzsh() {
     fi
 
     # Install non-interactively without changing shell.
-    (
-        set -o pipefail
-        verify_checksum "$OMZ_INSTALL_URL" "$expected_sha256" "ohmyzsh" | sh -s -- --unattended --keep-zshrc
-    )
+    fetch_and_run_with_runner sh "$OMZ_INSTALL_URL" "$expected_sha256" "ohmyzsh" --unattended --keep-zshrc
 
     if [[ ! -d "$omz_dir" ]]; then
         log_error "Failed to install Oh My Zsh"

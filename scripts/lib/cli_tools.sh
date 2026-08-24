@@ -736,7 +736,7 @@ install_cargo_cli_tools() {
                     printf -v security_lib_q '%q' "$CLI_TOOLS_SCRIPT_DIR/security.sh"
                     printf -v url_q '%q' "$url"
                     printf -v expected_sha256_q '%q' "$expected_sha256"
-                    _cli_run_as_user "source $security_lib_q; verify_checksum $url_q $expected_sha256_q zoxide | sh" || true
+                    _cli_run_as_user "source $security_lib_q; fetch_and_run_with_runner sh $url_q $expected_sha256_q zoxide" || true
                 else
                     log_warn "No checksum recorded for zoxide; skipping unverified installer fallback"
                 fi
@@ -1006,7 +1006,7 @@ install_atuin() {
     printf -v security_lib_q '%q' "$CLI_TOOLS_SCRIPT_DIR/security.sh"
     printf -v url_q '%q' "$url"
     printf -v expected_sha256_q '%q' "$expected_sha256"
-    if ! _cli_run_as_user "source $security_lib_q; verify_checksum $url_q $expected_sha256_q atuin | env ATUIN_NO_MODIFY_PATH=1 sh"; then
+    if ! _cli_run_as_user "source $security_lib_q; ATUIN_NO_MODIFY_PATH=1 fetch_and_run_with_runner sh $url_q $expected_sha256_q atuin"; then
         log_warn "Could not install atuin"
     fi
 

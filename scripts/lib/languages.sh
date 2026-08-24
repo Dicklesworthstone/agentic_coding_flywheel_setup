@@ -452,7 +452,7 @@ install_bun() {
     printf -v security_lib_q '%q' "$LANG_SCRIPT_DIR/security.sh"
     printf -v url_q '%q' "$url"
     printf -v expected_sha256_q '%q' "$expected_sha256"
-    if ! _lang_run_as_user "source $security_lib_q; verify_checksum $url_q $expected_sha256_q bun | bash"; then
+    if ! _lang_run_as_user "source $security_lib_q; fetch_and_run_with_runner bash $url_q $expected_sha256_q bun"; then
         log_warn "Bun installation failed"
         return 1
     fi
@@ -532,7 +532,7 @@ install_uv() {
     printf -v security_lib_q '%q' "$LANG_SCRIPT_DIR/security.sh"
     printf -v url_q '%q' "$url"
     printf -v expected_sha256_q '%q' "$expected_sha256"
-    if ! _lang_run_as_user "source $security_lib_q; verify_checksum $url_q $expected_sha256_q uv | sh"; then
+    if ! _lang_run_as_user "source $security_lib_q; fetch_and_run_with_runner sh $url_q $expected_sha256_q uv"; then
         log_warn "uv installation failed"
         return 1
     fi
@@ -612,7 +612,7 @@ install_rust() {
     printf -v security_lib_q '%q' "$LANG_SCRIPT_DIR/security.sh"
     printf -v url_q '%q' "$url"
     printf -v expected_sha256_q '%q' "$expected_sha256"
-    if ! _lang_run_as_user "source $security_lib_q; verify_checksum $url_q $expected_sha256_q rust | sh -s -- -y"; then
+    if ! _lang_run_as_user "source $security_lib_q; fetch_and_run_with_runner sh $url_q $expected_sha256_q rust -y"; then
         log_warn "Rust installation failed"
         return 1
     fi

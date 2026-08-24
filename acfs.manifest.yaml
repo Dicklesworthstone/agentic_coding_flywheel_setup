@@ -918,7 +918,7 @@ modules:
         target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
         "$target_bin/claude" --version || "$target_bin/claude" --help
     notes:
-      - "Updated via verified installer (curl claude.ai/install.sh | bash -- latest); 'claude update --channel' flag does not exist"
+      - "Updated via a fully staged verified installer from claude.ai/install.sh; 'claude update --channel' flag does not exist"
       - "Binary normalized into the configured ACFS bin dir"
 
   - id: agents.codex
@@ -1016,7 +1016,7 @@ modules:
             echo "agents.gemini: missing verified installer metadata for nvm; skipping Gemini patch" >&2
             exit 0
           fi
-          if ! verify_checksum "$nvm_url" "$nvm_sha256" "nvm" | bash; then
+          if ! fetch_and_run_with_runner bash "$nvm_url" "$nvm_sha256" "nvm"; then
             echo "agents.gemini: nvm installer verification failed; skipping Gemini patch" >&2
             exit 0
           fi
@@ -1047,7 +1047,7 @@ modules:
           echo "agents.gemini: missing verified installer metadata for gemini_patch; skipping Gemini patch" >&2
           exit 0
         fi
-        if ! verify_checksum "$patch_url" "$patch_sha256" "gemini_patch" | bash; then
+        if ! fetch_and_run_with_runner bash "$patch_url" "$patch_sha256" "gemini_patch"; then
           echo "agents.gemini: Gemini patch verification failed; skipping patch" >&2
           exit 0
         fi

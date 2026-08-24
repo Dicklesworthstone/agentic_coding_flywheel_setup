@@ -232,7 +232,7 @@ describe('Generated category scripts exist', () => {
 });
 
 describe('Generated verified installer args', () => {
-  test('standard generated verified installers never stream into an interpreter', () => {
+  test('generated verified installers never stream verification output into an interpreter', () => {
     for (const filename of [
       'install_shell.sh',
       'install_lang.sh',
@@ -244,10 +244,16 @@ describe('Generated verified installer args', () => {
       expect(existsSync(generatedPath)).toBe(true);
       const generatedContent = readFileSync(generatedPath, 'utf-8');
 
-      expect(generatedContent).not.toContain(
-        'verify_checksum "$url" "$expected_sha256" "$tool" |'
-      );
+      expect(generatedContent).not.toMatch(/verify_checksum[^\n]*\|/);
     }
+
+    const agentsContent = readFileSync(resolve(GENERATED_DIR, 'install_agents.sh'), 'utf-8');
+    expect(agentsContent).toContain(
+      'fetch_and_run_with_runner bash "$nvm_url" "$nvm_sha256" "nvm"'
+    );
+    expect(agentsContent).toContain(
+      'fetch_and_run_with_runner bash "$patch_url" "$patch_sha256" "gemini_patch"'
+    );
   });
 
   test('generated scripts detect the target user instead of hardcoding ubuntu', () => {
