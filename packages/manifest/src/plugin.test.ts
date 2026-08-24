@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -857,16 +858,34 @@ describe('loadPluginPackageFromFile', () => {
     const dir = mkdtempSync(join(tmpdir(), 'acfs-plugin-test-'));
     const pluginPath = join(dir, 'plugin.json');
     const plugin = validPlugin();
-    writeFileSync(pluginPath, JSON.stringify(plugin, null, 2), 'utf-8');
+    const pluginBytes = JSON.stringify(plugin, null, 2);
+    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
+    writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const opts = validationOptions();
-    delete opts.expectedPackageSha256;
-    delete opts.packageSha256;
+    const opts = validationOptions({ expectedPackageSha256 });
 
     const result = loadPluginPackageFromFile(pluginPath, opts);
     expect(result.valid).toBe(true);
     expect(result.manifestModules.length).toBe(1);
     expect(result.manifestModules[0].id).toBe('plugin.example_tools.cli');
+  });
+
+  test('refuses to treat a calculated package hash as its own trusted digest', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acfs-untrusted-plugin-test-'));
+    const pluginPath = join(dir, 'plugin.json');
+    writeFileSync(pluginPath, JSON.stringify(validPlugin()), 'utf-8');
+    const opts = validationOptions();
+    delete opts.expectedPackageSha256;
+    delete opts.packageSha256;
+
+    const result = loadPluginPackageFromFile(pluginPath, opts);
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_package_hash_mismatch',
+      context: expect.objectContaining({ expectedPackageSha256Prefix: '<missing>' }),
+    }));
   });
 
   test('fails closed on non-existent or invalid JSON file', () => {

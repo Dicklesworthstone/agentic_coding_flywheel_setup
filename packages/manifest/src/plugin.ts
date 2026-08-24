@@ -1443,7 +1443,7 @@ export function loadPluginPackageFromFile(
   return validatePluginPackage(parsed, {
     ...options,
     packageSha256,
-    expectedPackageSha256: options.expectedPackageSha256 ?? packageSha256,
+    expectedPackageSha256: options.expectedPackageSha256,
   });
 }
 
@@ -1469,4 +1469,3 @@ export function mergeValidatedPlugins(
     modules: allModules,
   };
 }
-
