@@ -223,6 +223,7 @@ verify_with_pack() {
     local error_file="$3"
 
     export ACFS_VERIFIED_INSTALLER_CACHE="$pack_root"
+    CACHE_TEST_NETWORK_CALLS=0
 
     acfs_download_to_file() {
         CACHE_TEST_NETWORK_CALLS=$((CACHE_TEST_NETWORK_CALLS + 1))
@@ -252,6 +253,10 @@ test_valid_pack_uses_local_artifact() {
     }
     grep -Fq "installer_cache_hit tool=$TOOL" "$error_file" || {
         fail "valid_pack_uses_local_artifact" "installer cache hit log missing"
+        return
+    }
+    [[ "$CACHE_TEST_NETWORK_CALLS" -eq 0 ]] || {
+        fail "valid_pack_uses_local_artifact" "valid cache attempted a live network fetch"
         return
     }
     pass "valid_pack_uses_local_artifact"
@@ -360,7 +365,9 @@ test_missing_pack_fails_closed() {
     local error_file="$TEST_ROOT/missing-pack.err"
 
     export ACFS_VERIFIED_INSTALLER_CACHE="$TEST_ROOT/no-such-cache"
+    CACHE_TEST_NETWORK_CALLS=0
     acfs_download_to_file() {
+        CACHE_TEST_NETWORK_CALLS=$((CACHE_TEST_NETWORK_CALLS + 1))
         echo "network download should not run for a missing requested cache" >&2
         return 79
     }
@@ -374,6 +381,10 @@ test_missing_pack_fails_closed() {
         fail "missing_pack_fails_closed" "expected pack_missing_manifest in error log"
         return
     }
+    [[ "$CACHE_TEST_NETWORK_CALLS" -eq 0 && ! -s "$output_file" ]] || {
+        fail "missing_pack_fails_closed" "missing cache fell back live or emitted bytes"
+        return
+    }
     pass "missing_pack_fails_closed"
 }
 
@@ -383,7 +394,9 @@ test_live_path_still_works_without_pack() {
     local output=""
 
     unset ACFS_VERIFIED_INSTALLER_CACHE
+    CACHE_TEST_NETWORK_CALLS=0
     acfs_download_to_file() {
+        CACHE_TEST_NETWORK_CALLS=$((CACHE_TEST_NETWORK_CALLS + 1))
         printf '%s' "$CONTENT" > "$2"
     }
 
@@ -399,6 +412,10 @@ test_live_path_still_works_without_pack() {
     }
     grep -Fq "Verified: $TOOL" "$error_file" || {
         fail "live_path_still_works_without_pack" "live verification log missing"
+        return
+    }
+    [[ "$CACHE_TEST_NETWORK_CALLS" -eq 1 ]] || {
+        fail "live_path_still_works_without_pack" "live path did not perform exactly one fetch"
         return
     }
     pass "live_path_still_works_without_pack"
@@ -430,6 +447,10 @@ test_verified_emission_uses_private_snapshot() {
     emitted_path="$(< "$emitted_path_file")"
     [[ -n "$emitted_path" && "$emitted_path" != "$artifact_path" ]] || {
         fail "verified_emission_uses_private_snapshot" "consumer emitted the shared cache pathname"
+        return
+    }
+    [[ "$CACHE_TEST_NETWORK_CALLS" -eq 0 ]] || {
+        fail "verified_emission_uses_private_snapshot" "private snapshot path attempted a live fetch"
         return
     }
     [[ "$(< "$output_file")" == "$CONTENT" ]] || {

@@ -744,7 +744,7 @@ acfs_offline_pack_resolve_existing_path() {
 
     realpath_bin="$(acfs_security_system_binary_path realpath 2>/dev/null || true)"
     if [[ -n "$realpath_bin" ]]; then
-        "$realpath_bin" -e -- "$path"
+        "$realpath_bin" -e -- "$path" 2>/dev/null || "$realpath_bin" -- "$path" 2>/dev/null
         return $?
     fi
 
