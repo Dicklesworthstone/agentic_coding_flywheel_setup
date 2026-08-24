@@ -302,9 +302,36 @@ export const SERVER_ANALYTICS_EVENT_NAMES = [
 
 export type ServerAnalyticsEventName = typeof SERVER_ANALYTICS_EVENT_NAMES[number];
 
-export const sendServerEvent = async (
-  eventName: ServerAnalyticsEventName,
-  params?: Record<string, string | number | boolean>
+export const SERVER_CONVERSION_VALUES = {
+  wizard_start: 0,
+  wizard_complete: 100,
+  vps_created: 10,
+  installer_run: 50,
+  learning_hub_started: 0,
+  lesson_funnel_complete: 100,
+} as const;
+
+export type ServerConversionType = keyof typeof SERVER_CONVERSION_VALUES;
+
+export type ServerAnalyticsEventParams = {
+  conversion: {
+    conversion_type: ServerConversionType;
+    conversion_value: number;
+  };
+  lesson_complete: {
+    lesson_id: number;
+    lesson_slug: string;
+    completion_percentage: number;
+  };
+  lesson_funnel_complete: {
+    total_time_minutes: number;
+    total_lessons: number;
+  };
+};
+
+export const sendServerEvent = async <TName extends ServerAnalyticsEventName>(
+  eventName: TName,
+  params: ServerAnalyticsEventParams[TName]
 ): Promise<void> => {
   if (!isAnalyticsPrivacyAllowed()) return;
   if (!GA_MEASUREMENT_ID) return;
@@ -947,12 +974,11 @@ export const getOrCreateUserId = (): string => {
  * Track key conversions (dual client + server-side for reliability)
  */
 export const trackConversion = (
-  conversionType: 'wizard_start' | 'wizard_complete' | 'vps_created' | 'installer_run' | 'learning_hub_started' | 'lesson_funnel_complete',
-  value?: number
+  conversionType: ServerConversionType,
 ): void => {
   const params = {
     conversion_type: conversionType,
-    conversion_value: value ?? 0,
+    conversion_value: SERVER_CONVERSION_VALUES[conversionType],
   };
 
   // Client-side tracking (fast, may be blocked)
@@ -1283,9 +1309,9 @@ export const trackFunnelStepComplete = (
 
   // Track step-specific conversions (note: wizard_start is tracked on step 1 entry in useWizardAnalytics)
   if (stepNumber === 5) {
-    trackConversion('vps_created', 10);
+    trackConversion('vps_created');
   } else if (stepNumber === 9) {
-    trackConversion('installer_run', 50);
+    trackConversion('installer_run');
   } else if (stepNumber === TOTAL_STEPS) {
     trackFunnelComplete();
   }
@@ -1314,7 +1340,7 @@ export const trackFunnelComplete = (): void => {
     campaign: funnelData.campaign,
   });
 
-  trackConversion('wizard_complete', 100);
+  trackConversion('wizard_complete');
 
   // Set user property for completed users
   setUserProperties({
@@ -1671,7 +1697,7 @@ export const trackLessonFunnelComplete = (totalLessons: number): void => {
   });
 
   // Track as major conversion with value
-  trackConversion('lesson_funnel_complete', 100);
+  trackConversion('lesson_funnel_complete');
 
   // Also send server-side for reliability
   sendServerEvent('lesson_funnel_complete', {

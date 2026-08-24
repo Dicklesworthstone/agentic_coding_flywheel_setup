@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   analyticsPayloadIsPrivacySafe,
   SERVER_ANALYTICS_EVENT_NAMES,
+  SERVER_CONVERSION_VALUES,
+  type ServerAnalyticsEventName,
+  type ServerConversionType,
 } from '@/lib/analytics';
+import { getLessonById, TOTAL_LESSONS } from '@/lib/lessons';
 
 const GA_MEASUREMENT_ID_RAW = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const GA_API_SECRET_RAW = process.env.GA_API_SECRET;
@@ -64,12 +68,17 @@ const MAX_REQUEST_BODY_BYTES = 32_000; // hard cap to reduce abuse/memory pressu
 const MAX_PARAM_KEYS_PER_EVENT = 25;
 const MAX_PARAM_KEY_LENGTH = 40;
 const MAX_PARAM_STRING_LENGTH = 300;
-const MAX_USER_ID_LENGTH = 64;
-const MAX_USER_PROPERTIES = 10;
-const MAX_USER_PROPERTY_KEY_LENGTH = 24;
-const MAX_USER_PROPERTY_STRING_LENGTH = 120;
 const GA_FETCH_TIMEOUT_MS = 3000;
-const ALLOWED_SERVER_EVENT_NAMES = new Set<string>(SERVER_ANALYTICS_EVENT_NAMES);
+const ALLOWED_SERVER_EVENT_NAMES = new Set<ServerAnalyticsEventName>(
+  SERVER_ANALYTICS_EVENT_NAMES
+);
+const ALLOWED_LESSON_COMPLETION_PERCENTAGES = new Set(
+  Array.from(
+    { length: TOTAL_LESSONS },
+    (_, index) => Math.round(((index + 1) / TOTAL_LESSONS) * 100)
+  )
+);
+const MAX_LESSON_FUNNEL_MINUTES = 525_600;
 
 class PayloadTooLargeError extends Error {
   override name = 'PayloadTooLargeError';
@@ -156,7 +165,18 @@ function cleanupExpiredEntries(): void {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function hasExactlyKeys(
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[]
+): boolean {
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === expectedKeys.length
+    && expectedKeys.every(key => Object.prototype.hasOwnProperty.call(value, key));
 }
 
 function normalizeIP(raw: string): string {
@@ -276,22 +296,18 @@ function isRateLimited(ip: string): boolean {
   return false;
 }
 
-// Validate event name: alphanumeric and underscores only, starts with letter
-export function isValidServerEventName(name: string): boolean {
+// Accept only the closed set of server events emitted by the checked-in client.
+export function isValidServerEventName(name: string): name is ServerAnalyticsEventName {
   if (!name || name.length > MAX_EVENT_NAME_LENGTH) return false;
-  return /^[a-z][a-z0-9_]*$/.test(name) && ALLOWED_SERVER_EVENT_NAMES.has(name);
+  return /^[a-z][a-z0-9_]*$/.test(name)
+    && ALLOWED_SERVER_EVENT_NAMES.has(name as ServerAnalyticsEventName);
 }
 
-// Validate client_id: reasonable format and length
-function isValidClientId(clientId: string): boolean {
+// The client emits GA-compatible numeric IDs. A broader character allowlist would
+// let callers smuggle arbitrary opaque identifiers into the analytics sink.
+export function isValidClientId(clientId: string): boolean {
   if (!clientId || clientId.length > MAX_CLIENT_ID_LENGTH) return false;
-  // Allow alphanumeric, dots, dashes, underscores
-  return /^[a-zA-Z0-9._-]+$/.test(clientId);
-}
-
-function isValidUserId(userId: string): boolean {
-  if (!userId || userId.length > MAX_USER_ID_LENGTH) return false;
-  return /^[a-zA-Z0-9._-]+$/.test(userId);
+  return /^\d{1,16}\.\d{1,16}$/.test(clientId);
 }
 
 function isValidParamKey(key: string): boolean {
@@ -299,14 +315,22 @@ function isValidParamKey(key: string): boolean {
   return /^[a-zA-Z][a-zA-Z0-9_]*$/.test(key);
 }
 
-export function serverEventParamsArePrivacySafe(params: unknown): boolean {
-  if (typeof params === 'undefined') return true;
+function isServerConversionType(value: unknown): value is ServerConversionType {
+  return typeof value === 'string'
+    && Object.prototype.hasOwnProperty.call(SERVER_CONVERSION_VALUES, value);
+}
+
+export function serverEventParamsArePrivacySafe(
+  eventName: string,
+  params: unknown
+): boolean {
+  if (!isValidServerEventName(eventName)) return false;
   if (!isPlainObject(params)) return false;
 
   const entries = Object.entries(params);
   if (entries.length > MAX_PARAM_KEYS_PER_EVENT) return false;
 
-  return entries.every(([key, value]) => {
+  const scalarValuesAreSafe = entries.every(([key, value]) => {
     if (!isValidParamKey(key)) return false;
     if (typeof value === 'string') {
       return value.length <= MAX_PARAM_STRING_LENGTH
@@ -319,6 +343,43 @@ export function serverEventParamsArePrivacySafe(params: unknown): boolean {
     return typeof value === 'boolean'
       && analyticsPayloadIsPrivacySafe({ [key]: value });
   });
+  if (!scalarValuesAreSafe) return false;
+
+  switch (eventName) {
+    case 'conversion': {
+      if (!hasExactlyKeys(params, ['conversion_type', 'conversion_value'])) return false;
+      const conversionType = params.conversion_type;
+      return isServerConversionType(conversionType)
+        && params.conversion_value === SERVER_CONVERSION_VALUES[conversionType];
+    }
+    case 'lesson_complete': {
+      if (!hasExactlyKeys(
+        params,
+        ['lesson_id', 'lesson_slug', 'completion_percentage']
+      )) return false;
+      const lessonId = params.lesson_id;
+      const lessonSlug = params.lesson_slug;
+      const completionPercentage = params.completion_percentage;
+      return typeof lessonId === 'number'
+        && Number.isInteger(lessonId)
+        && lessonId >= 0
+        && lessonId < TOTAL_LESSONS
+        && typeof lessonSlug === 'string'
+        && getLessonById(lessonId)?.slug === lessonSlug
+        && typeof completionPercentage === 'number'
+        && Number.isInteger(completionPercentage)
+        && ALLOWED_LESSON_COMPLETION_PERCENTAGES.has(completionPercentage);
+    }
+    case 'lesson_funnel_complete': {
+      if (!hasExactlyKeys(params, ['total_time_minutes', 'total_lessons'])) return false;
+      const totalTimeMinutes = params.total_time_minutes;
+      return typeof totalTimeMinutes === 'number'
+        && Number.isInteger(totalTimeMinutes)
+        && totalTimeMinutes >= 0
+        && totalTimeMinutes <= MAX_LESSON_FUNNEL_MINUTES
+        && params.total_lessons === TOTAL_LESSONS;
+    }
+  }
 }
 
 function sanitizeEventParams(params: unknown): Record<string, string | number | boolean> {
@@ -351,64 +412,27 @@ function sanitizeEventParams(params: unknown): Record<string, string | number | 
   return sanitized;
 }
 
-function sanitizeUserProperties(
-  userProperties: unknown
-): Record<string, { value: string | number }> | undefined {
-  if (!isPlainObject(userProperties)) return undefined;
-
-  const sanitized: Record<string, { value: string | number }> = {};
-  let count = 0;
-
-  for (const [key, value] of Object.entries(userProperties)) {
-    if (count >= MAX_USER_PROPERTIES) break;
-    if (!key || key.length > MAX_USER_PROPERTY_KEY_LENGTH) continue;
-    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) continue;
-    if (!isPlainObject(value)) continue;
-
-    const rawValue = value.value;
-    if (typeof rawValue === 'string') {
-      sanitized[key] = { value: rawValue.slice(0, MAX_USER_PROPERTY_STRING_LENGTH) };
-      count++;
-      continue;
-    }
-    if (typeof rawValue === 'number') {
-      if (!Number.isFinite(rawValue)) continue;
-      sanitized[key] = { value: rawValue };
-      count++;
-    }
-  }
-
-  return count > 0 ? sanitized : undefined;
-}
-
-export function serverUserPropertiesArePrivacySafe(userProperties: unknown): boolean {
-  if (typeof userProperties === 'undefined') return true;
-  if (!isPlainObject(userProperties)) return false;
-
-  const entries = Object.entries(userProperties);
-  if (entries.length > MAX_USER_PROPERTIES) return false;
-
-  return entries.every(([key, wrappedValue]) => {
-    if (!key || key.length > MAX_USER_PROPERTY_KEY_LENGTH) return false;
-    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) return false;
-    if (!isPlainObject(wrappedValue)) return false;
-    const wrappedEntries = Object.entries(wrappedValue);
-    if (wrappedEntries.length !== 1 || wrappedEntries[0]?.[0] !== 'value') return false;
-
-    const rawValue = wrappedValue.value;
-    if (typeof rawValue === 'string') {
-      return rawValue.length <= MAX_USER_PROPERTY_STRING_LENGTH
-        && analyticsPayloadIsPrivacySafe({ [key]: rawValue });
-    }
-    return typeof rawValue === 'number'
-      && Number.isFinite(rawValue)
-      && analyticsPayloadIsPrivacySafe({ [key]: rawValue });
-  });
-}
-
 interface EventPayload {
   name: string;
-  params?: Record<string, string | number | boolean>;
+  params: Record<string, string | number | boolean>;
+}
+
+type RawTrackPayload = {
+  client_id: unknown;
+  events: unknown;
+};
+
+type RawEventPayload = {
+  name: unknown;
+  params: unknown;
+};
+
+export function serverTrackPayloadHasExactShape(value: unknown): value is RawTrackPayload {
+  return isPlainObject(value) && hasExactlyKeys(value, ['client_id', 'events']);
+}
+
+export function serverEventHasExactShape(value: unknown): value is RawEventPayload {
+  return isPlainObject(value) && hasExactlyKeys(value, ['name', 'params']);
 }
 
 export function isJsonContentType(value: string | null): boolean {
@@ -421,7 +445,7 @@ export function isJsonContentType(value: string | null): boolean {
  * Bypasses ad blockers and provides reliable tracking
  *
  * POST /api/track
- * Body: { client_id, events: [{ name, params }], user_id?, user_properties? }
+ * Body: { client_id, events: [{ name, params }] }
  */
 export async function POST(request: NextRequest) {
   if (!isJsonContentType(request.headers.get('content-type'))) {
@@ -457,14 +481,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const rawBody: unknown = await readJsonBodyWithLimit(request);
-    if (!isPlainObject(rawBody)) {
+    if (!serverTrackPayloadHasExactShape(rawBody)) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
     const clientId = rawBody.client_id;
     const events = rawBody.events;
-    const userId = rawBody.user_id;
-    const userProperties = rawBody.user_properties;
 
     if (typeof clientId !== 'string' || !Array.isArray(events)) {
       return NextResponse.json({ error: 'Missing client_id or events' }, { status: 400 });
@@ -494,26 +516,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (userId !== undefined) {
-      if (
-        typeof userId !== 'string'
-        || !isValidUserId(userId)
-        || !analyticsPayloadIsPrivacySafe({ user_id: userId })
-      ) {
-        return NextResponse.json({ error: 'Invalid user_id format' }, { status: 400 });
-      }
-    }
-
-    if (!serverUserPropertiesArePrivacySafe(userProperties)) {
-      return NextResponse.json({ error: 'Unsafe user_properties payload' }, { status: 400 });
-    }
-    const sanitizedUserProperties = sanitizeUserProperties(userProperties);
-
     const sanitizedEvents: EventPayload[] = [];
 
-    // Validate all event names
+    // Validate every event against its exact checked-in schema.
     for (const event of events) {
-      if (!isPlainObject(event) || typeof event.name !== 'string') {
+      if (!serverEventHasExactShape(event) || typeof event.name !== 'string') {
         return NextResponse.json({ error: 'Invalid event payload' }, { status: 400 });
       }
       if (!isValidServerEventName(event.name)) {
@@ -522,7 +529,7 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-      if (!serverEventParamsArePrivacySafe(event.params)) {
+      if (!serverEventParamsArePrivacySafe(event.name, event.params)) {
         return NextResponse.json({ error: 'Unsafe event params' }, { status: 400 });
       }
       sanitizedEvents.push({ name: event.name, params: sanitizeEventParams(event.params) });
@@ -550,8 +557,6 @@ export async function POST(request: NextRequest) {
           session_id: sessionId,
         },
       })),
-      ...(userId && { user_id: userId }),
-      ...(sanitizedUserProperties && { user_properties: sanitizedUserProperties }),
     };
 
     // Send to GA4 Measurement Protocol
