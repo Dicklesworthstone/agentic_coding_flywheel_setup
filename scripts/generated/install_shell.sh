@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -6,6 +6,11 @@
 # ============================================================
 
 set -euo pipefail
+
+# Generated scripts can execute root-context manifest commands. Establish the
+# same OS-owned command-search invariant as install.sh before even resolving
+# this script's directory.
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Resolve relative helper paths first.
 ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,8 +49,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -364,13 +367,13 @@ install_shell_zsh() {
     log_step "Installing shell.zsh"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y zsh (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y zsh (root)"
     else
         if ! run_as_root_shell <<'INSTALL_SHELL_ZSH'
-apt-get install -y zsh
+apt-get -o DPkg::Lock::Timeout=120 install -y zsh
 INSTALL_SHELL_ZSH
         then
-            log_error "shell.zsh: install command failed: apt-get install -y zsh"
+            log_error "shell.zsh: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y zsh"
             return 1
         fi
     fi
@@ -711,8 +714,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \

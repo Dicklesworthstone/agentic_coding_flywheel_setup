@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -6,6 +6,11 @@
 # ============================================================
 
 set -euo pipefail
+
+# Generated scripts can execute root-context manifest commands. Establish the
+# same OS-owned command-search invariant as install.sh before even resolving
+# this script's directory.
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Resolve relative helper paths first.
 ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,8 +49,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -364,101 +367,101 @@ install_cli_modern() {
     log_step "Installing cli.modern"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
+apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y lsd || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y lsd || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y lsd || true
+apt-get -o DPkg::Lock::Timeout=120 install -y lsd || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y lsd || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y lsd || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y eza || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y eza || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y eza || true
+apt-get -o DPkg::Lock::Timeout=120 install -y eza || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y eza || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y eza || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y bat || apt-get install -y batcat || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y bat || apt-get -o DPkg::Lock::Timeout=120 install -y batcat || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y bat || apt-get install -y batcat || true
+apt-get -o DPkg::Lock::Timeout=120 install -y bat || apt-get -o DPkg::Lock::Timeout=120 install -y batcat || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y bat || apt-get install -y batcat || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y bat || apt-get -o DPkg::Lock::Timeout=120 install -y batcat || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y fd-find || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y fd-find || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y fd-find || true
+apt-get -o DPkg::Lock::Timeout=120 install -y fd-find || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y fd-find || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y fd-find || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y btop || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y btop || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y btop || true
+apt-get -o DPkg::Lock::Timeout=120 install -y btop || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y btop || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y btop || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y dust || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y dust || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y dust || true
+apt-get -o DPkg::Lock::Timeout=120 install -y dust || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y dust || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y dust || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y neovim || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y neovim || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y neovim || true
+apt-get -o DPkg::Lock::Timeout=120 install -y neovim || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y neovim || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y neovim || true"
             return 1
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y docker.io docker-compose-plugin || true (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y docker.io docker-compose-plugin || true (root)"
     else
         if ! run_as_root_shell <<'INSTALL_CLI_MODERN'
-apt-get install -y docker.io docker-compose-plugin || true
+apt-get -o DPkg::Lock::Timeout=120 install -y docker.io docker-compose-plugin || true
 INSTALL_CLI_MODERN
         then
-            log_error "cli.modern: install command failed: apt-get install -y docker.io docker-compose-plugin || true"
+            log_error "cli.modern: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y docker.io docker-compose-plugin || true"
             return 1
         fi
     fi

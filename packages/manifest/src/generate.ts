@@ -40,7 +40,7 @@ const OUTPUT_DIR = join(PROJECT_ROOT, 'scripts/generated');
 const WEB_OUTPUT_DIR = join(PROJECT_ROOT, 'apps/web/lib/generated');
 const CHECKSUMS_PATH = join(PROJECT_ROOT, 'checksums.yaml');
 
-const HEADER = `#!/usr/bin/env bash
+const HEADER = `#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -48,6 +48,11 @@ const HEADER = `#!/usr/bin/env bash
 # ============================================================
 
 set -euo pipefail
+
+# Generated scripts can execute root-context manifest commands. Establish the
+# same OS-owned command-search invariant as install.sh before even resolving
+# this script's directory.
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Resolve relative helper paths first.
 ACFS_GENERATED_SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
@@ -86,8 +91,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \\
-        "/usr/local/bin/\$name" \\
-        "/usr/local/sbin/\$name" \\
         "/usr/bin/\$name" \\
         "/bin/\$name" \\
         "/usr/sbin/\$name" \\
@@ -2214,7 +2217,7 @@ function generateDoctorChecks(manifest: Manifest): string {
 /**
  * Generate top-level installer script
  */
-function generateMasterInstaller(manifest: Manifest): string {
+function generateTopLevelInstaller(manifest: Manifest): string {
   const categories = getCategories(manifest);
   const lines: string[] = [HEADER];
   lines.push('# Top-level installer - sources all category scripts');
@@ -2880,7 +2883,7 @@ async function main(): Promise<void> {
   // Top-level installer
   {
     const filepath = join(OUTPUT_DIR, 'install_all.sh');
-    const content = generateMasterInstaller(manifest);
+    const content = generateTopLevelInstaller(manifest);
     filesToGenerate.set(filepath, { content, mode: 0o755 });
   }
 

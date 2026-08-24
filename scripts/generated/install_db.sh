@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -6,6 +6,11 @@
 # ============================================================
 
 set -euo pipefail
+
+# Generated scripts can execute root-context manifest commands. Establish the
+# same OS-owned command-search invariant as install.sh before even resolving
+# this script's directory.
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Resolve relative helper paths first.
 ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,8 +49,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -391,15 +394,15 @@ INSTALL_DB_POSTGRES18
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get update (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 update (root)"
     else
         if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
-apt-get update
+apt-get -o DPkg::Lock::Timeout=120 update
 INSTALL_DB_POSTGRES18
         then
-            log_warn "db.postgres18: install command failed: apt-get update"
+            log_warn "db.postgres18: install command failed: apt-get -o DPkg::Lock::Timeout=120 update"
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "db.postgres18" "install command failed: apt-get update"
+              record_skipped_tool "db.postgres18" "install command failed: apt-get -o DPkg::Lock::Timeout=120 update"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "db.postgres18"
             fi
@@ -407,15 +410,15 @@ INSTALL_DB_POSTGRES18
         fi
     fi
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y postgresql-18 (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18 (root)"
     else
         if ! run_as_root_shell <<'INSTALL_DB_POSTGRES18'
-apt-get install -y postgresql-18
+apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18
 INSTALL_DB_POSTGRES18
         then
-            log_warn "db.postgres18: install command failed: apt-get install -y postgresql-18"
+            log_warn "db.postgres18: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18"
             if type -t record_skipped_tool >/dev/null 2>&1; then
-              record_skipped_tool "db.postgres18" "install command failed: apt-get install -y postgresql-18"
+              record_skipped_tool "db.postgres18" "install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18"
             elif type -t state_tool_skip >/dev/null 2>&1; then
               state_tool_skip "db.postgres18"
             fi

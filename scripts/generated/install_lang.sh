@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -6,6 +6,11 @@
 # ============================================================
 
 set -euo pipefail
+
+# Generated scripts can execute root-context manifest commands. Establish the
+# same OS-owned command-search invariant as install.sh before even resolving
+# this script's directory.
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Resolve relative helper paths first.
 ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,8 +49,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -711,13 +714,13 @@ install_lang_go() {
     log_step "Installing lang.go"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: apt-get install -y golang-go (root)"
+        log_info "dry-run: install: apt-get -o DPkg::Lock::Timeout=120 install -y golang-go (root)"
     else
         if ! run_as_root_shell <<'INSTALL_LANG_GO'
-apt-get install -y golang-go
+apt-get -o DPkg::Lock::Timeout=120 install -y golang-go
 INSTALL_LANG_GO
         then
-            log_error "lang.go: install command failed: apt-get install -y golang-go"
+            log_error "lang.go: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y golang-go"
             return 1
         fi
     fi

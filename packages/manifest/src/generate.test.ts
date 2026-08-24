@@ -862,7 +862,7 @@ describe('Generated script headers', () => {
         const content = readFileSync(scriptPath, 'utf-8');
 
         // Check for standard header elements
-        expect(content).toContain('#!/usr/bin/env bash');
+        expect(content).toStartWith('#!/bin/bash\n');
         expect(content).toContain('AUTO-GENERATED');
         expect(content).toContain('set -euo pipefail');
       }
@@ -882,6 +882,33 @@ describe('Generated script headers', () => {
     if (existsSync(scriptPath)) {
       const content = readFileSync(scriptPath, 'utf-8');
       expect(content).toContain('source "$ACFS_GENERATED_SCRIPT_DIR/../lib/install_helpers.sh"');
+    }
+  });
+
+  test('generated system-binary resolvers exclude locally managed prefixes', () => {
+    const manifestResult = parseManifestFile(MANIFEST_PATH);
+    expect(manifestResult.success).toBe(true);
+    if (!manifestResult.success || !manifestResult.data) {
+      throw new Error(`Failed to parse manifest: ${manifestResult.error?.message}`);
+    }
+
+    const generatedScripts = [
+      'install_all.sh',
+      'doctor_checks.sh',
+      ...getCategories(manifestResult.data).map((category) => `install_${category}.sh`),
+    ];
+
+    for (const filename of generatedScripts) {
+      const content = readFileSync(resolve(GENERATED_DIR, filename), 'utf-8');
+      const pathInvariant = 'export PATH="/usr/sbin:/usr/bin:/sbin:/bin"';
+      expect(content).toContain(pathInvariant);
+      expect(content.indexOf(pathInvariant)).toBeLessThan(
+        content.indexOf('ACFS_GENERATED_SCRIPT_DIR=')
+      );
+      expect(content).toContain('"/usr/bin/$name"');
+      expect(content).toContain('"/usr/sbin/$name"');
+      expect(content).not.toContain('"/usr/local/bin/$name"');
+      expect(content).not.toContain('"/usr/local/sbin/$name"');
     }
   });
 });

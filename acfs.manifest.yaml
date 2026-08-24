@@ -26,8 +26,8 @@ modules:
       run_as: current
       command: "command -v curl && command -v git && command -v jq"
     install:
-      - apt-get update -y
-      - apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential gnupg lsb-release
+      - apt-get -o DPkg::Lock::Timeout=120 update -y
+      - apt-get -o DPkg::Lock::Timeout=120 install -y curl git ca-certificates unzip tar xz-utils jq build-essential gnupg lsb-release
     verify:
       - curl --version
       - git --version
@@ -204,7 +204,7 @@ modules:
       run_as: current
       command: "command -v zsh"
     install:
-      - apt-get install -y zsh
+      - apt-get -o DPkg::Lock::Timeout=120 install -y zsh
     verify:
       - zsh --version
 
@@ -437,15 +437,15 @@ modules:
       run_as: current
       command: "command -v rg && command -v tmux && command -v fzf"
     install:
-      - apt-get install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
-      - apt-get install -y lsd || true
-      - apt-get install -y eza || true
-      - apt-get install -y bat || apt-get install -y batcat || true
-      - apt-get install -y fd-find || true
-      - apt-get install -y btop || true
-      - apt-get install -y dust || true
-      - apt-get install -y neovim || true
-      - apt-get install -y docker.io docker-compose-plugin || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq gh git-lfs lsof dnsutils netcat-openbsd strace rsync
+      - apt-get -o DPkg::Lock::Timeout=120 install -y lsd || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y eza || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y bat || apt-get -o DPkg::Lock::Timeout=120 install -y batcat || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y fd-find || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y btop || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y dust || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y neovim || true
+      - apt-get -o DPkg::Lock::Timeout=120 install -y docker.io docker-compose-plugin || true
     verify:
       - rg --version
       - tmux -V
@@ -474,7 +474,7 @@ modules:
       command: "command -v lazygit"
     install:
       - |
-        if apt-get install -y lazygit; then
+        if apt-get -o DPkg::Lock::Timeout=120 install -y lazygit; then
           exit 0
         fi
         # Fallback to binary install
@@ -565,8 +565,8 @@ modules:
           | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
         echo "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu ${DISTRO_CODENAME} main" \
           | tee /etc/apt/sources.list.d/tailscale.list
-        apt-get update
-        apt-get install -y tailscale
+        apt-get -o DPkg::Lock::Timeout=120 update
+        apt-get -o DPkg::Lock::Timeout=120 install -y tailscale
         systemctl enable tailscaled
     verify:
       - tailscale version
@@ -704,7 +704,7 @@ modules:
       run_as: current
       command: "command -v go"
     install:
-      - apt-get install -y golang-go
+      - apt-get -o DPkg::Lock::Timeout=120 install -y golang-go
     verify:
       - go version
 
@@ -1310,7 +1310,7 @@ modules:
           | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
         echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com ${CODENAME} main" \
           > /etc/apt/sources.list.d/hashicorp.list
-        apt-get update && apt-get install -y vault
+        apt-get -o DPkg::Lock::Timeout=120 update && apt-get -o DPkg::Lock::Timeout=120 install -y vault
     verify:
       - vault --version
     notes:
@@ -1343,8 +1343,8 @@ modules:
           oracular|plucky|questing) CODENAME="noble" ;;
         esac
         echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${CODENAME}-pgdg main" | tee /etc/apt/sources.list.d/pgdg.list
-      - apt-get update
-      - apt-get install -y postgresql-18
+      - apt-get -o DPkg::Lock::Timeout=120 update
+      - apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18
     verify:
       - psql --version
       - systemctl status postgresql --no-pager || true
@@ -1781,10 +1781,36 @@ modules:
           }
 
           stop_agent_mail_fallback() {
+            local existing_pid=""
+            local managed_pid=""
+            local victim_args=""
+            local victim_exe=""
+            local am_real=""
+            local owner_matches=false
             if [[ -f "$fallback_pid_file" ]]; then
               existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-              if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-                 ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+              if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+                managed_pid="$(systemctl --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
+              fi
+              if [[ "$managed_pid" =~ ^[1-9][0-9]*$ ]] && [[ "$existing_pid" == "$managed_pid" ]]; then
+                echo "Agent Mail: PID $existing_pid belongs to agent-mail.service; leaving it to the supervisor" >&2
+                rm -f "$fallback_pid_file"
+                return 0
+              fi
+              if [[ "$existing_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$existing_pid" 2>/dev/null; then
+                victim_args="$(ps -p "$existing_pid" -o args= 2>/dev/null || true)"
+                victim_exe="$(readlink -f "/proc/$existing_pid/exe" 2>/dev/null || true)"
+                am_real="$(readlink -f "$am_bin" 2>/dev/null || printf '%s' "$am_bin")"
+                if [[ ! "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] ||
+                   [[ ! "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]]; then
+                  owner_matches=false
+                elif [[ -n "$victim_exe" ]]; then
+                  [[ "$victim_exe" == "$am_real" ]] && owner_matches=true
+                elif [[ "$victim_args" =~ (^|/)am([[:space:]]|$) ]]; then
+                  owner_matches=true
+                fi
+              fi
+              if [[ "$owner_matches" == "true" ]]; then
                 kill "$existing_pid" >/dev/null 2>&1 || true
                 for _ in {1..10}; do
                   if ! kill -0 "$existing_pid" 2>/dev/null; then
@@ -1793,7 +1819,8 @@ modules:
                   sleep 1
                 done
                 if kill -0 "$existing_pid" 2>/dev/null; then
-                  kill -9 "$existing_pid" >/dev/null 2>&1 || true
+                  echo "Agent Mail: fallback PID $existing_pid did not stop after SIGTERM; refusing a hard kill" >&2
+                  return 1
                 fi
               fi
               rm -f "$fallback_pid_file"
@@ -1807,13 +1834,7 @@ modules:
             fi
 
             if [[ -f "$fallback_pid_file" ]]; then
-              existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-              if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-                 ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
-                stop_agent_mail_fallback
-              else
-                rm -f "$fallback_pid_file"
-              fi
+              stop_agent_mail_fallback || return 1
             fi
 
             nohup env \
@@ -1851,11 +1872,10 @@ modules:
           warn_if_agent_mail_port_taken
 
           if [[ "$_systemctl_user_ok" = "true" ]]; then
-            stop_agent_mail_fallback
+            stop_agent_mail_fallback || exit 1
             systemctl --user daemon-reload >/dev/null 2>&1 || true
-            if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
-              systemctl --user restart agent-mail.service >/dev/null 2>&1
-            fi
+            systemctl --user enable agent-mail.service >/dev/null 2>&1 || exit 1
+            systemctl --user restart agent-mail.service >/dev/null 2>&1 || exit 1
             active_waited=0
             active_max_wait=30
             until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do

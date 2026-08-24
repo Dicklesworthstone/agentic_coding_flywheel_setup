@@ -6,6 +6,9 @@ import type { Manifest, Module, ModuleCategory, RunAs } from './types.js';
 const PLUGIN_SCHEMA = 'acfs.plugin-package.v1';
 const SUPPORTED_SCHEMA_VERSION = 1;
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
+const VERIFIED_INSTALLER_TOOL_PATTERN = /^[a-z][a-z0-9_]*$/;
+const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.*$/;
+const COMMAND_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 const MODULE_ID_PATTERN =
   /^plugin\.([a-z][a-z0-9_]*)\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 const PACKAGE_ID_PATTERN = /^[a-z][a-z0-9_.-]*$/;
@@ -15,6 +18,17 @@ const ALLOWED_INSTALL_KINDS = new Set([
   'release_artifact',
   'copy_asset',
   'manual_step',
+]);
+// The normalized Module type can currently execute only checksum-bound
+// installers. Keep reserved declarative kinds fail-closed until their archive
+// and copy/manual executors exist; otherwise they normalize to empty installs.
+const IMPLEMENTED_INSTALL_KINDS = new Set(['verified_installer']);
+// Package authors declare the capabilities they use, but they do not get to
+// downgrade ACFS policy. These capabilities always require an external review
+// record even if a package incorrectly places them in its `allowed` bucket.
+const INTRINSICALLY_REVIEW_REQUIRED_CAPABILITIES = new Set([
+  'root_run_as',
+  'cross_plugin_dependency',
 ]);
 const ALLOWED_CATEGORIES = new Set<ModuleCategory>([
   'base',
@@ -63,6 +77,11 @@ const SECRET_FIELD_NAMES = new Set([
   'vaultroottoken',
   'sshprivatekey',
 ]);
+const SECRET_FIELD_WORD_SEQUENCES: readonly (readonly string[])[] = [
+  ['api', 'key'],
+  ['private', 'key'],
+  ['pass', 'phrase'],
+];
 const DISALLOWED_INSTALL_FIELDS = new Set([
   'command',
   'commands',
@@ -74,31 +93,82 @@ const DISALLOWED_INSTALL_FIELDS = new Set([
   'eval',
 ]);
 
-const PluginInstallSchema = z.object({ kind: z.string().min(1) }).passthrough();
+const NonBlankStringSchema = z.string().min(1).refine((value) => value.trim().length > 0, {
+  message: 'String cannot be only whitespace',
+});
+const HttpsUrlSchema = z.string().url().refine((value) => {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, {
+  message: 'URL must use https://',
+});
+const CanonicalUtcTimestampSchema = NonBlankStringSchema.refine((value) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+
+  const canonical = parsed.toISOString();
+  return value === canonical || value === canonical.replace('.000Z', 'Z');
+}, {
+  message: 'Timestamp must be a canonical UTC ISO-8601 value',
+});
+const PluginVerifyCheckSchema = z.strictObject({
+  kind: z.literal('command_exists'),
+  command: z.string().regex(
+    COMMAND_NAME_PATTERN,
+    'command_exists command must be a bare executable name'
+  ),
+});
+
+const PluginInstallSchema = z.object({ kind: NonBlankStringSchema }).passthrough();
 
 const PluginTargetSchema = z
   .object({
-    os: z.string().min(1),
-    versions: z.array(z.string().min(1)).min(1),
-    arch: z.array(z.string().min(1)).min(1),
-    libc: z.array(z.string().min(1)).min(1),
+    os: NonBlankStringSchema,
+    versions: z.array(NonBlankStringSchema).min(1),
+    arch: z.array(NonBlankStringSchema).min(1),
+    libc: z.array(NonBlankStringSchema).min(1),
   })
   .passthrough();
 
+const PluginWebMetadataSchema = ModuleWebMetadataSchema.superRefine((metadata, context) => {
+  if (metadata.href !== undefined && !metadata.href.startsWith('/')) {
+    try {
+      if (new URL(metadata.href).protocol !== 'https:') {
+        context.addIssue({
+          code: 'custom',
+          path: ['href'],
+          message: 'External plugin web href must use https://',
+        });
+      }
+    } catch {
+      context.addIssue({
+        code: 'custom',
+        path: ['href'],
+        message: 'External plugin web href must be a valid HTTPS URL',
+      });
+    }
+  }
+});
+
 const PluginModuleSchema = z
   .object({
-    id: z.string().min(1),
-    description: z.string().min(1),
-    category: z.string().min(1),
+    id: NonBlankStringSchema,
+    description: NonBlankStringSchema.refine((value) => !/[\r\n\t]/.test(value), {
+      message: 'Description must be single-line with no tabs',
+    }),
+    category: NonBlankStringSchema,
     phase: z.number().int().min(1).max(10),
     run_as: z.enum(['target_user', 'root', 'current']),
     optional: z.boolean(),
     enabled_by_default: z.boolean(),
-    dependencies: z.array(z.string().min(1)).optional(),
+    dependencies: z.array(NonBlankStringSchema).optional(),
     install: PluginInstallSchema,
-    verify: z.array(z.string().min(1)).min(1),
-    docs_url: z.string().url(),
-    web: ModuleWebMetadataSchema.optional(),
+    verify: z.array(PluginVerifyCheckSchema).min(1),
+    docs_url: HttpsUrlSchema,
+    web: PluginWebMetadataSchema.optional(),
   })
   .passthrough();
 
@@ -107,33 +177,32 @@ const PluginPackageSchema = z
     schema: z.string(),
     schemaVersion: z.number().int(),
     packageId: z.string().regex(PACKAGE_ID_PATTERN),
-    displayName: z.string().min(1),
-    version: z.string().min(1),
-    description: z.string().min(1),
+    displayName: NonBlankStringSchema,
+    version: NonBlankStringSchema,
+    description: NonBlankStringSchema,
     publisher: z
       .object({
-        name: z.string().min(1),
-        contactUrl: z.string().url(),
-        sourceUrl: z.string().url(),
+        name: NonBlankStringSchema,
+        contactUrl: HttpsUrlSchema,
+        sourceUrl: HttpsUrlSchema,
       })
       .passthrough(),
-    license: z.string().min(1),
-    docsUrl: z.string().url().optional(),
+    license: NonBlankStringSchema,
+    docsUrl: HttpsUrlSchema.optional(),
     provenance: z
       .object({
-        generatedAt: z.string().min(1),
-        sourceRef: z.string().min(1),
+        generatedAt: CanonicalUtcTimestampSchema,
+        sourceRef: NonBlankStringSchema,
         sourceCommit: z.string().regex(/^[a-f0-9]{40}$/i),
-        pluginSha256: z.string().regex(SHA256_HEX_PATTERN),
         acfsManifestVersion: z.number().int().positive(),
       })
       .passthrough(),
     targets: z.array(PluginTargetSchema).min(1),
     capabilities: z
       .object({
-        allowed: z.array(z.string().min(1)),
-        reviewRequired: z.array(z.string().min(1)),
-        disallowed: z.array(z.string().min(1)),
+        allowed: z.array(NonBlankStringSchema),
+        reviewRequired: z.array(NonBlankStringSchema),
+        disallowed: z.array(NonBlankStringSchema),
       })
       .passthrough(),
     modules: z.array(PluginModuleSchema).min(1),
@@ -193,6 +262,10 @@ export interface PluginValidationOptions {
   installers?: Record<string, InstallerChecksumEntry>;
   target?: PluginValidationTarget;
   existingPluginModuleIds?: Iterable<string>;
+  /** SHA-256 calculated from the exact compressed package bytes being validated. */
+  packageSha256?: string;
+  /** Independently trusted package SHA-256 from a profile, pack, or review record. */
+  expectedPackageSha256?: string;
 }
 
 export interface PluginValidationResult {
@@ -210,11 +283,58 @@ function addDiagnostic(
   diagnostics: PluginDiagnostic[],
   diagnostic: PluginDiagnostic
 ): void {
-  diagnostics.push(diagnostic);
+  const redactString = (value: string): string =>
+    containsSecretLikeValue(value) ? '<redacted>' : value;
+  const redactContextValue = (value: unknown): unknown => {
+    if (typeof value === 'string') return redactString(value);
+    if (Array.isArray(value)) return value.map(redactContextValue);
+    if (isRecord(value)) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, child]) => [redactString(key), redactContextValue(child)])
+      );
+    }
+    return value;
+  };
+
+  diagnostics.push({
+    ...diagnostic,
+    message: redactString(diagnostic.message),
+    path: redactString(diagnostic.path),
+    moduleId: diagnostic.moduleId ? redactString(diagnostic.moduleId) : undefined,
+    context: diagnostic.context
+      ? (redactContextValue(diagnostic.context) as Record<string, unknown>)
+      : undefined,
+  });
 }
 
 function normalizeSecretFieldName(name: string): string {
-  return name.replace(/[_-]/g, '').toLowerCase();
+  return name.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
+}
+
+function identifierWords(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .split(/[^A-Za-z0-9]+/)
+    .map((word) => word.toLowerCase())
+    .filter(Boolean);
+}
+
+function containsWordSequence(words: readonly string[], sequence: readonly string[]): boolean {
+  if (sequence.length === 0 || sequence.length > words.length) return false;
+  return words.some((_, index) =>
+    index + sequence.length <= words.length
+    && sequence.every((word, offset) => words[index + offset] === word)
+  );
+}
+
+function isSecretFieldName(name: string): boolean {
+  const normalized = normalizeSecretFieldName(name);
+  if (SECRET_FIELD_NAMES.has(normalized)) return true;
+
+  const words = identifierWords(name);
+
+  return words.some((word) => SECRET_FIELD_NAMES.has(word))
+    || SECRET_FIELD_WORD_SEQUENCES.some((sequence) => containsWordSequence(words, sequence));
 }
 
 function packageSlug(packageId: string): string {
@@ -270,6 +390,17 @@ function containsSecretLikeValue(value: string): boolean {
   if (/sk-[A-Za-z0-9]{20,}/.test(value)) return true;
   if (/Bearer [A-Za-z0-9._~+/-]{12,}/.test(value)) return true;
   if (/\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(value)) return true;
+  try {
+    const parsedUrl = new URL(value);
+    if (
+      (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') &&
+      (parsedUrl.username.length > 0 || parsedUrl.password.length > 0)
+    ) {
+      return true;
+    }
+  } catch {
+    // Non-URL strings continue through the remaining detectors.
+  }
   return false;
 }
 
@@ -288,7 +419,10 @@ function scanSecretMaterial(
   if (isRecord(value)) {
     for (const [key, child] of Object.entries(value)) {
       const childPath = path ? `${path}.${key}` : key;
-      if (SECRET_FIELD_NAMES.has(normalizeSecretFieldName(key))) {
+      if (
+        isSecretFieldName(key)
+        || containsSecretLikeValue(key)
+      ) {
         addDiagnostic(diagnostics, {
           code: 'plugin_secret_material_refused',
           message: `Plugin field "${childPath}" is forbidden because plugins are not credential stores`,
@@ -361,6 +495,65 @@ function addSchemaDiagnostics(input: unknown, diagnostics: PluginDiagnostic[]): 
   return plugin;
 }
 
+function hashPrefix(value: string | undefined): string {
+  if (!value) return '<missing>';
+  if (!SHA256_HEX_PATTERN.test(value)) return '<invalid>';
+  return value.slice(0, 12).toLowerCase();
+}
+
+function validatePackageHash(
+  options: PluginValidationOptions,
+  diagnostics: PluginDiagnostic[]
+): void {
+  const packageSha256 = options.packageSha256;
+  const expectedPackageSha256 = options.expectedPackageSha256;
+  const packageHashValid =
+    typeof packageSha256 === 'string' && SHA256_HEX_PATTERN.test(packageSha256);
+  const expectedHashValid =
+    typeof expectedPackageSha256 === 'string' && SHA256_HEX_PATTERN.test(expectedPackageSha256);
+
+  if (
+    packageHashValid &&
+    expectedHashValid &&
+    packageSha256.toLowerCase() === expectedPackageSha256.toLowerCase()
+  ) {
+    return;
+  }
+
+  addDiagnostic(diagnostics, {
+    code: 'plugin_package_hash_mismatch',
+    message:
+      'Plugin package SHA-256 is missing, malformed, or does not match the independently trusted digest',
+    path: '<package>',
+    severity: 'error',
+    context: {
+      packageSha256Prefix: hashPrefix(packageSha256),
+      expectedPackageSha256Prefix: hashPrefix(expectedPackageSha256),
+    },
+  });
+}
+
+function validateProvenance(
+  plugin: PluginPackage,
+  manifest: Manifest,
+  diagnostics: PluginDiagnostic[]
+): void {
+  if (plugin.provenance.acfsManifestVersion === manifest.version) return;
+
+  addDiagnostic(diagnostics, {
+    code: 'plugin_schema_unsupported',
+    message:
+      `Plugin package "${plugin.packageId}" targets ACFS manifest version ` +
+      `${plugin.provenance.acfsManifestVersion}, but this manifest is version ${manifest.version}`,
+    path: 'provenance.acfsManifestVersion',
+    severity: 'error',
+    context: {
+      pluginManifestVersion: plugin.provenance.acfsManifestVersion,
+      acfsManifestVersion: manifest.version,
+    },
+  });
+}
+
 function targetMatches(plugin: PluginPackage, target: PluginValidationTarget): boolean {
   return plugin.targets.some((candidate) => {
     return (
@@ -412,7 +605,10 @@ function validateCapabilityUse(
     return;
   }
 
-  if (plugin.capabilities.reviewRequired.includes(capability)) {
+  if (
+    INTRINSICALLY_REVIEW_REQUIRED_CAPABILITIES.has(capability) ||
+    plugin.capabilities.reviewRequired.includes(capability)
+  ) {
     addDiagnostic(diagnostics, {
       code: 'plugin_review_required',
       message: `Plugin module "${module.id}" requires maintainer review for "${capability}"`,
@@ -462,6 +658,17 @@ function validateInstallFields(
 
   validateCapabilityUse(plugin, module, kind, diagnostics, `${path}.kind`);
 
+  if (!IMPLEMENTED_INSTALL_KINDS.has(kind)) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_disallowed_behavior',
+      message: `Plugin module "${module.id}" uses install kind "${kind}", whose executor is not implemented`,
+      path: `${path}.kind`,
+      severity: 'error',
+      moduleId: module.id,
+      context: { kind },
+    });
+  }
+
   switch (kind) {
     case 'verified_installer':
       validateVerifiedInstallerInstall(module, moduleIndex, installers, diagnostics);
@@ -489,11 +696,13 @@ function validateVerifiedInstallerInstall(
   const tool = stringField(install, 'tool');
   const url = stringField(install, 'url');
   const runner = stringField(install, 'runner');
+  const env = install.env;
+  const args = install.args;
 
-  if (!tool) {
+  if (!tool || !VERIFIED_INSTALLER_TOOL_PATTERN.test(tool)) {
     addDiagnostic(diagnostics, {
       code: 'plugin_missing_required_field',
-      message: `Plugin module "${module.id}" is missing verified installer tool`,
+      message: `Plugin module "${module.id}" verified installer tool must be a lowercase checksum key`,
       path: `${path}.tool`,
       severity: 'error',
       moduleId: module.id,
@@ -519,6 +728,59 @@ function validateVerifiedInstallerInstall(
       severity: 'error',
       moduleId: module.id,
       context: { runner: runner ?? '<missing>', allowedRunners: Array.from(ALLOWED_RUNNERS) },
+    });
+  }
+
+  if (
+    env !== undefined &&
+    (!Array.isArray(env) ||
+      !env.every((entry) => typeof entry === 'string' && ENV_ASSIGNMENT_PATTERN.test(entry)))
+  ) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_missing_required_field',
+      message: `Plugin module "${module.id}" verified installer env must contain only KEY=value strings`,
+      path: `${path}.env`,
+      severity: 'error',
+      moduleId: module.id,
+    });
+  }
+
+  if (Array.isArray(env) && env.length > 0) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_disallowed_behavior',
+      message: `Plugin module "${module.id}" cannot set verified installer environment variables in v1`,
+      path: `${path}.env`,
+      severity: 'error',
+      moduleId: module.id,
+      context: { reason: 'shell startup environment can bypass the verified installer file' },
+    });
+  }
+
+  if (
+    args !== undefined &&
+    (!Array.isArray(args) || !args.every((entry) => typeof entry === 'string'))
+  ) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_missing_required_field',
+      message: `Plugin module "${module.id}" verified installer args must be an array of strings`,
+      path: `${path}.args`,
+      severity: 'error',
+      moduleId: module.id,
+    });
+  }
+
+  if (
+    Array.isArray(args) &&
+    args.every((entry) => typeof entry === 'string') &&
+    args.includes('--')
+  ) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_disallowed_behavior',
+      message: `Plugin module "${module.id}" cannot pass runner options to a verified installer`,
+      path: `${path}.args`,
+      severity: 'error',
+      moduleId: module.id,
+      context: { reason: 'plugin arguments must be passed only after the verified installer file' },
     });
   }
 
@@ -580,7 +842,9 @@ function validateReleaseArtifactInstall(
   const path = `modules[${moduleIndex}].install`;
   const url = stringField(install, 'url');
   const sha256 = stringField(install, 'sha256');
+  const assetId = stringField(install, 'assetId');
   const targetPath = stringField(install, 'targetPath');
+  const mode = stringField(install, 'mode');
 
   if (!isHttpsUrl(url)) {
     addDiagnostic(diagnostics, {
@@ -602,11 +866,31 @@ function validateReleaseArtifactInstall(
     });
   }
 
+  if (!assetId?.trim()) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_missing_required_field',
+      message: `Plugin module "${module.id}" release artifact requires assetId`,
+      path: `${path}.assetId`,
+      severity: 'error',
+      moduleId: module.id,
+    });
+  }
+
   if (!isSafeRelativePath(targetPath)) {
     addDiagnostic(diagnostics, {
       code: 'plugin_archive_layout_invalid',
       message: `Plugin module "${module.id}" release artifact targetPath must stay relative`,
       path: `${path}.targetPath`,
+      severity: 'error',
+      moduleId: module.id,
+    });
+  }
+
+  if (!mode?.trim()) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_missing_required_field',
+      message: `Plugin module "${module.id}" release artifact requires mode`,
+      path: `${path}.mode`,
       severity: 'error',
       moduleId: module.id,
     });
@@ -620,8 +904,20 @@ function validateCopyAssetInstall(
 ): void {
   const install = module.install as Record<string, unknown>;
   const path = `modules[${moduleIndex}].install`;
+  const assetId = stringField(install, 'assetId');
   const sourcePath = stringField(install, 'sourcePath');
   const targetPath = stringField(install, 'targetPath');
+  const mode = stringField(install, 'mode');
+
+  if (!assetId?.trim()) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_missing_required_field',
+      message: `Plugin module "${module.id}" copy_asset requires assetId`,
+      path: `${path}.assetId`,
+      severity: 'error',
+      moduleId: module.id,
+    });
+  }
 
   if (!isSafeRelativePath(sourcePath)) {
     addDiagnostic(diagnostics, {
@@ -642,6 +938,16 @@ function validateCopyAssetInstall(
       moduleId: module.id,
     });
   }
+
+  if (!mode?.trim()) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_missing_required_field',
+      message: `Plugin module "${module.id}" copy_asset requires mode`,
+      path: `${path}.mode`,
+      severity: 'error',
+      moduleId: module.id,
+    });
+  }
 }
 
 function validateManualStepInstall(
@@ -653,6 +959,7 @@ function validateManualStepInstall(
   const path = `modules[${moduleIndex}].install`;
   const summary = stringField(install, 'summary');
   const docsUrl = stringField(install, 'docs_url');
+  const blocking = install.blocking;
 
   if (!summary) {
     addDiagnostic(diagnostics, {
@@ -669,6 +976,16 @@ function validateManualStepInstall(
       code: 'plugin_missing_required_field',
       message: `Plugin module "${module.id}" manual_step requires docs_url`,
       path: `${path}.docs_url`,
+      severity: 'error',
+      moduleId: module.id,
+    });
+  }
+
+  if (typeof blocking !== 'boolean') {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_missing_required_field',
+      message: `Plugin module "${module.id}" manual_step requires boolean blocking`,
+      path: `${path}.blocking`,
       severity: 'error',
       moduleId: module.id,
     });
@@ -843,6 +1160,12 @@ function validateGeneratedFunctionCollisions(
   for (const module of options.firstPartyManifest.modules) {
     functionOwners.set(toFunctionName(module.id), module.id);
   }
+  for (const moduleId of options.existingPluginModuleIds ?? []) {
+    const functionName = toFunctionName(moduleId);
+    if (!functionOwners.has(functionName)) {
+      functionOwners.set(functionName, moduleId);
+    }
+  }
 
   plugin.modules.forEach((module, index) => {
     const functionName = toFunctionName(module.id);
@@ -866,7 +1189,7 @@ function validateReviewRequiredCapabilities(
   diagnostics: PluginDiagnostic[]
 ): void {
   plugin.modules.forEach((module, index) => {
-    if (module.run_as === 'root') {
+    if (module.run_as === 'root' || module.run_as === 'current') {
       validateCapabilityUse(plugin, module, 'root_run_as', diagnostics, `modules[${index}].run_as`);
     }
   });
@@ -919,11 +1242,19 @@ function validateModules(
   validateReviewRequiredCapabilities(plugin, diagnostics);
 
   plugin.modules.forEach((module, index) => {
+    validateCapabilityUse(plugin, module, 'doctor_check', diagnostics, `modules[${index}].verify`);
+    if (module.web !== undefined) {
+      validateCapabilityUse(plugin, module, 'web_metadata', diagnostics, `modules[${index}].web`);
+    }
     validateInstallFields(plugin, module, index, installers, diagnostics);
   });
 }
 
-function toManifestModule(plugin: PluginPackage, module: PluginModule): Module {
+function toManifestModule(
+  plugin: PluginPackage,
+  module: PluginModule,
+  packageSha256: string
+): Module {
   const install = module.install as Record<string, unknown>;
   const kind = module.install.kind;
   const verifiedInstaller =
@@ -948,14 +1279,16 @@ function toManifestModule(plugin: PluginPackage, module: PluginModule): Module {
     generated: kind === 'verified_installer',
     phase: module.phase,
     install: [],
-    verify: [...module.verify],
+    verify: module.verify.map(
+      (check) => `command -v -- ${check.command} >/dev/null 2>&1`
+    ),
     dependencies: module.dependencies ? [...module.dependencies] : undefined,
     docs_url: module.docs_url,
     web: module.web,
     plugin: {
       packageId: plugin.packageId,
       version: plugin.version,
-      pluginSha256: plugin.provenance.pluginSha256,
+      pluginSha256: packageSha256.toLowerCase(),
       sourceRef: plugin.provenance.sourceRef,
       sourceCommit: plugin.provenance.sourceCommit,
     },
@@ -968,6 +1301,12 @@ export function validatePluginPackage(
 ): PluginValidationResult {
   const diagnostics: PluginDiagnostic[] = [];
   const manifestModules: Module[] = [];
+  // An arbitrary Iterable may be a one-shot generator. Snapshot it once so ID,
+  // dependency, and generated-function checks all see the same loaded plugins.
+  const validationOptions: PluginValidationOptions = {
+    ...options,
+    existingPluginModuleIds: [...(options.existingPluginModuleIds ?? [])],
+  };
 
   validateTopLevelFields(input, diagnostics);
   scanSecretMaterial(input, diagnostics, '');
@@ -987,19 +1326,28 @@ export function validatePluginPackage(
     return { valid: false, diagnostics, manifestModules };
   }
 
-  validateTarget(plugin, options.target, diagnostics);
-  validateModules(plugin, options, diagnostics);
+  validatePackageHash(validationOptions, diagnostics);
+  validateProvenance(plugin, validationOptions.firstPartyManifest, diagnostics);
+  validateTarget(plugin, validationOptions.target, diagnostics);
+  validateModules(plugin, validationOptions, diagnostics);
   validateOfflinePolicy(plugin, diagnostics);
 
   const valid = diagnostics.every((diagnostic) => diagnostic.severity === 'warning');
   if (valid) {
-    manifestModules.push(...plugin.modules.map((module) => toManifestModule(plugin, module)));
+    manifestModules.push(
+      ...plugin.modules.map((module) =>
+        toManifestModule(plugin, module, validationOptions.packageSha256!)
+      )
+    );
   }
 
   return {
     valid,
     diagnostics,
-    package: plugin,
+    // Invalid packages may contain the exact secret material or host-specific
+    // values that produced a refusal. Do not hand the parsed payload back to a
+    // caller that might serialize the validation result or retain it in logs.
+    package: valid ? plugin : undefined,
     manifestModules,
   };
 }

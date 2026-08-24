@@ -72,6 +72,16 @@ describe('ManifestDefaultsSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test('rejects unknown default fields instead of silently discarding typos', () => {
+    const result = ManifestDefaultsSchema.safeParse({
+      user: 'ubuntu',
+      workspace_root: '/data',
+      mode: 'vibe',
+      workspace_rooot: '/wrong/path',
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('ModuleSchema', () => {
@@ -130,6 +140,37 @@ describe('ModuleSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  test('accepts validated plugin provenance on normalized modules', () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      id: 'plugin.example_tools.cli',
+      plugin: {
+        packageId: 'example.tools',
+        version: '1.2.3',
+        pluginSha256: 'a'.repeat(64),
+        sourceRef: 'main',
+        sourceCommit: '0123456789abcdef0123456789abcdef01234567',
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test('rejects malformed or misspelled plugin provenance', () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      id: 'plugin.example_tools.cli',
+      plugin: {
+        packageId: 'example.tools',
+        version: '1.2.3',
+        pluginSha256: 'not-a-hash',
+        sourceRef: 'main',
+        sourceCommit: '0123456789abcdef0123456789abcdef01234567',
+        sourceCommmit: 'ffffffffffffffffffffffffffffffffffffffff',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
   test('accepts multi-segment module ID', () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
@@ -180,6 +221,22 @@ describe('ModuleSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  test('rejects whitespace-only install entries instead of generating a successful no-op', () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      install: ['   '],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects blank verify entries instead of generating a vacuous health check', () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      verify: [''],
+    });
+    expect(result.success).toBe(false);
+  });
+
   test('accepts empty install array when generated is false', () => {
     const result = ModuleSchema.safeParse({
       id: 'lang.bun',
@@ -206,6 +263,14 @@ describe('ModuleSchema', () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
       run_as: 'invalid',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects unknown module fields instead of silently dropping dependency typos', () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      dependecies: ['base.prerequisite'],
     });
     expect(result.success).toBe(false);
   });
@@ -298,6 +363,18 @@ describe('ModuleSchema', () => {
       expect(result.data.verified_installer?.runner).toBe('bash');
       expect(result.data.verified_installer?.args).toEqual(['-s', '--']);
     }
+  });
+
+  test('rejects unknown verified-installer fields', () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      verified_installer: {
+        tool: 'bun',
+        runner: 'bash',
+        arguements: ['--yes'],
+      },
+    });
+    expect(result.success).toBe(false);
   });
 
   test('validates verified_installer env assignments', () => {
@@ -425,6 +502,18 @@ describe('ModuleSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  test('rejects unknown installed-check fields', () => {
+    const result = ModuleSchema.safeParse({
+      ...validMinimalModule,
+      installed_check: {
+        run_as: 'target_user',
+        command: 'which curl',
+        commmand: 'which wrong-binary',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
   test('validates pre_install_check object', () => {
     const result = ModuleSchema.safeParse({
       ...validMinimalModule,
@@ -477,6 +566,14 @@ describe('ManifestSchema', () => {
   test('validates complete manifest', () => {
     const result = ManifestSchema.safeParse(validMinimalManifest);
     expect(result.success).toBe(true);
+  });
+
+  test('rejects unknown top-level fields', () => {
+    const result = ManifestSchema.safeParse({
+      ...validMinimalManifest,
+      module: validMinimalManifest.modules,
+    });
+    expect(result.success).toBe(false);
   });
 
   test('rejects negative version', () => {
@@ -624,6 +721,14 @@ describe('ModuleWebMetadataSchema', () => {
     }
   });
 
+  test('rejects unknown web metadata fields', () => {
+    const result = ModuleWebMetadataSchema.safeParse({
+      display_name: 'Test Tool',
+      displayname: 'Misspelled Tool',
+    });
+    expect(result.success).toBe(false);
+  });
+
   test('defaults visible to true', () => {
     const result = ModuleWebMetadataSchema.safeParse({
       display_name: 'Test Tool',
@@ -693,10 +798,33 @@ describe('ModuleWebMetadataSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  test('rejects scheme-relative href values', () => {
+    const result = ModuleWebMetadataSchema.safeParse({
+      href: '//attacker',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test('rejects malformed and credential-bearing external href values', () => {
+    for (const href of [
+      'https://',
+      'https://example.com/path with spaces',
+      'https://alice:swordfish@example.com/tool',
+    ]) {
+      expect(ModuleWebMetadataSchema.safeParse({ href }).success).toBe(false);
+    }
+  });
+
   test('accepts valid href paths', () => {
     for (const href of ['/tools/agent-mail', '/tldr', '/tools/br_cli']) {
       const result = ModuleWebMetadataSchema.safeParse({ href });
       expect(result.success).toBe(true);
+    }
+  });
+
+  test('accepts valid HTTP and HTTPS href URLs', () => {
+    for (const href of ['https://example.com/tool', 'http://localhost.test/tool']) {
+      expect(ModuleWebMetadataSchema.safeParse({ href }).success).toBe(true);
     }
   });
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -6,6 +6,11 @@
 # ============================================================
 
 set -euo pipefail
+
+# Generated scripts can execute root-context manifest commands. Establish the
+# same OS-owned command-search invariant as install.sh before even resolving
+# this script's directory.
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Resolve relative helper paths first.
 ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,8 +49,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -715,10 +718,36 @@ agent_mail_readiness_ready() {
 }
 
 stop_agent_mail_fallback() {
+  local existing_pid=""
+  local managed_pid=""
+  local victim_args=""
+  local victim_exe=""
+  local am_real=""
+  local owner_matches=false
   if [[ -f "$fallback_pid_file" ]]; then
     existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-    if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-       ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+      managed_pid="$(systemctl --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
+    fi
+    if [[ "$managed_pid" =~ ^[1-9][0-9]*$ ]] && [[ "$existing_pid" == "$managed_pid" ]]; then
+      echo "Agent Mail: PID $existing_pid belongs to agent-mail.service; leaving it to the supervisor" >&2
+      rm -f "$fallback_pid_file"
+      return 0
+    fi
+    if [[ "$existing_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$existing_pid" 2>/dev/null; then
+      victim_args="$(ps -p "$existing_pid" -o args= 2>/dev/null || true)"
+      victim_exe="$(readlink -f "/proc/$existing_pid/exe" 2>/dev/null || true)"
+      am_real="$(readlink -f "$am_bin" 2>/dev/null || printf '%s' "$am_bin")"
+      if [[ ! "$victim_args" =~ (^|[[:space:]])serve-http([[:space:]]|$) ]] ||
+         [[ ! "$victim_args" =~ (^|[[:space:]])--port(=|[[:space:]]+)8765([[:space:]]|$) ]]; then
+        owner_matches=false
+      elif [[ -n "$victim_exe" ]]; then
+        [[ "$victim_exe" == "$am_real" ]] && owner_matches=true
+      elif [[ "$victim_args" =~ (^|/)am([[:space:]]|$) ]]; then
+        owner_matches=true
+      fi
+    fi
+    if [[ "$owner_matches" == "true" ]]; then
       kill "$existing_pid" >/dev/null 2>&1 || true
       for _ in {1..10}; do
         if ! kill -0 "$existing_pid" 2>/dev/null; then
@@ -727,7 +756,8 @@ stop_agent_mail_fallback() {
         sleep 1
       done
       if kill -0 "$existing_pid" 2>/dev/null; then
-        kill -9 "$existing_pid" >/dev/null 2>&1 || true
+        echo "Agent Mail: fallback PID $existing_pid did not stop after SIGTERM; refusing a hard kill" >&2
+        return 1
       fi
     fi
     rm -f "$fallback_pid_file"
@@ -741,13 +771,7 @@ launch_agent_mail_fallback() {
   fi
 
   if [[ -f "$fallback_pid_file" ]]; then
-    existing_pid="$(cat "$fallback_pid_file" 2>/dev/null || true)"
-    if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null && \
-       ps -p "$existing_pid" -o args= 2>/dev/null | grep -Fq "$am_bin serve-http"; then
-      stop_agent_mail_fallback
-    else
-      rm -f "$fallback_pid_file"
-    fi
+    stop_agent_mail_fallback || return 1
   fi
 
   nohup env \
@@ -785,11 +809,10 @@ warn_if_agent_mail_port_taken() {
 warn_if_agent_mail_port_taken
 
 if [[ "$_systemctl_user_ok" = "true" ]]; then
-  stop_agent_mail_fallback
+  stop_agent_mail_fallback || exit 1
   systemctl --user daemon-reload >/dev/null 2>&1 || true
-  if ! systemctl --user enable --now agent-mail.service >/dev/null 2>&1; then
-    systemctl --user restart agent-mail.service >/dev/null 2>&1
-  fi
+  systemctl --user enable agent-mail.service >/dev/null 2>&1 || exit 1
+  systemctl --user restart agent-mail.service >/dev/null 2>&1 || exit 1
   active_waited=0
   active_max_wait=30
   until systemctl --user is-active --quiet agent-mail.service >/dev/null 2>&1; do

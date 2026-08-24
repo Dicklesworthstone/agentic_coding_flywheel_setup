@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
@@ -6,6 +6,11 @@
 # ============================================================
 
 set -euo pipefail
+
+# Generated scripts can execute root-context manifest commands. Establish the
+# same OS-owned command-search invariant as install.sh before even resolving
+# this script's directory.
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 
 # Resolve relative helper paths first.
 ACFS_GENERATED_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,8 +49,6 @@ acfs_generated_system_binary_path() {
     esac
 
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -364,10 +367,10 @@ install_tools_lazygit() {
     log_step "Installing tools.lazygit"
 
     if [[ "${DRY_RUN:-false}" = "true" ]]; then
-        log_info "dry-run: install: if apt-get install -y lazygit; then (root)"
+        log_info "dry-run: install: if apt-get -o DPkg::Lock::Timeout=120 install -y lazygit; then (root)"
     else
         if ! run_as_root_shell <<'INSTALL_TOOLS_LAZYGIT'
-if apt-get install -y lazygit; then
+if apt-get -o DPkg::Lock::Timeout=120 install -y lazygit; then
   exit 0
 fi
 # Fallback to binary install
@@ -391,7 +394,7 @@ chmod +x /usr/local/bin/lazygit
 rm "$TMP_FILE"
 INSTALL_TOOLS_LAZYGIT
         then
-            log_error "tools.lazygit: install command failed: if apt-get install -y lazygit; then"
+            log_error "tools.lazygit: install command failed: if apt-get -o DPkg::Lock::Timeout=120 install -y lazygit; then"
             return 1
         fi
     fi
@@ -858,7 +861,7 @@ curl "${CURL_ARGS[@]}" https://apt.releases.hashicorp.com/gpg \
   | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com ${CODENAME} main" \
   > /etc/apt/sources.list.d/hashicorp.list
-apt-get update && apt-get install -y vault
+apt-get -o DPkg::Lock::Timeout=120 update && apt-get -o DPkg::Lock::Timeout=120 install -y vault
 INSTALL_TOOLS_VAULT
         then
             log_warn "tools.vault: install command failed: if curl --help all 2>/dev/null | grep -q -- '--proto'; then"

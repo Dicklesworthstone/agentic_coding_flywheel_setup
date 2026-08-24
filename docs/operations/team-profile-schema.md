@@ -42,7 +42,7 @@ but the profile JSON remains the trust boundary and must validate by itself.
   "displayName": "Example Team VPS",
   "description": "Shared ACFS defaults for the example team.",
   "generatedAt": "2026-05-08T00:00:00Z",
-  "generatedBy": "acfs wizard",
+  "generatedBy": "acfs-web-wizard",
   "provenance": {
     "author": {
       "name": "Example Maintainer",
@@ -137,14 +137,20 @@ but the profile JSON remains the trust boundary and must validate by itself.
 Every v1 profile must include:
 
 - `schema: "acfs.team-profile.v1"` and `schemaVersion: 1`
-- `profileId`, `displayName`, `generatedAt`, and `generatedBy`
+- `profileId`, `displayName`, a canonical UTC ISO 8601 `generatedAt`, and
+  `generatedBy: "acfs-web-wizard"`
 - `provenance.source.acfsRef`, `provenance.source.manifestSha256`, and
   `provenance.source.checksumsYamlSha256`
-- `compatibility.targetUbuntuVersions`, `compatibility.architectures`,
-  `compatibility.installerRefPolicy`, and `compatibility.checksumsRefPolicy`
-- `providerDefaults.provider`, `providerDefaults.operatingSystem`,
-  `providerDefaults.architecture`, and `providerDefaults.sshUser`
-- `install.mode`, `install.ref`, and `install.modules`
+- `compatibility.schemaVersions`, `compatibility.targetUbuntuVersions`,
+  `compatibility.architectures`, `compatibility.installerRefPolicy`, and
+  `compatibility.checksumsRefPolicy`
+- `providerDefaults.provider`, `providerDefaults.region`,
+  `providerDefaults.planClass`, `providerDefaults.operatingSystem`,
+  `providerDefaults.architecture`, `providerDefaults.sshUser`, and
+  `providerDefaults.sshPort: 22`
+- `install.mode`, `install.profile`, every field under `install.ref`, and every
+  field under `install.modules`
+- `serviceAccounts` (an array, which may be empty)
 - `redaction.allowSecretValues: false`
 - `redaction.secretSlotsRequired: true`
 
@@ -193,9 +199,10 @@ time.
 
 ## Forbidden Field And Value Checks
 
-Profile validators must fail closed when any object key matches a forbidden
-credential-like name outside `redaction.forbiddenFields` or documented
-`secretSlot` metadata. The default forbidden key fragments are:
+Profile validators must fail closed when any object key is an exact normalized
+forbidden credential name or contains one as a camelCase, snake_case, or
+kebab-case segment outside `redaction.forbiddenFields` or documented
+`secretSlot` metadata. The default forbidden names are:
 
 ```text
 token apiKey secret password privateKey private_key cookie session bearer
@@ -223,15 +230,20 @@ current ACFS source:
 1. `schema` and `schemaVersion` are supported.
 2. `compatibility.targetUbuntuVersions` includes the requested target.
 3. `compatibility.architectures` includes the target architecture.
-4. `install.modules.only`, `install.modules.skip`, and `install.modules.onlyPhases`
+4. Provider OS and architecture defaults appear in their corresponding
+   compatibility lists.
+5. `compatibility.installerRefPolicy` is `prefer_pinned_ref` and
+   `compatibility.checksumsRefPolicy` is `current_acfs_default`.
+6. `install.ref.type` agrees with the normalized `install.ref.value`.
+7. `install.modules.only`, `install.modules.skip`, and `install.modules.onlyPhases`
    reference known modules or phases.
-5. `install.modules.noDeps` is either absent or explicitly `false` unless the
+8. `install.modules.noDeps` is either absent or explicitly `false` unless the
    user enables expert mode during import.
-6. `provenance.source.manifestSha256` matches the manifest used to build the
+9. `provenance.source.manifestSha256` matches the manifest used to build the
    selected plan, or the import diff marks the plan as stale.
-7. `provenance.source.checksumsYamlSha256` matches the checksum metadata used by
+10. `provenance.source.checksumsYamlSha256` matches the checksum metadata used by
    the installer, or the import diff marks checksum metadata as stale.
-8. `install.ref.pinOnExport` is honored before commands are copied or executed.
+11. `install.ref.pinOnExport` is honored before commands are copied or executed.
 
 Compatibility failures must stop automatic import. A user may still inspect the
 profile in read-only mode.

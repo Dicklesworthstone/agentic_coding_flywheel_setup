@@ -75,7 +75,6 @@ fixtures without YAML parser drift.
     "generatedAt": "2026-05-08T00:00:00Z",
     "sourceRef": "main",
     "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
-    "pluginSha256": "<sha256 of the compressed package>",
     "acfsManifestVersion": 1
   },
   "targets": [
@@ -87,7 +86,7 @@ fixtures without YAML parser drift.
     }
   ],
   "capabilities": {
-    "allowed": ["verified_installer", "release_artifact", "copy_asset"],
+    "allowed": ["verified_installer", "release_artifact", "copy_asset", "doctor_check", "web_metadata"],
     "reviewRequired": ["root_run_as", "systemd_user_service"],
     "disallowed": ["arbitrary_shell", "secret_values"]
   },
@@ -109,13 +108,13 @@ fixtures without YAML parser drift.
         "args": [],
         "env": []
       },
-      "verify": ["example --version"],
+      "verify": [{ "kind": "command_exists", "command": "example" }],
       "docs_url": "https://example.com/acfs-plugin-example/cli",
       "web": {
         "display_name": "Example CLI",
         "short_name": "Example",
         "visible": true,
-        "summary": "Example plugin module."
+        "short_desc": "Example plugin module."
       }
     }
   ],
@@ -131,6 +130,8 @@ fixtures without YAML parser drift.
 Unknown top-level fields are allowed only under `extensions`. Unknown fields
 inside `modules`, `install`, `capabilities`, `targets`, `offline`, or
 `provenance` must not change validation decisions.
+External plugin documentation and web metadata links must use HTTPS; plugin web
+metadata may also use a site-relative path beginning with `/`.
 
 ## Required Fields
 
@@ -139,13 +140,12 @@ Every v1 plugin package must include:
 - `schema: "acfs.plugin-package.v1"` and `schemaVersion: 1`
 - `packageId`, `displayName`, `version`, `description`, `publisher`, `license`
 - `provenance.generatedAt`, `provenance.sourceRef`,
-  `provenance.sourceCommit`, `provenance.pluginSha256`, and
-  `provenance.acfsManifestVersion`
+  `provenance.sourceCommit`, and `provenance.acfsManifestVersion`
 - at least one `targets[]` entry with `os`, `versions`, `arch`, and `libc`
 - `capabilities.allowed`, `capabilities.reviewRequired`, and
   `capabilities.disallowed`
-- at least one `modules[]` entry, unless the package is marked
-  `documentationOnly: true` under `extensions`
+- at least one `modules[]` entry; documentation-only packages are not supported
+  in v1
 - one `offline` block describing bundling and live-interaction behavior
 
 Every module must include:
@@ -154,7 +154,7 @@ Every module must include:
 - `description`, `category`, `phase`, `run_as`, `optional`,
   `enabled_by_default`
 - `install.kind` and the fields required by that install kind
-- at least one `verify[]` command
+- at least one declarative `verify[]` check
 - `docs_url`
 
 ## Module ID And Merge Rules
@@ -192,14 +192,18 @@ capabilities it uses, and the validator must reject undeclared capability use.
 | `copy_asset` | Copy static package assets into ACFS-owned plugin locations. |
 | `manual_step` | Show a documented manual action without executing host changes. |
 | `web_metadata` | Add wizard/doctor display metadata for validated modules. |
-| `doctor_check` | Add non-mutating verification commands that report status only. |
+| `doctor_check` | Add declarative, non-mutating verification checks that report status only. |
 
 ## Install Kinds
 
 `install.kind` is one of:
 
 - `verified_installer`: requires `tool`, HTTPS `url`, `runner` of `bash` or
-  `sh`, optional `env`, and optional `args`. `fallback_url` is forbidden.
+  `sh`, and optional script `args`. `fallback_url` is forbidden. V1 accepts
+  only an empty `env` array and forbids the `--` runner-option delimiter;
+  otherwise shell startup variables or runner flags could execute code before
+  the checksum-verified installer file. Future environment support needs an
+  explicit per-installer allowlist.
 - `release_artifact`: requires HTTPS `url`, `sha256`, `targetPath`,
   `assetId`, and a declarative `mode`. Extraction cannot write outside the
   plugin-owned target root.
@@ -208,15 +212,27 @@ capabilities it uses, and the validator must reject undeclared capability use.
 - `manual_step`: requires `summary`, `docs_url`, and `blocking`. It cannot
   provide shell commands.
 
+The current normalized-manifest emitter implements only `verified_installer`.
+The validator checks the reserved `release_artifact`, `copy_asset`, and
+`manual_step` shapes but refuses activation with `plugin_disallowed_behavior`
+until their dedicated executors exist. It must never normalize one of those
+kinds into an empty successful install.
+
 Raw shell arrays, heredocs, command templates, `eval`, process substitution,
 remote command strings, and inline scripts are not valid v1 install kinds.
+
+`verify[]` is also declarative. V1 currently supports only
+`{ "kind": "command_exists", "command": "<bare executable name>" }`, which
+normalizes to a non-mutating executable lookup. Raw verification shell strings
+are rejected.
 
 ## Review-Required Capabilities
 
 The validator must surface these as `plugin_review_required` and refuse
 automatic enablement unless a maintainer review record is supplied:
 
-- `root_run_as` or any `run_as: "root"` module
+- `root_run_as` or any `run_as: "root"` or `run_as: "current"` module; the
+  current installer process commonly has root authority
 - `systemd_user_service` or `systemd_system_service`
 - package manager repository configuration, including APT sources and keys
 - PATH, shell startup, tmux, git config, SSH config, or sudoers changes
@@ -303,12 +319,18 @@ first-party modules.
 
 ## Trust Model
 
-A plugin package is trusted only after all verification steps pass:
+A plugin package is trusted only after all verification steps pass. The
+compressed-package digest is external to `plugin.json`: embedding the final
+archive hash inside a file contained by that archive would be self-referential.
+The consumer must calculate the exact archive SHA-256 and compare it with an
+independently trusted digest from a profile, offline pack, or maintainer review
+record.
 
 1. The archive extracts to exactly one `acfs-plugin-package/` root without path
    traversal, unsafe symlinks, duplicate paths, or undeclared files.
 2. `plugin.json` parses as v1 JSON and contains all required fields.
-3. `provenance.pluginSha256` matches the compressed package.
+3. The calculated compressed-package SHA-256 matches the independently trusted
+   expected digest.
 4. The target Ubuntu version, architecture, and libc match one of `targets[]`.
 5. Every requested capability is declared and either allowed or backed by an
    unexpired maintainer review record.
@@ -360,7 +382,7 @@ Stable validator codes:
 | `plugin_missing_required_field` | A required package or module field is absent. |
 | `plugin_unknown_top_level_field` | Unknown package data appears outside `extensions`. |
 | `plugin_archive_layout_invalid` | Archive layout, path, symlink, duplicate, or undeclared file check failed. |
-| `plugin_package_hash_mismatch` | `provenance.pluginSha256` does not match the package. |
+| `plugin_package_hash_mismatch` | The calculated package hash is absent, malformed, or differs from the independently trusted digest. |
 | `plugin_target_unsupported` | Target OS, Ubuntu version, architecture, or libc is unsupported. |
 | `plugin_module_id_invalid` | Module ID does not match the plugin namespace. |
 | `plugin_module_collision` | A module ID collides with first-party or plugin modules. |

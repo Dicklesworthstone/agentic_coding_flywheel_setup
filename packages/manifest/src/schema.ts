@@ -5,25 +5,33 @@
 
 import { z } from 'zod';
 
+// The manifest is executable configuration. Keep authored object boundaries
+// strict so a misspelled field cannot be silently stripped before generation.
+
 /**
  * Schema for manifest defaults
  */
-export const ManifestDefaultsSchema = z.object({
-  user: z
-    .string()
-    .min(1, 'User cannot be empty')
-    .refine((s) => s.trim().length > 0, 'User cannot be only whitespace'),
-  workspace_root: z
-    .string()
-    .min(1, 'Workspace root cannot be empty')
-    .refine((s) => s.trim().length > 0, 'Workspace root cannot be only whitespace'),
-  mode: z.enum(['vibe', 'safe']).default('vibe'),
-});
+export const ManifestDefaultsSchema = z
+  .strictObject({
+    user: z
+      .string()
+      .min(1, 'User cannot be empty')
+      .refine((s) => s.trim().length > 0, 'User cannot be only whitespace'),
+    workspace_root: z
+      .string()
+      .min(1, 'Workspace root cannot be empty')
+      .refine((s) => s.trim().length > 0, 'Workspace root cannot be only whitespace'),
+    mode: z.enum(['vibe', 'safe']).default('vibe'),
+  });
 
 /**
  * Schema for a single module
  */
 const RunAsSchema = z.enum(['target_user', 'root', 'current']);
+const ShellCommandSchema = z
+  .string()
+  .min(1, 'Shell command cannot be empty')
+  .refine((command) => command.trim().length > 0, 'Shell command cannot be only whitespace');
 
 /**
  * Allowlist of verified installer runners.
@@ -35,7 +43,7 @@ const VerifiedInstallerRunnerSchema = z.enum(['bash', 'sh'], {
 });
 
 const VerifiedInstallerSchema = z
-  .object({
+  .strictObject({
     tool: z
       .string()
       .min(1, 'Verified installer tool cannot be empty')
@@ -82,13 +90,51 @@ const VerifiedInstallerSchema = z
       'verified_installer.fallback_url is unsupported. Verified installers fail closed; remove fallback_url.',
   });
 
+const ModulePluginProvenanceSchema = z.strictObject({
+  packageId: z
+    .string()
+    .regex(
+      /^[a-z][a-z0-9_.-]*$/,
+      'Plugin package ID must use lowercase letters, digits, dots, underscores, or hyphens'
+    ),
+  version: z
+    .string()
+    .min(1, 'Plugin version cannot be empty')
+    .refine((value) => value.trim().length > 0, 'Plugin version cannot be only whitespace'),
+  pluginSha256: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i, 'Plugin package SHA-256 must contain 64 hexadecimal characters'),
+  sourceRef: z
+    .string()
+    .min(1, 'Plugin source ref cannot be empty')
+    .refine((value) => value.trim().length > 0, 'Plugin source ref cannot be only whitespace'),
+  sourceCommit: z
+    .string()
+    .regex(/^[a-f0-9]{40}$/i, 'Plugin source commit must contain 40 hexadecimal characters'),
+});
+
+function isSafeModuleHref(value: string): boolean {
+  if (/^\/(?!\/)[a-z0-9/_-]*$/.test(value)) return true;
+  if (/[\s\\]/.test(value)) return false;
+
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'https:' || url.protocol === 'http:')
+      && url.hostname.length > 0
+      && url.username.length === 0
+      && url.password.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Schema for module web metadata.
  * All fields are optional; the entire `web` block is optional on a module.
  * Constraints prevent unsafe content (no raw HTML, validated hex colors, bounded lengths).
  */
 export const ModuleWebMetadataSchema = z
-  .object({
+  .strictObject({
     display_name: z
       .string()
       .min(1, 'display_name cannot be empty')
@@ -133,8 +179,8 @@ export const ModuleWebMetadataSchema = z
       .optional(),
     href: z
       .string()
-      .regex(
-        /^(\/[a-z0-9/_-]*|https?:\/\/.+)$/,
+      .refine(
+        isSafeModuleHref,
         'href must be an absolute path (e.g., "/tools/agent-mail") or a full URL (e.g., "https://github.com/...")'
       )
       .optional(),
@@ -183,7 +229,7 @@ export const ModuleWebMetadataSchema = z
   });
 
 export const ModuleSchema = z
-  .object({
+  .strictObject({
     id: z
       .string()
       .min(1, 'Module ID cannot be empty')
@@ -221,7 +267,7 @@ export const ModuleSchema = z
     optional: z.boolean().default(false),
     enabled_by_default: z.boolean().default(true),
     installed_check: z
-      .object({
+      .strictObject({
         run_as: RunAsSchema.default('target_user'),
         command: z
           .string()
@@ -230,7 +276,7 @@ export const ModuleSchema = z
       })
       .optional(),
     pre_install_check: z
-      .object({
+      .strictObject({
         run_as: RunAsSchema.default('target_user'),
         command: z
           .string()
@@ -248,8 +294,8 @@ export const ModuleSchema = z
 
     // Install steps are shell strings (executed via run_as_*_shell).
     // Allow empty when verified_installer is provided.
-    install: z.array(z.string()).default([]),
-    verify: z.array(z.string()).min(1, 'At least one verify command required'),
+    install: z.array(ShellCommandSchema).default([]),
+    verify: z.array(ShellCommandSchema).min(1, 'At least one verify command required'),
     dependencies: z.array(z.string()).optional(),
     notes: z.array(z.string()).optional(),
     post_install_message: z
@@ -264,6 +310,7 @@ export const ModuleSchema = z
     docs_url: z.string().url().optional(),
     aliases: z.array(z.string()).optional(),
     web: ModuleWebMetadataSchema.optional(),
+    plugin: ModulePluginProvenanceSchema.optional(),
   })
   .refine(
     (module) =>
@@ -279,19 +326,20 @@ export const ModuleSchema = z
 /**
  * Schema for the complete manifest
  */
-export const ManifestSchema = z.object({
-  version: z.number().int().positive('Version must be a positive integer'),
-  name: z
-    .string()
-    .min(1, 'Name cannot be empty')
-    .refine((s) => s.trim().length > 0, 'Name cannot be only whitespace'),
-  id: z
-    .string()
-    .min(1, 'ID cannot be empty')
-    .regex(/^[a-z][a-z0-9_]*$/, 'ID must be lowercase alphanumeric with underscores'),
-  defaults: ManifestDefaultsSchema,
-  modules: z.array(ModuleSchema).min(1, 'At least one module required'),
-});
+export const ManifestSchema = z
+  .strictObject({
+    version: z.number().int().positive('Version must be a positive integer'),
+    name: z
+      .string()
+      .min(1, 'Name cannot be empty')
+      .refine((s) => s.trim().length > 0, 'Name cannot be only whitespace'),
+    id: z
+      .string()
+      .min(1, 'ID cannot be empty')
+      .regex(/^[a-z][a-z0-9_]*$/, 'ID must be lowercase alphanumeric with underscores'),
+    defaults: ManifestDefaultsSchema,
+    modules: z.array(ModuleSchema).min(1, 'At least one module required'),
+  });
 
 /**
  * Type inference from schemas
