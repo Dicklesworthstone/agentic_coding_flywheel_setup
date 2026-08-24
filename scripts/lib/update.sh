@@ -1586,6 +1586,8 @@ update_create_target_readable_temp_file() {
     mkdir_bin="$(update_system_binary_path mkdir 2>/dev/null || true)"
     chmod_bin="$(update_system_binary_path chmod 2>/dev/null || true)"
     rm_bin="$(update_system_binary_path rm 2>/dev/null || true)"
+    local stat_bin=""
+    stat_bin="$(update_system_binary_path stat 2>/dev/null || true)"
     if [[ -z "$mktemp_bin" || -z "$mkdir_bin" || -z "$chmod_bin" || -z "$rm_bin" ]]; then
         echo "Trusted temp-file helpers unavailable" >&2
         return 1
@@ -1613,6 +1615,17 @@ update_create_target_readable_temp_file() {
 
         "$mkdir_bin" -p "$tmpdir_candidate" 2>/dev/null || continue
         [[ -d "$tmpdir_candidate" && -w "$tmpdir_candidate" ]] || continue
+        # The verified installer script is staged here and executed later as
+        # the target user. In a world-writable directory without the sticky
+        # bit (e.g. a pre-existing 0777 /data/tmp) any local user could swap
+        # the file between verification and execution, so skip such dirs.
+        if [[ -n "$stat_bin" ]]; then
+            local dir_mode=""
+            dir_mode="$("$stat_bin" -c '%A' "$tmpdir_candidate" 2>/dev/null || true)"
+            if [[ "$dir_mode" == ????????w? ]] && [[ ! -k "$tmpdir_candidate" ]]; then
+                continue
+            fi
+        fi
         templates+=("$tmpdir_candidate/${prefix}.XXXXXX")
     done
 
