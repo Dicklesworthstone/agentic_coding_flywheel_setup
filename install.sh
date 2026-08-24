@@ -8260,7 +8260,8 @@ install_agy_locked_launchers() {
     try_step "Installing agy PATH shim" install_asset "scripts/lib/agy_locked.py" "$ACFS_BIN_DIR/agy" || return 1
     try_step "Installing gmi Antigravity launcher" install_asset "scripts/lib/agy_locked.py" "$ACFS_BIN_DIR/gmi" || return 1
     try_step "Setting agy launcher permissions" $SUDO chmod 0755 "$ACFS_BIN_DIR/agy-locked" "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/gmi" || return 1
-    try_step "Setting agy launcher ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_BIN_DIR/agy-locked" "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/gmi" || true
+    try_step "Setting agy launcher ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_BIN_DIR/agy-locked" "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/gmi" || return 1
+    try_step "Priming agy locked settings and dcg hook" run_as_target "$ACFS_BIN_DIR/agy-locked" --acfs-prime-settings || return 1
 }
 
 install_agents_phase() {
@@ -8315,6 +8316,8 @@ install_agents_phase() {
         return 1
     fi
 
+    local agents_phase_rc=0
+
     # Claude Code (install as target user)
     # NOTE: The native installer may choose a non-standard install path; CI smoke
     # checks require claude to exist at ~/.local/bin/claude or ~/.bun/bin/claude.
@@ -8361,7 +8364,7 @@ install_agents_phase() {
         if [[ -x "$claude_bin_local" || -x "$claude_bin_bun" ]]; then
             log_success "Claude Code installed"
         else
-            log_warn "Claude Code installation may have failed (claude not found in standard paths)"
+            log_error "Claude Code installation failed (claude not found in standard paths)"
         fi
     fi
 
@@ -8370,6 +8373,10 @@ install_agents_phase() {
     if [[ ! -x "$claude_bin_local" && -x "$claude_bin_bun" ]]; then
         acfs_ensure_primary_bin_dir 2>/dev/null || true
         try_step "Linking Claude Code into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$claude_bin_bun" "claude" || true
+    fi
+    if [[ ! -x "$claude_bin_local" && ! -x "$claude_bin_bun" ]]; then
+        ACFS_MODULE_FAILURES+=("agents.claude (executable missing after install attempts)")
+        agents_phase_rc=1
     fi
 
     # Codex CLI (install as target user)
@@ -8411,6 +8418,11 @@ install_agents_phase() {
             "$rm_bin" -f "$codex_wrapper_tmp" 2>/dev/null || true
         fi
     fi
+    if [[ ! -x "$codex_bin_local" && ! -x "$TARGET_HOME/.bun/bin/codex" ]]; then
+        log_error "Codex CLI installation failed (codex executable not found)"
+        ACFS_MODULE_FAILURES+=("agents.codex (executable missing after install attempts)")
+        agents_phase_rc=1
+    fi
 
     # Antigravity CLI (agy): standalone native binary. The locked wrapper keeps
     # the model/settings/DCG hook pinned while leaving the real agy binary intact.
@@ -8418,9 +8430,19 @@ install_agents_phase() {
         log_detail "Antigravity CLI already installed"
     else
         log_detail "Installing Antigravity CLI for $TARGET_USER"
-        try_step "Installing Antigravity CLI" acfs_run_verified_upstream_script_as_target "antigravity" "bash" || return 1
+        if ! try_step "Installing Antigravity CLI" acfs_run_verified_upstream_script_as_target "antigravity" "bash"; then
+            log_warn "Antigravity installer returned nonzero; verifying the required launcher postcondition"
+        fi
     fi
-    install_agy_locked_launchers || return 1
+    if ! install_agy_locked_launchers; then
+        ACFS_MODULE_FAILURES+=("agents.antigravity (locked launcher or dcg priming failed)")
+        agents_phase_rc=1
+    fi
+
+    if [[ "$agents_phase_rc" -ne 0 ]]; then
+        log_error "Coding agents phase finished with required-agent failures"
+        return 1
+    fi
 
     log_success "Coding agents installed"
 }

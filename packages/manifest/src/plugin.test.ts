@@ -26,7 +26,9 @@ import {
 import { ModuleSchema } from './schema.js';
 import type { Manifest } from './types.js';
 
-const CHECKSUM = 'a'.repeat(64);
+const PACKAGE_CHECKSUM = 'a'.repeat(64);
+const INSTALLER_CHECKSUM = 'b'.repeat(64);
+const ARTIFACT_CHECKSUM = 'c'.repeat(64);
 const INSTALLER_URL = 'https://example.com/install.sh';
 
 function firstPartyManifest(): Manifest {
@@ -74,7 +76,7 @@ function validationOptions(overrides: Partial<PluginValidationOptions> = {}): Pl
     installers: {
       example_tools: {
         url: INSTALLER_URL,
-        sha256: CHECKSUM,
+        sha256: INSTALLER_CHECKSUM,
       },
     },
     target: {
@@ -83,8 +85,8 @@ function validationOptions(overrides: Partial<PluginValidationOptions> = {}): Pl
       arch: 'x86_64',
       libc: 'glibc',
     },
-    packageSha256: CHECKSUM,
-    expectedPackageSha256: CHECKSUM,
+    packageSha256: PACKAGE_CHECKSUM,
+    expectedPackageSha256: PACKAGE_CHECKSUM,
     ...overrides,
   };
 }
@@ -174,7 +176,7 @@ describe('validatePluginPackage', () => {
     expect(result.manifestModules[0].plugin).toEqual({
       packageId: 'example.tools',
       version: '1.2.3',
-      pluginSha256: CHECKSUM,
+      pluginSha256: PACKAGE_CHECKSUM,
       sourceRef: 'main',
       sourceCommit: '0123456789abcdef0123456789abcdef01234567',
     });
@@ -289,11 +291,11 @@ describe('validatePluginPackage', () => {
       code: 'plugin_package_hash_mismatch',
       context: {
         packageSha256Prefix: actualHash.slice(0, 12),
-        expectedPackageSha256Prefix: CHECKSUM.slice(0, 12),
+        expectedPackageSha256Prefix: PACKAGE_CHECKSUM.slice(0, 12),
       },
     }));
     expect(formatPluginDiagnostics(result)).not.toContain(actualHash);
-    expect(formatPluginDiagnostics(result)).not.toContain(CHECKSUM);
+    expect(formatPluginDiagnostics(result)).not.toContain(PACKAGE_CHECKSUM);
   });
 
   test('detects duplicate plugin module IDs', () => {
@@ -390,7 +392,7 @@ describe('validatePluginPackage', () => {
         installers: {
           example_tools: {
             url: 'https://example.com/other-install.sh',
-            sha256: CHECKSUM,
+            sha256: INSTALLER_CHECKSUM,
           },
         },
       })
@@ -617,7 +619,7 @@ describe('validatePluginPackage', () => {
       install: {
         kind: 'release_artifact',
         url: 'https://example.com/tool.tar.gz',
-        sha256: CHECKSUM,
+        sha256: ARTIFACT_CHECKSUM,
         assetId: 'example-linux-x86_64',
         targetPath: 'bin/./example',
         mode: 'executable',
@@ -640,7 +642,7 @@ describe('validatePluginPackage', () => {
       install: {
         kind: 'release_artifact',
         url: 'https://example.com/tool.tar.gz',
-        sha256: CHECKSUM,
+        sha256: ARTIFACT_CHECKSUM,
         assetId: 'example-linux-x86_64',
         targetPath: 'bin/example',
         mode: 'executable',
@@ -670,7 +672,7 @@ describe('validatePluginPackage', () => {
       install: {
         kind: 'release_artifact',
         url: 'https://example.com/tool.tar.gz',
-        sha256: CHECKSUM,
+        sha256: ARTIFACT_CHECKSUM,
         targetPath: 'bin/example',
       },
     };
@@ -1136,7 +1138,7 @@ describe('loadPluginManifestFromFile', () => {
     expect(result.valid).toBe(true);
     expect(result.manifestModules.length).toBe(1);
     expect(result.manifestModules[0].id).toBe('plugin.example_tools.cli');
-    expect(result.manifestModules[0].plugin?.pluginSha256).toBe(CHECKSUM);
+    expect(result.manifestModules[0].plugin?.pluginSha256).toBe(PACKAGE_CHECKSUM);
   });
 
   test('refuses to infer an archive hash from extracted manifest bytes', () => {
@@ -1278,6 +1280,14 @@ describe('collectPluginInputPaths', () => {
   test('keeps unbound plugin paths behind the activation trust boundary', () => {
     expect(() => enforcePluginActivationBoundary([])).not.toThrow();
     expect(() => enforcePluginActivationBoundary(['/tmp/plugin.json'])).toThrow(
+      PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE,
+    );
+    const ambientPaths = collectPluginInputPaths(
+      [],
+      { ACFS_PLUGIN_PATHS: 'plugin.json' },
+      '/tmp',
+    );
+    expect(() => enforcePluginActivationBoundary(ambientPaths)).toThrow(
       PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE,
     );
   });

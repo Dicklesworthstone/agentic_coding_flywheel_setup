@@ -73,7 +73,7 @@ the manual checks today does not activate a package.
 | Check | Requirement | Verification Command / Method |
 |---|---|---|
 | **1. Provenance** | `provenance.sourceCommit` and `sourceRef` correspond to an auditable Git commit in an authentic repository. | `git clone` or inspect commit log on remote repository. |
-| **2. Trusted Hash** | Calculate the SHA-256 of the exact compressed package bytes and record it outside the package. | `sha256sum acfs-plugin-package.tar.zst` plus an external review record. |
+| **2. Trusted Hash** | Calculate the SHA-256 of the exact compressed package bytes and record it outside the package. | `sha256sum acfs-plugin-package.tar.gz` plus an external review record. |
 | **3. Checksums Entry** | Every `verified_installer` tool matches an exact entry in `checksums.yaml`. | `grep -A 3 "^  <tool>:" checksums.yaml` |
 | **4. Capabilities** | Declared `capabilities.allowed` match only the used capabilities (`verified_installer`, `doctor_check`, `web_metadata`). | Review `capabilities` block in `plugin.json`. |
 | **5. No Review-Required** | No `root_run_as`, `systemd_user_service`, or cross-plugin dependency proceeds without an explicit, unexpired review record. | Inspect the proposed record; the activation command is not implemented. |
