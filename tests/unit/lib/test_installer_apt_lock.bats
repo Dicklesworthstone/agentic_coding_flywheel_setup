@@ -111,7 +111,7 @@ EOF
             grep -v "log_error" | \
             grep -v "DPkg::Lock::Timeout=120" || true
 
-        grep '"\$apt_get_bin"' install.sh | \
+        grep '"$apt_get_bin"' install.sh | \
             grep -v "^[[:space:]]*\[\[" | \
             grep -v "log_" | \
             grep -v "DPkg::Lock::Timeout=120" || true
