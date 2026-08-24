@@ -953,6 +953,26 @@ autofix_backup_restore_command() {
     printf '%s\n' "$restore_command"
 }
 
+autofix_run_restore_command() {
+    local restore_command="${1:-}"
+    local bash_bin=""
+    local env_bin=""
+
+    [[ -n "$restore_command" ]] || return 1
+
+    bash_bin="$(autofix_system_binary_path bash 2>/dev/null || true)"
+    env_bin="$(autofix_system_binary_path env 2>/dev/null || true)"
+    [[ -n "$bash_bin" && -n "$env_bin" ]] || return 1
+
+    "$env_bin" -i \
+        PATH="$AUTOFIX_PRIVILEGED_PATH" \
+        HOME="${HOME:-/}" \
+        USER="${USER:-}" \
+        LOGNAME="${LOGNAME:-${USER:-}}" \
+        LANG="${LANG:-C.UTF-8}" \
+        "$bash_bin" --noprofile --norc -p -c "$restore_command"
+}
+
 autofix_undo_status_map_json() {
     if [[ -f "$ACFS_UNDOS_FILE" ]] && [[ -s "$ACFS_UNDOS_FILE" ]]; then
         local undo_record=""

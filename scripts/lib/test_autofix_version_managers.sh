@@ -869,6 +869,88 @@ EOF
     test_pass "combined_fix_reuses_single_session"
 }
 
+test_combined_fix_completes_recovery_path_under_errexit() {
+    local test_id="combined_fix_errexit"
+    local test_dir="/tmp/test_autofix_${test_id}_$$"
+    local marker="$test_dir/calls"
+    local status=0
+    mkdir -p "$test_dir"
+
+    TEST_AUTOFIX_MARKER="$marker" /bin/bash -c '
+        source "$1"
+        autofix_ensure_session() {
+            printf -v "$1" "%s" true
+        }
+        autofix_nvm_fix() {
+            printf "nvm\n" >> "$TEST_AUTOFIX_MARKER"
+            return 1
+        }
+        autofix_pyenv_fix() {
+            printf "pyenv\n" >> "$TEST_AUTOFIX_MARKER"
+            return 0
+        }
+        autofix_finalize_managed_session() {
+            printf "finalize:%s\n" "$1" >> "$TEST_AUTOFIX_MARKER"
+            return 0
+        }
+        set -e
+        autofix_version_managers_fix fix
+    ' _ "$SCRIPT_DIR/autofix_version_managers.sh" >/dev/null 2>&1 || status=$?
+
+    if [[ "$status" != "1" ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "combined_fix_completes_recovery_path_under_errexit" "Expected partial-failure status 1, got $status"
+        return
+    fi
+
+    if [[ "$(cat "$marker" 2>/dev/null || true)" != $'nvm\npyenv\nfinalize:true' ]]; then
+        local calls
+        calls="$(cat "$marker" 2>/dev/null || true)"
+        cleanup_test_dir "$test_dir"
+        test_fail "combined_fix_completes_recovery_path_under_errexit" "Recovery path stopped early: ${calls:-<empty>}"
+        return
+    fi
+
+    cleanup_test_dir "$test_dir"
+    test_pass "combined_fix_completes_recovery_path_under_errexit"
+}
+
+test_restore_ignores_poisoned_path_bash() {
+    local test_id="restore_trusted_bash"
+    local test_dir="/tmp/test_autofix_${test_id}_$$"
+    local fake_bin="$test_dir/fake-bin"
+    local restored_marker="$test_dir/restored"
+    local poisoned_marker="$test_dir/poisoned"
+    local touch_bin=""
+    local restore_command=""
+    mkdir -p "$fake_bin"
+
+    cat > "$fake_bin/bash" <<EOF
+#!/bin/bash
+printf 'poisoned\n' > "$poisoned_marker"
+exit 97
+EOF
+    chmod +x "$fake_bin/bash"
+
+    touch_bin="$(autofix_system_binary_path touch 2>/dev/null || true)"
+    printf -v restore_command '%q %q' "$touch_bin" "$restored_marker"
+
+    if ! PATH="$fake_bin:$PATH" autofix_version_managers_restore "$restore_command"; then
+        cleanup_test_dir "$test_dir"
+        test_fail "restore_ignores_poisoned_path_bash" "Trusted restore command failed"
+        return
+    fi
+
+    if [[ ! -f "$restored_marker" || -e "$poisoned_marker" ]]; then
+        cleanup_test_dir "$test_dir"
+        test_fail "restore_ignores_poisoned_path_bash" "Restore selected the caller-controlled bash"
+        return
+    fi
+
+    cleanup_test_dir "$test_dir"
+    test_pass "restore_ignores_poisoned_path_bash"
+}
+
 # ============================================================
 # Main Test Runner
 # ============================================================
@@ -903,6 +985,8 @@ main() {
     # Combined tests
     test_combined_check_structure
     test_combined_fix_reuses_single_session
+    test_combined_fix_completes_recovery_path_under_errexit
+    test_restore_ignores_poisoned_path_bash
 
     echo "============================================="
     echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"

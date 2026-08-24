@@ -67,7 +67,7 @@ autofix_version_managers_restore() {
     local restore_command="${1:-}"
 
     [[ -n "$restore_command" ]] || return 1
-    bash -c "$restore_command"
+    autofix_run_restore_command "$restore_command"
 }
 
 # ============================================================

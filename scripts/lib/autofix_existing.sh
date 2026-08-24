@@ -268,7 +268,7 @@ autofix_existing_restore_from_backup() {
         return 1
     fi
 
-    if ! bash -c "$restore_command"; then
+    if ! autofix_run_restore_command "$restore_command"; then
         log_error "[RESTORE] Failed to restore${target_path:+ $target_path} from backup"
         return 1
     fi

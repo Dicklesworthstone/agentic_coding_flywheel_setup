@@ -3493,6 +3493,44 @@ test_autofix_existing_upgrade_restores_version_when_path_repair_fails() {
     cleanup_mock_env
 }
 
+test_autofix_existing_upgrade_recovers_path_failure_under_errexit() {
+    setup_mock_env
+
+    local target_home="$TEST_HOME/autofix-existing-upgrade-errexit-target"
+    local exit_code=0
+    mkdir -p "$target_home/.acfs"
+    printf '1.0.0\n' > "$target_home/.acfs/version"
+    cat > "$target_home/.zshrc" <<'EOF'
+# shell config
+export PATH="$HOME/bin:$PATH"
+EOF
+
+    HOME="$TEST_HOME/root-home" TARGET_HOME="$target_home" \
+        /bin/bash -c '
+            unset _ACFS_AUTOFIX_SOURCED _ACFS_AUTOFIX_EXISTING_SOURCED
+            source "$1"
+            start_autofix_session >/dev/null 2>&1 || exit 1
+            record_change() { return 1; }
+            set -e
+            upgrade_existing_installation "1.0.0" "1.1.0" >/dev/null 2>&1
+        ' _ "$AUTOFIX_EXISTING_SH" || exit_code=$?
+
+    local version_contents=""
+    local shell_contents=""
+    version_contents="$(cat "$target_home/.acfs/version" 2>/dev/null || true)"
+    shell_contents="$(cat "$target_home/.zshrc" 2>/dev/null || true)"
+    if [[ "$exit_code" -ne 0 ]] \
+        && [[ "$version_contents" == "1.0.0" ]] \
+        && [[ "$shell_contents" == $'# shell config\nexport PATH="$HOME/bin:$PATH"' ]]; then
+        harness_pass "autofix_existing upgrade recovers PATH failure under errexit"
+    else
+        harness_fail "autofix_existing upgrade recovers PATH failure under errexit" \
+            "exit=$exit_code version=$version_contents shell=$shell_contents"
+    fi
+
+    cleanup_mock_env
+}
+
 test_autofix_existing_upgrade_preserves_journal_when_path_recovery_is_incomplete() {
     setup_mock_env
 
@@ -3912,6 +3950,54 @@ EOF
         harness_pass "autofix_existing clean reinstall restores backup after shell cleanup failure"
     else
         harness_fail "autofix_existing clean reinstall restores backup after shell cleanup failure" "$output"
+    fi
+
+    cleanup_mock_env
+}
+
+test_autofix_existing_clean_reinstall_recovers_shell_failure_under_errexit() {
+    setup_mock_env
+
+    local target_home="$TEST_HOME/autofix-existing-clean-errexit-target"
+    local exit_code=0
+    mkdir -p "$target_home/.acfs" "$target_home/.config/acfs" "$target_home/.local/bin"
+    printf 'installed\n' > "$target_home/.acfs/version"
+    printf 'config\n' > "$target_home/.config/acfs/settings.toml"
+    printf '#!/usr/bin/env bash\n' > "$target_home/.local/bin/acfs"
+    chmod +x "$target_home/.local/bin/acfs"
+    cat > "$target_home/.zshrc" <<'EOF'
+# ACFS PATH
+source ~/.acfs/zsh/acfs.zshrc
+keep_me=1
+EOF
+
+    HOME="$TEST_HOME/root-home" TARGET_HOME="$target_home" ACFS_STATE_DIR="$target_home/.acfs/autofix" \
+        /bin/bash -c '
+            unset _ACFS_AUTOFIX_SOURCED _ACFS_AUTOFIX_EXISTING_SOURCED
+            source "$1"
+            eval "$(declare -f record_change | sed '\''1s/record_change/original_record_change/'\'')"
+            record_change() {
+                if [[ "${2:-}" == "Cleaned ACFS entries from $TARGET_HOME/.zshrc" ]]; then
+                    return 1
+                fi
+                original_record_change "$@"
+            }
+            start_autofix_session >/dev/null 2>&1 || exit 1
+            set -e
+            clean_reinstall >/dev/null 2>&1
+        ' _ "$AUTOFIX_EXISTING_SH" || exit_code=$?
+
+    local shell_contents=""
+    shell_contents="$(cat "$target_home/.zshrc" 2>/dev/null || true)"
+    if [[ "$exit_code" -ne 0 ]] \
+        && [[ -f "$target_home/.acfs/version" ]] \
+        && [[ -f "$target_home/.config/acfs/settings.toml" ]] \
+        && [[ -f "$target_home/.local/bin/acfs" ]] \
+        && [[ "$shell_contents" == $'# ACFS PATH\nsource ~/.acfs/zsh/acfs.zshrc\nkeep_me=1' ]]; then
+        harness_pass "autofix_existing clean reinstall recovers shell failure under errexit"
+    else
+        harness_fail "autofix_existing clean reinstall recovers shell failure under errexit" \
+            "exit=$exit_code shell=$shell_contents"
     fi
 
     cleanup_mock_env
@@ -11577,6 +11663,7 @@ main() {
     test_autofix_existing_legacy_config_migration_record_failure_cleans_created_dirs || true
     test_autofix_existing_run_migrations_rolls_back_earlier_steps_on_late_failure || true
     test_autofix_existing_upgrade_restores_version_when_path_repair_fails || true
+    test_autofix_existing_upgrade_recovers_path_failure_under_errexit || true
     test_autofix_existing_upgrade_preserves_journal_when_path_recovery_is_incomplete || true
     test_autofix_existing_upgrade_write_failure_cleans_new_acfs_home || true
     test_autofix_existing_upgrade_version_backup_failure_rolls_back_migrations || true
@@ -11585,6 +11672,7 @@ main() {
     test_autofix_existing_upgrade_restores_version_when_recording_fails || true
     test_autofix_existing_clean_shell_configs_allows_empty_result || true
     test_autofix_existing_clean_reinstall_restores_backup_after_shell_cleanup_failure || true
+    test_autofix_existing_clean_reinstall_recovers_shell_failure_under_errexit || true
     test_autofix_existing_clean_reinstall_preserves_journal_when_shell_cleanup_recovery_fails || true
     test_autofix_existing_clean_reinstall_preserves_journal_when_shell_file_recovery_is_incomplete || true
     test_autofix_existing_remove_artifacts_propagates_rm_failures || true
