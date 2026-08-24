@@ -5452,9 +5452,9 @@ acfs_load_upstream_checksums() {
 }
 
 #
-# Upstream installers are pinned by checksums.yaml.
-# On checksum mismatch, we attempt a fresh fetch via GitHub API to handle CDN caching.
-# If still mismatched after fresh fetch, we fail closed (never execute unverified scripts).
+# Upstream installers are pinned by checksums.yaml and staged through the
+# cache-aware verifier in security.sh. Live mode may refresh stale checksum
+# metadata there; an explicit installer cache always fails closed instead.
 
 acfs_run_verified_upstream_script_as_target_with_env() {
     if [[ $# -lt 2 ]]; then
@@ -10180,10 +10180,13 @@ finalize() {
     try_step "Setting newproj permissions" $SUDO chmod 755 "$ACFS_HOME/scripts/lib/"newproj*.sh "$ACFS_HOME/scripts/lib/newproj_screens/"*.sh || return 1
     try_step "Setting newproj ownership" acfs_chown_tree "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/scripts/lib" || return 1
 
-    # Install checksums + version metadata so `acfs update --stack` can verify upstream scripts.
+    # Install manifest, checksums, and version metadata so the installed cache
+    # builder and `acfs update --stack` share the same source contract.
+    try_step "Installing acfs.manifest.yaml" install_asset "acfs.manifest.yaml" "$ACFS_HOME/acfs.manifest.yaml" || return 1
     try_step "Installing checksums.yaml" install_checksums_yaml "$ACFS_HOME/checksums.yaml" || return 1
     try_step "Installing VERSION" install_asset "VERSION" "$ACFS_HOME/VERSION" || return 1
-    try_step "Setting metadata ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/checksums.yaml" "$ACFS_HOME/VERSION" || true
+    try_step "Setting metadata ownership" $SUDO chown "$TARGET_USER:$TARGET_USER" \
+        "$ACFS_HOME/acfs.manifest.yaml" "$ACFS_HOME/checksums.yaml" "$ACFS_HOME/VERSION" || true
 
     # Legacy: Install doctor as acfs binary (for backwards compat)
     try_step "Installing acfs CLI" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/bin/acfs" || return 1
@@ -11371,7 +11374,7 @@ main() {
         _run_phase_with_report "stack" "8/9 Stack" install_stack_phase || true
         _run_phase_with_report "finalize" "9/9 Finalize" finalize || true
 
-        # Always update checksums.yaml and VERSION after all phases complete
+        # Always update manifest, checksums.yaml, and VERSION after all phases complete
         # This ensures resume installs get fresh metadata even if finalize was previously completed
         # Related: PR #44 - fix checksums.yaml becoming stale on resume installs
         if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -d "$ACFS_BOOTSTRAP_DIR" ]]; then
@@ -11390,6 +11393,11 @@ main() {
                 log_detail "Ensuring VERSION is up to date"
                 $SUDO cp -f "$ACFS_BOOTSTRAP_DIR/VERSION" "$ACFS_HOME/VERSION" 2>/dev/null || true
                 $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/VERSION" 2>/dev/null || true
+            fi
+            if [[ -f "$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml" ]]; then
+                log_detail "Ensuring acfs.manifest.yaml is up to date"
+                $SUDO cp -f "$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml" "$ACFS_HOME/acfs.manifest.yaml" 2>/dev/null || true
+                $SUDO chown "$TARGET_USER:$TARGET_USER" "$ACFS_HOME/acfs.manifest.yaml" 2>/dev/null || true
             fi
         fi
 

@@ -15,8 +15,8 @@ the trust requirements that first-party modules already follow.
   module.
 - Make module ID collisions, dependency collisions, and generated Bash function
   collisions deterministic validation errors.
-- Keep module selection, offline packs, doctor checks, and web metadata derived
-  from one validated plugin graph.
+- Keep module selection, future offline-bundle planning, doctor checks, and web
+  metadata derived from one validated plugin graph.
 - Refuse secrets, host-specific state, and unreviewed shell behavior before any
   plugin module is merged into the ACFS manifest.
 
@@ -304,10 +304,18 @@ validation.
 - Profile imports must show plugin additions, removals, dependency closure, and
   review-required capabilities in dry-run output before any command is emitted.
 
-## Compatibility With Offline Packs
+## Compatibility With The Entrypoint Cache And Future Offline Bundles
 
-Offline pack planning must treat plugin artifacts with the same policy as
-first-party modules.
+The current `acfs-installer-cache/` v1 format is a verified-installer
+**entrypoint cache**, not an offline bundle, and current plugin loading is not
+implemented. A future plugin implementation must not claim that this cache
+contains transitive plugin payloads or enables a network-free install. It must
+also preserve `executionNetworkMode: "required"` and
+`transitiveClosure: "not_bundled"` for the current cache schema.
+
+The following rules apply only to a separate, future true-offline bundle. That
+future planner must treat plugin artifacts with the same policy as first-party
+modules.
 
 - `offline.bundlingPolicy` is one of `bundled`, `metadata_only`,
   `live_required`, or `prohibited`.
@@ -319,8 +327,8 @@ first-party modules.
   `metadata_only`, `live_required`, or `prohibited`.
 - Plugin packages must not bundle credentials, local host state, OAuth sessions,
   provider account state, or mutable cache directories.
-- Offline consumers must reject plugin package hashes that do not match profile
-  or pack provenance.
+- Future offline consumers must reject plugin package hashes that do not match
+  profile or bundle provenance.
 
 ## Trust Model
 

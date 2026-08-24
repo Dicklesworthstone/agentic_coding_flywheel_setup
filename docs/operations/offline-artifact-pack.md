@@ -57,8 +57,8 @@ The selected path may name `acfs-installer-cache/` itself or its immediate
 parent. If neither the flag nor `ACFS_VERIFIED_INSTALLER_CACHE` is set, verified
 installers retain their normal live-download behavior. If a cache is explicitly
 selected, a missing, malformed, expired, incompatible, incomplete, or tampered
-cache is terminal for that verified installer: there is no live entrypoint
-fallback.
+cache is terminal for that verified installer. An explicitly selected cache has
+no live entrypoint fallback.
 
 There are no legacy offline-mode aliases in this contract. In particular, the
 cache does not imply that execution is network-free.
