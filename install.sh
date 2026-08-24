@@ -4125,35 +4125,23 @@ acfs_run_verified_bootstrap_installer() {
     local sleep_bin=""
     bash_bin="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
     env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
-    ps_bin="$(acfs_early_system_binary_path ps 2>/dev/null || true)"
-    setsid_bin="$(acfs_early_system_binary_path setsid 2>/dev/null || true)"
-    sleep_bin="$(acfs_early_system_binary_path sleep 2>/dev/null || true)"
 
     if [[ -z "${ACFS_BOOTSTRAP_DIR:-}" ]] \
         || ! acfs_bootstrap_dir_is_owned_temp "$ACFS_BOOTSTRAP_DIR" \
         || [[ ! -f "$verified_installer" || -L "$verified_installer" ]] \
         || [[ -z "$bash_bin" ]] \
-        || [[ -z "$env_bin" ]] \
-        || [[ -z "$ps_bin" ]] \
-        || [[ -z "$setsid_bin" ]] \
-        || [[ -z "$sleep_bin" ]]; then
+        || [[ -z "$env_bin" ]]; then
         log_error "Verified bootstrap installer is unavailable"
         return 1
     fi
 
-    # GNU env is needed to undo the SIGINT/SIGQUIT dispositions that Bash gives
-    # asynchronous commands when job control is disabled. util-linux setsid
-    # gives the child and every ordinary descendant a dedicated process group.
+    # Give both handoff paths known signal dispositions. This is essential for
+    # the asynchronous path (Bash otherwise starts it with SIGINT/SIGQUIT
+    # ignored) and also closes inherited-ignore edge cases on the foreground path.
     local env_help=""
-    local setsid_help=""
     if ! env_help="$(LC_ALL=C "$env_bin" --help 2>&1)" \
         || [[ "$env_help" != *"--default-signal"* ]]; then
         log_error "Verified bootstrap handoff requires env --default-signal support"
-        return 1
-    fi
-    if ! setsid_help="$(LC_ALL=C "$setsid_bin" --help 2>&1)" \
-        || [[ "$setsid_help" != *"--wait"* ]]; then
-        log_error "Verified bootstrap handoff requires setsid --wait support"
         return 1
     fi
 
@@ -4254,7 +4242,12 @@ acfs_run_verified_bootstrap_installer() {
         ACFS_BOOTSTRAP_PRESERVE_TREE=true
         log_warn "Interactive verified handoff will preserve its bootstrap tree: $ACFS_BOOTSTRAP_DIR"
         local interactive_child_status=0
-        if ACFS_LOCAL_ARCHIVE_SOURCE="$source_is_local_archive" \
+        if "$env_bin" \
+            --default-signal=INT \
+            --default-signal=QUIT \
+            --default-signal=TERM \
+            --default-signal=HUP \
+            ACFS_LOCAL_ARCHIVE_SOURCE="$source_is_local_archive" \
             ACFS_VERIFIED_BOOTSTRAP_SOURCE="$source_kind" \
             ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="$original_archive_path" \
             "$bash_bin" --noprofile --norc -p "$verified_installer" "${child_args[@]}" \
@@ -4264,6 +4257,23 @@ acfs_run_verified_bootstrap_installer() {
             interactive_child_status=$?
         fi
         return "$interactive_child_status"
+    fi
+
+    # Only the non-prompting path needs OS process-group observation and
+    # util-linux session creation. Do not make interactive compatibility depend
+    # on these supervision-only tools.
+    ps_bin="$(acfs_early_system_binary_path ps 2>/dev/null || true)"
+    setsid_bin="$(acfs_early_system_binary_path setsid 2>/dev/null || true)"
+    sleep_bin="$(acfs_early_system_binary_path sleep 2>/dev/null || true)"
+    if [[ -z "$ps_bin" || -z "$setsid_bin" || -z "$sleep_bin" ]]; then
+        log_error "Verified non-interactive handoff requires ps, setsid, and sleep"
+        return 1
+    fi
+    local setsid_help=""
+    if ! setsid_help="$(LC_ALL=C "$setsid_bin" --help 2>&1)" \
+        || [[ "$setsid_help" != *"--wait"* ]]; then
+        log_error "Verified bootstrap handoff requires setsid --wait support"
+        return 1
     fi
 
     ACFS_BOOTSTRAP_PS_BIN="$ps_bin"
@@ -4280,6 +4290,13 @@ acfs_run_verified_bootstrap_installer() {
     # intermediate fork. Restore the caller's monitor setting immediately.
     local monitor_was_enabled=false
     local monitor_restore_failed=false
+    local launch_identity=""
+    local launch_starttime=""
+    local observed_identity=""
+    local observed_pgid=""
+    local observed_starttime=""
+    local group_validated=false
+    local validation_attempt=0
     case "$-" in
         *m*)
             monitor_was_enabled=true
@@ -4303,6 +4320,8 @@ acfs_run_verified_bootstrap_installer() {
         "$bash_bin" --noprofile --norc -p "$verified_installer" "${child_args[@]}" \
         <&0 >&1 2>&2 &
     ACFS_BOOTSTRAP_CHILD_PID=$!
+    launch_identity="$(_acfs_bootstrap_proc_identity "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true)"
+    launch_starttime="${launch_identity#* }"
 
     if [[ "$monitor_was_enabled" == "true" ]] && ! set -m; then
         monitor_restore_failed=true
@@ -4311,27 +4330,27 @@ acfs_run_verified_bootstrap_installer() {
     # Do not trust $! as a group identity until the OS confirms that the exact
     # launcher became its own process-group leader. Signals received during this
     # window remain pending in the SPAWNING state.
-    local observed_identity=""
-    local observed_pgid=""
-    local observed_starttime=""
-    local group_validated=false
-    local validation_attempt=0
-    for ((validation_attempt = 0; validation_attempt < 20; validation_attempt++)); do
-        observed_identity="$(_acfs_bootstrap_proc_identity "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true)"
-        observed_pgid="${observed_identity%% *}"
-        observed_starttime="${observed_identity#* }"
-        if [[ "$observed_pgid" == "$ACFS_BOOTSTRAP_CHILD_PID" ]] \
-            && [[ "$observed_starttime" =~ ^[0-9]+$ ]]; then
-            group_validated=true
-            break
-        fi
-        if ! builtin kill -0 "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null; then
-            break
-        fi
-        if ! "$sleep_bin" 0.25; then
-            break
-        fi
-    done
+    if [[ "$launch_starttime" =~ ^[0-9]+$ ]]; then
+        for ((validation_attempt = 0; validation_attempt < 20; validation_attempt++)); do
+            observed_identity="$(_acfs_bootstrap_proc_identity "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true)"
+            observed_pgid="${observed_identity%% *}"
+            observed_starttime="${observed_identity#* }"
+            if [[ "$observed_pgid" == "$ACFS_BOOTSTRAP_CHILD_PID" ]] \
+                && [[ "$observed_starttime" == "$launch_starttime" ]]; then
+                group_validated=true
+                break
+            fi
+            if [[ -n "$observed_starttime" && "$observed_starttime" != "$launch_starttime" ]]; then
+                break
+            fi
+            if ! builtin kill -0 "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null; then
+                break
+            fi
+            if ! "$sleep_bin" 0.25; then
+                break
+            fi
+        done
+    fi
 
     if [[ "$group_validated" != "true" ]]; then
         # Descendants may exist even if the leader exited before publication.

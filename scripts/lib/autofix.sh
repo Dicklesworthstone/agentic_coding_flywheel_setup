@@ -1236,6 +1236,48 @@ verify_state_integrity() {
     return 0
 }
 
+# Close a dynamically allocated or candidate lock file descriptor portably
+autofix_close_fd() {
+    local fd="${1:-}"
+    if [[ -n "$fd" && "$fd" =~ ^[0-9]+$ ]]; then
+        case "$fd" in
+            201) exec 201>&- 2>/dev/null || true ;;
+            202) exec 202>&- 2>/dev/null || true ;;
+            203) exec 203>&- 2>/dev/null || true ;;
+            199) exec 199>&- 2>/dev/null || true ;;
+            198) exec 198>&- 2>/dev/null || true ;;
+            *) eval "exec ${fd}>&-" 2>/dev/null || true ;;
+        esac
+    fi
+}
+
+# Open a lock file on an available file descriptor (probing candidate descriptors
+# to avoid colliding with callers or other ACFS libraries such as state.sh FD 200)
+autofix_open_lock_fd() {
+    local target_file="$1"
+    local candidate_fd
+    for candidate_fd in 201 202 203 199 198; do
+        if ! { true >&"$candidate_fd"; } 2>/dev/null; then
+            case "$candidate_fd" in
+                201) exec 201>"$target_file" 2>/dev/null && { echo "201"; return 0; } ;;
+                202) exec 202>"$target_file" 2>/dev/null && { echo "202"; return 0; } ;;
+                203) exec 203>"$target_file" 2>/dev/null && { echo "203"; return 0; } ;;
+                199) exec 199>"$target_file" 2>/dev/null && { echo "199"; return 0; } ;;
+                198) exec 198>"$target_file" 2>/dev/null && { echo "198"; return 0; } ;;
+            esac
+        fi
+    done
+    return 1
+}
+
+autofix_release_managed_repair_lock() {
+    local fd="${1:-}"
+    if [[ -n "$fd" ]]; then
+        flock -u "$fd" 2>/dev/null || true
+        autofix_close_fd "$fd"
+    fi
+}
+
 # Attempt to repair corrupted state files
 repair_state_files() {
     log_info "[REPAIR] Attempting to repair state files..."
@@ -1272,9 +1314,9 @@ repair_state_files() {
             log_error "[REPAIR] Cannot secure autofix backup directory"
             return 1
         fi
-        exec {managed_lock_fd}>"$ACFS_LOCK_FILE" 2>/dev/null || managed_lock_fd=""
+        managed_lock_fd="$(autofix_open_lock_fd "$ACFS_LOCK_FILE")" || managed_lock_fd=""
         if [[ -n "$managed_lock_fd" ]] && ! autofix_set_private_mode 600 "$ACFS_LOCK_FILE"; then
-            { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+            autofix_release_managed_repair_lock "$managed_lock_fd"
             log_error "[REPAIR] Cannot secure autofix lock file"
             return 1
         fi
@@ -1282,7 +1324,7 @@ repair_state_files() {
             managed_lock=true
         else
             if [[ -n "$managed_lock_fd" ]]; then
-                { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                autofix_release_managed_repair_lock "$managed_lock_fd"
             fi
             log_error "[REPAIR] Cannot repair state files: another process holds the autofix lock"
             return 1
@@ -1292,8 +1334,7 @@ repair_state_files() {
     if ! autofix_state_layout_is_safe; then
         log_error "[REPAIR] Refusing unsafe autofix state path types"
         if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-            flock -u "$managed_lock_fd" 2>/dev/null || true
-            { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+            autofix_release_managed_repair_lock "$managed_lock_fd"
         fi
         return 1
     fi
@@ -1306,8 +1347,7 @@ repair_state_files() {
         temp_file=$(mktemp -p "$(dirname "$ACFS_CHANGES_FILE")" ".tmp.XXXXXX" 2>/dev/null) || {
             log_error "Failed to create temp file for changes repair"
             if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                flock -u "$managed_lock_fd" 2>/dev/null || true
-                { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                autofix_release_managed_repair_lock "$managed_lock_fd"
             fi
             return 1
         }
@@ -1315,8 +1355,7 @@ repair_state_files() {
             log_error "[REPAIR] Failed to secure changes repair temp file"
             autofix_remove_temp_file "$temp_file"
             if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                flock -u "$managed_lock_fd" 2>/dev/null || true
-                { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                autofix_release_managed_repair_lock "$managed_lock_fd"
             fi
             return 1
         fi
@@ -1332,8 +1371,7 @@ repair_state_files() {
                     log_error "[REPAIR] Failed to rewrite repaired changes journal"
                     autofix_remove_temp_file "$temp_file"
                     if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                        flock -u "$managed_lock_fd" 2>/dev/null || true
-                        { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                        autofix_release_managed_repair_lock "$managed_lock_fd"
                     fi
                     return 1
                 fi
@@ -1348,16 +1386,14 @@ repair_state_files() {
                 log_error "[REPAIR] Failed to replace changes journal with repaired copy"
                 autofix_remove_temp_file "$temp_file"
                 if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                    flock -u "$managed_lock_fd" 2>/dev/null || true
-                    { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                    autofix_release_managed_repair_lock "$managed_lock_fd"
                 fi
                 return 1
             fi
             if ! fsync_file "$ACFS_CHANGES_FILE"; then
                 log_error "[REPAIR] Failed to sync repaired changes journal"
                 if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                    flock -u "$managed_lock_fd" 2>/dev/null || true
-                    { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                    autofix_release_managed_repair_lock "$managed_lock_fd"
                 fi
                 return 1
             fi
@@ -1373,8 +1409,7 @@ repair_state_files() {
         temp_file=$(mktemp -p "$(dirname "$ACFS_UNDOS_FILE")" ".tmp.XXXXXX" 2>/dev/null) || {
             log_error "Failed to create temp file for undos repair"
             if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                flock -u "$managed_lock_fd" 2>/dev/null || true
-                { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                autofix_release_managed_repair_lock "$managed_lock_fd"
             fi
             return 1
         }
@@ -1382,8 +1417,7 @@ repair_state_files() {
             log_error "[REPAIR] Failed to secure undo repair temp file"
             autofix_remove_temp_file "$temp_file"
             if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                flock -u "$managed_lock_fd" 2>/dev/null || true
-                { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                autofix_release_managed_repair_lock "$managed_lock_fd"
             fi
             return 1
         fi
@@ -1399,8 +1433,7 @@ repair_state_files() {
                     log_error "[REPAIR] Failed to rewrite repaired undo journal"
                     autofix_remove_temp_file "$temp_file"
                     if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                        flock -u "$managed_lock_fd" 2>/dev/null || true
-                        { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                        autofix_release_managed_repair_lock "$managed_lock_fd"
                     fi
                     return 1
                 fi
@@ -1415,16 +1448,14 @@ repair_state_files() {
                 log_error "[REPAIR] Failed to replace undo journal with repaired copy"
                 autofix_remove_temp_file "$temp_file"
                 if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                    flock -u "$managed_lock_fd" 2>/dev/null || true
-                    { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                    autofix_release_managed_repair_lock "$managed_lock_fd"
                 fi
                 return 1
             fi
             if ! fsync_file "$ACFS_UNDOS_FILE"; then
                 log_error "[REPAIR] Failed to sync repaired undo journal"
                 if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-                    flock -u "$managed_lock_fd" 2>/dev/null || true
-                    { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+                    autofix_release_managed_repair_lock "$managed_lock_fd"
                 fi
                 return 1
             fi
@@ -1437,8 +1468,7 @@ repair_state_files() {
     if ! update_integrity_file; then
         log_error "[REPAIR] Failed to reconcile the integrity checkpoint"
         if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-            flock -u "$managed_lock_fd" 2>/dev/null || true
-            { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+            autofix_release_managed_repair_lock "$managed_lock_fd"
         fi
         return 1
     fi
@@ -1446,15 +1476,13 @@ repair_state_files() {
     if ! verify_state_integrity; then
         log_error "[REPAIR] State remains unsafe after repairing recoverable journal damage"
         if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-            flock -u "$managed_lock_fd" 2>/dev/null || true
-            { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+            autofix_release_managed_repair_lock "$managed_lock_fd"
         fi
         return 1
     fi
 
     if [[ "$managed_lock" == "true" && -n "$managed_lock_fd" ]]; then
-        flock -u "$managed_lock_fd" 2>/dev/null || true
-        { exec {managed_lock_fd}>&-; } 2>/dev/null || true
+        autofix_release_managed_repair_lock "$managed_lock_fd"
     fi
 
     log_info "[REPAIR] State file repair complete"
@@ -1570,7 +1598,7 @@ autofix_release_session_lock() {
 
     if [[ -n "$lock_fd" ]]; then
         flock -u "$lock_fd" 2>/dev/null || true
-        { exec {lock_fd}>&-; } 2>/dev/null || true
+        autofix_close_fd "$lock_fd"
         ACFS_AUTOFIX_LOCK_FD=""
     fi
 }
@@ -1627,10 +1655,8 @@ start_autofix_session() {
     log_info "[AUTO-FIX] Starting session: $ACFS_SESSION_ID"
 
     # Acquire lock (prevent concurrent modifications)
-    # Ask Bash to allocate an unused descriptor so callers' open FDs are never
-    # overwritten and the descriptor number never needs to be reparsed by eval.
     ACFS_AUTOFIX_LOCK_FD=""
-    exec {ACFS_AUTOFIX_LOCK_FD}>"$ACFS_LOCK_FILE" 2>/dev/null || ACFS_AUTOFIX_LOCK_FD=""
+    ACFS_AUTOFIX_LOCK_FD="$(autofix_open_lock_fd "$ACFS_LOCK_FILE")" || ACFS_AUTOFIX_LOCK_FD=""
     if [[ -n "$ACFS_AUTOFIX_LOCK_FD" ]]; then
         if ! autofix_set_private_mode 600 "$ACFS_LOCK_FILE"; then
             log_error "Could not secure autofix lock file"
