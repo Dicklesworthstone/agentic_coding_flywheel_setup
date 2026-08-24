@@ -8,6 +8,7 @@ import signal
 import shlex
 import subprocess
 import sys
+import tempfile
 
 
 MODEL = "Gemini 3.1 Pro (High)"
@@ -159,6 +160,15 @@ def read_json(path, description):
 
 
 def write_text_if_changed(path, value, mode=None):
+    # Atomic replacement must target the file behind a dotfiles-managed
+    # symlink. Replacing the link itself would detach the live config from its
+    # source of truth; a broken/looping link is ambiguous and must fail closed.
+    try:
+        if path.is_symlink():
+            path = path.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        fail_config(f"cannot resolve config symlink {path}: {exc}")
+
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -175,15 +185,31 @@ def write_text_if_changed(path, value, mode=None):
         # Write-then-rename so a launcher killed mid-write (tmux pane closed
         # while the finally-block re-pins the model) can never leave a
         # truncated settings.json that fails every later agy/gmi start.
-        tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+        tmp_path = None
         try:
-            tmp_path.write_text(value, encoding="utf-8")
+            # NamedTemporaryFile uses exclusive creation, so a stale or
+            # attacker-planted path cannot redirect this write through a
+            # symlink. Keep it beside the destination for an atomic replace.
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f".{path.name}.tmp-",
+                delete=False,
+            ) as tmp_file:
+                tmp_path = pathlib.Path(tmp_file.name)
+                tmp_file.write(value)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
+                if mode is not None:
+                    os.fchmod(tmp_file.fileno(), mode)
             os.replace(tmp_path, path)
         except OSError as exc:
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink()
+                except OSError:
+                    pass
             fail_config(f"cannot write config file {path}: {exc}")
     if mode is not None:
         try:
