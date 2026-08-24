@@ -5384,10 +5384,20 @@ acfs_load_upstream_checksums() {
     local checksums_file=""
     local checksums_source="unknown"
     local prefer_local_checksums=true
+    local installer_cache_requested=false
+
+    if [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]; then
+        installer_cache_requested=true
+    fi
 
     # If checksums ref differs from the install ref, avoid using bootstrapped/local
     # checksums which may be stale for fast-moving upstream installers.
-    if [[ -n "${ACFS_CHECKSUMS_REF:-}" && -n "${ACFS_REF_INPUT:-}" && "$ACFS_CHECKSUMS_REF" != "$ACFS_REF_INPUT" ]]; then
+    # An explicit installer cache is a stricter capability boundary: its
+    # checked-in checksums are validated against manifest.json by security.sh,
+    # and loading alternate metadata from the network would violate the
+    # caller's no-live-fallback request.
+    if [[ "$installer_cache_requested" != "true" ]] \
+        && [[ -n "${ACFS_CHECKSUMS_REF:-}" && -n "${ACFS_REF_INPUT:-}" && "$ACFS_CHECKSUMS_REF" != "$ACFS_REF_INPUT" ]]; then
         prefer_local_checksums=false
         log_detail "Using checksums from ref '${ACFS_CHECKSUMS_REF}' (install ref: '${ACFS_REF_INPUT}')"
     fi
@@ -5406,6 +5416,10 @@ acfs_load_upstream_checksums() {
     if [[ -n "$checksums_file" ]]; then
         content="$(cat "$checksums_file")"
     else
+        if [[ "$installer_cache_requested" == "true" ]]; then
+            log_error "Verified installer cache requires readable source-tree checksums.yaml; refusing live metadata fetch"
+            return 1
+        fi
         # Fetch via GitHub API (bypasses CDN caching entirely)
         content="$(acfs_fetch_fresh_checksums_via_api)" || {
             # Fallback to raw.githubusercontent.com. Cache-busted only for a
@@ -5471,26 +5485,7 @@ acfs_run_verified_upstream_script_as_target_with_env() {
         return 1
     fi
 
-    # Preserve trailing newlines when capturing remote script content.
-    # Bash command substitution trims trailing newlines, which would change the
-    # checksum we compute vs the exact bytes we execute. Append an EOF sentinel
-    # so the captured output never ends with a newline, then strip it.
-    local sentinel="__ACFS_EOF_SENTINEL__"
-    local content_with_sentinel
-    content_with_sentinel="$(
-        acfs_fetch_url_content "$url" || exit $?
-        printf '%s' "$sentinel"
-    )" || return 1
-
-    if [[ "$content_with_sentinel" != *"$sentinel" ]]; then
-        log_error "Failed to fetch upstream URL: $url"
-        return 1
-    fi
-
-    local content="${content_with_sentinel%"$sentinel"}"
-
-    local actual_sha256
-    actual_sha256="$(printf '%s' "$content" | acfs_calculate_sha256)" || return 1
+    local staged_installer=""
 
     if [[ "$actual_sha256" != "$expected_sha256" ]]; then
         # Checksum mismatch - but this might be due to CDN caching of our checksums.yaml.

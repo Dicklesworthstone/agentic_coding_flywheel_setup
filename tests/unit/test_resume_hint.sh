@@ -90,12 +90,12 @@ extract_ref_arg_value_helper() {
     sed -n '/^acfs_require_ref_arg_value()/,/^}$/p' "$REPO_ROOT/install.sh"
 }
 
-extract_offline_pack_dir_helper() {
-    sed -n '/^acfs_resolve_offline_pack_dir()/,/^}$/p' "$REPO_ROOT/install.sh"
+extract_verified_installer_cache_dir_helper() {
+    sed -n '/^acfs_resolve_verified_installer_cache_dir()/,/^}$/p' "$REPO_ROOT/install.sh"
 }
 
-extract_offline_pack_normalizer() {
-    sed -n '/^acfs_normalize_offline_pack_configuration()/,/^}$/p' "$REPO_ROOT/install.sh"
+extract_verified_installer_cache_normalizer() {
+    sed -n '/^acfs_normalize_verified_installer_cache_configuration()/,/^}$/p' "$REPO_ROOT/install.sh"
 }
 
 # Actually, let's just define our test environment and source install.sh functions
@@ -118,9 +118,7 @@ setup_test_env() {
     DRY_RUN=false
     PRINT_MODE=false
     AUTO_FIX_MODE="prompt"
-    ACFS_OFFLINE_PACK=""
-    ACFS_OFFLINE_NETWORK_MODE=""
-    ACFS_OFFLINE_PACK_REQUIRED=""
+    ACFS_VERIFIED_INSTALLER_CACHE=""
 }
 
 setup_parse_args_env() {
@@ -154,9 +152,9 @@ eval "$(extract_normalize_read_only_modes_function)"
 # shellcheck disable=SC1090
 eval "$(extract_ref_arg_value_helper)"
 # shellcheck disable=SC1090
-eval "$(extract_offline_pack_dir_helper)"
+eval "$(extract_verified_installer_cache_dir_helper)"
 # shellcheck disable=SC1090
-eval "$(extract_offline_pack_normalizer)"
+eval "$(extract_verified_installer_cache_normalizer)"
 # shellcheck disable=SC1090
 eval "$(extract_parse_args_function)"
 
@@ -390,46 +388,38 @@ test_custom_checksums_ref_resume_hint() {
     return 0
 }
 
-test_offline_pack_relative_path_is_normalized_for_resume_hint() {
+test_verified_installer_cache_parent_is_normalized_for_resume_hint() {
     setup_test_env
 
     local temp_root=""
     local old_pwd=""
     local result=""
-    local expected_pack=""
-    local expected_pack_q=""
+    local expected_cache=""
+    local expected_cache_q=""
 
-    temp_root="$(mktemp -d "${TMPDIR:-/tmp}/acfs-resume-pack.XXXXXX")" || return 1
-    mkdir -p "$temp_root/work/pack with spaces/acfs-offline-pack" || return 1
-    printf '{}\n' > "$temp_root/work/pack with spaces/acfs-offline-pack/manifest.json" || return 1
+    temp_root="$(mktemp -d "${TMPDIR:-/tmp}/acfs-resume-cache.XXXXXX")" || return 1
+    mkdir -p "$temp_root/work/cache with spaces/acfs-installer-cache" || return 1
+    printf '{}\n' > "$temp_root/work/cache with spaces/acfs-installer-cache/manifest.json" || return 1
 
     old_pwd="$PWD"
     cd "$temp_root/work" || return 1
-    ACFS_OFFLINE_PACK="pack with spaces"
-    acfs_normalize_offline_pack_configuration || {
+    ACFS_VERIFIED_INSTALLER_CACHE="cache with spaces"
+    acfs_normalize_verified_installer_cache_configuration || {
         cd "$old_pwd" || true
         return 1
     }
     cd "$old_pwd" || return 1
 
-    expected_pack="$temp_root/work/pack with spaces"
-    if [[ "$ACFS_OFFLINE_PACK" != "$expected_pack" ]]; then
-        log "  Expected ACFS_OFFLINE_PACK=$expected_pack, got: $ACFS_OFFLINE_PACK"
-        return 1
-    fi
-    if [[ "$ACFS_OFFLINE_NETWORK_MODE" != "offline" ]]; then
-        log "  Expected ACFS_OFFLINE_NETWORK_MODE=offline, got: $ACFS_OFFLINE_NETWORK_MODE"
-        return 1
-    fi
-    if [[ "$ACFS_OFFLINE_PACK_REQUIRED" != "true" ]]; then
-        log "  Expected ACFS_OFFLINE_PACK_REQUIRED=true, got: $ACFS_OFFLINE_PACK_REQUIRED"
+    expected_cache="$temp_root/work/cache with spaces/acfs-installer-cache"
+    if [[ "$ACFS_VERIFIED_INSTALLER_CACHE" != "$expected_cache" ]]; then
+        log "  Expected ACFS_VERIFIED_INSTALLER_CACHE=$expected_cache, got: $ACFS_VERIFIED_INSTALLER_CACHE"
         return 1
     fi
 
     result="$(generate_resume_hint "" "")"
-    printf -v expected_pack_q '%q' "$expected_pack"
-    if [[ "$result" != *"--offline-pack $expected_pack_q"* ]]; then
-        log "  Expected absolute --offline-pack in resume hint, got: $result"
+    printf -v expected_cache_q '%q' "$expected_cache"
+    if [[ "$result" != *"--verified-installer-cache $expected_cache_q"* ]]; then
+        log "  Expected canonical --verified-installer-cache in resume hint, got: $result"
         return 1
     fi
 
@@ -777,7 +767,7 @@ main() {
     run_test test_custom_ref_shell_escaped
     run_test test_checksums_ref_survives_ref_parse_order
     run_test test_custom_checksums_ref_resume_hint
-    run_test test_offline_pack_relative_path_is_normalized_for_resume_hint
+    run_test test_verified_installer_cache_parent_is_normalized_for_resume_hint
     run_test test_safe_mode
     run_test test_skip_flags
     run_test test_all_skip_flags

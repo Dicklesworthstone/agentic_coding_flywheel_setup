@@ -2776,7 +2776,21 @@ check_stack() {
         local _target_home=""
         _target_home="$(doctor_runtime_home)"
         local _nightly_unit_file="${_target_home}/.config/systemd/user/acfs-nightly-update.timer"
-        if "$systemctl_bin" --user is-enabled acfs-nightly-update.timer &>/dev/null 2>&1; then
+        # When doctor runs as a different user than TARGET_USER (e.g. root),
+        # the current-process `systemctl --user` queries the wrong (or no)
+        # instance — reach TARGET_USER's session via --machine. Cap the call:
+        # a wedged session bus can hang it indefinitely.
+        local _nightly_systemctl_cmd=("$systemctl_bin" --user)
+        if [[ -n "${TARGET_USER:-}" ]] \
+           && [[ "$TARGET_USER" != "$(id -un 2>/dev/null || true)" ]]; then
+            _nightly_systemctl_cmd=("$systemctl_bin" --machine="${TARGET_USER}@.host" --user)
+        fi
+        local _nightly_timeout_bin=""
+        _nightly_timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+        if [[ -n "$_nightly_timeout_bin" ]]; then
+            _nightly_systemctl_cmd=("$_nightly_timeout_bin" 5 "${_nightly_systemctl_cmd[@]}")
+        fi
+        if "${_nightly_systemctl_cmd[@]}" is-enabled acfs-nightly-update.timer &>/dev/null 2>&1; then
             _nightly_status="enabled"
         elif [[ -f "$_nightly_unit_file" ]]; then
             _nightly_status="unit_exists"
