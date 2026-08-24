@@ -14962,13 +14962,30 @@ EOF
 # ---- SLB preservation (#329) ------------------------------------------------
 
 _slb_test_setup() {
-    # Recorder for target-context invocations (the source build lane).
-    SLB_CTX_CALLS_FILE="$HOME/slb_ctx_calls"
-    : > "$SLB_CTX_CALLS_FILE"
+    SLB_VERIFIED_CALLS_FILE="$HOME/slb_verified_calls"
+    SLB_VERIFIED_EXIT=0
+    : > "$SLB_VERIFIED_CALLS_FILE"
+
     update_run_in_target_context() {
-        printf 'env=%s\n' "$1" >> "$SLB_CTX_CALLS_FILE"
-        return 0
+        shift
+        "$@"
     }
+    update_run_verified_installer_with_env() {
+        local tool="${1:-}"
+        local env_assignment="${2:-}"
+        local install_dir="${env_assignment#INSTALL_DIR=}"
+
+        printf 'tool=%s env=%s\n' "$tool" "$env_assignment" >> "$SLB_VERIFIED_CALLS_FILE"
+        [[ "$SLB_VERIFIED_EXIT" -eq 0 ]] || return "$SLB_VERIFIED_EXIT"
+        [[ "$tool" == "slb" && "$env_assignment" == INSTALL_DIR=* ]] || return 97
+        mkdir -p "$install_dir"
+        printf '%s\n' "verified-installer-binary" > "$install_dir/slb"
+        chmod +x "$install_dir/slb"
+    }
+    update_preferred_user_bin_dir() { printf '%s\n' "$HOME/.local/bin"; }
+    update_target_user() { id -un; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_sudo_prefix() { return 98; }
     log_to_file() { :; }
 }
 
@@ -14979,75 +14996,107 @@ _slb_install_fixture_binary() {
     update_binary_path() { printf '%s\n' "$HOME/go/bin/slb"; }
 }
 
-@test "slb source install builds when no binary is installed" {
+@test "slb update uses the verified installer when no binary is installed" {
     _slb_test_setup
     update_binary_path() { return 1; }
 
-    run update_run_slb_source_install
+    run update_run_slb_verified_install
     assert_success
 
-    run cat "$SLB_CTX_CALLS_FILE"
-    assert_output "env="
+    run cat "$SLB_VERIFIED_CALLS_FILE"
+    assert_output "tool=slb env=INSTALL_DIR=$HOME/.local/bin"
+    [[ -x "$HOME/.local/bin/slb" ]]
+    [[ "$(< "$HOME/.local/bin/.slb.acfs-sha256")" == "$(update_sha256_file "$HOME/.local/bin/slb")" ]]
 }
 
-@test "slb source install preserves an existing binary with no sidecar" {
+@test "slb verified update preserves an existing binary with no sidecar" {
     _slb_test_setup
     _slb_install_fixture_binary "audited-binary-v1"
 
-    run update_run_slb_source_install
+    run update_run_slb_verified_install
     assert_success
     assert_output --partial "preserving existing binary"
     assert_output --partial "ACFS_FORCE_SLB_UPDATE=1"
 
-    # Zero install/build calls.
-    run cat "$SLB_CTX_CALLS_FILE"
+    # Zero verified-installer calls.
+    run cat "$SLB_VERIFIED_CALLS_FILE"
     assert_output ""
 }
 
-@test "slb source install preserves a binary that differs from the sidecar hash" {
+@test "slb verified update preserves a binary that differs from the sidecar hash" {
     _slb_test_setup
     _slb_install_fixture_binary "operator-replaced-binary"
     printf '%s\n' "0000000000000000000000000000000000000000000000000000000000000000" \
         > "$HOME/go/bin/.slb.acfs-sha256"
 
-    run update_run_slb_source_install
+    run update_run_slb_verified_install
     assert_success
     assert_output --partial "preserving existing binary"
 
-    run cat "$SLB_CTX_CALLS_FILE"
+    run cat "$SLB_VERIFIED_CALLS_FILE"
     assert_output ""
 }
 
-@test "slb source install refreshes a binary that matches the ACFS sidecar hash" {
+@test "slb verified update refreshes the exact ACFS-managed binary path" {
     _slb_test_setup
     _slb_install_fixture_binary "acfs-built-binary"
     update_sha256_file "$HOME/go/bin/slb" > "$HOME/go/bin/.slb.acfs-sha256"
 
-    run update_run_slb_source_install
+    run update_run_slb_verified_install
     assert_success
 
-    run cat "$SLB_CTX_CALLS_FILE"
-    assert_output "env="
+    run cat "$SLB_VERIFIED_CALLS_FILE"
+    assert_output "tool=slb env=INSTALL_DIR=$HOME/go/bin"
+    [[ "$(< "$HOME/go/bin/.slb.acfs-sha256")" == "$(update_sha256_file "$HOME/go/bin/slb")" ]]
 }
 
-@test "slb source install force override rebuilds and requests a backup" {
+@test "slb verified update force override backs up the exact replaced binary" {
     _slb_test_setup
     _slb_install_fixture_binary "audited-binary-v1"
     export ACFS_FORCE_SLB_UPDATE=1
 
-    run update_run_slb_source_install
+    run update_run_slb_verified_install
     unset ACFS_FORCE_SLB_UPDATE
     assert_success
     assert_output --partial "slb.acfs-bak"
 
-    run cat "$SLB_CTX_CALLS_FILE"
-    assert_output "env=ACFS_SLB_BACKUP_EXISTING=1"
+    run cat "$SLB_VERIFIED_CALLS_FILE"
+    assert_output "tool=slb env=INSTALL_DIR=$HOME/go/bin"
+    [[ "$(< "$HOME/go/bin/slb.acfs-bak")" == "audited-binary-v1" ]]
 }
 
-@test "slb build script records the sidecar hash and honors the backup flag" {
-    run grep -F '.slb.acfs-sha256' "$PROJECT_ROOT/scripts/lib/update.sh"
-    assert_success
+@test "slb verified update propagates verifier failure without recording ownership" {
+    _slb_test_setup
+    update_binary_path() { return 1; }
+    SLB_VERIFIED_EXIT=42
 
-    run grep -F 'ACFS_SLB_BACKUP_EXISTING' "$PROJECT_ROOT/scripts/lib/update.sh"
+    run update_run_slb_verified_install
+    assert_failure 42
+    [[ ! -e "$HOME/.local/bin/.slb.acfs-sha256" ]]
+}
+
+@test "slb verified update refuses a symlinked sidecar before replacement" {
+    _slb_test_setup
+    _slb_install_fixture_binary "audited-binary-v1"
+    printf '%s\n' "do-not-overwrite" > "$HOME/sidecar-target"
+    ln -s "$HOME/sidecar-target" "$HOME/go/bin/.slb.acfs-sha256"
+    export ACFS_FORCE_SLB_UPDATE=1
+
+    run update_run_slb_verified_install
+    unset ACFS_FORCE_SLB_UPDATE
+    assert_failure
+    assert_output --partial "Refusing unsafe SLB checksum sidecar"
+    [[ "$(< "$HOME/sidecar-target")" == "do-not-overwrite" ]]
+    [[ ! -e "$HOME/go/bin/slb.acfs-bak" ]]
+    [[ ! -s "$SLB_VERIFIED_CALLS_FILE" ]]
+}
+
+@test "slb update has no moving-branch source checkout lane" {
+    run grep -F 'git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git' \
+        "$PROJECT_ROOT/scripts/lib/update.sh"
+    assert_failure
+
+    run grep -F 'update_run_verified_installer_with_env slb "INSTALL_DIR=$install_dir"' \
+        "$PROJECT_ROOT/scripts/lib/update.sh"
     assert_success
 }
