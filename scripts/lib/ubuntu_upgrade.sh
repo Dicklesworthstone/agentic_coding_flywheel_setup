@@ -1312,6 +1312,16 @@ upgrade_setup_infrastructure() {
     fi
 
     resolved_acfs_state_file="${ACFS_STATE_FILE:-${resolved_acfs_home}/state.json}"
+    # run_ubuntu_upgrade_phase temporarily points ACFS_STATE_FILE at the
+    # root-owned upgrade state under ACFS_RESUME_DIR while the upgrade runs.
+    # That value must never be baked into the post-reboot continuation: the
+    # resumed install would then persist all nine phases to a root:600 file
+    # under /var/lib/acfs instead of ~/.acfs/state.json, so acfs doctor /
+    # status / --reset-state and the printed resume hint would all look at a
+    # state file that never existed.
+    if [[ "$resolved_acfs_state_file" == "${ACFS_RESUME_DIR}/state.json" ]]; then
+        resolved_acfs_state_file="${resolved_acfs_home}/state.json"
+    fi
     if [[ -z "$resolved_acfs_state_file" ]] || [[ "$resolved_acfs_state_file" != /* ]] || [[ "$resolved_acfs_state_file" == "/" ]]; then
         log_error "Invalid ACFS_STATE_FILE for resume infrastructure: ${resolved_acfs_state_file:-<empty>}"
         return 1
