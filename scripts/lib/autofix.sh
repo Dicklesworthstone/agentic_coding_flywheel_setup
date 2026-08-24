@@ -1031,11 +1031,20 @@ start_autofix_session() {
     fi
 
     if autofix_path_exists "$ACFS_STATE_DIR/.session"; then
-        log_error "Detected unresolved autofix session marker: $ACFS_STATE_DIR/.session"
-        log_error "Resolve the previous autofix session state before starting a new one"
-        autofix_release_session_lock
-        ACFS_SESSION_ID=""
-        return 1
+        # A marker whose owning process is gone is a leftover from an
+        # interrupted --fix (Ctrl-C, killed pane): nothing is running, and the
+        # flock above already guards true concurrency. Refusing here bricked
+        # both future --fix runs and `acfs undo` — the remedy itself.
+        local stale_pid=""
+        stale_pid="$(sed -nE 's/.*"pid"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$ACFS_STATE_DIR/.session" 2>/dev/null | head -1)"
+        if [[ -n "$stale_pid" ]] && [[ "$stale_pid" != "$$" ]] && kill -0 "$stale_pid" 2>/dev/null; then
+            log_error "Another autofix session (pid $stale_pid) is still running: $ACFS_STATE_DIR/.session"
+            autofix_release_session_lock
+            ACFS_SESSION_ID=""
+            return 1
+        fi
+        log_warn "Clearing stale autofix session marker left by an interrupted run (pid ${stale_pid:-unknown} is not running)"
+        rm -f "$ACFS_STATE_DIR/.session" 2>/dev/null || true
     fi
 
     # Write session start marker
@@ -1723,6 +1732,7 @@ acfs_undo_command() {
     local dry_run=false
     local force=false
     local all=false
+    local everything=false
     local list_only=false
     local verify_only=false
     local category=""
@@ -1733,6 +1743,7 @@ acfs_undo_command() {
             --dry-run) dry_run=true; shift ;;
             --force) force=true; shift ;;
             --all) all=true; shift ;;
+            --everything) all=true; everything=true; shift ;;
             --list) list_only=true; shift ;;
             --verify) verify_only=true; shift ;;
             --category)
@@ -1808,7 +1819,18 @@ acfs_undo_command() {
     undone_ids_json="$(autofix_undone_ids_json)"
     undo_statuses_json="$(autofix_undo_status_map_json)"
     if [[ "$all" == "true" ]]; then
-        mapfile -t change_ids < <(jq -r --argjson undone "$undone_ids_json" --argjson undo_statuses "$undo_statuses_json" 'select((.id // "") as $id | (($undone | index($id)) | not) and (($undo_statuses[$id] // "") != "pending")) | .id' "$ACFS_CHANGES_FILE" | sort -r)
+        # --all is documented as "undo the last session"; without a session
+        # filter it silently reverted every change ever recorded, across
+        # sessions (including root-level sshd_config edits). --everything
+        # keeps the old behaviour for deliberate full rollbacks.
+        local undo_session_filter=""
+        if [[ "$everything" != "true" ]]; then
+            undo_session_filter="$(jq -r 'select((.session_id // "") != "") | .session_id' "$ACFS_CHANGES_FILE" 2>/dev/null | tail -n 1 || true)"
+        fi
+        mapfile -t change_ids < <(jq -r --argjson undone "$undone_ids_json" --argjson undo_statuses "$undo_statuses_json" --arg sess "$undo_session_filter" 'select((.id // "") as $id | (($undone | index($id)) | not) and (($undo_statuses[$id] // "") != "pending")) | select($sess == "" or (.session_id // "") == $sess) | .id' "$ACFS_CHANGES_FILE" | sort -r)
+        if [[ -n "$undo_session_filter" ]]; then
+            log_info "Undoing changes from the most recent fix session ($undo_session_filter); use --everything to include earlier sessions"
+        fi
     elif [[ -n "$category" ]]; then
         mapfile -t change_ids < <(jq -r --argjson undone "$undone_ids_json" --argjson undo_statuses "$undo_statuses_json" --arg category "$category" 'select((.id // "") as $id | (($undone | index($id)) | not) and (($undo_statuses[$id] // "") != "pending")) | select(.category == $category) | .id' "$ACFS_CHANGES_FILE" | sort -r)
     fi
