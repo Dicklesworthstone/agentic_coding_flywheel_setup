@@ -658,6 +658,45 @@ acfs_installer_cache_snapshot_regular_file() {
     printf '%s\n' "$snapshot"
 }
 
+acfs_installer_cache_verify_bound_file() {
+    local pack_root="$1"
+    local rel_path="$2"
+    local expected_sha256="$3"
+    local max_bytes="$4"
+    local error_code="$5"
+    local name="$6"
+    local source_file="$pack_root/$rel_path"
+    local snapshot=""
+    local actual_sha256=""
+
+    if [[ ! "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] \
+        || [[ ! -f "$source_file" || -L "$source_file" || ! -r "$source_file" ]]; then
+        acfs_offline_pack_error "$error_code" "$name" "$rel_path is missing, unsafe, or lacks a valid declared hash"
+        return 1
+    fi
+    if ! acfs_offline_pack_artifact_is_contained "$pack_root" "$source_file"; then
+        acfs_offline_pack_error "pack_path_escape" "$name" "$rel_path resolves outside the cache"
+        return 1
+    fi
+
+    snapshot="$(
+        acfs_installer_cache_snapshot_regular_file \
+            "$source_file" "$max_bytes" "/tmp/acfs-cache-bound-file.XXXXXX" \
+            "$error_code" "$name" "$rel_path"
+    )" || return 1
+    actual_sha256="$(calculate_file_sha256 "$snapshot")" || {
+        _acfs_remove_temp_files "$snapshot"
+        acfs_offline_pack_error "$error_code" "$name" "failed to checksum the private $rel_path snapshot"
+        return 1
+    }
+    _acfs_remove_temp_files "$snapshot"
+
+    if [[ "$actual_sha256" != "$expected_sha256" ]]; then
+        acfs_offline_pack_error "$error_code" "$name" "$rel_path does not match its manifest.json hash"
+        return 1
+    fi
+}
+
 acfs_offline_pack_requested() {
     [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]
 }
@@ -850,6 +889,8 @@ acfs_offline_pack_validate_manifest() {
     local current_manifest=""
     local current_manifest_snapshot=""
     local pack_manifest_snapshot=""
+    local provenance_builder_env_declared=""
+    local provenance_source_index_declared=""
 
     jq_bin="$(acfs_offline_pack_jq_bin)" || {
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "jq is required to read manifest.json"
@@ -874,6 +915,8 @@ acfs_offline_pack_validate_manifest() {
         (.acfs | type == "object") and
         (.acfs.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
         (.acfs.checksumsYamlSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.acfs.provenanceBuilderEnvSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.acfs.provenanceSourceIndexSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
         (.targets | type == "array" and length == 1) and
         (all(.targets[];
             (.os == "ubuntu") and
@@ -1093,6 +1136,15 @@ acfs_offline_pack_validate_manifest() {
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "cache was built with a different acfs.manifest.yaml"
         return 1
     fi
+
+    provenance_builder_env_declared="$("$jq_bin" -r '.acfs.provenanceBuilderEnvSha256' "$manifest_file")"
+    provenance_source_index_declared="$("$jq_bin" -r '.acfs.provenanceSourceIndexSha256' "$manifest_file")"
+    acfs_installer_cache_verify_bound_file \
+        "$pack_root" "provenance/builder-env.json" "$provenance_builder_env_declared" \
+        8388608 "pack_malformed_manifest" "$name" || return 1
+    acfs_installer_cache_verify_bound_file \
+        "$pack_root" "provenance/source-index.json" "$provenance_source_index_declared" \
+        8388608 "pack_malformed_manifest" "$name" || return 1
 
     return 0
 }
