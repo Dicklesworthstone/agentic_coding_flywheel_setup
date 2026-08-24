@@ -257,7 +257,9 @@ export TARGET_HOME ACFS_HOME ACFS_STATE_FILE ACFS_SYSTEM_STATE_FILE ACFS_BIN_DIR
 ensure_path() {
     local dir
     local to_add=()
-    local system_path_prefix="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+    # /usr/local/go/bin: the official Go tarball install location, which the
+    # root-context manifest checks could not see (false FAIL on lang.go).
+    local system_path_prefix="/usr/local/sbin:/usr/local/bin:/usr/local/go/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
     local current_path="${PATH:-$system_path_prefix}"
     local seen_path=":$current_path:"
     local primary_home="${TARGET_HOME:-${_acfs_doctor_current_home:-/root}}"
@@ -954,6 +956,7 @@ PASS_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
+QUIET_MODE=false
 
 # Skipped tools data (bead qup)
 declare -ga SKIPPED_TOOLS_DATA=()
@@ -1022,6 +1025,7 @@ print_acfs_help() {
     echo "                      --project DIR | --to PATH"
     echo "    path              Print the canonical guide path"
     echo "  update [options]    Update ACFS tools to latest versions"
+    echo "  services            Manage Agent Mail, CM, and CASS daemons"
     echo "  services-setup      Configure AI agents and cloud services"
     echo "  session <command>   Export/import/share agent sessions"
     echo "  support-bundle      Collect diagnostic data for troubleshooting"
@@ -2925,7 +2929,9 @@ _doctor_run_manifest_check() {
         cmd="${helper_prelude}"$'\n'"${cmd}"
     fi
 
-    local system_path_prefix="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+    # /usr/local/go/bin: the official Go tarball install location, which the
+    # root-context manifest checks could not see (false FAIL on lang.go).
+    local system_path_prefix="/usr/local/sbin:/usr/local/bin:/usr/local/go/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
     case "$run_as" in
         target_user)
@@ -3002,7 +3008,7 @@ _doctor_run_manifest_check() {
                 return $?
             fi
             sudo_bin="$(_acfs_doctor_system_binary_path sudo 2>/dev/null || true)"
-            if [[ -n "$sudo_bin" ]]; then
+            if [[ -n "$sudo_bin" ]] && "$sudo_bin" -n true >/dev/null 2>&1; then
                 if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
                     "$sudo_bin" -n "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix" "$bash_bin" -o pipefail -c "$cmd"
                 else
@@ -3010,7 +3016,16 @@ _doctor_run_manifest_check() {
                 fi
                 return $?
             fi
-            return 1
+            # No passwordless sudo (safe mode, or a non-admin shell). These
+            # manifest checks are read-only version probes (curl/git/jq/gpg,
+            # lazygit, go, ...), so run them as the current user rather than
+            # reporting every one of them as a false FAIL.
+            if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
+                "$env_bin" TARGET_USER="$target_user" TARGET_HOME="$target_home" PATH="$system_path_prefix:$PATH" "$bash_bin" -o pipefail -c "$cmd"
+            else
+                "$env_bin" TARGET_USER="$target_user" PATH="$system_path_prefix:$PATH" "$bash_bin" -o pipefail -c "$cmd"
+            fi
+            return $?
             ;;
         current|*)
             if [[ -n "$target_home" ]] && [[ "$target_home" == /* ]] && [[ "$target_home" != "/" ]]; then
@@ -3137,7 +3152,7 @@ check_skipped() {
     ((SKIP_COUNT += 1))
 
     if [[ "$JSON_MODE" == "true" ]]; then
-        JSON_CHECKS+=("{\"id\":\"$(json_escape "$id")\",\"label\":\"$(json_escape "$label")\",\"status\":\"skipped\",\"details\":\"$(json_escape "$reason")\",\"fix\":null}")
+        JSON_CHECKS+=("{\"id\":\"$(json_escape "$id")\",\"label\":\"$(json_escape "$label")\",\"status\":\"skip\",\"details\":\"$(json_escape "$reason")\",\"fix\":null}")
         return 0
     fi
 
@@ -4346,6 +4361,13 @@ print_summary() {
         else
             echo -e "  Legend: ${GREEN}✓${NC} installed  ${CYAN}○${NC} skipped  ${RED}✖${NC} missing  ${YELLOW}⚠${NC} warning  ${YELLOW}?${NC} timeout"
         fi
+        # One-line tally so a human reading the end of the output (or a
+        # screenshot) can see the outcome without counting glyphs.
+        if [[ "$HAS_GUM" == "true" ]]; then
+            gum style --foreground "$ACFS_MUTED" "  Summary: ${PASS_COUNT} passed, ${WARN_COUNT} warnings, ${FAIL_COUNT} failed, ${SKIP_COUNT} skipped"
+        else
+            echo -e "  Summary: ${GREEN}${PASS_COUNT} passed${NC}, ${YELLOW}${WARN_COUNT} warnings${NC}, ${RED}${FAIL_COUNT} failed${NC}, ${CYAN}${SKIP_COUNT} skipped${NC}"
+        fi
     fi
 }
 
@@ -4403,11 +4425,24 @@ main() {
     local invoked_as
     invoked_as="$(basename "${0:-acfs}")"
 
-    # If installed as `acfs`, support subcommands (doctor/update/services-setup/version).
+    # If installed as `acfs`, support the unified CLI subcommands.
     local subcmd="${1:-}"
     case "$subcmd" in
         doctor|check)
             shift
+            ;;
+        undo)
+            # `acfs undo --list | <change-id> | --all` — reverses changes
+            # recorded by `acfs doctor --fix`. The command was documented and
+            # printed in --fix output but never dispatched, so it fell through
+            # to a full doctor run.
+            shift
+            if ! type -t acfs_undo_command &>/dev/null; then
+                echo "Error: undo support unavailable (doctor_fix.sh/autofix.sh not loaded)" >&2
+                return 1
+            fi
+            acfs_undo_command "$@"
+            return $?
             ;;
         info|i)
             shift
@@ -4857,7 +4892,19 @@ main() {
                     ;;
             esac
             ;;
-        services-setup|services|setup)
+        services|svc)
+            shift
+            local service_manager=""
+            service_manager="$(_acfs_doctor_find_lib_script "acfs-services.sh" 2>/dev/null || true)"
+
+            if [[ -n "$service_manager" ]]; then
+                _acfs_doctor_exec_bash_script "$service_manager" "$@"
+            fi
+
+            echo "Error: acfs-services.sh not found" >&2
+            return 1
+            ;;
+        services-setup|setup)
             shift
             local services_script=""
             services_script="$(_acfs_doctor_find_scripts_script "services-setup.sh" 2>/dev/null || true)"
@@ -4967,6 +5014,11 @@ main() {
                 DEEP_MODE=true
                 shift
                 ;;
+            --quiet|-q)
+                # Documented for years, never parsed: exit code only.
+                QUIET_MODE=true
+                shift
+                ;;
             --no-cache)
                 NO_CACHE=true
                 shift
@@ -5068,6 +5120,12 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
         fi
     fi
 
+    if [[ "$QUIET_MODE" == "true" ]]; then
+        # --quiet: exit code only. Everything the checks print goes to stdout;
+        # genuine errors still reach stderr.
+        exec 1>/dev/null
+    fi
+
     check_identity
     check_workspace
     check_shell
@@ -5093,12 +5151,19 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
     # Finalize fix mode if enabled
     if [[ "$FIX_MODE" == "true" ]]; then
         if type -t finalize_doctor_fix &>/dev/null; then
-            finalize_doctor_fix
+            if [[ "$JSON_MODE" == "true" ]]; then
+                # Keep stdout a single JSON document; the fix summary is
+                # human-oriented text.
+                finalize_doctor_fix >&2
+            else
+                finalize_doctor_fix
+            fi
         fi
     fi
 
-    # Exit with appropriate code
-    if [[ $FAIL_COUNT -gt 0 ]]; then
+    # Exit with appropriate code. A --fix run whose fixes failed is not a
+    # clean run either, even when no check reported FAIL.
+    if [[ $FAIL_COUNT -gt 0 ]] || [[ "${FIX_FAILED:-0}" -gt 0 ]]; then
         exit 1
     fi
     exit 0

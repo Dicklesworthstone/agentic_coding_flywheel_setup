@@ -8372,6 +8372,7 @@ finalize() {
     try_step "Installing autofix.sh" install_asset "scripts/lib/autofix.sh" "$ACFS_HOME/scripts/lib/autofix.sh" || return 1
     try_step "Installing doctor_fix.sh" install_asset "scripts/lib/doctor_fix.sh" "$ACFS_HOME/scripts/lib/doctor_fix.sh" || return 1
     try_step "Installing doctor.sh" install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh" || return 1
+    try_step "Installing acfs-services.sh" install_asset "scripts/lib/acfs-services.sh" "$ACFS_HOME/scripts/lib/acfs-services.sh" || return 1
     try_step "Installing agy_model_guard.sh" install_asset "scripts/lib/agy_model_guard.sh" "$ACFS_HOME/scripts/lib/agy_model_guard.sh" || return 1
     try_step "Installing agy_e2e_harness.sh" install_asset "scripts/lib/agy_e2e_harness.sh" "$ACFS_HOME/scripts/lib/agy_e2e_harness.sh" || return 1
     try_step "Installing agy_locked.py" install_asset "scripts/lib/agy_locked.py" "$ACFS_HOME/scripts/lib/agy_locked.py" || return 1

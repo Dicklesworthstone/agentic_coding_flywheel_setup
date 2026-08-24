@@ -21,7 +21,7 @@ Each version links to its GitHub Release (where one exists) or to the tag compar
 
 ### Installer & CLI
 
-- **`acfs services` command** for unified daemon management -- start/stop/restart all ACFS background services (Agent Mail, nightly timer, etc.) from one place ([`2d48c4b`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/2d48c4b1))
+- **`acfs services` command** for unified daemon management -- start/stop/restart Agent Mail, CM, and the CASS indexer from one place ([`2d48c4b`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/2d48c4b1))
 - **`--only` and `--only-phase` flags** allow selective tool or phase installation on fresh VPS installs, with OR semantics when combined ([`da096a7`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/da096a7c), [`287dc59`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/287dc596))
 - **`--stack-only` flag** for `acfs update` to update only Dicklesworthstone stack tools ([`6199da1`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/6199da18))
 - **`loginctl enable-linger`** so `systemctl --user` services survive SSH disconnects on fresh installs ([`fff5933`](https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/commit/fff59332))

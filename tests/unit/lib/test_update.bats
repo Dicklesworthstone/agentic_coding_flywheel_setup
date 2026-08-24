@@ -8837,6 +8837,7 @@ EOF
         'install_asset "scripts/lib/autofix.sh" "$ACFS_HOME/scripts/lib/autofix.sh"'
         'install_asset "scripts/lib/doctor_fix.sh" "$ACFS_HOME/scripts/lib/doctor_fix.sh"'
         'install_asset "scripts/lib/doctor.sh" "$ACFS_HOME/scripts/lib/doctor.sh"'
+        'install_asset "scripts/lib/acfs-services.sh" "$ACFS_HOME/scripts/lib/acfs-services.sh"'
         'install_asset "scripts/lib/nightly_update.sh" "$ACFS_HOME/scripts/lib/nightly_update.sh"'
         'install_asset "scripts/lib/nightly_update.sh" "$ACFS_HOME/scripts/nightly-update.sh"'
         'install_asset "scripts/lib/update.sh" "$ACFS_HOME/scripts/lib/update.sh"'
@@ -8880,6 +8881,7 @@ EOF
         '"scripts/lib/doctor_fix.sh:scripts/lib/doctor_fix.sh"'
         '"scripts/lib/doctor.sh:scripts/lib/doctor.sh"'
         '"scripts/lib/doctor.sh:bin/acfs"'
+        '"scripts/lib/acfs-services.sh:scripts/lib/acfs-services.sh"'
         '"scripts/acfs-update:bin/acfs-update"'
         '"scripts/generate-root-agents-md.sh:bin/flywheel-update-agents-md"'
         '"scripts/lib/nightly_update.sh:scripts/lib/nightly_update.sh"'
@@ -8936,6 +8938,149 @@ EOF
     assert_success
     run grep -F 'sync_acfs_global_wrapper' "$update"
     assert_success
+}
+
+@test "acfs services uses the daemon manager contract across CLI surfaces" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+    local zsh_completion="$PROJECT_ROOT/scripts/completions/_acfs"
+
+    run bash "$services" --help
+    assert_success
+    assert_output --partial "agent-mail      native service or am fallback               [default 127.0.0.1:8765]"
+    assert_output --partial "cm              cm serve (CASS Memory server)               [default 127.0.0.1:8766]"
+
+    run grep -F 'services|svc)' "$doctor"
+    assert_success
+    run grep -F '_acfs_doctor_find_lib_script "acfs-services.sh"' "$doctor"
+    assert_success
+    run grep -F "'services:Manage Agent Mail, CM, and CASS daemons'" "$zsh_completion"
+    assert_success
+    run grep -F "'services:Configure services (alias for services-setup)'" "$zsh_completion"
+    assert_failure
+}
+
+@test "installed acfs dispatcher keeps services separate from services-setup" {
+    local installed_home="$HOME/.acfs"
+    mkdir -p "$installed_home/bin" "$installed_home/scripts/lib"
+    cp "$PROJECT_ROOT/scripts/lib/doctor.sh" "$installed_home/bin/acfs"
+    cp "$PROJECT_ROOT/scripts/lib/acfs-services.sh" "$installed_home/scripts/lib/acfs-services.sh"
+    chmod +x "$installed_home/bin/acfs" "$installed_home/scripts/lib/acfs-services.sh"
+
+    run env HOME="$HOME" ACFS_HOME="$installed_home" bash "$installed_home/bin/acfs" services --help
+    assert_success
+    assert_output --partial "ACFS Services — Unified background daemon management"
+    refute_output --partial "ACFS services-setup"
+}
+
+@test "acfs services rejects shell syntax in endpoint configuration" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local fake_bin="$BATS_TEST_TMPDIR/acfs-services-bin"
+    local marker="$BATS_TEST_TMPDIR/acfs-services-injected"
+    local tool=""
+    mkdir -p "$fake_bin"
+
+    for tool in am cm cass tmux; do
+        printf '#!/usr/bin/env bash\nexit 0\n' > "$fake_bin/$tool"
+        chmod +x "$fake_bin/$tool"
+    done
+
+    run env PATH="$fake_bin:/usr/bin:/bin" \
+        ACFS_AGENT_MAIL_HOST="127.0.0.1;touch:$marker" \
+        bash "$services" start --dry-run
+    assert_failure
+    assert_output --partial "is not a valid host name or IP address"
+    [[ ! -e "$marker" ]] || fail "endpoint configuration executed shell syntax"
+}
+
+@test "services setup keeps cloud access tokens out of child argv" {
+    local services_setup="$PROJECT_ROOT/scripts/services-setup.sh"
+
+    run env SERVICES_SETUP_PATH="$services_setup" /usr/bin/bash -c '
+        set -euo pipefail
+        export TARGET_USER="acfs-test"
+        export TARGET_HOME="/tmp/acfs-token-argv-test"
+        export ACFS_BIN_DIR="$TARGET_HOME/.local/bin"
+        export VERCEL_TOKEN="vercel-secret-sentinel"
+        export SUPABASE_ACCESS_TOKEN="supabase-secret-sentinel"
+        source "$SERVICES_SETUP_PATH"
+
+        HAS_GUM=false
+        SERVICE_STATUS[vercel]="installed"
+        SERVICE_STATUS[supabase]="installed"
+        find_user_bin() { printf "/fake/%s\n" "$1"; }
+        services_setup_system_binary_path() {
+            [[ "$1" == "bash" ]] || return 1
+            printf "/bin/bash\n"
+        }
+        gum_box() { :; }
+        gum_error() { printf "error:%s\n" "$*" >&2; }
+        gum_success() { :; }
+        gum_confirm() { return 0; }
+        read() { :; }
+        check_vercel_status() { SERVICE_STATUS[vercel]="configured"; }
+        check_supabase_status() { SERVICE_STATUS[supabase]="configured"; }
+        run_as_user() {
+            local arg=""
+            for arg in "$@"; do
+                case "$arg" in
+                    *vercel-secret-sentinel*|*supabase-secret-sentinel*)
+                        printf "secret leaked in argv\n" >&2
+                        return 91
+                        ;;
+                esac
+                printf "arg=<%s>\n" "$arg"
+            done
+        }
+
+        setup_vercel
+        setup_supabase
+    '
+
+    assert_success
+    refute_output --partial "secret leaked in argv"
+    refute_output --partial "login --token"
+    assert_output --partial 'arg=<whoami>'
+    assert_output --partial 'arg=<login>'
+    assert_output --partial 'arg=<--no-browser>'
+}
+
+@test "acfs services start propagates an unhealthy existing session" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _initialize_bins() { :; }
+        _require_tmux() { :; }
+        _session_exists() { return 0; }
+        cmd_status() { return 23; }
+        cmd_start
+    ' _ "$services"
+    assert_failure 23
+    assert_output --partial "checking actual service health"
+}
+
+@test "acfs services socket probe includes the requested host" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local fake_lsof="$BATS_TEST_TMPDIR/acfs-services-lsof"
+    local lsof_args="$BATS_TEST_TMPDIR/acfs-services-lsof-args"
+
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "$ACFS_TEST_LSOF_ARGS"\nexit 1\n' > "$fake_lsof"
+    chmod +x "$fake_lsof"
+
+    run env ACFS_TEST_LSOF_ARGS="$lsof_args" bash -c '
+        source "$1"
+        set +e
+        _LSOF_BIN="$2"
+        _SS_BIN=""
+        _port_is_listening 127.0.0.2 8766
+    ' _ "$services" "$fake_lsof"
+    assert_failure
+
+    run cat "$lsof_args"
+    assert_success
+    assert_output --partial "-iTCP@127.0.0.2:8766"
 }
 
 @test "sync_acfs_deployed deploys install-time runtime assets and executable modes" {

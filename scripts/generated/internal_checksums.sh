@@ -10,14 +10,15 @@
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/security.sh]="cc90a64f82398a37c0efe98119363d5dfb6bac4029027a0cfe693a407c631e5c"
   [scripts/lib/agents.sh]="dad8d3c20003d95bf0bad814e7c157d740ee13f4fabe6cfc50d438c64b95dfee"
-  [scripts/lib/update.sh]="0d246ebf5d25abe4d56a23a752b74e9b42c882658c9c5ba52d32746c025f6f2c"
-  [scripts/lib/doctor.sh]="68beca0db96778190918fc5ed0c054de624da58aff275cea2c547c4916503c1e"
-  [scripts/lib/doctor_fix.sh]="5a6186aaefa18bc253e863f6758091148293753e254b590bad13ad526186b67e"
+  [scripts/lib/update.sh]="1891f44fba834f380dd4dfb8470bd56566fae49260b53b2bd405106f5d4dcee8"
+  [scripts/lib/doctor.sh]="610d91122295799fbfd8104d0e5389564b679e7319c83961e51670944c171ca0"
+  [scripts/lib/acfs-services.sh]="beb8654c21af8c95c906ee43b7b0e385b3beb7a38b497072105dd70cfd7b6c1f"
+  [scripts/lib/doctor_fix.sh]="21a3271c7c8dc998026eefefef5d3fb009c9c59921c93c5d7d60d6a0eef2bd92"
   [scripts/lib/offline_artifact_pack.sh]="5f6fa7e5a9e115904656a627853b2c7d556183532a3d8fd42a0363bf3570c7eb"
   [scripts/lib/autofix.sh]="0468d4889d304a404f161778ddf393a71fa7657317f88f692a47442760ed78d9"
   [scripts/lib/install_helpers.sh]="b2b99971d2bbf9fac0bd2812533c8c9d7946c6a3c3ce5ffa5e121d6acdbc0a02"
   [scripts/lib/logging.sh]="890d8e6e44332bede591e462b277a903ae8d8679adebd8cc4fc76face078f6be"
-  [scripts/lib/state.sh]="d225960367b9e6de246d5a5cd7af8dad3d5826d71f363ca1068688df31125e06"
+  [scripts/lib/state.sh]="5321b9d47fcc665ab0dd7c3f708d5be3301f5ebfc6f320b6439f3ccba9b6676c"
   [scripts/lib/session.sh]="8a2ab64a67006c62ac0db8d89ea6d71d160f3f2efd2cb99ffe6ea0857abde3e5"
   [scripts/lib/os_detect.sh]="5cc5c182d212d7ea76fd345f97e97d808aad5d7e8cb29736b03f88e2ad115889"
   [scripts/lib/errors.sh]="3ce3d904e6e9fb5648fec89ee25426bc261ecddd5c6a4ea20393331bb3661b5e"
@@ -28,5 +29,5 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/acfs-update]="178ab5f2af97f8c1584aa298aef350b28fe5b8dafd95e85c28af3be27e05f816"
 )
 
-ACFS_INTERNAL_CHECKSUMS_COUNT=18
+ACFS_INTERNAL_CHECKSUMS_COUNT=19
 ACFS_INTERNAL_CHECKSUMS_GENERATED="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"

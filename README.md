@@ -169,7 +169,7 @@ flowchart TB
     Run["Run install.sh"]
     Verify["Verified upstream installers<br/>(security.sh + checksums.yaml)"]
     AcfsHome["~/.acfs/<br/>configs + scripts + state.json"]
-    Commands["Commands<br/>acfs doctor / acfs update / acfs services-setup / onboard"]
+    Commands["Commands<br/>acfs doctor / acfs update / acfs services / acfs services-setup / onboard"]
     Tools["Installed tools<br/>bun/uv/rust/go + tmux/rg/gh + vault + ..."]
     Agents["Agent CLIs<br/>claude / codex / agy"]
     Stack["Stack tools<br/>ntm / mcp_agent_mail / ubs / bv / cass / cm / caam / slb / dcg / ru"]
@@ -732,6 +732,7 @@ acfs newproj                 # Create a new project (TUI or CLI)
 acfs agents update           # Regenerate the flywheel agent guide (ACFS-owned)
 acfs agents install --help   # Explicitly deploy the guide (never overwrites)
 acfs update                  # Update all tools
+acfs services status         # Check Agent Mail, CM, and CASS daemons
 acfs services-setup          # Configure agent credentials
 acfs continue                # View upgrade progress after reboot
 ```
@@ -949,6 +950,25 @@ The dashboard provides:
 - Tool versions and status
 - Quick command reference
 - Recent activity summary
+
+### `acfs services` — Background Daemon Management
+
+Start, stop, restart, inspect, or follow logs for the local coordination daemons:
+
+```bash
+acfs services start
+acfs services status
+acfs services logs agent-mail
+acfs services stop
+```
+
+Agent Mail keeps its ACFS-reserved `127.0.0.1:8765` endpoint and reuses the native
+user service when one is already healthy. CM runs on `127.0.0.1:8766`, and CM plus
+the CASS watch indexer run in the `acfs-svc` tmux session. `start` and `status`
+return nonzero if any daemon fails its runtime readiness check.
+
+This lifecycle command is distinct from `acfs services-setup`, which configures
+credentials and integrations rather than background processes.
 
 ### `acfs services-setup` — Credential Configuration
 
@@ -1213,7 +1233,7 @@ ACFS installs a comprehensive suite of **30+ tools** organized into categories:
 | **oh-my-zsh** | - | zsh plugin framework |
 | **powerlevel10k** | - | Fast, customizable prompt |
 | **lsd** | `ls` (aliased) | Modern ls with icons |
-| **atuin** | `Ctrl+R` | Shell history with search |
+| **atuin** | `atuin search` | Searchable shell history database (its zsh hook is intentionally not enabled; `Ctrl+R` is the shell's own history search) |
 | **fzf** | `fzf` | Fuzzy finder |
 | **zoxide** | `z` | Smarter cd |
 | **direnv** | - | Directory-specific env vars |
@@ -1452,7 +1472,7 @@ The `--deep` flag runs functional tests beyond binary existence:
 | **Cloud CLIs** | `gh auth status`, `wrangler whoami`, Supabase/Vercel tokens |
 | **Vault** | `VAULT_ADDR` configured |
 
-Deep checks use 5-second timeouts to avoid hanging on network issues. Results are cached for 5 minutes to speed up repeated runs.
+Deep checks use 15-second timeouts to avoid hanging on network issues. Successful results are cached for 5 minutes to speed up repeated runs.
 
 Example output:
 ```
@@ -1493,7 +1513,7 @@ These fixes are applied automatically when `--fix` is used:
 - **Backups before modify** — SHA256-verified backups of all modified files
 - **Idempotent** — Safe to run multiple times
 - **Logged** — All changes recorded to `~/.local/share/acfs/doctor.log`
-- **Reversible** — Every fix has an undo command
+- **Reversible** — Configuration-level fixes (PATH, sourcing, config copies, symlinks, plugin clones) record an undo command; tool installs are not auto-reverted
 
 #### Example Dry-Run Output
 
@@ -3762,8 +3782,8 @@ This ensures the state file is never partially written, even if the process is k
 
 | Failure Type | Detection | Recovery |
 |--------------|-----------|----------|
-| Network timeout | curl exit code 28 | Retry with exponential backoff |
-| APT lock held | `/var/lib/dpkg/lock` exists | Wait and retry up to 60s |
+| Network timeout | curl exit code 28 | Retried on a fixed 0s/5s/15s schedule |
+| APT lock held | `apt-get` fails with a lock error | Step fails with a clear error; wait for unattended-upgrades to finish, then re-run (the install resumes) |
 | Disk full | df check before write | Abort with clear error |
 | Out of memory | OOM killer | Resume picks up from last phase |
 | SSH disconnect | N/A (session dies) | Resume on reconnect |
@@ -3797,51 +3817,11 @@ This pattern provides:
 
 ### Network Resilience
 
-Network operations implement **exponential backoff with jitter**:
-
-```bash
-retry_with_backoff() {
-    local max_attempts=5
-    local delay=1
-
-    for attempt in $(seq 1 $max_attempts); do
-        if "$@"; then
-            return 0
-        fi
-
-        # Exponential backoff: 1s, 2s, 4s, 8s, 16s
-        # With jitter: ±25% randomization
-        local jitter=$(( (RANDOM % 50 - 25) * delay / 100 ))
-        sleep $((delay + jitter))
-        delay=$((delay * 2))
-    done
-
-    return 1
-}
-```
+Downloads retry on a fixed schedule rather than exponential backoff: `retry_with_backoff` in `scripts/lib/error_tracking.sh` (and the installer's own `ACFS_CURL_RETRY_DELAYS`) retries three times with 0s, 5s, and 15s delays, and only for curl exit codes that indicate a transient network problem (DNS, connect, timeout, SSL handshake, empty reply). Permanent failures such as a 404 are not retried. The Ubuntu upgrade library is the one place with true exponential backoff (`ubuntu_retry_with_backoff`, 30s doubling) because `do-release-upgrade` mirrors are slow to recover.
 
 ### APT Lock Handling
 
-The most common installation failure is APT lock contention (another process using apt):
-
-```bash
-wait_for_apt_lock() {
-    local max_wait=60
-    local waited=0
-
-    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-        if [[ $waited -ge $max_wait ]]; then
-            log_error "APT lock held for >60s, aborting"
-            return 1
-        fi
-        log_detail "Waiting for apt lock... (${waited}s)"
-        sleep 5
-        waited=$((waited + 5))
-    done
-
-    return 0
-}
-```
+The most common installation failure on a fresh VPS is APT lock contention: `unattended-upgrades` runs for a few minutes after first boot. The installer does not wait for the lock; the affected step fails with the apt error, the phase is recorded as failed, and re-running the installer resumes from that phase once the lock is free. `acfs update` does wait (up to 120 seconds) before its apt operations, and `acfs doctor --fix` can disable stuck unattended-upgrades runs.
 
 ### Graceful Degradation
 

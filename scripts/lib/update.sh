@@ -3144,6 +3144,7 @@ sync_acfs_deployed() {
         "packages/onboard/onboard.sh:onboard/onboard.sh"
         "scripts/lib/doctor.sh:scripts/lib/doctor.sh"
         "scripts/lib/doctor.sh:bin/acfs"
+        "scripts/lib/acfs-services.sh:scripts/lib/acfs-services.sh"
         "scripts/acfs-update:bin/acfs-update"
         "scripts/generate-root-agents-md.sh:bin/flywheel-update-agents-md"
         "scripts/lib/agy_model_guard.sh:scripts/lib/agy_model_guard.sh"

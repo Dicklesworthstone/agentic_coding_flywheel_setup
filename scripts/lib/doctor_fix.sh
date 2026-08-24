@@ -584,12 +584,17 @@ doctor_fix_log() {
     # Log to file
     echo "[$timestamp] [$level] $message" >> "$log_file"
 
-    # Output to user
+    # Output to user. Under --json stdout must stay a single JSON document,
+    # so informational fix chatter goes to stderr there.
+    local fix_out=1
+    if [[ "${JSON_MODE:-false}" == "true" ]]; then
+        fix_out=2
+    fi
     case "$level" in
-        INFO)  echo "  [fix] $message" ;;
+        INFO)  echo "  [fix] $message" >&"$fix_out" ;;
         WARN)  echo "  [fix] WARNING: $message" >&2 ;;
         ERROR) echo "  [fix] ERROR: $message" >&2 ;;
-        DRY)   echo "  [dry-run] Would: $message" ;;
+        DRY)   echo "  [dry-run] Would: $message" >&"$fix_out" ;;
     esac
 }
 
@@ -1541,6 +1546,16 @@ dispatch_fix() {
         pass) return 0 ;;
         skip) return 0 ;;
     esac
+
+    # A WARN is advisory ("optional tool not installed", "service not
+    # running", "ssh keepalive not set"). Several of the fixers behind those
+    # ids run curl|bash installers, repair the Agent Mail database, or edit
+    # sshd_config with sudo — far more than the config-level fixes the docs
+    # promise for a bare --fix. Apply them only when the caller opted in.
+    if [[ "$check_status" == "warn" ]] && [[ "${DOCTOR_FIX_YES:-false}" != "true" ]]; then
+        doctor_fix_log INFO "$check_id: warning left as-is (run 'acfs doctor --fix --yes' to apply warning-level fixes)"
+        return 0
+    fi
 
     case "$check_id" in
         # PATH fixes
@@ -2738,6 +2753,21 @@ run_doctor_fix() {
         esac
     done
 
+    # Fixers write ~/.zshrc, ~/.claude/settings.json, plugin clones, and
+    # bun/global installs as the *invoking* uid. Running them as root for a
+    # non-root target leaves root-owned files in the user's home (and
+    # oh-my-zsh then complains about insecure directories). The global
+    # /usr/local/bin/acfs wrapper already drops privileges; refuse the direct
+    # root path instead of silently corrupting ownership.
+    local fix_runtime_user=""
+    fix_runtime_user="$(doctor_fix_runtime_user 2>/dev/null || true)"
+    if [[ $EUID -eq 0 ]] && [[ -n "$fix_runtime_user" ]] && [[ "$fix_runtime_user" != "root" ]] \
+        && [[ "${DOCTOR_FIX_ALLOW_ROOT:-false}" != "true" ]] && [[ "$DOCTOR_FIX_DRY_RUN" != "true" ]]; then
+        echo "ERROR: acfs doctor --fix must run as $fix_runtime_user, not root (fixes would leave root-owned files in that user's home)." >&2
+        echo "       Use '/usr/local/bin/acfs doctor --fix' (drops privileges) or 'sudo -u $fix_runtime_user -i acfs doctor --fix'." >&2
+        return 1
+    fi
+
     # Initialize autofix session (unless dry-run)
     if [[ "$DOCTOR_FIX_DRY_RUN" != "true" ]]; then
         start_autofix_session || {
@@ -2756,15 +2786,20 @@ run_doctor_fix() {
     FIXES_MANUAL=()
     FIXES_PROMPTED=()
 
-    echo ""
-    if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
-        echo "DRY-RUN: acfs doctor --fix"
-        echo "Scanning for fixable issues..."
-    else
-        echo "Running: acfs doctor --fix"
-        echo "Applying safe fixes..."
+    # Under --json stdout must remain a single JSON document.
+    local banner_fd=1
+    if [[ "${JSON_MODE:-false}" == "true" ]]; then
+        banner_fd=2
     fi
-    echo ""
+    echo "" >&"$banner_fd"
+    if [[ "$DOCTOR_FIX_DRY_RUN" == "true" ]]; then
+        echo "DRY-RUN: acfs doctor --fix" >&"$banner_fd"
+        echo "Scanning for fixable issues..." >&"$banner_fd"
+    else
+        echo "Running: acfs doctor --fix" >&"$banner_fd"
+        echo "Applying safe fixes..." >&"$banner_fd"
+    fi
+    echo "" >&"$banner_fd"
 
     # The actual fixes are dispatched by the caller (doctor.sh)
     # based on check results. This function sets up the environment.

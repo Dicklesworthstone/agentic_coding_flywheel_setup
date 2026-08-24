@@ -919,14 +919,17 @@ remove_dcg_hook_from_settings() {
         return 1
     fi
 
+    # Anchored: a bare `test("dcg")` also removed user hooks whose command
+    # merely contained the substring (e.g. ~/scripts/dcg_notify.sh).
+    local dcg_command_pattern='(^|[[:space:]/])dcg([[:space:]]|$)'
     local jq_program
     IFS= read -r -d '' jq_program <<'JQ' || true
 def strip_dcg:
   if (type == "object" and has("hooks") and (.hooks | type) == "array") then
-    .hooks |= [ .[]? | select(.type != "command" or ((.command // "") | test("dcg") | not)) ] |
+    .hooks |= [ .[]? | select(.type != "command" or ((.command // "") | test($dcg_re) | not)) ] |
     select((.hooks | length) > 0)
   else
-    select(.type != "command" or ((.command // "") | test("dcg") | not))
+    select(.type != "command" or ((.command // "") | test($dcg_re) | not))
   end;
 
 .hooks = (.hooks // {}) |
@@ -940,7 +943,7 @@ else
 end
 JQ
 
-    if run_as_user "$jq_bin" "$jq_program" "$settings_file" 2>/dev/null | run_as_user "$tee_bin" "$tmp" >/dev/null; then
+    if run_as_user "$jq_bin" --arg dcg_re "$dcg_command_pattern" "$jq_program" "$settings_file" 2>/dev/null | run_as_user "$tee_bin" "$tmp" >/dev/null; then
         run_as_user "$mv_bin" -- "$tmp" "$settings_file" 2>/dev/null || {
             run_as_user "$rm_bin" -f -- "$tmp" 2>/dev/null || true
             gum_warn "Could not update $settings_file (mv failed)"
@@ -1553,6 +1556,7 @@ Press Enter to launch Gemini login..."
 
 setup_vercel() {
     local vercel_bin
+    local bash_bin
     vercel_bin="$(find_user_bin "vercel" 2>/dev/null || true)"
 
     if [[ -z "$vercel_bin" || ! -x "$vercel_bin" ]]; then
@@ -1567,7 +1571,7 @@ setup_vercel() {
     fi
 
     if [[ -n "${VERCEL_TOKEN:-}" ]]; then
-        gum_box "Vercel Setup" "Using VERCEL_TOKEN from your environment to configure the CLI."
+        gum_box "Vercel Setup" "Using VERCEL_TOKEN from your environment to authenticate the CLI."
     else
         gum_box "Vercel Setup" "Vercel works best on a headless VPS with an access token.
 
@@ -1580,7 +1584,19 @@ Press Enter to continue with Vercel login..."
     read -r
 
     if [[ -n "${VERCEL_TOKEN:-}" ]]; then
-        run_as_user env VERCEL_TOKEN="$VERCEL_TOKEN" "$vercel_bin" login --token "$VERCEL_TOKEN" || true
+        # Vercel rejects --token with `login`; an exported VERCEL_TOKEN is the
+        # supported non-interactive authentication mechanism. Transfer the
+        # secret over stdin so it never appears in this child command's argv,
+        # then validate it with an authenticated, read-only command.
+        bash_bin="$(services_setup_system_binary_path bash 2>/dev/null || true)"
+        if [[ -z "$bash_bin" ]]; then
+            gum_error "A trusted Bash executable is required to validate VERCEL_TOKEN."
+            return 1
+        fi
+        if ! printf '%s\n' "$VERCEL_TOKEN" | run_as_user "$bash_bin" -c 'IFS= read -r acfs_tok; export VERCEL_TOKEN="$acfs_tok"; exec "$0" whoami' "$vercel_bin"; then
+            gum_error "Vercel rejected VERCEL_TOKEN. Check the token and try again."
+            return 1
+        fi
     else
         run_as_user "$vercel_bin" login || true
     fi
@@ -1620,7 +1636,13 @@ Press Enter to continue with Supabase login..."
     read -r
 
     if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
-        run_as_user env SUPABASE_ACCESS_TOKEN="$SUPABASE_ACCESS_TOKEN" "$supabase_bin" login --token "$SUPABASE_ACCESS_TOKEN" || true
+        # Supabase resolves a piped token before starting its interactive flow,
+        # allowing the CLI to persist credentials without exposing the secret
+        # in argv or a sudo command log.
+        if ! printf '%s\n' "$SUPABASE_ACCESS_TOKEN" | run_as_user "$supabase_bin" login --no-browser; then
+            gum_error "Supabase rejected SUPABASE_ACCESS_TOKEN. Check the token and try again."
+            return 1
+        fi
     else
         run_as_user "$supabase_bin" login --no-browser || true
     fi

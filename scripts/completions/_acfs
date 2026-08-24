@@ -407,7 +407,15 @@ _acfs() {
                         '1: :_acfs_dashboard_commands' \
                         '*::arg:->dashboard_args'
                     ;;
-                update|continue|progress|services-setup|services|setup|support-bundle|bundle)
+                services|svc)
+                    _arguments -C \
+                        '1: :_values "service command" start stop status restart logs help' \
+                        '2: :_values "service" agent-mail cm cass' \
+                        '--dry-run[Show actions without changing service state]' \
+                        '-h[Show help message]' \
+                        '--help[Show help message]'
+                    ;;
+                update|continue|progress|services-setup|setup|support-bundle|bundle)
                     _arguments \
                         '-h[Show help message]' \
                         '--help[Show help message]'
@@ -423,7 +431,8 @@ _acfs_commands() {
         'newproj:Create new project (git, br, AGENTS.md, Claude settings)'
         'new:Create new project (alias for newproj)'
         'services-setup:Configure AI agents and cloud services'
-        'services:Configure services (alias for services-setup)'
+        'services:Manage Agent Mail, CM, and CASS daemons'
+        'svc:Manage daemons (alias for services)'
         'setup:Configure services (alias for services-setup)'
         'doctor:Check system health and tool status'
         'check:Check system health (alias for doctor)'

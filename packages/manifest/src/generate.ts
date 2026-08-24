@@ -420,6 +420,7 @@ const INTERNAL_SCRIPTS_TO_CHECKSUM = [
   'scripts/lib/agents.sh',
   'scripts/lib/update.sh',
   'scripts/lib/doctor.sh',
+  'scripts/lib/acfs-services.sh',
   'scripts/lib/doctor_fix.sh',
   'scripts/lib/offline_artifact_pack.sh',
   'scripts/lib/autofix.sh',
