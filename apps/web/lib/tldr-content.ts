@@ -3,7 +3,12 @@
  * comprehensive descriptions, implementation highlights, and synergies.
  */
 
-import { getManifestCommand, getManifestTldr } from './manifest-adapter';
+import {
+  getManifestCommand,
+  getManifestTldr,
+  manifestCommands,
+  manifestTldrTools,
+} from './manifest-adapter';
 
 export type TldrToolCategory = "core" | "supporting";
 
@@ -1440,7 +1445,7 @@ const _tldrFlywheelTools: TldrFlywheelTool[] = [
 // hrefs, stars, techStack, keyFeatures, useCases). Rich UI data (whatItDoes,
 // whyItsUseful, implementationHighlights, synergies, category, color, icon)
 // stays hand-maintained.
-export const tldrFlywheelTools: TldrFlywheelTool[] = _tldrFlywheelTools.map(
+const _mergedHandMaintainedTools: TldrFlywheelTool[] = _tldrFlywheelTools.map(
   (tool) => {
     const gen = getManifestTldr(tool.id);
     const cmd = getManifestCommand(tool.id);
@@ -1461,6 +1466,77 @@ export const tldrFlywheelTools: TldrFlywheelTool[] = _tldrFlywheelTools.map(
     };
   },
 );
+
+// The manifest uses kebab-case lucide names ("file-text"); the TL;DR card's
+// icon map is keyed by PascalCase component names ("FileText").
+function manifestIconToComponentName(icon: string): string {
+  return icon
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
+
+// Manifest colours are single hex accents; the TL;DR cards paint Tailwind
+// gradient classes (see lib/colors.ts). Map each accent to the closest
+// gradient already defined there.
+const MANIFEST_ACCENT_TO_GRADIENT: Record<string, string> = {
+  "#0EA5E9": "from-sky-500 to-blue-600",
+  "#06B6D4": "from-cyan-500 to-blue-600",
+  "#059669": "from-emerald-500 to-teal-600",
+  "#10B981": "from-green-500 to-emerald-600",
+  "#14B8A6": "from-teal-500 to-emerald-600",
+  "#6366F1": "from-indigo-500 to-blue-600",
+  "#7C3AED": "from-purple-500 to-violet-600",
+  "#8B5CF6": "from-violet-500 to-purple-600",
+  "#D946EF": "from-pink-500 to-fuchsia-600",
+  "#EC4899": "from-pink-500 to-rose-600",
+  "#F43F5E": "from-rose-500 to-pink-600",
+  "#DC2626": "from-red-500 to-rose-600",
+  "#EF4444": "from-red-500 to-orange-600",
+  "#F97316": "from-orange-500 to-amber-600",
+  "#F59E0B": "from-amber-500 to-orange-600",
+};
+
+// Auto-append manifest tools that have no hand-maintained entry, the same way
+// lib/commands.ts appends generated commands. Without this, every tool added to
+// acfs.manifest.yaml stays invisible on /tldr (which /tools now redirects to)
+// until someone remembers to write a card by hand. Hand entries win; these
+// only fill the gap with the manifest's own tagline/features/use cases.
+const _coveredModuleIds = new Set(
+  _tldrFlywheelTools
+    .map((tool) => getManifestTldr(tool.id)?.moduleId)
+    .filter((moduleId): moduleId is string => Boolean(moduleId)),
+);
+const _generatedExtras: TldrFlywheelTool[] = manifestTldrTools
+  .filter((gen) => !_coveredModuleIds.has(gen.moduleId))
+  .map((gen) => {
+    const cmd = manifestCommands.find((c) => c.moduleId === gen.moduleId);
+    return {
+      id: gen.id,
+      name: gen.displayName,
+      shortName: gen.shortName,
+      href: gen.href ?? "https://github.com/Dicklesworthstone",
+      icon: manifestIconToComponentName(gen.icon),
+      color: MANIFEST_ACCENT_TO_GRADIENT[gen.color.toUpperCase()] ?? "from-slate-500 to-gray-600",
+      category: "supporting",
+      stars: gen.stars,
+      cliName: cmd?.cliName,
+      commandExample: cmd?.commandExample,
+      whatItDoes: gen.tldrSnippet,
+      whyItsUseful: gen.tagline,
+      implementationHighlights: [],
+      synergies: [],
+      techStack: gen.techStack,
+      keyFeatures: gen.features,
+      useCases: gen.useCases,
+    };
+  });
+
+export const tldrFlywheelTools: TldrFlywheelTool[] = [
+  ..._mergedHandMaintainedTools,
+  ..._generatedExtras,
+];
 
 export const tldrPageData = {
   hero: {

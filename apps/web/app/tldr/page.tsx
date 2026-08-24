@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect } from "react";
 import { Copy, Check } from "lucide-react";
-import { motion, useReducedMotion, useInView } from "framer-motion";
+import { motion, useReducedMotion, useInView } from "@/components/motion";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { TldrHero } from "@/components/tldr/tldr-hero";
 import { TldrToolGrid } from "@/components/tldr/tldr-tool-grid";

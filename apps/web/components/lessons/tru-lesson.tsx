@@ -103,13 +103,13 @@ export function TruLesson() {
 
         <CodeBlock
           code={`# Convert a single file
-tru compress src/main.rs
+toon compress src/main.rs
 
 # Convert an entire directory
-tru compress src/
+toon compress src/
 
 # See token savings
-tru compress --stats src/main.rs
+toon compress --stats src/main.rs
 # Before: 2,847 tokens → After: 1,139 tokens (60% reduction)`}
           filename="Basic Usage"
         />
@@ -125,10 +125,10 @@ tru compress --stats src/main.rs
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'tru compress <file>', description: 'Compress a file to token-optimized format' },
-            { command: 'tru compress --stats <file>', description: 'Compress with token count comparison' },
-            { command: 'tru decompress <file>', description: 'Restore from compressed notation' },
-            { command: 'tru --help', description: 'Show all available options' },
+            { command: 'toon compress <file>', description: 'Compress a file to token-optimized format' },
+            { command: 'toon compress --stats <file>', description: 'Compress with token count comparison' },
+            { command: 'toon decompress <file>', description: 'Restore from compressed notation' },
+            { command: 'toon --help', description: 'Show all available options' },
           ]}
         />
       </Section>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useMemo, useState, useCallback } from "react";
-import { motion, useReducedMotion, useInView } from "framer-motion";
+import { motion, useReducedMotion, useInView } from "@/components/motion";
 import { cn } from "@/lib/utils";
 import { getColorDefinition } from "@/lib/colors";
 import type { TldrFlywheelTool } from "@/lib/tldr-content";

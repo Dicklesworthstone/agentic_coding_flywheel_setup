@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { motion, useReducedMotion, useInView, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion, useInView, AnimatePresence } from "@/components/motion";
 import { Cog, Zap, GitBranch, ArrowDown, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { tldrPageData } from "@/lib/tldr-content";

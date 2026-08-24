@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState, useCallback, useMemo } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "@/components/motion";
 import {
   ArrowUpRight,
   Star,
@@ -25,6 +25,27 @@ import {
   Image,
   ChevronRight,
   Terminal,
+  Activity,
+  BarChart,
+  Cpu,
+  FileJson,
+  FileText,
+  FlaskConical,
+  Globe,
+  KeyRound,
+  ListTodo,
+  Monitor,
+  Network,
+  PenTool,
+  Radio,
+  Shield,
+  Sparkles,
+  Bot,
+  HardDrive,
+  Package,
+  Power,
+  Repeat,
+  Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatStarCount, formatStarCountFull } from "@/lib/format-stars";
@@ -61,6 +82,31 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Cog,
   Image,
   Box,
+  // Every icon name used in lib/tldr-content.ts must appear here; anything
+  // missing silently renders as the generic Box fallback.
+  Activity,
+  BarChart,
+  Cpu,
+  FileJson,
+  FileText,
+  FlaskConical,
+  Globe,
+  KeyRound,
+  ListTodo,
+  Monitor,
+  Network,
+  PenTool,
+  Radio,
+  Shield,
+  Sparkles,
+  // Icons used by manifest-only tools auto-appended in lib/tldr-content.ts
+  // (kebab-case manifest names converted to these component names).
+  Bot,
+  HardDrive,
+  Package,
+  Power,
+  Repeat,
+  Save,
 };
 
 // =============================================================================

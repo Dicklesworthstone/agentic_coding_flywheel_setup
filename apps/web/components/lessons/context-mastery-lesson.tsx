@@ -80,18 +80,18 @@ export function ContextMasteryLesson() {
 
         <CodeBlock
           code={`# Compress a file before feeding to an agent
-tru compress src/auth/login.ts
+toon compress src/auth/login.ts
 # → Outputs TOON-encoded version using ~40% fewer tokens
 
 # Compress an entire directory
-tru compress src/ --recursive --output compressed/
+toon compress src/ --recursive --output compressed/
 
 # Check how many tokens you're saving
-tru stats src/auth/login.ts
+toon stats src/auth/login.ts
 # → Original: 2,847 tokens | Compressed: 1,423 tokens (50% reduction)
 
 # Pipe compressed output directly to an agent
-tru compress src/api/ --recursive | claude "Review this API code"`}
+toon compress src/api/ --recursive | claude "Review this API code"`}
           filename="TRU Compression"
         />
 
@@ -122,8 +122,8 @@ s2p src/ --include "*.ts" --show-tokens
 # Exclude test files and node_modules
 s2p src/ --include "*.ts" --exclude "*test*,*spec*"
 
-# Combine with TRU for maximum compression
-s2p src/api/ --include "*.ts" | tru compress -
+# Combine with TOON for maximum compression
+s2p src/api/ --include "*.ts" | toon compress -
 
 # Output to clipboard for pasting
 s2p src/components/ --include "*.tsx" --clipboard`}

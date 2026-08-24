@@ -98,6 +98,62 @@ export const TAILWIND_GRADIENTS: Record<string, ColorDefinition> = {
     primary: "#a855f7",
     rgb: "168, 85, 247",
   },
+  // Gradients used by lib/tldr-content.ts that previously fell through to the
+  // fuzzy first-colour match (or the violet default) in getColorDefinition.
+  "from-amber-500 to-yellow-600": {
+    from: "#f59e0b",
+    to: "#ca8a04",
+    primary: "#f59e0b",
+    rgb: "245, 158, 11",
+  },
+  "from-cyan-500 to-blue-600": {
+    from: "#06b6d4",
+    to: "#2563eb",
+    primary: "#06b6d4",
+    rgb: "6, 182, 212",
+  },
+  "from-cyan-500 to-teal-600": {
+    from: "#06b6d4",
+    to: "#0d9488",
+    primary: "#06b6d4",
+    rgb: "6, 182, 212",
+  },
+  "from-indigo-500 to-blue-600": {
+    from: "#6366f1",
+    to: "#2563eb",
+    primary: "#6366f1",
+    rgb: "99, 102, 241",
+  },
+  "from-pink-500 to-rose-600": {
+    from: "#ec4899",
+    to: "#e11d48",
+    primary: "#ec4899",
+    rgb: "236, 72, 153",
+  },
+  "from-red-500 to-orange-600": {
+    from: "#ef4444",
+    to: "#ea580c",
+    primary: "#ef4444",
+    rgb: "239, 68, 68",
+  },
+  "from-rose-500 to-pink-600": {
+    from: "#f43f5e",
+    to: "#db2777",
+    primary: "#f43f5e",
+    rgb: "244, 63, 94",
+  },
+  "from-slate-500 to-zinc-600": {
+    from: "#64748b",
+    to: "#52525b",
+    primary: "#64748b",
+    rgb: "100, 116, 139",
+  },
+  "from-yellow-400 to-orange-500": {
+    from: "#facc15",
+    to: "#f97316",
+    primary: "#facc15",
+    rgb: "250, 204, 21",
+  },
 };
 
 const DEFAULT_COLOR: ColorDefinition = {

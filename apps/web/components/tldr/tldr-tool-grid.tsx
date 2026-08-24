@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect, memo } from "react";
-import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion, AnimatePresence } from "@/components/motion";
 import { Layers, Wrench, Search, X, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isInteractiveKeyboardTarget } from "@/lib/utils";
 import { TldrToolCard } from "./tldr-tool-card";
 import type { TldrFlywheelTool } from "@/lib/tldr-content";
 
@@ -347,18 +347,22 @@ export function TldrToolGrid({ tools, className }: TldrToolGridProps) {
   // Keyboard shortcut: "/" to focus search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Leave browser/IME chords and typing inside other controls alone:
+      // Cmd+/ and Ctrl+/ are user shortcuts, and contenteditable/select
+      // targets are not caught by a tagName check.
+      if (e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const insideControl = isInteractiveKeyboardTarget(e.target);
       // Focus search on "/" key (when not in an input)
-      if (
-        e.key === "/" &&
-        !["INPUT", "TEXTAREA"].includes(
-          (e.target as HTMLElement)?.tagName ?? ""
-        )
-      ) {
+      if (e.key === "/" && !insideControl) {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
-      // Clear search on Escape
-      if (e.key === "Escape" && searchQuery) {
+      // Clear search on Escape, but only from the search box itself
+      if (
+        e.key === "Escape" &&
+        searchQuery &&
+        e.target === searchInputRef.current
+      ) {
         setSearchQuery("");
         searchInputRef.current?.blur();
       }
