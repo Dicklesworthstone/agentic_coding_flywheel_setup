@@ -775,7 +775,7 @@ offline_pack_installer_url_is_safe() {
     # Refuse credentials, query secrets, fragments, backslashes, whitespace,
     # and control characters rather than attempting lossy redaction.
     case "$rest" in
-        *'@'*|*'?'*|*'#'*|*'\'*|*[[:space:]]*) return 1 ;;
+        *'@'*|*'?'*|*'#'*|*'\\'*|*[[:space:]]*) return 1 ;;
     esac
     [[ "$rest" != *$'\n'* && "$rest" != *$'\r'* && "$rest" != *$'\t'* ]]
 }

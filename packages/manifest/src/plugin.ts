@@ -364,11 +364,20 @@ function inspectPluginInputStructure(
       }
       if (candidate.value === null || typeof candidate.value !== 'object') continue;
       if (seen.has(candidate.value)) {
-        return refuse('Plugin manifest must not contain cyclic object references', candidate.path);
+        return refuse(
+          'Plugin manifest must not contain repeated or cyclic object references',
+          candidate.path
+        );
       }
       seen.add(candidate.value);
 
       const arrayValue = Array.isArray(candidate.value);
+      if (arrayValue && candidate.value.length > MAX_PLUGIN_JSON_NODES) {
+        return refuse(
+          `Plugin manifest array exceeds the maximum item count of ${MAX_PLUGIN_JSON_NODES}`,
+          candidate.path
+        );
+      }
       if (!arrayValue) {
         const prototype = Object.getPrototypeOf(candidate.value);
         if (prototype !== Object.prototype && prototype !== null) {

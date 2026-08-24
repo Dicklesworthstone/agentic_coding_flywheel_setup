@@ -1369,7 +1369,7 @@ run_as_target_runner() (
     _acfs_exported_names="$(builtin compgen -e || builtin true)"
     if [[ -n "$_acfs_exported_names" ]]; then
         while builtin read -r _acfs_exported_name; do
-            if ! builtin export -n "$_acfs_exported_name" 2>/dev/null; then
+            if ! builtin export -n "${_acfs_exported_name?}" 2>/dev/null; then
                 builtin printf 'ERROR: unable to isolate exported environment entry: %s\n' \
                     "$_acfs_exported_name" >&2
                 return 1
@@ -1383,7 +1383,7 @@ run_as_target_runner() (
     _acfs_function_names="$(builtin compgen -A function || builtin true)"
     if [[ -n "$_acfs_function_names" ]]; then
         while builtin read -r _acfs_function_name; do
-            if ! builtin export -n -f "$_acfs_function_name" 2>/dev/null; then
+            if ! builtin export -n -f "${_acfs_function_name?}" 2>/dev/null; then
                 builtin printf 'ERROR: unable to isolate exported shell function: %s\n' \
                     "$_acfs_function_name" >&2
                 return 1
