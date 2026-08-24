@@ -173,10 +173,18 @@ if [[ "$mismatches" -gt 0 ]]; then
     ( cd packages/manifest && bun run generate >>"$LOG_FILE" 2>&1 ) \
         || fail_closed "regeneration after checksum update failed"
 
-    # Tracked files only; stray untracked files in the generated dirs must
-    # never ride along in an automated commit.
+    # Tracked files plus brand-new generator outputs only; other stray
+    # untracked files in the generated dirs must never ride along in an
+    # automated commit. Without the new-file pass, a first-time generated
+    # script (new manifest category) would stay untracked and the drift
+    # check would wedge the monitor on every run.
     git add checksums.yaml 2>/dev/null || true
     git add -u scripts/generated/ apps/web/lib/generated/ 2>/dev/null || true
+    while IFS= read -r new_generated; do
+        case "$new_generated" in
+            scripts/generated/*.sh|apps/web/lib/generated/*.ts) git add -- "$new_generated" 2>/dev/null || true ;;
+        esac
+    done < <(git ls-files --others --exclude-standard -- scripts/generated apps/web/lib/generated 2>/dev/null)
     if git diff --cached --quiet; then
         log "no staged changes after regeneration (already current)"
     else
