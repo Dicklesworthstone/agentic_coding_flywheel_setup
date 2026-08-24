@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# Unit tests for offline artifact pack builder CLI
+# Unit tests for verified installer entrypoint cache builder CLI
 # ============================================================
 
 set -euo pipefail
@@ -84,11 +84,9 @@ write_fixture_source() {
     local artifact_sha=""
     local artifact_url=""
 
-    mkdir -p "$source_root/scripts/lib" "$source_root/scripts/generated" "$source_root/acfs/zsh"
+    mkdir -p "$source_root/scripts/lib"
     printf '9.9.9-test\n' > "$source_root/VERSION"
-    printf '# fixture lib\n' > "$source_root/scripts/lib/fixture.sh"
-    printf '# fixture generated\n' > "$source_root/scripts/generated/manifest_index.sh"
-    printf '# fixture acfs config\n' > "$source_root/acfs/zsh/acfs.zshrc"
+    printf '# fixture cache builder\n' > "$source_root/scripts/lib/offline_artifact_pack.sh"
     printf '#!/usr/bin/env bash\nprintf "rch fixture installer\\n"\n' > "$artifact_file"
     artifact_sha="$(sha256sum "$artifact_file" | awk '{print $1}')"
     artifact_url="https://fixture.test/$name/rch-install.sh"
@@ -152,7 +150,7 @@ run_pack() {
     local status=0
 
     set +e
-    output="$(ACFS_OFFLINE_PACK_CURL_BIN="$ARTIFACT_DIR/bin/curl" ACFS_OFFLINE_PACK_TEST_ARTIFACTS_DIR="$ARTIFACT_DIR" PATH="$ARTIFACT_DIR/bin:$PATH" bash "$OFFLINE_PACK_SH" "$@" 2>&1)"
+    output="$(ACFS_OFFLINE_PACK_TEST_MODE=true ACFS_OFFLINE_PACK_CURL_BIN="$ARTIFACT_DIR/bin/curl" ACFS_OFFLINE_PACK_TEST_ARTIFACTS_DIR="$ARTIFACT_DIR" PATH="$ARTIFACT_DIR/bin:$PATH" bash "$OFFLINE_PACK_SH" "$@" 2>&1)"
     status=$?
     set -e
 
@@ -170,10 +168,13 @@ test_dry_run_json_uses_manifest_and_checksums() {
 
     [[ "$status" -eq 0 ]] || return 1
     jq -e '
-      .schema == "acfs.offline-artifact-pack-build.v1" and
+      .schema == "acfs.verified-installer-entrypoint-cache-build.v1" and
       .status == "pass" and
       .mode == "dry-run" and
-      .pack.schema == "acfs.offline-artifact-pack.v1" and
+      .pack.schema == "acfs.verified-installer-entrypoint-cache.v1" and
+      .pack.packScope == "verified_installer_entrypoints" and
+      .pack.executionNetworkMode == "required" and
+      .pack.transitiveClosure == "not_bundled" and
       .pack.downloadTimeoutSeconds == 60 and
       .pack.modules[0].moduleId == "stack.rch" and
       .pack.modules[0].verifiedInstallerKey == "rch" and
@@ -206,30 +207,35 @@ test_build_writes_manifest_and_verified_artifact() {
 
     output="$(run_pack build build --json --source-root "$source_root" --output "$output_dir" --module stack.rch --expires-days 7)"
     status="$(cat "$ARTIFACT_DIR/build.exit")"
-    manifest="$output_dir/acfs-offline-pack/manifest.json"
-    artifact_path="$output_dir/acfs-offline-pack/artifacts/stack.rch/rch-install.sh"
+    manifest="$output_dir/acfs-installer-cache/manifest.json"
+    artifact_path="$output_dir/acfs-installer-cache/artifacts/stack.rch/rch-install.sh"
     expected_sha="$(sha256sum "$artifact_path" | awk '{print $1}')"
 
     [[ "$status" -eq 0 ]] || return 1
     [[ -f "$manifest" ]] || return 1
     [[ -f "$artifact_path" ]] || return 1
-    [[ -d "$output_dir/acfs-offline-pack/scripts/lib" ]] || return 1
-    [[ -d "$output_dir/acfs-offline-pack/scripts/generated" ]] || return 1
-    [[ -d "$output_dir/acfs-offline-pack/acfs" ]] || return 1
+    [[ ! -e "$output_dir/acfs-installer-cache/scripts" ]] || return 1
+    [[ ! -e "$output_dir/acfs-installer-cache/acfs" ]] || return 1
     jq -e --arg expectedSha "$expected_sha" '
-      .schema == "acfs.offline-artifact-pack.v1" and
-      .packMode == "complete" and
+      .schema == "acfs.verified-installer-entrypoint-cache.v1" and
+      .packMode == "entrypoint-cache" and
+      .packScope == "verified_installer_entrypoints" and
+      .policy.executionNetworkMode == "required" and
+      .policy.transitiveClosure == "not_bundled" and
+      .policy.bootstrap == "not_bundled" and
       .policy.verifiedInstallerPolicy == "must_match_checksums_yaml" and
       .acfs.sourceRef == "unknown" and
       .acfs.sourceCommit == "unknown" and
       .acfs.sourceTreeState == "unversioned" and
       .modules[0].id == "stack.rch" and
+      .modules[0].coverage == "entrypoint_cached" and
       .modules[0].verifiedInstallerKey == "rch" and
+      .artifacts[0].kind == "verified_installer_entrypoint" and
       .artifacts[0].sha256 == $expectedSha and
       .artifacts[0].path == "artifacts/stack.rch/rch-install.sh" and
       .failures == []
     ' "$manifest" >/dev/null || return 1
-    jq -e '.status == "pass" and .output.packMode == "complete"' <<<"$output" >/dev/null || return 1
+    jq -e '.status == "pass" and .output.packMode == "entrypoint-cache" and .output.published == true and .output.stagingRoot == ""' <<<"$output" >/dev/null || return 1
 
     pass "build_writes_manifest_and_verified_artifact"
 }
@@ -240,9 +246,9 @@ test_build_refuses_dirty_versioned_source_surfaces() {
     output_dir="$ARTIFACT_DIR/dirty-source/output"
 
     git -C "$source_root" init -q -b main
-    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs
+    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib/offline_artifact_pack.sh
     git -C "$source_root" -c user.name=ACFS -c user.email=acfs@example.invalid commit -q -m fixture
-    printf '# uncommitted runtime mutation\n' >> "$source_root/scripts/lib/fixture.sh"
+    printf '# uncommitted builder mutation\n' >> "$source_root/scripts/lib/offline_artifact_pack.sh"
 
     output="$(run_pack dirty-source build --json --source-root "$source_root" --output "$output_dir" --module stack.rch)"
     status="$(cat "$ARTIFACT_DIR/dirty-source.exit")"
@@ -264,7 +270,7 @@ test_build_binds_clean_versioned_source_commit() {
     manifest="$output_dir/acfs-offline-pack/manifest.json"
 
     git -C "$source_root" init -q -b main
-    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs
+    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib/offline_artifact_pack.sh
     git -C "$source_root" -c user.name=ACFS -c user.email=acfs@example.invalid commit -q -m fixture
     expected_commit="$(git -C "$source_root" rev-parse HEAD)"
 
@@ -285,11 +291,11 @@ test_build_does_not_bind_custom_inputs_to_source_commit() {
     local source_root output_dir output status manifest custom_manifest
     source_root="$(write_fixture_source custom-inputs valid)"
     output_dir="$ARTIFACT_DIR/custom-inputs/output"
-    manifest="$output_dir/acfs-offline-pack/manifest.json"
+    manifest="$output_dir/acfs-installer-cache/manifest.json"
     custom_manifest="$ARTIFACT_DIR/custom-inputs/reviewed.manifest.yaml"
 
     git -C "$source_root" init -q -b main
-    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs
+    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib/offline_artifact_pack.sh
     git -C "$source_root" -c user.name=ACFS -c user.email=acfs@example.invalid commit -q -m fixture
     cp "$source_root/acfs.manifest.yaml" "$custom_manifest"
 
@@ -310,11 +316,12 @@ test_build_does_not_bind_custom_inputs_to_source_commit() {
     pass "build_does_not_bind_custom_inputs_to_source_commit"
 }
 
-test_build_refuses_symlinked_source_payload() {
+test_build_refuses_symlinked_source_input() {
     local source_root output_dir output status
     source_root="$(write_fixture_source symlink-source valid)"
     output_dir="$ARTIFACT_DIR/symlink-source/output"
-    ln -s /etc/passwd "$source_root/acfs/zsh/external-source"
+    mv "$source_root/VERSION" "$source_root/VERSION.real"
+    ln -s VERSION.real "$source_root/VERSION"
 
     output="$(run_pack symlink-source build --json --source-root "$source_root" --output "$output_dir" --module stack.rch)"
     status="$(cat "$ARTIFACT_DIR/symlink-source.exit")"
@@ -326,7 +333,7 @@ test_build_refuses_symlinked_source_payload() {
     ' <<<"$output" >/dev/null || return 1
     [[ ! -e "$output_dir" ]] || return 1
 
-    pass "build_refuses_symlinked_source_payload"
+    pass "build_refuses_symlinked_source_input"
 }
 
 test_build_ignores_path_poisoned_pack_tools() {
@@ -372,7 +379,8 @@ test_checksum_mismatch_fails_closed() {
       .status == "fail" and
       any(.validation.errors[]; contains("pack_hash_mismatch"))
     ' <<<"$output" >/dev/null || return 1
-    [[ ! -f "$output_dir/acfs-offline-pack/manifest.json" ]] || return 1
+    [[ ! -e "$output_dir/acfs-installer-cache" ]] || return 1
+    jq -e '.output.published == false and .output.manifestPath == ""' <<<"$output" >/dev/null || return 1
 
     pass "checksum_mismatch_fails_closed"
 }
@@ -476,7 +484,7 @@ test_best_effort_records_download_failure() {
 
     output="$(run_pack best-effort build --json --best-effort --source-root "$source_root" --output "$output_dir" --module stack.rch)"
     status="$(cat "$ARTIFACT_DIR/best-effort.exit")"
-    manifest="$output_dir/acfs-offline-pack/manifest.json"
+    manifest="$output_dir/acfs-installer-cache/manifest.json"
 
     [[ "$status" -eq 0 ]] || return 1
     [[ -f "$manifest" ]] || return 1
@@ -520,7 +528,7 @@ run_all_tests() {
         test_build_refuses_dirty_versioned_source_surfaces
         test_build_binds_clean_versioned_source_commit
         test_build_does_not_bind_custom_inputs_to_source_commit
-        test_build_refuses_symlinked_source_payload
+        test_build_refuses_symlinked_source_input
         test_build_ignores_path_poisoned_pack_tools
         test_checksum_mismatch_fails_closed
         test_unknown_module_is_refused
@@ -534,7 +542,7 @@ run_all_tests() {
 
     for test_name in "${tests[@]}"; do
         if ! "$test_name"; then
-            fail "$test_name" "Offline artifact pack builder contract failed"
+            fail "$test_name" "Installer entrypoint cache builder contract failed"
         fi
     done
 

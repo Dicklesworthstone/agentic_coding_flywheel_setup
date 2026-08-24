@@ -808,6 +808,7 @@ acfs_offline_pack_validate_manifest() {
     local pack_checksums_actual=""
     local manifest_declared=""
     local manifest_actual=""
+    local pack_manifest_actual=""
     local current_manifest=""
 
     jq_bin="$(acfs_offline_pack_jq_bin)" || {
@@ -929,8 +930,8 @@ acfs_offline_pack_validate_manifest() {
         return 1
     fi
 
-    checksums_declared="$("$jq_bin" -r '.acfs.checksumsYamlSha256 // .acfs.checksumsSha256 // empty' "$manifest_file")"
-    if [[ -z "$checksums_declared" || -z "${CHECKSUMS_FILE:-}" || ! -r "${CHECKSUMS_FILE:-}" ]]; then
+    checksums_declared="$("$jq_bin" -r '.acfs.checksumsYamlSha256' "$manifest_file")"
+    if [[ -z "$checksums_declared" || -z "${CHECKSUMS_FILE:-}" || ! -f "${CHECKSUMS_FILE:-}" || -L "${CHECKSUMS_FILE:-}" || ! -r "${CHECKSUMS_FILE:-}" ]]; then
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "current checksums.yaml is unavailable for pack comparison"
         return 1
     fi
@@ -957,6 +958,19 @@ acfs_offline_pack_validate_manifest() {
     fi
 
     manifest_declared="$("$jq_bin" -r '.acfs.manifestSha256' "$manifest_file")"
+    if [[ ! -f "$pack_root/acfs.manifest.yaml" || -L "$pack_root/acfs.manifest.yaml" || ! -r "$pack_root/acfs.manifest.yaml" ]] \
+        || ! acfs_offline_pack_artifact_is_contained "$pack_root" "$pack_root/acfs.manifest.yaml"; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "pack copy of acfs.manifest.yaml is missing or unsafe"
+        return 1
+    fi
+    pack_manifest_actual="$(calculate_file_sha256 "$pack_root/acfs.manifest.yaml")" || {
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to checksum packed acfs.manifest.yaml"
+        return 1
+    }
+    if [[ "$pack_manifest_actual" != "$manifest_declared" ]]; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "pack copy of acfs.manifest.yaml does not match manifest.json"
+        return 1
+    fi
     current_manifest="$(acfs_offline_pack_current_manifest_file 2>/dev/null || true)"
     if [[ -z "$current_manifest" || ! -f "$current_manifest" || -L "$current_manifest" ]]; then
         acfs_offline_pack_error "pack_malformed_manifest" "$name" "current acfs.manifest.yaml is unavailable for cache comparison"
