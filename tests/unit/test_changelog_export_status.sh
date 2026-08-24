@@ -10767,6 +10767,27 @@ JSON
     cleanup_mock_env
 }
 
+test_onboard_auth_checks_reject_unresolved_shell_config_credentials() {
+    setup_installed_layout_env
+
+    local shell_config="$TEST_TARGET_HOME/.zshrc.local"
+    cat > "$shell_config" <<'EOF'
+export VERCEL_TOKEN="${VERCEL_TOKEN:-fallback-token}"
+EOF
+
+    local output=""
+    output=$(HOME="$TEST_ROOT_HOME" ACFS_HOME="$TEST_INSTALLED_ACFS" TEST_SHELL_CONFIG="$shell_config" \
+        bash -lc 'source "'"$ONBOARD_SH"'" help >/dev/null; if get_configured_secret VERCEL_TOKEN "$TEST_SHELL_CONFIG" >/dev/null; then printf "accepted\n"; else printf "rejected\n"; fi')
+
+    if [[ "$output" == "rejected" ]]; then
+        harness_pass "onboard auth checks reject unresolved shell config credentials"
+    else
+        harness_fail "onboard auth checks reject unresolved shell config credentials" "$output"
+    fi
+
+    cleanup_mock_env
+}
+
 test_onboard_auth_checks_ignore_poisoned_current_path_and_env_bin_dir() {
     setup_installed_layout_env
 
@@ -11819,6 +11840,7 @@ main() {
     test_onboard_auth_checks_use_installed_target_home_under_root_home || true
     test_onboard_auth_checks_find_target_binaries_outside_current_path || true
     test_onboard_auth_checks_reject_placeholder_credentials || true
+    test_onboard_auth_checks_reject_unresolved_shell_config_credentials || true
     test_onboard_auth_checks_ignore_poisoned_current_path_and_env_bin_dir || true
     test_onboard_auth_checks_ignore_other_user_home_bin_dir_from_state || true
     test_onboard_auth_checks_use_explicit_target_user_when_no_authoritative_runtime_home_exists || true

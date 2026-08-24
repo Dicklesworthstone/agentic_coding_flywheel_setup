@@ -42,7 +42,7 @@ fi
 set -euo pipefail
 
 # Root execution must not resolve helpers from target-user or locally managed
-# prefixes. User-scoped tools are located explicitly by onboard_runtime_binary_path.
+# prefixes. Only unprivileged callers may resolve user-scoped runtime tools.
 readonly _ONBOARD_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 if [[ "$EUID" -eq 0 ]]; then
     export PATH="$_ONBOARD_PRIVILEGED_PATH"
@@ -765,6 +765,16 @@ onboard_runtime_binary_path() {
         *[!A-Za-z0-9._+-]*) return 1 ;;
     esac
 
+    # A root-owned onboard process must never execute a binary from the target
+    # user's writable home. Auth checks are advisory, so failing closed as "not
+    # installed" is safer than crossing that privilege boundary. Installer
+    # verification and normal onboarding run as the target user and retain the
+    # user-scoped search below.
+    if [[ "$EUID" -eq 0 ]]; then
+        onboard_system_binary_path "$name"
+        return $?
+    fi
+
     runtime_home="$(onboard_effective_runtime_home 2>/dev/null || true)"
     [[ -n "$runtime_home" ]] || return 1
 
@@ -1193,6 +1203,20 @@ normalize_config_value() {
     printf '%s\n' "$value"
 }
 
+has_unresolved_shell_expression() {
+    local normalized
+    normalized="$(normalize_config_value "${1-}")"
+
+    # Startup files are parsed as text, not sourced. A dollar expansion or
+    # command substitution therefore remains unresolved and is not evidence of
+    # an actual credential. Environment values are checked separately after the
+    # caller's shell has already performed any legitimate expansion.
+    case "$normalized" in
+        *'$'*|*'`'*) return 0 ;;
+    esac
+    return 1
+}
+
 is_placeholder_secret() {
     local normalized
     normalized="$(normalize_config_value "${1-}")"
@@ -1324,7 +1348,7 @@ read_configured_var_from_file() {
         fi
     done < "$file_path"
 
-    if has_nonblank_value "$configured_value"; then
+    if has_nonblank_value "$configured_value" && ! has_unresolved_shell_expression "$configured_value"; then
         printf '%s\n' "$configured_value"
         return 0
     fi

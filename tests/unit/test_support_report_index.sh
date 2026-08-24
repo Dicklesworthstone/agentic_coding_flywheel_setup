@@ -186,9 +186,17 @@ test_manifest_redaction_proof_sanitizes_bad_sources() {
       .diagnostics.swarm_inventory.records.raw_count == 2 and
       .diagnostics.swarm_inventory.records.sanitized_count == 2 and
       .diagnostics.swarm_inventory.records.raw_values_collected == false and
-      .diagnostics.swarm_inventory.raw_hosts_collected == false and
+      .diagnostics.swarm_inventory.paths_redacted == false and
+      .diagnostics.swarm_inventory.raw_hosts_collected == true and
+      .diagnostics.swarm_inventory.raw_paths_collected == true and
       (.diagnostics.swarm_inventory.redaction.categories | index("token_like_notes")) and
-      .diagnostics.environment.redaction.raw_values_collected == false
+      .diagnostics.environment.paths_redacted == false and
+      .diagnostics.environment.raw_hosts_collected == true and
+      .diagnostics.environment.raw_paths_collected == true and
+      .diagnostics.environment.redaction.raw_values_collected == false and
+      .redaction.identity_scan.status == "not_run" and
+      .redaction.identity_scan.raw_hostname_absent == false and
+      .redaction.identity_scan.raw_home_paths_absent == false
     ' "$manifest" >/dev/null || return 1
 
     assert_not_contains "$manifest" "prod-controller.example.com" || return 1

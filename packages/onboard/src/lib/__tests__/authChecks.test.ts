@@ -457,6 +457,38 @@ describe('authChecks', () => {
     expect(checks.checkVercel()).toEqual({ authenticated: false });
   });
 
+  test.each([
+    'export VERCEL_TOKEN=$VERCEL_TOKEN',
+    'export VERCEL_TOKEN="${VERCEL_TOKEN:-fallback}"',
+    'export VERCEL_TOKEN=$(read-token)',
+    'export VERCEL_TOKEN=`read-token`',
+  ])('checkVercel rejects unresolved shell config expression: %s', (assignment) => {
+    const configPath = path.join(HOME, '.zshrc.local');
+    const checks = createAuthChecks(
+      makeDeps({
+        commandExists: (command) => command === 'vercel',
+        existsSync: (filePath) => filePath === configPath,
+        readFileSync: () => assignment,
+      }),
+    );
+
+    expect(checks.checkVercel()).toEqual({ authenticated: false });
+  });
+
+  test('checkVercel treats a later unresolved shell expression as the effective assignment', () => {
+    const configPath = path.join(HOME, '.zshrc.local');
+    const checks = createAuthChecks(
+      makeDeps({
+        commandExists: (command) => command === 'vercel',
+        existsSync: (filePath) => filePath === configPath,
+        readFileSync: () =>
+          ['export VERCEL_TOKEN=vercel-token', 'export VERCEL_TOKEN=$LATER_TOKEN'].join('\n'),
+      }),
+    );
+
+    expect(checks.checkVercel()).toEqual({ authenticated: false });
+  });
+
   test('checkSupabase returns authenticated with access token file', () => {
     const tokenPath = path.join(HOME, '.supabase', 'access-token');
     const checks = createAuthChecks(

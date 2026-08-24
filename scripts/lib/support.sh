@@ -976,20 +976,31 @@ support_manifest_diagnostic_json() {
             elif type == "object" then ([paths(scalars)] | length)
             else 0
             end;
+        def has_unredacted_string_field($pattern):
+            . as $root
+            | any(paths(strings) as $path;
+                (($path[-1] | tostring | test($pattern; "i")) and
+                 (($root | getpath($path) | startswith("<REDACTED:")) | not))
+              );
+        def has_raw_host_field:
+            has_unredacted_string_field("^(host|hostname|host_name|ip|ip_address|address|ssh_user)$");
+        def has_raw_path_field:
+            has_unredacted_string_field("^(home|acfs_home|home_path|path|cwd|working_directory|project_key|repo_path|ssh_key_path)$");
         def paths_redacted_value:
-            if (.redaction.paths_redacted | type) == "boolean" then .redaction.paths_redacted
+            if has_raw_path_field then false
+            elif (.redaction.paths_redacted | type) == "boolean" then .redaction.paths_redacted
             else false
             end;
         def raw_hosts_collected_value:
-            if (.redaction.raw_hosts_collected | type) == "boolean" then .redaction.raw_hosts_collected
+            if has_raw_host_field then true
+            elif (.redaction.raw_hosts_collected | type) == "boolean" then .redaction.raw_hosts_collected
             elif (.inventory.raw_hosts_collected | type) == "boolean" then .inventory.raw_hosts_collected
-            elif $label == "environment" then
-                ((.hostname | type) == "string" and (.hostname | startswith("<REDACTED:") | not))
             elif $label == "swarm_inventory" then true
             else false
             end;
         def raw_paths_collected_value:
-            if (.redaction.raw_paths_collected | type) == "boolean" then .redaction.raw_paths_collected
+            if has_raw_path_field then true
+            elif (.redaction.raw_paths_collected | type) == "boolean" then .redaction.raw_paths_collected
             elif $label == "versions" then false
             else true
             end;

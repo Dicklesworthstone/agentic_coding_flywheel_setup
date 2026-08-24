@@ -2150,7 +2150,7 @@ record_change() {
             [[ "$line_cnt" =~ ^[0-9]+$ ]] && max_seq=$((10#$line_cnt))
         fi
     fi
-    for existing_id in "${!ACFS_CHANGE_RECORDS[@]}"; do
+    for existing_id in "${ACFS_CHANGE_ORDER[@]}"; do
         if [[ "$existing_id" =~ ^chg_([0-9]{1,18})$ ]]; then
             local in_mem_seq=$((10#${BASH_REMATCH[1]}))
             if (( in_mem_seq > max_seq )); then
@@ -2281,19 +2281,14 @@ undo_change() {
         return 1
     fi
 
-    # Load from file if not in memory
-    if [[ -z "${ACFS_CHANGE_RECORDS["$change_id"]:-}" ]]; then
-        local record
-        record=$(jq -c --arg id "$change_id" 'select(.id == $id)' \
-            "$ACFS_CHANGES_FILE" 2>/dev/null | tail -1)
-        if [[ -z "$record" ]]; then
-            log_error "Unknown change ID: $change_id"
-            return 1
-        fi
-        ACFS_CHANGE_RECORDS["$change_id"]="$record"
+    # Load change record directly from journal
+    local record=""
+    record=$(jq -c --arg id "$change_id" 'select(.id == $id)' \
+        "$ACFS_CHANGES_FILE" 2>/dev/null | tail -1)
+    if [[ -z "$record" ]]; then
+        log_error "Unknown change ID: $change_id"
+        return 1
     fi
-
-    local record="${ACFS_CHANGE_RECORDS["$change_id"]}"
 
     # --force may override anti-clobber and backup availability checks, but it
     # must never turn untrusted journal bytes into an executable shell command.
@@ -2625,7 +2620,6 @@ undo_change() {
         log_error "Undo state remains pending; inspect before retrying this change"
         return 1
     fi
-    ACFS_CHANGE_RECORDS["$change_id"]="$updated_record"
 
     log_info "[UNDO] Successfully reverted: $change_id"
     return 0
@@ -2654,7 +2648,9 @@ rollback_all_on_failure() {
     # Undo in reverse order
     for ((i=${#ACFS_CHANGE_ORDER[@]}-1; i>=0; i--)); do
         local change_id="${ACFS_CHANGE_ORDER[$i]}"
-        local record="${ACFS_CHANGE_RECORDS["$change_id"]}"
+        local record=""
+        record=$(jq -c --arg id "$change_id" 'select(.id == $id)' \
+            "$ACFS_CHANGES_FILE" 2>/dev/null | tail -1)
         local desc
         desc=$(echo "$record" | jq -r '.description')
 
@@ -2706,7 +2702,9 @@ print_undo_summary() {
     printf "%-10s %-12s %-10s %-50s\n" "----------" "------------" "----------" "--------------------------------------------------"
 
     for change_id in "${ACFS_CHANGE_ORDER[@]}"; do
-        local record="${ACFS_CHANGE_RECORDS["$change_id"]}"
+        local record=""
+        record=$(jq -c --arg id "$change_id" 'select(.id == $id)' \
+            "$ACFS_CHANGES_FILE" 2>/dev/null | tail -1)
         local desc
         desc=$(echo "$record" | jq -r '.description' | cut -c1-50)
         local cat

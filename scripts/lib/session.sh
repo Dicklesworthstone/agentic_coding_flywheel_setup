@@ -111,6 +111,21 @@ fi
 # VALIDATION
 # ============================================================
 
+readonly ACFS_SESSION_ID_MAX_LENGTH=128
+
+acfs_session_validate_id() {
+    local session_id="${1:-}"
+    local label="${2:-Session ID}"
+
+    if [[ -z "$session_id" ]] || [[ ${#session_id} -gt $ACFS_SESSION_ID_MAX_LENGTH ]] ||
+        [[ ! "$session_id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+        log_error "$label must be 1-${ACFS_SESSION_ID_MAX_LENGTH} characters using only letters, digits, '_' or '-'"
+        return 1
+    fi
+
+    return 0
+}
+
 acfs_session_system_binary_path() {
     local name="${1:-}"
     local candidate=""
@@ -178,6 +193,15 @@ validate_session_export() {
         and (.agent | type == "string" and test("\\S"))
     ' "$file" >/dev/null 2>&1; then
         log_error "Invalid session export: missing required fields (schema_version, session_id, agent)"
+        return 1
+    fi
+
+    local session_id
+    session_id="$(acfs_session_jq -r '.session_id' "$file")" || {
+        log_error "Invalid session export: unable to read session_id"
+        return 1
+    }
+    if ! acfs_session_validate_id "$session_id" "Session export ID"; then
         return 1
     fi
 
@@ -319,14 +343,91 @@ readonly OPTIONAL_REDACT_PATTERNS=(
     '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
 )
 
+readonly ACFS_PRIVATE_KEY_PEM_PATTERN='-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----'
+
+acfs_session_redact_private_key_blocks() {
+    local awk_bin=""
+
+    awk_bin="$(acfs_session_system_binary_path awk 2>/dev/null || true)"
+    if [[ -z "$awk_bin" ]]; then
+        log_error "awk is required for private-key redaction but not installed"
+        return 1
+    fi
+
+    "$awk_bin" '
+        BEGIN {
+            in_private_key = 0
+            begin_pattern = "-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----"
+            end_pattern = "-----END ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----"
+        }
+        {
+            upper_line = toupper($0)
+            if (in_private_key) {
+                if (upper_line ~ end_pattern) {
+                    in_private_key = 0
+                }
+                next
+            }
+            if (upper_line ~ begin_pattern) {
+                print "[PRIVATE_KEY_REDACTED]"
+                if (upper_line !~ end_pattern) {
+                    in_private_key = 1
+                }
+                next
+            }
+            print
+        }
+    '
+}
+
+acfs_session_assert_no_private_key_material() {
+    local file="${1:-}"
+    local grep_bin=""
+    local grep_status=0
+
+    if [[ ! -f "$file" ]] || [[ -L "$file" ]]; then
+        log_error "Cannot verify private-key redaction for unsafe file: $file"
+        return 1
+    fi
+
+    grep_bin="$(acfs_session_system_binary_path grep 2>/dev/null || true)"
+    if [[ -z "$grep_bin" ]]; then
+        log_error "grep is required to verify private-key redaction but not installed"
+        return 1
+    fi
+
+    LC_ALL=C "$grep_bin" -Eiq -- "$ACFS_PRIVATE_KEY_PEM_PATTERN" "$file" 2>/dev/null || grep_status=$?
+    case "$grep_status" in
+        0)
+            log_error "Private-key material remains after session sanitization; refusing output"
+            return 1
+            ;;
+        1)
+            return 0
+            ;;
+        *)
+            log_error "Failed to verify session output for private-key material"
+            return 1
+            ;;
+    esac
+}
+
 # Sanitize content by applying redaction patterns
 # Usage: sanitize_content [file|content] (or reads from stdin)
 # Returns: sanitized content via stdout
 sanitize_content() {
     local sed_flags="g"
+    local sed_bin=""
+    local pipeline_status=0
+
+    sed_bin="$(acfs_session_system_binary_path sed 2>/dev/null || true)"
+    if [[ -z "$sed_bin" ]]; then
+        log_error "sed is required for session sanitization but not installed"
+        return 1
+    fi
 
     # BSD sed doesn't support case-insensitive replacement flags. Prefer gI when available.
-    if printf 'test' | sed -E 's/test/TEST/gI' >/dev/null 2>&1; then
+    if printf 'test' | "$sed_bin" -E 's/test/TEST/gI' >/dev/null 2>&1; then
         sed_flags="gI"
     fi
 
@@ -348,13 +449,24 @@ sanitize_content() {
 
     if [[ $# -gt 0 ]]; then
         if [[ -f "$1" ]]; then
-            sed -E "$sed_script" "$1"
+            (
+                set -o pipefail
+                acfs_session_redact_private_key_blocks < "$1" | "$sed_bin" -E "$sed_script"
+            ) || pipeline_status=$?
         else
-            printf '%s' "$1" | sed -E "$sed_script"
+            (
+                set -o pipefail
+                printf '%s' "$1" | acfs_session_redact_private_key_blocks | "$sed_bin" -E "$sed_script"
+            ) || pipeline_status=$?
         fi
     else
-        sed -E "$sed_script"
+        (
+            set -o pipefail
+            acfs_session_redact_private_key_blocks | "$sed_bin" -E "$sed_script"
+        ) || pipeline_status=$?
     fi
+
+    return "$pipeline_status"
 }
 
 acfs_session_remove_temp_files() {
@@ -406,8 +518,13 @@ sanitize_session_export() {
 def is_secret_key:
     test("(?i)password|secret|api_key|apikey|auth_token|access_token|private_key|secret_key");
 
+def redact_private_keys:
+    gsub("(?is)-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----.*?-----END ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----"; "[PRIVATE_KEY_REDACTED]") |
+    gsub("(?is)-----BEGIN ([A-Z0-9][A-Z0-9 -]* )?PRIVATE KEY( BLOCK)?-----.*$"; "[PRIVATE_KEY_REDACTED]");
+
 def sanitize_value:
     if type == "string" then
+        redact_private_keys |
         gsub("sk-[a-zA-Z0-9_-]{20,}"; "[REDACTED]") |
         gsub("sk-ant-[a-zA-Z0-9_-]{20,}"; "[REDACTED]") |
         gsub("AIza[a-zA-Z0-9_-]{35}"; "[REDACTED]") |
@@ -463,6 +580,11 @@ JQ_TAIL
         return 1
     fi
 
+    if ! acfs_session_assert_no_private_key_material "$tmpfile"; then
+        acfs_session_remove_temp_files "$tmpfile"
+        return 1
+    fi
+
     # Atomic replace
     if ! mv -- "$tmpfile" "$file"; then
         acfs_session_remove_temp_files "$tmpfile"
@@ -477,6 +599,10 @@ JQ_TAIL
 # Returns: 0 if secrets detected, 1 if clean
 contains_secrets() {
     local content="$1"
+
+    if printf '%s' "$content" | grep -qiE -- "$ACFS_PRIVATE_KEY_PEM_PATTERN" 2>/dev/null; then
+        return 0
+    fi
 
     # Match common key/value secrets (preserve case-insensitive detection).
     if printf '%s' "$content" | grep -qiE '(password|secret|api_key|apikey|auth_token|access_token)[\"[:space:]:=]+[\"'\''"]?[^[:space:]\"'\''"]{8,}[\"'\''"]?' 2>/dev/null; then
@@ -700,6 +826,14 @@ export_session() {
         return 1
     fi
 
+    case "$format" in
+        json|markdown) ;;
+        *)
+            log_error "Unsupported export format: $format (expected json or markdown)"
+            return 1
+            ;;
+    esac
+
     # Check CASS is installed
     if ! check_cass_installed; then
         log_error "CASS not installed"
@@ -742,6 +876,13 @@ export_session() {
                 status=1
             fi
         fi
+    fi
+
+    # Private keys are never exportable, even when the caller explicitly disables
+    # the broader token sanitizer. This postcondition catches redactor drift and
+    # prevents --no-sanitize from becoming a private-key exfiltration switch.
+    if [[ "$status" -eq 0 ]] && ! acfs_session_assert_no_private_key_material "$tmp_export"; then
+        status=1
     fi
 
     if [[ "$status" -eq 0 && -n "$output_file" ]]; then
@@ -972,7 +1113,101 @@ acfs_session_sanitize_abs_nonroot_path() {
     [[ -n "$path_value" ]] || return 1
     [[ "$path_value" == /* ]] || return 1
     [[ "$path_value" != "/" ]] || return 1
+    case "$path_value" in
+        *$'\n'*|*$'\r'*|*$'\t'*) return 1 ;;
+        */../*|*/..|*/./*|*/.) return 1 ;;
+    esac
     printf '%s\n' "$path_value"
+}
+
+acfs_session_child_path() {
+    local root="${1:-}"
+    local leaf="${2:-}"
+
+    root="$(acfs_session_sanitize_abs_nonroot_path "$root" 2>/dev/null || true)"
+    if [[ -z "$root" ]] || [[ -z "$leaf" ]] || [[ "$leaf" == "." ]] || [[ "$leaf" == ".." ]] ||
+        [[ "$leaf" == */* ]] || [[ "$leaf" == *$'\n'* ]] || [[ "$leaf" == *$'\r'* ]]; then
+        log_error "Refusing unsafe session storage path"
+        return 1
+    fi
+
+    printf '%s/%s\n' "$root" "$leaf"
+}
+
+acfs_session_assert_direct_child_path() {
+    local root="${1:-}"
+    local path="${2:-}"
+
+    root="$(acfs_session_sanitize_abs_nonroot_path "$root" 2>/dev/null || true)"
+    if [[ -z "$root" ]] || [[ -z "$path" ]] || [[ "${path%/*}" != "$root" ]]; then
+        log_error "Session path escapes its intended storage directory: $path"
+        return 1
+    fi
+
+    return 0
+}
+
+acfs_session_require_new_destination() {
+    local root="${1:-}"
+    local path="${2:-}"
+
+    acfs_session_assert_direct_child_path "$root" "$path" || return 1
+    if [[ -e "$path" ]] || [[ -L "$path" ]]; then
+        log_error "Refusing to overwrite existing session destination: $path"
+        return 1
+    fi
+
+    return 0
+}
+
+acfs_session_create_new_file() {
+    local root="${1:-}"
+    local path="${2:-}"
+
+    acfs_session_require_new_destination "$root" "$path" || return 1
+    if ! (set -o noclobber; : > "$path") 2>/dev/null; then
+        log_error "Failed to create new session destination without overwriting: $path"
+        return 1
+    fi
+    if [[ ! -f "$path" ]] || [[ -L "$path" ]]; then
+        log_error "Created session destination is not a safe regular file: $path"
+        return 1
+    fi
+
+    return 0
+}
+
+acfs_session_publish_new_file() {
+    local staged_path="${1:-}"
+    local root="${2:-}"
+    local destination="${3:-}"
+    local mv_bin=""
+
+    if [[ ! -f "$staged_path" ]] || [[ -L "$staged_path" ]]; then
+        log_error "Refusing to publish unsafe staged session file: $staged_path"
+        return 1
+    fi
+    acfs_session_require_new_destination "$root" "$destination" || return 1
+
+    mv_bin="$(acfs_session_system_binary_path mv 2>/dev/null || true)"
+    if [[ -z "$mv_bin" ]]; then
+        log_error "mv is required to publish imported sessions but not installed"
+        return 1
+    fi
+
+    # -n makes a destination race non-destructive. Some mv implementations return
+    # success when they skip an existing destination, so the staged-file check is
+    # the authoritative proof that publication actually occurred.
+    if ! "$mv_bin" -n -- "$staged_path" "$destination" 2>/dev/null || [[ -e "$staged_path" ]]; then
+        log_error "Refusing to overwrite existing session destination: $destination"
+        return 1
+    fi
+    if [[ ! -f "$destination" ]] || [[ -L "$destination" ]]; then
+        log_error "Published session destination is not a safe regular file: $destination"
+        return 1
+    fi
+
+    return 0
 }
 
 acfs_session_home_base() {

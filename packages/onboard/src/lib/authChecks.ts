@@ -112,6 +112,14 @@ function stripShellInlineComment(value: string): string {
   return value.trim();
 }
 
+function hasUnresolvedShellExpression(value: string): boolean {
+  // Shell startup files are inspected as text, never evaluated. Treat any
+  // expansion syntax as unresolved instead of mistaking the expression itself
+  // for a credential. Real environment values have already been expanded and
+  // are handled separately by getConfiguredSecret.
+  return value.includes('$') || value.includes('`');
+}
+
 const PLACEHOLDER_SECRETS = new Set([
   'your-token-here',
   'your_token_here',
@@ -174,7 +182,7 @@ function readConfiguredValueFromFile(
       const [, rawValue = ''] = match;
       const value = stripShellInlineComment(rawValue);
       const normalized = normalizeConfigValue(value);
-      configuredValue = normalized || null;
+      configuredValue = normalized && !hasUnresolvedShellExpression(normalized) ? normalized : null;
     }
 
     return configuredValue;
