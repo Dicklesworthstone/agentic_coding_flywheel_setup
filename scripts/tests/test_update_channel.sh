@@ -854,7 +854,7 @@ checksum_recovery_output=$(
 
         tmpdir="$(mktemp -d)"
         fake_installer_payload=$'"'"'#!/usr/bin/env bash\necho RECOVERED_INSTALLER\n'"'"'
-        fake_installer_sha="$(printf "%s" "$fake_installer_payload" | sha256sum | awk "{print \$1}")"
+        fake_installer_sha="$(printf "%s" "$fake_installer_payload" | { sha256sum 2>/dev/null || shasum -a 256; } | awk "{print \$1}")"
 
         cat > "$tmpdir/checksums.yaml" <<EOF
 installers:

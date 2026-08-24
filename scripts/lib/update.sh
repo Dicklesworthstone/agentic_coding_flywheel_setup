@@ -1643,8 +1643,8 @@ update_create_target_readable_temp_file() {
         # Group-writable shared directories have the same replacement risk.
         local dir_mode=""
         local dir_mode_value=0
-        dir_mode="$("$stat_bin" -c '%a' "$tmpdir_candidate" 2>/dev/null || true)"
-        dir_uid="$("$stat_bin" -c '%u' "$tmpdir_candidate" 2>/dev/null || true)"
+        dir_mode="$("$stat_bin" -c '%a' "$tmpdir_candidate" 2>/dev/null || "$stat_bin" -f '%Lp' "$tmpdir_candidate" 2>/dev/null || true)"
+        dir_uid="$("$stat_bin" -c '%u' "$tmpdir_candidate" 2>/dev/null || "$stat_bin" -f '%u' "$tmpdir_candidate" 2>/dev/null || true)"
         if [[ ! "$dir_mode" =~ ^[0-7]{3,4}$ ]] || [[ ! "$dir_uid" =~ ^[0-9]+$ ]]; then
             continue
         fi
@@ -1673,7 +1673,7 @@ update_create_target_readable_temp_file() {
             "$rm_bin" -f -- "$tmp_file" 2>/dev/null || true
             continue
         fi
-        file_uid="$("$stat_bin" -c '%u' "$tmp_file" 2>/dev/null || true)"
+        file_uid="$("$stat_bin" -c '%u' "$tmp_file" 2>/dev/null || "$stat_bin" -f '%u' "$tmp_file" 2>/dev/null || true)"
         if [[ ! -f "$tmp_file" || -L "$tmp_file" || "$file_uid" != "$EUID" ]]; then
             "$rm_bin" -f -- "$tmp_file" 2>/dev/null || true
             continue

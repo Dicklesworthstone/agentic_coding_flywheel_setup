@@ -289,6 +289,50 @@ test_valid_pack_uses_local_artifact() {
     pass "valid_pack_uses_local_artifact"
 }
 
+test_explicit_pack_root_cannot_be_shadowed_by_nested_cache_dir() {
+    local pack_root=""
+    local output_file="$TEST_ROOT/no-nested-shadow.out"
+    local error_file="$TEST_ROOT/no-nested-shadow.err"
+
+    pack_root="$(write_pack "no-nested-shadow" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    mkdir -p "$pack_root/acfs-installer-cache"
+    printf '{}\n' > "$pack_root/acfs-installer-cache/manifest.json"
+
+    if ! verify_with_pack "$pack_root" "$output_file" "$error_file"; then
+        fail "explicit_pack_root_cannot_be_shadowed_by_nested_cache_dir" "nested directory shadowed the explicit cache root"
+        return
+    fi
+    [[ "$(< "$output_file")" == "$CONTENT" ]] || {
+        fail "explicit_pack_root_cannot_be_shadowed_by_nested_cache_dir" "explicit root did not emit its verified artifact"
+        return
+    }
+    [[ "$CACHE_TEST_NETWORK_CALLS" -eq 0 ]] || {
+        fail "explicit_pack_root_cannot_be_shadowed_by_nested_cache_dir" "explicit root attempted a live network fetch"
+        return
+    }
+    pass "explicit_pack_root_cannot_be_shadowed_by_nested_cache_dir"
+}
+
+test_parent_directory_convenience_resolves_cache_child() {
+    local pack_root=""
+    local parent_dir=""
+    local output_file="$TEST_ROOT/parent-directory.out"
+    local error_file="$TEST_ROOT/parent-directory.err"
+
+    pack_root="$(write_pack "parent-directory" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    parent_dir="${pack_root%/acfs-installer-cache}"
+
+    if ! verify_with_pack "$parent_dir" "$output_file" "$error_file"; then
+        fail "parent_directory_convenience_resolves_cache_child" "cache parent did not resolve its canonical child"
+        return
+    fi
+    [[ "$(< "$output_file")" == "$CONTENT" && "$CACHE_TEST_NETWORK_CALLS" -eq 0 ]] || {
+        fail "parent_directory_convenience_resolves_cache_child" "parent resolution did not emit verified local bytes"
+        return
+    }
+    pass "parent_directory_convenience_resolves_cache_child"
+}
+
 expect_refusal_code() {
     local test_name="$1"
     local pack_root="$2"
@@ -489,6 +533,8 @@ test_verified_emission_uses_private_snapshot() {
 
 run_all_tests() {
     test_valid_pack_uses_local_artifact
+    test_explicit_pack_root_cannot_be_shadowed_by_nested_cache_dir
+    test_parent_directory_convenience_resolves_cache_child
     test_missing_required_policy_field_is_refused
     test_duplicate_artifact_identity_is_refused
     test_architectureless_artifact_is_refused

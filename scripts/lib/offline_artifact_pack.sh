@@ -69,8 +69,8 @@ Options:
   --checksums-file FILE checksums.yaml (default: SOURCE_ROOT/checksums.yaml)
   --arch ARCH          Target architecture (default: uname -m)
   --ubuntu-version VER Target Ubuntu version metadata (default: 25.10)
-  --timeout SECONDS    Per-download timeout for HTTPS sources (default: 60)
-  --expires-days DAYS  Expiry window recorded in manifest.json (default: 30)
+  --timeout SECONDS    Per-download timeout for HTTPS sources (default: 60; max: 3600)
+  --expires-days DAYS  Expiry window recorded in manifest.json (default: 30; max: 3650)
   --help, -h           Show this help
 
 The builder caches only modules that use verified_installer metadata and whose
@@ -1561,7 +1561,12 @@ offline_pack_main() {
         return 1
     fi
 
-    output_dir="$(offline_pack_abs_dir "$OFFLINE_PACK_OUTPUT_DIR")"
+    if ! output_dir="$(offline_pack_abs_dir "$OFFLINE_PACK_OUTPUT_DIR" 2>/dev/null)" \
+        || [[ -z "$output_dir" || ! -d "$output_dir" ]]; then
+        offline_pack_add_error "pack_output_unwritable: unable to create or resolve output directory"
+        offline_pack_emit_result "" "$generated_at"
+        return 1
+    fi
     OFFLINE_PACK_OUTPUT_DIR="$output_dir"
     pack_root="$output_dir/acfs-installer-cache"
 

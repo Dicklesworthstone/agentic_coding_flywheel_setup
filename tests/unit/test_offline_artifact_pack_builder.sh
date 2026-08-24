@@ -723,6 +723,26 @@ test_invalid_ubuntu_target_is_refused_before_publication() {
     pass "invalid_ubuntu_target_is_refused_before_publication"
 }
 
+test_uncreatable_output_emits_structured_refusal() {
+    local source_root blocker output status
+    source_root="$(write_fixture_source output-unwritable valid)"
+    blocker="$ARTIFACT_DIR/output-unwritable/not-a-directory"
+    mkdir -p "${blocker%/*}"
+    printf 'blocks child creation\n' > "$blocker"
+
+    output="$(run_pack output-unwritable build --json --source-root "$source_root" --output "$blocker/child" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/output-unwritable.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      .output.published == false and
+      any(.validation.errors[]; contains("pack_output_unwritable"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "uncreatable_output_emits_structured_refusal"
+}
+
 run_all_tests() {
     local test_name=""
     local tests=(
@@ -749,6 +769,7 @@ run_all_tests() {
         test_best_effort_records_download_failure
         test_timeout_option_is_validated_and_recorded
         test_invalid_ubuntu_target_is_refused_before_publication
+        test_uncreatable_output_emits_structured_refusal
     )
 
     for test_name in "${tests[@]}"; do

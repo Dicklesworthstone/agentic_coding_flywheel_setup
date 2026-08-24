@@ -787,7 +787,12 @@ acfs_offline_pack_locate() {
     esac
     configured="${configured%/}"
 
-    if [[ -d "$configured/acfs-installer-cache" ]]; then
+    # An explicit cache root is authoritative. Only apply the parent-directory
+    # convenience when that directory has no manifest of its own; otherwise a
+    # nested directory appearing later could shadow the operator-selected root.
+    if [[ -e "$configured/manifest.json" || -L "$configured/manifest.json" ]]; then
+        pack_root="$configured"
+    elif [[ -d "$configured/acfs-installer-cache" ]]; then
         pack_root="$configured/acfs-installer-cache"
     else
         pack_root="$configured"
