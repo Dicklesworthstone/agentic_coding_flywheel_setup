@@ -2061,7 +2061,9 @@ show_auth_flow() {
                 echo "  No installed services currently need authentication."
             fi
 
-            read -rp "$(echo -e "${CYAN}Choose:${NC} ")" choice
+            # EOF on stdin (agent shells, cron, `</dev/null`) must end the
+            # menu instead of re-prompting forever with an empty answer.
+            read -rp "$(echo -e "${CYAN}Choose:${NC} ")" choice || return 0
 
             if [[ "$choice" =~ ^[0-9]+$ ]]; then
                 local idx=$((10#$choice - 1))
@@ -2685,7 +2687,10 @@ $(gum style --foreground "$ACFS_PINK" --bold "${LESSON_TITLES[$idx]}")"
         echo ""
 
         while true; do
-            read -rp "$(echo -e "${CYAN}Action:${NC} ")" action
+            # `onboard N` from a non-TTY (Claude Code's Bash tool, ntm spawn,
+            # `</dev/null`) hits EOF here; without the guard `read` fails with
+            # action="" and this loop re-prompts unboundedly, pegging a core.
+            read -rp "$(echo -e "${CYAN}Action:${NC} ")" action || return 0
             case "$action" in
                 m|M) return 0 ;;
                 p|P)
