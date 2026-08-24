@@ -190,10 +190,10 @@ acfs_security_configure_curl() {
     local curl_help=""
 
     ACFS_CURL_BIN="$(acfs_security_curl_binary_path 2>/dev/null || true)"
-    ACFS_CURL_BASE_ARGS=(--connect-timeout 30 --max-time 300 -fsSL)
+    ACFS_CURL_BASE_ARGS=(-q --connect-timeout 30 --max-time 300 -fsSL)
 
     if [[ -n "$ACFS_CURL_BIN" ]] && curl_help="$("$ACFS_CURL_BIN" --help all 2>/dev/null)" && [[ "$curl_help" == *"--proto"* ]]; then
-        ACFS_CURL_BASE_ARGS=(--proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
+        ACFS_CURL_BASE_ARGS=(-q --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
     fi
 }
 
@@ -258,6 +258,27 @@ acfs_retry_after_seconds() {
     printf '%s' "$value"
 }
 
+acfs_is_github_download_url() {
+    local url="${1:-}"
+    local authority=""
+    local host=""
+
+    [[ "$url" == https://* ]] || return 1
+    authority="${url#https://}"
+    authority="${authority%%[/?#]*}"
+    [[ -n "$authority" && "$authority" != *"@"* ]] || return 1
+    host="${authority%%:*}"
+    host="${host,,}"
+    case "$host" in
+        github.com|api.github.com|codeload.github.com|raw.githubusercontent.com)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # Download URL to a file with retries.
 # Arguments:
 #   $1 - URL
@@ -282,8 +303,8 @@ acfs_download_to_file() {
     # Ensure parent dir exists
     acfs_security_mkdir_p "$output_dir" || return $?
 
-    # Use GitHub-specific backoff for GitHub URLs (rate limit handling)
-    if [[ "$url" == *"github.com"* || "$url" == *"githubusercontent.com"* ]]; then
+    # Use GitHub-specific backoff only for an exact approved GitHub origin.
+    if acfs_is_github_download_url "$url"; then
         # Load github_api.sh if not already loaded
         if ! declare -f github_fetch_with_backoff &>/dev/null; then
             local github_lib="$SECURITY_SCRIPT_DIR/github_api.sh"

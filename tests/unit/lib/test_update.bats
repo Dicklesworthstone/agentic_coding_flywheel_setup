@@ -1324,8 +1324,11 @@ EOF
     run grep -F 'if ! update_binary_exists "$binary_name"; then' "$update"
     assert_success
 
-    run grep -F 'update_run_in_target_context "" "$cargo_bin" install --git https://github.com/Dicklesworthstone/meta_skill --force' "$update"
+    run grep -F 'meta_skill has no checksum-anchored Linux ARM64 install source; refusing an unpinned source checkout' "$update"
     assert_success
+
+    run grep -F 'cargo install --git https://github.com/Dicklesworthstone/meta_skill' "$update"
+    assert_failure
 
     run grep -F 'run_cmd "Update $tool" update_run_in_target_context "" "$cargo_bin" install "$tool" --locked --force' "$update"
     assert_success
@@ -2575,7 +2578,7 @@ EOF
     log_success() { :; }
     log_fatal() { return 1; }
 
-    run_as_target() {
+    run_as_target_runner() {
         printf '%s\n' "$*" > "$ran_args"
         cat > "$ran_content"
     }

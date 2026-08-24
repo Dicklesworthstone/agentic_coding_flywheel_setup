@@ -59,7 +59,7 @@ fi
 ACFS_GENERATED_DEFAULT_CATEGORIES=() # Empty until categories are explicitly migrated.
 
 # Human-meaningful failure category (network, checksum, missing dependency,
-# installer execution, environment setup) set by a generated install_stack_X
+# installer execution, environment setup) set by a generated acfs_generated_install_stack_X
 # function on its own failure paths, and read (then cleared) immediately
 # after by acfs_run_generated_category_phase below. Never a raw curl exit
 # code or HTTP status -- see ACFS_MODULE_FAILURES' render site for why.
@@ -533,12 +533,20 @@ acfs_selection_filters_active() {
     return 1
 }
 
-# Determines category from module ID (e.g., "lang.bun" -> "lang").
+# Resolves the authored category from the loaded manifest index. A module ID's
+# namespace is not category authority: first-party aliases and plugin IDs may
+# deliberately group into a different canonical category.
 acfs_use_generated_for_module() {
     local module_id="${1:-}"
     [[ -n "$module_id" ]] || return 1
 
-    local category="${module_id%%.*}"
+    [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" == "true" ]] || return 1
+    local category_map_decl=""
+    category_map_decl="$(declare -p ACFS_MODULE_CATEGORY 2>/dev/null || true)"
+    [[ "$category_map_decl" == declare\ -A* ]] || return 1
+
+    local category="${ACFS_MODULE_CATEGORY[$module_id]:-}"
+    [[ -n "$category" ]] || return 1
     acfs_use_generated_for_category "$category"
 }
 
@@ -558,7 +566,14 @@ acfs_get_module_installer() {
 
 # Log current feature flag state (for debugging).
 acfs_log_feature_flags() {
-    local categories=("base" "users" "shell" "cli" "lang" "tools" "agents" "db" "cloud" "stack" "acfs")
+    local -a categories=()
+    local categories_decl=""
+    categories_decl="$(declare -p ACFS_CATEGORIES_IN_ORDER 2>/dev/null || true)"
+    if [[ "$categories_decl" == declare\ -a* ]]; then
+        categories=("${ACFS_CATEGORIES_IN_ORDER[@]}")
+    else
+        categories=("base" "users" "filesystem" "shell" "cli" "network" "lang" "tools" "db" "cloud" "agents" "stack" "acfs")
+    fi
 
     if declare -f log_detail >/dev/null 2>&1; then
         log_detail "Feature flags:"
@@ -664,7 +679,7 @@ _run_shell_with_strict_mode() {
 }
 
 # Resolve a target user's home via NSS/getent with safe fallbacks.
-if ! declare -f _acfs_valid_target_username >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_valid_target_username >/dev/null 2>&1; then
     _acfs_valid_target_username() {
         local user="${1:-}"
         [[ -n "$user" ]] || return 1
@@ -672,7 +687,7 @@ if ! declare -f _acfs_valid_target_username >/dev/null 2>&1; then
     }
 fi
 
-if ! declare -f _acfs_validate_target_user >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_validate_target_user >/dev/null 2>&1; then
     _acfs_validate_target_user() {
         local user="${1:-${TARGET_USER:-}}"
         local label="${2:-TARGET_USER}"
@@ -691,7 +706,7 @@ if ! declare -f _acfs_validate_target_user >/dev/null 2>&1; then
     }
 fi
 
-if ! declare -f _acfs_system_binary_path >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_system_binary_path >/dev/null 2>&1; then
     _acfs_system_binary_path() {
         local name="${1:-}"
         local candidate=""
@@ -721,7 +736,7 @@ if ! declare -f _acfs_system_binary_path >/dev/null 2>&1; then
     }
 fi
 
-if ! declare -f _acfs_resolve_current_user >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_resolve_current_user >/dev/null 2>&1; then
     _acfs_resolve_current_user() {
         local current_user=""
         local id_bin=""
@@ -744,7 +759,7 @@ if ! declare -f _acfs_resolve_current_user >/dev/null 2>&1; then
     }
 fi
 
-if ! declare -f _acfs_getent_passwd_entry >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_getent_passwd_entry >/dev/null 2>&1; then
     _acfs_getent_passwd_entry() {
         local user="${1:-}"
         local getent_bin=""
@@ -770,7 +785,7 @@ if ! declare -f _acfs_getent_passwd_entry >/dev/null 2>&1; then
     }
 fi
 
-if ! declare -f _acfs_passwd_home_from_entry >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_passwd_home_from_entry >/dev/null 2>&1; then
     _acfs_passwd_home_from_entry() {
         local passwd_entry="${1:-}"
         local _passwd_user=""
@@ -790,7 +805,7 @@ if ! declare -f _acfs_passwd_home_from_entry >/dev/null 2>&1; then
     }
 fi
 
-if ! declare -f _acfs_resolve_target_home >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_resolve_target_home >/dev/null 2>&1; then
     _acfs_resolve_target_home() {
         local user="${1:-ubuntu}"
         local expected_home="${2:-}"
@@ -831,8 +846,132 @@ if ! declare -f _acfs_resolve_target_home >/dev/null 2>&1; then
     }
 fi
 
-if ! declare -f run_as_target >/dev/null 2>&1; then
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_clean_runner_env_allowed >/dev/null 2>&1; then
+_acfs_clean_runner_env_allowed() {
+        local user_home="${1:-}"
+        local assignment="${2:-}"
+    local value=""
+    local leaf=""
+    local component=""
+
+        case "$assignment" in
+            ATUIN_NO_MODIFY_PATH=1|AM_INSTALL_SKIP_MCP_SETUP=1|AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1|RU_NON_INTERACTIVE=1)
+                return 0
+                ;;
+            "GROK_BIN_DIR=$user_home/.local/bin")
+                return 0
+                ;;
+        TMPDIR=*)
+            value="${assignment#TMPDIR=}"
+            for component in \
+                "$user_home" \
+                "$user_home/.cache" \
+                "$user_home/.cache/acfs" \
+                "$user_home/.cache/acfs/installer-tmp"; do
+                [[ ! -L "$component" ]] || return 1
+            done
+            if [[ "$value" == "$user_home/.cache/acfs/installer-tmp" ]]; then
+                    [[ -d "$value" && ! -L "$value" ]]
+                    return $?
+                fi
+                case "$value" in
+                    "$user_home/.cache/acfs/installer-tmp/"*) ;;
+                    *) return 1 ;;
+                esac
+                leaf="${value#"$user_home/.cache/acfs/installer-tmp/"}"
+                [[ -n "$leaf" && "$leaf" != "." && "$leaf" != ".." ]] || return 1
+                [[ "$leaf" != *[!A-Za-z0-9._-]* ]] || return 1
+                [[ -d "$value" && ! -L "$value" ]]
+                return $?
+                ;;
+        esac
+        return 1
+    }
+fi
+
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f _acfs_validate_clean_runner_command >/dev/null 2>&1; then
+    _acfs_validate_clean_runner_command() {
+        local user_home="${1:-}"
+        shift || return 1
+        local -a argv=("$@")
+        local index=0
+        local assignment=""
+        local name=""
+        local seen_names=":"
+        local runner=""
+        local entrypoint=""
+
+        [[ ${#argv[@]} -gt 0 ]] || {
+            log_error "Clean target runner requires a command"
+            return 1
+        }
+
+        if [[ "${argv[0]}" == "env" ]]; then
+            index=1
+            while [[ "$index" -lt "${#argv[@]}" && "${argv[index]}" == *=* ]]; do
+                assignment="${argv[index]}"
+                name="${assignment%%=*}"
+                case "$seen_names" in
+                    *":$name:"*)
+                        log_error "Duplicate clean runner environment variable: $name"
+                        return 1
+                        ;;
+                esac
+                if ! _acfs_clean_runner_env_allowed "$user_home" "$assignment"; then
+                    log_error "Refusing unapproved clean runner environment variable: $name"
+                    return 1
+                fi
+                seen_names+="$name:"
+                ((index += 1))
+            done
+        fi
+
+        [[ "$index" -lt "${#argv[@]}" ]] || {
+            log_error "Clean target runner is missing bash or sh"
+            return 1
+        }
+        runner="${argv[index]}"
+        case "$runner" in
+            bash|sh) ;;
+            *)
+                log_error "Refusing unapproved clean target runner: $runner"
+                return 1
+                ;;
+        esac
+        ((index += 1))
+        [[ "$index" -lt "${#argv[@]}" ]] || {
+            log_error "Clean target runner is missing a verified file or stdin mode"
+            return 1
+        }
+
+        entrypoint="${argv[index]}"
+        if [[ "$entrypoint" == "-s" ]]; then
+            ((index += 1))
+            if [[ "$index" -ge "${#argv[@]}" || "${argv[index]}" != "--" ]]; then
+                log_error "Clean target runner stdin mode requires -- before script arguments"
+                return 1
+            fi
+            return 0
+        fi
+        if [[ "$entrypoint" != /* || ! -f "$entrypoint" || -L "$entrypoint" ]]; then
+            log_error "Clean target runner requires a regular, non-symlink absolute script file"
+            return 1
+        fi
+    }
+fi
+
+if [[ "${ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE:-0}" == "1" ]] || ! declare -f run_as_target >/dev/null 2>&1; then
     run_as_target() {
+        local clean_environment=false
+        if [[ "${1:-}" == "--acfs-clean-environment" ]]; then
+            clean_environment=true
+            shift
+        fi
+        if [[ $# -eq 0 ]]; then
+            log_error "run_as_target requires a command"
+            return 1
+        fi
+
         local user="${TARGET_USER:-ubuntu}"
         local explicit_user_home="${TARGET_HOME:-}"
         local explicit_user_home_for_repair=""
@@ -893,6 +1032,11 @@ if ! declare -f run_as_target >/dev/null 2>&1; then
             return 1
         fi
 
+        if [[ "$clean_environment" == "true" ]] \
+            && ! _acfs_validate_clean_runner_command "$user_home" "$@"; then
+            return 1
+        fi
+
         primary_bin_dir="${ACFS_BIN_DIR:-$user_home/.local/bin}"
         if [[ -n "$explicit_user_home_for_repair" ]] && [[ "$explicit_user_home_for_repair" != "$user_home" ]]; then
             case "$primary_bin_dir" in
@@ -912,30 +1056,53 @@ if ! declare -f run_as_target >/dev/null 2>&1; then
 
         local target_path_prefix="$primary_bin_dir:$user_home/.local/bin:$user_home/.acfs/bin:$user_home/.cargo/bin:$user_home/.bun/bin:$user_home/.atuin/bin:$user_home/go/bin"
         local current_path="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+        local command_path="$target_path_prefix:$current_path"
+        if [[ "$clean_environment" == "true" ]]; then
+            command_path="/usr/sbin:/usr/bin:/sbin:/bin"
+        fi
 
         # UV_NO_CONFIG prevents uv from looking for config in /root when running via sudo/runuser.
         # HOME is set explicitly for consistent tool installs and path resolution.
         # PATH must include user-local ACFS bins because we deliberately avoid
         # login shells and therefore cannot depend on profile files.
-        local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home" "PATH=$target_path_prefix:$current_path")
+        local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home" "PATH=$command_path")
 
         # Pass core ACFS variables to the target user environment
         env_args+=("TARGET_USER=$user" "TARGET_HOME=$user_home")
-        [[ -n "$acfs_home_for_target" ]] && env_args+=("ACFS_HOME=$acfs_home_for_target")
-        [[ -n "${ACFS_BIN_DIR:-}" ]] && env_args+=("ACFS_BIN_DIR=$primary_bin_dir")
-
-        # Pass ACFS context variables to the target user environment when available.
-        [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && env_args+=("ACFS_BOOTSTRAP_DIR=$ACFS_BOOTSTRAP_DIR")
-        [[ -n "${ACFS_LIB_DIR:-}" ]] && env_args+=("ACFS_LIB_DIR=$ACFS_LIB_DIR")
-        [[ -n "${ACFS_GENERATED_DIR:-}" ]] && env_args+=("ACFS_GENERATED_DIR=$ACFS_GENERATED_DIR")
-        [[ -n "${ACFS_ASSETS_DIR:-}" ]] && env_args+=("ACFS_ASSETS_DIR=$ACFS_ASSETS_DIR")
-        [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]] && env_args+=("ACFS_CHECKSUMS_YAML=$ACFS_CHECKSUMS_YAML")
-        [[ -n "${ACFS_MANIFEST_YAML:-}" ]] && env_args+=("ACFS_MANIFEST_YAML=$ACFS_MANIFEST_YAML")
-        [[ -n "${CHECKSUMS_FILE:-}" ]] && env_args+=("CHECKSUMS_FILE=$CHECKSUMS_FILE")
-        [[ -n "${SCRIPT_DIR:-}" ]] && env_args+=("SCRIPT_DIR=$SCRIPT_DIR")
-        [[ -n "${ACFS_RAW:-}" ]] && env_args+=("ACFS_RAW=$ACFS_RAW")
-        [[ -n "${ACFS_VERSION:-}" ]] && env_args+=("ACFS_VERSION=$ACFS_VERSION")
-        [[ -n "${ACFS_REF:-}" ]] && env_args+=("ACFS_REF=$ACFS_REF")
+        if [[ "$clean_environment" == "true" ]]; then
+            env_args=(-i "${env_args[@]}" "USER=$user" "LOGNAME=$user" "LANG=C.UTF-8")
+        fi
+        # Preserve the target user's live service-manager socket without
+        # accepting either value from the caller environment.
+        local target_uid=""
+        local target_runtime_dir=""
+        local id_bin=""
+        id_bin="$(_acfs_system_binary_path id 2>/dev/null || true)"
+        if [[ -n "$id_bin" ]] && target_uid="$("$id_bin" -u "$user" 2>/dev/null)"; then
+            target_runtime_dir="/run/user/$target_uid"
+            if [[ -d "$target_runtime_dir" && ! -L "$target_runtime_dir" ]]; then
+                env_args+=("XDG_RUNTIME_DIR=$target_runtime_dir")
+                if [[ -S "$target_runtime_dir/bus" && ! -L "$target_runtime_dir/bus" ]]; then
+                    env_args+=("DBUS_SESSION_BUS_ADDRESS=unix:path=$target_runtime_dir/bus")
+                fi
+            fi
+        fi
+        # Verified upstream code receives no ambient ACFS path/source overrides.
+        if [[ "$clean_environment" != "true" ]]; then
+            [[ -n "$acfs_home_for_target" ]] && env_args+=("ACFS_HOME=$acfs_home_for_target")
+            [[ -n "${ACFS_BIN_DIR:-}" ]] && env_args+=("ACFS_BIN_DIR=$primary_bin_dir")
+            [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && env_args+=("ACFS_BOOTSTRAP_DIR=$ACFS_BOOTSTRAP_DIR")
+            [[ -n "${ACFS_LIB_DIR:-}" ]] && env_args+=("ACFS_LIB_DIR=$ACFS_LIB_DIR")
+            [[ -n "${ACFS_GENERATED_DIR:-}" ]] && env_args+=("ACFS_GENERATED_DIR=$ACFS_GENERATED_DIR")
+            [[ -n "${ACFS_ASSETS_DIR:-}" ]] && env_args+=("ACFS_ASSETS_DIR=$ACFS_ASSETS_DIR")
+            [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]] && env_args+=("ACFS_CHECKSUMS_YAML=$ACFS_CHECKSUMS_YAML")
+            [[ -n "${ACFS_MANIFEST_YAML:-}" ]] && env_args+=("ACFS_MANIFEST_YAML=$ACFS_MANIFEST_YAML")
+            [[ -n "${CHECKSUMS_FILE:-}" ]] && env_args+=("CHECKSUMS_FILE=$CHECKSUMS_FILE")
+            [[ -n "${SCRIPT_DIR:-}" ]] && env_args+=("SCRIPT_DIR=$SCRIPT_DIR")
+            [[ -n "${ACFS_RAW:-}" ]] && env_args+=("ACFS_RAW=$ACFS_RAW")
+            [[ -n "${ACFS_VERSION:-}" ]] && env_args+=("ACFS_VERSION=$ACFS_VERSION")
+            [[ -n "${ACFS_REF:-}" ]] && env_args+=("ACFS_REF=$ACFS_REF")
+        fi
 
         command_argv=("$@")
         if [[ ${#command_argv[@]} -gt 0 ]]; then
@@ -977,8 +1144,15 @@ if ! declare -f run_as_target >/dev/null 2>&1; then
             return $?
         fi
 
-        # Prefer noninteractive sudo (non-login) when available.
+        # Root should use util-linux runuser directly rather than depending on
+        # a possibly restrictive sudoers policy.
+        runuser_bin="$(_acfs_system_binary_path runuser 2>/dev/null || true)"
         sudo_bin="$(_acfs_system_binary_path sudo 2>/dev/null || true)"
+        if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
+            # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c
+            "$runuser_bin" -u "$user" -- "$env_bin" "${env_args[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}"
+            return $?
+        fi
         if [[ -n "$sudo_bin" ]]; then
             # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c
             # Use sh -c to ensure the cd happens as the target user.
@@ -987,11 +1161,15 @@ if ! declare -f run_as_target >/dev/null 2>&1; then
         fi
 
         # Root-only fallbacks.
-        runuser_bin="$(_acfs_system_binary_path runuser 2>/dev/null || true)"
         if [[ -n "$runuser_bin" ]]; then
             # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c
             "$runuser_bin" -u "$user" -- "$env_bin" "${env_args[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}"
             return $?
+        fi
+
+        if [[ "$clean_environment" == "true" ]]; then
+            log_error "Refusing clean target-user execution through su; use sudo or runuser"
+            return 1
         fi
 
         su_bin="$(_acfs_system_binary_path su 2>/dev/null || true)"
@@ -1165,7 +1343,11 @@ run_as_target_shell() {
 # Run a command as TARGET_USER while preserving stdin for the final runner.
 # Typical usage: echo script | run_as_target_runner "bash" "-s" "--" "arg1"
 # Env-prefixed usage is also supported: echo script | run_as_target_runner "env" "FOO=bar" "bash" "-s"
-run_as_target_runner() {
+run_as_target_runner() (
+    if [[ $# -eq 0 ]]; then
+        log_error "run_as_target_runner requires a runner"
+        return 1
+    fi
     local runner="$1"
     shift
     
@@ -1174,11 +1356,47 @@ run_as_target_runner() {
         return 1
     fi
 
-    # Pass args directly to run_as_target, which handles quoting
-    # Note: run_as_target falls back to `su user -c` (non-login) to avoid profile-sourced failures.
-    # stdin is passed through su to the runner
-    run_as_target "$runner" "$@"
-}
+    local _acfs_exported_names=""
+    local _acfs_exported_name=""
+    local _acfs_function_names=""
+    local _acfs_function_name=""
+
+    # env -i sanitizes the verified installer's final environment, but it is
+    # too late to protect the trusted helper processes used to prepare that
+    # launch. Remove every export attribute in this subshell before the first
+    # external command can observe loader/startup controls such as LD_* or
+    # DYLD_*. Values remain available to run_as_target as ordinary shell data.
+    _acfs_exported_names="$(builtin compgen -e || builtin true)"
+    if [[ -n "$_acfs_exported_names" ]]; then
+        while builtin read -r _acfs_exported_name; do
+            if ! builtin export -n "$_acfs_exported_name" 2>/dev/null; then
+                builtin printf 'ERROR: unable to isolate exported environment entry: %s\n' \
+                    "$_acfs_exported_name" >&2
+                return 1
+            fi
+        done <<< "$_acfs_exported_names"
+    fi
+
+    # Imported/exported functions use BASH_FUNC_* environment entries and are
+    # not enumerated by compgen -e. Remove their export attributes separately;
+    # the function definitions remain callable in this subshell.
+    _acfs_function_names="$(builtin compgen -A function || builtin true)"
+    if [[ -n "$_acfs_function_names" ]]; then
+        while builtin read -r _acfs_function_name; do
+            if ! builtin export -n -f "$_acfs_function_name" 2>/dev/null; then
+                builtin printf 'ERROR: unable to isolate exported shell function: %s\n' \
+                    "$_acfs_function_name" >&2
+                return 1
+            fi
+        done <<< "$_acfs_function_names"
+    fi
+
+    # A checksum proves the staged file only if ambient shell-startup hooks and
+    # exported functions cannot run before it. Clean mode supplies only the
+    # target identity, validated ACFS context, and explicitly declared runner
+    # environment.
+    run_as_target --acfs-clean-environment "$runner" "$@"
+)
 
 # Run a shell string (or stdin) as root
 run_as_root_shell() {
@@ -1414,11 +1632,19 @@ acfs_run_generated_category_phase() {
         ACFS_MODULE_FAILURES+=("$category (generated installers not sourced)")
         return 1
     fi
+    local generated_map_decl=""
+    generated_map_decl="$(declare -p ACFS_MODULE_GENERATED 2>/dev/null || true)"
+    if [[ "$generated_map_decl" != declare\ -A* ]]; then
+        log_error "Generated-module metadata is missing or invalid"
+        ACFS_MODULE_FAILURES+=("$category (generated-module metadata missing)")
+        return 1
+    fi
 
     local module=""
     local key=""
     local func=""
     local desc=""
+    local generated=""
     local ran_any=false
     local had_failure=false
 
@@ -1441,6 +1667,22 @@ acfs_run_generated_category_phase() {
         if [[ "${ACFS_MODULE_PHASE[$key]:-}" != "$phase" ]]; then
             continue
         fi
+        generated="${ACFS_MODULE_GENERATED[$key]:-}"
+        case "$generated" in
+            0)
+                log_error "Orchestration-owned module reached generated dispatch without its authored handler: $module"
+                ACFS_MODULE_FAILURES+=("$module (authored orchestration handler not active)")
+                had_failure=true
+                continue
+                ;;
+            1) ;;
+            *)
+                log_error "Missing generated-module metadata for $module"
+                ACFS_MODULE_FAILURES+=("$module (generated-module metadata missing)")
+                had_failure=true
+                continue
+                ;;
+        esac
         func="${ACFS_MODULE_FUNC[$key]:-}"
         desc="${ACFS_MODULE_DESC[$key]:-$module}"
         if [[ -z "$func" ]]; then
@@ -1474,7 +1716,7 @@ acfs_run_generated_category_phase() {
 
         if ! "$func"; then
             log_error "Generated module failed: $module"
-            # $func (the generated install_stack_X function) sets
+            # $func (the generated acfs_generated_install_stack_X function) sets
             # ACFS_LAST_MODULE_FAILURE_REASON to a human-meaningful category
             # (network, checksum, missing dependency, installer execution,
             # environment setup) on each of its own failure paths -- never a

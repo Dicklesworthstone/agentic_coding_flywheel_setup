@@ -25,6 +25,30 @@ teardown() {
     assert_output --partial '"completed_phases": []'
 }
 
+@test "state: validation rejects non-integer schema data before Bash arithmetic" {
+    local marker="$BATS_TEST_TMPDIR/arithmetic-marker"
+    printf \
+        '{"schema_version":"probe[$(touch %s)]","version":"0.7.0","mode":"vibe","completed_phases":[]}\n' \
+        "$marker" > "$ACFS_STATE_FILE"
+
+    run state_validate
+
+    [ "$status" -eq 3 ]
+    refute_output --partial "probe["
+    [[ ! -e "$marker" ]]
+}
+
+@test "state: validation accepts only bounded integer schema versions" {
+    local schema_version
+    for schema_version in '2.5' '0' '2147483648' '"3"' 'null' '[]'; do
+        printf '{"schema_version":%s,"version":"0.7.0","mode":"vibe","completed_phases":[]}\n' \
+            "$schema_version" > "$ACFS_STATE_FILE"
+
+        run state_validate
+        [ "$status" -eq 3 ]
+    done
+}
+
 @test "state: init tolerates missing ACFS_VERSION under nounset" {
     local state_root
     state_root=$(create_temp_dir)

@@ -52,6 +52,26 @@ EOF
     [[ ! -f "$marker_dir/poisoned.log" ]]
 }
 
+@test "security: cleanup never trusts inherited temporary paths" {
+    local sentinel_dir="$BATS_TEST_TMPDIR/inherited-directory"
+    local archive_sentinel="$BATS_TEST_TMPDIR/inherited-archive"
+    local install_sentinel="$BATS_TEST_TMPDIR/inherited-install"
+    mkdir -p "$sentinel_dir"
+    printf '%s\n' "archive sentinel" > "$archive_sentinel"
+    printf '%s\n' "install sentinel" > "$install_sentinel"
+
+    run env \
+        ACFS_TMP_ARCHIVE="$archive_sentinel" \
+        ACFS_TMP_INSTALL="$install_sentinel" \
+        ACFS_TMP_SLB="$sentinel_dir" \
+        bash "$PROJECT_ROOT/install.sh" --help
+
+    assert_success
+    [[ -d "$sentinel_dir" ]]
+    [[ "$(cat "$archive_sentinel")" == "archive sentinel" ]]
+    [[ "$(cat "$install_sentinel")" == "install sentinel" ]]
+}
+
 @test "security: privileged bootstrap resolution excludes locally managed prefixes" {
     local interpreter_line
     local early_path_line

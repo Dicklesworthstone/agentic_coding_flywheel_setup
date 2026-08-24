@@ -297,8 +297,10 @@ The following files are **auto-generated** from the manifest. Edits to these fil
 
 ```
 scripts/generated/          # ALL files in this directory
-├── install_*.sh           # Category installer scripts
+├── install_<category>.sh  # 13 source-only category function libraries
+├── install_all.sh         # Source-only generated-module harness
 ├── doctor_checks.sh       # Doctor verification checks
+├── internal_checksums.sh  # Schema-1 data-only critical-script ledger
 └── manifest_index.sh      # Bash arrays with module metadata
 ```
 

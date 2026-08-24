@@ -1,5 +1,10 @@
 # Plan: Single Source of Truth Manifest Architecture
 
+> **Historical implementation plan — superseded.** This document preserves the
+> original migration reasoning and legacy function sketches; it is not the
+> current API contract. Use the manifest section in `README.md` and
+> `docs/reference/MANIFEST_SCHEMA_VNEXT.md` for current behavior.
+
 ## Executive Summary
 
 Transform the manifest system from "documentation that generates unused scripts" into the **actual driver** of installation.

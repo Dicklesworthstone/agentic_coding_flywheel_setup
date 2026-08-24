@@ -44,20 +44,17 @@ but the profile JSON remains the trust boundary and must validate by itself.
   "generatedAt": "2026-05-08T00:00:00Z",
   "generatedBy": "acfs-web-wizard",
   "provenance": {
-    "author": {
-      "name": "Example Maintainer",
-      "email": "maintainer@example.invalid"
-    },
+    "author": null,
     "source": {
-      "acfsVersion": "0.0.0-dev",
+      "acfsVersion": "0.7.0",
       "acfsRef": "main",
-      "acfsCommit": "0123456789abcdef0123456789abcdef01234567",
+      "acfsCommit": null,
       "manifestSha256": "<sha256 of acfs.manifest.yaml>",
       "checksumsYamlSha256": "<sha256 of checksums.yaml>"
     }
   },
   "compatibility": {
-    "minAcfsVersion": "0.0.0-dev",
+    "minAcfsVersion": "0.7.0",
     "schemaVersions": [1],
     "targetUbuntuVersions": ["25.10"],
     "architectures": ["x86_64", "aarch64"],
@@ -139,9 +136,11 @@ Every v1 profile must include:
 - `schema: "acfs.team-profile.v1"` and `schemaVersion: 1`
 - `profileId`, `displayName`, a canonical UTC ISO 8601 `generatedAt`, and
   `generatedBy: "acfs-web-wizard"`
-- `provenance.source.acfsRef`, `provenance.source.manifestSha256`, and
-  `provenance.source.checksumsYamlSha256`
-- `compatibility.schemaVersions`, `compatibility.targetUbuntuVersions`,
+- `provenance.author: null`, `provenance.source.acfsVersion`,
+  `provenance.source.acfsRef`, `provenance.source.acfsCommit: null`,
+  `provenance.source.manifestSha256`, and `provenance.source.checksumsYamlSha256`
+- `compatibility.minAcfsVersion`, `compatibility.schemaVersions`,
+  `compatibility.targetUbuntuVersions`,
   `compatibility.architectures`, `compatibility.installerRefPolicy`, and
   `compatibility.checksumsRefPolicy`
 - `providerDefaults.provider`, `providerDefaults.region`,
@@ -178,6 +177,12 @@ Disallowed values include:
 - raw SSH public keys when they identify a private machine or person
 - full local filesystem paths outside documented ACFS paths
 - generated support-bundle contents, installer logs, or shell history
+
+Schema v1 deliberately records `provenance.author` and
+`provenance.source.acfsCommit` as explicit `null` values. The browser build has
+no trustworthy author or checked-out commit identity, and guessing either
+would create false lineage. The version, ref, manifest hash, and checksum hash
+remain the authoritative reproducibility evidence.
 
 ## Secret Slots
 

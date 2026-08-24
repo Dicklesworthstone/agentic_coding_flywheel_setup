@@ -330,7 +330,7 @@ output=$(run_install --print-plan --only stack.ultimate_bug_scanner) || {
 }
 
 # Extract execution order numbers from the plan
-# Format: "   1. [Phase 1] base.system -> install_base_system()"
+# Format: "   1. [Phase 1] base.system -> acfs_generated_install_base_system()"
 # Use more specific pattern to match module name after phase bracket
 base_order=$(echo "$output" | grep -E "^\s+[0-9]+\.\s+\[Phase [0-9]+\] base\.system " | head -1 | awk '{print $1}' | tr -d '.')
 bun_order=$(echo "$output" | grep -E "^\s+[0-9]+\.\s+\[Phase [0-9]+\] lang\.bun " | head -1 | awk '{print $1}' | tr -d '.')

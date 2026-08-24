@@ -19,11 +19,11 @@
 # what this file claims to provide.
 #
 # Test 1 (module failure, shape of a real installer crashing mid-run):
-#   Sources the real install_stack.sh and overrides only install_stack_ntm
+#   Sources the real install_stack.sh and overrides only acfs_generated_install_stack_ntm
 #   to return 1 immediately (module stack.ntm sits directly before
 #   stack.meta_skill in the real manifest's "stack" category/phase 9) —
 #   the exact shape a real verified-install failure produces. Everything
-#   else, including install_stack_meta_skill, runs unmodified in
+#   else, including acfs_generated_install_stack_meta_skill, runs unmodified in
 #   DRY_RUN=true (its own real, network-free branch). Calls the real
 #   acfs_run_generated_category_phase() and the real print_summary()
 #   directly and asserts on their actual output/state.
@@ -99,12 +99,12 @@ run_test_1() {
     export ACFS_HOME ACFS_STATE_FILE
     state_init
 
-    declare -f install_stack_ntm >/dev/null 2>&1 || { echo "FATAL: real install_stack_ntm not loaded"; exit 2; }
-    declare -f install_stack_meta_skill >/dev/null 2>&1 || { echo "FATAL: real install_stack_meta_skill not loaded"; exit 2; }
+    declare -f acfs_generated_install_stack_ntm >/dev/null 2>&1 || { echo "FATAL: real acfs_generated_install_stack_ntm not loaded"; exit 2; }
+    declare -f acfs_generated_install_stack_meta_skill >/dev/null 2>&1 || { echo "FATAL: real acfs_generated_install_stack_meta_skill not loaded"; exit 2; }
 
     # The one deliberate fault: shape of "the installer crashed" mid-run.
-    install_stack_ntm() {
-        log_error "install_stack_ntm: SIMULATED CRASH (test-injected fault standing in for a real verified-install failure)"
+    acfs_generated_install_stack_ntm() {
+        log_error "acfs_generated_install_stack_ntm: SIMULATED CRASH (test-injected fault standing in for a real verified-install failure)"
         return 1
     }
 
@@ -140,7 +140,7 @@ run_test_1() {
     jq -e '.completed_phases | index("stack") != null' "$ACFS_STATE_FILE" >/dev/null && stack_completed=true
 
     assert "1a. induced stack.ntm failure recorded in ACFS_MODULE_FAILURES" "$ntm_recorded"
-    assert "1b. real install_stack_meta_skill still ran despite stack.ntm failing earlier in the same category loop" "$meta_skill_ran"
+    assert "1b. real acfs_generated_install_stack_meta_skill still ran despite stack.ntm failing earlier in the same category loop" "$meta_skill_ran"
     assert "1c. generated category reports aggregate failure after finishing later modules" "$([[ $category_rc -ne 0 ]] && echo true || echo false)"
     assert "1d. run_phase persists the generated module failure on its enclosing phase" "$([[ "$failed_phase" == "stack" ]] && echo true || echo false)"
     assert "1e. run_phase does not persist the failed stack phase as completed" "$([[ "$stack_completed" == "false" ]] && echo true || echo false)"
@@ -185,11 +185,11 @@ export ACFS_FORCE_REINSTALL=true
 SKILLS_COUNTER="$workdir/${name}.skills.count"
 SUMMARY_COUNTER="$workdir/${name}.summary.count"
 
-# install_stack_meta_skill: counting stub. Its real body (dry-run-safe
+# acfs_generated_install_stack_meta_skill: counting stub. Its real body (dry-run-safe
 # network install) is exercised for real in Test 1; this test isolates
 # only whether cleanup()'s fallback calls the real call site, and how
 # many times.
-install_stack_meta_skill() {
+acfs_generated_install_stack_meta_skill() {
     printf 'x' >> "\$SKILLS_COUNTER"
 }
 

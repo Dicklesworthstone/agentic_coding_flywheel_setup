@@ -34,14 +34,14 @@ check "agents.antigravity uses the verified_installer (antigravity) path" \
   "awk '/id: agents.antigravity/{f=1} f&&/tool: antigravity/{print;exit}' acfs.manifest.yaml | grep -q 'tool: antigravity'"
 
 # 4. The generated installer contains a checksum-gated agy install step.
-check "generated install_agents.sh has install_agents_antigravity()" \
-  "grep -q 'install_agents_antigravity()' scripts/generated/install_agents.sh"
+check "generated install_agents.sh has acfs_generated_install_agents_antigravity()" \
+  "grep -q 'acfs_generated_install_agents_antigravity()' scripts/generated/install_agents.sh"
 check "agy install step is checksum-gated (verify_checksum)" \
-  "awk '/install_agents_antigravity\(\)/{f=1} f&&/verify_checksum/{print;exit}' scripts/generated/install_agents.sh | grep -q verify_checksum"
+  "awk '/acfs_generated_install_agents_antigravity\(\)/{f=1} f&&/verify_checksum/{print;exit}' scripts/generated/install_agents.sh | grep -q verify_checksum"
 check "agy generated install step installs the locked launchers" \
-  "awk '/install_agents_antigravity\(\)/{f=1} f&&/install -m 0755.*agy-locked/{print;exit}' scripts/generated/install_agents.sh | grep -q agy-locked && awk '/install_agents_antigravity\(\)/{f=1} f&&/install -m 0755.*gmi/{print;exit}' scripts/generated/install_agents.sh | grep -q gmi"
+  "awk '/acfs_generated_install_agents_antigravity\(\)/{f=1} f&&/install -m 0755.*agy-locked/{print;exit}' scripts/generated/install_agents.sh | grep -q agy-locked && awk '/acfs_generated_install_agents_antigravity\(\)/{f=1} f&&/install -m 0755.*gmi/{print;exit}' scripts/generated/install_agents.sh | grep -q gmi"
 check "agy generated install step primes locked settings" \
-  "awk '/install_agents_antigravity\(\)/{f=1} f&&/--acfs-prime-settings/{print;exit}' scripts/generated/install_agents.sh | grep -q -- --acfs-prime-settings"
+  "awk '/acfs_generated_install_agents_antigravity\(\)/{f=1} f&&/--acfs-prime-settings/{print;exit}' scripts/generated/install_agents.sh | grep -q -- --acfs-prime-settings"
 
 # 5. agy is resolvable through the security layer (URL + checksum lookup).
 check "get_checksum antigravity resolves to a 64-hex sha" \

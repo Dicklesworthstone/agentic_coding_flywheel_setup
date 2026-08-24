@@ -2302,12 +2302,29 @@ state_validate() {
             return 2
         fi
 
-        # Get schema version
-        local version
-        version=$(echo "$content" | jq -r '.schema_version // empty')
+        # Missing schema_version is the legacy-v1 discriminator. If the field is
+        # present, prove it is a small integer before it reaches Bash arithmetic.
+        if ! echo "$content" | jq -e 'has("schema_version")' >/dev/null 2>&1; then
+            echo "Legacy v1 state file detected" >&2
+            return 5
+        fi
+        if ! echo "$content" | jq -e '
+            .schema_version
+            | type == "number" and . == floor and . >= 1 and . <= 2147483647
+        ' >/dev/null 2>&1; then
+            echo "State file has invalid schema_version (expected a bounded integer)" >&2
+            return 3
+        fi
 
-        # Case 5: Legacy v1 (no schema_version or schema_version=1)
-        if [[ -z "$version" ]] || [[ "$version" == "1" ]]; then
+        local version
+        version=$(echo "$content" | jq -r '.schema_version')
+        if [[ ! "$version" =~ ^[0-9]+$ ]]; then
+            echo "State file has invalid schema_version (expected canonical decimal digits)" >&2
+            return 3
+        fi
+
+        # Case 5: Legacy v1
+        if [[ "$version" == "1" ]]; then
             echo "Legacy v1 state file detected" >&2
             return 5
         fi
@@ -2341,30 +2358,8 @@ state_validate() {
         fi
 
     else
-        # Basic fallback without jq - check first/last non-whitespace chars are braces
-        # Note: We can't use ^\{.*\}$ regex because bash regex doesn't match newlines with .
-        local trimmed
-        trimmed="$(printf '%s' "$content" | tr -d '[:space:]')"
-        if [[ "${trimmed:0:1}" != "{" ]] || [[ "${trimmed: -1}" != "}" ]]; then
-            echo "State file is not valid JSON (no jq available for detailed check)" >&2
-            return 2
-        fi
-
-        # Check for schema_version field
-        if ! grep -q '"schema_version"' "$state_file"; then
-            echo "Legacy v1 state file detected (no schema_version)" >&2
-            return 5
-        fi
-
-        # Extract version number using sed (POSIX-compatible, works on macOS/BSD)
-        local version
-        version=$(sed -n 's/.*"schema_version"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$state_file" | head -1)
-        if [[ -z "$version" ]] || [[ "$version" == "1" ]]; then
-            return 5
-        fi
-        if [[ "$version" -gt "$ACFS_STATE_SCHEMA_VERSION" ]]; then
-            return 4
-        fi
+        echo "Cannot validate state safely without jq: $state_file" >&2
+        return 2
     fi
 
     return 0

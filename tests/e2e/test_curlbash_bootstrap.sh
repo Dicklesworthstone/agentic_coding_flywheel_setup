@@ -13,7 +13,7 @@
 # Strategy:
 #   1. Create a tar.gz archive from the current checkout
 #   2. Serve install.sh via python3 -m http.server
-#   3. Run curl | bash -s -- --yes --dry-run with ACFS_TEST_ARCHIVE
+#   3. Run curl | bash -s -- --yes --dry-run with --bootstrap-archive
 #   4. Verify bootstrap succeeds and dry-run completes
 #
 # Related bugs: #85-#90
@@ -71,6 +71,8 @@ mkdir -p "$STAGING"
 # Copy the files that bootstrap_repo_archive extracts
 cp "$REPO_ROOT/install.sh" "$STAGING/"
 cp -r "$REPO_ROOT/scripts" "$STAGING/"
+mkdir -p "$STAGING/packages"
+cp -r "$REPO_ROOT/packages/onboard" "$STAGING/packages/onboard"
 cp -r "$REPO_ROOT/acfs" "$STAGING/" 2>/dev/null || mkdir -p "$STAGING/acfs"
 cp "$REPO_ROOT/checksums.yaml" "$STAGING/" 2>/dev/null || echo "{}" > "$STAGING/checksums.yaml"
 cp "$REPO_ROOT/acfs.manifest.yaml" "$STAGING/" 2>/dev/null || echo "{}" > "$STAGING/acfs.manifest.yaml"
@@ -128,7 +130,7 @@ LOG_FILE="$WORK_DIR/install.log"
 set +e
 timeout 90s bash -c '
     set -euo pipefail
-    curl -sf "$1" | ACFS_TEST_MODE=1 ACFS_TEST_ARCHIVE="$2" ACFS_CI=true bash -s -- --yes --dry-run --skip-preflight --skip-ubuntu-upgrade
+    curl -sf "$1" | ACFS_CI=true ACFS_PREFLIGHT_NETWORK=skip bash -s -- --bootstrap-archive "$2" --yes --dry-run --skip-ubuntu-upgrade
 ' _ "http://localhost:$PORT/install.sh" "$ARCHIVE_DIR/test.tar.gz" > "$LOG_FILE" 2>&1
 INSTALL_STATUS=$?
 set -e
@@ -157,11 +159,20 @@ else
     ((PASS++)) || true
 fi
 
-if grep -q "Test mode: using local archive" "$LOG_FILE" 2>/dev/null; then
+if grep -q "Using explicitly selected local archive" "$LOG_FILE" 2>/dev/null; then
     echo "  PASS: curl|bash test exercised archive bootstrap"
     ((PASS++)) || true
 else
     echo "  FAIL: curl|bash test did not exercise archive bootstrap"
+    ((FAIL++)) || true
+fi
+
+if grep -q "ACFS Pre-Flight Check" "$LOG_FILE" 2>/dev/null \
+    && grep -q "Offline/cache: verified installer checksums available" "$LOG_FILE" 2>/dev/null; then
+    echo "  PASS: archive-resident checksum-bound preflight emitted inner proof markers"
+    ((PASS++)) || true
+else
+    echo "  FAIL: archive preflight did not emit its inner proof markers"
     ((FAIL++)) || true
 fi
 

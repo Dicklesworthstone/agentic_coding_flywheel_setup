@@ -396,6 +396,115 @@ EOF
         || fail "Expected run_as_target to extend PATH for target-user bins, got: $captured"
 }
 
+@test "run_as_target_runner clears ambient startup hooks and ACFS context" {
+    local current_user
+    local current_home
+    local startup_hook="$BATS_TEST_TMPDIR/bash-env-hook"
+    local startup_marker="$BATS_TEST_TMPDIR/bash-env-ran"
+    local verified_script="$BATS_TEST_TMPDIR/verified-installer.sh"
+
+    current_user="$(command id -un)"
+    current_home="$(_acfs_resolve_target_home "$current_user")"
+    export TARGET_USER="$current_user"
+    export TARGET_HOME="$current_home"
+    export BASH_ENV="$startup_hook"
+    export ENV="$startup_hook"
+    export ACFS_RAW="https://attacker.invalid/source"
+    export ACFS_REF="attacker-ref"
+    export ACFS_BIN_DIR="$BATS_TEST_TMPDIR/poisoned-bin"
+    mkdir -p "$ACFS_BIN_DIR"
+
+    cat > "$startup_hook" <<EOF
+printf 'executed\n' > '$startup_marker'
+EOF
+    cat > "$verified_script" <<'EOF'
+printf 'path=%s\n' "$PATH"
+printf 'ru=%s\n' "${RU_NON_INTERACTIVE:-missing}"
+printf 'bash_env=%s\n' "${BASH_ENV:-missing}"
+printf 'acfs_raw=%s\n' "${ACFS_RAW:-missing}"
+EOF
+
+    run run_as_target_runner env RU_NON_INTERACTIVE=1 bash "$verified_script"
+    assert_success
+    assert_output --partial "path=/usr/sbin:/usr/bin:/sbin:/bin"
+    assert_output --partial "ru=1"
+    assert_output --partial "bash_env=missing"
+    assert_output --partial "acfs_raw=missing"
+    [[ ! -e "$startup_marker" ]] || fail "BASH_ENV executed before the verified installer"
+}
+
+@test "run_as_target_runner strips loader controls before its first external command" {
+    local helpers="$PROJECT_ROOT/scripts/lib/install_helpers.sh"
+
+    run /bin/bash --noprofile --norc -c '
+        set -euo pipefail
+        source "$1"
+        [[ "$(/usr/bin/uname -s)" == "Linux" ]] || exit 0
+
+        target_user="$(/usr/bin/id -un)"
+        target_home="$(_acfs_resolve_target_home "$target_user")"
+        export TARGET_USER="$target_user" TARGET_HOME="$target_home"
+
+        export LD_TRACE_LOADED_OBJECTS=1
+        if ! output="$(
+            printf '\''printf "%s|%s|%s\\n" runner-ok "$TARGET_USER" "$TARGET_HOME"\n'\'' |
+                run_as_target_runner bash -s -- 2>&1
+        )"; then
+            unset LD_TRACE_LOADED_OBJECTS
+            printf "%s\n" "$output" >&2
+            exit 1
+        fi
+        unset LD_TRACE_LOADED_OBJECTS
+
+        [[ "$output" == "runner-ok|$target_user|$target_home" ]]
+    ' _ "$helpers"
+
+    assert_success
+}
+
+@test "run_as_target_runner preserves verified runner failure status" {
+    local current_user
+    local current_home
+    local status
+
+    current_user="$(command id -un)"
+    current_home="$(_acfs_resolve_target_home "$current_user")"
+    export TARGET_USER="$current_user"
+    export TARGET_HOME="$current_home"
+
+    if printf 'exit 23\n' | run_as_target_runner bash -s --; then
+        fail "expected verified runner failure"
+    else
+        status=$?
+    fi
+
+    [[ "$status" -eq 23 ]]
+}
+
+@test "run_as_target_runner rejects explicit hook injection and interpreter options" {
+    local current_user
+    local current_home
+    local verified_script="$BATS_TEST_TMPDIR/verified-installer.sh"
+
+    current_user="$(command id -un)"
+    current_home="$(_acfs_resolve_target_home "$current_user")"
+    export TARGET_USER="$current_user"
+    export TARGET_HOME="$current_home"
+    printf 'printf ok\\n\n' > "$verified_script"
+
+    run run_as_target_runner env BASH_ENV="$BATS_TEST_TMPDIR/attacker" bash "$verified_script"
+    assert_failure
+    assert_output --partial "Refusing unapproved clean runner environment variable: BASH_ENV"
+
+    run run_as_target_runner bash -c 'printf pwned'
+    assert_failure
+    assert_output --partial "requires a regular, non-symlink absolute script file"
+
+    run run_as_target_runner python "$verified_script"
+    assert_failure
+    assert_output --partial "Refusing unapproved clean target runner: python"
+}
+
 @test "installer target-user runners use noninteractive sudo" {
     local helpers="$PROJECT_ROOT/scripts/lib/install_helpers.sh"
     local installer="$PROJECT_ROOT/install.sh"

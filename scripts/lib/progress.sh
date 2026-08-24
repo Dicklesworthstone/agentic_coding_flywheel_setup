@@ -190,7 +190,8 @@ progress_count_modules() {
     for module in "${ACFS_EFFECTIVE_PLAN[@]:-}"; do
         key="$module"
         if [[ "${ACFS_MODULE_CATEGORY[$key]:-}" == "$category" ]] && \
-           [[ "${ACFS_MODULE_PHASE[$key]:-}" == "$phase" ]]; then
+           [[ "${ACFS_MODULE_PHASE[$key]:-}" == "$phase" ]] && \
+           [[ "${ACFS_MODULE_GENERATED[$key]:-}" == "1" ]]; then
             ((count++)) || true
         fi
     done

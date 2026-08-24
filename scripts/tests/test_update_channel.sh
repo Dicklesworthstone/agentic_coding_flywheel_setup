@@ -718,7 +718,7 @@ else
 fi
 
 # ============================================================
-section "Test 5b: meta_skill ARM64 Linux source fallback"
+section "Test 5b: meta_skill ARM64 Linux fails closed without anchored source"
 # ============================================================
 for ms_arm64_arch in aarch64 arm64; do
     MS_ARM64_SIGNAL="/tmp/test_update_channel_ms_arm64_${ms_arm64_arch}_$$"
@@ -773,15 +773,11 @@ for ms_arm64_arch in aarch64 arm64; do
     ) || true
 
     if [[ -f "$MS_ARM64_SIGNAL" ]]; then
-        ms_arm64_args=$(cat "$MS_ARM64_SIGNAL")
-        rm -f "$MS_ARM64_SIGNAL"
-        if [[ "$ms_arm64_args" == *"--git https://github.com/Dicklesworthstone/meta_skill --force"* ]]; then
-            pass "meta_skill ARM64 Linux update path falls back to cargo source install ($ms_arm64_arch)"
-        else
-            fail "meta_skill ARM64 Linux fallback used wrong cargo args for $ms_arm64_arch: $ms_arm64_args"
-        fi
+        fail "meta_skill ARM64 Linux update invoked unanchored cargo for $ms_arm64_arch"
+    elif [[ "$ms_arm64_output" == *"no checksum-anchored Linux ARM64 install source"* ]]; then
+        pass "meta_skill ARM64 Linux update fails closed without an anchored source ($ms_arm64_arch)"
     else
-        fail "meta_skill ARM64 Linux fallback did not invoke cargo for $ms_arm64_arch. Output: $ms_arm64_output"
+        fail "meta_skill ARM64 Linux update did not explain the anchored-source refusal. Output: $ms_arm64_output"
     fi
 done
 

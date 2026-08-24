@@ -35,6 +35,7 @@
 #   --no-deps             Disable automatic dependency closure (expert/debug)
 #   --checksums-ref <ref> Fetch checksums.yaml from this ref (default: main for pinned tags/SHAs)
 #   --offline-pack <dir>  Use an extracted acfs-offline-pack/ and refuse live fallback
+#   --bootstrap-archive <file>  Use an explicitly selected local repository archive
 #   --ref <ref>          Git ref to install (branch, tag, or SHA). Equivalent to
 #                        ACFS_REF env var but works reliably in curl|bash pipelines.
 #   --pin-ref            Print resolved SHA and pinned command, then exit
@@ -47,8 +48,8 @@ set -euo pipefail
 # /usr/local and Homebrew are intentionally excluded from privileged bootstrap
 # resolution because their ownership/mode is installation-specific.
 _ACFS_EARLY_PATH="/usr/sbin:/usr/bin:/sbin:/bin"
-export PATH="$_ACFS_EARLY_PATH"
-unset _ACFS_EARLY_PATH
+builtin export PATH="$_ACFS_EARLY_PATH"
+builtin unset _ACFS_EARLY_PATH
 
 # ============================================================
 # Bash version guard (must run before any bash 4+ syntax below)
@@ -78,13 +79,12 @@ if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || {
     if [ "$_acfs_can_reexec" = true ] && [ "${EUID:-1}" -ne 0 ]; then
         for _acfs_newer_bash in \
             /opt/homebrew/bin/bash \
-            /usr/local/bin/bash \
-            "$(command -v bash 2>/dev/null || true)"; do
+            /usr/local/bin/bash; do
             if [ -n "$_acfs_newer_bash" ] && [ -x "$_acfs_newer_bash" ] \
                 && [ "$_acfs_newer_bash" != "${BASH:-}" ] \
                 && "$_acfs_newer_bash" -c '[ "${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 4 ]; }' 2>/dev/null; then
                 export ACFS_BASH_REEXEC=1
-                exec "$_acfs_newer_bash" "$0" "$@"
+                exec "$_acfs_newer_bash" --noprofile --norc -p "$0" "$@"
             fi
         done
     fi
@@ -96,6 +96,31 @@ if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || {
     printf '%s\n' "    curl -fsSL <installer-url> | /opt/homebrew/bin/bash -s -- --yes --mode vibe" >&2
     exit 1
 fi
+
+# Strip executable loader/shell startup hooks before launching any system
+# helper. BASH_ENV may already have affected this interpreter before the first
+# script byte ran, so remove every function it could have installed as well as
+# preventing those hooks from reaching later (potentially privileged) children.
+# Ordinary configuration such as proxy variables remains available.
+builtin unset BASH_ENV ENV
+builtin unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG LD_PROFILE
+builtin unset DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
+# HTTPS is a provenance boundary for the pinned GitHub archive. Do not let an
+# ambient environment replace curl's system trust store; proxy variables are
+# preserved separately because proxy-only VPS networks are supported.
+builtin unset CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE GIT_SSL_CAINFO
+while IFS= builtin read -r _acfs_inherited_function; do
+    if ! builtin unset -f -- "$_acfs_inherited_function"; then
+        builtin printf 'ERROR: Unable to remove inherited shell function: %s\n' \
+            "$_acfs_inherited_function" >&2
+        builtin exit 1
+    fi
+done < <(builtin compgen -A function)
+builtin unset _acfs_inherited_function
+# BASH_ENV can also enable alias expansion and install aliases before the first
+# installer byte is read. Aliases are executable shell state just like exported
+# functions, so do not let them influence bootstrap command resolution.
+builtin unalias -a 2>/dev/null || true
 
 # Enable shell tracing when ACFS_DEBUG=true (matches the hint in our error messages)
 [[ "${ACFS_DEBUG:-}" == "true" ]] && set -x
@@ -152,7 +177,8 @@ unset _ACFS_CHECKSUMS_REF_FROM_ENV
 ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
 ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
 export ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_CHECKSUMS_REF_EXPLICIT ACFS_VERSION
-export CHECKSUMS_FILE="${ACFS_CHECKSUMS_YAML:-${CHECKSUMS_FILE:-}}"
+CHECKSUMS_FILE=""
+export CHECKSUMS_FILE
 ACFS_OFFLINE_PACK="${ACFS_OFFLINE_PACK:-}"
 ACFS_OFFLINE_NETWORK_MODE="${ACFS_OFFLINE_NETWORK_MODE:-}"
 ACFS_OFFLINE_PACK_REQUIRED="${ACFS_OFFLINE_PACK_REQUIRED:-}"
@@ -162,7 +188,7 @@ ACFS_COMMIT_SHA_FULL=""  # Full SHA for pinning resume scripts (40 chars)
 
 # Early curl defaults: enforce HTTPS (including redirects) when supported.
 # This is used before security.sh is available (bootstrap / early library sourcing).
-ACFS_EARLY_CURL_ARGS=(--connect-timeout 30 --max-time 300 -fsSL)
+ACFS_EARLY_CURL_ARGS=(-q --connect-timeout 30 --max-time 300 -fsSL)
 # Note: ACFS_HOME is set after TARGET_HOME is determined
 ACFS_LOG_DIR="/var/log/acfs"
 
@@ -177,6 +203,42 @@ ACFS_CLAUDE_RETENTION_JQ_FILTER="if has(\"cleanupPeriodDays\") then . else .clea
 _ACFS_BOOTSTRAP_DIR_OWNED=false
 _ACFS_BOOTSTRAP_DIR_CREATED=""
 _ACFS_BOOTSTRAP_DIR_TMP_ROOT=""
+# Cleanup authority is process-minted, never inherited from the caller.
+ACFS_TMP_ARCHIVE=""
+_ACFS_TMP_ARCHIVE_OWNED=false
+_ACFS_TMP_ARCHIVE_CREATED=""
+_ACFS_TMP_ARCHIVE_TMP_ROOT=""
+ACFS_TMP_INSTALL=""
+_ACFS_TMP_INSTALL_OWNED=false
+_ACFS_TMP_INSTALL_CREATED=""
+_ACFS_TMP_INSTALL_TMP_ROOT=""
+# Local archive authority can only be minted by an explicit command-line
+# option. Never inherit a production bootstrap bypass from the environment.
+BOOTSTRAP_ARCHIVE_PATH=""
+# Process-owned descriptor binding the exact local archive selected by the CLI.
+# Never inherit descriptor authority from the caller.
+BOOTSTRAP_ARCHIVE_FD=""
+ACFS_RESOLVED_BOOTSTRAP_ARCHIVE_FILE=""
+# This marker is set only for the verified child spawned from an explicitly
+# selected local archive. It never grants authority: a caller spoofing it can
+# only force the installer into the more restrictive local-archive behavior.
+case "${ACFS_LOCAL_ARCHIVE_SOURCE:-false}" in
+    true) ;;
+    *) ACFS_LOCAL_ARCHIVE_SOURCE=false ;;
+esac
+export ACFS_LOCAL_ARCHIVE_SOURCE
+# Integrity values are process-minted after a closed-grammar ledger parse and
+# full checksum verification. Never inherit them from the caller.
+ACFS_TRUSTED_INTERNAL_LEDGER_SHA256=""
+ACFS_TRUSTED_PREFLIGHT_SHA256=""
+ACFS_TRUSTED_INTERNAL_SOURCE_ROOT=""
+# The outer streamed process supervises one verified child and owns cleanup;
+# suppress duplicate failure UX in that supervisor. This flag is process-minted
+# and deliberately not exported. The source-kind variables are hint-only and
+# confer no trust or execution authority.
+ACFS_BOOTSTRAP_SUPERVISOR=false
+ACFS_VERIFIED_BOOTSTRAP_SOURCE="${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}"
+ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}"
 
 acfs_early_system_binary_path() {
     local name="${1:-}"
@@ -199,23 +261,46 @@ acfs_early_system_binary_path() {
         "/sbin/$name"
     do
         [[ -x "$candidate" ]] || continue
-        echo "$candidate"
+        builtin printf '%s\n' "$candidate"
         return 0
     done
 
     return 1
 }
 
-# SCRIPT_DIR is empty when running via curl|bash (stdin; no file on disk)
+# Internal bootstrap and checksum paths are process-minted. A caller cannot
+# select code or checksum authority by exporting these names.
+unset ACFS_BOOTSTRAP_DIR ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR
+unset ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML CHECKSUMS_FILE
+CHECKSUMS_FILE=""
+export CHECKSUMS_FILE
+
+# SCRIPT_DIR is empty when running via curl|bash (stdin; no file on disk).
+# Canonicalize the containing directory without GNU-only `readlink -f`, and
+# reject a symlink script rather than resolving it through an attacker-selected
+# sibling tree. This remains portable to the supported macOS local-checkout
+# guard path as well as Ubuntu.
 SCRIPT_DIR=""
 if [[ -n "${BASH_SOURCE[0]:-}" && -f "${BASH_SOURCE[0]}" ]]; then
-    SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)" || {
-        _dirname_bin="$(acfs_early_system_binary_path dirname 2>/dev/null || true)"
-        if [[ -n "$_dirname_bin" ]]; then
-            SCRIPT_DIR="$(cd "$("$_dirname_bin" "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || SCRIPT_DIR=""
-        fi
-        unset _dirname_bin
-    }
+    _acfs_script_source="${BASH_SOURCE[0]}"
+    _acfs_script_dir="."
+    _acfs_script_name="$_acfs_script_source"
+    if [[ "$_acfs_script_source" == */* ]]; then
+        _acfs_script_dir="${_acfs_script_source%/*}"
+        _acfs_script_name="${_acfs_script_source##*/}"
+    fi
+    _canonical_script=""
+    if [[ -L "$_acfs_script_source" ]] \
+        || ! _canonical_script="$(builtin cd -P -- "$_acfs_script_dir" 2>/dev/null \
+            && builtin printf '%s/%s\n' "$(builtin pwd -P)" "$_acfs_script_name")" \
+        || [[ -z "$_canonical_script" ]] \
+        || [[ ! -f "$_canonical_script" || -L "$_canonical_script" ]]; then
+        echo "ERROR: Unable to canonicalize local install.sh path" >&2
+        exit 1
+    fi
+    SCRIPT_DIR="${_canonical_script%/*}"
+    [[ -n "$SCRIPT_DIR" ]] || SCRIPT_DIR="/"
+    unset _acfs_script_source _acfs_script_dir _acfs_script_name _canonical_script
 fi
 
 acfs_early_sudo_binary_path() {
@@ -267,7 +352,7 @@ export ACFS_DISTRO_ID ACFS_DISTRO_FAMILY ACFS_IS_OMARCHY
 _acfs_early_curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
 _acfs_early_grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
 if [[ -n "$_acfs_early_curl_bin" && -n "$_acfs_early_grep_bin" ]] && "$_acfs_early_curl_bin" --help all 2>/dev/null | "$_acfs_early_grep_bin" -q -- '--proto'; then
-    ACFS_EARLY_CURL_ARGS=(--proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
+    ACFS_EARLY_CURL_ARGS=(-q --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
 fi
 unset _acfs_early_curl_bin _acfs_early_grep_bin
 
@@ -451,51 +536,20 @@ _source_ubuntu_upgrade_lib() {
         return 0
     fi
 
-    # Prefer bootstrapped libs when available (curl|bash mode), to avoid mixed refs.
-    if [[ -n "${ACFS_LIB_DIR:-}" ]] && [[ -f "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]]; then
+    # Only the source root whose closed-world checksum ledger was verified by
+    # detect_environment may supply executable upgrade policy.
+    if [[ -n "${ACFS_LIB_DIR:-}" ]] \
+        && [[ "$ACFS_LIB_DIR" == "${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}/scripts/lib" ]] \
+        && [[ -f "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]] \
+        && [[ ! -L "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]]; then
         # shellcheck source=scripts/lib/ubuntu_upgrade.sh
         source "$ACFS_LIB_DIR/ubuntu_upgrade.sh"
         export ACFS_UBUNTU_UPGRADE_LOADED=1
         return 0
     fi
 
-    # Try local file first (when running from repo)
-    if [[ -n "${SCRIPT_DIR:-}" ]] && [[ -f "$SCRIPT_DIR/scripts/lib/ubuntu_upgrade.sh" ]]; then
-        # shellcheck source=scripts/lib/ubuntu_upgrade.sh
-        source "$SCRIPT_DIR/scripts/lib/ubuntu_upgrade.sh"
-        export ACFS_UBUNTU_UPGRADE_LOADED=1
-        return 0
-    fi
-
-    # Try relative path (when running from repo root)
-    if [[ -f "./scripts/lib/ubuntu_upgrade.sh" ]]; then
-        source "./scripts/lib/ubuntu_upgrade.sh"
-        export ACFS_UBUNTU_UPGRADE_LOADED=1
-        return 0
-    fi
-
-    # Download for curl|bash scenario
-    local curl_bin=""
-    curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
-    if [[ -n "$curl_bin" ]]; then
-        local tmp_upgrade=""
-        local mktemp_bin=""
-        mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
-        if [[ -n "$mktemp_bin" ]]; then
-            tmp_upgrade="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-ubuntu-upgrade.XXXXXX" 2>/dev/null)" || tmp_upgrade=""
-        fi
-        if [[ -n "$tmp_upgrade" ]]; then
-            if "$curl_bin" "${ACFS_EARLY_CURL_ARGS[@]}" "$ACFS_RAW/scripts/lib/ubuntu_upgrade.sh" -o "$tmp_upgrade" 2>/dev/null; then
-                source "$tmp_upgrade"
-                rm -f "$tmp_upgrade"
-                export ACFS_UBUNTU_UPGRADE_LOADED=1
-                return 0
-            fi
-            rm -f "$tmp_upgrade"
-        fi
-    fi
-
-    # If we can't load it, return failure (caller should handle)
+    # Never fall back to the caller's working directory or an independent
+    # network fetch: either would mix executable policy from another tree.
     return 1
 }
 
@@ -550,13 +604,78 @@ acfs_resolve_ref_sha() {
 
     local sha=""
 
+    # A complete object name is already immutable. Normalizing it locally
+    # avoids making an explicitly pinned install depend on GitHub availability;
+    # the subsequent archive request still proves whether that object exists.
+    if [[ "$ref" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+        sha="${ref,,}"
+        ACFS_RESOLVED_REF_INPUT="$ref"
+        ACFS_RESOLVED_REF_SHA="$sha"
+        printf '%s' "$sha"
+        return 0
+    fi
+
     # 1. git ls-remote - authoritative and outside the REST limiter.
     local git_bin=""
+    local timeout_bin=""
+    local env_bin=""
     git_bin="$(acfs_early_system_binary_path git 2>/dev/null || true)"
-    if [[ -n "$git_bin" ]]; then
+    timeout_bin="$(acfs_early_system_binary_path timeout 2>/dev/null || true)"
+    env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
+    if [[ -n "$git_bin" && -n "$timeout_bin" && -n "$env_bin" ]]; then
         local remote_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}.git"
-        # Grade on the captured text, not on the pipeline's exit status.
-        sha="$("$git_bin" ls-remote "$remote_url" "$ref" 2>/dev/null | awk 'NR==1{print $1}' || true)"
+        local refs_output=""
+        local head_sha=""
+        local tag_sha=""
+        local peeled_tag_sha=""
+
+        # Bound git independently of its transport configuration. For a short
+        # ref, query the exact branch/tag namespaces and define branch precedence
+        # explicitly; for an annotated tag, use its peeled commit object.
+        if [[ "$ref" == refs/* ]]; then
+            refs_output="$("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+                HOME=/ GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 \
+                GIT_CONFIG_GLOBAL=/dev/null \
+                "$timeout_bin" --kill-after=2s 10s \
+                "$git_bin" -C / ls-remote "$remote_url" "$ref" "${ref}^{}" 2>/dev/null || true)"
+        else
+            refs_output="$("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+                HOME=/ GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 \
+                GIT_CONFIG_GLOBAL=/dev/null \
+                "$timeout_bin" --kill-after=2s 10s \
+                "$git_bin" -C / ls-remote "$remote_url" \
+                "refs/heads/$ref" "refs/tags/$ref" "refs/tags/${ref}^{}" \
+                2>/dev/null || true)"
+        fi
+
+        local candidate_sha=""
+        local candidate_ref=""
+        while IFS=$'\t' read -r candidate_sha candidate_ref; do
+            [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ ]] || continue
+            if [[ "$ref" == refs/heads/* && "$candidate_ref" == "$ref" ]]; then
+                head_sha="$candidate_sha"
+            elif [[ "$ref" == refs/tags/* && "$candidate_ref" == "$ref" ]]; then
+                tag_sha="$candidate_sha"
+            elif [[ "$ref" == refs/tags/* && "$candidate_ref" == "${ref}^{}" ]]; then
+                peeled_tag_sha="$candidate_sha"
+            elif [[ "$ref" == refs/* && "$candidate_ref" == "$ref" ]]; then
+                head_sha="$candidate_sha"
+            else
+                case "$candidate_ref" in
+                    "refs/heads/$ref") head_sha="$candidate_sha" ;;
+                    "refs/tags/$ref") tag_sha="$candidate_sha" ;;
+                    "refs/tags/$ref^{}") peeled_tag_sha="$candidate_sha" ;;
+                esac
+            fi
+        done <<< "$refs_output"
+
+        if [[ -n "$head_sha" ]]; then
+            sha="$head_sha"
+        elif [[ -n "$peeled_tag_sha" ]]; then
+            sha="$peeled_tag_sha"
+        elif [[ -n "$tag_sha" ]]; then
+            sha="$tag_sha"
+        fi
     fi
 
     # 2. REST API fallback.
@@ -566,7 +685,7 @@ acfs_resolve_ref_sha() {
         if [[ -n "$curl_bin" ]]; then
             local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/commits/${ref}"
             local resp=""
-            resp="$("$curl_bin" -sf --max-time 10 \
+            resp="$("$curl_bin" "${ACFS_EARLY_CURL_ARGS[@]}" --max-time 10 \
                 -H "Accept: application/vnd.github.sha" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
                 "$api_url" 2>/dev/null || true)"
@@ -585,10 +704,9 @@ acfs_resolve_ref_sha() {
 # otherwise the ref as given.
 acfs_effective_ref() {
     local ref="${1:-}"
-    local sha=""
-    sha="$(acfs_resolve_ref_sha "$ref")"
-    if [[ -n "$sha" ]]; then
-        printf '%s' "$sha"
+    acfs_resolve_ref_sha "$ref" >/dev/null
+    if [[ -n "$ACFS_RESOLVED_REF_SHA" ]]; then
+        printf '%s' "$ACFS_RESOLVED_REF_SHA"
     else
         printf '%s' "$ref"
     fi
@@ -633,42 +751,56 @@ fetch_commit_sha() {
         return 0
     fi
 
-    # Need curl
-    local curl_bin=""
-    curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
-    if [[ -z "$curl_bin" ]]; then
-        ACFS_COMMIT_SHA="(curl not available)"
+    # An explicitly selected archive has no independently established Git
+    # identity. Never label those local bytes as the current remote branch.
+    if [[ "$ACFS_LOCAL_ARCHIVE_SOURCE" == "true" && -n "${SCRIPT_DIR:-}" ]]; then
+        ACFS_COMMIT_SHA="(local archive)"
+        ACFS_COMMIT_SHA_FULL=""
         return 0
     fi
 
-    # Fetch from GitHub API - get the commit SHA for the ref
-    local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/commits/${ACFS_REF}"
-    local response
+    # Resolve identity once through the git-first resolver. The REST endpoint is
+    # only optional metadata below; it must never override branch/tag semantics
+    # or become the authority for which repository object is installed.
+    acfs_resolve_ref_sha "$ACFS_REF" >/dev/null
+    if [[ ! "$ACFS_RESOLVED_REF_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+        ACFS_COMMIT_SHA="(unknown)"
+        ACFS_COMMIT_SHA_FULL=""
+        return 0
+    fi
+    ACFS_COMMIT_SHA_FULL="$ACFS_RESOLVED_REF_SHA"
+    ACFS_COMMIT_SHA="${ACFS_COMMIT_SHA_FULL:0:12}"
 
-    if response=$("$curl_bin" -sf --max-time 5 "$api_url" 2>/dev/null); then
-        # Try to use python3 for robust JSON parsing if available
-        local sha=""
+    # Best-effort authored-date metadata is queried by the exact resolved SHA.
+    # Failure or malformed JSON cannot change the already-established identity.
+    local curl_bin=""
+    curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
+    local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/commits/${ACFS_COMMIT_SHA_FULL}"
+    local response=""
+
+    if [[ -n "$curl_bin" ]] \
+        && response=$("$curl_bin" "${ACFS_EARLY_CURL_ARGS[@]}" --max-time 5 "$api_url" 2>/dev/null); then
         local commit_date=""
 
         local python3_bin=""
         python3_bin="$(acfs_early_system_binary_path python3 2>/dev/null || true)"
         if [[ -n "$python3_bin" ]]; then
-            # Python parsing - robust against JSON formatting changes
-            sha=$(echo "$response" | "$python3_bin" -c "import sys, json; print(json.load(sys.stdin).get('sha', ''))" 2>/dev/null)
-            commit_date=$(echo "$response" | "$python3_bin" -c "import sys, json; print(json.load(sys.stdin).get('commit', {}).get('author', {}).get('date', ''))" 2>/dev/null)
+            commit_date="$(builtin printf '%s' "$response" | "$python3_bin" -c \
+                "import sys, json; print(json.load(sys.stdin).get('commit', {}).get('author', {}).get('date', ''))" \
+                2>/dev/null || true)"
         else
-            # Fallback: Extract SHA from JSON using grep/sed (works without jq/python)
-            # Use grep -o to handle minified JSON (puts matches on new lines)
-            sha=$(echo "$response" | grep -o '"sha":[[:space:]]*"[^"]*"' | head -n 1 | sed 's/.*"\([a-f0-9]*\)".*/\1/')
-
-            # Extract commit date (format: "2025-12-21T10:30:00Z")
-            commit_date=$(echo "$response" | grep -o '"date":[[:space:]]*"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)".*/\1/')
-        fi
-
-        if [[ -n "$sha" && ${#sha} -ge 7 ]]; then
-            ACFS_COMMIT_SHA="${sha:0:12}"
-            # shellcheck disable=SC2034  # Used by scripts/lib/ubuntu_upgrade.sh to pin resume scripts to a specific commit.
-            [[ ${#sha} -ge 40 ]] && ACFS_COMMIT_SHA_FULL="$sha"
+            local grep_bin=""
+            local head_bin=""
+            local sed_bin=""
+            grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
+            head_bin="$(acfs_early_system_binary_path head 2>/dev/null || true)"
+            sed_bin="$(acfs_early_system_binary_path sed 2>/dev/null || true)"
+            if [[ -n "$grep_bin" && -n "$head_bin" && -n "$sed_bin" ]]; then
+                commit_date="$(builtin printf '%s' "$response" \
+                    | "$grep_bin" -o '"date":[[:space:]]*"[^"]*"' \
+                    | "$head_bin" -n 1 \
+                    | "$sed_bin" 's/.*"\([^"]*\)".*/\1/' || true)"
+            fi
         fi
 
         if [[ -n "$commit_date" ]]; then
@@ -702,13 +834,8 @@ fetch_commit_sha() {
             fi
         fi
 
-        if [[ -n "$ACFS_COMMIT_SHA" ]]; then
-            return 0
-        fi
     fi
-
-    # Fallback
-    ACFS_COMMIT_SHA="(unknown)"
+    return 0
 }
 
 # ============================================================
@@ -794,7 +921,8 @@ install_gum_early() {
     # Step 1: Fetch Charm GPG key (with timeout)
     echo -e "\033[0;90m      ↳ Fetching Charm repository key...\033[0m" >&2
     "${sudo_cmd[@]}" "$mkdir_bin" -p /etc/apt/keyrings 2>/dev/null || true
-    if ! "$curl_bin" --connect-timeout 10 --max-time 30 -fsSL https://repo.charm.sh/apt/gpg.key 2>/dev/null | \
+    if ! "$curl_bin" "${ACFS_EARLY_CURL_ARGS[@]}" --connect-timeout 10 --max-time 30 \
+        https://repo.charm.sh/apt/gpg.key 2>/dev/null | \
         "${sudo_cmd[@]}" "$gpg_bin" --batch --yes --dearmor -o /etc/apt/keyrings/charm.gpg 2>/dev/null; then
         echo -e "\033[0;33m      ⚠ Could not fetch Charm key (skipping gum, will retry later)\033[0m" >&2
         return 0
@@ -1375,10 +1503,20 @@ generate_resume_hint() {
     local resume_ref_pinned_from_commit=false
     local -a resume_args=(--resume)
 
-    # Prefer curl|bash one-liner for curl invocations; local script for local runs
-    if [[ -z "${SCRIPT_DIR:-}" ]]; then
+    # A verified archive child has a temporary SCRIPT_DIR, but its logical
+    # origin is still the streamed installer. Never suggest that deleted path.
+    local logical_streamed=false
+    if [[ -z "${SCRIPT_DIR:-}" ]] \
+        || [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == "remote" ]] \
+        || [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == "local_archive" ]]; then
+        logical_streamed=true
+    fi
+
+    # Prefer curl|bash one-liner for logical streamed invocations; local script
+    # only for a durable local checkout.
+    if [[ "$logical_streamed" == "true" ]]; then
         # curl|bash invocation - use one-liner format
-        cmd="curl -fsSL"
+        cmd="curl -q -fsSL"
         if [[ -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
             # Pin to exact commit SHA for reproducibility
             install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_COMMIT_SHA_FULL}/install.sh"
@@ -1389,7 +1527,7 @@ generate_resume_hint() {
         fi
         printf -v install_url_q '%q' "$install_url"
         cmd="$cmd $install_url_q"
-        cmd="$cmd | bash -s --"
+        cmd="$cmd | bash -p -s --"
     else
         # Local script invocation
         local local_install
@@ -1407,7 +1545,7 @@ generate_resume_hint() {
 
     # Propagate --ref so the resume uses the same git ref (avoids the
     # curl|bash env-var pitfall where ACFS_REF only reaches curl, not bash)
-    if [[ -z "${SCRIPT_DIR:-}" && -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
+    if [[ "$logical_streamed" == "true" && -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
         resume_ref="$ACFS_COMMIT_SHA_FULL"
         resume_ref_pinned_from_commit=true
     elif [[ -n "${ACFS_REF_INPUT:-}" && "${ACFS_REF_INPUT}" != "main" ]]; then
@@ -1428,6 +1566,10 @@ generate_resume_hint() {
     fi
     if [[ -n "${ACFS_OFFLINE_PACK:-}" ]]; then
         resume_args+=(--offline-pack "$ACFS_OFFLINE_PACK")
+    fi
+    if [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == "local_archive" ]] \
+        && [[ -n "${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}" ]]; then
+        resume_args+=(--bootstrap-archive "$ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH")
     fi
 
     # Preserve manifest selection semantics. A targeted failed install must
@@ -1509,13 +1651,14 @@ print_resume_hint() {
     local failed_step="${2:-}"
     local resume_cmd=""
     if ! resume_cmd=$(generate_resume_hint "${failed_phase:-}" "${failed_step:-}" 2>/dev/null); then
-        if [[ -n "${SCRIPT_DIR:-}" ]]; then
+        if [[ -n "${SCRIPT_DIR:-}" ]] \
+            && [[ -z "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" ]]; then
             local local_install
             local_install="${SCRIPT_DIR%/}/install.sh"
             printf -v local_install '%q' "$local_install"
             resume_cmd="bash $local_install --resume --yes"
         else
-            resume_cmd="curl -fsSL https://acfs.sh | bash -s -- --resume --yes"
+            resume_cmd="curl -q -fsSL https://acfs.sh | bash -p -s -- --resume --yes"
         fi
     fi
 
@@ -1573,6 +1716,22 @@ acfs_bootstrap_dir_is_owned_temp() {
     [[ "$tmp_root" == /* ]] || return 1
     [[ "$dir" == "$tmp_root"/acfs-bootstrap-* ]] || return 1
     [[ -d "$dir" ]] || return 1
+}
+
+acfs_file_is_owned_temp() {
+    local path="${1:-}"
+    local created="${2:-}"
+    local tmp_root="${3:-}"
+    local prefix="${4:-}"
+    local owned="${5:-false}"
+
+    [[ "$owned" == "true" ]] || return 1
+    [[ -n "$path" && "$path" == "$created" ]] || return 1
+    [[ "$path" == /* && "$path" != "/" ]] || return 1
+    tmp_root="${tmp_root%/}"
+    [[ "$tmp_root" == /* && "$tmp_root" != "/" ]] || return 1
+    [[ -n "$prefix" && "$path" == "$tmp_root/$prefix"* ]] || return 1
+    [[ -f "$path" && ! -L "$path" ]]
 }
 
 acfs_remember_install_lock() {
@@ -1683,20 +1842,31 @@ cleanup() {
     # Cleanup must never abort — disable errexit for the entire function.
     set +e
 
+    if [[ "$BOOTSTRAP_ARCHIVE_FD" =~ ^[0-9]+$ ]]; then
+        exec {BOOTSTRAP_ARCHIVE_FD}<&-
+        BOOTSTRAP_ARCHIVE_FD=""
+    fi
+
     if acfs_bootstrap_dir_is_owned_temp "${ACFS_BOOTSTRAP_DIR:-}"; then
         rm -rf -- "$ACFS_BOOTSTRAP_DIR" 2>/dev/null || true
     fi
 
-    if [[ -n "${ACFS_TMP_ARCHIVE:-}" ]] && [[ -f "$ACFS_TMP_ARCHIVE" ]]; then
-        rm -f "$ACFS_TMP_ARCHIVE" 2>/dev/null || true
+    if acfs_file_is_owned_temp \
+        "${ACFS_TMP_ARCHIVE:-}" \
+        "${_ACFS_TMP_ARCHIVE_CREATED:-}" \
+        "${_ACFS_TMP_ARCHIVE_TMP_ROOT:-}" \
+        "acfs-archive-" \
+        "${_ACFS_TMP_ARCHIVE_OWNED:-false}"; then
+        rm -f -- "$ACFS_TMP_ARCHIVE" 2>/dev/null || true
     fi
 
-    if [[ -n "${ACFS_TMP_SLB:-}" ]] && [[ -d "$ACFS_TMP_SLB" ]]; then
-        rm -rf "$ACFS_TMP_SLB" 2>/dev/null || true
-    fi
-
-    if [[ -n "${ACFS_TMP_INSTALL:-}" ]] && [[ -f "$ACFS_TMP_INSTALL" ]]; then
-        rm -f "$ACFS_TMP_INSTALL" 2>/dev/null || true
+    if acfs_file_is_owned_temp \
+        "${ACFS_TMP_INSTALL:-}" \
+        "${_ACFS_TMP_INSTALL_CREATED:-}" \
+        "${_ACFS_TMP_INSTALL_TMP_ROOT:-}" \
+        "acfs-install-" \
+        "${_ACFS_TMP_INSTALL_OWNED:-false}"; then
+        rm -f -- "$ACFS_TMP_INSTALL" 2>/dev/null || true
     fi
 
     # If a signal triggered this cleanup, mark state as interrupted so
@@ -1707,7 +1877,7 @@ cleanup() {
         fi
     fi
 
-    if [[ $exit_code -ne 0 ]]; then
+    if [[ $exit_code -ne 0 && "${ACFS_BOOTSTRAP_SUPERVISOR:-false}" != "true" ]]; then
         log_error ""
         if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]]; then
             log_error "ACFS installation completed, but the post-install smoke test failed."
@@ -1751,7 +1921,7 @@ cleanup() {
     # Operator hard requirement: no matter what fails during setup, skills
     # must still install and onboarding instructions must still be shown.
     # The normal main() flow now record-and-continues through phase/module
-    # failures so it always reaches install_stack_meta_skill and
+    # failures so it always reaches the manifest-mapped stack.meta_skill installer and
     # print_summary on its own — but if something dies in a way that bypasses
     # that (an unhandled `set -e` exit, a signal, a bug), this is the last-
     # resort net. Guarded by ACFS_SKILLS_AND_SUMMARY_DONE so a normal
@@ -1761,8 +1931,18 @@ cleanup() {
     if [[ "${ACFS_INSTALL_RUN_CONFIRMED:-0}" == "1" ]] && [[ "${ACFS_SKILLS_AND_SUMMARY_DONE:-0}" != "1" ]]; then
         ACFS_SKILLS_AND_SUMMARY_DONE=1
         log_error "Installation ended before reaching normal completion; attempting best-effort skills install + onboarding summary anyway."
-        if [[ "${DRY_RUN:-false}" != "true" ]] && type -t install_stack_meta_skill &>/dev/null; then
-            if ! install_stack_meta_skill; then
+        local skills_installer=""
+        local skills_map_decl=""
+        skills_map_decl="$(declare -p ACFS_MODULE_FUNC 2>/dev/null || true)"
+        if [[ "$skills_map_decl" == declare\ -A* ]]; then
+            skills_installer="${ACFS_MODULE_FUNC[stack.meta_skill]:-}"
+        fi
+        if [[ "${DRY_RUN:-false}" != "true" ]]; then
+            if [[ ! "$skills_installer" =~ ^acfs_generated_install_[a-z0-9_]+$ ]] \
+                || ! declare -f "$skills_installer" >/dev/null 2>&1; then
+                log_error "Manifest-mapped stack.meta_skill installer is unavailable during EXIT fallback"
+                ACFS_MODULE_FAILURES+=("stack.meta_skill (EXIT-trap fallback unavailable)")
+            elif ! "$skills_installer"; then
                 ACFS_MODULE_FAILURES+=("stack.meta_skill (EXIT-trap fallback attempt)")
             fi
         fi
@@ -1839,6 +2019,72 @@ acfs_resolve_offline_pack_dir() {
     fi
 
     printf '%s\n' "$resolved"
+}
+
+acfs_resolve_bootstrap_archive_file() {
+    local flag="$1"
+    local value="${2:-}"
+    local candidate=""
+    local candidate_dir=""
+    local candidate_name=""
+    local resolved_dir=""
+
+    if [[ -z "$value" || "$value" == -* ]]; then
+        log_fatal "$flag requires a repository .tar.gz file"
+    fi
+    if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+        log_fatal "$flag requires a single-line file path"
+    fi
+
+    case "$value" in
+        /*) candidate="$value" ;;
+        *) candidate="$PWD/$value" ;;
+    esac
+    candidate_name="${candidate##*/}"
+    candidate_dir="${candidate%/*}"
+    [[ -n "$candidate_dir" ]] || candidate_dir="/"
+
+    if [[ -z "$candidate_name" || ! -f "$candidate" || ! -r "$candidate" || -L "$candidate" ]]; then
+        log_fatal "$flag must point to a readable, non-symlink regular file (got: $value)"
+    fi
+    resolved_dir="$(cd "$candidate_dir" && pwd -P)" || {
+        log_fatal "$flag could not resolve file directory: $value"
+    }
+    candidate="$resolved_dir/$candidate_name"
+    if [[ ! -f "$candidate" || ! -r "$candidate" || -L "$candidate" ]]; then
+        log_fatal "$flag resolved to an invalid file: $value"
+    fi
+
+    ACFS_RESOLVED_BOOTSTRAP_ARCHIVE_FILE="$candidate"
+}
+
+acfs_select_bootstrap_archive_file() {
+    local flag="$1"
+    local value="${2:-}"
+
+    if [[ -n "$BOOTSTRAP_ARCHIVE_PATH" || -n "$BOOTSTRAP_ARCHIVE_FD" ]]; then
+        log_fatal "$flag may be specified only once"
+    fi
+
+    ACFS_RESOLVED_BOOTSTRAP_ARCHIVE_FILE=""
+    acfs_resolve_bootstrap_archive_file "$flag" "$value"
+    BOOTSTRAP_ARCHIVE_PATH="$ACFS_RESOLVED_BOOTSTRAP_ARCHIVE_FILE"
+    [[ -n "$BOOTSTRAP_ARCHIVE_PATH" ]] || log_fatal "$flag could not resolve the archive"
+
+    # Pin the selected filesystem object immediately. Later staging reads only
+    # from this descriptor, so a pathname replacement cannot swap archive
+    # bytes between argument parsing and bootstrap.
+    if ! exec {BOOTSTRAP_ARCHIVE_FD}<"$BOOTSTRAP_ARCHIVE_PATH"; then
+        BOOTSTRAP_ARCHIVE_FD=""
+        log_fatal "$flag could not open archive: $value"
+    fi
+    if [[ -L "$BOOTSTRAP_ARCHIVE_PATH" ]] \
+        || [[ ! -f "$BOOTSTRAP_ARCHIVE_PATH" ]] \
+        || [[ ! "$BOOTSTRAP_ARCHIVE_PATH" -ef "/dev/fd/$BOOTSTRAP_ARCHIVE_FD" ]]; then
+        exec {BOOTSTRAP_ARCHIVE_FD}<&-
+        BOOTSTRAP_ARCHIVE_FD=""
+        log_fatal "$flag archive changed while it was being selected: $value"
+    fi
 }
 
 acfs_normalize_offline_pack_configuration() {
@@ -1974,6 +2220,15 @@ parse_args() {
                 ACFS_OFFLINE_NETWORK_MODE=offline
                 ACFS_OFFLINE_PACK_REQUIRED=true
                 export ACFS_OFFLINE_PACK ACFS_OFFLINE_NETWORK_MODE ACFS_OFFLINE_PACK_REQUIRED
+                ;;
+            --bootstrap-archive|--bootstrap-archive=*)
+                if [[ "$1" == "--bootstrap-archive" ]]; then
+                    acfs_select_bootstrap_archive_file "$1" "${2:-}"
+                    shift 2
+                else
+                    acfs_select_bootstrap_archive_file "--bootstrap-archive" "${1#*=}"
+                    shift
+                fi
                 ;;
             --pin-ref|--confirm-ref)
                 # Print resolved SHA and pinned command, then exit
@@ -2244,32 +2499,29 @@ export -f handle_autofix 2>/dev/null || true
 # ============================================================
 detect_environment() {
     # Set lib and generated script directories based on context
-    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
-        # curl|bash mode: use bootstrap archive
-        ACFS_LIB_DIR="$ACFS_BOOTSTRAP_DIR/scripts/lib"
-        ACFS_GENERATED_DIR="$ACFS_BOOTSTRAP_DIR/scripts/generated"
-        ACFS_ASSETS_DIR="${ACFS_ASSETS_DIR:-$ACFS_BOOTSTRAP_DIR/acfs}"
-        ACFS_CHECKSUMS_YAML="${ACFS_CHECKSUMS_YAML:-$ACFS_BOOTSTRAP_DIR/checksums.yaml}"
-        ACFS_MANIFEST_YAML="${ACFS_MANIFEST_YAML:-$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml}"
-    elif [[ -n "${SCRIPT_DIR:-}" ]]; then
-        # Local checkout mode
+    if [[ -n "${SCRIPT_DIR:-}" ]]; then
+        # Local checkout mode. The canonical install.sh location is the sole
+        # authority even if a caller exported bootstrap/path variables.
+        ACFS_BOOTSTRAP_DIR=""
         ACFS_LIB_DIR="$SCRIPT_DIR/scripts/lib"
         ACFS_GENERATED_DIR="$SCRIPT_DIR/scripts/generated"
         ACFS_ASSETS_DIR="$SCRIPT_DIR/acfs"
         ACFS_CHECKSUMS_YAML="$SCRIPT_DIR/checksums.yaml"
         ACFS_MANIFEST_YAML="$SCRIPT_DIR/acfs.manifest.yaml"
+    elif acfs_bootstrap_dir_is_owned_temp "${ACFS_BOOTSTRAP_DIR:-}"; then
+        # curl|bash mode: use only the archive directory minted by this process.
+        ACFS_LIB_DIR="$ACFS_BOOTSTRAP_DIR/scripts/lib"
+        ACFS_GENERATED_DIR="$ACFS_BOOTSTRAP_DIR/scripts/generated"
+        ACFS_ASSETS_DIR="$ACFS_BOOTSTRAP_DIR/acfs"
+        ACFS_CHECKSUMS_YAML="$ACFS_BOOTSTRAP_DIR/checksums.yaml"
+        ACFS_MANIFEST_YAML="$ACFS_BOOTSTRAP_DIR/acfs.manifest.yaml"
     else
-        # Fallback: current directory (only valid for testing from repo root)
-        # This should NOT be reached in curl-pipe mode since bootstrap_repo_archive
-        # sets ACFS_BOOTSTRAP_DIR. If we reach here without SCRIPT_DIR, something is wrong.
-        ACFS_LIB_DIR="./scripts/lib"
-        ACFS_GENERATED_DIR="./scripts/generated"
-        ACFS_ASSETS_DIR="./acfs"
-        ACFS_CHECKSUMS_YAML="./checksums.yaml"
-        ACFS_MANIFEST_YAML="./acfs.manifest.yaml"
+        echo "ERROR: No process-owned ACFS source tree is available" >&2
+        exit 1
     fi
+    CHECKSUMS_FILE="$ACFS_CHECKSUMS_YAML"
 
-    export ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML
+    export ACFS_LIB_DIR ACFS_GENERATED_DIR ACFS_ASSETS_DIR ACFS_CHECKSUMS_YAML ACFS_MANIFEST_YAML CHECKSUMS_FILE
 
     # Validate that library directory exists - if not, fail early with a clear message
     if [[ ! -d "$ACFS_LIB_DIR" ]]; then
@@ -2285,74 +2537,29 @@ detect_environment() {
         exit 1
     fi
 
-    # Source minimal libs in correct order (logging, then helpers)
-    if [[ -f "$ACFS_LIB_DIR/logging.sh" ]]; then
-        # shellcheck source=scripts/lib/logging.sh
-        source "$ACFS_LIB_DIR/logging.sh"
+    local _ics_base=""
+    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
+        _ics_base="$ACFS_BOOTSTRAP_DIR"
+    elif [[ -n "${SCRIPT_DIR:-}" ]]; then
+        _ics_base="$SCRIPT_DIR"
+    else
+        echo "ERROR: Unable to resolve internal-checksum source root" >&2
+        exit 1
     fi
 
-    # Verify internal script integrity before sourcing (bd-3tpl.5)
-    # Fail-closed: abort if any tracked script has been modified.
-    # Gracefully skips if checksums file is missing (pre-migration compat).
-    if [[ -f "$ACFS_GENERATED_DIR/internal_checksums.sh" ]]; then
-        # shellcheck source=scripts/generated/internal_checksums.sh
-        source "$ACFS_GENERATED_DIR/internal_checksums.sh"
-        if declare -p ACFS_INTERNAL_CHECKSUMS &>/dev/null; then
-            local _ics_base
-            if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
-                _ics_base="$ACFS_BOOTSTRAP_DIR"
-            elif [[ -n "${SCRIPT_DIR:-}" ]]; then
-                _ics_base="$SCRIPT_DIR"
-            else
-                _ics_base="."
-            fi
-            local _ics_fail=0
-            for _ics_path in "${!ACFS_INTERNAL_CHECKSUMS[@]}"; do
-                local _ics_expected="${ACFS_INTERNAL_CHECKSUMS[$_ics_path]}"
-                local _ics_file="$_ics_base/$_ics_path"
-                if [[ -f "$_ics_file" ]]; then
-                    local _ics_actual
-                    _ics_actual="$(acfs_calculate_file_sha256 "$_ics_file" 2>/dev/null || true)"
-                    if [[ -z "$_ics_actual" ]]; then
-                        _ics_fail=$((_ics_fail + 1))
-                        if declare -f log_error &>/dev/null; then
-                            log_error "INTEGRITY: failed to checksum $_ics_path"
-                        else
-                            echo "ERROR: INTEGRITY: failed to checksum $_ics_path" >&2
-                        fi
-                        continue
-                    fi
-                    if [[ "$_ics_actual" != "$_ics_expected" ]]; then
-                        _ics_fail=$((_ics_fail + 1))
-                        if declare -f log_error &>/dev/null; then
-                            log_error "INTEGRITY: $_ics_path checksum mismatch (expected ${_ics_expected:0:12}… got ${_ics_actual:0:12}…)"
-                        else
-                            echo "ERROR: INTEGRITY: $_ics_path checksum mismatch" >&2
-                        fi
-                    fi
-                else
-                    _ics_fail=$((_ics_fail + 1))
-                    if declare -f log_error &>/dev/null; then
-                        log_error "INTEGRITY: $_ics_path missing (expected checksum ${_ics_expected:0:12}…)"
-                    else
-                        echo "ERROR: INTEGRITY: $_ics_path missing" >&2
-                    fi
-                fi
-            done
-            if [[ "$_ics_fail" -gt 0 ]]; then
-                local _msg="Internal script integrity check failed: $_ics_fail file(s) modified. Run 'bun run generate' to regenerate checksums."
-                if declare -f log_error &>/dev/null; then
-                    log_error "$_msg"
-                else
-                    echo "ERROR: $_msg" >&2
-                fi
-                exit 1
-            fi
-            if [[ "$_ics_fail" -eq 0 ]] && declare -f log_success &>/dev/null; then
-                log_success "Internal script integrity verified (${ACFS_INTERNAL_CHECKSUMS_COUNT:-?} scripts)"
-            fi
-        fi
+    # The checksum ledger is data, not code. Parse it with a closed grammar,
+    # enforce the complete source closure, and verify it before sourcing even
+    # logging.sh.
+    local _ics_ledger="$ACFS_GENERATED_DIR/internal_checksums.sh"
+    if ! acfs_verify_internal_checksums_data "$_ics_base" "$_ics_ledger" true; then
+        echo "ERROR: Unable to verify the internal checksum ledger safely" >&2
+        exit 1
     fi
+
+    # logging.sh has now been verified as inert bytes from the selected source.
+    # shellcheck source=scripts/lib/logging.sh
+    source "$ACFS_LIB_DIR/logging.sh"
+    log_success "Internal script integrity verified (${ACFS_INTERNAL_CHECKSUMS_COUNT} scripts)"
 
     if [[ -f "$ACFS_LIB_DIR/security.sh" ]]; then
         # shellcheck source=scripts/lib/security.sh
@@ -2366,7 +2573,11 @@ detect_environment() {
 
     if [[ -f "$ACFS_LIB_DIR/install_helpers.sh" ]]; then
         # shellcheck source=scripts/lib/install_helpers.sh
+        # Internal helper-bootstrap control must never be supplied by the
+        # caller's environment. install.sh owns the runner functions here.
+        unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
         source "$ACFS_LIB_DIR/install_helpers.sh"
+        unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
     fi
 
     # Generated manifest installers target Ubuntu/apt. On Arch-family systems
@@ -2479,28 +2690,23 @@ source_generated_installers() {
         return 0
     fi
 
-    local script=""
-    local scripts=(
-        "install_users.sh"
-        "install_base.sh"
-        "install_filesystem.sh"
-        "install_shell.sh"
-        "install_cli.sh"
-        "install_network.sh"
-        "install_lang.sh"
-        "install_tools.sh"
-        "install_agents.sh"
-        "install_db.sh"
-        "install_cloud.sh"
-        "install_stack.sh"
-        "install_acfs.sh"
-    )
+    local categories_decl=""
+    categories_decl="$(declare -p ACFS_CATEGORIES_IN_ORDER 2>/dev/null || true)"
+    if [[ "$categories_decl" != declare\ -a* ]]; then
+        log_error "Manifest index is missing canonical category metadata"
+        return 1
+    fi
 
-    for script in "${scripts[@]}"; do
-        if [[ -f "$ACFS_GENERATED_DIR/$script" ]]; then
-            # shellcheck source=/dev/null
-            source "$ACFS_GENERATED_DIR/$script"
+    local category=""
+    local script=""
+    for category in "${ACFS_CATEGORIES_IN_ORDER[@]}"; do
+        script="install_${category}.sh"
+        if [[ ! -f "$ACFS_GENERATED_DIR/$script" || -L "$ACFS_GENERATED_DIR/$script" ]]; then
+            log_error "Generated category library missing or unsafe: $ACFS_GENERATED_DIR/$script"
+            return 1
         fi
+        # shellcheck source=/dev/null
+        source "$ACFS_GENERATED_DIR/$script"
     done
 
     ACFS_GENERATED_SOURCED=true
@@ -2593,17 +2799,23 @@ print_execution_plan() {
     echo ""
 
     local idx=1
-    local module phase func key reason
+    local module phase func key reason generated target
     for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
         # Use key variable to prevent arithmetic evaluation with dots
         key="$module"
         phase="${ACFS_MODULE_PHASE[$key]:-?}"
         func="${ACFS_MODULE_FUNC[$key]:-?}"
+        generated="${ACFS_MODULE_GENERATED[$key]:-?}"
+        if [[ "$generated" == "0" ]]; then
+            target="[orchestration-owned]"
+        else
+            target="${func}()"
+        fi
         reason="${ACFS_PLAN_REASON[$key]:-}"
         if [[ -n "$reason" ]]; then
-            printf "  %2d. [Phase %s] %s -> %s()  (%s)\n" "$idx" "$phase" "$module" "$func" "$reason"
+            printf "  %2d. [Phase %s] %s -> %s  (%s)\n" "$idx" "$phase" "$module" "$target" "$reason"
         else
-            printf "  %2d. [Phase %s] %s -> %s()\n" "$idx" "$phase" "$module" "$func"
+            printf "  %2d. [Phase %s] %s -> %s\n" "$idx" "$phase" "$module" "$target"
         fi
         ((++idx))  # Use ++idx to avoid exit on zero under set -e
     done
@@ -2731,53 +2943,154 @@ run_preflight_checks() {
     log_step "0/9" "Running pre-flight validation..."
 
     local preflight_script=""
-    local preflight_tmp=""
+    local source_root=""
+    local ledger_path=""
 
-    # Try to find preflight script in different locations
-    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -f "$ACFS_BOOTSTRAP_DIR/scripts/preflight.sh" ]]; then
-        preflight_script="$ACFS_BOOTSTRAP_DIR/scripts/preflight.sh"
-    elif [[ -n "${SCRIPT_DIR:-}" ]] && [[ -f "$SCRIPT_DIR/scripts/preflight.sh" ]]; then
+    # Preflight is executable policy. Accept it only from the validated
+    # bootstrap archive or the canonical local checkout, never from the
+    # caller's working directory or an independent mutable network fetch.
+    if [[ -n "${SCRIPT_DIR:-}" ]] \
+        && [[ -f "$SCRIPT_DIR/scripts/preflight.sh" ]] \
+        && [[ ! -L "$SCRIPT_DIR/scripts/preflight.sh" ]]; then
+        source_root="$SCRIPT_DIR"
         preflight_script="$SCRIPT_DIR/scripts/preflight.sh"
-    elif [[ -f "./scripts/preflight.sh" ]]; then
-        preflight_script="./scripts/preflight.sh"
+    elif acfs_bootstrap_dir_is_owned_temp "${ACFS_BOOTSTRAP_DIR:-}" \
+        && [[ -f "$ACFS_BOOTSTRAP_DIR/scripts/preflight.sh" ]] \
+        && [[ ! -L "$ACFS_BOOTSTRAP_DIR/scripts/preflight.sh" ]]; then
+        source_root="$ACFS_BOOTSTRAP_DIR"
+        preflight_script="$ACFS_BOOTSTRAP_DIR/scripts/preflight.sh"
     else
-        # Download preflight script for curl | bash scenario (if curl available)
-        local curl_bin=""
-        curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
-        if [[ -n "$curl_bin" ]]; then
-            log_detail "Downloading preflight script..."
-            local mktemp_bin=""
-            mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
-            if [[ -n "$mktemp_bin" ]]; then
-                preflight_tmp="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-preflight.XXXXXX" 2>/dev/null)" || preflight_tmp=""
-            fi
-            if [[ -n "$preflight_tmp" ]] && acfs_curl -o "$preflight_tmp" "$ACFS_RAW/scripts/preflight.sh" 2>/dev/null; then
-                local chmod_bin=""
-                chmod_bin="$(acfs_early_system_binary_path chmod 2>/dev/null || true)"
-                if [[ -n "$chmod_bin" ]]; then
-                    "$chmod_bin" +x "$preflight_tmp"
-                fi
-                preflight_script="$preflight_tmp"
-            else
-                log_warn "Could not download preflight script - skipping checks"
-                return 0
-            fi
-        else
-            log_warn "curl not available - skipping preflight checks"
-            return 0
-        fi
+        log_error "Trusted preflight script is missing from the selected ACFS source"
+        return 1
+    fi
+
+    ledger_path="$source_root/scripts/generated/internal_checksums.sh"
+    if [[ "$source_root" != "${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}" ]] \
+        || [[ ! "${ACFS_TRUSTED_INTERNAL_LEDGER_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
+        || [[ ! "${ACFS_TRUSTED_PREFLIGHT_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; then
+        log_error "Trusted preflight integrity state is unavailable"
+        return 1
+    fi
+
+    local ledger_sha=""
+    ledger_sha="$(acfs_calculate_file_sha256 "$ledger_path" 2>/dev/null || true)"
+    if [[ "$ledger_sha" != "$ACFS_TRUSTED_INTERNAL_LEDGER_SHA256" ]]; then
+        log_error "Internal checksum ledger changed after source verification"
+        return 1
+    fi
+
+    # Bind and hash the exact object that Bash will read, closing the pathname
+    # swap window between integrity verification and policy execution.
+    local preflight_hash_fd=""
+    local preflight_exec_fd=""
+    if ! exec {preflight_hash_fd}<"$preflight_script"; then
+        log_error "Unable to bind trusted preflight script"
+        return 1
+    fi
+    if ! exec {preflight_exec_fd}<"$preflight_script"; then
+        exec {preflight_hash_fd}<&-
+        log_error "Unable to bind trusted preflight script for execution"
+        return 1
+    fi
+    if [[ -L "$preflight_script" ]] \
+        || [[ ! "$preflight_script" -ef "/dev/fd/$preflight_hash_fd" ]] \
+        || [[ ! "/dev/fd/$preflight_hash_fd" -ef "/dev/fd/$preflight_exec_fd" ]]; then
+        exec {preflight_hash_fd}<&-
+        exec {preflight_exec_fd}<&-
+        log_error "Trusted preflight script changed while it was being opened"
+        return 1
+    fi
+    local preflight_sha=""
+    preflight_sha="$(acfs_calculate_file_sha256 "/dev/fd/$preflight_hash_fd" 2>/dev/null || true)"
+    exec {preflight_hash_fd}<&-
+    if [[ "$preflight_sha" != "$ACFS_TRUSTED_PREFLIGHT_SHA256" ]]; then
+        exec {preflight_exec_fd}<&-
+        log_error "Trusted preflight script changed after source verification"
+        return 1
     fi
 
     # Run preflight checks and capture exit code correctly
     # (can't use "if ! cmd; then exit_code=$?" because $? would be 0 from the negation)
     local exit_code=0
     local bash_bin=""
+    local env_bin=""
     bash_bin="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
-    if [[ -z "$bash_bin" ]]; then
-        log_warn "bash not available - skipping preflight checks"
-        return 0
+    env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$bash_bin" || -z "$env_bin" ]]; then
+        exec {preflight_exec_fd}<&-
+        log_error "Trusted bash/env is unavailable; preflight checks cannot run"
+        return 1
     fi
-    "$bash_bin" "$preflight_script" || exit_code=$?
+
+    local preflight_user=""
+    local passwd_line=""
+    local preflight_home=""
+    local preflight_shell=""
+    preflight_user="${TARGET_USER:-}"
+    passwd_line="$(acfs_early_getent_passwd_entry "$preflight_user" 2>/dev/null || true)"
+    if [[ -z "$passwd_line" ]]; then
+        preflight_user="$(acfs_early_resolve_current_user 2>/dev/null || true)"
+    fi
+    passwd_line="$(acfs_early_getent_passwd_entry "$preflight_user" 2>/dev/null || true)"
+    if [[ -n "$passwd_line" ]]; then
+        local passwd_remainder="$passwd_line"
+        local passwd_field=0
+        for ((passwd_field=0; passwd_field<5; passwd_field++)); do
+            passwd_remainder="${passwd_remainder#*:}"
+        done
+        preflight_home="${passwd_remainder%%:*}"
+        preflight_shell="${passwd_remainder#*:}"
+    fi
+    if [[ -z "$preflight_home" || "$preflight_home" != /* || ! -d "$preflight_home" ]]; then
+        exec {preflight_exec_fd}<&-
+        log_error "Unable to resolve a trusted HOME for preflight checks"
+        return 1
+    fi
+
+    local preflight_network="${ACFS_PREFLIGHT_NETWORK:-check}"
+    if [[ "$preflight_network" != "check" && "$preflight_network" != "skip" ]]; then
+        exec {preflight_exec_fd}<&-
+        log_error "ACFS_PREFLIGHT_NETWORK must be 'check' or 'skip'"
+        return 1
+    fi
+
+    local -a preflight_env=(
+        -i
+        "PATH=/usr/sbin:/usr/bin:/sbin:/bin"
+        "LC_ALL=C"
+        "HOME=$preflight_home"
+        "TARGET_USER=${TARGET_USER:-ubuntu}"
+        "ACFS_CHECKSUMS_YAML=$ACFS_CHECKSUMS_YAML"
+        "ACFS_PREFLIGHT_NETWORK=$preflight_network"
+    )
+    if [[ -n "$preflight_shell" && "$preflight_shell" == /* && -x "$preflight_shell" ]]; then
+        preflight_env+=("SHELL=$preflight_shell")
+    fi
+    if [[ -n "${TARGET_HOME:-}" ]]; then
+        preflight_env+=("TARGET_HOME=$TARGET_HOME")
+    fi
+
+    # Preserve only the network configuration preflight actually needs. Array
+    # assignments keep proxy credentials opaque; reject control characters and
+    # unbounded values before handing them to env(1).
+    local proxy_name=""
+    local proxy_value=""
+    for proxy_name in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY \
+        http_proxy https_proxy all_proxy no_proxy; do
+        proxy_value="${!proxy_name:-}"
+        [[ -n "$proxy_value" ]] || continue
+        if [[ "$proxy_value" == *$'\n'* || "$proxy_value" == *$'\r'* ]] \
+            || ((${#proxy_value} > 8192)); then
+            exec {preflight_exec_fd}<&-
+            log_error "$proxy_name contains an unsafe or excessively long proxy value"
+            return 1
+        fi
+        preflight_env+=("$proxy_name=$proxy_value")
+    done
+
+    "$env_bin" "${preflight_env[@]}" "$bash_bin" --noprofile --norc "/dev/fd/$preflight_exec_fd" \
+        || exit_code=$?
+    exec {preflight_exec_fd}<&-
 
     if [[ $exit_code -ne 0 ]]; then
         echo "" >&2
@@ -2788,26 +3101,18 @@ run_preflight_checks() {
         echo "" >&2
         log_info "Use --skip-preflight to bypass (not recommended)"
         echo "" >&2
-        if [[ -n "$preflight_tmp" ]]; then
-            rm -f "$preflight_tmp"
-        fi
-        exit 1
-    fi
-
-    # Cleanup downloaded preflight script on success
-    if [[ -n "$preflight_tmp" ]]; then
-        rm -f "$preflight_tmp"
+        return 1
     fi
 
     log_success "[0/9] Pre-flight validation passed"
     echo ""
 }
 
-ACFS_CURL_BASE_ARGS=(--connect-timeout 30 --max-time 300 -fsSL)
+ACFS_CURL_BASE_ARGS=(-q --connect-timeout 30 --max-time 300 -fsSL)
 _acfs_early_curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
 _acfs_early_grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
 if [[ -n "$_acfs_early_curl_bin" && -n "$_acfs_early_grep_bin" ]] && "$_acfs_early_curl_bin" --help all 2>/dev/null | "$_acfs_early_grep_bin" -q -- '--proto'; then
-    ACFS_CURL_BASE_ARGS=(--proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
+    ACFS_CURL_BASE_ARGS=(-q --proto '=https' --proto-redir '=https' --connect-timeout 30 --max-time 300 -fsSL)
 fi
 unset _acfs_early_curl_bin _acfs_early_grep_bin
 
@@ -2905,7 +3210,7 @@ acfs_curl_with_retry() {
         # Capture response headers alongside the body so an HTTP failure can
         # be classified by STATUS rather than by curl's catch-all exit 22.
         local hdr_file=""
-        hdr_file="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-bootstrap-hdr.XXXXXX" 2>/dev/null || true)"
+        hdr_file="$("$mktemp_bin" "/tmp/acfs-bootstrap-hdr.XXXXXX" 2>/dev/null || true)"
 
         exit_code=0
         if [[ -n "$hdr_file" ]]; then
@@ -2959,19 +3264,28 @@ acfs_curl_with_retry() {
 acfs_calculate_file_sha256() {
     local file_path="${1:-}"
     local hash_bin=""
+    local env_bin=""
     local hash_output=""
     local hash=""
 
+    env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$env_bin" ]]; then
+        log_error "No trusted env tool available for SHA256 calculation"
+        return 1
+    fi
+
     hash_bin="$(acfs_early_system_binary_path sha256sum 2>/dev/null || true)"
     if [[ -n "$hash_bin" ]]; then
-        hash_output="$("$hash_bin" "$file_path")" || return 1
+        hash_output="$("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+            "$hash_bin" -- "$file_path")" || return 1
     else
         hash_bin="$(acfs_early_system_binary_path shasum 2>/dev/null || true)"
         if [[ -z "$hash_bin" ]]; then
             log_error "No trusted SHA256 tool available (need sha256sum or shasum)"
             return 1
         fi
-        hash_output="$("$hash_bin" -a 256 "$file_path")" || return 1
+        hash_output="$("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+            "$hash_bin" -a 256 -- "$file_path")" || return 1
     fi
 
     hash="${hash_output%%[[:space:]]*}"
@@ -2980,6 +3294,328 @@ acfs_calculate_file_sha256() {
         return 1
     fi
     printf '%s\n' "${hash,,}"
+}
+
+# Parse the generated internal-checksum ledger as strict data. The ledger sits
+# beside executable code and therefore must never be sourced before its own
+# provenance is established; accepting only the generator's tiny data grammar
+# prevents command injection while still allowing every tracked file to be
+# verified before sourcing.
+acfs_load_internal_checksums_data() {
+    local ledger_path="${1:-}"
+    local bound_fd_path="${2:-false}"
+    if [[ -z "$ledger_path" || ! -f "$ledger_path" ]] \
+        || { [[ "$bound_fd_path" != "true" ]] && [[ -L "$ledger_path" ]]; }; then
+        printf 'ERROR: Internal checksum ledger is missing or unsafe: %s\n' "${ledger_path:-<empty>}" >&2
+        return 1
+    fi
+
+    local ledger_fd=""
+    if ! exec {ledger_fd}<"$ledger_path"; then
+        printf 'ERROR: Internal checksum ledger cannot be bound safely\n' >&2
+        return 1
+    fi
+    if [[ ! "/dev/fd/$ledger_fd" -ef "$ledger_path" ]]; then
+        exec {ledger_fd}<&-
+        printf 'ERROR: Internal checksum ledger changed while being opened\n' >&2
+        return 1
+    fi
+
+    local stat_bin=""
+    local env_bin=""
+    local ledger_size=""
+    stat_bin="$(acfs_early_system_binary_path stat 2>/dev/null || true)"
+    env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$stat_bin" || -z "$env_bin" ]]; then
+        exec {ledger_fd}<&-
+        printf 'ERROR: Trusted stat/env tools are unavailable for ledger validation\n' >&2
+        return 1
+    fi
+    ledger_size="$("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+        "$stat_bin" -c '%s' -- "/dev/fd/$ledger_fd" 2>/dev/null || true)"
+    if [[ ! "$ledger_size" =~ ^[0-9]+$ ]]; then
+        ledger_size="$("$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+            "$stat_bin" -f '%z' "/dev/fd/$ledger_fd" 2>/dev/null || true)"
+    fi
+    if [[ ! "$ledger_size" =~ ^[0-9]+$ ]] || (( ledger_size == 0 || ledger_size > 65536 )); then
+        exec {ledger_fd}<&-
+        printf 'ERROR: Internal checksum ledger exceeds its 64 KiB byte bound\n' >&2
+        return 1
+    fi
+
+    local -a ledger_lines=()
+    if ! mapfile -t ledger_lines <&"$ledger_fd"; then
+        exec {ledger_fd}<&-
+        printf 'ERROR: Internal checksum ledger could not be read\n' >&2
+        return 1
+    fi
+    exec {ledger_fd}<&-
+
+    unset ACFS_INTERNAL_CHECKSUMS ACFS_INTERNAL_CHECKSUMS_COUNT ACFS_INTERNAL_CHECKSUMS_SCHEMA
+    declare -gA ACFS_INTERNAL_CHECKSUMS=()
+
+    local entry_re='^[[:space:]]*\[([A-Za-z0-9_./-]+)\]="([0-9a-f]{64})"$'
+    local count_re='^ACFS_INTERNAL_CHECKSUMS_COUNT=([0-9]+)$'
+    local line=""
+    local path=""
+    local digest=""
+    local parsed_count=0
+    local declared_count=""
+    local count_seen=0
+    local schema_seen=0
+    local array_open=false
+    local array_seen=false
+    local line_count=0
+    local parse_state="expect_schema"
+
+    for line in "${ledger_lines[@]}"; do
+        ((line_count += 1))
+        if (( line_count > 128 )) || ((${#line} > 4096)); then
+            printf 'ERROR: Internal checksum ledger exceeds its bounded data grammar\n' >&2
+            return 1
+        fi
+        case "$line" in
+            ''|'#'*)
+                continue
+                ;;
+            'ACFS_INTERNAL_CHECKSUMS_SCHEMA=1')
+                [[ "$parse_state" == "expect_schema" ]] || {
+                    printf 'ERROR: Internal checksum ledger schema is out of order\n' >&2
+                    return 1
+                }
+                ((schema_seen += 1))
+                parse_state="expect_array"
+                continue
+                ;;
+            'declare -gA ACFS_INTERNAL_CHECKSUMS=(')
+                if [[ "$parse_state" != "expect_array" ]] \
+                    || [[ "$array_seen" == "true" || "$array_open" == "true" ]]; then
+                    printf 'ERROR: Internal checksum ledger repeats its array declaration\n' >&2
+                    return 1
+                fi
+                array_seen=true
+                array_open=true
+                parse_state="in_array"
+                continue
+                ;;
+            ')')
+                if [[ "$parse_state" != "in_array" || "$array_open" != "true" ]]; then
+                    printf 'ERROR: Internal checksum ledger has an unmatched array terminator\n' >&2
+                    return 1
+                fi
+                array_open=false
+                parse_state="expect_count"
+                continue
+                ;;
+        esac
+
+        if [[ "$line" =~ $entry_re ]]; then
+            if [[ "$parse_state" != "in_array" || "$array_open" != "true" ]]; then
+                printf 'ERROR: Internal checksum entry appears outside its data array\n' >&2
+                return 1
+            fi
+            path="${BASH_REMATCH[1]}"
+            digest="${BASH_REMATCH[2]}"
+            case "$path" in
+                /*|*..*)
+                    printf 'ERROR: Internal checksum ledger contains an unsafe path: %s\n' "$path" >&2
+                    return 1
+                    ;;
+            esac
+            if [[ -n "${ACFS_INTERNAL_CHECKSUMS[$path]+present}" ]]; then
+                printf 'ERROR: Internal checksum ledger repeats path: %s\n' "$path" >&2
+                return 1
+            fi
+            ACFS_INTERNAL_CHECKSUMS["$path"]="$digest"
+            ((parsed_count += 1))
+            continue
+        fi
+
+        if [[ "$line" =~ $count_re ]]; then
+            if [[ "$parse_state" != "expect_count" ]]; then
+                printf 'ERROR: Internal checksum ledger count is out of order\n' >&2
+                return 1
+            fi
+            ((count_seen += 1))
+            declared_count="${BASH_REMATCH[1]}"
+            parse_state="done"
+            continue
+        fi
+
+        printf 'ERROR: Internal checksum ledger contains unsupported data: %s\n' "$line" >&2
+        return 1
+    done
+
+    if (( schema_seen != 1 )) || [[ "$array_seen" != "true" ]] || [[ "$array_open" == "true" ]] \
+        || [[ "$parse_state" != "done" ]] || (( count_seen != 1 )) \
+        || [[ "$declared_count" != "$parsed_count" ]] || (( parsed_count == 0 )); then
+        printf 'ERROR: Internal checksum ledger structure/count is invalid\n' >&2
+        return 1
+    fi
+
+    # Closed-world trust boundary: every member of the deliberately
+    # checksum-controlled bootstrap/critical set must be present exactly once.
+    # A self-consistent ledger with a lowered count must not silently narrow
+    # that coverage.
+    local -a required_paths=(
+        install.sh
+        checksums.yaml
+        scripts/preflight.sh
+        scripts/lib/security.sh
+        scripts/lib/github_api.sh
+        scripts/lib/contract.sh
+        scripts/lib/agents.sh
+        scripts/lib/update.sh
+        scripts/lib/doctor.sh
+        scripts/lib/acfs-services.sh
+        scripts/lib/doctor_fix.sh
+        scripts/lib/offline_artifact_pack.sh
+        scripts/lib/autofix.sh
+        scripts/lib/autofix_existing.sh
+        scripts/lib/autofix_unattended.sh
+        scripts/lib/autofix_version_managers.sh
+        scripts/lib/ubuntu_upgrade.sh
+        scripts/lib/upgrade_resume.sh
+        scripts/lib/install_helpers.sh
+        scripts/lib/logging.sh
+        scripts/lib/output.sh
+        scripts/lib/gum_ui.sh
+        scripts/lib/progress.sh
+        scripts/lib/state.sh
+        scripts/lib/report.sh
+        scripts/lib/error_tracking.sh
+        scripts/lib/session.sh
+        scripts/lib/os_detect.sh
+        scripts/lib/errors.sh
+        scripts/lib/user.sh
+        scripts/lib/tools.sh
+        scripts/lib/tailscale.sh
+        scripts/lib/webhook.sh
+        scripts/lib/notify.sh
+        scripts/lib/stack.sh
+        scripts/lib/export-config.sh
+        scripts/acfs-global
+        scripts/acfs-update
+        scripts/lib/nightly_update.sh
+        scripts/templates/acfs-upgrade-resume.service
+        scripts/templates/acfs-nightly-update.service
+        scripts/templates/acfs-nightly-update.timer
+        packages/onboard/onboard.sh
+        scripts/generated/manifest_index.sh
+        scripts/generated/doctor_checks.sh
+        scripts/generated/install_all.sh
+        scripts/generated/install_base.sh
+        scripts/generated/install_users.sh
+        scripts/generated/install_filesystem.sh
+        scripts/generated/install_shell.sh
+        scripts/generated/install_cli.sh
+        scripts/generated/install_network.sh
+        scripts/generated/install_lang.sh
+        scripts/generated/install_tools.sh
+        scripts/generated/install_db.sh
+        scripts/generated/install_cloud.sh
+        scripts/generated/install_agents.sh
+        scripts/generated/install_stack.sh
+        scripts/generated/install_acfs.sh
+    )
+    if (( parsed_count != ${#required_paths[@]} )); then
+        printf 'ERROR: Internal checksum ledger membership is incomplete or expanded unexpectedly\n' >&2
+        return 1
+    fi
+
+    local required_path=""
+    for required_path in "${required_paths[@]}"; do
+        if [[ -z "${ACFS_INTERNAL_CHECKSUMS[$required_path]+present}" ]]; then
+            printf 'ERROR: Internal checksum ledger is missing required path: %s\n' "$required_path" >&2
+            return 1
+        fi
+    done
+
+    ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
+    ACFS_INTERNAL_CHECKSUMS_COUNT="$declared_count"
+    return 0
+}
+
+acfs_verify_internal_checksums_data() {
+    local source_root="${1:-}"
+    local ledger_path="${2:-}"
+    local remember_trust="${3:-false}"
+
+    if [[ -z "$source_root" || "$source_root" != /* || ! -d "$source_root" || -L "$source_root" ]]; then
+        printf 'ERROR: Internal-checksum source root is missing or unsafe\n' >&2
+        return 1
+    fi
+
+    # Bind parse and hash descriptors before trusting any ledger entry. Keeping
+    # distinct open-file descriptions prevents the parser's EOF offset from
+    # making the digest read vacuous, while inode equality closes pathname swaps.
+    local ledger_parse_fd=""
+    local ledger_hash_fd=""
+    if [[ -z "$ledger_path" || ! -f "$ledger_path" || -L "$ledger_path" ]] \
+        || ! exec {ledger_parse_fd}<"$ledger_path" \
+        || ! exec {ledger_hash_fd}<"$ledger_path"; then
+        if [[ "$ledger_parse_fd" =~ ^[0-9]+$ ]]; then
+            exec {ledger_parse_fd}<&-
+        fi
+        if [[ "$ledger_hash_fd" =~ ^[0-9]+$ ]]; then
+            exec {ledger_hash_fd}<&-
+        fi
+        printf 'ERROR: Internal checksum ledger could not be bound\n' >&2
+        return 1
+    fi
+    if [[ ! "$ledger_path" -ef "/dev/fd/$ledger_parse_fd" ]] \
+        || [[ ! "/dev/fd/$ledger_parse_fd" -ef "/dev/fd/$ledger_hash_fd" ]]; then
+        exec {ledger_parse_fd}<&-
+        exec {ledger_hash_fd}<&-
+        printf 'ERROR: Internal checksum ledger changed while being bound\n' >&2
+        return 1
+    fi
+    if ! acfs_load_internal_checksums_data "/dev/fd/$ledger_parse_fd" true; then
+        exec {ledger_parse_fd}<&-
+        exec {ledger_hash_fd}<&-
+        return 1
+    fi
+    exec {ledger_parse_fd}<&-
+
+    local failed=0
+    local rel_path=""
+    local expected=""
+    local source_file=""
+    local actual=""
+    for rel_path in "${!ACFS_INTERNAL_CHECKSUMS[@]}"; do
+        expected="${ACFS_INTERNAL_CHECKSUMS[$rel_path]}"
+        source_file="$source_root/$rel_path"
+        if [[ ! -f "$source_file" || -L "$source_file" ]]; then
+            printf 'ERROR: INTEGRITY: %s missing or unsafe\n' "$rel_path" >&2
+            ((failed += 1))
+            continue
+        fi
+        actual="$(acfs_calculate_file_sha256 "$source_file" 2>/dev/null || true)"
+        if [[ -z "$actual" || "$actual" != "$expected" ]]; then
+            printf 'ERROR: INTEGRITY: %s checksum mismatch\n' "$rel_path" >&2
+            ((failed += 1))
+        fi
+    done
+    if (( failed > 0 )); then
+        exec {ledger_hash_fd}<&-
+        printf 'ERROR: Internal script integrity check failed: %s file(s) missing, unsafe, or modified\n' "$failed" >&2
+        return 1
+    fi
+
+    local ledger_sha=""
+    ledger_sha="$(acfs_calculate_file_sha256 "/dev/fd/$ledger_hash_fd" 2>/dev/null || true)"
+    exec {ledger_hash_fd}<&-
+    if [[ ! "$ledger_sha" =~ ^[0-9a-f]{64}$ ]]; then
+        printf 'ERROR: Internal checksum ledger digest is unavailable\n' >&2
+        return 1
+    fi
+
+    if [[ "$remember_trust" == "true" ]]; then
+        ACFS_TRUSTED_INTERNAL_LEDGER_SHA256="$ledger_sha"
+        ACFS_TRUSTED_PREFLIGHT_SHA256="${ACFS_INTERNAL_CHECKSUMS[scripts/preflight.sh]}"
+        ACFS_TRUSTED_INTERNAL_SOURCE_ROOT="$source_root"
+    fi
+    return 0
 }
 
 acfs_download_file_and_verify_sha256() {
@@ -3034,9 +3670,22 @@ bootstrap_repo_archive() {
     # GitHub caches archives for up to 5 minutes, so if resolution fails and we
     # are still on a mutable ref, the cache-buster is retained to guarantee a
     # fresh download.
-    local effective_ref
-    effective_ref="$(acfs_effective_ref "$ref")"
-    local archive_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/archive/${effective_ref}.tar.gz$(acfs_cache_buster_suffix "$effective_ref")"
+    local effective_ref=""
+    local archive_url=""
+    if [[ -z "$BOOTSTRAP_ARCHIVE_PATH" ]]; then
+        acfs_resolve_ref_sha "$ref" >/dev/null
+        effective_ref="${ACFS_RESOLVED_REF_SHA:-}"
+        if [[ ! "$effective_ref" =~ ^[0-9a-f]{40}$ ]]; then
+            log_error "Unable to resolve '$ref' to an immutable commit; refusing a mutable bootstrap archive"
+            return 1
+        fi
+        ACFS_COMMIT_SHA_FULL="$effective_ref"
+        ACFS_COMMIT_SHA="${effective_ref:0:12}"
+        ACFS_REF="$effective_ref"
+        ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
+        export ACFS_REF ACFS_RAW
+        archive_url="https://github.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/archive/${effective_ref}.tar.gz$(acfs_cache_buster_suffix "$effective_ref")"
+    fi
     local ref_safe="${ref//[^a-zA-Z0-9._-]/_}"
     local tmp_dir
     local mktemp_bin=""
@@ -3049,6 +3698,8 @@ bootstrap_repo_archive() {
     local head_bin=""
     local cut_bin=""
     local tr_bin=""
+    local cat_bin=""
+    local env_bin=""
 
     tar_bin="$(acfs_early_system_binary_path tar 2>/dev/null || true)"
     if [[ -z "$tar_bin" ]]; then
@@ -3064,56 +3715,53 @@ bootstrap_repo_archive() {
     head_bin="$(acfs_early_system_binary_path head 2>/dev/null || true)"
     cut_bin="$(acfs_early_system_binary_path cut 2>/dev/null || true)"
     tr_bin="$(acfs_early_system_binary_path tr 2>/dev/null || true)"
-    if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$rm_bin" || -z "$find_bin" || -z "$bash_bin" || -z "$grep_bin" || -z "$head_bin" || -z "$cut_bin" || -z "$tr_bin" ]]; then
-        log_error "Bootstrap requires core system utilities (mktemp, chmod, rm, find, bash, grep, head, cut, tr)"
+    cat_bin="$(acfs_early_system_binary_path cat 2>/dev/null || true)"
+    env_bin="$(acfs_early_system_binary_path env 2>/dev/null || true)"
+    if [[ -z "$mktemp_bin" || -z "$chmod_bin" || -z "$rm_bin" || -z "$find_bin" || -z "$bash_bin" || -z "$grep_bin" || -z "$head_bin" || -z "$cut_bin" || -z "$tr_bin" || -z "$cat_bin" || -z "$env_bin" ]]; then
+        log_error "Bootstrap requires core system utilities (mktemp, chmod, rm, find, bash, grep, head, cut, tr, cat, env)"
         return 1
     fi
 
     # mktemp portability: BSD mktemp requires Xs at end of template; tar doesn't need a .tar.gz suffix.
-    ACFS_TMP_ARCHIVE="$("$mktemp_bin" "${TMPDIR:-/tmp}/acfs-archive-${ref_safe}.XXXXXX" 2>/dev/null)" || {
+    ACFS_TMP_ARCHIVE="$("$mktemp_bin" "/tmp/acfs-archive-${ref_safe}.XXXXXX" 2>/dev/null)" || {
         log_fatal "Failed to create temp file for archive"
     }
+    _ACFS_TMP_ARCHIVE_CREATED="$ACFS_TMP_ARCHIVE"
+    _ACFS_TMP_ARCHIVE_TMP_ROOT="/tmp"
+    _ACFS_TMP_ARCHIVE_OWNED=true
 
-    tmp_dir="$("$mktemp_bin" -d "${TMPDIR:-/tmp}/acfs-bootstrap-${ref_safe}.XXXXXX" 2>/dev/null)" || {
+    tmp_dir="$("$mktemp_bin" -d "/tmp/acfs-bootstrap-${ref_safe}.XXXXXX" 2>/dev/null)" || {
         log_fatal "Failed to create temp dir for extraction"
     }
     ACFS_BOOTSTRAP_DIR="$tmp_dir"
     _ACFS_BOOTSTRAP_DIR_CREATED="$tmp_dir"
-    _ACFS_BOOTSTRAP_DIR_TMP_ROOT="${TMPDIR:-/tmp}"
-    _ACFS_BOOTSTRAP_DIR_TMP_ROOT="${_ACFS_BOOTSTRAP_DIR_TMP_ROOT%/}"
+    _ACFS_BOOTSTRAP_DIR_TMP_ROOT="/tmp"
     _ACFS_BOOTSTRAP_DIR_OWNED=true
-    # Make bootstrap dir world-readable so ubuntu user can access scripts
-    "$chmod_bin" 755 "$tmp_dir"
+    # Keep mktemp's private mode until the full extracted tree is validated.
 
     log_step "Bootstrapping ACFS archive (${ref})"
 
-    # Test-mode hook: offline bootstrap checks cannot use PATH-based curl
-    # stubs because acfs_curl resolves curl via absolute paths only (intentional
-    # hardening, commit 958e2ee2). The hook lets tests point the bootstrap at
-    # a locally-staged archive and skip the network entirely. Gated on an
-    # explicit ACFS_TEST_MODE=1 so accidentally setting ACFS_TEST_ARCHIVE in
-    # production cannot bypass the network path.
-    if [[ "${ACFS_TEST_MODE:-}" == "1" && -n "${ACFS_TEST_ARCHIVE:-}" ]]; then
-        local cp_bin
-        cp_bin="$(acfs_early_system_binary_path cp 2>/dev/null || true)"
-        if [[ -z "$cp_bin" ]]; then
-            log_error "Test-mode bootstrap requires cp"
-            "$rm_bin" -rf "$tmp_dir"
-            return 1
-        fi
-        if [[ ! -f "$ACFS_TEST_ARCHIVE" ]]; then
-            log_error "ACFS_TEST_MODE=1 but ACFS_TEST_ARCHIVE is not a regular file: $ACFS_TEST_ARCHIVE"
+    # An offline archive is accepted only through the explicit CLI option
+    # parsed in this process. Ambient ACFS_TEST_* variables have no authority.
+    if [[ -n "$BOOTSTRAP_ARCHIVE_PATH" ]]; then
+        if [[ ! "$BOOTSTRAP_ARCHIVE_FD" =~ ^[0-9]+$ ]] \
+            || [[ ! -f "/dev/fd/$BOOTSTRAP_ARCHIVE_FD" ]]; then
+            log_error "Process-owned local bootstrap archive descriptor is unavailable"
             "$rm_bin" -f "$ACFS_TMP_ARCHIVE"
             "$rm_bin" -rf "$tmp_dir"
             return 1
         fi
-        log_detail "Test mode: using local archive $ACFS_TEST_ARCHIVE"
-        if ! "$cp_bin" "$ACFS_TEST_ARCHIVE" "$ACFS_TMP_ARCHIVE"; then
+        log_detail "Using explicitly selected local archive $BOOTSTRAP_ARCHIVE_PATH"
+        if ! "$cat_bin" <&"$BOOTSTRAP_ARCHIVE_FD" >"$ACFS_TMP_ARCHIVE"; then
+            exec {BOOTSTRAP_ARCHIVE_FD}<&-
+            BOOTSTRAP_ARCHIVE_FD=""
             log_error "Failed to stage local archive for bootstrap"
             "$rm_bin" -f "$ACFS_TMP_ARCHIVE"
             "$rm_bin" -rf "$tmp_dir"
             return 1
         fi
+        exec {BOOTSTRAP_ARCHIVE_FD}<&-
+        BOOTSTRAP_ARCHIVE_FD=""
     else
         log_detail "Downloading ${archive_url}"
         if ! acfs_curl_with_retry "$archive_url" "$ACFS_TMP_ARCHIVE"; then
@@ -3125,21 +3773,49 @@ bootstrap_repo_archive() {
     fi
 
     log_detail "Extracting runtime assets"
-    if ! "$tar_bin" -xzf "$ACFS_TMP_ARCHIVE" -C "$tmp_dir" --strip-components=1 \
+    if ! (umask 077; "$env_bin" -i \
+        PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+        TAR_OPTIONS= GZIP= BZIP= BZIP2= XZ_OPT= \
+        "$tar_bin" --no-same-owner --no-same-permissions --delay-directory-restore \
+        --no-xattrs --no-acls --no-selinux -xzf "$ACFS_TMP_ARCHIVE" \
+        -C "$tmp_dir" --strip-components=1 \
         --wildcards --wildcards-match-slash \
         "*/scripts/**" \
+        "*/packages/onboard/**" \
         "*/acfs/**" \
+        "*/install.sh" \
         "*/checksums.yaml" \
         "*/acfs.manifest.yaml" \
-        "*/VERSION"; then
+        "*/VERSION"); then
         log_error "Failed to extract ACFS bootstrap archive (tar error)"
         "$rm_bin" -f "$ACFS_TMP_ARCHIVE"
         return 1
     fi
     "$rm_bin" -f "$ACFS_TMP_ARCHIVE"
 
-    if [[ ! -f "$tmp_dir/acfs.manifest.yaml" ]] || [[ ! -f "$tmp_dir/checksums.yaml" ]] || [[ ! -f "$tmp_dir/VERSION" ]]; then
-        log_error "Bootstrap archive missing required manifest/checksums/VERSION files"
+    local unsafe_archive_object=""
+    if ! unsafe_archive_object="$("$find_bin" -P "$tmp_dir" \
+        \( -type l -o \( -type f -links +1 \) -o \( ! -type f ! -type d \) \) \
+        -print -quit 2>/dev/null)"; then
+        log_error "Failed to inspect the complete extracted bootstrap tree"
+        return 1
+    fi
+    if [[ -n "$unsafe_archive_object" ]]; then
+        log_error "Bootstrap archive contains an unsafe link or special filesystem object"
+        log_detail "Rejected: $unsafe_archive_object"
+        return 1
+    fi
+
+    if [[ ! -f "$tmp_dir/install.sh" ]] \
+        || [[ ! -f "$tmp_dir/acfs.manifest.yaml" ]] \
+        || [[ ! -f "$tmp_dir/checksums.yaml" ]] \
+        || [[ ! -f "$tmp_dir/VERSION" ]] \
+        || [[ ! -f "$tmp_dir/scripts/preflight.sh" ]] \
+        || [[ ! -f "$tmp_dir/scripts/generated/internal_checksums.sh" ]] \
+        || [[ ! -f "$tmp_dir/scripts/acfs-global" ]] \
+        || [[ ! -f "$tmp_dir/scripts/acfs-update" ]] \
+        || [[ ! -f "$tmp_dir/packages/onboard/onboard.sh" ]]; then
+        log_error "Bootstrap archive is missing required runtime or integrity files"
         return 1
     fi
 
@@ -3148,10 +3824,17 @@ bootstrap_repo_archive() {
         return 1
     fi
 
+    if ! acfs_verify_internal_checksums_data \
+        "$tmp_dir" "$tmp_dir/scripts/generated/internal_checksums.sh" true; then
+        log_error "Bootstrap archive failed its internal executable integrity contract"
+        return 1
+    fi
+
     log_detail "Validating extracted shell scripts (bash -n)"
     local shellcheck_failed=false
     while IFS= read -r -d '' script_file; do
-        if ! "$bash_bin" -n "$script_file" >/dev/null 2>&1; then
+        if ! "$env_bin" -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C \
+            "$bash_bin" --noprofile --norc -n "$script_file" >/dev/null 2>&1; then
             log_error "Syntax error in extracted script: $script_file"
             shellcheck_failed=true
             break
@@ -3173,9 +3856,20 @@ bootstrap_repo_archive() {
     fi
 
     if [[ "$manifest_sha" != "$expected_sha" ]]; then
-        log_error "Bootstrap mismatch: generated scripts do not match manifest."
+        log_error "Bootstrap mismatch: manifest and manifest index disagree."
         log_detail "Expected: $expected_sha"
         log_detail "Actual:   $manifest_sha"
+        return 1
+    fi
+
+    # Only now make the validated source tree readable by TARGET_USER. Apply
+    # deterministic modes instead of trusting archive metadata.
+    if ! "$find_bin" -P "$tmp_dir" -type d -exec "$chmod_bin" 0755 {} + \
+        || ! "$find_bin" -P "$tmp_dir" -type f -exec "$chmod_bin" 0644 {} + \
+        || ! "$find_bin" -P "$tmp_dir/scripts" -type f -name '*.sh' -exec "$chmod_bin" 0755 {} + \
+        || ! "$chmod_bin" 0755 "$tmp_dir/scripts/acfs-global" "$tmp_dir/scripts/acfs-update" \
+            "$tmp_dir/packages/onboard/onboard.sh"; then
+        log_error "Failed to normalize validated bootstrap tree permissions"
         return 1
     fi
 
@@ -3190,6 +3884,83 @@ bootstrap_repo_archive() {
 
     log_success "Bootstrap archive ready"
     return 0
+}
+
+acfs_run_verified_bootstrap_installer() {
+    local verified_installer="${ACFS_BOOTSTRAP_DIR:-}/install.sh"
+    local bash_bin=""
+    bash_bin="$(acfs_early_system_binary_path bash 2>/dev/null || true)"
+
+    if [[ -z "${ACFS_BOOTSTRAP_DIR:-}" ]] \
+        || ! acfs_bootstrap_dir_is_owned_temp "$ACFS_BOOTSTRAP_DIR" \
+        || [[ ! -f "$verified_installer" || -L "$verified_installer" ]] \
+        || [[ -z "$bash_bin" ]]; then
+        log_error "Verified bootstrap installer is unavailable"
+        return 1
+    fi
+
+    # Recheck the executable policy object immediately before handing it to a
+    # fresh privileged-mode Bash. The archive-wide verifier established the
+    # expected value; this check detects accidental mutation after validation.
+    local expected_installer_sha="${ACFS_INTERNAL_CHECKSUMS[install.sh]:-}"
+    local actual_installer_sha=""
+    actual_installer_sha="$(acfs_calculate_file_sha256 "$verified_installer" 2>/dev/null || true)"
+    if [[ ! "$expected_installer_sha" =~ ^[0-9a-f]{64}$ ]] \
+        || [[ "$actual_installer_sha" != "$expected_installer_sha" ]]; then
+        log_error "Verified bootstrap installer changed after archive validation"
+        return 1
+    fi
+
+    # Remove source-selection arguments consumed by this verifier. A remote run
+    # is re-issued with the exact resolved SHA; an explicit local archive keeps
+    # its user-supplied ref only as non-authoritative configuration and carries a
+    # restrictive marker so it cannot claim remote provenance or start a reboot.
+    local original_ref="${ACFS_REF_INPUT:-main}"
+    local source_is_local_archive=false
+    local child_ref="$original_ref"
+    if [[ -n "${BOOTSTRAP_ARCHIVE_PATH:-}" ]]; then
+        source_is_local_archive=true
+    else
+        child_ref="${ACFS_COMMIT_SHA_FULL:-}"
+        if [[ ! "$child_ref" =~ ^[0-9a-f]{40}$ ]]; then
+            log_error "Verified remote bootstrap has no immutable child ref"
+            return 1
+        fi
+    fi
+
+    # Preserve the relationship between the requested source and checksum refs.
+    # When both named the same branch, both must become the same immutable SHA;
+    # a deliberately separate checksum ref (for example tag -> main) remains so.
+    local child_checksums_ref="${ACFS_CHECKSUMS_REF:-$original_ref}"
+    if [[ "$child_checksums_ref" == "$original_ref" ]]; then
+        child_checksums_ref="$child_ref"
+    fi
+
+    local -a child_args=()
+    while (($# > 0)); do
+        case "$1" in
+            --bootstrap-archive|--ref|--checksums-ref)
+                if (($# < 2)); then
+                    log_error "$1 requires a value"
+                    return 1
+                fi
+                shift 2
+                ;;
+            --bootstrap-archive=*|--ref=*|--checksums-ref=*)
+                shift
+                ;;
+            *)
+                child_args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    child_args+=(--ref "$child_ref" --checksums-ref "$child_checksums_ref")
+
+    log_detail "Handing execution to the verified archive installer"
+    ACFS_LOCAL_ARCHIVE_SOURCE="$source_is_local_archive" \
+        "$bash_bin" --noprofile --norc -p "$verified_installer" "${child_args[@]}"
 }
 
 _acfs_install_asset_has_symlink_component_under_prefix() {
@@ -3328,7 +4099,9 @@ install_asset() {
         return 1
     fi
 
-    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] && [[ -f "$ACFS_BOOTSTRAP_DIR/$rel_path" ]]; then
+    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] \
+        && [[ -f "$ACFS_BOOTSTRAP_DIR/$rel_path" ]] \
+        && [[ ! -L "$ACFS_BOOTSTRAP_DIR/$rel_path" ]]; then
         if [[ "$need_sudo" == "true" ]]; then
             if ! "${sudo_cmd[@]}" "$cp_bin" "$ACFS_BOOTSTRAP_DIR/$rel_path" "$dest_path"; then
                 log_error "install_asset: Failed to copy from bootstrap: $rel_path"
@@ -3338,7 +4111,9 @@ install_asset() {
             log_error "install_asset: Failed to copy from bootstrap: $rel_path"
             return 1
         fi
-    elif [[ -n "${SCRIPT_DIR:-}" ]] && [[ -f "$SCRIPT_DIR/$rel_path" ]]; then
+    elif [[ -n "${SCRIPT_DIR:-}" ]] \
+        && [[ -f "$SCRIPT_DIR/$rel_path" ]] \
+        && [[ ! -L "$SCRIPT_DIR/$rel_path" ]]; then
         if [[ "$need_sudo" == "true" ]]; then
             if ! "${sudo_cmd[@]}" "$cp_bin" "$SCRIPT_DIR/$rel_path" "$dest_path"; then
                 log_error "install_asset: Failed to copy from script dir: $rel_path"
@@ -3349,21 +4124,11 @@ install_asset() {
             return 1
         fi
     else
-        if [[ "$need_sudo" == "true" ]]; then
-            local curl_bin=""
-            curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
-            if [[ -z "$curl_bin" ]]; then
-                log_error "install_asset: Unable to locate curl"
-                return 1
-            fi
-            if ! "${sudo_cmd[@]}" "$curl_bin" "${ACFS_CURL_BASE_ARGS[@]}" -o "$dest_path" "$ACFS_RAW/$rel_path"; then
-                log_error "install_asset: Failed to download: $rel_path"
-                return 1
-            fi
-        elif ! acfs_curl -o "$dest_path" "$ACFS_RAW/$rel_path"; then
-            log_error "install_asset: Failed to download: $rel_path"
-            return 1
-        fi
+        # A source tree has already been selected and integrity-checked. A
+        # network fallback here could silently mix another ref into a local or
+        # partial install, so missing/unsafe assets fail closed.
+        log_error "install_asset: Source asset is missing or unsafe in the selected ACFS tree: $rel_path"
+        return 1
     fi
 
     # Verify the file was actually created
@@ -3475,7 +4240,8 @@ install_checksums_yaml() {
         # cacheable - which matters most here, since the API failure that got us
         # into this branch is often rate limiting on the same infrastructure.
         local eff_cref
-        eff_cref="$(acfs_effective_ref "$ACFS_CHECKSUMS_REF")"
+        acfs_resolve_ref_sha "$ACFS_CHECKSUMS_REF" >/dev/null
+        eff_cref="${ACFS_RESOLVED_REF_SHA:-$ACFS_CHECKSUMS_REF}"
         content="$(acfs_fetch_url_content "https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${eff_cref}/checksums.yaml$(acfs_cache_buster_suffix "$eff_cref")")" || {
             log_error "Failed to fetch checksums.yaml from ref '${ACFS_CHECKSUMS_REF}'"
             return 1
@@ -3549,7 +4315,127 @@ install_checksums_yaml() {
     fi
 }
 
+_acfs_clean_runner_env_allowed() {
+    local user_home="${1:-}"
+    local assignment="${2:-}"
+    local value=""
+    local leaf=""
+    local component=""
+
+    case "$assignment" in
+        ATUIN_NO_MODIFY_PATH=1|AM_INSTALL_SKIP_MCP_SETUP=1|AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1|RU_NON_INTERACTIVE=1)
+            return 0
+            ;;
+        "GROK_BIN_DIR=$user_home/.local/bin")
+            return 0
+            ;;
+        TMPDIR=*)
+            value="${assignment#TMPDIR=}"
+            for component in \
+                "$user_home" \
+                "$user_home/.cache" \
+                "$user_home/.cache/acfs" \
+                "$user_home/.cache/acfs/installer-tmp"; do
+                [[ ! -L "$component" ]] || return 1
+            done
+            if [[ "$value" == "$user_home/.cache/acfs/installer-tmp" ]]; then
+                [[ -d "$value" && ! -L "$value" ]]
+                return $?
+            fi
+            case "$value" in
+                "$user_home/.cache/acfs/installer-tmp/"*) ;;
+                *) return 1 ;;
+            esac
+            leaf="${value#"$user_home/.cache/acfs/installer-tmp/"}"
+            [[ -n "$leaf" && "$leaf" != "." && "$leaf" != ".." ]] || return 1
+            [[ "$leaf" != *[!A-Za-z0-9._-]* ]] || return 1
+            [[ -d "$value" && ! -L "$value" ]]
+            return $?
+            ;;
+    esac
+    return 1
+}
+
+_acfs_validate_clean_runner_command() {
+    local user_home="${1:-}"
+    shift || return 1
+    local -a argv=("$@")
+    local index=0
+    local assignment=""
+    local name=""
+    local seen_names=":"
+    local runner=""
+    local entrypoint=""
+
+    [[ ${#argv[@]} -gt 0 ]] || {
+        log_error "Clean target runner requires a command"
+        return 1
+    }
+
+    if [[ "${argv[0]}" == "env" ]]; then
+        index=1
+        while [[ "$index" -lt "${#argv[@]}" && "${argv[index]}" == *=* ]]; do
+            assignment="${argv[index]}"
+            name="${assignment%%=*}"
+            case "$seen_names" in
+                *":$name:"*)
+                    log_error "Duplicate clean runner environment variable: $name"
+                    return 1
+                    ;;
+            esac
+            if ! _acfs_clean_runner_env_allowed "$user_home" "$assignment"; then
+                log_error "Refusing unapproved clean runner environment variable: $name"
+                return 1
+            fi
+            seen_names+="$name:"
+            ((index += 1))
+        done
+    fi
+
+    [[ "$index" -lt "${#argv[@]}" ]] || {
+        log_error "Clean target runner is missing bash or sh"
+        return 1
+    }
+    runner="${argv[index]}"
+    case "$runner" in
+        bash|sh) ;;
+        *)
+            log_error "Refusing unapproved clean target runner: $runner"
+            return 1
+            ;;
+    esac
+    ((index += 1))
+    [[ "$index" -lt "${#argv[@]}" ]] || {
+        log_error "Clean target runner is missing a verified file or stdin mode"
+        return 1
+    }
+
+    entrypoint="${argv[index]}"
+    if [[ "$entrypoint" == "-s" ]]; then
+        ((index += 1))
+        if [[ "$index" -ge "${#argv[@]}" || "${argv[index]}" != "--" ]]; then
+            log_error "Clean target runner stdin mode requires -- before script arguments"
+            return 1
+        fi
+        return 0
+    fi
+    if [[ "$entrypoint" != /* || ! -f "$entrypoint" || -L "$entrypoint" ]]; then
+        log_error "Clean target runner requires a regular, non-symlink absolute script file"
+        return 1
+    fi
+}
+
 run_as_target() {
+    local clean_environment=false
+    if [[ "${1:-}" == "--acfs-clean-environment" ]]; then
+        clean_environment=true
+        shift
+    fi
+    if [[ $# -eq 0 ]]; then
+        log_error "run_as_target requires a command"
+        return 1
+    fi
+
     local user="$TARGET_USER"
     local explicit_user_home="${TARGET_HOME:-}"
     local explicit_user_home_for_repair=""
@@ -3614,6 +4500,11 @@ run_as_target() {
         return 1
     fi
 
+    if [[ "$clean_environment" == "true" ]] \
+        && ! _acfs_validate_clean_runner_command "$user_home" "$@"; then
+        return 1
+    fi
+
     primary_bin_dir="${ACFS_BIN_DIR:-$user_home/.local/bin}"
     if [[ -n "$explicit_user_home_for_repair" ]] && [[ "$explicit_user_home_for_repair" != "$user_home" ]]; then
         case "$primary_bin_dir" in
@@ -3633,6 +4524,10 @@ run_as_target() {
 
     local target_path_prefix="$primary_bin_dir:$user_home/.local/bin:$user_home/.acfs/bin:$user_home/.cargo/bin:$user_home/.bun/bin:$user_home/.atuin/bin:$user_home/go/bin"
     local current_path="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+    local command_path="$target_path_prefix:$current_path"
+    if [[ "$clean_environment" == "true" ]]; then
+        command_path="/usr/sbin:/usr/bin:/sbin:/bin"
+    fi
 
     # Environment variables to set for target user commands
     # UV_NO_CONFIG prevents uv from looking for config in /root when running via sudo
@@ -3641,7 +4536,10 @@ run_as_target() {
     # avoid login shells and therefore cannot rely on profile files.
     # XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS let user services work even when
     # install.sh is running as root and switching to TARGET_USER non-interactively.
-    local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home" "PATH=$target_path_prefix:$current_path" "TARGET_USER=$user" "TARGET_HOME=$user_home")
+    local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home" "PATH=$command_path" "TARGET_USER=$user" "TARGET_HOME=$user_home")
+    if [[ "$clean_environment" == "true" ]]; then
+        env_args=(-i "${env_args[@]}" "USER=$user" "LOGNAME=$user" "LANG=C.UTF-8")
+    fi
     local target_uid=""
     local target_runtime_dir=""
     local id_bin=""
@@ -3649,28 +4547,30 @@ run_as_target() {
     id_bin="$(acfs_early_system_binary_path id 2>/dev/null || true)"
     if [[ -n "$id_bin" ]] && target_uid="$($id_bin -u "$user" 2>/dev/null)"; then
         target_runtime_dir="/run/user/$target_uid"
-        if [[ -d "$target_runtime_dir" ]]; then
+        if [[ -d "$target_runtime_dir" && ! -L "$target_runtime_dir" ]]; then
             env_args+=("XDG_RUNTIME_DIR=$target_runtime_dir")
-            if [[ -S "$target_runtime_dir/bus" ]]; then
+            if [[ -S "$target_runtime_dir/bus" && ! -L "$target_runtime_dir/bus" ]]; then
                 env_args+=("DBUS_SESSION_BUS_ADDRESS=unix:path=$target_runtime_dir/bus")
             fi
         fi
     fi
 
-    # Pass ACFS context variables to target user environment
-    if [[ -n "$acfs_home_for_target" ]]; then env_args+=("ACFS_HOME=$acfs_home_for_target"); fi
-    if [[ -n "${ACFS_BIN_DIR:-}" ]]; then env_args+=("ACFS_BIN_DIR=$primary_bin_dir"); fi
-    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then env_args+=("ACFS_BOOTSTRAP_DIR=$ACFS_BOOTSTRAP_DIR"); fi
-    if [[ -n "${ACFS_LIB_DIR:-}" ]]; then env_args+=("ACFS_LIB_DIR=$ACFS_LIB_DIR"); fi
-    if [[ -n "${ACFS_GENERATED_DIR:-}" ]]; then env_args+=("ACFS_GENERATED_DIR=$ACFS_GENERATED_DIR"); fi
-    if [[ -n "${ACFS_ASSETS_DIR:-}" ]]; then env_args+=("ACFS_ASSETS_DIR=$ACFS_ASSETS_DIR"); fi
-    if [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]]; then env_args+=("ACFS_CHECKSUMS_YAML=$ACFS_CHECKSUMS_YAML"); fi
-    if [[ -n "${ACFS_MANIFEST_YAML:-}" ]]; then env_args+=("ACFS_MANIFEST_YAML=$ACFS_MANIFEST_YAML"); fi
-    if [[ -n "${CHECKSUMS_FILE:-}" ]]; then env_args+=("CHECKSUMS_FILE=$CHECKSUMS_FILE"); fi
-    if [[ -n "${SCRIPT_DIR:-}" ]]; then env_args+=("SCRIPT_DIR=$SCRIPT_DIR"); fi
-    if [[ -n "${ACFS_RAW:-}" ]]; then env_args+=("ACFS_RAW=$ACFS_RAW"); fi
-    if [[ -n "${ACFS_VERSION:-}" ]]; then env_args+=("ACFS_VERSION=$ACFS_VERSION"); fi
-    if [[ -n "${ACFS_REF:-}" ]]; then env_args+=("ACFS_REF=$ACFS_REF"); fi
+    # Verified upstream code receives no ambient ACFS path/source overrides.
+    if [[ "$clean_environment" != "true" ]]; then
+        if [[ -n "$acfs_home_for_target" ]]; then env_args+=("ACFS_HOME=$acfs_home_for_target"); fi
+        if [[ -n "${ACFS_BIN_DIR:-}" ]]; then env_args+=("ACFS_BIN_DIR=$primary_bin_dir"); fi
+        if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then env_args+=("ACFS_BOOTSTRAP_DIR=$ACFS_BOOTSTRAP_DIR"); fi
+        if [[ -n "${ACFS_LIB_DIR:-}" ]]; then env_args+=("ACFS_LIB_DIR=$ACFS_LIB_DIR"); fi
+        if [[ -n "${ACFS_GENERATED_DIR:-}" ]]; then env_args+=("ACFS_GENERATED_DIR=$ACFS_GENERATED_DIR"); fi
+        if [[ -n "${ACFS_ASSETS_DIR:-}" ]]; then env_args+=("ACFS_ASSETS_DIR=$ACFS_ASSETS_DIR"); fi
+        if [[ -n "${ACFS_CHECKSUMS_YAML:-}" ]]; then env_args+=("ACFS_CHECKSUMS_YAML=$ACFS_CHECKSUMS_YAML"); fi
+        if [[ -n "${ACFS_MANIFEST_YAML:-}" ]]; then env_args+=("ACFS_MANIFEST_YAML=$ACFS_MANIFEST_YAML"); fi
+        if [[ -n "${CHECKSUMS_FILE:-}" ]]; then env_args+=("CHECKSUMS_FILE=$CHECKSUMS_FILE"); fi
+        if [[ -n "${SCRIPT_DIR:-}" ]]; then env_args+=("SCRIPT_DIR=$SCRIPT_DIR"); fi
+        if [[ -n "${ACFS_RAW:-}" ]]; then env_args+=("ACFS_RAW=$ACFS_RAW"); fi
+        if [[ -n "${ACFS_VERSION:-}" ]]; then env_args+=("ACFS_VERSION=$ACFS_VERSION"); fi
+        if [[ -n "${ACFS_REF:-}" ]]; then env_args+=("ACFS_REF=$ACFS_REF"); fi
+    fi
 
     command_argv=("$@")
     if [[ ${#command_argv[@]} -gt 0 ]]; then
@@ -3715,7 +4615,7 @@ run_as_target() {
     # IMPORTANT: Do NOT use sudo -i as it sources profile files (.profile, .bashrc)
     # which may be corrupted by third-party installers (e.g., uv adds lines that
     # reference non-existent files). Instead:
-    # - Use noninteractive sudo to switch user without sourcing profiles
+    # - Use runuser as root, otherwise noninteractive sudo, without profiles
     # - Set HOME explicitly in the environment
     # - Use sh -c to cd to home directory before executing
     #
@@ -3723,7 +4623,14 @@ run_as_target() {
     # - First $@ expands inside sh -c to become positional params
     # - _ is $0 (script name placeholder)
     # - exec "$@" replaces sh with the target command, preserving stdin
+    runuser_bin="$(acfs_early_system_binary_path runuser 2>/dev/null || true)"
     sudo_bin="$(acfs_early_system_binary_path sudo 2>/dev/null || true)"
+    if [[ $EUID -eq 0 && -n "$runuser_bin" ]]; then
+        # Root needs no sudo policy hop; util-linux runuser is deterministic.
+        # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c
+        "$runuser_bin" -u "$user" -- "$env_bin" "${env_args[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}"
+        return $?
+    fi
     if [[ -n "$sudo_bin" ]]; then
         # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c
         "$sudo_bin" -n -u "$user" "$env_bin" "${env_args[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}"
@@ -3732,11 +4639,15 @@ run_as_target() {
 
     # Fallbacks (root-only typically)
     # Note: Avoid -l flag to prevent sourcing profiles
-    runuser_bin="$(acfs_early_system_binary_path runuser 2>/dev/null || true)"
     if [[ -n "$runuser_bin" ]]; then
         # shellcheck disable=SC2016  # $HOME/$@ expand inside sh -c
         "$runuser_bin" -u "$user" -- "$env_bin" "${env_args[@]}" "$sh_bin" -c 'cd "$HOME" || exit 1; exec "$@"' _ "${command_argv[@]}"
         return $?
+    fi
+
+    if [[ "$clean_environment" == "true" ]]; then
+        log_error "Refusing clean target-user execution through su; use sudo or runuser"
+        return 1
     fi
 
     su_bin="$(acfs_early_system_binary_path su 2>/dev/null || true)"
@@ -3758,6 +4669,50 @@ run_as_target() {
     env_bin_q=$(printf '%q' "$env_bin")
     "$su_bin" "$user" -c "cd $user_home_q || exit 1; $env_bin_q $env_assignments $(printf '%q ' "${command_argv[@]}")"
 }
+
+run_as_target_runner() (
+    if [[ $# -eq 0 ]]; then
+        log_error "run_as_target_runner requires a runner"
+        return 1
+    fi
+
+    local _acfs_exported_names=""
+    local _acfs_exported_name=""
+    local _acfs_function_names=""
+    local _acfs_function_name=""
+
+    # env -i sanitizes the verified installer's final environment, but it is
+    # too late to protect the trusted helper processes used to prepare that
+    # launch. Remove every export attribute in this subshell before the first
+    # external command can observe loader/startup controls such as LD_* or
+    # DYLD_*. Values remain available to run_as_target as ordinary shell data.
+    _acfs_exported_names="$(builtin compgen -e || builtin true)"
+    if [[ -n "$_acfs_exported_names" ]]; then
+        while builtin read -r _acfs_exported_name; do
+            if ! builtin export -n "$_acfs_exported_name" 2>/dev/null; then
+                builtin printf 'ERROR: unable to isolate exported environment entry: %s\n' \
+                    "$_acfs_exported_name" >&2
+                return 1
+            fi
+        done <<< "$_acfs_exported_names"
+    fi
+
+    # Imported/exported functions use BASH_FUNC_* environment entries and are
+    # not enumerated by compgen -e. Remove their export attributes separately;
+    # the function definitions remain callable in this subshell.
+    _acfs_function_names="$(builtin compgen -A function || builtin true)"
+    if [[ -n "$_acfs_function_names" ]]; then
+        while builtin read -r _acfs_function_name; do
+            if ! builtin export -n -f "$_acfs_function_name" 2>/dev/null; then
+                builtin printf 'ERROR: unable to isolate exported shell function: %s\n' \
+                    "$_acfs_function_name" >&2
+                return 1
+            fi
+        done <<< "$_acfs_function_names"
+    fi
+
+    run_as_target --acfs-clean-environment "$@"
+)
 
 # ============================================================
 # Upstream installer verification (checksums.yaml)
@@ -3832,16 +4787,10 @@ acfs_fetch_url_content() {
 # Uses the raw content header to get the file directly without base64 encoding.
 acfs_fetch_fresh_checksums_via_api() {
     local api_url="https://api.github.com/repos/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/contents/checksums.yaml?ref=${ACFS_CHECKSUMS_REF}"
-    local curl_bin=""
 
     # Use application/vnd.github.raw to get raw file content directly (no base64)
     local content
-    curl_bin="$(acfs_early_system_binary_path curl 2>/dev/null || true)"
-    if [[ -z "$curl_bin" ]]; then
-        log_detail "curl unavailable for GitHub API request"
-        return 1
-    fi
-    content="$("$curl_bin" --connect-timeout 30 --max-time 300 -fsSL \
+    content="$(acfs_curl \
         -H "Accept: application/vnd.github.raw" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
         "$api_url" 2>/dev/null)" || {
@@ -4018,8 +4967,9 @@ acfs_load_upstream_checksums() {
             # checksums; an immutable SHA is fresh by construction and stays
             # cacheable so this fallback does not itself trip the limiter.
             local eff_cref
-        eff_cref="$(acfs_effective_ref "$ACFS_CHECKSUMS_REF")"
-        content="$(acfs_fetch_url_content "https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${eff_cref}/checksums.yaml$(acfs_cache_buster_suffix "$eff_cref")")" || {
+            acfs_resolve_ref_sha "$ACFS_CHECKSUMS_REF" >/dev/null
+            eff_cref="${ACFS_RESOLVED_REF_SHA:-$ACFS_CHECKSUMS_REF}"
+            content="$(acfs_fetch_url_content "https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${eff_cref}/checksums.yaml$(acfs_cache_buster_suffix "$eff_cref")")" || {
                 log_error "Failed to fetch checksums.yaml from any source"
                 return 1
             }
@@ -4179,26 +5129,55 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     # Arch/Omarchy laptops), stage on real disk instead.
     local tmpdir_assignment=""
     local tmp_avail_kb
-    tmp_avail_kb="$(df -Pk "${TMPDIR:-/tmp}" 2>/dev/null | awk 'NR==2{print $4}')" || true
-    if [[ -z "${TMPDIR:-}" ]] && [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
-        local acfs_tmpdir="$TARGET_HOME/.cache/acfs/installer-tmp"
-        # Create as the target user so ~/.cache/acfs (which later target-user
-        # writers such as notify/update/doctor-fix share) is not left root-owned.
-        run_as_target mkdir -p "$acfs_tmpdir" 2>/dev/null \
-            || { $SUDO mkdir -p "$acfs_tmpdir" 2>/dev/null || mkdir -p "$acfs_tmpdir" 2>/dev/null || true
-                 $SUDO chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.cache" "$TARGET_HOME/.cache/acfs" "$acfs_tmpdir" 2>/dev/null || true; }
+    tmp_avail_kb="$(df -Pk /tmp 2>/dev/null | awk 'NR==2{print $4}')" || true
+    if [[ -n "$tmp_avail_kb" ]] && (( tmp_avail_kb < 2097152 )); then
+        local acfs_tmpdir_parent="$TARGET_HOME/.cache/acfs/installer-tmp"
+        local acfs_tmpdir=""
+        local acfs_mkdir_bin=""
+        local acfs_mktemp_bin=""
+        acfs_mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
+        acfs_mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
+        if [[ -z "$acfs_mkdir_bin" || -z "$acfs_mktemp_bin" ]]; then
+            log_error "Trusted mkdir/mktemp are required for installer TMPDIR setup"
+            return 1
+        fi
+        if [[ ! -d "$TARGET_HOME" ]] \
+            || _acfs_install_asset_has_symlink_component_under_prefix \
+                "$TARGET_HOME" "$acfs_tmpdir_parent"; then
+            log_error "Refusing installer TMPDIR through a symlinked target-home path"
+            return 1
+        fi
+        # Create only as the target user. A privileged fallback could follow a
+        # target-controlled ancestor symlink and chown an unrelated directory.
+        if ! run_as_target "$acfs_mkdir_bin" -p "$acfs_tmpdir_parent" 2>/dev/null; then
+            log_error "Target user cannot create installer TMPDIR parent: $acfs_tmpdir_parent"
+            return 1
+        fi
+        if [[ ! -d "$acfs_tmpdir_parent" ]] \
+            || _acfs_install_asset_has_symlink_component_under_prefix \
+                "$TARGET_HOME" "$acfs_tmpdir_parent"; then
+            log_error "Installer TMPDIR parent is not a confined real directory"
+            return 1
+        fi
+        if ! acfs_tmpdir="$(run_as_target "$acfs_mktemp_bin" -d "$acfs_tmpdir_parent/acfs.XXXXXX" 2>/dev/null)" \
+            || [[ "$acfs_tmpdir" != "$acfs_tmpdir_parent/acfs."* ]] \
+            || [[ ! -d "$acfs_tmpdir" ]] \
+            || [[ -L "$acfs_tmpdir" ]]; then
+            log_error "Failed to create a confined target-user installer TMPDIR"
+            return 1
+        fi
         tmpdir_assignment="TMPDIR=$acfs_tmpdir"
         log_detail "Low space on /tmp ($(( tmp_avail_kb / 1024 ))MB); staging upstream installers in $acfs_tmpdir"
     fi
 
     if [[ -n "$runner_env_assignment" && -n "$tmpdir_assignment" ]]; then
-        printf '%s' "$content" | run_as_target env "$runner_env_assignment" "$tmpdir_assignment" "$runner" -s -- "$@"
+        printf '%s' "$content" | run_as_target_runner env "$runner_env_assignment" "$tmpdir_assignment" "$runner" -s -- "$@"
     elif [[ -n "$tmpdir_assignment" ]]; then
-        printf '%s' "$content" | run_as_target env "$tmpdir_assignment" "$runner" -s -- "$@"
+        printf '%s' "$content" | run_as_target_runner env "$tmpdir_assignment" "$runner" -s -- "$@"
     elif [[ -n "$runner_env_assignment" ]]; then
-        printf '%s' "$content" | run_as_target env "$runner_env_assignment" "$runner" -s -- "$@"
+        printf '%s' "$content" | run_as_target_runner env "$runner_env_assignment" "$runner" -s -- "$@"
     else
-        printf '%s' "$content" | run_as_target "$runner" -s -- "$@"
+        printf '%s' "$content" | run_as_target_runner "$runner" -s -- "$@"
     fi
 }
 
@@ -4923,6 +5902,17 @@ run_ubuntu_upgrade_phase() {
         log_detail "Ubuntu $current_version_str meets target ($TARGET_UBUNTU_VERSION)"
         restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
         return 0
+    fi
+
+    # The explicitly selected archive is process-bound and intentionally
+    # cleaned after this run. A reboot continuation cannot silently replace it
+    # with mutable main, so fail before starting any upgrade that can reboot.
+    if [[ -n "${BOOTSTRAP_ARCHIVE_PATH:-}" ]] \
+        || [[ "${ACFS_LOCAL_ARCHIVE_SOURCE:-false}" == "true" ]]; then
+        log_error "Ubuntu upgrade requires reboot-safe source identity, but --bootstrap-archive is process-local"
+        log_info "Re-run with --skip-ubuntu-upgrade, or use a remote --ref that resolves to an immutable commit."
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+        return 1
     fi
 
     # Ubuntu distribution upgrades require root (do-release-upgrade, systemd units,
@@ -7782,11 +8772,17 @@ NTM_CONFIG_EOF
                 log_error "MCP Agent Mail: missing installer URL/checksum"
             else
                 ACFS_TMP_INSTALL="$(mktemp "${TMPDIR:-/tmp}/acfs-install-${tool}.XXXXXX" 2>/dev/null)" || ACFS_TMP_INSTALL=""
+                if [[ -n "$ACFS_TMP_INSTALL" ]]; then
+                    _ACFS_TMP_INSTALL_CREATED="$ACFS_TMP_INSTALL"
+                    _ACFS_TMP_INSTALL_TMP_ROOT="${TMPDIR:-/tmp}"
+                    _ACFS_TMP_INSTALL_TMP_ROOT="${_ACFS_TMP_INSTALL_TMP_ROOT%/}"
+                    _ACFS_TMP_INSTALL_OWNED=true
+                fi
 
                 if [[ -n "$ACFS_TMP_INSTALL" ]] && verify_checksum "$url" "$expected_sha256" "$tool" > "$ACFS_TMP_INSTALL"; then
                     chmod 755 "$ACFS_TMP_INSTALL" 2>/dev/null || true
 
-                    if try_step "Installing MCP Agent Mail" run_as_target env "AM_INSTALL_SKIP_MCP_SETUP=1" "AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1" bash "$ACFS_TMP_INSTALL" --dest "$target_dir" --yes; then
+                    if try_step "Installing MCP Agent Mail" run_as_target_runner env "AM_INSTALL_SKIP_MCP_SETUP=1" "AM_INSTALL_SKIP_REMOTE_HTTP_READINESS=1" bash "$ACFS_TMP_INSTALL" --dest "$target_dir" --yes; then
                     # Symlink repair/normalization: prefer the freshly installed
                     # Rust CLI even if an older am is already on PATH.
                     run_as_target env "ACFS_AGENT_MAIL_TARGET_DIR=$target_dir" bash -c '
@@ -8149,9 +9145,13 @@ UNIT_EOF
                 fi
                 rm -f "$ACFS_TMP_INSTALL" 2>/dev/null || true
                 ACFS_TMP_INSTALL=""
+                _ACFS_TMP_INSTALL_OWNED=false
+                _ACFS_TMP_INSTALL_CREATED=""
                 else
                     rm -f "$ACFS_TMP_INSTALL" 2>/dev/null || true
                     ACFS_TMP_INSTALL=""
+                    _ACFS_TMP_INSTALL_OWNED=false
+                    _ACFS_TMP_INSTALL_CREATED=""
                     log_error "MCP Agent Mail: installer verification failed"
                 fi
             fi
@@ -8423,11 +9423,19 @@ UNIT_EOF
         log_detail "Grok CLI already installed"
     else
         log_detail "Installing Grok CLI"
-        # GROK_BIN_DIR steers the upstream installer away from its default
-        # ~/.grok/bin (which is on no PATH ACFS manages) into the ACFS bin dir.
-        try_step "Installing Grok CLI" acfs_run_verified_upstream_script_as_target_with_env "grok" "bash" "GROK_BIN_DIR=$ACFS_BIN_DIR" || log_warn "Grok CLI installation may have failed"
-        if [[ ! -x "$ACFS_BIN_DIR/grok" ]] && [[ -x "$TARGET_HOME/.grok/bin/grok" ]]; then
-            try_step "Linking grok into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$TARGET_HOME/.grok/bin/grok" "grok" || log_warn "Could not link grok into $ACFS_BIN_DIR"
+        # Keep the verified-installer capability identical to the manifest
+        # contract. A custom ACFS_BIN_DIR is handled by the link step below.
+        try_step "Installing Grok CLI" acfs_run_verified_upstream_script_as_target_with_env "grok" "bash" "GROK_BIN_DIR=$TARGET_HOME/.local/bin" || log_warn "Grok CLI installation may have failed"
+        local grok_installed_bin=""
+        local grok_candidate=""
+        for grok_candidate in "$TARGET_HOME/.local/bin/grok" "$TARGET_HOME/.grok/bin/grok"; do
+            if [[ -x "$grok_candidate" ]]; then
+                grok_installed_bin="$grok_candidate"
+                break
+            fi
+        done
+        if [[ ! -x "$ACFS_BIN_DIR/grok" ]] && [[ -n "$grok_installed_bin" ]]; then
+            try_step "Linking grok into $ACFS_BIN_DIR" acfs_link_primary_bin_command "$grok_installed_bin" "grok" || log_warn "Could not link grok into $ACFS_BIN_DIR"
         fi
     fi
 
@@ -9540,6 +10548,13 @@ main() {
     acfs_require_ref_arg_value "ACFS_CHECKSUMS_REF" "${ACFS_CHECKSUMS_REF:-}" "main"
     normalize_read_only_modes
 
+    if [[ -n "$BOOTSTRAP_ARCHIVE_PATH" && -n "${SCRIPT_DIR:-}" ]]; then
+        log_fatal "--bootstrap-archive is only valid for streamed installs; local checkouts already provide the source tree"
+    fi
+    if [[ -n "$BOOTSTRAP_ARCHIVE_PATH" && "$PIN_REF_MODE" == "true" ]]; then
+        log_fatal "--bootstrap-archive cannot be combined with --pin-ref"
+    fi
+
     # --yes should always behave non-interactively (skip prompts), regardless of flag order.
     if [[ "$YES_MODE" == "true" ]]; then
         export ACFS_INTERACTIVE=false
@@ -9558,11 +10573,15 @@ main() {
         # Resolve ACFS_REF to a specific commit SHA early to prevent mixed-ref installs.
         # Without this, we could download a tarball for one commit and later fetch commit metadata
         # (or resume scripts) from a newer commit if the branch/tag moves mid-install.
-        fetch_commit_sha
-        if [[ -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
-            ACFS_REF="$ACFS_COMMIT_SHA_FULL"
-            ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
-            export ACFS_REF ACFS_RAW
+        if [[ -n "$BOOTSTRAP_ARCHIVE_PATH" ]]; then
+            ACFS_COMMIT_SHA="(local archive)"
+        else
+            fetch_commit_sha
+            if [[ -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
+                ACFS_REF="$ACFS_COMMIT_SHA_FULL"
+                ACFS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_REF}"
+                export ACFS_REF ACFS_RAW
+            fi
         fi
         # Download and extract the repo archive for curl-pipe mode.
         # This sets ACFS_BOOTSTRAP_DIR and related paths. If it fails, we cannot continue
@@ -9577,6 +10596,18 @@ main() {
             log_error "Bootstrap did not set ACFS_BOOTSTRAP_DIR. This is a bug."
             exit 1
         fi
+
+        # The streamed file was only a verifier. Continue exclusively in the
+        # archive's ledger-attested install.sh so policy and runtime assets come
+        # from one immutable repository object. The outer process waits so its
+        # process-minted cleanup authority remains responsible for the temp tree.
+        local verified_child_status=0
+        if acfs_run_verified_bootstrap_installer "$@"; then
+            verified_child_status=0
+        else
+            verified_child_status=$?
+        fi
+        exit "$verified_child_status"
     fi
 
     # Detect environment and source manifest index (mjt.5.3)
@@ -9741,7 +10772,9 @@ main() {
 
     # Run pre-flight validation (Phase 0)
     if [[ "$SKIP_PREFLIGHT" != "true" ]]; then
-        run_preflight_checks
+        if ! run_preflight_checks; then
+            exit 1
+        fi
     fi
 
     # Dry-run mode should be truly non-destructive. Print the plan/summary and exit
@@ -10004,7 +11037,7 @@ main() {
     fi
 
     # Normal completion path reached: the phase loop above already gave the
-    # "stack" phase (which installs skills via install_stack_meta_skill) its
+    # "stack" phase (which installs skills via its manifest-mapped installer) its
     # chance to run, so the EXIT-trap fallback in cleanup() must not repeat it.
     ACFS_SKILLS_AND_SUMMARY_DONE=1
     print_summary

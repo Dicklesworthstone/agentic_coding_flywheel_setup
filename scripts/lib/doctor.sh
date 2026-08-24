@@ -2631,7 +2631,7 @@ check_stack() {
                 # ARM64 Linux binary is not yet published; the install script will 404
                 check "stack.meta_skill" "meta_skill (ms)" "warn" \
                     "ARM64 Linux binary not yet available (see https://github.com/Dicklesworthstone/meta_skill/issues/1)" \
-                    "Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"
+                    "No checksum-anchored Linux ARM64 installer is available; wait for a verified release artifact"
                 ;;
             x86_64-Linux|x86_64-Darwin|arm64-Darwin|aarch64-Darwin)
                 # These platforms have pre-built binaries
@@ -2639,7 +2639,7 @@ check_stack() {
                     "$_ms_fix"
                 ;;
             *)
-                _ms_fix="meta_skill has no pre-built binary for ${_ms_arch}-${_ms_os}. Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill --force"
+                _ms_fix="meta_skill has no checksum-anchored installer for ${_ms_arch}-${_ms_os}; wait for a verified release artifact"
                 check "stack.meta_skill" "meta_skill (ms)" "warn" "not installed" \
                     "$_ms_fix"
                 ;;

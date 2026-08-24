@@ -107,13 +107,14 @@ create_bootstrap_archive() {
     local stage_dir=""
 
     stage_dir="$(mktemp -d "$LOG_DIR/archive-stage.XXXXXX")"
-    mkdir -p "$stage_dir/acfs-local/scripts"
+    mkdir -p "$stage_dir/acfs-local/scripts" "$stage_dir/acfs-local/packages"
 
     cp -R /repo/scripts/lib "$stage_dir/acfs-local/scripts/"
     cp -R /repo/scripts/generated "$stage_dir/acfs-local/scripts/"
     cp /repo/scripts/preflight.sh "$stage_dir/acfs-local/scripts/preflight.sh"
     cp /repo/scripts/acfs-global "$stage_dir/acfs-local/scripts/acfs-global"
     cp /repo/scripts/acfs-update "$stage_dir/acfs-local/scripts/acfs-update"
+    cp -R /repo/packages/onboard "$stage_dir/acfs-local/packages/onboard"
     cp -R /repo/acfs "$stage_dir/acfs-local/acfs"
     cp /repo/checksums.yaml "$stage_dir/acfs-local/checksums.yaml"
     cp /repo/acfs.manifest.yaml "$stage_dir/acfs-local/acfs.manifest.yaml"
@@ -185,10 +186,10 @@ run_stdin_install() {
         set -euo pipefail
         cat /repo/install.sh | env \
             ACFS_TEST_MODE=1 \
-            ACFS_TEST_ARCHIVE="$2" \
+            ACFS_TEST_ARCHIVE=/should-be-ignored \
             ACFS_GENERATED_MIGRATED_CATEGORIES=filesystem,cli,network,tools,lang,agents,db,cloud,stack,acfs \
             TARGET_USER="$1" \
-            bash -s -- --yes --skip-preflight --skip-ubuntu-upgrade --mode vibe --only users.ubuntu --no-deps
+            bash -s -- --bootstrap-archive "$2" --yes --skip-preflight --skip-ubuntu-upgrade --mode vibe --only users.ubuntu --no-deps
     ' _ "$target_user" "$LOCAL_BOOTSTRAP_ARCHIVE" > "$log_file" 2>&1
     status=$?
     set -e
@@ -268,7 +269,7 @@ fi
 assert_file_not_contains "$FIRST_LOG" "Unable to resolve TARGET_HOME" "fresh-root log has no TARGET_HOME resolution failure"
 assert_file_not_contains "$FIRST_LOG" "SSH Key Setup" "--yes mode did not render SSH key setup UI"
 assert_file_not_contains "$FIRST_LOG" "Paste your public key" "--yes mode did not prompt for a public key"
-assert_file_contains "$FIRST_LOG" "Test mode: using local archive" "fresh-root run used the local checkout archive"
+assert_file_contains "$FIRST_LOG" "Using explicitly selected local archive" "fresh-root run used the local checkout archive"
 assert_file_contains "$FIRST_LOG" "Target user: $FRESH_TARGET_USER" "fresh-root log records target user"
 assert_file_contains "$FIRST_LOG" "Target home: $FRESH_TARGET_HOME" "fresh-root log records target home"
 
@@ -281,7 +282,7 @@ else
 fi
 assert_file_not_contains "$SECOND_LOG" "Unable to resolve TARGET_HOME" "rerun log has no TARGET_HOME resolution failure"
 assert_file_not_contains "$SECOND_LOG" "Paste your public key" "rerun did not prompt for a public key"
-assert_file_contains "$SECOND_LOG" "Test mode: using local archive" "rerun used the local checkout archive"
+assert_file_contains "$SECOND_LOG" "Using explicitly selected local archive" "rerun used the local checkout archive"
 
 KEY_TARGET_USER="acfskeytest"
 KEY_TARGET_HOME="/home/$KEY_TARGET_USER"
@@ -324,7 +325,7 @@ assert_key_count "$KEY_TARGET_HOME/.ssh/authorized_keys" "$NEW_KEY" "1" "new roo
 assert_file_not_contains "$KEY_LOG" "SSH Key Setup" "key-migration run did not render SSH key setup UI"
 assert_file_not_contains "$KEY_LOG" "Paste your public key" "key-migration run did not prompt for a public key"
 assert_file_not_contains "$KEY_LOG" "local: can only be used in a function" "key-migration run avoided top-level local regression"
-assert_file_contains "$KEY_LOG" "Test mode: using local archive" "key-migration run used the local checkout archive"
+assert_file_contains "$KEY_LOG" "Using explicitly selected local archive" "key-migration run used the local checkout archive"
 
 echo ""
 echo "---"

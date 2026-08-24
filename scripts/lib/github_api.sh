@@ -401,6 +401,27 @@ _github_effective_token() {
     [[ "$gh_token" =~ ^[A-Za-z0-9_]{20,255}$ ]] || return 0
     printf '%s' "$gh_token"
 }
+
+_github_url_is_allowed() {
+    local url="${1:-}"
+    local authority=""
+    local host=""
+
+    [[ "$url" == https://* ]] || return 1
+    authority="${url#https://}"
+    authority="${authority%%[/?#]*}"
+    [[ -n "$authority" && "$authority" != *"@"* ]] || return 1
+    host="${authority%%:*}"
+    host="${host,,}"
+    case "$host" in
+        github.com|api.github.com|codeload.github.com|raw.githubusercontent.com)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 # ============================================================
 # User-Friendly Messages
 # ============================================================
@@ -441,6 +462,32 @@ _show_rate_limit_wait() {
                 echo "  Tip: $tip" >&2
             fi
         fi
+    fi
+}
+
+_github_is_retryable_transport_failure() {
+    local curl_status="${1:-0}"
+    local http_code="${2:-000}"
+    case "$curl_status" in
+        6|7|28|35|52|56) return 0 ;;
+    esac
+    case "$http_code" in
+        502|503|504) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_show_github_transport_wait() {
+    local wait_time="$1"
+    local attempt="$2"
+    local max_attempts="$3"
+    local http_code="$4"
+    local msg="Transient GitHub fetch failure (HTTP ${http_code}); waiting ${wait_time}s before retry (${attempt}/${max_attempts})..."
+
+    if declare -f log_warn &>/dev/null; then
+        log_warn "$msg"
+    else
+        printf '%s\n' "$msg" >&2
     fi
 }
 
@@ -498,6 +545,7 @@ github_fetch_with_backoff() {
     local delay="$GITHUB_BACKOFF_INITIAL"
     local attempt=0
     local max_attempts="$GITHUB_MAX_RETRIES"
+    local exhaustion_reason="rate limit"
     local curl_bin=""
     local -a curl_base_args=()
 
@@ -535,9 +583,11 @@ github_fetch_with_backoff() {
     # anonymous calls.
     local auth_header=()
     local token
-    token="$(_github_effective_token)"
-    if [[ -n "$token" ]]; then
-        auth_header=(-H "Authorization: token $token")
+    if _github_url_is_allowed "$url"; then
+        token="$(_github_effective_token)"
+        if [[ -n "$token" ]]; then
+            auth_header=(-H "Authorization: token $token")
+        fi
     fi
 
     # Temp files for response handling
@@ -552,13 +602,16 @@ github_fetch_with_backoff() {
         attempt=$((attempt + 1))
 
         # Fetch with headers dumped to file
-        local http_code
+        local http_code curl_status=0
         http_code=$("$curl_bin" -sS -w '%{http_code}' \
             "${curl_base_args[@]}" \
             "${auth_header[@]}" \
             -D "$tmp_headers" \
             -o "$tmp_body" \
-            "$url" 2>/dev/null) || http_code="000"
+            "$url" 2>/dev/null) || {
+                curl_status=$?
+                http_code="000"
+            }
 
         # Success
         if [[ "$http_code" == "200" ]]; then
@@ -628,6 +681,20 @@ github_fetch_with_backoff() {
             continue
         fi
 
+        if _github_is_retryable_transport_failure "$curl_status" "$http_code"; then
+            exhaustion_reason="transient network failure"
+            if (( attempt >= max_attempts )); then
+                break
+            fi
+            _show_github_transport_wait "$delay" "$attempt" "$max_attempts" "$http_code"
+            sleep "$delay"
+            delay=$((delay * GITHUB_BACKOFF_MULTIPLIER))
+            if (( delay > GITHUB_BACKOFF_MAX )); then
+                delay="$GITHUB_BACKOFF_MAX"
+            fi
+            continue
+        fi
+
         # Non-rate-limit error - don't retry
         local err_msg="GitHub fetch failed: HTTP $http_code"
         if declare -f log_error &>/dev/null; then
@@ -640,7 +707,7 @@ github_fetch_with_backoff() {
     done
 
     # Max retries exhausted
-    local err_msg="GitHub rate limit: max retries ($max_attempts) exhausted"
+    local err_msg="GitHub ${exhaustion_reason}: max retries ($max_attempts) exhausted"
     if declare -f log_error &>/dev/null; then
         log_error "$err_msg for $description"
     else

@@ -499,15 +499,16 @@ test_feature_flag_per_category_override_disable() {
 }
 
 test_feature_flag_module_extraction() {
-    local name="acfs_use_generated_for_module derives category from module id"
+    local name="acfs_use_generated_for_module uses manifest category authority"
     reset_selection
 
-    ACFS_GENERATED_MIGRATED_CATEGORIES="lang"
+    ACFS_GENERATED_MIGRATED_CATEGORIES="filesystem"
     ACFS_USE_GENERATED=1
-    unset ACFS_USE_GENERATED_LANG
+    unset ACFS_USE_GENERATED_FILESYSTEM
 
     if ! acfs_use_generated_for_module "agents.claude"; then
-        if acfs_use_generated_for_module "lang.bun"; then
+        # base.filesystem intentionally differs from its ID prefix.
+        if acfs_use_generated_for_module "base.filesystem"; then
             test_pass "$name"
             return
         fi
@@ -527,10 +528,10 @@ test_feature_flag_get_installer() {
     local func
     func="$(acfs_get_module_installer "lang.bun")"
 
-    if [[ "$func" == "install_lang_bun" ]]; then
+    if [[ "$func" == "acfs_generated_install_lang_bun" ]]; then
         test_pass "$name"
     else
-        test_fail "$name" "Expected install_lang_bun, got '$func'"
+        test_fail "$name" "Expected acfs_generated_install_lang_bun, got '$func'"
     fi
 }
 

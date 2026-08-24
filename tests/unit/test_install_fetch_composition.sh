@@ -211,17 +211,17 @@ echo "=============================================="
 
 if [[ "$HTTPBIN_OK" == "true" ]]; then
     source_generated_installers
-    declare -f install_stack_ntm >/dev/null 2>&1 || { echo "FATAL: real install_stack_ntm not loaded"; exit 2; }
-    declare -f install_stack_meta_skill >/dev/null 2>&1 || { echo "FATAL: real install_stack_meta_skill not loaded"; exit 2; }
+    declare -f acfs_generated_install_stack_ntm >/dev/null 2>&1 || { echo "FATAL: real acfs_generated_install_stack_ntm not loaded"; exit 2; }
+    declare -f acfs_generated_install_stack_meta_skill >/dev/null 2>&1 || { echo "FATAL: real acfs_generated_install_stack_meta_skill not loaded"; exit 2; }
 
     # The one deliberate substitution, and it's a narrower one than before:
-    # only the URL install_stack_ntm's real verify_checksum() call targets is
+    # only the URL acfs_generated_install_stack_ntm's real verify_checksum() call targets is
     # redirected to the persistent-429 endpoint. Every other line — the
     # verify_checksum call itself, the retry loop inside it, the record/log
     # calls, the return path — is the REAL, unmodified function body.
-    real_ntm_body="$(declare -f install_stack_ntm)"
-    eval "${real_ntm_body/install_stack_ntm/__real_install_stack_ntm}"
-    install_stack_ntm() {
+    real_ntm_body="$(declare -f acfs_generated_install_stack_ntm)"
+    eval "${real_ntm_body/acfs_generated_install_stack_ntm/__real_acfs_generated_install_stack_ntm}"
+    acfs_generated_install_stack_ntm() {
         local module_id="stack.ntm"
         acfs_require_contract "module:${module_id}" || return 1
         acfs_generated_ensure_selection || return 1
@@ -265,7 +265,7 @@ if [[ "$HTTPBIN_OK" == "true" ]]; then
     assert "C1. the induced failure really did exhaust retries (took >= 15s, 'Retry' logged in the category run, not an instant return-1)" \
         "$([[ "$c_elapsed" -ge 15 && "$retries_happened" == "true" ]] && echo true || echo false)"
     assert "C2. stack.ntm's exhausted-fetch failure is recorded (record-and-continue, not silently dropped)" "$ntm_recorded"
-    assert "C3. real install_stack_meta_skill STILL ran and installed despite stack.ntm's fetch exhausting all retries earlier in the same category loop" "$meta_skill_ran"
+    assert "C3. real acfs_generated_install_stack_meta_skill STILL ran and installed despite stack.ntm's fetch exhausting all retries earlier in the same category loop" "$meta_skill_ran"
     assert "C4. generated category reports aggregate failure after later modules run" "$([[ $category_rc -ne 0 ]] && echo true || echo false)"
 
     DRY_RUN=false

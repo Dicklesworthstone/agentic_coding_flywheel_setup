@@ -156,7 +156,7 @@ flowchart TB
   subgraph R["Repo (source)"]
     Manifest["acfs.manifest.yaml<br/>Modules + install + verify + deps"]
     Generator["packages/manifest<br/>Parser (Zod) + generate.ts"]
-    Generated["scripts/generated/* (reference)<br/>category installers + doctor_checks.sh"]
+    Generated["scripts/generated/*<br/>source-only libraries/harness + doctor/index/checksum data"]
     Installer["install.sh (production one-liner)"]
     Lib["scripts/lib/*<br/>security / doctor / update / services-setup"]
     Configs["acfs/*<br/>zshrc + tmux.conf + onboard lessons"]
@@ -185,9 +185,9 @@ flowchart TB
   Terminal -->|curl / bash| Installer
   Terminal -->|SSH| Run
 
-  %% Manifest-driven generation (reference today)
+  %% Manifest-driven generation
   Manifest --> Generator --> Generated
-  Generated -.->|planned: install.sh calls generated install_all.sh| Installer
+  Generated -->|install.sh sources category libraries<br/>and dispatches private module functions| Installer
 
   %% Installer composition
   Lib --> Installer
@@ -226,17 +226,15 @@ flowchart TB
                     ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │                     GENERATED OUTPUTS (REFERENCE)                          │
-│  ┌────────────────────┐  ┌────────────────────┐  ┌────────────────────┐   │
-│  │ scripts/generated/ │  │ doctor_checks.sh   │  │ install_all.sh     │   │
-│  │ 11 Category Scripts│  │ Verification Logic │  │ Top-Level Installer│   │
-│  └────────────────────┘  └────────────────────┘  └────────────────────┘   │
+│  scripts/generated/: 13 source-only category libraries + install_all      │
+│  harness + doctor checks + manifest index + schema-1 checksum ledger      │
 └───────────────────────────────────────────────────────────────────────────┘
                     │
                     ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │                            INSTALLER                                       │
 │  install.sh + scripts/lib/*.sh + checksums.yaml (SHA256 verification)     │
-│  (scripts/generated/* are sourced; execution is feature-flagged)            │
+│  (category libraries are sourced; install.sh owns production dispatch)      │
 └───────────────────────────────────────────────────────────────────────────┘
                     │
                     ▼
@@ -255,7 +253,7 @@ flowchart TB
 
 **TypeScript + Zod Validation**: The manifest parser uses Zod schemas to validate the YAML at parse time. Typos, missing fields, and structural errors are caught immediately during generation—not at runtime on a user's VPS when the installer fails halfway through.
 
-**Generated Scripts**: Rather than hand-maintaining 11 category installer scripts and keeping them synchronized, the generator produces them from the manifest. This means:
+**Generated Scripts**: Rather than hand-maintaining one installer script per manifest category and keeping them synchronized, the generator produces them from the manifest. This means:
 - A consistent, auditable view of manifest-defined install logic (some modules intentionally emit TODOs)
 - Consistent error handling and logging across all modules
 - A clear path toward future installer integration
@@ -269,7 +267,7 @@ flowchart TB
 | **Website** | `apps/web/` | Next.js 16 + Tailwind 4 | Step-by-step wizard for beginners |
 | **Installer** | `install.sh` | Bash | One-liner bootstrap script |
 | **Lib Scripts** | `scripts/lib/` | Bash | Modular installer functions |
-| **Generated Scripts** | `scripts/generated/` | Bash | Auto-generated category installers (sourced by `install.sh`; execution is feature-flagged) |
+| **Generated Scripts** | `scripts/generated/` | Bash/data | Source-only category libraries and harness, doctor checks, manifest metadata, and the schema-1 internal checksum ledger |
 | **Configs** | `acfs/` | Shell/Tmux configs | Files deployed to `~/.acfs/` |
 | **Onboarding** | `acfs/onboard/` | Bash + Markdown | Interactive tutorial system |
 | **Checksums** | `checksums.yaml` | YAML | SHA256 hashes for upstream installers |
@@ -283,36 +281,35 @@ flowchart TB
 ### Manifest Structure
 
 ```yaml
-version: "1.0"
-meta:
-  name: "ACFS"
-  description: "Agentic Coding Flywheel Setup"
-  version: "0.1.0"
+version: 2
+name: agentic_coding_flywheel_setup
+id: acfs
+defaults:
+  user: ubuntu
+  workspace_root: /data/projects
+  mode: vibe
 
 modules:
-  base.system:
-    description: "Base packages + sane defaults"
+  - id: base.system
+    description: Base packages and sane defaults
     category: base
+    run_as: root
+    optional: false
+    enabled_by_default: true
+    generated: true
+    phase: 1
     install:
-      - sudo apt-get update -y
-      - sudo apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential
+      - apt-get update -y
+      - apt-get install -y curl git ca-certificates unzip tar xz-utils jq build-essential
     verify:
       - curl --version
       - git --version
       - jq --version
-
-  agents.claude:
-    description: "Claude Code"
-    category: agents
-    install:
-      - "Install claude code via official method"
-    verify:
-      - claude --version || claude --help
 ```
 
 Each module specifies:
 - **description**: Human-readable name
-- **category**: Grouping for installer organization (base, shell, cli, lang, tools, db, cloud, agents, stack, acfs)
+- **category**: One of the canonical groups: base, users, filesystem, shell, cli, network, lang, tools, db, cloud, agents, stack, acfs
 - **install**: Commands to run (or descriptions that become TODOs)
 - **verify**: Commands that must succeed to confirm installation
 
@@ -320,22 +317,27 @@ Each module specifies:
 
 The TypeScript generator (`packages/manifest/src/generate.ts`) reads the manifest and produces:
 
-1. **Category Scripts** (`scripts/generated/install_base.sh`, `install_agents.sh`, etc.)
-   - One script per category with individual install functions
+1. **Category Libraries** (`scripts/generated/install_base.sh`, `install_agents.sh`, etc.)
+   - One source-only file per category with private module functions
    - Consistent logging and error handling
    - Verification checks after each module
+   - Direct execution fails closed because a single category cannot satisfy cross-category dependencies
 
 2. **Doctor Checks** (`scripts/generated/doctor_checks.sh`)
    - All verify commands extracted into a runnable health check
    - Tab-delimited format (to safely handle `||` in shell commands)
    - Reports pass/fail/skip for each module
 
-3. **Top-Level Installer** (`scripts/generated/install_all.sh`)
-   - Sources all category scripts
-   - Runs them in dependency order
-   - Single entry point for running the generated installers
+3. **Generated Harness** (`scripts/generated/install_all.sh`)
+   - Sources all category libraries
+   - Invokes private module functions in global dependency order
+   - Sourceable generated-module harness; direct execution refuses because it omits orchestration-owned modules and production dispatcher semantics
 
-> Note: The production one-liner installer (`install.sh`) defaults to the legacy implementations; generated installers are sourced and can be enabled per-category via feature flags during migration.
+4. **Runtime Data** (`scripts/generated/manifest_index.sh`, `internal_checksums.sh`)
+   - Deterministic module/category/generated-ownership metadata
+   - Closed-grammar schema-1 digests for checksum-controlled runtime scripts
+
+> Note: Production `install.sh` is the only supported installation entry point. It sources the category libraries and dispatches their private functions through its phase runner; it does not call `install_all.sh`.
 
 To regenerate after manifest changes:
 
@@ -353,7 +355,7 @@ Shell can parse YAML with `yq`, but TypeScript + Zod offers:
 - **Transformation**: Complex logic (sorting by dependencies, escaping) is natural in TypeScript
 - **Consistency**: All generated code follows the same patterns
 
-The generator itself is ~400 lines of TypeScript. The generated output is ~1000 lines of Bash across 13 files. The trade-off is clearly in favor of maintaining the generator.
+The generator centralizes the substantially larger Bash output in one reviewed TypeScript implementation. Exact line and file counts are intentionally derived from the current manifest rather than frozen in this document.
 
 ---
 
@@ -1995,7 +1997,7 @@ The state file (`~/.acfs/state.json`) uses atomic writes to prevent corruption.
 Runtime contract validation for generated scripts:
 
 ```bash
-acfs_require_contract "module_id"   # Assert environment is ready
+acfs_require_contract "module:${module_id}"  # Assert module environment is ready
 acfs_check_contract                 # Non-fatal contract check
 ```
 
@@ -2517,6 +2519,13 @@ scripts/systemd/acfs-checksum-monitor.* # timer + service templates
    - internal script checksum drift (`scripts/generated/internal_checksums.sh`)
    - generated installer and web metadata drift via `bun run generate:diff`
    - semantic manifest contract drift across `scripts/generated/doctor_checks.sh`, `apps/web/lib/generated`, `acfs/onboard/lessons`, README snippets, and `checksums.yaml`
+
+The internal ledger is inert data: exactly `ACFS_INTERNAL_CHECKSUMS_SCHEMA=1`,
+one associative checksum map, and its exact entry count. The installer parses
+that closed grammar without sourcing the ledger, enforces its checksum-controlled
+membership, and verifies regular non-symlink files before sourcing them. This
+is an internal consistency boundary, not an independent signature or archive
+provenance claim.
 2. **Auto-Repair Drift**: If drift is detected, runs `--fix` (regenerate + commit + push)
 3. **Verify Current Upstream Checksums**: Downloads all upstream installers, calculates SHA256
 4. **Detect Upstream Changes**: Compares against `checksums.yaml`
@@ -2735,7 +2744,7 @@ agentic_coding_flywheel_setup/
 ├── AGENTS.md                     # Development guidelines
 ├── VERSION                       # Current version (0.7.0)
 ├── install.sh                    # Main installer entry point
-├── acfs.manifest.yaml            # Canonical tool manifest (510 lines)
+├── acfs.manifest.yaml            # Canonical tool manifest
 ├── checksums.yaml                # SHA256 hashes for upstream scripts
 ├── package.json                  # Root monorepo config
 │
@@ -2765,7 +2774,7 @@ agentic_coding_flywheel_setup/
 │   │   └── tmux.conf             # Tmux configuration
 │   └── onboard/
 │       ├── onboard.sh            # Onboarding TUI script
-│       └── lessons/              # Tutorial markdown (11 files)
+│       └── lessons/              # Tutorial markdown
 │
 ├── scripts/
 │   ├── lib/                      # Installer bash libraries
@@ -2779,15 +2788,11 @@ agentic_coding_flywheel_setup/
 │   │   ├── cli_tools.sh          # Tool installation
 │   │   └── doctor.sh             # Health checks
 │   ├── generated/                # Auto-generated from manifest
-│   │   ├── install_base.sh       # Base packages
-│   │   ├── install_shell.sh      # Shell tools
-│   │   ├── install_cli.sh        # CLI tools
-│   │   ├── install_lang.sh       # Language runtimes
-│   │   ├── install_agents.sh     # AI coding agents
-│   │   ├── install_cloud.sh      # Cloud CLIs
-│   │   ├── install_stack.sh      # Dicklesworthstone stack
-│   │   ├── install_all.sh        # Top-level installer
-│   │   └── doctor_checks.sh      # Verification checks
+│   │   ├── install_<category>.sh # 13 source-only category libraries
+│   │   ├── install_all.sh        # Sourceable generated-module harness
+│   │   ├── manifest_index.sh     # Runtime module metadata
+│   │   ├── doctor_checks.sh      # Verification checks
+│   │   └── internal_checksums.sh # Schema-1 critical-script checksum data
 │   ├── providers/                # VPS provider guides
 │   │   ├── ovh.md
 │   │   ├── contabo.md
@@ -2879,7 +2884,6 @@ The manifest parser includes comprehensive validation beyond basic schema checki
 | `DEPENDENCY_CYCLE` | Circular dependency detected (A→B→C→A) |
 | `PHASE_VIOLATION` | Module runs before its dependencies |
 | `FUNCTION_NAME_COLLISION` | Two modules generate same bash function |
-| `RESERVED_NAME_COLLISION` | Module uses reserved identifier |
 | `INVALID_VERIFIED_INSTALLER_RUNNER` | Runner not in allowlist (bash/sh only) |
 
 **Running Validation:**
@@ -3303,44 +3307,43 @@ function buildVerifiedInstallerFileCommand(module: Module): string {
 ```
 scripts/generated/
 ├── install_base.sh        # Base system packages (apt)
-├── install_users.sh       # User normalization (ubuntu user)
+├── install_users.sh       # Source-only library; users.ubuntu is orchestration-owned
 ├── install_filesystem.sh  # Directory structure (/data/projects)
 ├── install_shell.sh       # zsh + oh-my-zsh + p10k
 ├── install_cli.sh         # ripgrep, tmux, fzf, lazygit, etc.
 ├── install_network.sh     # Tailscale
 ├── install_lang.sh        # bun, uv, rust, go
-├── install_tools.sh       # ast-grep, atuin, zoxide
+├── install_tools.sh       # ast-grep, atuin, zoxide, Vault
 ├── install_agents.sh      # claude, codex, agy
-├── install_db.sh          # PostgreSQL 18, Vault
+├── install_db.sh          # PostgreSQL 18
 ├── install_cloud.sh       # wrangler, supabase, vercel
-├── install_stack.sh       # Dicklesworthstone 10-tool stack + utilities
+├── install_stack.sh       # Flywheel stack + utilities
 ├── install_acfs.sh        # ACFS config deployment
-├── install_all.sh         # Orchestration helper
+├── install_all.sh         # Sourceable generated-module harness
 ├── doctor_checks.sh       # Health verification
-└── manifest_index.sh      # Module metadata arrays
+├── manifest_index.sh      # Module metadata arrays
+└── internal_checksums.sh  # Schema-1 critical-script checksum data
 ```
 
 **Generated Script Structure:**
 ```bash
-#!/usr/bin/env bash
+#!/bin/bash -p
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
 
-install_module_id() {
-    acfs_require_contract "module.id"  # Validate environment
-
-    if run_installed_check "module.id"; then
-        log_step "module.id already installed"
-        return 0
-    fi
-
-    set_phase "Installing module..."
+acfs_generated_install_module_id() {
+    local module_id="module.id"
+    acfs_require_contract "module:${module_id}"  # Validate environment
+    acfs_generated_ensure_selection
+    should_run_module "$module_id" || return 0
     run_as_target_shell <<'HEREDOC'
         # Installation commands from manifest
     HEREDOC
-
-    verify_module "module.id"  # Post-install checks
 }
 ```
+
+Installed-check/idempotency and aggregate-failure behavior are owned by the
+`install.sh` phase dispatcher. Generated files refuse direct execution; use
+`install.sh` for a complete run.
 
 **Regeneration:**
 ```bash
@@ -3373,7 +3376,14 @@ ACFS_MODULE_DEPS["stack.mcp_agent_mail"]="lang.bun,lang.uv"
 
 # Generated function name mapping
 declare -gA ACFS_MODULE_FUNC
-ACFS_MODULE_FUNC["lang.bun"]="install_lang_bun"
+ACFS_MODULE_FUNC["lang.bun"]="acfs_generated_install_lang_bun"
+# generated:false modules deliberately have no ACFS_MODULE_FUNC entry
+
+# Canonical category order and per-module generation ownership
+declare -a ACFS_CATEGORIES_IN_ORDER=(base users filesystem shell cli network lang tools db cloud agents stack acfs)
+declare -gA ACFS_MODULE_GENERATED
+ACFS_MODULE_GENERATED["lang.bun"]="1"
+ACFS_MODULE_GENERATED["users.ubuntu"]="0"
 
 # Category grouping
 declare -gA ACFS_MODULE_CATEGORY
@@ -3612,7 +3622,7 @@ ACFS kicks off this flywheel by providing the **best possible starting environme
 
 3. **Idempotent:** Re-run without fear. The installer handles already-installed tools gracefully.
 
-4. **Single Source of Truth:** The manifest defines everything. Installer scripts are generated from it.
+4. **Single Source of Truth:** The manifest defines module metadata and generated module logic; hand-written `install.sh` owns production orchestration and dispatch.
 
 5. **Security by Default:** HTTPS enforcement, checksum verification, no blind `curl | bash`.
 
@@ -4769,7 +4779,7 @@ ACFS is actively developed. Here's what's coming:
 
 ### Near-Term (Q1 2025)
 
-- [ ] **Full manifest-driven execution**: install.sh consumes generated scripts
+- [x] **Manifest-driven execution**: `install.sh` consumes generated module libraries while retaining explicit authored handoffs for registered `generated:false` modules ✓
 - [x] **Tailscale integration**: Zero-config VPN for secure remote access ✓
 - [x] **Services setup wizard**: Guide users through service account setup (`acfs services-setup`) ✓
 - [ ] **Interactive module selection**: Choose what to install via TUI

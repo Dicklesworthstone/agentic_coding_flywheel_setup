@@ -4001,18 +4001,6 @@ update_run_fsfs_installer() {
     update_run_verified_installer fsfs "${fsfs_args[@]}"
 }
 
-update_run_meta_skill_source_install() {
-    local cargo_bin=""
-    cargo_bin="$(update_binary_path cargo 2>/dev/null || true)"
-    if [[ -z "$cargo_bin" ]]; then
-        echo "meta_skill ARM64 Linux fallback requires cargo for the target user" >&2
-        return 1
-    fi
-
-    echo "meta_skill: Linux ARM64 detected, building from source via cargo" >&2
-    update_run_in_target_context "" "$cargo_bin" install --git https://github.com/Dicklesworthstone/meta_skill --force
-}
-
 # Drift-aware SLB preservation (#329): SLB mediates approval for dangerous
 # commands, so a nightly rebuild must never silently replace a binary the
 # operator has audited or pinned. ACFS records the hash of the binary it last
@@ -4160,8 +4148,8 @@ update_run_verified_installer_with_env() {
     fi
 
     if [[ "$tool" == "ms" ]] && update_is_linux_arm64; then
-        update_run_meta_skill_source_install
-        return $?
+        echo "meta_skill has no checksum-anchored Linux ARM64 install source; refusing an unpinned source checkout" >&2
+        return 1
     fi
 
     if ! update_require_security; then

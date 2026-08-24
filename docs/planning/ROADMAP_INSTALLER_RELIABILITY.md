@@ -458,12 +458,12 @@ print_human() {
         echo -e "${YELLOW}Pre-flight passed with warnings. You may proceed, but consider addressing warnings.${NC}"
         echo ""
         echo -e "Ready to install! Run:"
-        echo -e "  curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?\$(date +%s)\" | bash -s -- --yes --mode vibe"
+        echo -e "  curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --yes --mode vibe"
     else
         echo -e "${GREEN}Pre-flight passed! Your VPS is ready for ACFS.${NC}"
         echo ""
         echo -e "Run:"
-        echo -e "  curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?\$(date +%s)\" | bash -s -- --yes --mode vibe"
+        echo -e "  curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --yes --mode vibe"
     fi
 }
 

@@ -125,7 +125,7 @@ test_ru_in_checksums() {
 test_generated_install_has_ru() {
     local install_stack="$REPO_ROOT/scripts/generated/install_stack.sh"
     [[ -f "$install_stack" ]] || return 1
-    command grep -q "install_stack_ru" "$install_stack" 2>/dev/null || command grep -q '"ru"' "$install_stack" 2>/dev/null
+    command grep -q '^acfs_generated_install_stack_ru()' "$install_stack" 2>/dev/null
 }
 
 # Test 10: ru binary works if installed

@@ -110,11 +110,6 @@ EOF
             grep -v "log_warn" | \
             grep -v "log_error" | \
             grep -v "DPkg::Lock::Timeout=120" || true
-
-        grep '"$apt_get_bin"' install.sh | \
-            grep -v "^[[:space:]]*\[\[" | \
-            grep -v "log_" | \
-            grep -v "DPkg::Lock::Timeout=120" || true
     '
     assert_success
     assert_output ""
@@ -134,9 +129,10 @@ EOF
             scripts/lib/zsh.sh | \
             grep -v "^[^:]*:[[:space:]]*#" | \
             grep -v "log_" | \
+            grep -v "doctor_fix_log" | \
             grep -v "pgrep" | \
             grep -v "command -v" | \
-            grep -v "system_binary_path" | \
+            grep -v "binary_path" | \
             grep -v "DPkg::Lock::Timeout=120" || true
     '
     assert_success

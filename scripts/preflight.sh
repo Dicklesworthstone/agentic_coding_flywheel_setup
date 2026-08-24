@@ -83,9 +83,10 @@ preflight_system_binary_path() {
             ;;
     esac
 
+    # Preflight can run with installer/root authority. Keep its executable
+    # search identical to install.sh's OS-owned bootstrap boundary; locally
+    # managed prefixes such as /usr/local are not trusted here.
     for candidate in \
-        "/usr/local/bin/$name" \
-        "/usr/local/sbin/$name" \
         "/usr/bin/$name" \
         "/bin/$name" \
         "/usr/sbin/$name" \
@@ -921,7 +922,7 @@ check_network_basic() {
     # Test basic connectivity to GitHub (critical)
     local http_status=""
     local curl_exit=0
-    http_status=$(curl -sL --max-time 10 --connect-timeout 5 -o /dev/null -w "%{http_code}" https://github.com 2>/dev/null) || curl_exit=$?
+    http_status=$(curl -q -sL --max-time 10 --connect-timeout 5 -o /dev/null -w "%{http_code}" https://github.com 2>/dev/null) || curl_exit=$?
     [[ "$http_status" =~ ^[0-9]+$ ]] || http_status="000"
 
     if [[ "$curl_exit" -eq 0 && "$http_status" -ge 200 && "$http_status" -lt 400 ]]; then
@@ -991,7 +992,7 @@ check_network_installers() {
         # We just need to verify the URL is reachable, not download the content
         local http_status
         local curl_exit=0
-        http_status=$(curl -sL --max-time 15 --connect-timeout 10 -o /dev/null -w "%{http_code}" "$url" 2>/dev/null) || curl_exit=$?
+        http_status=$(curl -q -sL --max-time 15 --connect-timeout 10 -o /dev/null -w "%{http_code}" "$url" 2>/dev/null) || curl_exit=$?
 
         # Ensure http_status is a valid number (default to 000 if empty or invalid)
         [[ "$http_status" =~ ^[0-9]+$ ]] || http_status="000"
@@ -1061,7 +1062,7 @@ check_apt_mirrors() {
 
     # Test mirror reachability
     local http_status
-    http_status=$(curl -sL --max-time 10 --connect-timeout 5 -o /dev/null -w "%{http_code}" "$mirror_url/dists/" 2>/dev/null) || http_status="000"
+    http_status=$(curl -q -sL --max-time 10 --connect-timeout 5 -o /dev/null -w "%{http_code}" "$mirror_url/dists/" 2>/dev/null) || http_status="000"
 
     if [[ "$http_status" -ge 200 && "$http_status" -lt 400 ]]; then
         pass "APT mirror reachable" "${mirror_url##http*://}"

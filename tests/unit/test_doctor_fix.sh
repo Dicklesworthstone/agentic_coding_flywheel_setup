@@ -2610,7 +2610,7 @@ EOF
     return 0
 }
 
-test_fix_verified_install_ms_arm64_fallback_uses_cargo() {
+test_fix_verified_install_ms_arm64_fails_closed_without_anchored_source() {
     setup_test_env
     export TARGET_HOME="$ACFS_STATE_DIR/target-home"
     mkdir -p "$TARGET_HOME/.cargo/bin" "$TARGET_HOME/.local/bin" "$HOME/.local/bin"
@@ -2658,37 +2658,15 @@ EOF
             esac
         }
 
-        if ! fix_verified_install "stack.meta_skill" "ms-test-bin" "ms" --easy-mode >/dev/null 2>&1; then
-            echo "  fix_verified_install should succeed via cargo fallback on ARM64 Linux ($arch)"
+        if fix_verified_install "stack.meta_skill" "ms-test-bin" "ms" --easy-mode >/dev/null 2>&1; then
+            echo "  fix_verified_install should fail closed without an anchored ARM64 Linux artifact ($arch)"
             [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
             cleanup_test_env
             return 1
         fi
 
-        if [[ ! -f "$cargo_signal" ]]; then
-            echo "  target-home cargo fallback was not invoked for arch $arch"
-            [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
-            cleanup_test_env
-            return 1
-        fi
-
-        if [[ -f "$caller_signal" ]]; then
-            echo "  fix_verified_install used caller-shell cargo instead of TARGET_HOME cargo for arch $arch"
-            [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
-            cleanup_test_env
-            return 1
-        fi
-
-        if ! grep -q -- '--git https://github.com/Dicklesworthstone/meta_skill --force' "$cargo_signal"; then
-            echo "  cargo fallback did not force reinstall from meta_skill git source for arch $arch"
-            cat "$cargo_signal"
-            [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
-            cleanup_test_env
-            return 1
-        fi
-
-        if [[ ! -x "$TARGET_HOME/.local/bin/ms-test-bin" ]]; then
-            echo "  cargo fallback did not produce ms-test-bin in TARGET_HOME for arch $arch"
+        if [[ -f "$cargo_signal" || -f "$caller_signal" ]]; then
+            echo "  fix_verified_install invoked cargo despite the missing anchored source for arch $arch"
             [[ -n "$original_uname" ]] && eval "$original_uname" || unset -f uname
             cleanup_test_env
             return 1
@@ -4540,7 +4518,7 @@ main() {
     run_test test_doctor_fix_build_runtime_env_args_accepts_allowlisted_env_assignments
     run_test test_doctor_fix_build_runtime_env_args_rejects_shell_startup_overrides
     run_test test_fix_verified_install_ignores_gcloud_bv_shadow
-    run_test test_fix_verified_install_ms_arm64_fallback_uses_cargo
+    run_test test_fix_verified_install_ms_arm64_fails_closed_without_anchored_source
     run_test test_fix_verified_install_removes_binary_when_record_change_fails
     run_test test_fix_ssh_server_records_change_when_enabling_service
     run_test test_fix_ssh_server_fails_when_service_enable_fails

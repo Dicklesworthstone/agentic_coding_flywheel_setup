@@ -7,19 +7,23 @@ introduce synthetic mocks for core behavior; prefer these artifacts.
 - `acfs.manifest.yaml` — Canonical module manifest (full real data set).
 
 ## Generated Artifacts (Real outputs)
-- `scripts/generated/manifest_index.sh` — Deterministic module index used by selection logic.
-- `scripts/generated/install_base.sh` — Generated module functions (base).
-- `scripts/generated/install_shell.sh` — Generated module functions (shell).
-- `scripts/generated/install_lang.sh` — Generated module functions (languages).
-- `scripts/generated/install_cli.sh` — Generated module functions (CLI tools).
-- `scripts/generated/install_agents.sh` — Generated module functions (agents).
-- `scripts/generated/install_cloud.sh` — Generated module functions (cloud).
-- `scripts/generated/install_db.sh` — Generated module functions (db).
-- `scripts/generated/install_stack.sh` — Generated module functions (stack).
-- `scripts/generated/install_tools.sh` — Generated module functions (tools).
-- `scripts/generated/install_users.sh` — Generated module functions (users).
-- `scripts/generated/install_acfs.sh` — Generated module functions (acfs).
+- `scripts/generated/manifest_index.sh` — Deterministic module index with canonical category order and generated-ownership metadata.
+- `scripts/generated/install_base.sh` — Source-only generated module library (base).
+- `scripts/generated/install_users.sh` — Zero-handler source-only library; production owns the `users.ubuntu` handoff.
+- `scripts/generated/install_filesystem.sh` — Source-only generated module library (filesystem).
+- `scripts/generated/install_shell.sh` — Source-only generated module library (shell).
+- `scripts/generated/install_cli.sh` — Source-only generated module library (CLI tools).
+- `scripts/generated/install_network.sh` — Source-only generated module library (network).
+- `scripts/generated/install_lang.sh` — Source-only generated module library (languages).
+- `scripts/generated/install_tools.sh` — Source-only generated module library (tools).
+- `scripts/generated/install_db.sh` — Source-only generated module library (db).
+- `scripts/generated/install_cloud.sh` — Source-only generated module library (cloud).
+- `scripts/generated/install_agents.sh` — Source-only generated module library (agents).
+- `scripts/generated/install_stack.sh` — Source-only generated module library (stack).
+- `scripts/generated/install_acfs.sh` — Source-only generated module library (acfs).
+- `scripts/generated/install_all.sh` — Source-only generated-module harness; not a production entrypoint.
 - `scripts/generated/doctor_checks.sh` — Generated doctor checks list.
+- `scripts/generated/internal_checksums.sh` — Schema-1 data-only critical-script checksum ledger.
 
 ## Installer + Libs (Real logic under test)
 - `install.sh` — Orchestrator entrypoint and CLI parsing.

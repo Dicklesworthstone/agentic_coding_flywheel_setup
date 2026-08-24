@@ -997,18 +997,8 @@ doctor_fix_run_verified_installer_with_env() {
     ms_arch="$(uname -m 2>/dev/null || true)"
 
     if [[ "$tool" == "ms" ]] && [[ "$(uname -s 2>/dev/null)" == "Linux" ]] && [[ "$ms_arch" == "aarch64" || "$ms_arch" == "arm64" ]]; then
-        local cargo_bin=""
-
-        cargo_bin="$(doctor_fix_binary_path cargo 2>/dev/null || true)"
-        if [[ -z "$cargo_bin" ]]; then
-            doctor_fix_log WARN "meta_skill ARM64 Linux fallback requires cargo for the runtime home"
-            return 1
-        fi
-
-        doctor_fix_log INFO "meta_skill: Linux ARM64 detected, rebuilding from source via cargo"
-        doctor_fix_run_in_runtime_context "$installer_env_assignment" \
-            "$cargo_bin" install --git https://github.com/Dicklesworthstone/meta_skill --force
-        return $?
+        doctor_fix_log WARN "meta_skill has no checksum-anchored Linux ARM64 install source; refusing an unpinned source checkout"
+        return 1
     fi
 
     if ! doctor_fix_require_security; then
@@ -1077,12 +1067,6 @@ doctor_fix_prepare_target_installer_tmpdir() {
 
     tmpdir_parent="$runtime_home/.cache/acfs/installer-tmp"
     tmpdir_template="$tmpdir_parent/${tool}.XXXXXX"
-    case "$tmpdir_template" in
-        *[[:space:]]*)
-            doctor_fix_log WARN "Cannot prepare installer TMPDIR template with whitespace: $tmpdir_template"
-            return 1
-            ;;
-    esac
 
     mkdir_bin="$(doctor_fix_system_binary_path mkdir 2>/dev/null || true)"
     mktemp_bin="$(doctor_fix_system_binary_path mktemp 2>/dev/null || true)"

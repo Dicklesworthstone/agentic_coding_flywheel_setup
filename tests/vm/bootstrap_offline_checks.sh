@@ -2,8 +2,9 @@
 # ============================================================
 # ACFS Bootstrap - Offline Simulation Test
 #
-# Validates the curl|bash bootstrap path without network by
-# serving a local archive via a stubbed curl binary.
+# Validates the curl|bash bootstrap path from an explicitly selected local
+# archive. The archive path is authoritative and bootstrap does not resolve or
+# download a repository ref before consuming it.
 # ============================================================
 
 set -euo pipefail
@@ -44,7 +45,7 @@ create_archive() {
   local stage_dir
   stage_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-offline-stage.XXXXXX")"
 
-  mkdir -p "$stage_dir/acfs-offline/scripts"
+  mkdir -p "$stage_dir/acfs-offline/scripts" "$stage_dir/acfs-offline/packages"
 
   cp -R "$REPO_ROOT/scripts/lib" "$stage_dir/acfs-offline/scripts/"
   cp -R "$REPO_ROOT/scripts/generated" "$stage_dir/acfs-offline/scripts/"
@@ -54,6 +55,7 @@ create_archive() {
   # "missing" and fail unless they're in the bootstrap archive.
   cp "$REPO_ROOT/scripts/acfs-global" "$stage_dir/acfs-offline/scripts/acfs-global"
   cp "$REPO_ROOT/scripts/acfs-update" "$stage_dir/acfs-offline/scripts/acfs-update"
+  cp -R "$REPO_ROOT/packages/onboard" "$stage_dir/acfs-offline/packages/onboard"
 
   cp -R "$REPO_ROOT/acfs" "$stage_dir/acfs-offline/acfs"
   cp "$REPO_ROOT/checksums.yaml" "$stage_dir/acfs-offline/checksums.yaml"
@@ -75,65 +77,16 @@ create_bad_archive() {
   tar -czf "$bad_archive" -C "$bad_dir" acfs-offline
 }
 
-create_stub_curl() {
-  local stub_dir
-  stub_dir="$(mktemp -d "${TMPDIR:-/tmp}/acfs-curl-stub.XXXXXX")"
-
-  cat > "$stub_dir/curl" <<'CURL'
-#!/usr/bin/env bash
-set -euo pipefail
-
-for arg in "$@"; do
-  if [[ "$arg" == "--help" ]]; then
-    echo "--proto"
-    exit 0
-  fi
-  if [[ "$arg" == "--help"* ]]; then
-    echo "--proto"
-    exit 0
-  fi
-done
-
-out=""
-prev=""
-for arg in "$@"; do
-  if [[ "$prev" == "-o" ]]; then
-    out="$arg"
-    break
-  fi
-  prev="$arg"
-done
-
-if [[ -z "$out" ]]; then
-  echo "stub curl: missing -o" >&2
-  exit 1
-fi
-
-if [[ -z "${ACFS_TEST_ARCHIVE:-}" ]]; then
-  echo "stub curl: ACFS_TEST_ARCHIVE not set" >&2
-  exit 1
-fi
-
-cp "$ACFS_TEST_ARCHIVE" "$out"
-CURL
-
-  chmod +x "$stub_dir/curl"
-  echo "$stub_dir"
-}
-
 run_bootstrap() {
   local archive_path="$1"
   local label="$2"
   local expect_failure="${3:-false}"
 
   log "$label: running bootstrap (archive=$archive_path)"
-  local stub_dir
-  stub_dir="$(create_stub_curl)"
-
   if [[ "$expect_failure" == "true" ]]; then
     set +e
     local output
-    output="$(ACFS_TEST_MODE=1 ACFS_TEST_ARCHIVE="$archive_path" PATH="$stub_dir:$PATH" bash -lc "cat '$REPO_ROOT/install.sh' | bash -s -- --list-modules" 2>&1)"
+    output="$(ACFS_TEST_MODE=1 ACFS_TEST_ARCHIVE=/should-be-ignored bash -lc "cat '$REPO_ROOT/install.sh' | bash -s -- --bootstrap-archive '$archive_path' --list-modules" 2>&1)"
     local status=$?
     set -e
 
@@ -155,7 +108,7 @@ run_bootstrap() {
 
   set +e
   local output
-  output="$(ACFS_TEST_MODE=1 ACFS_TEST_ARCHIVE="$archive_path" PATH="$stub_dir:$PATH" bash -lc "cat '$REPO_ROOT/install.sh' | bash -s -- --list-modules" 2>&1)"
+  output="$(ACFS_TEST_MODE=1 ACFS_TEST_ARCHIVE=/should-be-ignored bash -lc "cat '$REPO_ROOT/install.sh' | bash -s -- --bootstrap-archive '$archive_path' --list-modules" 2>&1)"
   local status=$?
   set -e
 

@@ -34,7 +34,7 @@ modules:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `id` | string | Unique identifier. Format: `category.name` or `category.subcategory.name`. Must match `/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/` |
+| `id` | string | Unique namespace identifier matching `/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/`. When `category` is omitted, the first segment must be a canonical category; explicit-category and plugin IDs may use another namespace. |
 | `description` | string | Human-readable description (non-empty) |
 | `verify` | string[] | Commands to verify installation succeeded (at least one required) |
 
@@ -44,7 +44,7 @@ modules:
 |-------|------|---------|-------------|
 | `run_as` | enum | `target_user` | Execution context for install/verify. Options: `target_user`, `root`, `current` |
 | `phase` | int | 1 | Execution phase (1-10). Lower phases run first |
-| `category` | string | (none) | Category grouping for layout/display |
+| `category` | enum | ID prefix | Generated-layout authority. One of `base`, `users`, `filesystem`, `shell`, `cli`, `network`, `lang`, `tools`, `db`, `cloud`, `agents`, `stack`, `acfs`. When omitted, the canonical first ID segment is used. |
 
 **run_as Values:**
 - `target_user` - Run as the configured target user (defaults.user)
@@ -70,7 +70,7 @@ modules:
 | `install` | string[] | `[]` | Shell commands to run during installation |
 | `verified_installer` | object | (none) | Reference to upstream installer with checksum verification |
 | `installed_check` | object | (none) | Command to check if already installed (skip logic) |
-| `generated` | bool | `true` | If false, module is orchestration-only (no bash function generated) |
+| `generated` | bool | `true` | If false, no bash function is generated and validation requires a registered authored orchestration handler (currently only `users.ubuntu`); all other false values fail closed with `ORCHESTRATION_HANDLER_MISSING` |
 
 **verified_installer Schema:**
 ```yaml
@@ -101,7 +101,7 @@ installed_check:
 - `critical` - Required for base functionality
 - `recommended` - Should install unless explicitly skipped
 - `optional` - Nice to have, not required
-- `orchestration` - Handled by orchestrator, not generated
+- `orchestration` - Descriptive/selection metadata only; it does not disable generation (that requires `generated: false` plus a registered authored handler)
 - `runtime` - Language runtime (bun, uv, rust, go)
 - `agent` - AI coding agent (Claude, Codex, Gemini)
 - `shell-ux` - Affects shell experience
@@ -119,7 +119,7 @@ This contract defines the shared selection behavior that `install.sh`, generated
 |---------|----------------|
 | `acfs.manifest.yaml` | Source of truth for module IDs, phases, categories, tags, defaults, dependencies, verification, and verified-installer usage |
 | `packages/manifest/src/generate.ts` | Sorts modules deterministically and emits data-only Bash arrays in `scripts/generated/manifest_index.sh` |
-| `scripts/generated/manifest_index.sh` | Runtime metadata bridge: `ACFS_MODULES_IN_ORDER`, `ACFS_MODULE_PHASE`, `ACFS_MODULE_DEPS`, `ACFS_MODULE_FUNC`, `ACFS_MODULE_CATEGORY`, `ACFS_MODULE_TAGS`, `ACFS_MODULE_DEFAULT`, and installed-check arrays |
+| `scripts/generated/manifest_index.sh` | Runtime metadata bridge: `ACFS_MODULES_IN_ORDER`, `ACFS_CATEGORIES_IN_ORDER`, `ACFS_MODULE_PHASE`, `ACFS_MODULE_DEPS`, `ACFS_MODULE_FUNC` (generated modules only), `ACFS_MODULE_GENERATED`, `ACFS_MODULE_CATEGORY`, `ACFS_MODULE_TAGS`, `ACFS_MODULE_DEFAULT`, and installed-check arrays |
 | `scripts/lib/install_helpers.sh` | Runtime resolver implementation: validates selectors, expands dependencies, applies skips, and populates `ACFS_EFFECTIVE_PLAN`, `ACFS_EFFECTIVE_RUN`, `ACFS_PLAN_REASON`, and `ACFS_PLAN_EXCLUDE_REASON` |
 | `install.sh` | Parses CLI flags, maps legacy skip flags, calls the resolver before mutation, prints `--print-plan`, and executes only modules in the effective plan |
 | `apps/web/lib/commandBuilder.ts` | Emits installer commands. Today this only passes mode, ref, and target user; future profile controls must serialize to the same public selectors |
@@ -533,31 +533,35 @@ Dependencies must be in the same or earlier phase.
 
 ### 5. Function Name Uniqueness
 
-Generated function names must be unique. IDs `lang.bun` and `lang_bun` both generate `install_lang_bun`.
+Generated module function names must be unique. IDs `lang.foo_bar` and
+`lang.foo.bar` both generate `acfs_generated_install_lang_foo_bar`.
 
 **Error Example:**
 ```
-[FUNCTION_NAME_COLLISION] Module "lang_bun" generates function "install_lang_bun"
-which collides with "lang.bun"
+[FUNCTION_NAME_COLLISION] Module "lang.foo.bar" generates function "acfs_generated_install_lang_foo_bar"
+which collides with "lang.foo_bar"
   → Rename one of the colliding modules to use a different ID
 ```
 
-### 6. Reserved Names
+### 6. Private Generated Namespace
 
-Generated functions must not shadow orchestrator functions.
+Every generated module installer uses the
+`acfs_generated_install_<module_id_with_dots_as_underscores>` prefix. Category
+files are source-only libraries; they intentionally expose no public
+`install_<category>()` aggregate. `acfs_generated_install_all()` remains a
+private sourceable generated-module harness, but generated files refuse direct execution because
+only production `install.sh` owns installed checks, aggregate failures, and
+authored orchestration handoffs. The private prefix prevents module IDs from
+shadowing library or shell-builtin functions; collision validation rejects two
+generated module IDs that normalize to the same private name.
 
-**Reserved Names:**
-- `install_all`, `install_base`, `install_lang`, `install_tools`, etc.
-- `log_step`, `log_error`, `log_success`, etc.
-- `acfs_require_contract`, `acfs_security_init`
-- Shell builtins: `main`, `usage`, `init`, `run`, `exec`, `exit`, `test`
+### 7. Authored Orchestration Ownership
 
-**Error Example:**
-```
-[RESERVED_NAME_COLLISION] Module "all" generates function "install_all"
-which is a reserved orchestrator name
-  → Rename the module to avoid the reserved function name
-```
+`generated: false` is a closed allowlist, not a general escape hatch. The
+validator requires a registered production handler for each such module and
+currently accepts only `users.ubuntu`. Any other ID fails with
+`ORCHESTRATION_HANDLER_MISSING`, preventing a manifest entry from silently
+disappearing from generated execution.
 
 ## Web Content Generation
 
@@ -616,7 +620,7 @@ The GitHub Actions workflows (`playwright.yml`, `website.yml`) include a `verify
 
 ### Adding a New Module
 
-1. **Choose ID**: Use `category.name` format (e.g., `tools.lazygit`)
+1. **Choose ID and category**: Use `category.name` (for example, `tools.lazygit`) when the namespace begins with a canonical category. Plugin or alternate namespaces must set the canonical `category` explicitly.
 2. **Set Phase**: Match dependency phase requirements
 3. **Define Dependencies**: List module IDs this depends on
 4. **Add installed_check**: For idempotent skip-if-present logic
@@ -641,12 +645,18 @@ When adding or modifying modules—especially ones that run upstream installers�
    - Add the installer URL + SHA256 in `checksums.yaml`.
    - Use the security helper for updates:
      ```bash
-     # Update all known checksums (review diff carefully)
-     ./scripts/lib/security.sh --update-checksums > checksums.yaml
+     # Generate a candidate, then review before replacing the canonical file
+     candidate="/tmp/acfs-checksums.$$.candidate.yaml"
+     ./scripts/lib/security.sh --update-checksums > "$candidate"
+     diff -u checksums.yaml "$candidate" || [[ $? -eq 1 ]]
 
      # Verify all checksums against upstream
      ./scripts/lib/security.sh --verify
      ```
+   - Replace `checksums.yaml` only after the reviewed diff is limited to its
+     timestamp header plus the intended tool entry. If only the timestamp
+     changes, leave the canonical file unchanged; investigate any unrelated
+     entry before replacement.
 
 2. **Drift Check (CI parity)**
    ```bash
@@ -664,7 +674,10 @@ When adding or modifying modules—especially ones that run upstream installers�
        | bash -s -- --print-plan --ref <ref>
      ```
    - The bootstrap flow validates script syntax and ensures `scripts/generated/manifest_index.sh`
-     matches `acfs.manifest.yaml`. If this fails, the ref is inconsistent.
+     matches `acfs.manifest.yaml`. It also parses the schema-1 internal checksum
+     ledger as data (never sources it), enforces its closed checksum-controlled membership,
+     and verifies tracked regular non-symlink files before sourcing them. This
+     proves internal consistency; it is not an independent archive signature.
 
 4. **Smoke Sanity (optional but recommended)**
    ```bash
@@ -699,27 +712,28 @@ bun run generate
 ## Generated Output
 
 The generator produces:
-- `scripts/generated/install_<category>.sh` - Category-based install scripts (e.g., `install_lang.sh`, `install_cli.sh`)
-- `scripts/generated/install_all.sh` - Orchestrator that calls category scripts in phase order
+- `scripts/generated/install_<category>.sh` - Source-only category function libraries (for example, `install_lang.sh`, `install_cli.sh`)
+- `scripts/generated/install_all.sh` - Sourceable harness that loads those libraries and calls generated module functions in global dependency order; it is not a supported direct installer
 - `scripts/generated/manifest_index.sh` - Module metadata for runtime queries
 - `scripts/generated/doctor_checks.sh` - Health check functions
+- `scripts/generated/internal_checksums.sh` - Schema-1 data-only runtime checksum map with an exact entry count
 
 ### Function Naming
 
 Module ID `lang.bun` generates:
-- Function: `install_lang_bun()`
+- Function: `acfs_generated_install_lang_bun()`
 - Location: Inside `scripts/generated/install_lang.sh` (grouped by category)
 
 ### Execution Model
 
 ```bash
 # Generated orchestrator pseudocode
-install_all() {
+acfs_generated_install_all() {
   # Phase 1
-  install_base_system || handle_error
+  acfs_generated_install_base_system || handle_error
 
-  # Phase 2
-  install_users_ubuntu || handle_error
+  # generated:false modules such as users.ubuntu are deliberately omitted;
+  # production install.sh owns their authored orchestration handlers.
 
   # ... continues by phase
 }
@@ -741,7 +755,7 @@ install_all() {
 
 - `mjt.3.1` - Implement schema vNext fields (Zod + TS types)
 - `mjt.3.2` - Add manifest validation (deps, cycles, phases)
-- `mjt.3.3` - Add function name collision + reserved-name validation
+- `mjt.3.3` - Add generated function-name collision validation
 - `mjt.3.4` - Migrate acfs.manifest.yaml to schema vNext
 - `mjt.3.5` - Migrate remote installers to verified_installer
 - `mjt.3.6` - Document schema vNext (this document)

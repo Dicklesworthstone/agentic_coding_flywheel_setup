@@ -734,10 +734,10 @@ test_meta_skill_arm64_linux_guidance() {
         harness_capture_output "meta_skill_arm64_branch" "$arm64_branch"
     fi
 
-    if echo "$arm64_branch" | grep -q 'Build from source: cargo install --git https://github.com/Dicklesworthstone/meta_skill --force'; then
-        harness_pass "meta_skill ARM64 Linux fix uses the source-build fallback"
+    if echo "$arm64_branch" | grep -q 'No checksum-anchored Linux ARM64 installer is available; wait for a verified release artifact'; then
+        harness_pass "meta_skill ARM64 Linux guidance fails closed without an anchored source"
     else
-        harness_fail "meta_skill ARM64 Linux fix hint is incorrect"
+        harness_fail "meta_skill ARM64 Linux guidance does not explain the anchored-source requirement"
         harness_capture_output "meta_skill_arm64_branch" "$arm64_branch"
     fi
 
