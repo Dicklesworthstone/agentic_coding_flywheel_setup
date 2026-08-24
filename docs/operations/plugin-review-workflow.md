@@ -172,7 +172,7 @@ the generator can activate.
   ],
   "capabilities": {
     "allowed": ["verified_installer", "doctor_check", "web_metadata"],
-    "reviewRequired": ["root_run_as", "cross_plugin_dependency"],
+    "reviewRequired": ["root_run_as", "cross_plugin_dependency", "default_enabled_module"],
     "disallowed": ["arbitrary_shell", "secret_values"]
   },
   "modules": [
@@ -183,7 +183,7 @@ the generator can activate.
       "phase": 6,
       "run_as": "target_user",
       "optional": false,
-      "enabled_by_default": true,
+      "enabled_by_default": false,
       "dependencies": ["lang.bun"],
       "install": {
         "kind": "verified_installer",

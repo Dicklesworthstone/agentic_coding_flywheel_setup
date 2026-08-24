@@ -1045,23 +1045,25 @@ if [[ "$(git rev-parse HEAD 2>/dev/null || true)" != "$FIX_COMMIT_HEAD" ]]; then
     exit 2
 fi
 
-# Push to main first, then mirror to master for legacy compatibility
-if ! git push origin "$FIX_COMMIT_HEAD":main; then
-    log_error "Push to main failed; fix committed locally but not pushed"
+# Publish both refs in one remote transaction. A sequential push can leave
+# main updated while the legacy mirror is stale, even when the second push
+# merely loses a race or the connection drops. If the server cannot provide
+# atomic ref updates, fail closed and leave the verified commit local.
+if ! git push --atomic origin \
+    "$FIX_COMMIT_HEAD:refs/heads/main" \
+    "$FIX_COMMIT_HEAD:refs/heads/master"; then
+    log_error "Atomic main/mirror publication failed; fix committed locally but neither ref is accepted as published"
     exit 2
 fi
-REMOTE_MAIN_HEAD="$(git ls-remote --heads origin refs/heads/main 2>/dev/null | awk 'NR == 1 { print $1 }')"
-if [[ "$REMOTE_MAIN_HEAD" != "$FIX_COMMIT_HEAD" ]]; then
-    log_error "Remote main moved after publication; refusing to update the legacy mirror"
-    exit 2
-fi
-if ! git push origin "$FIX_COMMIT_HEAD":master; then
-    log_error "Push to master mirror failed after pushing main"
-    exit 2
-fi
-REMOTE_MASTER_HEAD="$(git ls-remote --heads origin refs/heads/master 2>/dev/null | awk 'NR == 1 { print $1 }')"
-if [[ "$REMOTE_MASTER_HEAD" != "$FIX_COMMIT_HEAD" ]]; then
-    log_error "Remote master does not match the generated publication commit"
+
+REMOTE_REFS="$(git ls-remote --heads origin refs/heads/main refs/heads/master 2>/dev/null || true)"
+REMOTE_MAIN_HEAD="$(awk '$2 == "refs/heads/main" { print $1 }' <<< "$REMOTE_REFS")"
+REMOTE_MASTER_HEAD="$(awk '$2 == "refs/heads/master" { print $1 }' <<< "$REMOTE_REFS")"
+if [[ "$(awk '$2 == "refs/heads/main" { count += 1 } END { print count + 0 }' <<< "$REMOTE_REFS")" -ne 1 ]] \
+    || [[ "$(awk '$2 == "refs/heads/master" { count += 1 } END { print count + 0 }' <<< "$REMOTE_REFS")" -ne 1 ]] \
+    || [[ "$REMOTE_MAIN_HEAD" != "$FIX_COMMIT_HEAD" ]] \
+    || [[ "$REMOTE_MASTER_HEAD" != "$FIX_COMMIT_HEAD" ]]; then
+    log_error "Remote refs do not both match the generated publication commit after atomic push"
     exit 2
 fi
 

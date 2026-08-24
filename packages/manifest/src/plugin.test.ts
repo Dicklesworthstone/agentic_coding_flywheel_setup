@@ -122,7 +122,7 @@ function validPlugin(): Record<string, unknown> {
     ],
     capabilities: {
       allowed: ['verified_installer', 'doctor_check'],
-      reviewRequired: ['root_run_as', 'cross_plugin_dependency'],
+      reviewRequired: ['root_run_as', 'cross_plugin_dependency', 'default_enabled_module'],
       disallowed: ['arbitrary_shell', 'secret_values'],
     },
     modules: [
@@ -133,7 +133,7 @@ function validPlugin(): Record<string, unknown> {
         phase: 6,
         run_as: 'target_user',
         optional: false,
-        enabled_by_default: true,
+        enabled_by_default: false,
         dependencies: ['lang.bun'],
         install: {
           kind: 'verified_installer',
@@ -188,6 +188,21 @@ describe('validatePluginPackage', () => {
     plugin.schemaVersion = 99;
 
     expect(diagnosticCodes(plugin)).toContain('plugin_schema_unsupported');
+  });
+
+  test('rejects control characters in package versions before normalization', () => {
+    const plugin = validPlugin();
+    plugin.version = '1.2.3\nprintf compromised';
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_missing_required_field',
+      path: 'version',
+      message: expect.stringContaining('control characters'),
+    }));
   });
 
   test('rejects packages authored for a different ACFS manifest version', () => {
@@ -1123,6 +1138,24 @@ describe('validatePluginPackage', () => {
       code: 'plugin_review_required',
       path: 'modules[0].dependencies',
     }));
+  });
+
+  test('requires maintainer review before a plugin module is enabled by default', () => {
+    const plugin = validPlugin();
+    plugin.capabilities = {
+      allowed: ['verified_installer', 'doctor_check', 'default_enabled_module'],
+      reviewRequired: ['root_run_as', 'cross_plugin_dependency'],
+      disallowed: ['arbitrary_shell', 'secret_values'],
+    };
+    const modules = plugin.modules as Record<string, unknown>[];
+    modules[0] = { ...modules[0], enabled_by_default: true };
+
+    expect(validatePluginPackage(plugin, validationOptions()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'plugin_review_required',
+        path: 'modules[0].enabled_by_default',
+      })
+    );
   });
 });
 

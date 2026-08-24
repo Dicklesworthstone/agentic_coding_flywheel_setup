@@ -1115,7 +1115,7 @@ describe('Generated script headers', () => {
     expect(countMatch).not.toBeNull();
     expect(rawEntries.length).toBe(checksums.size);
     expect(Number(countMatch?.[1])).toBe(checksums.size);
-    expect(checksums.size).toBe(59);
+    expect(checksums.size).toBe(112);
 
     const mandatoryPaths = [
       'install.sh',
@@ -1161,6 +1161,59 @@ describe('Generated script headers', () => {
       'scripts/templates/acfs-nightly-update.service',
       'scripts/templates/acfs-nightly-update.timer',
       'packages/onboard/onboard.sh',
+      'VERSION',
+      'acfs.manifest.yaml',
+      'acfs/AGENTS.md',
+      'acfs/onboard/docs/ntm/command_palette.md',
+      'acfs/tmux/tmux.conf',
+      'acfs/zsh/acfs.zshrc',
+      'acfs/zsh/p10k.zsh',
+      'scripts/completions/_acfs',
+      'scripts/completions/acfs.bash',
+      'scripts/generate-root-agents-md.sh',
+      'scripts/lib/agy_e2e_harness.sh',
+      'scripts/lib/agy_locked.py',
+      'scripts/lib/agy_model_guard.sh',
+      'scripts/lib/capacity.sh',
+      'scripts/lib/changelog.sh',
+      'scripts/lib/cheatsheet.sh',
+      'scripts/lib/continue.sh',
+      'scripts/lib/credential_preflight.sh',
+      'scripts/lib/dashboard.sh',
+      'scripts/lib/info.sh',
+      'scripts/lib/landing_plane.sh',
+      'scripts/lib/newproj.sh',
+      'scripts/lib/newproj_agents.sh',
+      'scripts/lib/newproj_detect.sh',
+      'scripts/lib/newproj_errors.sh',
+      'scripts/lib/newproj_logging.sh',
+      'scripts/lib/newproj_screens.sh',
+      'scripts/lib/newproj_screens/screen_agents_preview.sh',
+      'scripts/lib/newproj_screens/screen_confirmation.sh',
+      'scripts/lib/newproj_screens/screen_directory.sh',
+      'scripts/lib/newproj_screens/screen_features.sh',
+      'scripts/lib/newproj_screens/screen_progress.sh',
+      'scripts/lib/newproj_screens/screen_project_name.sh',
+      'scripts/lib/newproj_screens/screen_success.sh',
+      'scripts/lib/newproj_screens/screen_tech_stack.sh',
+      'scripts/lib/newproj_screens/screen_welcome.sh',
+      'scripts/lib/newproj_tui.sh',
+      'scripts/lib/notifications.sh',
+      'scripts/lib/policy_lint.sh',
+      'scripts/lib/provenance.sh',
+      'scripts/lib/rescue.sh',
+      'scripts/lib/status.sh',
+      'scripts/lib/support.sh',
+      'scripts/lib/swarm_assign.sh',
+      'scripts/lib/swarm_calibration.sh',
+      'scripts/lib/swarm_convergence.sh',
+      'scripts/lib/swarm_doctor.sh',
+      'scripts/lib/swarm_inventory.sh',
+      'scripts/lib/swarm_packet.sh',
+      'scripts/lib/swarm_plan.sh',
+      'scripts/lib/swarm_simulation.sh',
+      'scripts/lib/swarm_status.sh',
+      'scripts/services-setup.sh',
       'scripts/generated/manifest_index.sh',
       'scripts/generated/doctor_checks.sh',
       'scripts/generated/install_all.sh',
@@ -1189,6 +1242,28 @@ describe('Generated script headers', () => {
     const runtimeRequiredPaths = new Set(runtimeRequiredPathList);
     expect(runtimeRequiredPathList.length).toBe(runtimeRequiredPaths.size);
     expect(runtimeRequiredPaths).toEqual(new Set(checksums.keys()));
+
+    const literalInstallAssets = Array.from(
+      installer.matchAll(/\binstall_asset\s+"([^"$]+)"/g),
+      (match) => match[1]
+    );
+    expect(literalInstallAssets.length).toBeGreaterThan(0);
+    for (const path of literalInstallAssets) {
+      expect(checksums.has(path)).toBe(true);
+    }
+    expect(installer).toContain('if (( line_count > 256 ))');
+    expect(installer).toContain(
+      'install_asset: Source asset is outside the internal checksum contract:'
+    );
+    expect(installer).toContain(
+      'install_asset: Installed asset does not match the verified source:'
+    );
+    expect(installer).toContain(
+      'Unexpected generated script is outside the internal checksum contract:'
+    );
+    expect(installer).not.toContain(
+      'install_asset_from_path "$generated_script"'
+    );
 
     const driftChecker = readFileSync(
       resolve(PROJECT_ROOT, 'scripts/check-manifest-drift.sh'),

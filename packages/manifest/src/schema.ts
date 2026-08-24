@@ -153,7 +153,11 @@ const ModulePluginProvenanceSchema = z.strictObject({
   version: z
     .string()
     .min(1, 'Plugin version cannot be empty')
-    .refine((value) => value.trim().length > 0, 'Plugin version cannot be only whitespace'),
+    .refine((value) => value.trim().length > 0, 'Plugin version cannot be only whitespace')
+    .refine(
+      (value) => !/[\u0000-\u001f\u007f]/u.test(value),
+      'Plugin version cannot contain control characters'
+    ),
   pluginSha256: z
     .string()
     .regex(/^[a-f0-9]{64}$/i, 'Plugin package SHA-256 must contain 64 hexadecimal characters'),

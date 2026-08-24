@@ -42,6 +42,7 @@ const IMPLEMENTED_INSTALL_KINDS = new Set(['verified_installer']);
 const INTRINSICALLY_REVIEW_REQUIRED_CAPABILITIES = new Set([
   'root_run_as',
   'cross_plugin_dependency',
+  'default_enabled_module',
 ]);
 const ALLOWED_CATEGORIES = new Set<ModuleCategory>(MODULE_CATEGORIES);
 const ALLOWED_TOP_LEVEL_FIELDS = new Set([
@@ -106,6 +107,10 @@ const DISALLOWED_INSTALL_FIELDS = new Set([
 const NonBlankStringSchema = z.string().min(1).refine((value) => value.trim().length > 0, {
   message: 'String cannot be only whitespace',
 });
+const ControlFreeNonBlankStringSchema = NonBlankStringSchema.refine(
+  (value) => !/[\u0000-\u001f\u007f]/u.test(value),
+  { message: 'String cannot contain control characters' }
+);
 const HttpsUrlSchema = z.string().url().refine((value) => {
   try {
     return new URL(value).protocol === 'https:';
@@ -188,7 +193,7 @@ const PluginPackageSchema = z
     schemaVersion: z.number().int(),
     packageId: z.string().regex(PACKAGE_ID_PATTERN),
     displayName: NonBlankStringSchema,
-    version: NonBlankStringSchema,
+    version: ControlFreeNonBlankStringSchema,
     description: NonBlankStringSchema,
     publisher: z
       .object({
@@ -1491,6 +1496,15 @@ function validateReviewRequiredCapabilities(
   plugin.modules.forEach((module, index) => {
     if (module.run_as === 'root' || module.run_as === 'current') {
       validateCapabilityUse(plugin, module, 'root_run_as', diagnostics, `modules[${index}].run_as`);
+    }
+    if (module.enabled_by_default) {
+      validateCapabilityUse(
+        plugin,
+        module,
+        'default_enabled_module',
+        diagnostics,
+        `modules[${index}].enabled_by_default`
+      );
     }
   });
 }

@@ -3603,7 +3603,7 @@ acfs_load_internal_checksums_data() {
 
     for line in "${ledger_lines[@]}"; do
         ((line_count += 1))
-        if (( line_count > 128 )) || ((${#line} > 4096)); then
+        if (( line_count > 256 )) || ((${#line} > 4096)); then
             printf 'ERROR: Internal checksum ledger exceeds its bounded data grammar\n' >&2
             return 1
         fi
@@ -3734,6 +3734,59 @@ acfs_load_internal_checksums_data() {
         scripts/templates/acfs-nightly-update.service
         scripts/templates/acfs-nightly-update.timer
         packages/onboard/onboard.sh
+        VERSION
+        acfs.manifest.yaml
+        acfs/AGENTS.md
+        acfs/onboard/docs/ntm/command_palette.md
+        acfs/tmux/tmux.conf
+        acfs/zsh/acfs.zshrc
+        acfs/zsh/p10k.zsh
+        scripts/completions/_acfs
+        scripts/completions/acfs.bash
+        scripts/generate-root-agents-md.sh
+        scripts/lib/agy_e2e_harness.sh
+        scripts/lib/agy_locked.py
+        scripts/lib/agy_model_guard.sh
+        scripts/lib/capacity.sh
+        scripts/lib/changelog.sh
+        scripts/lib/cheatsheet.sh
+        scripts/lib/continue.sh
+        scripts/lib/credential_preflight.sh
+        scripts/lib/dashboard.sh
+        scripts/lib/info.sh
+        scripts/lib/landing_plane.sh
+        scripts/lib/newproj.sh
+        scripts/lib/newproj_agents.sh
+        scripts/lib/newproj_detect.sh
+        scripts/lib/newproj_errors.sh
+        scripts/lib/newproj_logging.sh
+        scripts/lib/newproj_screens.sh
+        scripts/lib/newproj_screens/screen_agents_preview.sh
+        scripts/lib/newproj_screens/screen_confirmation.sh
+        scripts/lib/newproj_screens/screen_directory.sh
+        scripts/lib/newproj_screens/screen_features.sh
+        scripts/lib/newproj_screens/screen_progress.sh
+        scripts/lib/newproj_screens/screen_project_name.sh
+        scripts/lib/newproj_screens/screen_success.sh
+        scripts/lib/newproj_screens/screen_tech_stack.sh
+        scripts/lib/newproj_screens/screen_welcome.sh
+        scripts/lib/newproj_tui.sh
+        scripts/lib/notifications.sh
+        scripts/lib/policy_lint.sh
+        scripts/lib/provenance.sh
+        scripts/lib/rescue.sh
+        scripts/lib/status.sh
+        scripts/lib/support.sh
+        scripts/lib/swarm_assign.sh
+        scripts/lib/swarm_calibration.sh
+        scripts/lib/swarm_convergence.sh
+        scripts/lib/swarm_doctor.sh
+        scripts/lib/swarm_inventory.sh
+        scripts/lib/swarm_packet.sh
+        scripts/lib/swarm_plan.sh
+        scripts/lib/swarm_simulation.sh
+        scripts/lib/swarm_status.sh
+        scripts/services-setup.sh
         scripts/generated/manifest_index.sh
         scripts/generated/doctor_checks.sh
         scripts/generated/install_all.sh
@@ -4464,6 +4517,37 @@ _acfs_install_asset_has_symlink_component_under_prefix() {
     return 1
 }
 
+_acfs_internal_asset_is_rendered_data() {
+    local rel_path="${1:-}"
+    local lesson_name=""
+
+    case "$rel_path" in
+        acfs/onboard/lessons/*.md)
+            lesson_name="${rel_path#acfs/onboard/lessons/}"
+            [[ -n "$lesson_name" && "$lesson_name" != */* && "$lesson_name" != "." && "$lesson_name" != ".." ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+_acfs_internal_asset_expected_sha256() {
+    local rel_path="${1:-}"
+    local expected=""
+
+    if [[ "$rel_path" == "scripts/generated/internal_checksums.sh" ]]; then
+        expected="${ACFS_TRUSTED_INTERNAL_LEDGER_SHA256:-}"
+    else
+        declare -p ACFS_INTERNAL_CHECKSUMS >/dev/null 2>&1 || return 1
+        [[ -n "${ACFS_INTERNAL_CHECKSUMS[$rel_path]+present}" ]] || return 1
+        expected="${ACFS_INTERNAL_CHECKSUMS[$rel_path]}"
+    fi
+
+    [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || return 1
+    printf '%s\n' "$expected"
+}
+
 install_asset() {
     local rel_path="$1"
     local dest_path="$2"
@@ -4477,6 +4561,45 @@ install_asset() {
     if [[ -z "${ACFS_HOME:-}" ]] || [[ -z "${TARGET_HOME:-}" ]]; then
         log_error "install_asset: ACFS_HOME/TARGET_HOME not set (call init_target_paths first)"
         return 1
+    fi
+
+    # Select one already-verified source tree and bind every consumed runtime
+    # asset back to it. Lessons are rendered as inert Markdown and are the only
+    # explicit non-ledger data exception; executable/config/policy assets must
+    # remain members of the closed internal checksum set.
+    local source_root=""
+    local trusted_source_root="${ACFS_TRUSTED_INTERNAL_SOURCE_ROOT:-}"
+    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]]; then
+        source_root="$ACFS_BOOTSTRAP_DIR"
+    else
+        source_root="${SCRIPT_DIR:-}"
+    fi
+    if [[ -z "$trusted_source_root" || "$trusted_source_root" != /* || "$trusted_source_root" == "/" ]] \
+        || [[ ! -d "$trusted_source_root" || -L "$trusted_source_root" ]] \
+        || [[ "$source_root" != "$trusted_source_root" ]]; then
+        log_error "install_asset: Selected source tree is not the verified ACFS tree"
+        return 1
+    fi
+
+    local source_asset="$source_root/$rel_path"
+    if [[ ! -f "$source_asset" || -L "$source_asset" ]]; then
+        log_error "install_asset: Source asset is missing or unsafe in the selected ACFS tree: $rel_path"
+        return 1
+    fi
+
+    local expected_source_sha=""
+    local actual_source_sha=""
+    if ! _acfs_internal_asset_is_rendered_data "$rel_path"; then
+        expected_source_sha="$(_acfs_internal_asset_expected_sha256 "$rel_path" 2>/dev/null || true)"
+        if [[ ! "$expected_source_sha" =~ ^[0-9a-f]{64}$ ]]; then
+            log_error "install_asset: Source asset is outside the internal checksum contract: $rel_path"
+            return 1
+        fi
+        actual_source_sha="$(acfs_calculate_file_sha256 "$source_asset" 2>/dev/null || true)"
+        if [[ "$actual_source_sha" != "$expected_source_sha" ]]; then
+            log_error "install_asset: Source asset changed after source verification: $rel_path"
+            return 1
+        fi
     fi
 
     local -a sudo_cmd=()
@@ -4564,35 +4687,13 @@ install_asset() {
         return 1
     fi
 
-    if [[ -n "${ACFS_BOOTSTRAP_DIR:-}" ]] \
-        && [[ -f "$ACFS_BOOTSTRAP_DIR/$rel_path" ]] \
-        && [[ ! -L "$ACFS_BOOTSTRAP_DIR/$rel_path" ]]; then
-        if [[ "$need_sudo" == "true" ]]; then
-            if ! "${sudo_cmd[@]}" "$cp_bin" "$ACFS_BOOTSTRAP_DIR/$rel_path" "$dest_path"; then
-                log_error "install_asset: Failed to copy from bootstrap: $rel_path"
-                return 1
-            fi
-        elif ! "$cp_bin" "$ACFS_BOOTSTRAP_DIR/$rel_path" "$dest_path"; then
-            log_error "install_asset: Failed to copy from bootstrap: $rel_path"
+    if [[ "$need_sudo" == "true" ]]; then
+        if ! "${sudo_cmd[@]}" "$cp_bin" "$source_asset" "$dest_path"; then
+            log_error "install_asset: Failed to copy verified source asset: $rel_path"
             return 1
         fi
-    elif [[ -n "${SCRIPT_DIR:-}" ]] \
-        && [[ -f "$SCRIPT_DIR/$rel_path" ]] \
-        && [[ ! -L "$SCRIPT_DIR/$rel_path" ]]; then
-        if [[ "$need_sudo" == "true" ]]; then
-            if ! "${sudo_cmd[@]}" "$cp_bin" "$SCRIPT_DIR/$rel_path" "$dest_path"; then
-                log_error "install_asset: Failed to copy from script dir: $rel_path"
-                return 1
-            fi
-        elif ! "$cp_bin" "$SCRIPT_DIR/$rel_path" "$dest_path"; then
-            log_error "install_asset: Failed to copy from script dir: $rel_path"
-            return 1
-        fi
-    else
-        # A source tree has already been selected and integrity-checked. A
-        # network fallback here could silently mix another ref into a local or
-        # partial install, so missing/unsafe assets fail closed.
-        log_error "install_asset: Source asset is missing or unsafe in the selected ACFS tree: $rel_path"
+    elif ! "$cp_bin" "$source_asset" "$dest_path"; then
+        log_error "install_asset: Failed to copy verified source asset: $rel_path"
         return 1
     fi
 
@@ -4600,6 +4701,14 @@ install_asset() {
     if [[ ! -f "$dest_path" ]]; then
         log_error "install_asset: File not created: $dest_path"
         return 1
+    fi
+    if [[ -n "$expected_source_sha" ]]; then
+        local actual_dest_sha=""
+        actual_dest_sha="$(acfs_calculate_file_sha256 "$dest_path" 2>/dev/null || true)"
+        if [[ "$actual_dest_sha" != "$expected_source_sha" ]]; then
+            log_error "install_asset: Installed asset does not match the verified source: $rel_path"
+            return 1
+        fi
     fi
 }
 
@@ -10235,11 +10344,19 @@ finalize() {
 
     local generated_script=""
     local generated_basename=""
+    local generated_rel_path=""
     local generated_count=0
     for generated_script in "$ACFS_GENERATED_DIR"/*.sh; do
         [[ -f "$generated_script" ]] || continue
         generated_basename="$(basename "$generated_script")"
-        try_step "Installing generated script: $generated_basename" install_asset_from_path "$generated_script" "$ACFS_HOME/scripts/generated/$generated_basename" || return 1
+        generated_rel_path="scripts/generated/$generated_basename"
+        if [[ "$generated_rel_path" != "scripts/generated/internal_checksums.sh" ]] \
+            && { ! declare -p ACFS_INTERNAL_CHECKSUMS >/dev/null 2>&1 \
+                || [[ -z "${ACFS_INTERNAL_CHECKSUMS[$generated_rel_path]+present}" ]]; }; then
+            log_error "Unexpected generated script is outside the internal checksum contract: $generated_basename"
+            return 1
+        fi
+        try_step "Installing generated script: $generated_basename" install_asset "$generated_rel_path" "$ACFS_HOME/scripts/generated/$generated_basename" || return 1
         generated_count=$((generated_count + 1))
     done
     if [[ $generated_count -eq 0 ]]; then

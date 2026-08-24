@@ -3,20 +3,18 @@
 # ACFS Checksum Monitor (local) — replaces the GitHub Actions
 # checksum-monitor workflow with a host-local systemd timer.
 #
-# Faithfully reproduces .github/workflows/checksum-monitor.yml:
-#   1. Sync a dedicated clone to origin/main (ff-only; never resets).
-#   2. Detect generated-artifact drift (check-manifest-drift.sh --json)
-#      and auto-repair it (--fix regenerates, commits, and pushes).
-#   3. Verify every upstream installer against checksums.yaml
-#      (security.sh --verify --json).
-#   4. FAIL CLOSED: any fetch error or skipped entry aborts the run
-#      with no update — partial/placeholder checksums are never written.
-#   5. On genuine mismatches: regenerate checksums.yaml via the
-#      canonical updater, commit (same message format as the workflow),
-#      pull --rebase, push main, and mirror main -> master.
-#   6. External (non-Dicklesworthstone) changes additionally open or
-#      extend a GitHub issue labeled security,checksum-update so a
-#      human reviews them — same dedupe rule as the workflow.
+# This monitor is an explicit fail-closed publication state machine:
+#   CLEAN_BASE -> OBSERVED -> CANDIDATE_VALIDATED -> AUTHORIZED ->
+#   GENERATED -> STAGED -> COMMITTED -> ATOMIC_PUBLISHED ->
+#   REMOTE_VERIFIED -> HEALTHY.
+#
+# A run starts only from a clean main checkout whose HEAD and both remote refs
+# are identical. Verification is bound to the exact checksums.yaml bytes it
+# observed. A second network snapshot is data only until security.sh proves it
+# is the exact candidate implied by that first report. External-owner changes
+# additionally require a human authorization digest before repository bytes
+# are mutated. Publication is a closed-path commit pushed to both refs in one
+# atomic transaction and re-read from the remote before health is recorded.
 #
 # Deployment (maintainer host, e.g. ts1):
 #   git clone https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup ~/acfs-monitor
@@ -42,11 +40,273 @@ LOG_DIR="$STATE_DIR/logs"
 LOCK_FILE="$STATE_DIR/monitor.lock"
 RUN_TS="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG_FILE="$LOG_DIR/run-$RUN_TS.log"
+AUTHORIZATION_FILE="$STATE_DIR/authorized-checksum-change"
+EXPECTED_BUN_VERSION="1.3.8"
+MONITOR_EXEC_PATH="$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+STATE="INIT"
+
+# Exact files the monitor may publish. Directory pathspecs and extension
+# globs are intentionally absent: a newly generated filename must first be
+# reviewed and added to this contract.
+PUBLICATION_PATHS=(
+    checksums.yaml
+    scripts/generated/doctor_checks.sh
+    scripts/generated/install_acfs.sh
+    scripts/generated/install_agents.sh
+    scripts/generated/install_all.sh
+    scripts/generated/install_base.sh
+    scripts/generated/install_cli.sh
+    scripts/generated/install_cloud.sh
+    scripts/generated/install_db.sh
+    scripts/generated/install_filesystem.sh
+    scripts/generated/install_lang.sh
+    scripts/generated/install_network.sh
+    scripts/generated/install_shell.sh
+    scripts/generated/install_stack.sh
+    scripts/generated/install_tools.sh
+    scripts/generated/install_users.sh
+    scripts/generated/internal_checksums.sh
+    scripts/generated/manifest_index.sh
+    apps/web/lib/generated/manifest-commands.ts
+    apps/web/lib/generated/manifest-lessons-index.ts
+    apps/web/lib/generated/manifest-modules.ts
+    apps/web/lib/generated/manifest-tldr.ts
+    apps/web/lib/generated/manifest-tools.ts
+    apps/web/lib/generated/manifest-web-index.ts
+)
+
+declare -A PUBLICATION_PATH_SET=()
+for publication_path in "${PUBLICATION_PATHS[@]}"; do
+    PUBLICATION_PATH_SET["$publication_path"]=1
+done
 
 mkdir -p "$LOG_DIR"
 
 log() {
     printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$LOG_FILE" >&2
+}
+
+advance_state() {
+    local expected="$1" next="$2"
+    if [[ "$STATE" != "$expected" ]]; then
+        fail_closed "invalid monitor transition: expected $expected, found $STATE, requested $next"
+    fi
+    STATE="$next"
+    log "state=$STATE"
+}
+
+# Do not allow CHECKSUMS_FILE, ACFS_PLUGIN_PATHS, ACFS_PLUGINS_DIR, curl-bin
+# overrides, manifest roots, or other ambient inputs to redirect verification
+# or generation. Only the stable process essentials below cross this boundary.
+run_clean() {
+    env -i \
+        HOME="$HOME" \
+        USER="${USER:-}" \
+        LOGNAME="${LOGNAME:-${USER:-}}" \
+        PATH="$MONITOR_EXEC_PATH" \
+        LANG=C \
+        LC_ALL=C \
+        TZ=UTC \
+        CI=1 \
+        NO_COLOR=1 \
+        "$@"
+}
+
+sha256_file() {
+    local file="$1" digest=""
+    [[ -f "$file" && ! -L "$file" && -r "$file" ]] || return 1
+    digest="$(sha256sum -- "$file" 2>/dev/null)" || return 1
+    digest="${digest%% *}"
+    [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+    printf '%s\n' "$digest"
+}
+
+REMOTE_MAIN_HEAD=""
+REMOTE_MASTER_HEAD=""
+read_remote_heads() {
+    local refs="" main_count="" mirror_count=""
+    refs="$(git ls-remote --heads origin refs/heads/main refs/heads/master 2>>"$LOG_FILE")" \
+        || return 1
+    main_count="$(awk '$2 == "refs/heads/main" { count += 1 } END { print count + 0 }' <<< "$refs")"
+    mirror_count="$(awk '$2 == "refs/heads/master" { count += 1 } END { print count + 0 }' <<< "$refs")"
+    [[ "$main_count" -eq 1 && "$mirror_count" -eq 1 ]] || return 1
+    REMOTE_MAIN_HEAD="$(awk '$2 == "refs/heads/main" { print $1 }' <<< "$refs")"
+    REMOTE_MASTER_HEAD="$(awk '$2 == "refs/heads/master" { print $1 }' <<< "$refs")"
+    [[ "$REMOTE_MAIN_HEAD" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$REMOTE_MASTER_HEAD" =~ ^[0-9a-f]{40}$ ]]
+}
+
+require_clean_tree() {
+    local status_output=""
+    status_output="$(git status --porcelain=v1 --untracked-files=all 2>>"$LOG_FILE")" \
+        || return 1
+    [[ -z "$status_output" ]] || return 1
+    git diff --quiet --exit-code -- \
+        && git diff --cached --quiet --exit-code --
+}
+
+json_has_duplicate_paths() {
+    local file="$1" duplicate=""
+    duplicate="$({
+        jq --stream -c 'select(length == 2) | .[0]' "$file" 2>/dev/null \
+            | sort \
+            | uniq -d \
+            | head -n 1
+    } || true)"
+    [[ -n "$duplicate" ]]
+}
+
+validate_drift_report() {
+    local file="$1"
+    ! json_has_duplicate_paths "$file" || return 1
+    jq -e '
+        type == "object" and
+        ((keys | sort) == ([
+          "drift_detected", "generated_artifacts", "internal_scripts",
+          "manifest", "manifest_contract", "reasons", "repo_mcp_configs"
+        ] | sort)) and
+        (.drift_detected | type == "boolean") and
+        (.reasons | type == "array") and all(.reasons[]; type == "string") and
+        (.generated_artifacts | type == "object") and
+        (.generated_artifacts.status == "clean" or .generated_artifacts.status == "drift") and
+        (.generated_artifacts.drifted | type == "number") and
+        (.generated_artifacts.drift_files | type == "array") and
+        (.internal_scripts.drifted | type == "number") and
+        (.repo_mcp_configs.drifted | type == "number") and
+        (.manifest_contract.drifted | type == "number")
+    ' "$file" >/dev/null 2>&1
+}
+
+validate_verification_report() {
+    local file="$1" expected_digest="$2"
+    ! json_has_duplicate_paths "$file" || return 1
+    jq -e --arg expected_digest "$expected_digest" '
+        def hash: type == "string" and test("^[0-9a-f]{64}$");
+        def https_url: type == "string" and startswith("https://");
+        type == "object" and
+        ((keys | sort) == ([
+          "checksumsYamlSha256", "errors", "matches", "mismatches",
+          "schema", "schemaVersion", "skipped", "timestamp", "total"
+        ] | sort)) and
+        .schema == "acfs.installer-checksum-verification.v1" and
+        .schemaVersion == 1 and
+        (.timestamp | type == "string" and length > 0) and
+        .checksumsYamlSha256 == $expected_digest and
+        (.total | type == "number" and floor == . and . > 0) and
+        (.matches | type == "array") and
+        (.mismatches | type == "array") and
+        (.errors | type == "array") and
+        (.skipped | type == "array") and
+        all(.matches[];
+          ((keys | sort) == (["checksum", "name", "url"] | sort)) and
+          (.name | type == "string" and length > 0) and
+          (.url | https_url) and (.checksum | hash)) and
+        all(.mismatches[];
+          ((keys | sort) == (["actual", "expected", "name", "url"] | sort)) and
+          (.name | type == "string" and length > 0) and
+          (.url | https_url) and (.expected | hash) and (.actual | hash)) and
+        all(.errors[];
+          ((keys | sort) == (["error", "name", "url"] | sort)) and
+          (.name | type == "string" and length > 0) and
+          (.url | https_url) and (.error | type == "string" and length > 0)) and
+        all(.skipped[];
+          ((keys | sort) == (["name", "reason", "url"] | sort)) and
+          (.name | type == "string" and length > 0) and
+          (.url | https_url) and (.reason | type == "string" and length > 0)) and
+        .total == ((.matches | length) + (.mismatches | length) +
+                   (.errors | length) + (.skipped | length)) and
+        ([.matches[].name, .mismatches[].name, .errors[].name, .skipped[].name]
+          | length) ==
+        ([.matches[].name, .mismatches[].name, .errors[].name, .skipped[].name]
+          | unique | length)
+    ' "$file" >/dev/null 2>&1
+}
+
+is_trusted_installer_url() {
+    case "$1" in
+        https://raw.githubusercontent.com/Dicklesworthstone/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+authorization_is_valid() {
+    local digest="$1" owner="" links="" mode="" size="" mode_value=""
+    local -a lines=()
+    [[ -f "$AUTHORIZATION_FILE" && ! -L "$AUTHORIZATION_FILE" ]] || return 1
+    owner="$(stat -c '%u' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
+    links="$(stat -c '%h' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
+    mode="$(stat -c '%a' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
+    size="$(stat -c '%s' -- "$AUTHORIZATION_FILE" 2>/dev/null)" || return 1
+    [[ "$owner" == "$(id -u)" && "$links" == "1" ]] || return 1
+    [[ "$mode" =~ ^[0-7]{3,4}$ && "$size" =~ ^[0-9]+$ ]] || return 1
+    (( size > 0 && size <= 256 )) || return 1
+    mode_value=$((8#$mode))
+    (( (mode_value & 022) == 0 )) || return 1
+    mapfile -t lines < "$AUTHORIZATION_FILE" || return 1
+    [[ ${#lines[@]} -eq 1 && "${lines[0]}" == "authorize:$digest" ]]
+}
+
+record_external_review() {
+    local report="$1" digest="$2" authorization_status="$3"
+    local body_file="" existing="" external_names_json="[]" repo_slug=""
+    repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
+    body_file="$(mktemp "$STATE_DIR/external-review-$RUN_TS.XXXXXX.md")" || return 1
+    external_names_json="$(printf '%s\n' "${EXTERNAL_CHANGED[@]}" | jq -R . | jq -s .)" \
+        || return 1
+    {
+        printf '## External installer checksum authorization\n\n'
+        printf 'This monitor observed installer bytes outside the exact trusted owner boundary.\n\n'
+        printf -- '- Authorization digest: `%s`\n' "$digest"
+        printf -- '- Authorization status: `%s`\n' "$authorization_status"
+        printf -- '- Pinned base: `%s`\n\n' "$BASE_HEAD"
+        printf '### First-observation evidence\n\n'
+        jq -r --argjson names "$external_names_json" '
+          .mismatches[] | select(.name as $name | $names | index($name)) |
+          "- `\(.name)`\n  - URL: `\(.url)`\n  - expected: `\(.expected)`\n  - observed: `\(.actual)`"
+        ' "$report"
+        printf '\n### Human authorization\n\n'
+        printf 'After reviewing the upstream bytes, place exactly this line in `%s` as an owner-only, non-symlink file:\n\n' "$AUTHORIZATION_FILE"
+        printf '```text\nauthorize:%s\n```\n' "$digest"
+    } > "$body_file" || return 1
+
+    existing="$(gh issue list --repo "$repo_slug" --state open \
+        --label security --label checksum-update \
+        --search "$digest" --json number -q '.[0].number' \
+        2>>"$LOG_FILE" || true)"
+    if [[ -n "$existing" && "$existing" != "null" ]]; then
+        gh issue comment "$existing" --repo "$repo_slug" \
+            --body-file "$body_file" >>"$LOG_FILE" 2>&1
+        return
+    fi
+    if gh issue create --repo "$repo_slug" \
+        --title "External installer checksum authorization ${digest:0:12}" \
+        --label security --label checksum-update \
+        --body-file "$body_file" >>"$LOG_FILE" 2>&1; then
+        return 0
+    fi
+    gh issue create --repo "$repo_slug" \
+        --title "External installer checksum authorization ${digest:0:12}" \
+        --body-file "$body_file" >>"$LOG_FILE" 2>&1
+}
+
+assert_closed_publication_worktree() {
+    local path=""
+    while IFS= read -r -d '' path; do
+        [[ -n "${PUBLICATION_PATH_SET[$path]+present}" ]] || {
+            log "unexpected tracked mutation: $path"
+            return 1
+        }
+    done < <(git diff --name-only -z --)
+    while IFS= read -r -d '' path; do
+        [[ -n "${PUBLICATION_PATH_SET[$path]+present}" ]] || {
+            log "unexpected untracked path: $path"
+            return 1
+        }
+    done < <(git ls-files --others --exclude-standard -z --)
+    if [[ -n "$(git diff --name-only --diff-filter=D --)" ]]; then
+        log "publication would contain a deletion"
+        return 1
+    fi
 }
 
 # Consecutive fail-closed runs are tracked so a persistently broken monitor
@@ -106,7 +366,7 @@ fail_closed() {
     streak=$((streak + 1))
     printf '%s\n' "$streak" > "$FAIL_STREAK_FILE" 2>/dev/null || true
     _alert_fail_closed_streak "$streak" "$*" || true
-    log "summary: result=fail_closed streak=$streak repo=$MONITOR_REPO"
+    log "summary: result=fail_closed state=$STATE streak=$streak repo=$MONITOR_REPO"
     exit 1
 }
 
@@ -118,8 +378,7 @@ if ! flock -n 9; then
     exit 0
 fi
 
-# ---- log rotation: keep two weeks of runs ----
-find "$LOG_DIR" -name 'run-*.log' -type f -mtime +14 -delete 2>/dev/null || true
+advance_state INIT LOCKED
 
 log "ACFS checksum monitor starting (repo: $MONITOR_REPO)"
 

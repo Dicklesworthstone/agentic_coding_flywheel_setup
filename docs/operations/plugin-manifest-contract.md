@@ -87,7 +87,7 @@ fixtures without YAML parser drift.
   ],
   "capabilities": {
     "allowed": ["verified_installer", "release_artifact", "copy_asset", "doctor_check", "web_metadata"],
-    "reviewRequired": ["root_run_as", "systemd_user_service"],
+    "reviewRequired": ["root_run_as", "systemd_user_service", "default_enabled_module"],
     "disallowed": ["arbitrary_shell", "secret_values"]
   },
   "modules": [
@@ -98,7 +98,7 @@ fixtures without YAML parser drift.
       "phase": 6,
       "run_as": "target_user",
       "optional": false,
-      "enabled_by_default": true,
+      "enabled_by_default": false,
       "dependencies": ["lang.bun"],
       "install": {
         "kind": "verified_installer",

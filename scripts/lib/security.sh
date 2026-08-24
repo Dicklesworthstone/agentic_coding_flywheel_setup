@@ -615,6 +615,180 @@ acfs_security_file_size() {
     printf '%s\n' "$output"
 }
 
+# Files consumed as checksum-policy evidence are intentionally small.  Copy a
+# bounded view through a retained descriptor so later validation can prove that
+# the path still names the same bytes.  This is separate from the installer
+# cache snapshot helper below because checksum evidence must remain bound until
+# the final report/candidate bytes are emitted.
+ACFS_CHECKSUMS_YAML_MAX_BYTES=1048576
+ACFS_CHECKSUM_REPORT_MAX_BYTES=4194304
+
+acfs_security_close_fd() {
+    local fd="${1:-}"
+
+    [[ "$fd" =~ ^[0-9]+$ ]] || return 0
+    # The numeric-only check above makes this dynamic redirection non-injectable.
+    eval "exec ${fd}<&-" 2>/dev/null || true
+}
+
+acfs_security_release_bound_snapshot() {
+    local snapshot="${1:-}"
+    local identity_fd="${2:-}"
+
+    acfs_security_close_fd "$identity_fd"
+    [[ -n "$snapshot" ]] && _acfs_remove_temp_files "$snapshot"
+}
+
+acfs_security_copy_fd_bounded() {
+    local source_fd="$1"
+    local max_bytes="$2"
+    local destination="$3"
+    local copied_size=""
+    local head_bin=""
+    local timeout_bin=""
+    local copy_limit=0
+
+    [[ "$source_fd" =~ ^[0-9]+$ ]] || return 1
+    [[ "$max_bytes" =~ ^[1-9][0-9]*$ ]] || return 1
+    [[ -n "$destination" ]] || return 1
+
+    head_bin="$(acfs_security_required_binary_path head)" || return $?
+    timeout_bin="$(acfs_security_system_binary_path timeout 2>/dev/null || true)"
+    copy_limit=$((max_bytes + 1))
+
+    # GNU timeout is available on the target Ubuntu hosts.  A bounded head of
+    # an already-open regular descriptor remains safe on maintainer platforms
+    # that do not expose timeout in a trusted system path.
+    if [[ -n "$timeout_bin" ]]; then
+        "$timeout_bin" 5 "$head_bin" -c "$copy_limit" <&"$source_fd" > "$destination" || return 1
+    else
+        "$head_bin" -c "$copy_limit" <&"$source_fd" > "$destination" || return 1
+    fi
+
+    copied_size="$(acfs_security_file_size "$destination")" || return 1
+    [[ "$copied_size" =~ ^[0-9]+$ ]] || return 1
+    (( copied_size <= max_bytes )) || return 1
+}
+
+# Snapshot a regular, non-symlink policy file while retaining an identity file
+# descriptor.  Output variables are assigned only after every check succeeds.
+acfs_security_open_bound_snapshot() {
+    local source_file="$1"
+    local max_bytes="$2"
+    local temp_template="$3"
+    local label="$4"
+    local snapshot_var="$5"
+    local identity_fd_var="$6"
+    local digest_var="$7"
+    local snapshot=""
+    local digest=""
+    local identity_fd=""
+    local -n snapshot_out="$snapshot_var"
+    local -n identity_fd_out="$identity_fd_var"
+    local -n digest_out="$digest_var"
+
+    if [[ ! -f "$source_file" || -L "$source_file" || ! -r "$source_file" ]]; then
+        log_error "$label must be a readable regular non-symlink file: $source_file"
+        return 1
+    fi
+    [[ "$max_bytes" =~ ^[1-9][0-9]*$ ]] || {
+        log_error "Invalid size policy for $label"
+        return 1
+    }
+
+    if ! exec {identity_fd}< "$source_file"; then
+        log_error "Unable to open $label: $source_file"
+        return 1
+    fi
+    if [[ ! -f "/dev/fd/$identity_fd" || -L "$source_file" || ! "$source_file" -ef "/dev/fd/$identity_fd" ]]; then
+        log_error "$label changed identity while it was opened: $source_file"
+        acfs_security_close_fd "$identity_fd"
+        return 1
+    fi
+
+    snapshot="$(acfs_security_mktemp "$temp_template" 2>/dev/null || true)"
+    if [[ -z "$snapshot" ]]; then
+        log_error "Unable to create a private snapshot for $label"
+        acfs_security_close_fd "$identity_fd"
+        return 1
+    fi
+    if ! acfs_security_copy_fd_bounded "$identity_fd" "$max_bytes" "$snapshot"; then
+        log_error "$label could not be copied within the $max_bytes-byte policy limit"
+        acfs_security_release_bound_snapshot "$snapshot" "$identity_fd"
+        return 1
+    fi
+    digest="$(calculate_file_sha256 "$snapshot" 2>/dev/null || true)"
+    if [[ ! "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+        log_error "Unable to hash the private snapshot for $label"
+        acfs_security_release_bound_snapshot "$snapshot" "$identity_fd"
+        return 1
+    fi
+    if [[ ! -f "$source_file" || -L "$source_file" || ! "$source_file" -ef "/dev/fd/$identity_fd" ]]; then
+        log_error "$label changed identity while it was snapshotted: $source_file"
+        acfs_security_release_bound_snapshot "$snapshot" "$identity_fd"
+        return 1
+    fi
+
+    snapshot_out="$snapshot"
+    identity_fd_out="$identity_fd"
+    digest_out="$digest"
+}
+
+# Reopen a retained path and prove that it is still the same inode and bytes as
+# its private snapshot.  This closes the parse/use race before trusted output is
+# released to the caller.
+acfs_security_bound_snapshot_is_current() {
+    local source_file="$1"
+    local identity_fd="$2"
+    local expected_digest="$3"
+    local max_bytes="$4"
+    local label="$5"
+    local verification_fd=""
+    local verification_snapshot=""
+    local verification_digest=""
+
+    [[ "$identity_fd" =~ ^[0-9]+$ ]] || return 1
+    [[ "$expected_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+    if [[ ! -f "$source_file" || -L "$source_file" || ! -r "$source_file" ]]; then
+        log_error "$label is no longer a readable regular non-symlink file: $source_file"
+        return 1
+    fi
+    if ! exec {verification_fd}< "$source_file"; then
+        log_error "Unable to reopen $label: $source_file"
+        return 1
+    fi
+    if [[ ! -f "/dev/fd/$verification_fd" ]] \
+        || [[ ! "$source_file" -ef "/dev/fd/$identity_fd" ]] \
+        || [[ ! "/dev/fd/$verification_fd" -ef "/dev/fd/$identity_fd" ]]; then
+        log_error "$label changed identity during validation: $source_file"
+        acfs_security_close_fd "$verification_fd"
+        return 1
+    fi
+
+    verification_snapshot="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-checksum-recheck.XXXXXX" 2>/dev/null || true)"
+    if [[ -z "$verification_snapshot" ]] \
+        || ! acfs_security_copy_fd_bounded "$verification_fd" "$max_bytes" "$verification_snapshot"; then
+        log_error "Unable to re-snapshot $label within policy bounds"
+        acfs_security_close_fd "$verification_fd"
+        [[ -n "$verification_snapshot" ]] && _acfs_remove_temp_files "$verification_snapshot"
+        return 1
+    fi
+    verification_digest="$(calculate_file_sha256 "$verification_snapshot" 2>/dev/null || true)"
+    _acfs_remove_temp_files "$verification_snapshot"
+
+    if [[ "$verification_digest" != "$expected_digest" ]] \
+        || [[ ! -f "$source_file" || -L "$source_file" ]] \
+        || [[ ! "$source_file" -ef "/dev/fd/$identity_fd" ]] \
+        || [[ ! "/dev/fd/$verification_fd" -ef "/dev/fd/$identity_fd" ]]; then
+        log_error "$label changed bytes or identity during validation: $source_file"
+        acfs_security_close_fd "$verification_fd"
+        return 1
+    fi
+
+    acfs_security_close_fd "$verification_fd"
+    return 0
+}
+
 acfs_installer_cache_snapshot_regular_file() {
     local source_file="$1"
     local max_bytes="$2"
@@ -1823,6 +1997,172 @@ print_current_checksums() {
 # Checksums File Management
 # ============================================================
 
+acfs_strict_checksums_error() {
+    local file="$1"
+    local line_number="$2"
+    local detail="$3"
+
+    if [[ "$line_number" =~ ^[1-9][0-9]*$ ]]; then
+        log_error "Non-canonical checksums policy at $file:$line_number: $detail"
+    else
+        log_error "Non-canonical checksums policy at $file: $detail"
+    fi
+}
+
+# Parse only the byte shape emitted by --update-checksums.  This strict parser
+# is for automated security decisions; load_checksums below intentionally stays
+# permissive for interactive installer compatibility.
+#
+# Arguments:
+#   $1 - checksums.yaml snapshot
+#   $2 - name of associative-array output for URLs
+#   $3 - name of associative-array output for SHA256 values
+acfs_load_checksums_strict() {
+    local file="$1"
+    local urls_var="$2"
+    local checksums_var="$3"
+    local LC_ALL=C
+    local line=""
+    local line_number=0
+    local state="timestamp_header"
+    local current_tool=""
+    local previous_tool=""
+    local url=""
+    local checksum=""
+    local tool=""
+    local expected_count=0
+    local -A parsed_urls=()
+    local -A parsed_checksums=()
+    local -n output_urls="$urls_var"
+    local -n output_checksums="$checksums_var"
+
+    if [[ ! -f "$file" || -L "$file" || ! -r "$file" ]]; then
+        acfs_strict_checksums_error "$file" 0 "expected a readable regular non-symlink file"
+        return 1
+    fi
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line_number=$((line_number + 1))
+        if [[ "$line" =~ [[:cntrl:]] ]]; then
+            acfs_strict_checksums_error "$file" "$line_number" "control characters are forbidden"
+            return 1
+        fi
+
+        case "$state" in
+            timestamp_header)
+                if [[ "$line" != '# checksums.yaml - Auto-generated '?* ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected the generated timestamp header"
+                    return 1
+                fi
+                state="command_header"
+                ;;
+            command_header)
+                if [[ "$line" != '# Run: ./scripts/lib/security.sh --update-checksums' ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected the canonical regeneration command"
+                    return 1
+                fi
+                state="header_separator"
+                ;;
+            header_separator)
+                if [[ -n "$line" ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected one empty line after the header"
+                    return 1
+                fi
+                state="root"
+                ;;
+            root)
+                if [[ "$line" != "installers:" ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected the sole top-level installers mapping"
+                    return 1
+                fi
+                state="tool"
+                ;;
+            tool)
+                if [[ ! "$line" =~ ^'  '([a-z][a-z0-9_]*):$ ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected a two-space-indented lowercase installer key"
+                    return 1
+                fi
+                current_tool="${BASH_REMATCH[1]}"
+                if [[ -n "$previous_tool" && ! "$current_tool" > "$previous_tool" ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "installer keys must be unique and byte-sorted"
+                    return 1
+                fi
+                previous_tool="$current_tool"
+                state="url"
+                ;;
+            url)
+                if [[ "$line" != '    url: "'*'"' ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected an exactly quoted url field"
+                    return 1
+                fi
+                url="${line#'    url: "'}"
+                url="${url%\"}"
+                if [[ "$url" != https://* ]] \
+                    || [[ "$url" == *[[:space:]]* ]] \
+                    || [[ "$url" == *\"* ]] \
+                    || [[ "$url" == *\\* ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "installer URLs must be unambiguous HTTPS scalars"
+                    return 1
+                fi
+                parsed_urls["$current_tool"]="$url"
+                state="sha256"
+                ;;
+            sha256)
+                if [[ "$line" != '    sha256: "'*'"' ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected an exactly quoted sha256 field"
+                    return 1
+                fi
+                checksum="${line#'    sha256: "'}"
+                checksum="${checksum%\"}"
+                if [[ ! "$checksum" =~ ^[0-9a-f]{64}$ ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "sha256 must be exactly 64 lowercase hexadecimal characters"
+                    return 1
+                fi
+                parsed_checksums["$current_tool"]="$checksum"
+                state="separator_or_eof"
+                ;;
+            separator_or_eof)
+                if [[ -n "$line" ]]; then
+                    acfs_strict_checksums_error "$file" "$line_number" "expected one empty line between installer entries"
+                    return 1
+                fi
+                state="tool"
+                ;;
+            *)
+                acfs_strict_checksums_error "$file" "$line_number" "internal parser state is invalid"
+                return 1
+                ;;
+        esac
+    done < "$file"
+
+    if [[ "$state" != "separator_or_eof" ]]; then
+        acfs_strict_checksums_error "$file" 0 "file is truncated, empty, or has a trailing separator"
+        return 1
+    fi
+
+    expected_count="${#ACFS_SECURITY_REQUIRED_INSTALLERS[@]}"
+    if (( ${#parsed_urls[@]} != expected_count || ${#parsed_checksums[@]} != expected_count )); then
+        acfs_strict_checksums_error "$file" 0 "installer set does not exactly match the required security-policy set"
+        return 1
+    fi
+    for tool in "${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}"; do
+        if [[ -z "${parsed_urls[$tool]:-}" || -z "${parsed_checksums[$tool]:-}" ]]; then
+            acfs_strict_checksums_error "$file" 0 "required installer is missing: $tool"
+            return 1
+        fi
+    done
+
+    # Transactional commit: malformed input never partially replaces caller
+    # state that may already contain a previously trusted policy.
+    output_urls=()
+    output_checksums=()
+    for tool in "${!parsed_urls[@]}"; do
+        output_urls["$tool"]="${parsed_urls[$tool]}"
+        output_checksums["$tool"]="${parsed_checksums[$tool]}"
+    done
+    return 0
+}
+
 # Load checksums from YAML file (simple parser)
 # shellcheck disable=SC2120  # $1 is optional with default
 load_checksums() {
@@ -2542,7 +2882,9 @@ verify_all_installers() {
         printf "  %-20s " "$name"
 
         if [[ -z "$expected" ]]; then
-            echo -e "${YELLOW}[skip]${NC} no checksum recorded"
+            echo -e "${RED}[fail]${NC} no checksum recorded"
+            ((failed += 1))
+            all_pass=false
             continue
         fi
 
