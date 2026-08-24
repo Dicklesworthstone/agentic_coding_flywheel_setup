@@ -23,13 +23,15 @@ set -euo pipefail
 output=""
 url=""
 
+[[ "${1:-}" == "-q" ]] || exit 65
+
 while (($#)); do
     case "$1" in
         -o)
             output="$2"
             shift 2
             ;;
-        --connect-timeout|--max-time|--proto|--proto-redir)
+        --connect-timeout|--max-time|--max-filesize|--proto|--proto-redir)
             shift 2
             ;;
         -*)
@@ -74,6 +76,25 @@ fail() {
     [[ -n "${2:-}" ]] && echo "  Reason: $2"
 }
 
+test_sha256_file() {
+    local file="$1"
+    local output=""
+    local hash=""
+
+    if [[ -x /usr/bin/sha256sum ]]; then
+        output="$(/usr/bin/sha256sum "$file")" || return 1
+    elif [[ -x /bin/sha256sum ]]; then
+        output="$(/bin/sha256sum "$file")" || return 1
+    elif [[ -x /usr/bin/shasum ]]; then
+        output="$(/usr/bin/shasum -a 256 "$file")" || return 1
+    else
+        return 127
+    fi
+    read -r hash _ <<<"$output"
+    [[ "$hash" =~ ^[0-9A-Fa-f]{64}$ ]] || return 1
+    printf '%s\n' "${hash,,}"
+}
+
 write_fixture_source() {
     local name="$1"
     local mode="${2:-valid}"
@@ -88,7 +109,7 @@ write_fixture_source() {
     printf '9.9.9-test\n' > "$source_root/VERSION"
     /bin/cp "$OFFLINE_PACK_SH" "$source_root/scripts/lib/offline_artifact_pack.sh"
     printf '#!/usr/bin/env bash\nprintf "rch fixture installer\\n"\n' > "$artifact_file"
-    artifact_sha="$(sha256sum "$artifact_file" | awk '{print $1}')"
+    artifact_sha="$(test_sha256_file "$artifact_file")"
     artifact_url="https://fixture.test/$name/rch-install.sh"
 
     case "$mode" in
@@ -209,7 +230,7 @@ test_build_writes_manifest_and_verified_artifact() {
     status="$(cat "$ARTIFACT_DIR/build.exit")"
     manifest="$output_dir/acfs-installer-cache/manifest.json"
     artifact_path="$output_dir/acfs-installer-cache/artifacts/stack.rch/rch-install.sh"
-    expected_sha="$(sha256sum "$artifact_path" | awk '{print $1}')"
+    expected_sha="$(test_sha256_file "$artifact_path")"
 
     [[ "$status" -eq 0 ]] || return 1
     [[ -f "$manifest" ]] || return 1
@@ -339,7 +360,7 @@ test_build_refuses_symlinked_source_input() {
 test_build_ignores_path_poisoned_pack_tools() {
     local source_root output_dir output status tool marker
     local poison_markers=()
-    local poison_tools=(jq sha256sum shasum awk wc tr date uname cp mkdir find git)
+    local poison_tools=(jq sha256sum shasum awk wc tr date uname cp mkdir mktemp mv find git)
     source_root="$(write_fixture_source trusted-tools valid)"
     output_dir="$ARTIFACT_DIR/trusted-tools/output"
 

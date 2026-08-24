@@ -22,7 +22,22 @@ printf '#!/usr/bin/env bash\nshift\nexec "$@"\n' > "$TEST_TIMEOUT_BIN"
 chmod +x "$TEST_TIMEOUT_BIN"
 
 sha_text() {
-    printf '%s' "$1" | sha256sum | awk '{print $1}'
+    local value="$1"
+    local output=""
+    local hash=""
+
+    if [[ -x /usr/bin/sha256sum ]]; then
+        output="$(printf '%s' "$value" | /usr/bin/sha256sum)" || return 1
+    elif [[ -x /bin/sha256sum ]]; then
+        output="$(printf '%s' "$value" | /bin/sha256sum)" || return 1
+    elif [[ -x /usr/bin/shasum ]]; then
+        output="$(printf '%s' "$value" | /usr/bin/shasum -a 256)" || return 1
+    else
+        return 127
+    fi
+    read -r hash _ <<<"$output"
+    [[ "$hash" =~ ^[0-9A-Fa-f]{64}$ ]] || return 1
+    printf '%s\n' "${hash,,}"
 }
 
 write_checksums() {

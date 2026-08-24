@@ -344,7 +344,9 @@ describe('manifest drift contract', () => {
       } else if (file.endsWith('doctor_checks.sh')) {
         writeFixtureFile(root, file, existing.replace(
           '\n)\n',
-          '\n    "stack.example\\tDuplicate\\texample --version\\trequired\\ttarget_user"\n)\n',
+          // Real tab characters: extractDoctorCheckIds only matches rows whose
+          // fields are tab-separated, exactly like the generated file.
+          '\n    "stack.example\tDuplicate\texample --version\trequired\ttarget_user"\n)\n',
         ));
       } else if (file.endsWith('manifest-modules.ts')) {
         writeFixtureFile(root, file, existing.replace(

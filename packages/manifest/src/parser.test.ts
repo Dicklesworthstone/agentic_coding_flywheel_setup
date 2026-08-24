@@ -225,7 +225,8 @@ modules:
     expect(result.data?.modules[0].verified_installer?.tool).toBe('bun');
     expect(result.data?.modules[0].verified_installer?.url).toBe('https://bun.sh/install');
     expect(result.data?.modules[0].verified_installer?.runner).toBe('bash');
-    expect(result.data?.modules[0].verified_installer?.env).toBeUndefined();
+    // The schema applies .default([]) to env, so an absent key parses as []
+    expect(result.data?.modules[0].verified_installer?.env).toEqual([]);
   });
 
   test('rejects invalid verified_installer runner', () => {

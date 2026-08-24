@@ -22,6 +22,7 @@ OFFLINE_PACK_CHECKSUMS_FILE=""
 OFFLINE_PACK_MANIFEST_FILE=""
 OFFLINE_PACK_TIMEOUT_SECONDS=60
 OFFLINE_PACK_EXPIRES_DAYS=30
+OFFLINE_PACK_MAX_ENTRYPOINT_BYTES=16777216
 OFFLINE_PACK_ARCH="${ACFS_OFFLINE_PACK_ARCH:-}"
 OFFLINE_PACK_UBUNTU_VERSION="${ACFS_OFFLINE_PACK_UBUNTU_VERSION:-25.10}"
 OFFLINE_PACK_MODULE_ARGS=()
@@ -49,6 +50,7 @@ declare -gA OFFLINE_PACK_MODULE_KNOWN=()
 declare -gA OFFLINE_PACK_MODULE_TOOL=()
 declare -gA OFFLINE_PACK_MODULE_RUNNER=()
 declare -gA OFFLINE_PACK_MODULE_ARGS_RAW=()
+declare -gA OFFLINE_PACK_MODULE_SELECTED=()
 declare -ga OFFLINE_PACK_VERIFIED_MODULES=()
 
 offline_pack_usage() {
@@ -115,7 +117,9 @@ offline_pack_append_failure() {
 
 offline_pack_status() {
     if (( ${#OFFLINE_PACK_ERRORS[@]} > 0 )); then
-        if [[ "$OFFLINE_PACK_BEST_EFFORT" == "true" ]]; then
+        # Best-effort downgrades only a successfully published diagnostic cache.
+        # Structural, validation, staging, and publication errors remain fatal.
+        if [[ "$OFFLINE_PACK_BEST_EFFORT" == "true" && "$OFFLINE_PACK_PUBLISHED" == "true" ]]; then
             printf 'warn\n'
         else
             printf 'fail\n'
@@ -909,6 +913,11 @@ offline_pack_select_modules() {
     fi
 
     for module_id in "${OFFLINE_PACK_SELECTED_MODULES[@]}"; do
+        if [[ -n "${OFFLINE_PACK_MODULE_SELECTED[$module_id]:-}" ]]; then
+            offline_pack_add_error "pack_duplicate_module: module selected more than once: $module_id"
+            continue
+        fi
+        OFFLINE_PACK_MODULE_SELECTED["$module_id"]=1
         if ! offline_pack_module_id_is_valid "$module_id"; then
             offline_pack_add_error "pack_malformed_manifest: invalid module id $module_id"
             continue
@@ -1034,7 +1043,7 @@ offline_pack_fetch_url() {
             curl_bin="$(offline_pack_curl_binary_path)" || return 1
             # -q must be the first option so ambient ~/.curlrc configuration
             # cannot redirect, proxy, upload, or otherwise mutate this transfer.
-            curl_args=(-q --proto '=https' --proto-redir '=https' -fsSL --connect-timeout 10 --max-time "$OFFLINE_PACK_TIMEOUT_SECONDS" -o "$destination" "$url")
+            curl_args=(-q --proto '=https' --proto-redir '=https' -fsSL --connect-timeout 10 --max-time "$OFFLINE_PACK_TIMEOUT_SECONDS" --max-filesize "$OFFLINE_PACK_MAX_ENTRYPOINT_BYTES" -o "$destination" "$url")
             "$curl_bin" "${curl_args[@]}"
             ;;
         *)
@@ -1141,6 +1150,25 @@ offline_pack_download_artifacts() {
             continue
         fi
 
+        if ! size_bytes="$(offline_pack_file_size "$artifact_path")"; then
+            message="pack_size_failed: unable to measure $module_id"
+            offline_pack_add_error "$message"
+            offline_pack_append_failure "pack_size_failed" "$module_id" "$tool" "$message" || return 1
+            if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
+                return 1
+            fi
+            continue
+        fi
+        if (( size_bytes > OFFLINE_PACK_MAX_ENTRYPOINT_BYTES )); then
+            message="pack_artifact_too_large: $module_id exceeds the $OFFLINE_PACK_MAX_ENTRYPOINT_BYTES-byte entrypoint limit"
+            offline_pack_add_error "$message"
+            offline_pack_append_failure "pack_artifact_too_large" "$module_id" "$tool" "$message" || return 1
+            if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
+                return 1
+            fi
+            continue
+        fi
+
         if ! actual="$(offline_pack_sha256 "$artifact_path")"; then
             message="pack_hash_failed: unable to checksum $module_id"
             offline_pack_add_error "$message"
@@ -1154,16 +1182,6 @@ offline_pack_download_artifacts() {
             message="pack_hash_mismatch: $module_id expected $expected got $actual"
             offline_pack_add_error "$message"
             offline_pack_append_failure "pack_hash_mismatch" "$module_id" "$tool" "$message" || return 1
-            if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
-                return 1
-            fi
-            continue
-        fi
-
-        if ! size_bytes="$(offline_pack_file_size "$artifact_path")"; then
-            message="pack_size_failed: unable to measure $module_id"
-            offline_pack_add_error "$message"
-            offline_pack_append_failure "pack_size_failed" "$module_id" "$tool" "$message" || return 1
             if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
                 return 1
             fi
@@ -1460,13 +1478,12 @@ offline_pack_main() {
     if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
         offline_pack_validate_source_layout || true
     fi
-    if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
-        offline_pack_load_checksums "$OFFLINE_PACK_CHECKSUMS_FILE" || true
-        offline_pack_load_manifest_modules "$OFFLINE_PACK_MANIFEST_FILE" || true
-        offline_pack_select_modules
-    fi
-
     if [[ "$OFFLINE_PACK_DRY_RUN" == "true" ]]; then
+        if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
+            offline_pack_load_checksums "$OFFLINE_PACK_CHECKSUMS_FILE" || true
+            offline_pack_load_manifest_modules "$OFFLINE_PACK_MANIFEST_FILE" || true
+            offline_pack_select_modules
+        fi
         if [[ "$OFFLINE_PACK_FORMAT" == "json" ]]; then
             offline_pack_plan_json "$generated_at" "$expires_at"
         else
@@ -1476,7 +1493,9 @@ offline_pack_main() {
         return
     fi
 
-    offline_pack_capture_source_snapshot || true
+    if (( ${#OFFLINE_PACK_ERRORS[@]} == 0 )); then
+        offline_pack_capture_source_snapshot || true
+    fi
 
     if (( ${#OFFLINE_PACK_ERRORS[@]} > 0 )); then
         offline_pack_emit_result "" "$generated_at"
@@ -1506,6 +1525,21 @@ offline_pack_main() {
         return 1
     fi
 
+    # Parse only the exact staged bytes that will be bound into manifest.json.
+    # This closes the modify/parse/restore race between live source paths and a
+    # later clean Git provenance claim.
+    if ! offline_pack_assert_source_snapshot_unchanged "$staging_root"; then
+        offline_pack_emit_result "$pack_root" "$generated_at"
+        return 1
+    fi
+    offline_pack_load_checksums "$staging_root/checksums.yaml" || true
+    offline_pack_load_manifest_modules "$staging_root/acfs.manifest.yaml" || true
+    offline_pack_select_modules
+    if (( ${#OFFLINE_PACK_ERRORS[@]} > 0 )); then
+        offline_pack_emit_result "$pack_root" "$generated_at"
+        return 1
+    fi
+
     if ! offline_pack_download_artifacts "$staging_root"; then
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
@@ -1522,7 +1556,13 @@ offline_pack_main() {
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
     fi
-    if ! offline_pack_mv "$staging_root" "$pack_root"; then
+    # GNU mv's -T prevents a racing destination directory from turning this
+    # rename into "move staging inside destination". -n prevents replacement;
+    # because GNU mv reports a no-clobber skip as success, also require that the
+    # staging pathname disappeared and the final acceptance marker exists.
+    if ! offline_pack_mv -T -n -- "$staging_root" "$pack_root" \
+        || [[ -e "$staging_root" ]] \
+        || [[ ! -f "$pack_root/manifest.json" ]]; then
         offline_pack_add_error "pack_publish_failed: unable to publish completed cache at $pack_root"
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
