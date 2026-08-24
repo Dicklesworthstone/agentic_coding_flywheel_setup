@@ -6,6 +6,7 @@ import {
   formatPluginDiagnostics,
   loadPluginManifestFromFile,
   MAX_PLUGIN_JSON_NESTING_DEPTH,
+  MAX_PLUGIN_JSON_NODES,
   MAX_PLUGIN_MANIFEST_BYTES,
   mergeValidatedPlugins,
   validatePluginPackage,
@@ -561,6 +562,32 @@ describe('validatePluginPackage', () => {
     expect(diagnosticCodes(plugin)).toContain('plugin_disallowed_behavior');
   });
 
+  test('rejects executable fields hidden inside nested install metadata', () => {
+    const plugin = validPlugin();
+    const modules = plugin.modules as Record<string, unknown>[];
+    modules[0] = {
+      ...modules[0],
+      install: {
+        kind: 'verified_installer',
+        tool: 'example_tools',
+        url: INSTALLER_URL,
+        runner: 'bash',
+        extensions: {
+          payload: {
+            command: 'ignored-but-executable-shaped',
+          },
+        },
+      },
+    };
+
+    expect(validatePluginPackage(plugin, validationOptions()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'plugin_disallowed_behavior',
+        path: 'modules[0].install.extensions.payload.command',
+      })
+    );
+  });
+
   test('rejects non-normalized plugin artifact target paths', () => {
     const plugin = validPlugin();
     plugin.capabilities = {
@@ -754,6 +781,100 @@ describe('validatePluginPackage', () => {
     }));
     expect(serialized).not.toContain('alice');
     expect(serialized).not.toContain('swordfish');
+  });
+
+  test('rejects embedded IPv6 literals without returning the host value', () => {
+    const plugin = validPlugin();
+    const hostValue = ['2001', 'db8', '', '42'].join(':');
+    plugin.description = `Private deployment host [${hostValue}]`;
+
+    const result = validatePluginPackage(plugin, validationOptions());
+    const serialized = JSON.stringify(result);
+
+    expect(result.valid).toBe(false);
+    expect(result.package).toBeUndefined();
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_secret_material_refused',
+      path: 'description',
+    }));
+    expect(serialized).not.toContain(hostValue);
+  });
+
+  test('rejects representative provider token shapes beyond legacy prefixes', () => {
+    const tokenValues = [
+      ['github', '_pat_', 'A1'.repeat(16)].join(''),
+      ['hvs', '.', 'A1'.repeat(12)].join(''),
+      ['xoxb', '-', 'A1'.repeat(8)].join(''),
+      ['AKIA', 'A1'.repeat(8)].join(''),
+      ['AIza', 'A1'.repeat(16)].join(''),
+    ];
+
+    for (const tokenValue of tokenValues) {
+      const plugin = validPlugin();
+      plugin.description = `Credential ${tokenValue}`;
+
+      const result = validatePluginPackage(plugin, validationOptions());
+      expect(result.valid).toBe(false);
+      expect(result.package).toBeUndefined();
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        code: 'plugin_secret_material_refused',
+        path: 'description',
+      }));
+      expect(JSON.stringify(result)).not.toContain(tokenValue);
+    }
+  });
+
+  test('fails closed on cyclic input instead of recursing indefinitely', () => {
+    const plugin = validPlugin();
+    const cyclicExtension: Record<string, unknown> = {};
+    cyclicExtension.self = cyclicExtension;
+    plugin.extensions = cyclicExtension;
+
+    expect(() => validatePluginPackage(plugin, validationOptions())).not.toThrow();
+    expect(validatePluginPackage(plugin, validationOptions()).diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'plugin_disallowed_behavior',
+        message: expect.stringContaining('cyclic object references'),
+      })
+    );
+  });
+
+  test('rejects accessor-bearing input without invoking the accessor', () => {
+    const plugin = validPlugin();
+    const extensions: Record<string, unknown> = {};
+    let accessorInvoked = false;
+    Object.defineProperty(extensions, 'payload', {
+      enumerable: true,
+      get() {
+        accessorInvoked = true;
+        throw new Error('accessor must not execute');
+      },
+    });
+    plugin.extensions = extensions;
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(accessorInvoked).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('accessor properties'),
+    }));
+  });
+
+  test('bounds direct object validation by JSON node count', () => {
+    const plugin = validPlugin();
+    plugin.extensions = {
+      nodes: Array.from({ length: MAX_PLUGIN_JSON_NODES }, () => null),
+    };
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('maximum JSON node count'),
+    }));
   });
 
   test('does not confuse ordinary words containing secret-name substrings with credential fields', () => {

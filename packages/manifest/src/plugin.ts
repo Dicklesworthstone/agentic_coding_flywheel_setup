@@ -1,4 +1,5 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
+import { isIP } from 'node:net';
 import { TextDecoder } from 'node:util';
 import { z } from 'zod';
 import { ModuleWebMetadataSchema } from './schema.js';
@@ -16,6 +17,7 @@ const PLUGIN_SCHEMA = 'acfs.plugin-package.v1';
 const SUPPORTED_SCHEMA_VERSION = 1;
 export const MAX_PLUGIN_MANIFEST_BYTES = 1_048_576;
 export const MAX_PLUGIN_JSON_NESTING_DEPTH = 64;
+export const MAX_PLUGIN_JSON_NODES = 50_000;
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
 const VERIFIED_INSTALLER_TOOL_PATTERN = /^[a-z][a-z0-9_]*$/;
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.*$/;
@@ -78,6 +80,17 @@ const SECRET_FIELD_WORD_SEQUENCES: readonly (readonly string[])[] = [
   ['api', 'key'],
   ['private', 'key'],
   ['pass', 'phrase'],
+];
+const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
+  /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/i,
+  /(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,}/,
+  /sk-[A-Za-z0-9_-]{20,}/,
+  /(?:hvs|hvb|hvr)\.[A-Za-z0-9_-]{20,}/i,
+  /(?:glpat-|sbp_|shpat_|xox[baprs]-|npm_|sk_(?:live|test)_|rk_(?:live|test)_)[A-Za-z0-9_-]{16,}/i,
+  /\bAKIA[A-Z0-9]{16}\b/,
+  /\bAIza[0-9A-Za-z_-]{30,}\b/,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
+  /Bearer [A-Za-z0-9._~+/-]{12,}/i,
 ];
 const DISALLOWED_INSTALL_FIELDS = new Set([
   'command',
@@ -304,6 +317,101 @@ function addDiagnostic(
   });
 }
 
+function inspectPluginInputStructure(
+  input: unknown,
+  diagnostics: PluginDiagnostic[]
+): boolean {
+  const pending: Array<{ value: unknown; path: string; depth: number }> = [
+    { value: input, path: '<root>', depth: 0 },
+  ];
+  const seen = new WeakSet<object>();
+  let nodes = 0;
+  let stringCharacters = 0;
+
+  const refuse = (message: string, path: string): false => {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_disallowed_behavior',
+      message,
+      path,
+      severity: 'error',
+    });
+    return false;
+  };
+
+  try {
+    while (pending.length > 0) {
+      const candidate = pending.pop()!;
+      nodes++;
+      if (nodes > MAX_PLUGIN_JSON_NODES) {
+        return refuse(
+          `Plugin manifest exceeds the maximum JSON node count of ${MAX_PLUGIN_JSON_NODES}`,
+          '<root>'
+        );
+      }
+      if (candidate.depth > MAX_PLUGIN_JSON_NESTING_DEPTH) {
+        return refuse(
+          `Plugin manifest exceeds the maximum JSON nesting depth of ${MAX_PLUGIN_JSON_NESTING_DEPTH}`,
+          candidate.path
+        );
+      }
+
+      if (typeof candidate.value === 'string') {
+        stringCharacters += candidate.value.length;
+        if (stringCharacters > MAX_PLUGIN_MANIFEST_BYTES) {
+          return refuse('Plugin manifest string content exceeds the accepted size budget', '<root>');
+        }
+        continue;
+      }
+      if (candidate.value === null || typeof candidate.value !== 'object') continue;
+      if (seen.has(candidate.value)) {
+        return refuse('Plugin manifest must not contain cyclic object references', candidate.path);
+      }
+      seen.add(candidate.value);
+
+      const arrayValue = Array.isArray(candidate.value);
+      if (!arrayValue) {
+        const prototype = Object.getPrototypeOf(candidate.value);
+        if (prototype !== Object.prototype && prototype !== null) {
+          return refuse('Plugin manifest must contain only plain JSON objects', candidate.path);
+        }
+      }
+
+      const descriptors = Object.getOwnPropertyDescriptors(candidate.value);
+      for (const key of Reflect.ownKeys(descriptors)) {
+        if (typeof key !== 'string') {
+          return refuse('Plugin manifest must not contain symbol-keyed properties', candidate.path);
+        }
+        if (arrayValue && key === 'length') continue;
+        if (arrayValue && !/^(?:0|[1-9][0-9]*)$/.test(key)) {
+          return refuse('Plugin manifest arrays must not contain named properties', candidate.path);
+        }
+
+        const descriptor = descriptors[key];
+        const childPath = candidate.path === '<root>'
+          ? key
+          : arrayValue
+            ? `${candidate.path}[${key}]`
+            : `${candidate.path}.${key}`;
+        if (!descriptor.enumerable) {
+          return refuse('Plugin manifest must not contain hidden properties', childPath);
+        }
+        if (!('value' in descriptor)) {
+          return refuse('Plugin manifest must not contain accessor properties', childPath);
+        }
+        pending.push({
+          value: descriptor.value,
+          path: childPath,
+          depth: candidate.depth + 1,
+        });
+      }
+    }
+  } catch {
+    return refuse('Plugin manifest structure could not be inspected safely', '<root>');
+  }
+
+  return true;
+}
+
 function normalizeSecretFieldName(name: string): string {
   return name.replace(/[^A-Za-z0-9]/g, '').toLowerCase();
 }
@@ -377,12 +485,22 @@ function isSafeRelativePath(value: string | undefined): value is string {
   return !value.split('/').some((part) => part === '' || part === '.' || part === '..');
 }
 
+function containsIpLiteral(value: string): boolean {
+  const trimmed = value.trim().replace(/^\[|\]$/g, '');
+  if (isIP(trimmed) !== 0) return true;
+
+  const ipv4Candidates = value.match(/(?:\d{1,3}\.){3}\d{1,3}/g) ?? [];
+  if (ipv4Candidates.some((candidate) => isIP(candidate) === 4)) return true;
+
+  return value
+    .split(/[^0-9A-Fa-f:.]+/)
+    .map((candidate) => candidate.replace(/^\.+|\.+$/g, ''))
+    .some((candidate) => candidate.includes(':') && isIP(candidate) === 6);
+}
+
 function containsSecretLikeValue(value: string): boolean {
-  if (/-----BEGIN (OPENSSH|RSA|EC|DSA) PRIVATE KEY-----/i.test(value)) return true;
-  if (/gh[pousr]_[A-Za-z0-9_]{20,}/.test(value)) return true;
-  if (/sk-[A-Za-z0-9]{20,}/.test(value)) return true;
-  if (/Bearer [A-Za-z0-9._~+/-]{12,}/.test(value)) return true;
-  if (/\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(value)) return true;
+  if (SECRET_VALUE_PATTERNS.some((pattern) => pattern.test(value))) return true;
+  if (containsIpLiteral(value)) return true;
   try {
     const parsedUrl = new URL(value);
     if (
@@ -736,6 +854,46 @@ function validateCapabilityUse(
   }
 }
 
+function scanDisallowedInstallFields(
+  value: unknown,
+  path: string,
+  moduleId: string,
+  diagnostics: PluginDiagnostic[]
+): void {
+  const pending: Array<{ value: unknown; path: string }> = [{ value, path }];
+  const seen = new WeakSet<object>();
+
+  while (pending.length > 0) {
+    const candidate = pending.pop()!;
+    if (Array.isArray(candidate.value)) {
+      if (seen.has(candidate.value)) continue;
+      seen.add(candidate.value);
+      candidate.value.forEach((child, index) => {
+        pending.push({ value: child, path: `${candidate.path}[${index}]` });
+      });
+      continue;
+    }
+    if (!isRecord(candidate.value)) continue;
+    if (seen.has(candidate.value)) continue;
+    seen.add(candidate.value);
+
+    for (const [key, child] of Object.entries(candidate.value)) {
+      const childPath = `${candidate.path}.${key}`;
+      if (DISALLOWED_INSTALL_FIELDS.has(key)) {
+        addDiagnostic(diagnostics, {
+          code: 'plugin_disallowed_behavior',
+          message: `Plugin module "${moduleId}" uses forbidden executable install field "${key}"`,
+          path: childPath,
+          severity: 'error',
+          moduleId,
+          context: { field: key },
+        });
+      }
+      pending.push({ value: child, path: childPath });
+    }
+  }
+}
+
 function validateInstallFields(
   plugin: PluginPackage,
   module: PluginModule,
@@ -747,18 +905,7 @@ function validateInstallFields(
   const path = `modules[${moduleIndex}].install`;
   const kind = module.install.kind;
 
-  for (const key of Object.keys(install)) {
-    if (DISALLOWED_INSTALL_FIELDS.has(key)) {
-      addDiagnostic(diagnostics, {
-        code: 'plugin_disallowed_behavior',
-        message: `Plugin module "${module.id}" uses forbidden executable install field "${key}"`,
-        path: `${path}.${key}`,
-        severity: 'error',
-        moduleId: module.id,
-        context: { field: key },
-      });
-    }
-  }
+  scanDisallowedInstallFields(install, path, module.id, diagnostics);
 
   if (!ALLOWED_INSTALL_KINDS.has(kind)) {
     addDiagnostic(diagnostics, {
@@ -1434,6 +1581,10 @@ export function validatePluginPackage(
     ...options,
     existingPluginModuleIds: [...(options.existingPluginModuleIds ?? [])],
   };
+
+  if (!inspectPluginInputStructure(input, diagnostics)) {
+    return { valid: false, diagnostics, manifestModules };
+  }
 
   validateTopLevelFields(input, diagnostics);
   scanSecretMaterial(input, diagnostics, '');
