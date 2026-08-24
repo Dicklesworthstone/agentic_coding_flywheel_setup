@@ -947,29 +947,10 @@ if [[ -f "$ZSHRC" ]]; then
     uca_line=$(grep "alias uca=" "$ZSHRC" || true)
     if [[ -z "$uca_line" ]]; then
         fail "uca alias not found in acfs.zshrc"
+    elif [[ "$uca_line" == "alias uca='acfs update --agents-only --force'" ]]; then
+        pass "uca alias delegates every agent update to the authoritative verified updater"
     else
-        # Check 1: no bare "claude update" in the alias
-        if echo "$uca_line" | grep -q 'claude update'; then
-            fail "uca alias contains bare 'claude update': $uca_line"
-        else
-            # Check 2: uses install.sh with latest (the verified approach)
-            if echo "$uca_line" | grep -q 'install.sh.*latest'; then
-                pass "uca alias uses install.sh with latest channel (no bare 'claude update')"
-            else
-                pass "uca alias does not contain bare 'claude update'"
-            fi
-        fi
-
-        # Check 3: codex and agy are preserved in the alias chain
-        has_codex=false
-        has_agy=false
-        echo "$uca_line" | grep -q 'codex' && has_codex=true
-        echo "$uca_line" | grep -q 'agy' && has_agy=true
-        if $has_codex && $has_agy; then
-            pass "uca alias preserves codex and agy components"
-        else
-            fail "uca alias missing components: codex=$has_codex agy=$has_agy"
-        fi
+        fail "uca alias bypasses or diverges from the authoritative agent updater: $uca_line"
     fi
 else
     skip "acfs.zshrc not found at $ZSHRC"

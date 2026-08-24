@@ -682,6 +682,8 @@ _agent_install_agy_locked_launchers() {
     local target_bin_q=""
     local agy_locked_q=""
     local gmi_q=""
+    local marker_q=""
+    local agy_marker_rc=1
 
     target_home="$(_agent_target_home "$target_user")"
     target_bin="$(_agent_preferred_bin_dir "$target_home" 2>/dev/null || true)"
@@ -707,14 +709,49 @@ _agent_install_agy_locked_launchers() {
     printf -v agy_q '%q' "$target_bin/agy"
     printf -v agy_real_q '%q' "$target_bin/agy-real"
     printf -v gmi_q '%q' "$target_bin/gmi"
+    printf -v marker_q '%q' 'Launch Antigravity CLI with ACFS pinned defaults'
 
-    _agent_run_as_user "mkdir -p $target_bin_q" || return 1
-    if _agent_run_as_user "test -f $agy_q && ! test -L $agy_q" 2>/dev/null && ! _agent_run_as_user "cmp -s $agy_q $source_file_q" 2>/dev/null; then
-        _agent_run_as_user "mv -f $agy_q $agy_real_q" || true
+    _agent_run_as_user "/usr/bin/mkdir -p $target_bin_q" || return 1
+    if _agent_run_as_user "test -L $agy_real_q || { test -e $agy_real_q && ! test -f $agy_real_q; }" 2>/dev/null; then
+        log_warn "Refusing unsafe real Antigravity path: $target_bin/agy-real"
+        return 1
     fi
-    _agent_run_as_user "install -m 0755 $source_file_q $agy_locked_q" || return 1
-    _agent_run_as_user "install -m 0755 $source_file_q $agy_q" || return 1
-    _agent_run_as_user "install -m 0755 $source_file_q $gmi_q" || return 1
+    if _agent_run_as_user "test -L $agy_q || { test -e $agy_q && ! test -f $agy_q; }" 2>/dev/null; then
+        log_warn "Refusing unsafe Antigravity launcher path: $target_bin/agy"
+        return 1
+    fi
+    if _agent_run_as_user "test -f $agy_q" 2>/dev/null; then
+        if _agent_run_as_user "/usr/bin/grep -aFq $marker_q $agy_q" 2>/dev/null; then
+            agy_marker_rc=0
+        else
+            agy_marker_rc=$?
+        fi
+        case "$agy_marker_rc" in
+            0) ;;
+            1) _agent_run_as_user "/usr/bin/mv -f $agy_q $agy_real_q" || return 1 ;;
+            *)
+                log_warn "Unable to inspect existing Antigravity path: $target_bin/agy"
+                return 1
+                ;;
+        esac
+    fi
+    if ! _agent_run_as_user "test -x $agy_real_q && ! test -L $agy_real_q" 2>/dev/null; then
+        log_warn "Real Antigravity binary is missing or not executable: $target_bin/agy-real"
+        return 1
+    fi
+    if _agent_run_as_user "/usr/bin/grep -aFq $marker_q $agy_real_q" 2>/dev/null; then
+        log_warn "Real Antigravity path contains an ACFS launcher: $target_bin/agy-real"
+        return 1
+    else
+        agy_marker_rc=$?
+        if [[ "$agy_marker_rc" -ne 1 ]]; then
+            log_warn "Unable to inspect real Antigravity binary: $target_bin/agy-real"
+            return 1
+        fi
+    fi
+    _agent_run_as_user "/usr/bin/install -m 0755 $source_file_q $agy_locked_q" || return 1
+    _agent_run_as_user "/usr/bin/install -m 0755 $source_file_q $agy_q" || return 1
+    _agent_run_as_user "/usr/bin/install -m 0755 $source_file_q $gmi_q" || return 1
     return 0
 }
 
@@ -1269,7 +1306,10 @@ install_antigravity_cli() {
 
     if [[ -n "$agy_bin" ]]; then
         log_detail "Antigravity CLI already installed at $agy_bin"
-        _configure_antigravity_settings "$target_home" || true
+        if ! _configure_antigravity_settings "$target_home"; then
+            log_warn "Antigravity CLI is installed, but the locked launcher configuration failed"
+            return 1
+        fi
         return 0
     fi
 
@@ -1277,7 +1317,10 @@ install_antigravity_cli() {
     if _agent_run_verified_upstream_installer "antigravity" "bash"; then
         agy_bin="$(_agent_find_target_executable "$ANTIGRAVITY_BIN" "$target_home" 2>/dev/null || true)"
         if [[ -n "$agy_bin" ]]; then
-            _configure_antigravity_settings "$target_home" || true
+            if ! _configure_antigravity_settings "$target_home"; then
+                log_warn "Antigravity CLI installed, but the locked launcher configuration failed"
+                return 1
+            fi
             log_success "Antigravity CLI installed"
             log_detail "Note: Run 'agy' to complete Google login"
             return 0
@@ -1306,14 +1349,20 @@ upgrade_antigravity_cli() {
     printf -v agy_bin_q '%q' "$agy_bin"
     log_detail "Upgrading Antigravity CLI..."
     if _agent_run_as_user "$agy_bin_q update"; then
-        _configure_antigravity_settings "$target_home" || true
+        if ! _configure_antigravity_settings "$target_home"; then
+            log_warn "Antigravity CLI updated, but the locked launcher configuration failed"
+            return 1
+        fi
         log_success "Antigravity CLI upgraded"
         return 0
     fi
 
     log_warn "Antigravity CLI self-update failed, attempting verified reinstall..."
     if _agent_run_verified_upstream_installer "antigravity" "bash"; then
-        _configure_antigravity_settings "$target_home" || true
+        if ! _configure_antigravity_settings "$target_home"; then
+            log_warn "Antigravity CLI reinstalled, but the locked launcher configuration failed"
+            return 1
+        fi
         log_success "Antigravity CLI upgraded via verified installer"
         return 0
     fi

@@ -2643,6 +2643,7 @@ confirm() {
 #   1 - User declined to fix or auto-fix is disabled
 #   2 - Fix function failed
 #
+# shellcheck disable=SC2329
 handle_autofix() {
     local fix_name="$1"
     local description="$2"

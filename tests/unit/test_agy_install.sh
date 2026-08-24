@@ -88,10 +88,10 @@ check "acfs.zshrc maps agy to the locked launcher" \
   "grep -q \"alias agy='\\\$HOME/.local/bin/agy-locked'\" acfs/zsh/acfs.zshrc"
 check "acfs.zshrc maps gmi to the locked agy launcher" \
   "grep -q \"alias gmi='\\\$HOME/.local/bin/agy-locked'\" acfs/zsh/acfs.zshrc"
-check "uca updates agy instead of gemini-cli" \
-  "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -qE 'agy(-real)?\" update' && ! grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q '@google/gemini-cli'"
-check "uca re-primes locked Antigravity settings after update" \
-  "grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -q 'agy-locked\" --acfs-prime-settings'"
+check "uca delegates all agent updates to the authoritative verified updater" \
+  "grep -Fxq \"alias uca='acfs update --agents-only --force'\" acfs/zsh/acfs.zshrc"
+check "uca contains no direct network-to-shell installer" \
+  "! grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -Eq 'curl|wget|\\|[[:space:]]*(bash|sh)([[:space:]]|$)'"
 check "agy locked launcher pins the required model" \
   "grep -q 'MODEL = \"Gemini 3.7 Flash (High)\"' scripts/lib/agy_locked.py"
 check "agy locked launcher strips -m and -model flags" \
