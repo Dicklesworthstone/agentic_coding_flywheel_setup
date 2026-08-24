@@ -1295,15 +1295,15 @@ offline_pack_write_manifest() {
         return 1
     fi
 
-    builder_env_sha="$(offline_pack_sha256 "$pack_root/provenance/builder-env.json")" || return 1
-    source_index_sha="$(offline_pack_sha256 "$pack_root/provenance/source-index.json")" || return 1
-
     if ! offline_pack_jq -n \
         --argjson artifacts "$OFFLINE_PACK_ARTIFACTS_JSON" \
         '{artifacts: $artifacts}' \
         > "$pack_root/provenance/source-index.json"; then
         return 1
     fi
+
+    builder_env_sha="$(offline_pack_sha256 "$pack_root/provenance/builder-env.json")" || return 1
+    source_index_sha="$(offline_pack_sha256 "$pack_root/provenance/source-index.json")" || return 1
 
     # manifest.json is the acceptance marker. Write it only after every other
     # staged file exists; the caller publishes the whole staging directory with
