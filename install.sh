@@ -238,6 +238,13 @@ ACFS_TRUSTED_INTERNAL_SOURCE_ROOT=""
 # confer no trust or execution authority.
 ACFS_BOOTSTRAP_SUPERVISOR=false
 ACFS_BOOTSTRAP_CHILD_PID=""
+ACFS_BOOTSTRAP_CHILD_PGID=""
+ACFS_BOOTSTRAP_CHILD_STATE="QUIESCENT"
+ACFS_BOOTSTRAP_PENDING_SIGNAL=""
+ACFS_BOOTSTRAP_SIGNAL_HANDLING=false
+ACFS_BOOTSTRAP_PRESERVE_TREE=false
+ACFS_BOOTSTRAP_PS_BIN=""
+ACFS_BOOTSTRAP_SLEEP_BIN=""
 ACFS_VERIFIED_BOOTSTRAP_SOURCE="${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}"
 ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH="${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}"
 
@@ -1502,6 +1509,8 @@ generate_resume_hint() {
     local arg_q=""
     local resume_ref=""
     local resume_ref_pinned_from_commit=false
+    local resume_repo_owner="${ACFS_REPO_OWNER:-Dicklesworthstone}"
+    local resume_repo_name="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
     local -a resume_args=(--resume)
 
     # A verified archive child has a temporary SCRIPT_DIR, but its logical
@@ -1520,9 +1529,12 @@ generate_resume_hint() {
         cmd="curl -q -fsSL"
         if [[ -n "${ACFS_COMMIT_SHA_FULL:-}" ]]; then
             # Pin to exact commit SHA for reproducibility
-            install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_COMMIT_SHA_FULL}/install.sh"
+            install_url="https://raw.githubusercontent.com/${resume_repo_owner}/${resume_repo_name}/${ACFS_COMMIT_SHA_FULL}/install.sh"
         elif [[ -n "${ACFS_REF_INPUT:-}" && "${ACFS_REF_INPUT}" != "main" ]]; then
-            install_url="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${ACFS_REF_INPUT}/install.sh"
+            install_url="https://raw.githubusercontent.com/${resume_repo_owner}/${resume_repo_name}/${ACFS_REF_INPUT}/install.sh"
+        elif [[ "$resume_repo_owner" != "Dicklesworthstone" ]] \
+            || [[ "$resume_repo_name" != "agentic_coding_flywheel_setup" ]]; then
+            install_url="https://raw.githubusercontent.com/${resume_repo_owner}/${resume_repo_name}/${ACFS_REF_INPUT:-main}/install.sh"
         else
             install_url="https://acfs.sh"
         fi

@@ -146,9 +146,49 @@ swarm_inventory_parent_dir() {
     local path="$1"
     local dir=""
 
-    dir="$(dirname "$path")"
+    dir="$(dirname -- "$path")"
     [[ -n "$dir" && "$dir" != "." ]] || return 0
-    mkdir -p "$dir"
+    mkdir -p -- "$dir"
+}
+
+swarm_inventory_atomic_write() {
+    local output_file="$1"
+    local contents="$2"
+    local parent_dir=""
+    local temp_file=""
+    local sync_bin=""
+
+    parent_dir="$(dirname -- "$output_file")"
+    [[ -n "$parent_dir" ]] || return 1
+    swarm_inventory_parent_dir "$output_file" || return 1
+
+    # Never follow or replace a pre-existing special path. Replacing a regular
+    # file by rename is atomic and avoids the truncation window of `> "$path"`.
+    if [[ -e "$output_file" || -L "$output_file" ]]; then
+        [[ -f "$output_file" && ! -L "$output_file" ]] || return 1
+    fi
+
+    temp_file="$(mktemp "$parent_dir/.swarm_inventory.XXXXXX")" || return 1
+    if ! printf '%s\n' "$contents" > "$temp_file"; then
+        rm -f -- "$temp_file" 2>/dev/null || true
+        return 1
+    fi
+
+    # `sync` without operands works on GNU and BSD systems. The first call
+    # durably flushes the complete temporary file; the second flushes the
+    # rename and containing-directory metadata before success is reported.
+    sync_bin="$(swarm_inventory_binary_path sync 2>/dev/null || true)"
+    if [[ -z "$sync_bin" ]] || ! "$sync_bin"; then
+        rm -f -- "$temp_file" 2>/dev/null || true
+        return 1
+    fi
+
+    if ! mv -- "$temp_file" "$output_file"; then
+        rm -f -- "$temp_file" 2>/dev/null || true
+        return 1
+    fi
+
+    "$sync_bin"
 }
 
 swarm_inventory_error_json() {
@@ -242,12 +282,23 @@ swarm_inventory_validation_json() {
         def status_ok($v): ($v | IN("active", "stale", "disabled", "unknown"));
         def id_ok($v): (($v | type) == "string" and ($v | test("^[a-z0-9][a-z0-9._-]{0,62}$")));
         def is_object($v): (($v | type) == "object");
+        def stale_hours_ok($v):
+          (($v | type) == "number" and $v >= 1 and ($v | floor) == $v);
         def unknown_count($obj; $allowed):
           if ($obj | type) == "object" then
             ([($obj | keys_unsorted[]) as $k | select(($allowed | index($k)) | not)] | length)
           else 0 end;
-        ($inventory.hosts // null) as $hosts
+        (if ($inventory | has("defaults")) then $inventory.defaults else null end) as $defaults_raw
+        | (if ($defaults_raw | type) == "object" then $defaults_raw else {} end) as $defaults
+        | ($inventory.hosts // null) as $hosts
         | (if ($inventory.schema_version // null) == 1 then [] else [err("unsupported_schema_version"; "schema_version"; "schema_version must be 1")] end) as $schema_errors
+        | (if $defaults_raw == null or ($defaults_raw | type) == "object" then [] else
+             [err("invalid_defaults"; "defaults"; "defaults must be an object")]
+           end) as $defaults_errors
+        | (if (($defaults | has("stale_after_hours")) | not) then []
+           elif stale_hours_ok($defaults.stale_after_hours) then []
+           else [err("invalid_stale_after_hours"; "defaults.stale_after_hours"; "stale_after_hours must be a positive integer")]
+           end) as $stale_hours_errors
         | (if ($hosts | type) == "array" then [] else [err("invalid_hosts"; "hosts"; "hosts must be an array")] end) as $host_array_errors
         | (if ($hosts | type) == "array" then $hosts else [] end) as $host_list
         | ([
@@ -309,7 +360,7 @@ swarm_inventory_validation_json() {
           ] as $field_errors
         | ($sensitive_paths | map(err("forbidden_sensitive_field"; .; "Inventory contains forbidden sensitive field name"))) as $sensitive_errors
         | ($duplicates | map(err("duplicate_host_id"; "hosts[].id"; "duplicate host id: " + .))) as $duplicate_errors
-        | ($schema_errors + $host_array_errors + $field_errors + $sensitive_errors + $duplicate_errors) as $errors
+        | ($schema_errors + $defaults_errors + $stale_hours_errors + $host_array_errors + $field_errors + $sensitive_errors + $duplicate_errors) as $errors
         | {
             schema_version: 1,
             source_file: $source_file,
@@ -573,8 +624,10 @@ swarm_inventory_command_import() {
     swarm_inventory_read_inventory_or_fail inventory_json "$jq_bin" "import" "$input_file" || return $?
     swarm_inventory_validate_or_fail validation_json "$jq_bin" "import" "$inventory_json" "$input_file" || return $?
     normalized_json="$("$jq_bin" --arg updated_at "$SWARM_INV_GENERATED_AT" '.updated_at = $updated_at' <<< "$inventory_json")"
-    swarm_inventory_parent_dir "$output_file"
-    printf '%s\n' "$normalized_json" > "$output_file"
+    if ! swarm_inventory_atomic_write "$output_file" "$normalized_json"; then
+        swarm_inventory_fail "$jq_bin" "import" "write_failed" "Could not atomically and durably write inventory: $output_file" "[]" '[]'
+        return 2
+    fi
 
     action_json="$("$jq_bin" -n \
         --arg input_file "$input_file" \
@@ -615,8 +668,10 @@ swarm_inventory_command_export() {
     export_json="$("$jq_bin" --arg updated_at "$SWARM_INV_GENERATED_AT" '.updated_at = $updated_at' <<< "$inventory_json")"
 
     if [[ -n "$output_file" ]]; then
-        swarm_inventory_parent_dir "$output_file"
-        printf '%s\n' "$export_json" > "$output_file"
+        if ! swarm_inventory_atomic_write "$output_file" "$export_json"; then
+            swarm_inventory_fail "$jq_bin" "export" "write_failed" "Could not atomically and durably write export: $output_file" "[]" '[]'
+            return 2
+        fi
     else
         printf '%s\n' "$export_json"
     fi

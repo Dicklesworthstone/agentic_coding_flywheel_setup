@@ -211,6 +211,19 @@ role_boundary_inventory_fixture() {
 JSON
 }
 
+invalid_stale_hours_fixture() {
+    local name="$1"
+    local stale_hours_json="$2"
+    write_fixture "$name" <<JSON
+{
+  "schema_version": 1,
+  "updated_at": "2026-05-08T00:00:00Z",
+  "defaults": {"workload": "standard", "stale_after_hours": $stale_hours_json},
+  "hosts": []
+}
+JSON
+}
+
 run_inventory_json() {
     local name="$1"
     shift
@@ -326,6 +339,45 @@ test_import_export_preserve_unknown_fields() {
     pass "import_export_preserve_unknown_fields"
 }
 
+test_import_replaces_destination_atomically() {
+    local inventory imported inode_before inode_after output
+    inventory="$(sample_inventory_fixture)"
+    imported="$ARTIFACT_DIR/atomic.inventory.json"
+    printf '%s\n' '{"sentinel":"old"}' > "$imported"
+    inode_before="$(ls -di "$imported")"
+    inode_before="${inode_before%%[[:space:]]*}"
+
+    output="$(run_inventory_json atomic-import import --input "$inventory" --output "$imported")"
+    [[ "$(cat "$ARTIFACT_DIR/atomic-import.exit")" -eq 0 ]] || return 1
+    jq -e '.status == "pass" and .summary.imported_hosts == 3' <<< "$output" >/dev/null || return 1
+
+    inode_after="$(ls -di "$imported")"
+    inode_after="${inode_after%%[[:space:]]*}"
+    [[ -n "$inode_before" && -n "$inode_after" && "$inode_before" != "$inode_after" ]] || return 1
+    jq -e '.schema_version == 1 and (.hosts | length) == 3' "$imported" >/dev/null || return 1
+
+    pass "import_replaces_destination_atomically"
+}
+
+test_validate_rejects_invalid_stale_after_hours() {
+    local case_name stale_hours_json inventory output
+    while IFS='|' read -r case_name stale_hours_json; do
+        inventory="$(invalid_stale_hours_fixture "invalid-stale-$case_name" "$stale_hours_json")"
+        output="$(run_inventory_json "invalid-stale-$case_name" validate --inventory "$inventory")"
+        [[ "$(cat "$ARTIFACT_DIR/invalid-stale-$case_name.exit")" -eq 2 ]] || return 1
+        jq -e '
+          .status == "fail" and
+          (.errors[] | select(.code == "invalid_stale_after_hours" and .path == "defaults.stale_after_hours"))
+        ' <<< "$output" >/dev/null || return 1
+    done <<'CASES'
+string|"24"
+zero|0
+fractional|1.5
+CASES
+
+    pass "validate_rejects_invalid_stale_after_hours"
+}
+
 test_validate_rejects_sensitive_fields() {
     local inventory output
     inventory="$(sensitive_inventory_fixture)"
@@ -418,6 +470,8 @@ main() {
     run_test test_stale_probes_warn_and_block_launch_targets
     run_test test_role_boundaries_exclude_rch_worker_and_disabled_hosts
     run_test test_import_export_preserve_unknown_fields
+    run_test test_import_replaces_destination_atomically
+    run_test test_validate_rejects_invalid_stale_after_hours
     run_test test_validate_rejects_sensitive_fields
     run_test test_duplicate_ids_write_validate_artifacts
     run_test test_malformed_import_export_write_error_artifacts
