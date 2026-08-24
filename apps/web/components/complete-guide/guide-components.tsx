@@ -276,7 +276,7 @@ export function PromptBlock({
 
   return (
     <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition-all duration-500 hover:border-[#FF5500]/30 my-12 shadow-xl">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       
       {/* Top bar — refined metal */}
       <div className="relative flex items-center justify-between px-5 sm:px-6 py-3.5 bg-white/[0.015] border-b border-white/[0.04] z-10 backdrop-blur-md">
@@ -359,7 +359,7 @@ export function DataTable({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 my-12 relative z-10">
         {rows.map((row, ri) => (
           <div key={ri} className="flex flex-col p-6 sm:p-8 rounded-[2rem] bg-[#05070A] border border-white/[0.04] shadow-2xl relative group/card hover:border-[#FF5500]/30 transition-all duration-500 hover:-translate-y-2 overflow-hidden">
-            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+            <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
             <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
             
             <div className="relative z-10 flex flex-col h-full">
@@ -625,7 +625,7 @@ export function StatCard({
 }) {
   return (
     <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 text-center overflow-hidden transition-all duration-500 hover:-translate-y-1 hover:border-[#FF5500]/30 shadow-xl">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-b from-[#FF5500]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       <div className="relative z-10 text-3xl sm:text-5xl font-black bg-gradient-to-br from-white via-[#FF5500] to-violet-400 bg-clip-text text-transparent tracking-tighter drop-shadow-md group-hover:scale-105 transition-transform duration-500">
         {value}
@@ -657,10 +657,10 @@ export function PrincipleCard({
     <div
       className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition-all duration-500 hover:border-[#FF5500]/30 hover:-translate-y-1 my-6 shadow-xl"
     >
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       
       {/* Background Texture */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       
       {/* Hover glow overlay */}
       <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient || "from-[#FF5500]/[0.05] to-transparent"} transition-opacity duration-500 pointer-events-none`} />
@@ -722,7 +722,7 @@ export function OperatorCard({
 }) {
   return (
     <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 transition-all duration-500 hover:border-[#FF5500]/40 hover:-translate-y-1 my-8 overflow-hidden shadow-xl">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       
       {/* Corner glow */}

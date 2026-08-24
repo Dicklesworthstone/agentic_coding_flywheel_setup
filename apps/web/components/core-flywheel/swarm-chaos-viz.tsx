@@ -590,7 +590,7 @@ export function SwarmChaosViz() {
   return (
     <div ref={ref} className={EXHIBIT_PANEL_CLASS + " relative group/viz"}>
       {/* Background texture */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-4">

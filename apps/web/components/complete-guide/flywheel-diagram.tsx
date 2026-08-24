@@ -53,7 +53,7 @@ export function FlywheelDiagram() {
       ref={ref}
       className="my-16 overflow-hidden rounded-[3rem] border border-white/[0.04] bg-[#05070a] p-8 sm:p-12 lg:p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9),inset_0_1px_1px_rgba(255,255,255,0.05)] relative group/viz"
     >
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[radial-gradient(ellipse_at_top_right,rgba(167,139,250,0.03),transparent_60%)] pointer-events-none" />
 
       <div className="relative z-10 flex flex-col gap-10 border-b border-white/[0.04] pb-12 lg:flex-row lg:items-start lg:justify-between">

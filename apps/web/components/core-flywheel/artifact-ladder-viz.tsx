@@ -585,7 +585,7 @@ export function ArtifactLadderViz() {
   return (
     <div ref={ref} className={EXHIBIT_PANEL_CLASS + " relative"}>
       {/* Noise texture */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
 
       {/* Ambient glow */}
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(ellipse_at_top_right,rgba(167,139,250,0.03),transparent_60%)] pointer-events-none" />

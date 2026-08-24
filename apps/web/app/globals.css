@@ -1067,3 +1067,15 @@
   background-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
   color: var(--color-white, #ffffff);
 }
+
+/* ============================================
+   Noise overlay (complete guide)
+   Self-contained feTurbulence texture; replaces the external
+   grainy-gradients.vercel.app/noise.svg, which 404s and was a
+   third-party request on every guide page load.
+   ============================================ */
+.noise-overlay {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 200px 200px;
+}

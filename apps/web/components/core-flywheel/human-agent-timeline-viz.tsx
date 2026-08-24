@@ -669,7 +669,7 @@ export function HumanAgentTimelineViz() {
   return (
     <div ref={ref} className={EXHIBIT_PANEL_CLASS + " relative group/viz"}>
       {/* Background texture & ambient glow */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[900px] bg-[radial-gradient(ellipse_at_center,rgba(167,139,250,0.02),transparent_60%)] pointer-events-none" />
 
       {/* Header */}

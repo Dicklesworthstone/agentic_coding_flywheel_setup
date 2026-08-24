@@ -387,7 +387,7 @@ export function BeadComparisonViz() {
   return (
     <div ref={ref} className={cn(EXHIBIT_PANEL_CLASS, "relative group/viz")}>
       {/* Noise texture overlay */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none rounded-[inherit]" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none rounded-[inherit]" />
 
       {/* HEADER */}
       <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between mb-8 sm:mb-10">

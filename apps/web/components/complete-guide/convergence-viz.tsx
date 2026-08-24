@@ -75,7 +75,7 @@ export function ConvergenceViz() {
 
   return (
     <div ref={ref} className="my-12 rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl transition-all duration-500 hover:border-primary/20 overflow-hidden relative group/viz">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       
       {/* HEADER */}
       <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-6 sm:p-8 border-b border-white/[0.04] bg-white/[0.01] backdrop-blur-md">

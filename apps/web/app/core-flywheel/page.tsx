@@ -630,7 +630,7 @@ function Hero() {
   return (
     <section className="relative overflow-hidden pt-28 pb-24 md:pt-44 md:pb-36 bg-[#020408] border-b border-white/[0.04]">
       {/* Layered ambient effects for depth */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[600px] bg-[radial-gradient(ellipse_at_top,rgba(255,85,0,0.08),transparent_70%)]" />
       {/* Secondary purple orb — lower left for depth */}
       <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-[radial-gradient(ellipse_at_bottom_left,rgba(167,139,250,0.05),transparent_70%)] pointer-events-none" />
@@ -710,7 +710,7 @@ function HelperCard({
         style={{ background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}
       />
 
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       <div
         className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"
         style={{ background: `radial-gradient(ellipse at top, ${color}0A, transparent 70%)` }}
@@ -768,7 +768,7 @@ function HelperCard({
 function FooterCTA() {
   return (
     <section className="relative overflow-hidden rounded-[3rem] border border-[#FF5500]/20 bg-[#0A0D14] py-24 md:py-32 my-32 shadow-[0_50px_100px_-20px_rgba(255,85,0,0.15)] group">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       {/* Multi-layer gradient effects */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(255,85,0,0.05),transparent_70%)] opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
       <div className="absolute -top-20 -right-20 w-[300px] h-[300px] bg-[radial-gradient(circle,rgba(255,189,46,0.06),transparent_60%)] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-1000 delay-200" />

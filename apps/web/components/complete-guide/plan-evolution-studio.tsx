@@ -118,7 +118,7 @@ export function PlanEvolutionStudio() {
 
   return (
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[radial-gradient(circle_at_top_right,rgba(34,211,238,0.03),transparent_70%)] pointer-events-none" />
 
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-end lg:justify-between">

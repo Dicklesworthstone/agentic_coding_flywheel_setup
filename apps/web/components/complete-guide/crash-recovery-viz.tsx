@@ -54,7 +54,11 @@ function createInitialState(): SimState {
     color: AGENT_COLORS[i],
     alive: true,
     currentBead: i < BEAD_TITLES.length ? i : null,
-    progress: Math.floor(Math.random() * 40) + 10,
+    // Deterministic spread (10..49): this runs during SSR and again on the
+    // client, so a Math.random() seed here produced a hydration mismatch on
+    // /complete-guide. Randomness belongs in tick(), which only runs after
+    // mount.
+    progress: 10 + ((i * 17) % 40),
     justCompleted: 0,
   }));
 
@@ -222,7 +226,7 @@ export function CrashRecoveryViz() {
 
   return (
     <div ref={containerRef} className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] px-5 py-5 sm:px-8">

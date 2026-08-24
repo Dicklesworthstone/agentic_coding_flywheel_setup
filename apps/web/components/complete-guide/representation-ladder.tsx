@@ -110,7 +110,7 @@ export function RepresentationLadder() {
                           : 'rgba(255,255,255,0.01)',
                     }}
                   >
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay pointer-events-none" />
+                    <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
                     
                     <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between p-6 gap-4 h-full">
                       <div>

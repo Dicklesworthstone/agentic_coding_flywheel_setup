@@ -104,7 +104,7 @@ export function RecursiveImprovementViz() {
 
   return (
     <div ref={ref} tabIndex={0} className="relative my-16 overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0A0D14] shadow-xl outline-none focus-visible:ring-2 focus-visible:ring-[#FF5500]/40">
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] px-5 py-5 sm:px-8">
