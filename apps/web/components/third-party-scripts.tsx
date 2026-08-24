@@ -5,6 +5,12 @@ import { useEffect } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
+import {
+  isPrivateWizardPath,
+  queryContainsSensitiveState,
+  stripSensitiveQueryState,
+  vendorEventIsPrivacySafe,
+} from '@/lib/utils';
 
 // Environment variables for third-party services
 // Note: GA4 is handled by AnalyticsProvider to avoid duplicate scripts
@@ -41,13 +47,20 @@ export function ThirdPartyScripts() {
   const searchParams = useSearchParams();
   const pagePath =
     pathname ?? (typeof window !== 'undefined' ? window.location.pathname : null);
-  const searchQuery =
+  const parameterSearchQuery =
     searchParams?.toString() ??
     (typeof window !== 'undefined' ? window.location.search.slice(1) : '');
+  const liveSearchQuery = typeof window !== 'undefined'
+    ? window.location.search.slice(1)
+    : parameterSearchQuery;
+  const sensitiveQuery = queryContainsSensitiveState(parameterSearchQuery)
+    || queryContainsSensitiveState(liveSearchQuery);
+  const searchQuery = stripSensitiveQueryState(liveSearchQuery);
+  const privateWizardPath = pagePath !== null && isPrivateWizardPath(pagePath);
 
   // Track virtual pageviews for GTM on SPA navigation
   useEffect(() => {
-    if (!GTM_ID || pagePath === null) return;
+    if (!GTM_ID || sensitiveQuery || privateWizardPath || pagePath === null) return;
 
     const tagManagerWindow = window as TagManagerWindow;
     const dataLayer = tagManagerWindow.dataLayer ?? [];
@@ -57,7 +70,7 @@ export function ThirdPartyScripts() {
       page_path: pagePath,
       page_search: searchQuery || undefined,
     });
-  }, [pagePath, searchQuery]);
+  }, [pagePath, searchQuery, sensitiveQuery, privateWizardPath]);
 
   const shouldRenderAnyScripts =
     Boolean(GTM_ID) ||
@@ -65,7 +78,12 @@ export function ThirdPartyScripts() {
     ENABLE_VERCEL_ANALYTICS ||
     ENABLE_SPEED_INSIGHTS;
 
-  if (!shouldRenderAnyScripts) return null;
+  const filterVendorEvent = <T extends { url: string }>(event: T): T | null => {
+    if (typeof window === 'undefined') return null;
+    return vendorEventIsPrivacySafe(event.url, window.location.href) ? event : null;
+  };
+
+  if (sensitiveQuery || privateWizardPath || !shouldRenderAnyScripts) return null;
 
   return (
     <>
@@ -103,10 +121,10 @@ export function ThirdPartyScripts() {
       )}
 
       {/* Vercel Web Analytics - automatic pageview & event tracking (requires Vercel project config) */}
-      {ENABLE_VERCEL_ANALYTICS && <Analytics />}
+      {ENABLE_VERCEL_ANALYTICS && <Analytics beforeSend={filterVendorEvent} />}
 
       {/* Vercel Speed Insights - Core Web Vitals monitoring (requires Vercel Pro) */}
-      {ENABLE_SPEED_INSIGHTS && <SpeedInsights />}
+      {ENABLE_SPEED_INSIGHTS && <SpeedInsights beforeSend={filterVendorEvent} />}
     </>
   );
 }

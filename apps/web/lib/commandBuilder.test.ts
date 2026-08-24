@@ -497,6 +497,7 @@ describe("buildTeamProfile", () => {
       mode: "safe",
       ref: null,
       generatedAt,
+      description: "Support host is [2001:db8::42] during setup.",
       providerSelection: {
         providerId: "Bearer <credential>",
         planName: "postgres://<user>:<password>@example.invalid/db",
@@ -511,10 +512,12 @@ describe("buildTeamProfile", () => {
     expect(profile.providerDefaults.provider).toBe("other");
     expect(profile.providerDefaults.region).toBe("not-listed");
     expect(profile.providerDefaults.planClass).toBe("custom plan");
+    expect(profile.description).toBe("Redacted ACFS wizard defaults for repeatable team installs.");
     expect(json).not.toContain("Bearer");
     expect(json).not.toContain("postgres://");
     expect(json).not.toContain("203.0.113.42");
     expect(json).not.toContain("198.51.100.10");
+    expect(json).not.toContain("2001:db8::42");
   });
 
   test("keeps safe unknown provider choices without weakening the schema", () => {
@@ -757,6 +760,68 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.installerCommand.command).toBeNull();
   });
 
+  test("requires coherent schema-v1 provenance before deriving an installer command", () => {
+    const original = sampleProfile();
+    const missingVersion = {
+      ...original,
+      provenance: {
+        ...original.provenance,
+        source: {
+          ...original.provenance.source,
+        },
+      },
+    };
+    delete (missingVersion.provenance.source as Partial<typeof missingVersion.provenance.source>).acfsVersion;
+
+    const missingDiff = buildTeamProfileImportDiff(missingVersion);
+    expect(missingDiff.ok).toBe(false);
+    expect(missingDiff.findings).toContainEqual(expect.objectContaining({
+      code: "team_profile_missing_required_field",
+      path: "provenance.source.acfsVersion",
+    }));
+
+    const mismatchDiff = buildTeamProfileImportDiff({
+      ...original,
+      install: {
+        ...original.install,
+        ref: {
+          ...original.install.ref,
+          value: "release/profile-test",
+        },
+      },
+    });
+    expect(mismatchDiff.ok).toBe(false);
+    expect(mismatchDiff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_ref_policy_mismatch",
+      path: "provenance.source.acfsRef",
+    }));
+    expect(mismatchDiff.installerCommand.command).toBeNull();
+
+    const malformedDiff = buildTeamProfileImportDiff({
+      ...original,
+      provenance: {
+        author: "operator@example.test",
+        source: {
+          ...original.provenance.source,
+          acfsVersion: "0.0.0",
+          acfsCommit: "a".repeat(40),
+        },
+      },
+      compatibility: {
+        ...original.compatibility,
+        minAcfsVersion: "0.0.0",
+      },
+    });
+    expect(malformedDiff.ok).toBe(false);
+    expect(malformedDiff.incompatibilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "provenance.author" }),
+      expect.objectContaining({ path: "provenance.source.acfsVersion" }),
+      expect.objectContaining({ path: "provenance.source.acfsCommit" }),
+      expect.objectContaining({ path: "compatibility.minAcfsVersion" }),
+    ]));
+    expect(malformedDiff.installerCommand.command).toBeNull();
+  });
+
   test("rejects empty or non-string provenance hashes instead of bypassing integrity checks", () => {
     const original = sampleProfile();
     const malformedProfiles = [
@@ -840,6 +905,27 @@ describe("buildTeamProfileImportDiff", () => {
     }));
     expect(json).not.toContain("alice");
     expect(json).not.toContain(userinfoUrl);
+  });
+
+  test("refuses and redacts an IPv6 address embedded in profile text", () => {
+    const embeddedIp = "Support host is [2001:db8::42] during setup.";
+    const original = sampleProfile();
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      extensions: {
+        supportNote: embeddedIp,
+      },
+    });
+    const json = serializeTeamProfileImportDiffJson(diff);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.refusals).toContainEqual(expect.objectContaining({
+      code: "team_profile_secret_material_refused",
+      path: "extensions.supportNote",
+    }));
+    expect(json).not.toContain("2001:db8::42");
+    expect(json).not.toContain(embeddedIp);
   });
 
   test("refuses and redacts credential material embedded in a field name", () => {
@@ -1412,7 +1498,8 @@ describe("buildShareURL", () => {
         ref: null,
       });
 
-      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?ip=10.20.30.40&os=mac&mode=vibe");
+      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=mac&mode=vibe");
+      expect(shareURL).not.toContain("10.20.30.40");
       expect(shareURL).not.toContain("utm_source=");
     } finally {
       Object.defineProperty(globalThis, "window", {
@@ -1445,7 +1532,8 @@ describe("buildShareURL", () => {
         ref: null,
       });
 
-      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?ip=10.20.30.40&os=linux&mode=safe");
+      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=linux&mode=safe");
+      expect(shareURL).not.toContain("10.20.30.40");
     } finally {
       Object.defineProperty(globalThis, "window", {
         value: originalWindow,

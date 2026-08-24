@@ -10,7 +10,7 @@ import { cn, safeGetItem, safeSetItem, copyTextToClipboard } from "@/lib/utils";
 import { useDetectedOS, useUserOS } from "@/lib/userPreferences";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import { springs } from "@/components/motion";
-import { trackInteraction } from "@/lib/analytics";
+import { commandCopyAnalyticsProperties, trackInteraction } from "@/lib/analytics";
 
 export interface CommandCardProps {
   /** The default command to display */
@@ -222,8 +222,7 @@ export function CommandCard({
     setCopied(true);
     // Track copy event for analytics
     trackInteraction("copy", persistKey || "command-card", "command", {
-      command_length: displayCommand.length,
-      command_preview: displayCommand.slice(0, 50),
+      ...commandCopyAnalyticsProperties(displayCommand),
       run_location: runLocation,
       os,
     });

@@ -14,7 +14,12 @@ import {
   type ModuleSelectionInput,
 } from "./moduleSelection";
 import { manifestModules, manifestProvenance, manifestSelectionProfiles } from "./generated/manifest-modules";
-import { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
+import {
+  containsIPAddress,
+  isValidIP,
+  normalizeGitRef,
+  normalizeSSHUsername,
+} from "./inputValidation";
 
 const INSTALL_SCRIPT_BASE_URL =
   "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup";
@@ -357,7 +362,10 @@ const TEAM_PROFILE_REQUIRED_PATHS = [
   "displayName",
   "generatedAt",
   "generatedBy",
+  "provenance.author",
+  "provenance.source.acfsVersion",
   "provenance.source.acfsRef",
+  "provenance.source.acfsCommit",
   "provenance.source.manifestSha256",
   "provenance.source.checksumsYamlSha256",
   "providerDefaults.provider",
@@ -367,6 +375,7 @@ const TEAM_PROFILE_REQUIRED_PATHS = [
   "providerDefaults.architecture",
   "providerDefaults.sshUser",
   "providerDefaults.sshPort",
+  "compatibility.minAcfsVersion",
   "compatibility.schemaVersions",
   "compatibility.targetUbuntuVersions",
   "compatibility.architectures",
@@ -606,9 +615,7 @@ function collapseProfileWhitespace(value: string): string {
 }
 
 function containsRawIp(value: string): boolean {
-  const trimmed = value.trim().replace(/^\[|\]$/g, "");
-  if (isValidIP(trimmed)) return true;
-  return /(?:^|[^0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?:[^0-9]|$)/.test(value);
+  return containsIPAddress(value);
 }
 
 function containsUrlUserInfo(value: string): boolean {
@@ -1221,6 +1228,16 @@ function validateTeamProfileForImport(
   }
 
   const compatibility = isRecord(input.compatibility) ? input.compatibility : {};
+  if (
+    compatibility.minAcfsVersion !== undefined
+    && compatibility.minAcfsVersion !== manifestProvenance.acfsVersion
+  ) {
+    findings.push(importFinding(
+      "team_profile_manifest_mismatch",
+      "compatibility.minAcfsVersion",
+      "compatibility.minAcfsVersion must exactly match the current ACFS version.",
+    ));
+  }
   const schemaVersions = compatibility.schemaVersions;
   if (
     schemaVersions !== undefined
@@ -1311,9 +1328,27 @@ function validateTeamProfileForImport(
     ));
   }
 
-  const provenance = isRecord(input.provenance) && isRecord(input.provenance.source)
-    ? input.provenance.source
+  const provenanceRecord = isRecord(input.provenance) ? input.provenance : {};
+  if (provenanceRecord.author !== undefined && provenanceRecord.author !== null) {
+    findings.push(importFinding(
+      "team_profile_schema_unsupported",
+      "provenance.author",
+      "provenance.author must be null in team-profile schema v1.",
+    ));
+  }
+  const provenance = isRecord(provenanceRecord.source)
+    ? provenanceRecord.source
     : {};
+  if (
+    provenance.acfsVersion !== undefined
+    && provenance.acfsVersion !== manifestProvenance.acfsVersion
+  ) {
+    findings.push(importFinding(
+      "team_profile_manifest_mismatch",
+      "provenance.source.acfsVersion",
+      "Profile ACFS version provenance must exactly match the current ACFS version.",
+    ));
+  }
   if (
     provenance.acfsRef !== undefined
     && (typeof provenance.acfsRef !== "string" || normalizeGitRef(provenance.acfsRef) !== provenance.acfsRef)
@@ -1322,6 +1357,13 @@ function validateTeamProfileForImport(
       "team_profile_schema_unsupported",
       "provenance.source.acfsRef",
       "provenance.source.acfsRef must be a valid ACFS git ref.",
+    ));
+  }
+  if (provenance.acfsCommit !== undefined && provenance.acfsCommit !== null) {
+    findings.push(importFinding(
+      "team_profile_schema_unsupported",
+      "provenance.source.acfsCommit",
+      "provenance.source.acfsCommit must be null in team-profile schema v1.",
     ));
   }
   if (
@@ -1392,6 +1434,19 @@ function validateTeamProfileForImport(
       "team_profile_ref_policy_mismatch",
       "install.ref.type",
       "install.ref.type must agree with the normalized ref value.",
+    ));
+  }
+  if (
+    typeof provenance.acfsRef === "string"
+    && normalizeGitRef(provenance.acfsRef) === provenance.acfsRef
+    && typeof ref.value === "string"
+    && normalizeGitRef(ref.value) === ref.value
+    && provenance.acfsRef !== ref.value
+  ) {
+    findings.push(importFinding(
+      "team_profile_ref_policy_mismatch",
+      "provenance.source.acfsRef",
+      "provenance.source.acfsRef must agree with install.ref.value.",
     ));
   }
   const modules = isRecord(install.modules) ? install.modules : {};
@@ -1951,13 +2006,14 @@ export function formatHandoffRunbookMarkdown(runbook: HandoffRunbook): string {
 }
 
 /**
- * Build a shareable URL with all command builder state encoded as query params.
+ * Build a shareable URL with non-sensitive command builder state encoded as query params.
+ * The target address is intentionally omitted because URLs leak through history,
+ * referrers, server logs, screenshots, and analytics integrations.
  */
 export function buildShareURL(inputs: CommandBuilderInputs): string {
   if (typeof window === "undefined") return "";
   const url = new URL(window.location.pathname, window.location.origin);
   const safeUsername = normalizeCommandUsername(inputs.username);
-  url.searchParams.set("ip", inputs.ip);
   url.searchParams.set("os", inputs.os);
   if (safeUsername !== "ubuntu") {
     url.searchParams.set("user", safeUsername);

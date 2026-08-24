@@ -4,7 +4,20 @@
  * Build timestamp: 2025-12-25T17:40:00Z
  */
 
-import { safeGetItem, safeSetItem, safeGetJSON, safeSetJSON } from './utils';
+import {
+  queryContainsSensitiveState,
+  isPrivateWizardPath,
+  safeGetItem,
+  safeSetItem,
+  safeGetJSON,
+  safeSetJSON,
+  stripSensitiveQueryState,
+  urlContainsSensitiveState,
+} from './utils';
+import {
+  containsIPAddress,
+  looksLikeOpaqueCredential,
+} from './inputValidation';
 import { TOTAL_STEPS } from './wizardSteps';
 
 // Types for GA4 events
@@ -50,10 +63,156 @@ function sanitizeGaMeasurementId(value: unknown): string | undefined {
 const GA_MEASUREMENT_ID_RAW = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 export const GA_MEASUREMENT_ID = sanitizeGaMeasurementId(GA_MEASUREMENT_ID_RAW);
 
-// Check if analytics is available
-export const isAnalyticsEnabled = (): boolean => {
-  return typeof window !== 'undefined' && !!GA_MEASUREMENT_ID && !!window.gtag;
+type AnalyticsPrivacyWindow = Window & {
+  __acfsAnalyticsDocumentTainted?: boolean;
+  [key: `ga-disable-${string}`]: boolean | undefined;
 };
+
+/** Permanently disable analytics for the lifetime of the current document. */
+export function disableAnalyticsForDocument(): void {
+  if (typeof window === 'undefined') return;
+  const analyticsWindow = window as AnalyticsPrivacyWindow;
+  analyticsWindow.__acfsAnalyticsDocumentTainted = true;
+  if (GA_MEASUREMENT_ID) {
+    analyticsWindow[`ga-disable-${GA_MEASUREMENT_ID}`] = true;
+  }
+}
+
+export function analyticsContextContainsSensitiveState(
+  search: string,
+  referrer: string,
+  currentHref?: string,
+): boolean {
+  if (queryContainsSensitiveState(search)) return true;
+  if (currentHref && urlContainsSensitiveState(currentHref)) return true;
+  return Boolean(referrer) && urlContainsSensitiveState(referrer);
+}
+
+// Check if analytics is available
+export const isAnalyticsPrivacyAllowed = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const privacyNavigator = typeof navigator === 'undefined'
+    ? undefined
+    : navigator as Navigator & { globalPrivacyControl?: boolean };
+  if (
+    privacyNavigator?.globalPrivacyControl === true
+    || privacyNavigator?.doNotTrack === '1'
+    || (window as Window & { doNotTrack?: string }).doNotTrack === '1'
+  ) return false;
+  if ((window as AnalyticsPrivacyWindow).__acfsAnalyticsDocumentTainted) return false;
+  if (isPrivateWizardPath(window.location?.pathname ?? '')) return false;
+  const referrer = typeof document === 'undefined' ? '' : document.referrer;
+  return !analyticsContextContainsSensitiveState(
+    window.location?.search ?? '',
+    referrer,
+    window.location?.href,
+  );
+};
+
+export const isAnalyticsEnabled = (): boolean => {
+  return isAnalyticsPrivacyAllowed() && !!GA_MEASUREMENT_ID && !!window.gtag;
+};
+
+export function sanitizeAnalyticsReferrer(value: string): {
+  referrer: string;
+  domain: string;
+} {
+  if (!value) return { referrer: '', domain: '' };
+  try {
+    const parsed = new URL(value);
+    if (urlContainsSensitiveState(parsed)) {
+      return { referrer: '', domain: '' };
+    }
+    return { referrer: parsed.origin, domain: parsed.hostname };
+  } catch {
+    return { referrer: '', domain: '' };
+  }
+}
+
+const SENSITIVE_ANALYTICS_KEYS = new Set([
+  'accesstoken',
+  'apikey',
+  'credential',
+  'host',
+  'hostname',
+  'ip',
+  'password',
+  'privatekey',
+  'refreshtoken',
+  'secret',
+  'token',
+  'vpsip',
+]);
+
+function normalizedAnalyticsKey(key: string): string {
+  return key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+function isSafeGeneratedAnalyticsIdentifier(key: string, value: string): boolean {
+  const normalizedKey = normalizedAnalyticsKey(key);
+  if (normalizedKey === 'userid') {
+    return /^user_\d{10,16}_[a-z0-9]{6,16}$/.test(value);
+  }
+  if (normalizedKey === 'funnelid' || normalizedKey === 'sessionid') {
+    return /^(?:lesson_)?funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(value);
+  }
+  if (normalizedKey === 'metricid') {
+    return /^v\d+-[A-Za-z0-9-]{8,100}$/.test(value);
+  }
+  return false;
+}
+
+function analyticsStringIsPrivacySafe(key: string, value: string): boolean {
+  if (value.length > 1000) return false;
+  if (containsIPAddress(value)) return false;
+  if (/-----begin [a-z ]*private key-----/i.test(value)) return false;
+  if (/\bbearer\s+\S+/i.test(value)) return false;
+  if (isSafeGeneratedAnalyticsIdentifier(key, value)) return true;
+  if (looksLikeOpaqueCredential(value)) return false;
+  if (/^(?:https?:\/\/|[/?#])/.test(value)) {
+    const base = typeof window === 'undefined'
+      ? 'https://analytics.invalid/'
+      : window.location.href;
+    if (urlContainsSensitiveState(value, base)) return false;
+  }
+  return true;
+}
+
+/** Validate a complete analytics payload before any browser or server sink. */
+export function analyticsPayloadIsPrivacySafe(value: unknown): boolean {
+  const seen = new WeakSet<object>();
+
+  const visit = (candidate: unknown, key: string, depth: number): boolean => {
+    if (depth > 5) return false;
+    if (candidate === null || typeof candidate === 'undefined') return true;
+    if (typeof candidate === 'string') return analyticsStringIsPrivacySafe(key, candidate);
+    if (typeof candidate === 'number') return Number.isFinite(candidate);
+    if (typeof candidate === 'boolean') return true;
+    if (typeof candidate !== 'object') return false;
+    if (seen.has(candidate)) return false;
+    seen.add(candidate);
+
+    if (Array.isArray(candidate)) {
+      return candidate.length <= 100
+        && candidate.every((entry) => visit(entry, key, depth + 1));
+    }
+    const prototype = Object.getPrototypeOf(candidate);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    const entries = Object.entries(candidate as Record<string, unknown>);
+    if (entries.length > 100) return false;
+    return entries.every(([property, entry]) => {
+      if (!/^[A-Za-z][A-Za-z0-9_]{0,79}$/.test(property)) return false;
+      if (SENSITIVE_ANALYTICS_KEYS.has(normalizedAnalyticsKey(property))) return false;
+      return visit(entry, property, depth + 1);
+    });
+  };
+
+  try {
+    return visit(value, '', 0);
+  } catch {
+    return false;
+  }
+}
 
 const GA_CLIENT_ID_STORAGE_KEY = 'ga_client_id';
 const MAX_GA_CLIENT_ID_LENGTH = 100;
@@ -137,8 +296,10 @@ export const sendServerEvent = async (
   eventName: string,
   params?: Record<string, string | number | boolean>
 ): Promise<void> => {
-  if (typeof window === 'undefined') return;
+  if (!isAnalyticsPrivacyAllowed()) return;
   if (!GA_MEASUREMENT_ID) return;
+  if (!/^[a-z][a-z0-9_]{0,39}$/.test(eventName)) return;
+  if (!analyticsPayloadIsPrivacySafe(params ?? {})) return;
 
   try {
     await fetch('/api/track', {
@@ -166,6 +327,8 @@ export const sendEvent = (
   parameters: Record<string, unknown> = {}
 ): void => {
   if (!isAnalyticsEnabled()) return;
+  if (!/^[a-z][a-z0-9_]{0,39}$/.test(eventName)) return;
+  if (!analyticsPayloadIsPrivacySafe(parameters)) return;
 
   window.gtag?.('event', eventName, {
     ...parameters,
@@ -179,6 +342,7 @@ export const sendEvent = (
  */
 export const setUserProperties = (properties: Record<string, string | number | boolean>) => {
   if (!isAnalyticsEnabled()) return;
+  if (!analyticsPayloadIsPrivacySafe(properties)) return;
 
   if (window.gtag) {
     window.gtag('set', 'user_properties', properties);
@@ -373,10 +537,15 @@ export const trackSSHConnection = (
 /**
  * Track installer command copy
  */
+export function commandCopyAnalyticsProperties(command: string): {
+  command_length: number;
+} {
+  return { command_length: command.length };
+}
+
 export const trackInstallerCopy = (command: string): void => {
   sendEvent('installer_command_copied', {
-    command_length: command.length,
-    command_preview: command.slice(0, 50),
+    ...commandCopyAnalyticsProperties(command),
   });
 };
 
@@ -537,17 +706,10 @@ function getAcquisitionData(): {
     };
   }
 
-  const params = new URLSearchParams(window.location.search);
-  const referrer = document.referrer || '';
-  let referrerDomain = '';
-
-  try {
-    if (referrer) {
-      referrerDomain = new URL(referrer).hostname;
-    }
-  } catch {
-    // Invalid URL
-  }
+  const params = new URLSearchParams(stripSensitiveQueryState(window.location.search));
+  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
+  const referrer = sanitizedReferrer.referrer;
+  const referrerDomain = sanitizedReferrer.domain;
 
   // Determine source from UTM or referrer
   let source = params.get('utm_source') || '';
@@ -600,6 +762,41 @@ function getAcquisitionData(): {
 const FIRST_VISIT_KEY = 'acfs_first_visit';
 const FIRST_SOURCE_KEY = 'acfs_first_source';
 
+interface FirstSourceData {
+  source: string;
+  medium: string;
+  campaign: string;
+  landing_page: string;
+  referrer?: string;
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+    && Number.isFinite(Date.parse(value));
+}
+
+function readFirstSource(): FirstSourceData | null {
+  const candidate = safeGetJSON<unknown>(FIRST_SOURCE_KEY);
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  const record = candidate as Record<string, unknown>;
+  if (
+    typeof record.source !== 'string'
+    || typeof record.medium !== 'string'
+    || typeof record.campaign !== 'string'
+    || typeof record.landing_page !== 'string'
+    || (typeof record.referrer !== 'undefined' && typeof record.referrer !== 'string')
+  ) return null;
+  const normalized: FirstSourceData = {
+    source: record.source,
+    medium: record.medium,
+    campaign: record.campaign,
+    landing_page: record.landing_page,
+    ...(typeof record.referrer === 'string' ? { referrer: record.referrer } : {}),
+  };
+  return analyticsPayloadIsPrivacySafe(normalized) ? normalized : null;
+}
+
 /**
  * Detect platform from user agent
  */
@@ -643,13 +840,21 @@ export const trackSessionStart = (): void => {
   }
 
   // Get first visit data for user properties
-  const firstVisitDate = safeGetItem(FIRST_VISIT_KEY) || now;
-  const firstSource = safeGetJSON<{
-    source: string;
-    medium: string;
-    campaign: string;
-    landing_page: string;
-  }>(FIRST_SOURCE_KEY);
+  const storedFirstVisitDate = safeGetItem(FIRST_VISIT_KEY);
+  const firstVisitDate = isIsoTimestamp(storedFirstVisitDate) ? storedFirstVisitDate : now;
+  if (firstVisitDate !== storedFirstVisitDate) {
+    safeSetItem(FIRST_VISIT_KEY, firstVisitDate);
+  }
+  const firstSource = readFirstSource();
+  if (!firstSource) {
+    safeSetJSON(FIRST_SOURCE_KEY, {
+      source: acquisition.utm_source,
+      medium: acquisition.utm_medium,
+      campaign: acquisition.utm_campaign,
+      landing_page: acquisition.landing_page,
+      referrer: acquisition.referrer,
+    });
+  }
 
   sendEvent('session_start_enhanced', {
     // Device info
@@ -673,7 +878,12 @@ export const trackSessionStart = (): void => {
   });
 
   // Check for returning user (use || 0 to handle NaN from corrupted storage)
-  const visitCount = (parseInt(safeGetItem('acfs_visit_count') || '0', 10) || 0) + 1;
+  const storedVisitCount = Number.parseInt(safeGetItem('acfs_visit_count') || '0', 10);
+  const visitCount = Number.isSafeInteger(storedVisitCount)
+    && storedVisitCount >= 0
+    && storedVisitCount < 1_000_000
+    ? storedVisitCount + 1
+    : 1;
   safeSetItem('acfs_visit_count', String(visitCount));
 
   // Set comprehensive user properties
@@ -707,8 +917,8 @@ export const getOrCreateUserId = (): string => {
   const storageKey = 'acfs_user_id';
   let userId = safeGetItem(storageKey);
 
-  if (!userId) {
-    userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+  if (!userId || !/^user_\d{10,16}_[a-z0-9]{6,16}$/.test(userId)) {
+    userId = `user_${Date.now()}_${randomDigits10()}`;
     safeSetItem(storageKey, userId);
 
     sendEvent('new_user_created', {
@@ -794,7 +1004,95 @@ function getElapsedSecondsSince(timestampIso: string | undefined): number | unde
  */
 export const getFunnelData = (): FunnelData | null => {
   if (typeof window === 'undefined') return null;
-  return safeGetJSON<FunnelData>(FUNNEL_STORAGE_KEY);
+  const candidate = safeGetJSON<unknown>(FUNNEL_STORAGE_KEY);
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  const record = candidate as Record<string, unknown>;
+  const expectedFields = new Set([
+    'sessionId',
+    'startedAt',
+    'currentStep',
+    'maxStepReached',
+    'stepTimestamps',
+    'completedSteps',
+    'source',
+    'medium',
+    'campaign',
+  ]);
+  if (
+    Object.keys(record).length !== expectedFields.size
+    || !Object.keys(record).every((field) => expectedFields.has(field))
+    || typeof record.sessionId !== 'string'
+    || !/^funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(record.sessionId)
+    || !isIsoTimestamp(record.startedAt)
+    || !Number.isInteger(record.currentStep)
+    || !Number.isInteger(record.maxStepReached)
+    || (record.currentStep as number) < 0
+    || (record.currentStep as number) > TOTAL_STEPS
+    || (record.maxStepReached as number) < 0
+    || (record.maxStepReached as number) > TOTAL_STEPS
+    || (record.currentStep as number) > (record.maxStepReached as number)
+    || !Array.isArray(record.completedSteps)
+    || record.completedSteps.length > TOTAL_STEPS
+    || !record.stepTimestamps
+    || typeof record.stepTimestamps !== 'object'
+    || Array.isArray(record.stepTimestamps)
+    || typeof record.source !== 'string'
+    || typeof record.medium !== 'string'
+    || typeof record.campaign !== 'string'
+  ) return null;
+
+  const completedSteps = record.completedSteps as unknown[];
+  if (
+    !completedSteps.every((step) =>
+      Number.isInteger(step)
+      && (step as number) >= 1
+      && (step as number) <= TOTAL_STEPS
+      && (step as number) <= (record.maxStepReached as number)
+    )
+    || new Set(completedSteps).size !== completedSteps.length
+  ) return null;
+
+  const timestampEntries = Object.entries(
+    record.stepTimestamps as Record<string, unknown>
+  );
+  if (timestampEntries.length > TOTAL_STEPS) return null;
+  const stepTimestamps: FunnelData['stepTimestamps'] = {};
+  for (const [stepId, timestamps] of timestampEntries) {
+    if (!/^\d{1,2}$/.test(stepId)) return null;
+    const stepNumber = Number(stepId);
+    if (stepNumber < 1 || stepNumber > TOTAL_STEPS) return null;
+    if (!timestamps || typeof timestamps !== 'object' || Array.isArray(timestamps)) return null;
+    const values = timestamps as Record<string, unknown>;
+    if (
+      Object.keys(values).some((field) => field !== 'entered' && field !== 'completed')
+      || !isIsoTimestamp(values.entered)
+      || (typeof values.completed !== 'undefined' && !isIsoTimestamp(values.completed))
+    ) return null;
+    stepTimestamps[stepNumber] = {
+      entered: values.entered,
+      ...(typeof values.completed === 'string' ? { completed: values.completed } : {}),
+    };
+  }
+
+  if (completedSteps.some((step) => !stepTimestamps[step as number]?.completed)) return null;
+  if (!analyticsPayloadIsPrivacySafe({
+    funnel_id: record.sessionId,
+    source: record.source,
+    medium: record.medium,
+    campaign: record.campaign,
+  })) return null;
+
+  return {
+    sessionId: record.sessionId,
+    startedAt: record.startedAt,
+    currentStep: record.currentStep as number,
+    maxStepReached: record.maxStepReached as number,
+    stepTimestamps,
+    completedSteps: completedSteps as number[],
+    source: record.source,
+    medium: record.medium,
+    campaign: record.campaign,
+  };
 };
 
 /**
@@ -816,16 +1114,17 @@ export const initFunnel = (): FunnelData => {
   }
 
   // Parse UTM parameters
-  const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(stripSensitiveQueryState(window.location.search));
+  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
 
   const funnelData: FunnelData = {
-    sessionId: `funnel_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+    sessionId: `funnel_${Date.now()}_${randomDigits10()}`,
     startedAt: new Date().toISOString(),
     currentStep: 0,
     maxStepReached: 0,
     stepTimestamps: {},
     completedSteps: [],
-    source: params.get('utm_source') || document.referrer || 'direct',
+    source: params.get('utm_source') || sanitizedReferrer.referrer || 'direct',
     medium: params.get('utm_medium') || 'none',
     campaign: params.get('utm_campaign') || 'none',
   };
@@ -838,7 +1137,7 @@ export const initFunnel = (): FunnelData => {
     source: funnelData.source,
     medium: funnelData.medium,
     campaign: funnelData.campaign,
-    referrer: document.referrer,
+    referrer: sanitizedReferrer.referrer,
   });
 
   setUserProperties({
@@ -859,6 +1158,7 @@ export const trackFunnelStepEnter = (
   stepTitle: string
 ): void => {
   if (typeof window === 'undefined') return;
+  if (!Number.isInteger(stepNumber) || stepNumber < 1 || stepNumber > TOTAL_STEPS) return;
 
   let funnelData = getFunnelData();
   if (!funnelData) {
@@ -935,6 +1235,7 @@ export const trackFunnelStepComplete = (
   additionalData?: Record<string, unknown>
 ): void => {
   if (typeof window === 'undefined') return;
+  if (!Number.isInteger(stepNumber) || stepNumber < 1 || stepNumber > TOTAL_STEPS) return;
 
   const funnelData = getFunnelData();
   if (!funnelData) return;
@@ -951,6 +1252,7 @@ export const trackFunnelStepComplete = (
   }
   funnelData.stepTimestamps[stepNumber] = {
     ...funnelData.stepTimestamps[stepNumber],
+    entered: funnelData.stepTimestamps[stepNumber]?.entered ?? now,
     completed: now,
   };
 
@@ -1101,7 +1403,50 @@ interface LessonFunnelData {
  */
 export const getLessonFunnelData = (): LessonFunnelData | null => {
   if (typeof window === 'undefined') return null;
-  return safeGetJSON<LessonFunnelData>(LESSON_FUNNEL_STORAGE_KEY);
+  const candidate = safeGetJSON<unknown>(LESSON_FUNNEL_STORAGE_KEY);
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null;
+  const record = candidate as Record<string, unknown>;
+  if (
+    typeof record.sessionId !== 'string'
+    || !/^(?:lesson_)?funnel_\d{10,16}_[a-z0-9]{6,16}$/.test(record.sessionId)
+    || !isIsoTimestamp(record.startedAt)
+    || !Number.isInteger(record.currentLesson)
+    || !Number.isInteger(record.maxLessonReached)
+    || (record.currentLesson as number) < 0
+    || (record.maxLessonReached as number) < 0
+    || (record.currentLesson as number) > 10_000
+    || (record.maxLessonReached as number) > 10_000
+    || !Array.isArray(record.completedLessons)
+    || record.completedLessons.length > 10_000
+    || !record.completedLessons.every((entry) =>
+      Number.isInteger(entry) && (entry as number) >= 0 && (entry as number) <= 10_000
+    )
+    || typeof record.source !== 'string'
+    || typeof record.medium !== 'string'
+    || typeof record.campaign !== 'string'
+    || !record.lessonTimestamps
+    || typeof record.lessonTimestamps !== 'object'
+    || Array.isArray(record.lessonTimestamps)
+  ) return null;
+
+  const timestampsAreValid = Object.entries(
+    record.lessonTimestamps as Record<string, unknown>
+  ).every(([lessonId, timestamps]) => {
+    if (!/^\d{1,5}$/.test(lessonId)) return false;
+    if (!timestamps || typeof timestamps !== 'object' || Array.isArray(timestamps)) return false;
+    const values = timestamps as Record<string, unknown>;
+    return (typeof values.entered === 'undefined' || isIsoTimestamp(values.entered))
+      && (typeof values.completed === 'undefined' || isIsoTimestamp(values.completed));
+  });
+  if (!timestampsAreValid) return null;
+  if (!analyticsPayloadIsPrivacySafe({
+    funnel_id: record.sessionId,
+    source: record.source,
+    medium: record.medium,
+    campaign: record.campaign,
+  })) return null;
+
+  return record as unknown as LessonFunnelData;
 };
 
 /**
@@ -1123,16 +1468,17 @@ export const initLessonFunnel = (totalLessons: number): LessonFunnelData => {
   }
 
   // Parse UTM parameters
-  const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(stripSensitiveQueryState(window.location.search));
+  const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
 
   const funnelData: LessonFunnelData = {
-    sessionId: `lesson_funnel_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+    sessionId: `lesson_funnel_${Date.now()}_${randomDigits10()}`,
     startedAt: new Date().toISOString(),
     currentLesson: 0,
     maxLessonReached: 0,
     lessonTimestamps: {},
     completedLessons: [],
-    source: params.get('utm_source') || document.referrer || 'direct',
+    source: params.get('utm_source') || sanitizedReferrer.referrer || 'direct',
     medium: params.get('utm_medium') || 'none',
     campaign: params.get('utm_campaign') || 'none',
   };
@@ -1145,7 +1491,7 @@ export const initLessonFunnel = (totalLessons: number): LessonFunnelData => {
     source: funnelData.source,
     medium: funnelData.medium,
     campaign: funnelData.campaign,
-    referrer: document.referrer,
+    referrer: sanitizedReferrer.referrer,
     total_lessons: totalLessons,
   });
 

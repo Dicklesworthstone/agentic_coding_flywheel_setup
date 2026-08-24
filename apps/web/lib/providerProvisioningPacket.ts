@@ -1,5 +1,9 @@
 import type { ModuleSelectionInput } from "./moduleSelection";
-import { normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
+import {
+  containsIPAddress,
+  normalizeGitRef,
+  normalizeSSHUsername,
+} from "./inputValidation";
 import type { InstallMode } from "./userPreferences";
 import { buildInstallCommand } from "./commandBuilder";
 import {
@@ -427,10 +431,19 @@ function hasSensitivePacketMarker(value: string): boolean {
   if (/(?:token|api[_-]?key|secret|password|private[_-]?key|cookie|session|credential|client[_-]?secret|webhook[_-]?secret|vault[_-]?token)/i.test(value)) {
     return true;
   }
-  if (/(?:^|[^0-9])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?:[^0-9]|$)/.test(value)) {
-    return true;
-  }
+  if (containsIPAddress(value)) return true;
   return false;
+}
+
+function safePacketGeneratedAt(value: string | null | undefined): string {
+  const candidate = value?.trim() ?? "";
+  if (candidate) {
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime()) && parsed.toISOString() === candidate) {
+      return candidate;
+    }
+  }
+  return new Date().toISOString();
 }
 
 function looksSensitivePacketText(value: string): boolean {
@@ -653,7 +666,7 @@ export function buildProviderProvisioningPacket(
     },
     provenance: {
       generatedBy: "acfs-web-wizard",
-      generatedAt: input.generatedAt ?? new Date().toISOString(),
+      generatedAt: safePacketGeneratedAt(input.generatedAt),
       sourceRef,
       wizardStep: "run-installer",
       readinessSource: "validateVPSReadiness",

@@ -1,10 +1,22 @@
 'use client';
 
-import { useEffect, useCallback, useRef, type ReactNode, Suspense } from 'react';
+import {
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  Suspense,
+} from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
 import {
   GA_MEASUREMENT_ID,
+  analyticsContextContainsSensitiveState,
+  disableAnalyticsForDocument,
+  isAnalyticsPrivacyAllowed,
+  sanitizeAnalyticsReferrer,
   trackSessionStart,
   trackPagePerformance,
   trackScrollDepth,
@@ -13,7 +25,14 @@ import {
   setUserProperties,
   sendEvent,
 } from '@/lib/analytics';
-import { safeGetItem, safeSetItem } from '@/lib/utils';
+import {
+  queryContainsSensitiveState,
+  isPrivateWizardPath,
+  safeGetItem,
+  safeSetItem,
+  inspectSensitiveNavigationUrl,
+  stripSensitiveQueryState,
+} from '@/lib/utils';
 
 interface AnalyticsProviderProps {
   children: ReactNode;
@@ -34,18 +53,26 @@ function AnalyticsTracker() {
   const searchParams = useSearchParams();
   const pagePath =
     pathname ?? (typeof window !== 'undefined' ? window.location.pathname : null);
-  const searchQuery =
+  const parameterSearchQuery =
     searchParams?.toString() ??
     (typeof window !== 'undefined' ? window.location.search.slice(1) : '');
+  const liveSearchQuery = typeof window !== 'undefined'
+    ? window.location.search.slice(1)
+    : parameterSearchQuery;
+  const sensitiveQuery = queryContainsSensitiveState(parameterSearchQuery)
+    || queryContainsSensitiveState(liveSearchQuery);
+  const searchQuery = stripSensitiveQueryState(liveSearchQuery);
   const gaId = GA_MEASUREMENT_ID?.trim();
+  const privacyAllowed = isAnalyticsPrivacyAllowed();
   const scrollDepthsReached = useRef<Set<number>>(new Set());
   const pageStartTime = useRef<number>(0);
   const timeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasInitializedGa = useRef<boolean>(false);
+  const hasTrackedSession = useRef<boolean>(false);
 
   // Initialize GA state once
   useEffect(() => {
-    if (!gaId) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed) return;
 
     const analyticsWindow = window as AnalyticsWindow;
     const dataLayer = analyticsWindow.dataLayer ?? [];
@@ -68,14 +95,15 @@ function AnalyticsTracker() {
       analyticsWindow.gtag('js', new Date());
       hasInitializedGa.current = true;
     }
-  }, [gaId]);
+  }, [gaId, sensitiveQuery, privacyAllowed]);
 
   // Track page views on route change
   useEffect(() => {
-    if (!gaId || pagePath === null) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed || pagePath === null) return;
 
     const url = searchQuery ? `${pagePath}?${searchQuery}` : pagePath;
     const analyticsWindow = window as AnalyticsWindow;
+    const sanitizedReferrer = sanitizeAnalyticsReferrer(document.referrer || '');
 
     // Reset tracking for new page
     scrollDepthsReached.current.clear();
@@ -84,10 +112,12 @@ function AnalyticsTracker() {
     // Track pageview
     analyticsWindow.gtag?.('config', gaId, {
       page_path: url,
+      page_location: `${window.location.origin}${url}`,
+      page_referrer: sanitizedReferrer.referrer || undefined,
       page_title: document.title,
       cookie_flags: 'SameSite=None;Secure',
       send_page_view: true,
-      allow_google_signals: true,
+      allow_google_signals: false,
       allow_ad_personalization_signals: false,
       custom_map: {
         dimension1: 'user_type',
@@ -108,11 +138,12 @@ function AnalyticsTracker() {
     return () => {
       window.removeEventListener('load', trackPagePerformance);
     };
-  }, [pagePath, searchQuery, gaId]);
+  }, [pagePath, searchQuery, gaId, sensitiveQuery, privacyAllowed]);
 
   // Initialize session tracking on mount
   useEffect(() => {
-    if (!gaId) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed || hasTrackedSession.current) return;
+    hasTrackedSession.current = true;
 
     // Get or create user ID
     const userId = getOrCreateUserId();
@@ -131,19 +162,11 @@ function AnalyticsTracker() {
     // Track enhanced session start
     trackSessionStart();
 
-    // Track returning vs new user (use || 0 to handle NaN from corrupted storage)
-    const visitCount = (parseInt(safeGetItem('acfs_visit_count') || '0', 10) || 0) + 1;
-    safeSetItem('acfs_visit_count', visitCount.toString());
-
-    setUserProperties({
-      visit_count: visitCount,
-      is_returning_user: visitCount > 1,
-    });
-  }, [gaId]);
+  }, [gaId, sensitiveQuery, privacyAllowed]);
 
   // Scroll depth tracking
   const handleScroll = useCallback(() => {
-    if (!gaId || pagePath === null) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed || pagePath === null) return;
 
     const scrollTop = window.scrollY;
     const docHeight = document.documentElement.scrollHeight - window.innerHeight;
@@ -157,19 +180,19 @@ function AnalyticsTracker() {
         trackScrollDepth(milestone, pagePath);
       }
     }
-  }, [pagePath, gaId]);
+  }, [pagePath, gaId, sensitiveQuery, privacyAllowed]);
 
   // Set up scroll tracking
   useEffect(() => {
-    if (!gaId) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed) return;
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleScroll, gaId]);
+  }, [handleScroll, gaId, sensitiveQuery, privacyAllowed]);
 
   // Time on page tracking
   useEffect(() => {
-    if (!gaId || pagePath === null) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed || pagePath === null) return;
 
     const timeCheckpoints = [30, 60, 120, 300, 600]; // seconds
     let lastCheckpoint = 0;
@@ -191,11 +214,11 @@ function AnalyticsTracker() {
         clearInterval(timeIntervalRef.current);
       }
     };
-  }, [pagePath, gaId]);
+  }, [pagePath, gaId, sensitiveQuery, privacyAllowed]);
 
   // Track visibility changes (tab switching)
   useEffect(() => {
-    if (!gaId || pagePath === null) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed || pagePath === null) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -213,11 +236,11 @@ function AnalyticsTracker() {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [pagePath, gaId]);
+  }, [pagePath, gaId, sensitiveQuery, privacyAllowed]);
 
   // Track page exit
   useEffect(() => {
-    if (!gaId || pagePath === null) return;
+    if (!gaId || sensitiveQuery || !privacyAllowed || pagePath === null) return;
 
     const handleBeforeUnload = () => {
       const timeSpent = Math.floor((Date.now() - pageStartTime.current) / 1000);
@@ -234,9 +257,147 @@ function AnalyticsTracker() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [pagePath, gaId]);
+  }, [pagePath, gaId, sensitiveQuery, privacyAllowed]);
 
-  return null; // This component only tracks, doesn't render anything
+  if (sensitiveQuery || !privacyAllowed || !gaId) return null;
+  return (
+    <Script
+      src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`}
+      strategy="afterInteractive"
+    />
+  );
+}
+
+/**
+ * Install the URL privacy boundary before loading any vendor runtime.
+ *
+ * History mutations are projected onto safe query state. Session-recording and
+ * generic tag-manager runtimes are deliberately not mounted by the shared root
+ * layout: an App Router document can later render an operator's host address.
+ */
+function PrivacyControlledScripts() {
+  const [analyticsAllowed, setAnalyticsAllowed] = useState(false);
+  const documentTainted = useRef<boolean | null>(null);
+
+  useLayoutEffect(() => {
+    const browserHistory = window.history;
+    const originalPushState = browserHistory.pushState;
+    const originalReplaceState = browserHistory.replaceState;
+    const documentIsPrivate = isPrivateWizardPath(window.location.pathname);
+    if (documentTainted.current === null) {
+      documentTainted.current = !isAnalyticsPrivacyAllowed()
+        || analyticsContextContainsSensitiveState(
+        window.location.search,
+        document.referrer || '',
+        window.location.href,
+      )
+        || isPrivateWizardPath(window.location.pathname);
+      if (documentTainted.current) {
+        disableAnalyticsForDocument();
+      }
+    }
+
+    const markDocumentTainted = (): void => {
+      documentTainted.current = true;
+      disableAnalyticsForDocument();
+    };
+
+    const routeInCurrentDocument = (
+      method: 'push' | 'replace',
+      data: unknown,
+      unused: string,
+      value?: string | URL | null,
+    ): void => {
+      const current = new URL(window.location.href);
+      const result = inspectSensitiveNavigationUrl(value, current.href);
+      const destination = result.value;
+      let target: URL | null = null;
+      if (typeof destination === 'string') {
+        try {
+          target = new URL(destination, current);
+        } catch {
+          // Let native History preserve its own error semantics below.
+        }
+      }
+
+      const crossesPrivacyZone = target?.origin === current.origin
+        && isPrivateWizardPath(target.pathname) !== isPrivateWizardPath(current.pathname);
+      if (result.sensitiveStateDetected || crossesPrivacyZone) {
+        markDocumentTainted();
+      }
+      if (result.sensitiveStateRemoved || crossesPrivacyZone) {
+        if (target?.origin === current.origin) {
+          if (method === 'replace') {
+            window.location.replace(target.href);
+          } else {
+            window.location.assign(target.href);
+          }
+          return;
+        }
+      }
+
+      if (method === 'replace') {
+        originalReplaceState.call(browserHistory, data, unused, destination);
+      } else {
+        originalPushState.call(browserHistory, data, unused, destination);
+      }
+    };
+
+    const guardedPushState: History['pushState'] = (data, unused, value) => {
+      routeInCurrentDocument('push', data, unused, value);
+    };
+    const guardedReplaceState: History['replaceState'] = (data, unused, value) => {
+      routeInCurrentDocument('replace', data, unused, value);
+    };
+
+    browserHistory.pushState = guardedPushState;
+    browserHistory.replaceState = guardedReplaceState;
+
+    const scrubCurrentLocation = (): void => {
+      const result = inspectSensitiveNavigationUrl(
+        window.location.href,
+        window.location.href,
+      );
+      if (isPrivateWizardPath(window.location.pathname) !== documentIsPrivate) {
+        markDocumentTainted();
+        window.location.replace(
+          typeof result.value === 'string' ? result.value : window.location.href,
+        );
+        return;
+      }
+      if (result.sensitiveStateRemoved && typeof result.value === 'string') {
+        markDocumentTainted();
+        window.location.replace(result.value);
+      }
+    };
+
+    const handlePopState = (): void => {
+      scrubCurrentLocation();
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+
+    scrubCurrentLocation();
+    if (!documentTainted.current) {
+      setAnalyticsAllowed(true);
+    }
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+      if (browserHistory.pushState === guardedPushState) {
+        browserHistory.pushState = originalPushState;
+      }
+      if (browserHistory.replaceState === guardedReplaceState) {
+        browserHistory.replaceState = originalReplaceState;
+      }
+    };
+  }, []);
+
+  if (!analyticsAllowed) return null;
+  return (
+    <AnalyticsTracker />
+  );
 }
 
 /**
@@ -247,24 +408,11 @@ function AnalyticsTracker() {
  * to prevent SSR bailout for the entire app tree.
  */
 export function AnalyticsProvider({ children }: AnalyticsProviderProps) {
-  const gaId = GA_MEASUREMENT_ID?.trim();
-
-  if (!gaId) {
-    return <>{children}</>;
-  }
-
-  const gaExternalScriptProps = {
-    src: `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`,
-    strategy: 'afterInteractive' as const,
-  };
-
   return (
     <>
-      {/* Google Analytics Script */}
-      <Script {...gaExternalScriptProps} />
-      {/* Analytics tracker wrapped in Suspense to prevent SSR bailout */}
+      {/* Vendor runtimes mount only after the document privacy boundary exists. */}
       <Suspense fallback={null}>
-        <AnalyticsTracker />
+        <PrivacyControlledScripts />
       </Suspense>
       {children}
     </>

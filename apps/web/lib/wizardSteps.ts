@@ -9,7 +9,12 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect } from "react";
-import { safeGetJSON, safeGetItem, safeSetJSON } from "./utils";
+import {
+  safeGetJSON,
+  safeGetItem,
+  safeSetJSON,
+  stripSensitiveQueryState,
+} from "./utils";
 import {
   detectOS,
   getCreateVPSChecklist,
@@ -253,9 +258,8 @@ function getCompletedStepsFromQuery(): number[] {
       COMPLETED_STEPS_QUERY_KEY
     );
     if (!raw) return [];
-    return normalizeCompletedSteps(
-      raw.split(",").map((value) => Number.parseInt(value, 10))
-    );
+    if (!/^(?:[1-9][0-9]?)(?:,[1-9][0-9]?)*$/.test(raw)) return [];
+    return normalizeCompletedSteps(raw.split(",").map(Number));
   } catch {
     return [];
   }
@@ -266,6 +270,7 @@ function setCompletedStepsQuery(steps: number[]): boolean {
   try {
     const normalized = normalizeCompletedSteps(steps);
     const url = new URL(window.location.href);
+    url.search = stripSensitiveQueryState(url.search);
     if (normalized.length === 0) {
       url.searchParams.delete(COMPLETED_STEPS_QUERY_KEY);
     } else {
@@ -319,7 +324,7 @@ export function getCompletedSteps(): number[] {
   const querySteps = getCompletedStepsFromQuery();
   const parsed = safeGetJSON<unknown[]>(COMPLETED_STEPS_KEY);
   if (Array.isArray(parsed)) {
-    return normalizeCompletedSteps([...parsed, ...querySteps]);
+    return normalizeCompletedSteps(parsed);
   }
   return querySteps;
 }
@@ -328,7 +333,9 @@ export function getCompletedSteps(): number[] {
 export function setCompletedSteps(steps: number[]): boolean {
   const normalized = normalizeCompletedSteps(steps);
   const didPersist = safeSetJSON(COMPLETED_STEPS_KEY, normalized);
-  const didPersistQuery = didPersist ? false : setCompletedStepsQuery(normalized);
+  const didPersistQuery = didPersist
+    ? setCompletedStepsQuery([])
+    : setCompletedStepsQuery(normalized);
   if (didPersist || didPersistQuery) {
     emitCompletedStepsChanged(normalized);
   }

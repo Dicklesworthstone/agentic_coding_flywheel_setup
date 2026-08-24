@@ -12,7 +12,14 @@ import {
   normalizeGitRef,
   normalizeSSHUsername,
 } from "./inputValidation";
-import { safeGetItem, safeGetJSON, safeSetItem, safeSetJSON } from "./utils";
+import {
+  safeGetItem,
+  safeGetJSON,
+  safeSetItem,
+  safeSetJSON,
+  stripSensitiveQueryState,
+  urlContainsSensitiveState,
+} from "./utils";
 import {
   VPS_PROVIDERS,
   VPS_UBUNTU_IMAGE_OPTIONS,
@@ -59,6 +66,7 @@ const WORKLOAD_IDS: readonly WorkloadId[] = ["light", "standard", "heavy"];
 const MIN_TARGET_AGENTS = 5;
 const MAX_TARGET_AGENTS = 50;
 const TARGET_AGENT_STEP = 5;
+const volatileVPSIPs = new WeakMap<object, string>();
 
 function normalizeStringList(values: unknown): string[] {
   if (!Array.isArray(values)) {
@@ -136,6 +144,7 @@ function setQueryParam(key: string, value: string | null): boolean {
   if (typeof window === "undefined") return false;
   try {
     const url = new URL(window.location.href);
+    url.search = stripSensitiveQueryState(url.search);
     if (value === null || value === "") {
       url.searchParams.delete(key);
     } else {
@@ -241,14 +250,16 @@ export function detectOS(): OperatingSystem | null {
 }
 
 /**
- * Get the user's VPS IP address from the URL fallback or localStorage.
+ * Get the user's VPS IP address from localStorage or the in-memory fallback.
+ * Host addresses are deliberately never imported from URL query parameters.
  */
 export function getVPSIP(): string | null {
-  const fromQuery = getQueryParam(VPS_IP_QUERY_KEY);
-  if (fromQuery && isValidIP(fromQuery)) {
-    return fromQuery.trim();
-  }
+  if (typeof window === "undefined") return null;
 
+  const volatileVPSIP = volatileVPSIPs.get(window);
+  if (volatileVPSIP && isValidIP(volatileVPSIP)) {
+    return volatileVPSIP;
+  }
   const stored = safeGetItem(VPS_IP_KEY);
   if (stored && isValidIP(stored)) {
     return stored.trim();
@@ -258,20 +269,25 @@ export function getVPSIP(): string | null {
 }
 
 /**
- * Save the user's VPS IP address to localStorage.
- * Only keeps the IP in the URL when localStorage is unavailable.
+ * Save the user's VPS IP address to localStorage, with an in-memory fallback.
+ * The URL is scrubbed even when durable browser storage is unavailable.
  */
 export function setVPSIP(ip: string): boolean {
+  if (typeof window === "undefined") return false;
   const normalized = ip.trim();
   if (!isValidIP(normalized)) {
     return false;
   }
-  const storedOk = safeSetItem(VPS_IP_KEY, normalized);
-  const urlOk = setQueryParam(VPS_IP_QUERY_KEY, storedOk ? null : normalized);
-  if (storedOk || urlOk) {
-    emitUserPreferencesUpdate();
+  const didScrubURL = setQueryParam(VPS_IP_QUERY_KEY, null)
+    || !urlContainsSensitiveState(window.location.href);
+  if (!didScrubURL) return false;
+  if (safeSetItem(VPS_IP_KEY, normalized)) {
+    volatileVPSIPs.delete(window);
+  } else {
+    volatileVPSIPs.set(window, normalized);
   }
-  return storedOk || urlOk;
+  emitUserPreferencesUpdate();
+  return true;
 }
 
 export function getVPSReadinessSelection(): VPSReadinessSelection | null {
@@ -322,6 +338,16 @@ export function useUserOS(): [OperatingSystem | null, (os: OperatingSystem) => v
 export function useVPSIP(): [string | null, (ip: string) => void, boolean] {
   const queryClient = useQueryClient();
   usePreferenceSync(userPreferencesKeys.vpsIP);
+  useEffect(() => {
+    setQueryParam(VPS_IP_QUERY_KEY, null);
+    const clearVolatileFallback = (event: StorageEvent) => {
+      if (event.key === VPS_IP_KEY || event.key === null) {
+        volatileVPSIPs.delete(window);
+      }
+    };
+    window.addEventListener("storage", clearVolatileFallback);
+    return () => window.removeEventListener("storage", clearVolatileFallback);
+  }, []);
 
   const { data, status } = useQuery({
     queryKey: userPreferencesKeys.vpsIP,

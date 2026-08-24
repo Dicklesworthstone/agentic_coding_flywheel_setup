@@ -273,8 +273,8 @@ describe("buildProviderProvisioningPacket", () => {
   test("sanitizes free-form provider metadata before support-safe serialization", () => {
     const packet = buildProviderProvisioningPacket({
       ...baseInput,
-      providerId: "Linode\napi_token=sk_live_1234567890",
-      planName: "sk_live_1234567890",
+      providerId: "Linode\napi_token=sbp_1234567890123456",
+      planName: "sbp_1234567890123456",
       ubuntuVersion: "24.04 bearer abcdef",
       region: "newark 203.0.113.42",
       sshPublicKeyFingerprint: "SHA256:fixture",
@@ -286,9 +286,27 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.size.planName).toBe("custom plan");
     expect(packet.osImage.version).toBe("25.10");
     expect(packet.region.id).toBe("not-listed");
-    expect(json).not.toContain("sk_live_1234567890");
+    expect(json).not.toContain("sbp_1234567890123456");
     expect(json).not.toContain("bearer abcdef");
     expect(json).not.toContain("203.0.113.42");
+  });
+
+  test("redacts embedded IPv6 literals and rejects non-canonical provenance timestamps", () => {
+    const packet = buildProviderProvisioningPacket({
+      ...baseInput,
+      providerId: "host=[2001:db8::7]",
+      region: "edge 2001:db8::8",
+      generatedAt: "203.0.113.42 bearer secret",
+    });
+    const json = serializeProviderProvisioningPacketJson(packet);
+
+    expect(packet.provider.id).toBe("other");
+    expect(packet.region.id).toBe("not-listed");
+    expect(packet.provenance.generatedAt).toBe(new Date(packet.provenance.generatedAt).toISOString());
+    expect(json).not.toContain("2001:db8::7");
+    expect(json).not.toContain("2001:db8::8");
+    expect(json).not.toContain("203.0.113.42");
+    expect(json).not.toContain("bearer secret");
   });
 
   test("omits unsafe SSH public key fields from support-safe packets", () => {

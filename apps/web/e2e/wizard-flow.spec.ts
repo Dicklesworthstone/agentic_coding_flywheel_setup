@@ -885,11 +885,12 @@ test.describe("Query Param Fallback", () => {
     await expect(page.getByText(/Windows Terminal/i).first()).toBeVisible();
   });
 
-  test("should honor ?os and ?ip on deep-link to ssh-connect", async ({ page }) => {
+  test("should honor ?os but refuse to import a VPS IP from a deep-link", async ({ page }) => {
     await page.goto("/wizard/ssh-connect?os=mac&ip=192.168.1.100");
-    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/ssh-connect"));
-    await expect(page.locator("h1").first()).toContainText(/SSH/i);
-    await expect(page.locator('code:has-text("192.168.1.100")').first()).toBeVisible();
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
+    const url = new URL(page.url());
+    expect(url.searchParams.get("os")).toBe("mac");
+    expect(url.searchParams.get("ip")).toBeNull();
   });
 });
 
@@ -932,7 +933,7 @@ test.describe("No localStorage (query-only resilience)", () => {
     await page.click('button:has-text("I rented a VPS")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
 
-    // Step 5 -> Step 6 (IP stored in URL)
+    // Step 5 -> Step 6 (IP retained in memory, never stored in the URL)
     const checkboxes = page.locator('button[role="checkbox"]');
     const count = await checkboxes.count();
     for (let i = 0; i < count; i++) {
@@ -949,7 +950,7 @@ test.describe("No localStorage (query-only resilience)", () => {
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/ssh-connect"));
     const url = new URL(page.url());
     expect(url.searchParams.get("os")).toBe("mac");
-    expect(url.searchParams.get("ip")).toBe("10.10.10.10");
+    expect(url.searchParams.get("ip")).toBeNull();
     expect(url.searchParams.get("steps")).toBe("1,2,3,4,5");
     await expect(page.locator('code:has-text("10.10.10.10")').first()).toBeVisible();
   });
@@ -2123,14 +2124,38 @@ test.describe("Command Builder Panel", () => {
     await expect(copyBtn.locator('svg.text-\\[oklch\\(0\\.72_0\\.19_145\\)\\]')).toBeVisible();
   });
 
-  test("should restore state from URL query params", async ({ page }) => {
-    // Navigate with query params
+  test("should restore non-sensitive query state and scrub a supplied IP", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding?ip=10.20.30.40&mode=safe&user=admin&ref=v2.0.0");
     await page.waitForLoadState("domcontentloaded");
 
-    // Commands should reflect the URL params
-    // Note: IP might still use localStorage if set; this tests fresh load
+    await expect(page).not.toHaveURL(/(?:\?|&)ip=/);
+    await expect(page.locator('code').filter({ hasText: '192.168.1.100' }).first()).toBeVisible();
     await expect(page.locator('code').filter({ hasText: '--mode safe' }).first()).toBeVisible();
+  });
+
+  test("should hard-navigate across the privacy zone without retaining router secrets", async ({ page }) => {
+    const consoleErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text());
+    });
+    await page.goto("/get-started?mode=safe");
+    await page.waitForLoadState("domcontentloaded");
+
+    const secret = "sk-proj-abcdefghijklmnopqrstuvwxyz012345";
+    await page.evaluate((value) => {
+      window.history.pushState(
+        { __NA: true, renderedSearch: `token=${value}` },
+        "",
+        `/wizard/launch-onboarding?mode=safe&token=${value}`,
+      );
+    }, secret).catch(() => {
+      // A hard navigation may destroy the evaluation context before it returns.
+    });
+    await page.waitForLoadState("domcontentloaded");
+
+    expect(page.url()).not.toContain(secret);
+    expect(await page.evaluate(() => JSON.stringify(window.history.state))).not.toContain(secret);
+    expect(consoleErrors.join("\n")).not.toContain("useInsertionEffect");
   });
 
   test("should display IP input when no IP is stored", async ({ page }) => {
