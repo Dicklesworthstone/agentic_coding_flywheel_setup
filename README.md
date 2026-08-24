@@ -1533,7 +1533,7 @@ acfs doctor --fix --dry-run   # Preview fixes without applying
 
 #### Safe Auto-Fixers
 
-These fixes are applied automatically when `--fix` is used:
+These fixes are applied when `--fix` is used. Failed checks are fixed right away; warning-level checks (which most of these are) additionally need `--yes`, so the usual invocation is `acfs doctor --fix --yes`:
 
 | Fix ID | Description | Undo Strategy |
 |--------|-------------|---------------|

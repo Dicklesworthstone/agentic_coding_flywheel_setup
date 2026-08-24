@@ -1653,16 +1653,21 @@ dispatch_fix() {
             fix_path_ordering "$check_id"
             ;;
 
-        # Config file copies
-        config.acfs_zshrc)
-            fix_config_copy "$check_id" \
-                "$SCRIPT_DIR/../../acfs/zsh/acfs.zshrc" \
-                "$(doctor_fix_runtime_acfs_home)/zsh/acfs.zshrc"
-            ;;
-        config.tmux)
-            fix_config_copy "$check_id" \
-                "$SCRIPT_DIR/../../acfs/tmux/tmux.conf" \
-                "$(doctor_fix_runtime_acfs_home)/tmux/tmux.conf"
+        # Config file copies. SCRIPT_DIR/../../acfs/* only exists in a repo
+        # checkout; an installed tree (~/.acfs/scripts/lib) has no sibling
+        # asset directory — there the missing file IS the asset, so route to
+        # `acfs update` instead of failing a copy from a bogus path.
+        config.acfs_zshrc|config.tmux)
+            local cfg_rel="zsh/acfs.zshrc"
+            [[ "$check_id" == "config.tmux" ]] && cfg_rel="tmux/tmux.conf"
+            local cfg_src="${SCRIPT_DIR:-}/../../acfs/$cfg_rel"
+            if [[ -n "${SCRIPT_DIR:-}" ]] && [[ -f "$cfg_src" ]]; then
+                fix_config_copy "$check_id" "$cfg_src" \
+                    "$(doctor_fix_runtime_acfs_home)/$cfg_rel"
+            else
+                FIXES_MANUAL+=("$check_id|Source asset not available from this install|Run: acfs update")
+                FIX_MANUAL=$((FIX_MANUAL + 1))
+            fi
             ;;
 
         # DCG hook

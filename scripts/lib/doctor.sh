@@ -1326,6 +1326,19 @@ run_with_timeout() {
     return $status
 }
 
+# True when the given zshrc actively sources ~/.acfs/zsh/acfs.zshrc
+# (comments mentioning it don't count). Mirrors
+# doctor_fix_file_has_active_acfs_zshrc_source in doctor_fix.sh.
+_acfs_doctor_zshrc_sources_acfs() {
+    local file="${1:-}"
+    [[ -f "$file" ]] || return 1
+    awk '
+        /^[[:space:]]*#/ { next }
+        /(^|[[:space:];&|])(source|\.)[[:space:]]+.*\.acfs\/zsh\/acfs\.zshrc/ { found=1; exit }
+        END { exit(found ? 0 : 1) }
+    ' "$file" 2>/dev/null
+}
+
 # Arch-family detection for fix hints (cached after first call).
 # ACFS_DISTRO_FAMILY is authoritative when the installer exported it;
 # otherwise fall back to /etc/os-release (arch, arch-likes, omarchy).
@@ -2173,6 +2186,60 @@ check_shell() {
     check_command "shell.zoxide" "zoxide" "zoxide" \
         "Re-run: curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
     check_command "shell.direnv" "direnv" "direnv" "$(doctor_pkg_install_hint direnv)"
+
+    # Managed shell wiring. These ids intentionally match doctor_fix
+    # dispatch arms so `acfs doctor --fix --yes` can repair them:
+    # config.* -> fix_config_copy, shell.acfs_sourced -> fix_acfs_sourcing,
+    # path.* -> fix_path_ordering. Without these checks those headline
+    # fixers were unreachable (no check ever emitted their ids).
+    local managed_zshrc="$runtime_home/.zshrc"
+    local managed_acfs_zshrc="$runtime_home/.acfs/zsh/acfs.zshrc"
+    local managed_tmux_conf="$runtime_home/.acfs/tmux/tmux.conf"
+
+    if [[ ! -d "$runtime_home/.acfs" ]]; then
+        check "config.acfs_zshrc" "ACFS zshrc asset" "skip" "~/.acfs not present"
+        check "config.tmux" "ACFS tmux config asset" "skip" "~/.acfs not present"
+    else
+        if [[ -f "$managed_acfs_zshrc" ]]; then
+            check "config.acfs_zshrc" "ACFS zshrc asset" "pass"
+        else
+            check "config.acfs_zshrc" "ACFS zshrc asset" "warn" \
+                "~/.acfs/zsh/acfs.zshrc missing (alias/PATH loader gone)" \
+                "Run: acfs update   (or: acfs doctor --fix --yes)"
+        fi
+        if [[ -f "$managed_tmux_conf" ]]; then
+            check "config.tmux" "ACFS tmux config asset" "pass"
+        else
+            check "config.tmux" "ACFS tmux config asset" "warn" \
+                "~/.acfs/tmux/tmux.conf missing" \
+                "Run: acfs update   (or: acfs doctor --fix --yes)"
+        fi
+    fi
+
+    if [[ ! -f "$managed_acfs_zshrc" ]]; then
+        check "shell.acfs_sourced" "ACFS sourced from .zshrc" "skip" \
+            "acfs.zshrc asset missing (see config.acfs_zshrc)"
+    elif _acfs_doctor_zshrc_sources_acfs "$managed_zshrc"; then
+        check "shell.acfs_sourced" "ACFS sourced from .zshrc" "pass"
+    else
+        check "shell.acfs_sourced" "ACFS sourced from .zshrc" "warn" \
+            "~/.zshrc does not source ~/.acfs/zsh/acfs.zshrc (aliases and PATH not loaded in new shells)" \
+            "acfs doctor --fix --yes"
+    fi
+
+    # PATH wiring: a sourced acfs.zshrc already manages PATH, so only flag
+    # shells with neither the loader nor any ~/.local/bin PATH entry. The
+    # marker string mirrors fix_path_ordering in doctor_fix.sh.
+    local acfs_path_marker="# ACFS PATH ordering (added by doctor --fix)"
+    if _acfs_doctor_zshrc_sources_acfs "$managed_zshrc" \
+       || grep -Fq "$acfs_path_marker" "$managed_zshrc" 2>/dev/null \
+       || grep -q '\.local/bin' "$managed_zshrc" 2>/dev/null; then
+        check "path.ordering" "PATH wiring in .zshrc" "pass"
+    else
+        check "path.ordering" "PATH wiring in .zshrc" "warn" \
+            "~/.zshrc has no ACFS loader and no ~/.local/bin PATH entry" \
+            "acfs doctor --fix --yes"
+    fi
 
     blank_line
 }
