@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import {
   formatPluginDiagnostics,
   loadPluginPackageFromFile,
+  MAX_PLUGIN_JSON_NESTING_DEPTH,
   MAX_PLUGIN_MANIFEST_BYTES,
   mergeValidatedPlugins,
   validatePluginPackage,
@@ -929,6 +930,83 @@ describe('loadPluginPackageFromFile', () => {
           sizeBytes: MAX_PLUGIN_MANIFEST_BYTES + 1,
           maximumBytes: MAX_PLUGIN_MANIFEST_BYTES,
         },
+      }),
+    ]);
+  });
+
+  test('refuses invalid UTF-8 that a lossy decoder could turn into valid JSON', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acfs-invalid-utf8-plugin-test-'));
+    const pluginPath = join(dir, 'plugin.json');
+    const pluginBytes = Buffer.from(JSON.stringify(validPlugin()), 'utf-8');
+    const displayNameOffset = pluginBytes.indexOf(Buffer.from('Example Tools'));
+    expect(displayNameOffset).toBeGreaterThanOrEqual(0);
+    pluginBytes[displayNameOffset] = 0xff;
+    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
+    writeFileSync(pluginPath, pluginBytes);
+
+    const result = loadPluginPackageFromFile(
+      pluginPath,
+      validationOptions({ expectedPackageSha256 })
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'plugin_disallowed_behavior',
+        message: expect.stringContaining('valid UTF-8'),
+      }),
+    ]);
+  });
+
+  test('refuses duplicate JSON keys instead of silently accepting the last value', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acfs-duplicate-key-plugin-test-'));
+    const pluginPath = join(dir, 'plugin.json');
+    const pluginBytes = JSON.stringify(validPlugin()).replace(
+      '"displayName":"Example Tools"',
+      '"displayName":"Decoy","displayName":"Example Tools"'
+    );
+    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
+    writeFileSync(pluginPath, pluginBytes, 'utf-8');
+
+    const result = loadPluginPackageFromFile(
+      pluginPath,
+      validationOptions({ expectedPackageSha256 })
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'plugin_disallowed_behavior',
+        message: expect.stringContaining('duplicate object keys'),
+      }),
+    ]);
+  });
+
+  test('refuses excessive JSON nesting before recursive schema inspection', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acfs-deep-json-plugin-test-'));
+    const pluginPath = join(dir, 'plugin.json');
+    const plugin = validPlugin();
+    const nestedValue = `${'{"next":'.repeat(MAX_PLUGIN_JSON_NESTING_DEPTH + 1)}null${'}'.repeat(MAX_PLUGIN_JSON_NESTING_DEPTH + 1)}`;
+    const pluginBytes = JSON.stringify({ ...plugin, extensions: undefined }).replace(
+      /}$/,
+      `,"extensions":${nestedValue}}`
+    );
+    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
+    writeFileSync(pluginPath, pluginBytes, 'utf-8');
+
+    const result = loadPluginPackageFromFile(
+      pluginPath,
+      validationOptions({ expectedPackageSha256 })
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'plugin_disallowed_behavior',
+        message: expect.stringContaining('maximum JSON nesting depth'),
       }),
     ]);
   });

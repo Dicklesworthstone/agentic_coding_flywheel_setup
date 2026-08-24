@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
+import { TextDecoder } from 'node:util';
 import { z } from 'zod';
 import { ModuleWebMetadataSchema } from './schema.js';
 import type { InstallerChecksumEntry } from './validate.js';
@@ -15,6 +16,7 @@ import { isValidCategory, toGeneratedFunctionName } from './utils.js';
 const PLUGIN_SCHEMA = 'acfs.plugin-package.v1';
 const SUPPORTED_SCHEMA_VERSION = 1;
 export const MAX_PLUGIN_MANIFEST_BYTES = 1_048_576;
+export const MAX_PLUGIN_JSON_NESTING_DEPTH = 64;
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
 const VERIFIED_INSTALLER_TOOL_PATTERN = /^[a-z][a-z0-9_]*$/;
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.*$/;
@@ -394,6 +396,129 @@ function containsSecretLikeValue(value: string): boolean {
     // Non-URL strings continue through the remaining detectors.
   }
   return false;
+}
+
+/**
+ * JSON.parse accepts duplicate object keys and silently keeps the last value.
+ * That is unsafe for a reviewed manifest because a human, a signer, and a
+ * consumer can otherwise disagree about which declaration is authoritative.
+ * This scanner runs only after JSON.parse has proved the syntax, so it needs to
+ * identify object-key boundaries rather than duplicate the JSON validator.
+ */
+type JsonManifestInspection = 'duplicate_key' | 'nesting_limit' | undefined;
+
+function inspectJsonManifestStructure(text: string): JsonManifestInspection {
+  let offset = 0;
+
+  const skipWhitespace = (): void => {
+    while (
+      offset < text.length &&
+      (text[offset] === ' ' ||
+        text[offset] === '\n' ||
+        text[offset] === '\r' ||
+        text[offset] === '\t')
+    ) {
+      offset++;
+    }
+  };
+
+  const readString = (): string => {
+    const start = offset;
+    offset++;
+    while (offset < text.length) {
+      const character = text[offset++];
+      if (character === '\\') {
+        offset++;
+      } else if (character === '"') {
+        return JSON.parse(text.slice(start, offset)) as string;
+      }
+    }
+    return '';
+  };
+
+  const skipPrimitive = (): void => {
+    while (offset < text.length) {
+      const character = text[offset];
+      if (
+        character === ',' ||
+        character === ']' ||
+        character === '}' ||
+        character === ' ' ||
+        character === '\n' ||
+        character === '\r' ||
+        character === '\t'
+      ) {
+        return;
+      }
+      offset++;
+    }
+  };
+
+  function readValue(depth: number): JsonManifestInspection {
+    if (depth > MAX_PLUGIN_JSON_NESTING_DEPTH) return 'nesting_limit';
+    skipWhitespace();
+    if (text[offset] === '{') return readObject(depth);
+    if (text[offset] === '[') return readArray(depth);
+    if (text[offset] === '"') {
+      readString();
+      return undefined;
+    }
+    skipPrimitive();
+    return undefined;
+  }
+
+  function readObject(depth: number): JsonManifestInspection {
+    offset++;
+    skipWhitespace();
+    if (text[offset] === '}') {
+      offset++;
+      return undefined;
+    }
+
+    const keys = new Set<string>();
+    while (offset < text.length) {
+      const key = readString();
+      if (keys.has(key)) return 'duplicate_key';
+      keys.add(key);
+
+      skipWhitespace();
+      offset++;
+      const nestedInspection = readValue(depth + 1);
+      if (nestedInspection) return nestedInspection;
+      skipWhitespace();
+      if (text[offset] === '}') {
+        offset++;
+        return undefined;
+      }
+      offset++;
+      skipWhitespace();
+    }
+    return undefined;
+  }
+
+  function readArray(depth: number): JsonManifestInspection {
+    offset++;
+    skipWhitespace();
+    if (text[offset] === ']') {
+      offset++;
+      return undefined;
+    }
+
+    while (offset < text.length) {
+      const nestedInspection = readValue(depth + 1);
+      if (nestedInspection) return nestedInspection;
+      skipWhitespace();
+      if (text[offset] === ']') {
+        offset++;
+        return undefined;
+      }
+      offset++;
+      skipWhitespace();
+    }
+    return undefined;
+  }
+
+  return readValue(0);
 }
 
 function scanSecretMaterial(
@@ -1485,7 +1610,23 @@ export function loadPluginPackageFromFile(
   }
 
   const packageSha256 = createHash('sha256').update(fileBytes).digest('hex');
-  const text = fileBytes.toString('utf-8');
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(fileBytes);
+  } catch {
+    return {
+      valid: false,
+      diagnostics: [
+        {
+          code: 'plugin_disallowed_behavior',
+          message: 'Plugin manifest must contain valid UTF-8 JSON bytes',
+          path: '<root>',
+          severity: 'error',
+        },
+      ],
+      manifestModules: [],
+    };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -1496,6 +1637,25 @@ export function loadPluginPackageFromFile(
         {
           code: 'plugin_missing_required_field',
           message: `Plugin file contains invalid syntax: ${filePath} (${parseError instanceof Error ? parseError.message : String(parseError)})`,
+          path: '<root>',
+          severity: 'error',
+        },
+      ],
+      manifestModules: [],
+    };
+  }
+
+  const structureInspection = inspectJsonManifestStructure(text);
+  if (structureInspection) {
+    return {
+      valid: false,
+      diagnostics: [
+        {
+          code: 'plugin_disallowed_behavior',
+          message:
+            structureInspection === 'duplicate_key'
+              ? 'Plugin manifest contains ambiguous duplicate object keys'
+              : `Plugin manifest exceeds the maximum JSON nesting depth of ${MAX_PLUGIN_JSON_NESTING_DEPTH}`,
           path: '<root>',
           severity: 'error',
         },
