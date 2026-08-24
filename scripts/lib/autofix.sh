@@ -2856,12 +2856,18 @@ acfs_undo_command() {
         if [[ "$everything" != "true" ]]; then
             undo_session_filter="$(jq -r 'select((.session_id // "") != "") | .session_id' "$ACFS_CHANGES_FILE" 2>/dev/null | tail -n 1 || true)"
         fi
-        mapfile -t change_ids < <(jq -r --argjson undone "$undone_ids_json" --argjson undo_statuses "$undo_statuses_json" --arg sess "$undo_session_filter" 'select((.id // "") as $id | (($undone | index($id)) | not) and (($undo_statuses[$id] // "") != "pending")) | select($sess == "" or (.session_id // "") == $sess) | .id' "$ACFS_CHANGES_FILE" | sort -r)
+        change_ids=()
+        while IFS= read -r _cid; do
+            [[ -n "$_cid" ]] && change_ids+=("$_cid")
+        done < <(jq -r --argjson undone "$undone_ids_json" --argjson undo_statuses "$undo_statuses_json" --arg sess "$undo_session_filter" 'select((.id // "") as $id | (($undone | index($id)) | not) and (($undo_statuses[$id] // "") != "pending")) | select($sess == "" or (.session_id // "") == $sess) | .id' "$ACFS_CHANGES_FILE" | sort -r)
         if [[ -n "$undo_session_filter" ]]; then
             log_info "Undoing changes from the most recent fix session ($undo_session_filter); use --everything to include earlier sessions"
         fi
     elif [[ -n "$category" ]]; then
-        mapfile -t change_ids < <(jq -r --argjson undone "$undone_ids_json" --argjson undo_statuses "$undo_statuses_json" --arg category "$category" 'select((.id // "") as $id | (($undone | index($id)) | not) and (($undo_statuses[$id] // "") != "pending")) | select(.category == $category) | .id' "$ACFS_CHANGES_FILE" | sort -r)
+        change_ids=()
+        while IFS= read -r _cid; do
+            [[ -n "$_cid" ]] && change_ids+=("$_cid")
+        done < <(jq -r --argjson undone "$undone_ids_json" --argjson undo_statuses "$undo_statuses_json" --arg category "$category" 'select((.id // "") as $id | (($undone | index($id)) | not) and (($undo_statuses[$id] // "") != "pending")) | select(.category == $category) | .id' "$ACFS_CHANGES_FILE" | sort -r)
     fi
 
     if [[ ${#change_ids[@]} -eq 0 ]]; then

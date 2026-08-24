@@ -256,6 +256,7 @@ REDACT=true
 OUTPUT_BASE=""
 OUTPUT_BASE_EXPLICIT=false
 REDACTION_COUNT=0
+SUPPORT_IDENTITY_SCAN_STATUS="not_run"
 DOCTOR_TIMEOUT="${SUPPORT_BUNDLE_DOCTOR_TIMEOUT:-120}"
 SWARM_STATUS_TIMEOUT="${SUPPORT_BUNDLE_SWARM_STATUS_TIMEOUT:-10}"
 SWARM_TIMELINE_TIMEOUT="${SUPPORT_BUNDLE_SWARM_TIMELINE_TIMEOUT:-5}"
@@ -977,13 +978,21 @@ support_manifest_diagnostic_json() {
             end;
         def paths_redacted_value:
             if (.redaction.paths_redacted | type) == "boolean" then .redaction.paths_redacted
+            else false
+            end;
+        def raw_hosts_collected_value:
+            if (.redaction.raw_hosts_collected | type) == "boolean" then .redaction.raw_hosts_collected
+            elif (.inventory.raw_hosts_collected | type) == "boolean" then .inventory.raw_hosts_collected
+            elif $label == "environment" then
+                ((.hostname | type) == "string" and (.hostname | startswith("<REDACTED:") | not))
+            elif $label == "swarm_inventory" then true
+            else false
+            end;
+        def raw_paths_collected_value:
+            if (.redaction.raw_paths_collected | type) == "boolean" then .redaction.raw_paths_collected
             elif $label == "versions" then false
             else true
             end;
-        def raw_hosts_collected_value:
-            bool_or_false(.redaction.raw_hosts_collected // .inventory.raw_hosts_collected // false);
-        def raw_paths_collected_value:
-            bool_or_false(.redaction.raw_paths_collected // false);
         def source_included($status):
             if $label == "swarm_inventory" and (.inventory.present == false) then false
             elif $status == "skipped" then false
@@ -2505,7 +2514,6 @@ capture_env_summary() {
     local bundle_dir="$1"
     local env_file="$bundle_dir/environment.json"
     local support_home="${SUPPORT_TARGET_HOME:-${_SUPPORT_CURRENT_HOME:-}}"
-    local support_user="${SUPPORT_TARGET_USER:-$(support_resolve_current_user 2>/dev/null || echo unknown)}"
     local jq_bin=""
 
     jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
@@ -2529,15 +2537,11 @@ capture_env_summary() {
     fi
 
     "$jq_bin" -n \
-        --arg hostname "$(hostname 2>/dev/null || echo unknown)" \
         --arg kernel "$(uname -r 2>/dev/null || echo unknown)" \
         --arg arch "$(uname -m 2>/dev/null || echo unknown)" \
         --arg os_id "$os_id" \
         --arg os_version "$os_version" \
         --arg os_codename "$os_codename" \
-        --arg user "$support_user" \
-        --arg home "$support_home" \
-        --arg acfs_home "$_SUPPORT_ACFS_HOME" \
         --arg acfs_version "$acfs_version" \
         --arg shell "${SHELL:-unknown}" \
         --argjson uptime_seconds "$(cat /proc/uptime 2>/dev/null | awk '{printf "%d", $1}' || echo 0)" \
@@ -2546,18 +2550,24 @@ capture_env_summary() {
         --argjson disk_total_kb "$(df -k "$support_home" 2>/dev/null | tail -1 | awk '{print $2}' || echo 0)" \
         --argjson disk_available_kb "$(df -k "$support_home" 2>/dev/null | tail -1 | awk '{print $4}' || echo 0)" \
         '{
-            hostname: $hostname,
+            hostname: "<REDACTED:hostname>",
             kernel: $kernel,
             arch: $arch,
             os: {id: $os_id, version: $os_version, codename: $os_codename},
-            user: $user,
-            home: $home,
-            acfs_home: $acfs_home,
+            user: "<REDACTED:user>",
+            home: "<REDACTED:path>",
+            acfs_home: "<REDACTED:path>",
             acfs_version: $acfs_version,
             shell: $shell,
             uptime_seconds: $uptime_seconds,
             memory: {total_kb: $mem_total_kb, available_kb: $mem_available_kb},
-            disk: {total_kb: $disk_total_kb, available_kb: $disk_available_kb}
+            disk: {total_kb: $disk_total_kb, available_kb: $disk_available_kb},
+            redaction: {
+                paths_redacted: true,
+                raw_hosts_collected: false,
+                raw_paths_collected: false,
+                secrets_collected: false
+            }
         }' > "$env_file" 2>/dev/null || {
         log_warn "Failed to capture environment"
         return 1
@@ -2622,6 +2632,7 @@ write_manifest() {
         --argjson file_count "${#BUNDLE_FILES[@]}" \
         --argjson redaction_enabled "$( [[ "$REDACT" == "true" ]] && echo true || echo false )" \
         --argjson redaction_files_modified "$REDACTION_COUNT" \
+        --arg identity_scan_status "$SUPPORT_IDENTITY_SCAN_STATUS" \
         --argjson doctor_manifest "$doctor_manifest" \
         --argjson swarm_status_manifest "$swarm_status_manifest" \
         --argjson swarm_timeline_manifest "$swarm_timeline_manifest" \
@@ -2643,7 +2654,12 @@ write_manifest() {
             redaction: {
                 enabled: $redaction_enabled,
                 files_modified: $redaction_files_modified,
-                patterns: ["api_key", "aws_key", "github_token", "github_pat", "vault_token", "slack_token", "bearer", "jwt", "password", "private_key", "generic_secret", "message_snippet", "command_path"]
+                patterns: ["api_key", "aws_key", "github_token", "github_pat", "vault_token", "slack_token", "bearer", "jwt", "password", "private_key", "generic_secret", "message_snippet", "command_path"],
+                identity_scan: {
+                    status: $identity_scan_status,
+                    raw_hostname_absent: ($identity_scan_status == "pass"),
+                    raw_home_paths_absent: ($identity_scan_status == "pass")
+                }
             },
             diagnostics: {
                 doctor: $doctor_manifest,
@@ -3024,6 +3040,63 @@ redact_bundle() {
     fi
 }
 
+# Prove the default-share artifact does not retain the machine hostname or the
+# homes used while collecting it.  This is a final-byte postcondition, not an
+# assertion that a sanitizer happened to run.
+support_verify_identity_redaction() {
+    local bundle_dir="$1"
+    local find_bin=""
+    local grep_bin=""
+    local hostname_bin=""
+    local raw_hostname=""
+    local candidate=""
+    local label=""
+    local file=""
+    local -a identity_candidates=()
+
+    if [[ "$REDACT" != "true" ]]; then
+        SUPPORT_IDENTITY_SCAN_STATUS="skipped"
+        return 0
+    fi
+
+    find_bin="$(support_system_binary_path find 2>/dev/null || true)"
+    grep_bin="$(support_system_binary_path grep 2>/dev/null || true)"
+    hostname_bin="$(support_system_binary_path hostname 2>/dev/null || true)"
+    if [[ -z "$find_bin" || -z "$grep_bin" || -z "$hostname_bin" ]]; then
+        SUPPORT_IDENTITY_SCAN_STATUS="fail"
+        log_error "Cannot prove support-bundle identity redaction: required scanner unavailable"
+        return 1
+    fi
+
+    raw_hostname="$("$hostname_bin" 2>/dev/null || true)"
+    [[ -n "$raw_hostname" && "$raw_hostname" != "unknown" ]] \
+        && identity_candidates+=("hostname" "$raw_hostname")
+    [[ -n "${SUPPORT_TARGET_HOME:-}" && "$SUPPORT_TARGET_HOME" != "/" ]] \
+        && identity_candidates+=("target home" "$SUPPORT_TARGET_HOME")
+    [[ -n "${_SUPPORT_CURRENT_HOME:-}" && "$_SUPPORT_CURRENT_HOME" != "/" \
+        && "$_SUPPORT_CURRENT_HOME" != "${SUPPORT_TARGET_HOME:-}" ]] \
+        && identity_candidates+=("collector home" "$_SUPPORT_CURRENT_HOME")
+    [[ -n "${_SUPPORT_ACFS_HOME:-}" && "$_SUPPORT_ACFS_HOME" != "/" \
+        && "$_SUPPORT_ACFS_HOME" != "${SUPPORT_TARGET_HOME:-}/.acfs" ]] \
+        && identity_candidates+=("ACFS home" "$_SUPPORT_ACFS_HOME")
+
+    while ((${#identity_candidates[@]} > 0)); do
+        label="${identity_candidates[0]}"
+        candidate="${identity_candidates[1]}"
+        identity_candidates=("${identity_candidates[@]:2}")
+        while IFS= read -r -d '' file; do
+            if "$grep_bin" -F -q -- "$candidate" "$file" 2>/dev/null; then
+                SUPPORT_IDENTITY_SCAN_STATUS="fail"
+                log_error "Support bundle still contains raw ${label}; no archive was created"
+                return 1
+            fi
+        done < <("$find_bin" "$bundle_dir" -type f -print0 2>/dev/null)
+    done
+
+    SUPPORT_IDENTITY_SCAN_STATUS="pass"
+    return 0
+}
+
 # ============================================================
 # Main bundle collection
 # ============================================================
@@ -3153,6 +3226,9 @@ main() {
         log_error "Support bundle redaction failed; no archive was created"
         return 1
     fi
+    if ! support_verify_identity_redaction "$bundle_dir"; then
+        return 1
+    fi
 
     # --- Write manifest ---
     log_detail "Writing manifest..."
@@ -3160,6 +3236,9 @@ main() {
     log_detail "Writing support report..."
     write_support_report_index "$bundle_dir" || true
     write_manifest "$bundle_dir"
+    if ! support_verify_identity_redaction "$bundle_dir"; then
+        return 1
+    fi
 
     # --- Create tar archive ---
     log_detail "Creating archive..."

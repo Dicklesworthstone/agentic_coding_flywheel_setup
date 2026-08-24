@@ -191,14 +191,34 @@ if jq_bin=$(command -v jq 2>/dev/null); then
         SUPPORT_TARGET_USER="tester"
         BUNDLE_FILES=()
         capture_env_summary "$TEST_BUNDLE"
-        "$JQ_BIN" -r ".shell" "$TEST_BUNDLE/environment.json"
+        "$JQ_BIN" -r '[.shell, .hostname, .user, .home, .acfs_home, (.redaction.paths_redacted | tostring), (.redaction.raw_hosts_collected | tostring), (.redaction.raw_paths_collected | tostring)] | join("|")' "$TEST_BUNDLE/environment.json"
     ' 2>&1); then
-        assert_equals "environment summary tolerates unset SHELL" "$env_output" "unknown"
+        assert_equals "environment summary omits raw host and home identity" "$env_output" "unknown|<REDACTED:hostname>|<REDACTED:user>|<REDACTED:path>|<REDACTED:path>|true|false|false"
     else
-        fail "environment summary tolerates unset SHELL" "$env_output"
+        fail "environment summary omits raw host and home identity" "$env_output"
     fi
 else
-    pass "environment summary tolerates unset SHELL (jq unavailable skip)"
+    pass "environment summary omits raw host and home identity (jq unavailable skip)"
+fi
+
+identity_scan_dir="$TEST_DIR/identity-scan"
+mkdir -p "$identity_scan_dir"
+SUPPORT_TARGET_HOME="$TEST_DIR/private-home"
+_SUPPORT_CURRENT_HOME="$SUPPORT_TARGET_HOME"
+_SUPPORT_ACFS_HOME="$SUPPORT_TARGET_HOME/.acfs"
+REDACT=true
+printf 'diagnostic path=%s\n' "$SUPPORT_TARGET_HOME" > "$identity_scan_dir/diagnostic.log"
+if support_verify_identity_redaction "$identity_scan_dir" >/dev/null 2>&1; then
+    fail "identity postcondition rejects raw home paths" "Raw home path was accepted"
+else
+    pass "identity postcondition rejects raw home paths"
+fi
+printf 'diagnostic path=<REDACTED:path>\n' > "$identity_scan_dir/diagnostic.log"
+if support_verify_identity_redaction "$identity_scan_dir" >/dev/null 2>&1 \
+    && [[ "$SUPPORT_IDENTITY_SCAN_STATUS" == "pass" ]]; then
+    pass "identity postcondition accepts redacted final bytes"
+else
+    fail "identity postcondition accepts redacted final bytes" "Final-byte scan did not pass"
 fi
 
 # ============================================================
