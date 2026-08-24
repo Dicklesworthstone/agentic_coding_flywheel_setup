@@ -8580,6 +8580,12 @@ finalize() {
             # is created with target user ownership (not root). Previously the
             # shell redirect "> $tmp_settings" ran as root, leaving a root-owned
             # settings file that the target user couldn't modify later.
+            # A dotfiles-managed symlink must be edited in place: the jq+mv
+            # pipeline below would otherwise replace the symlink with a
+            # detached regular file and silently orphan the user's dotfiles.
+            if [[ -L "$claude_settings_file" ]]; then
+                claude_settings_file="$(readlink -f "$claude_settings_file" 2>/dev/null || printf '%s' "$claude_settings_file")"
+            fi
             local tmp_settings="${claude_settings_file}.tmp.$$"
             if run_as_target bash -c "jq '.skipDangerousModePermissionPrompt = true' \"\$1\" > \"\$2\" && mv \"\$2\" \"\$1\"" \
                     _ "$claude_settings_file" "$tmp_settings" 2>/dev/null; then
@@ -8626,6 +8632,11 @@ CLAUDE_TRUST_EOF
         if command -v jq &>/dev/null; then
             # Same run_as_target jq+mv pipeline as the workspace-trust step so
             # the temp file is created with target-user ownership (not root).
+            # Edit a symlinked settings.json in place (see the workspace-trust
+            # merge above).
+            if [[ -L "$claude_retention_settings_file" ]]; then
+                claude_retention_settings_file="$(readlink -f "$claude_retention_settings_file" 2>/dev/null || printf '%s' "$claude_retention_settings_file")"
+            fi
             local tmp_retention="${claude_retention_settings_file}.tmp.retention.$$"
             if run_as_target bash -c "jq \"\$3\" \"\$1\" > \"\$2\" && mv \"\$2\" \"\$1\"" \
                     _ "$claude_retention_settings_file" "$tmp_retention" "$ACFS_CLAUDE_RETENTION_JQ_FILTER" 2>/dev/null; then
