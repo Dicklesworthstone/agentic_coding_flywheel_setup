@@ -167,7 +167,7 @@ def main():
         rule_id = result.get("rule_id")
         if rule_id:
             reason = f"{reason} ({rule_id})"
-        emit("block", f"Blocked by dcg: {reason}")
+        emit("deny", f"Blocked by dcg: {reason}")
         return 0
 
     emit("allow")
