@@ -1296,8 +1296,42 @@ if [[ -z "$source_file" ]]; then
 fi
 
 mkdir -p "$target_bin"
-if [[ -f "$target_bin/agy" && ! -L "$target_bin/agy" ]] && ! cmp -s "$target_bin/agy" "$source_file"; then
-  mv -f "$target_bin/agy" "$target_bin/agy-real"
+if [[ -L "$target_bin/agy-real" ]] || { [[ -e "$target_bin/agy-real" ]] && [[ ! -f "$target_bin/agy-real" ]]; }; then
+  echo "agents.antigravity: refusing unsafe real binary path: $target_bin/agy-real" >&2
+  exit 1
+fi
+if [[ -L "$target_bin/agy" ]] || { [[ -e "$target_bin/agy" ]] && [[ ! -f "$target_bin/agy" ]]; }; then
+  echo "agents.antigravity: refusing unsafe launcher path: $target_bin/agy" >&2
+  exit 1
+fi
+if [[ -f "$target_bin/agy" ]]; then
+  if grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy"; then
+    agy_marker_rc=0
+  else
+    agy_marker_rc=$?
+  fi
+  case "$agy_marker_rc" in
+    0) ;;
+    1) mv -f "$target_bin/agy" "$target_bin/agy-real" ;;
+    *)
+      echo "agents.antigravity: unable to inspect existing launcher path: $target_bin/agy" >&2
+      exit 1
+      ;;
+  esac
+fi
+if [[ ! -x "$target_bin/agy-real" ]]; then
+  echo "agents.antigravity: real binary is missing or not executable: $target_bin/agy-real" >&2
+  exit 1
+fi
+if grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy-real"; then
+  echo "agents.antigravity: real path contains an ACFS launcher: $target_bin/agy-real" >&2
+  exit 1
+else
+  agy_marker_rc=$?
+  if [[ "$agy_marker_rc" -ne 1 ]]; then
+    echo "agents.antigravity: unable to inspect real binary: $target_bin/agy-real" >&2
+    exit 1
+  fi
 fi
 install -m 0755 "$source_file" "$target_bin/agy-locked"
 install -m 0755 "$source_file" "$target_bin/agy"

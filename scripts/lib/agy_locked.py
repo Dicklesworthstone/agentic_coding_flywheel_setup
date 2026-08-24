@@ -20,30 +20,38 @@ DCG_HOOK = HOME / ".gemini" / "config" / "hooks" / "dcg-antigravity-hook.py"
 HOOK_TIMEOUT_SECONDS = 6
 DCG_TIMEOUT_SECONDS = 4
 PRIME_SETTINGS_FLAG = "--acfs-prime-settings"
+LAUNCHER_MARKER = "acfs-agy-locked-launcher-v1"
+
+
+def is_real_agy_candidate(candidate):
+    if candidate.is_symlink() or not candidate.is_file() or not os.access(candidate, os.X_OK):
+        return False
+    try:
+        with candidate.open("rb") as candidate_file:
+            prefix = candidate_file.read(4096)
+    except OSError:
+        return False
+    return (
+        LAUNCHER_MARKER.encode() not in prefix
+        and b"Launch Antigravity CLI with ACFS pinned defaults" not in prefix
+    )
 
 
 def resolve_real_agy():
     bin_dir = os.environ.get("ACFS_BIN_DIR")
     if bin_dir:
         candidate = pathlib.Path(bin_dir) / "agy-real"
-        if candidate.is_file() and os.access(candidate, os.X_OK):
+        if is_real_agy_candidate(candidate):
             return candidate
     try:
         candidate = pathlib.Path(__file__).resolve().parent / "agy-real"
-        if candidate.is_file() and os.access(candidate, os.X_OK):
+        if is_real_agy_candidate(candidate):
             return candidate
-    except Exception:
+    except (OSError, RuntimeError):
         pass
     candidate = HOME / ".local" / "bin" / "agy-real"
-    if candidate.is_file() and os.access(candidate, os.X_OK):
+    if is_real_agy_candidate(candidate):
         return candidate
-    candidate = HOME / ".local" / "bin" / "agy"
-    if candidate.is_file() and os.access(candidate, os.X_OK):
-        try:
-            if candidate.resolve() != pathlib.Path(__file__).resolve():
-                return candidate
-        except OSError:
-            pass
     return REAL_AGY
 
 
@@ -481,8 +489,8 @@ def main():
         return 0
 
     real_agy = resolve_real_agy()
-    if not real_agy.exists():
-        print(f"agy-locked: real agy binary not found: {real_agy}", file=sys.stderr)
+    if not is_real_agy_candidate(real_agy):
+        print(f"agy-locked: real agy binary is missing or unsafe: {real_agy}", file=sys.stderr)
         return 127
 
     ensure_settings()

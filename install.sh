@@ -5153,7 +5153,7 @@ run_as_target_runner() (
     _acfs_exported_names="$(builtin compgen -e || builtin true)"
     if [[ -n "$_acfs_exported_names" ]]; then
         while builtin read -r _acfs_exported_name; do
-            if ! builtin export -n "$_acfs_exported_name" 2>/dev/null; then
+            if ! builtin export -n "${_acfs_exported_name?}" 2>/dev/null; then
                 builtin printf 'ERROR: unable to isolate exported environment entry: %s\n' \
                     "$_acfs_exported_name" >&2
                 return 1
@@ -5167,7 +5167,7 @@ run_as_target_runner() (
     _acfs_function_names="$(builtin compgen -A function || builtin true)"
     if [[ -n "$_acfs_function_names" ]]; then
         while builtin read -r _acfs_function_name; do
-            if ! builtin export -n -f "$_acfs_function_name" 2>/dev/null; then
+            if ! builtin export -n -f "${_acfs_function_name?}" 2>/dev/null; then
                 builtin printf 'ERROR: unable to isolate exported shell function: %s\n' \
                     "$_acfs_function_name" >&2
                 return 1
@@ -8171,13 +8171,64 @@ install_agy_locked_launchers() {
     acfs_ensure_primary_bin_dir 2>/dev/null || true
 
     local source_asset=""
+    local agy_marker_rc=1
+    local grep_bin=""
     source_asset="$(find_asset "scripts/lib/agy_locked.py" 2>/dev/null || true)"
     if [[ -z "$source_asset" || ! -f "$source_asset" ]]; then
         source_asset="${ACFS_SCRIPT_DIR:-$REPO_ROOT}/scripts/lib/agy_locked.py"
     fi
+    if [[ ! -f "$source_asset" ]]; then
+        log_error "Antigravity locked launcher asset not found: $source_asset"
+        return 1
+    fi
 
-    if [[ -f "$ACFS_BIN_DIR/agy" && ! -L "$ACFS_BIN_DIR/agy" ]] && [[ -f "$source_asset" ]] && ! cmp -s "$ACFS_BIN_DIR/agy" "$source_asset"; then
-        try_step "Relocating real agy binary" $SUDO mv -f "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/agy-real" || true
+    grep_bin="$(acfs_early_system_binary_path grep 2>/dev/null || true)"
+    if [[ -z "$grep_bin" ]]; then
+        log_error "Trusted grep is required to identify the Antigravity launcher"
+        return 1
+    fi
+
+    if [[ -L "$ACFS_BIN_DIR/agy-real" ]] \
+        || { [[ -e "$ACFS_BIN_DIR/agy-real" ]] && [[ ! -f "$ACFS_BIN_DIR/agy-real" ]]; }; then
+        log_error "Refusing unsafe real Antigravity path: $ACFS_BIN_DIR/agy-real"
+        return 1
+    fi
+    if [[ -L "$ACFS_BIN_DIR/agy" ]] \
+        || { [[ -e "$ACFS_BIN_DIR/agy" ]] && [[ ! -f "$ACFS_BIN_DIR/agy" ]]; }; then
+        log_error "Refusing unsafe Antigravity launcher path: $ACFS_BIN_DIR/agy"
+        return 1
+    fi
+
+    if [[ -f "$ACFS_BIN_DIR/agy" ]]; then
+        if "$grep_bin" -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$ACFS_BIN_DIR/agy"; then
+            agy_marker_rc=0
+        else
+            agy_marker_rc=$?
+        fi
+        case "$agy_marker_rc" in
+            0) ;;
+            1)
+                try_step "Relocating real agy binary" $SUDO mv -f "$ACFS_BIN_DIR/agy" "$ACFS_BIN_DIR/agy-real" || return 1
+                ;;
+            *)
+                log_error "Unable to inspect existing Antigravity path: $ACFS_BIN_DIR/agy"
+                return 1
+                ;;
+        esac
+    fi
+    if [[ ! -x "$ACFS_BIN_DIR/agy-real" ]]; then
+        log_error "Real Antigravity binary is missing or not executable: $ACFS_BIN_DIR/agy-real"
+        return 1
+    fi
+    if "$grep_bin" -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$ACFS_BIN_DIR/agy-real"; then
+        log_error "Real Antigravity path contains an ACFS launcher: $ACFS_BIN_DIR/agy-real"
+        return 1
+    else
+        agy_marker_rc=$?
+        if [[ "$agy_marker_rc" -ne 1 ]]; then
+            log_error "Unable to inspect real Antigravity binary: $ACFS_BIN_DIR/agy-real"
+            return 1
+        fi
     fi
 
     try_step "Installing agy locked launcher" install_asset "scripts/lib/agy_locked.py" "$ACFS_BIN_DIR/agy-locked" || return 1

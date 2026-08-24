@@ -9633,6 +9633,64 @@ EOF
     [[ "$writer" == *'tmp_path.unlink()'* ]]
 }
 
+@test "agy launcher refresh preserves the real binary across wrapper revisions" {
+    local target_bin="$HOME/.local/bin"
+    mkdir -p "$target_bin"
+    printf '%s\n' "real-antigravity-v1" > "$target_bin/agy-real"
+    chmod +x "$target_bin/agy-real"
+    printf '%s\n' \
+        '#!/usr/bin/env python3' \
+        '"""Launch Antigravity CLI with ACFS pinned defaults and dcg guard wiring."""' \
+        'print("old wrapper")' > "$target_bin/agy"
+    chmod +x "$target_bin/agy"
+
+    DRY_RUN=false
+    update_target_user() { id -un; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_preferred_user_bin_dir() { printf '%s\n' "$target_bin"; }
+    log_item() { :; }
+    update_run_in_target_context() {
+        shift
+        if [[ "${1:-}" == "$target_bin/agy-locked" ]]; then
+            return 0
+        fi
+        "$@"
+    }
+
+    run update_install_agy_locked_launchers
+    assert_success
+    [[ "$(< "$target_bin/agy-real")" == "real-antigravity-v1" ]]
+    run cmp -s "$PROJECT_ROOT/scripts/lib/agy_locked.py" "$target_bin/agy"
+    assert_success
+}
+
+@test "agy launcher refresh promotes a newly updated real binary" {
+    local target_bin="$HOME/.local/bin"
+    mkdir -p "$target_bin"
+    printf '%s\n' "real-antigravity-v1" > "$target_bin/agy-real"
+    printf '%s\n' "real-antigravity-v2" > "$target_bin/agy"
+    chmod +x "$target_bin/agy-real" "$target_bin/agy"
+
+    DRY_RUN=false
+    update_target_user() { id -un; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_preferred_user_bin_dir() { printf '%s\n' "$target_bin"; }
+    log_item() { :; }
+    update_run_in_target_context() {
+        shift
+        if [[ "${1:-}" == "$target_bin/agy-locked" ]]; then
+            return 0
+        fi
+        "$@"
+    }
+
+    run update_install_agy_locked_launchers
+    assert_success
+    [[ "$(< "$target_bin/agy-real")" == "real-antigravity-v2" ]]
+    run cmp -s "$PROJECT_ROOT/scripts/lib/agy_locked.py" "$target_bin/agy"
+    assert_success
+}
+
 @test "acfs services start propagates an unhealthy existing session" {
     local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
 

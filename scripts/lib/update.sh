@@ -5233,6 +5233,11 @@ update_install_agy_locked_launchers() {
     local target_home=""
     local target_bin=""
     local source_file=""
+    local agy_marker_rc=1
+    local grep_bin=""
+    local install_bin=""
+    local mkdir_bin=""
+    local mv_bin=""
 
     target_user="$(update_target_user)"
     target_home="$(update_target_home "$target_user" 2>/dev/null || true)"
@@ -5245,6 +5250,15 @@ update_install_agy_locked_launchers() {
     target_bin="$(update_validate_bin_dir_for_home "$target_bin" "$target_home" 2>/dev/null || true)"
     [[ -n "$target_bin" ]] || target_bin="$target_home/.local/bin"
 
+    grep_bin="$(update_system_binary_path grep 2>/dev/null || true)"
+    install_bin="$(update_system_binary_path install 2>/dev/null || true)"
+    mkdir_bin="$(update_system_binary_path mkdir 2>/dev/null || true)"
+    mv_bin="$(update_system_binary_path mv 2>/dev/null || true)"
+    if [[ -z "$grep_bin" || -z "$install_bin" || -z "$mkdir_bin" || -z "$mv_bin" ]]; then
+        log_item "warn" "agy locked launchers" "required trusted system tool is unavailable"
+        return 1
+    fi
+
     for source_file in \
         "$ACFS_REPO_ROOT/scripts/lib/agy_locked.py" \
         "$target_home/.acfs/scripts/lib/agy_locked.py"; do
@@ -5253,13 +5267,51 @@ update_install_agy_locked_launchers() {
             log_item "skip" "agy locked launchers" "dry-run"
             return 0
         fi
-        update_run_in_target_context "" mkdir -p "$target_bin" || return 1
-        if [[ -f "$target_bin/agy" && ! -L "$target_bin/agy" ]] && ! cmp -s "$target_bin/agy" "$source_file"; then
-            update_run_in_target_context "" mv -f "$target_bin/agy" "$target_bin/agy-real" || return 1
+        update_run_in_target_context "" "$mkdir_bin" -p "$target_bin" || return 1
+        if [[ -L "$target_bin/agy-real" ]] \
+            || { [[ -e "$target_bin/agy-real" ]] && [[ ! -f "$target_bin/agy-real" ]]; }; then
+            log_item "warn" "agy locked launchers" "unsafe real Antigravity path: $target_bin/agy-real"
+            return 1
         fi
-        update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/agy-locked" || return 1
-        update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/agy" || return 1
-        update_run_in_target_context "" install -m 0755 "$source_file" "$target_bin/gmi" || return 1
+        if [[ -L "$target_bin/agy" ]] \
+            || { [[ -e "$target_bin/agy" ]] && [[ ! -f "$target_bin/agy" ]]; }; then
+            log_item "warn" "agy locked launchers" "unsafe Antigravity launcher path: $target_bin/agy"
+            return 1
+        fi
+        if [[ -f "$target_bin/agy" ]]; then
+            if "$grep_bin" -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy"; then
+                agy_marker_rc=0
+            else
+                agy_marker_rc=$?
+            fi
+            case "$agy_marker_rc" in
+                0) ;;
+                1)
+                    update_run_in_target_context "" "$mv_bin" -f "$target_bin/agy" "$target_bin/agy-real" || return 1
+                    ;;
+                *)
+                    log_item "warn" "agy locked launchers" "unable to inspect existing Antigravity path"
+                    return 1
+                    ;;
+            esac
+        fi
+        if [[ ! -x "$target_bin/agy-real" ]]; then
+            log_item "warn" "agy locked launchers" "real Antigravity binary is missing or not executable"
+            return 1
+        fi
+        if "$grep_bin" -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy-real"; then
+            log_item "warn" "agy locked launchers" "real Antigravity path contains an ACFS launcher"
+            return 1
+        else
+            agy_marker_rc=$?
+            if [[ "$agy_marker_rc" -ne 1 ]]; then
+                log_item "warn" "agy locked launchers" "unable to inspect real Antigravity binary"
+                return 1
+            fi
+        fi
+        update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/agy-locked" || return 1
+        update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/agy" || return 1
+        update_run_in_target_context "" "$install_bin" -m 0755 "$source_file" "$target_bin/gmi" || return 1
         if update_run_in_target_context "" "$target_bin/agy-locked" --acfs-prime-settings; then
             log_item "fix" "Antigravity locked settings" "model, permissions, and dcg hook primed"
         else

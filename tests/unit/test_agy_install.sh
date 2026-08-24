@@ -15,6 +15,38 @@ ok()   { printf '  ✓ PASS: %s\n' "$1"; PASS=$((PASS+1)); }
 no()   { printf '  ✗ FAIL: %s\n' "$1"; FAIL=$((FAIL+1)); }
 check(){ if eval "$2"; then ok "$1"; else no "$1"; fi; }
 
+resolver_refuses_launcher_copy() {
+  python3 - <<'PY'
+import os
+import pathlib
+import sys
+import tempfile
+
+sys.path.insert(0, "scripts/lib")
+import agy_locked
+
+with tempfile.TemporaryDirectory() as temp_dir:
+    root = pathlib.Path(temp_dir)
+    bin_dir = root / "bin"
+    bin_dir.mkdir()
+    launcher_copy = bin_dir / "agy-real"
+    launcher_copy.write_text(
+        "#!/usr/bin/env python3\n"
+        "LAUNCHER_MARKER = 'acfs-agy-locked-launcher-v1'\n",
+        encoding="utf-8",
+    )
+    launcher_copy.chmod(0o755)
+
+    os.environ["ACFS_BIN_DIR"] = str(bin_dir)
+    agy_locked.HOME = root
+    agy_locked.REAL_AGY = root / ".local" / "bin" / "agy-real"
+    agy_locked.__file__ = str(root / "agy")
+
+    assert not agy_locked.is_real_agy_candidate(launcher_copy)
+    assert agy_locked.resolve_real_agy() == agy_locked.REAL_AGY
+PY
+}
+
 echo "agy install contract tests"
 
 # 1. KNOWN_INSTALLERS registers the antigravity installer URL (5.3).
@@ -66,6 +98,12 @@ check "agy locked launcher strips -m and -model flags" \
   "python3 -c 'import sys; sys.path.insert(0, \"scripts/lib\"); import agy_locked; res = agy_locked.filtered_args([\"-m\", \"foo\", \"-m=bar\", \"--model=baz\", \"--model\", \"qux\", \"prompt\"]); assert res == [\"prompt\"], f\"got {res}\"'"
 check "agy locked launcher points to agy-real" \
   "grep -q 'REAL_AGY = HOME / \".local\" / \"bin\" / \"agy-real\"' scripts/lib/agy_locked.py"
+check "agy locked launcher refuses wrapper copies as the real binary" \
+  "resolver_refuses_launcher_copy"
+check "agy locked launcher never falls back to another agy wrapper" \
+  "! sed -n '/^def resolve_real_agy():$/,/^    return REAL_AGY$/p' scripts/lib/agy_locked.py | grep -F ' / \"agy\"'"
+check "all agy relocation lanes identify wrappers before replacing agy-real" \
+  "grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" install.sh && grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" scripts/lib/update.sh && grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" acfs.manifest.yaml"
 check "agy locked launcher pins always-proceed tool permission" \
   "grep -q '\"toolPermission\": \"always-proceed\"' scripts/lib/agy_locked.py"
 check "agy locked launcher installs dcg hook support" \
