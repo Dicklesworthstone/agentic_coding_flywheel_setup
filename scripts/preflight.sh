@@ -1300,7 +1300,16 @@ main() {
                 echo "Warning: --format toon requested but 'tru' not found; using JSON" >&2
                 emit_json_summary
             else
-                emit_json_summary | tru --encode
+                # Capture both stages first: if tru emits a partial document
+                # before failing, do not mix that prefix with fallback JSON.
+                local toon_json=""
+                toon_json="$(emit_json_summary)"
+                local toon_output=""
+                if toon_output="$(printf '%s\n' "$toon_json" | tru --encode)"; then
+                    printf '%s\n' "$toon_output"
+                else
+                    printf '%s\n' "$toon_json"
+                fi
             fi
         else
             emit_json_summary

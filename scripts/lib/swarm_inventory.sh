@@ -248,7 +248,7 @@ swarm_inventory_validation_json() {
         | (if ($inventory.schema_version // null) == 1 then [] else [err("unsupported_schema_version"; "schema_version"; "schema_version must be 1")] end) as $schema_errors
         | (if ($hosts | type) == "array" then [] else [err("invalid_hosts"; "hosts"; "hosts must be an array")] end) as $host_array_errors
         | (if ($hosts | type) == "array" then $hosts else [] end) as $host_list
-        | [
+        | ([
             $inventory
             | paths as $p
             | select(($p | length) > 0 and (($p[-1] | type) == "string"))

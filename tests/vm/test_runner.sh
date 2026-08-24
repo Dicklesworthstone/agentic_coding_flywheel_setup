@@ -79,7 +79,8 @@ run_check "dcg" "zsh -ic 'dcg --version >/dev/null'" || failed_checks=$((failed_
 # Check DCG hook
 run_check "dcg_hook" "zsh -ic 'set -o pipefail; dcg doctor --format json 2>/dev/null | jq -e \".hook_registered == true\" >/dev/null || (command -v script >/dev/null 2>&1 && tty_output=\$(script -q -c \"dcg doctor\" /dev/null 2>/dev/null || true) && printf \"%s\" \"\$tty_output\" | grep -qi \"hook wiring.*OK\")'" || failed_checks=$((failed_checks + 1))
 run_check "dcg_block" "zsh -ic 'dcg_output=\$(dcg test \"git reset --hard\" 2>&1 || true); printf \"%s\" \"\$dcg_output\" | command grep -Eqi \"deny|block\"'" || failed_checks=$((failed_checks + 1))
-run_check "dcg_allow" "zsh -ic 'dcg_output=\$(dcg test \"git status\" 2>&1 || true); printf \"%s\" \"\$dcg_output\" | command grep -Eqi \"allow\"'" || failed_checks=$((failed_checks + 1))
+# "allow" alone also matched "not allowed"; require an allow verdict with no deny/block wording.
+run_check "dcg_allow" "zsh -ic 'dcg_output=\$(dcg test \"git status\" 2>&1 || true); printf \"%s\" \"\$dcg_output\" | command grep -Eqi \"allow\" && ! printf \"%s\" \"\$dcg_output\" | command grep -Eqi \"deny|block|not allowed\"'" || failed_checks=$((failed_checks + 1))
 
 # Resume checks
 if bash /repo/tests/vm/resume_checks.sh >> "$VERIFY_LOG" 2>&1; then

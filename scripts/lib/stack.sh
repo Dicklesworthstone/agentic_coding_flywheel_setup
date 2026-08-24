@@ -2252,10 +2252,11 @@ acfs_has_active_go_bin_path() {
   ' "$file" 2>/dev/null
 }
 
+# Do not append to ~/.zshrc: acfs.zshrc already exports $HOME/go/bin, and a
+# three-line append turns the two-line managed loader into an "unmanaged"
+# ~/.zshrc that every later shell-phase run backs up and rewrites.
 if ! acfs_has_active_go_bin_path ~/.zshrc; then
-  echo '' >> ~/.zshrc
-  echo '# Go binaries' >> ~/.zshrc
-  echo 'export PATH="$HOME/go/bin:$PATH"' >> ~/.zshrc
+  echo "note: \$HOME/go/bin is exported by ~/.acfs/zsh/acfs.zshrc; open a new shell to pick it up" >&2
 fi
 EOF
 )"

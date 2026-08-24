@@ -466,7 +466,11 @@ capacity_write_resource_command_wrapper() {
         printf '#!/usr/bin/env bash\n'
         printf 'set -euo pipefail\n'
         printf 'exec acfs-scope %q --' "$class"
-        printf ' %q' "$@"
+        # printf ' %q' with zero args still emits " ''", which made the
+        # generated wrapper exec the empty string.
+        if (($#)); then
+            printf ' %q' "$@"
+        fi
         printf ' "$@"\n'
     } > "$path"
 }

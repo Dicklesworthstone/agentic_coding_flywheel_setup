@@ -2849,7 +2849,7 @@ async function main(): Promise<void> {
         console.error(`- [${err.code}] ${err.message}`);
       }
       console.error(
-        'Update checksums.yaml (./scripts/lib/security.sh --update-checksums > checksums.yaml) or reconcile the manifest URLs before regenerating.'
+        'Update checksums.yaml (./scripts/lib/security.sh --update-checksums > /tmp/acfs-checksums.candidate.yaml, review the diff, then copy it over) or reconcile the manifest URLs before regenerating.'
       );
       process.exit(1);
     }
