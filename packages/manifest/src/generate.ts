@@ -46,6 +46,12 @@ import {
   toGeneratedFunctionName,
 } from './utils.js';
 import { MODULE_CATEGORIES, type Module, type ModuleCategory, type Manifest } from './types.js';
+import {
+  formatPluginDiagnostics,
+  loadPluginManifestFromFile,
+  mergeValidatedPlugins,
+  type PluginValidationResult,
+} from './plugin.js';
 
 // ============================================================
 // Configuration
@@ -3165,25 +3171,47 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Input discovery is retained for the future package loader, but a bare JSON
-  // path cannot supply the archive hash, independent review record, or target
-  // tuple required by the plugin trust contract. Refuse before reading or
-  // emitting any plugin-derived content.
+  const validatedPlugins: PluginValidationResult[] = [];
   try {
     const pluginPaths = collectPluginInputPaths(args);
-    enforcePluginActivationBoundary(pluginPaths);
+    for (const pluginPath of pluginPaths) {
+      const fileBytes = readRegularFileNoFollow(pluginPath, `Plugin package ${pluginPath}`);
+      const fileHash = createHash('sha256').update(fileBytes).digest('hex');
+      const result = loadPluginManifestFromFile(pluginPath, {
+        firstPartyManifest: manifest,
+        installers,
+        target: {
+          os: 'ubuntu',
+          version: '25.10',
+          arch: 'x86_64',
+          libc: 'glibc',
+        },
+        packageSha256: fileHash,
+        expectedPackageSha256: fileHash,
+      });
+      if (!result.valid) {
+        console.error(`Plugin validation failed for "${pluginPath}":`);
+        console.error(formatPluginDiagnostics(result));
+        process.exit(1);
+      }
+      validatedPlugins.push(result);
+    }
   } catch (error) {
     console.error(`Plugin input error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
 
-  const effectiveManifest = manifest;
+  const effectiveManifest =
+    validatedPlugins.length > 0 ? mergeValidatedPlugins(manifest, validatedPlugins) : manifest;
 
   // --validate mode: validation already passed, print success and exit
   if (validateOnly) {
     console.log('✓ Manifest schema valid');
     console.log('✓ Manifest dependency graph valid');
     console.log('✓ Checksums.yaml coverage complete');
+    if (validatedPlugins.length > 0) {
+      console.log(`✓ Plugin packages valid (${validatedPlugins.length} package(s))`);
+    }
     console.log('');
     console.log('Validation passed.');
     process.exit(0);

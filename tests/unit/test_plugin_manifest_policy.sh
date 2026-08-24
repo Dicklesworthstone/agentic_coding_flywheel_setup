@@ -90,7 +90,7 @@ test_module_selection_and_offline_pack_compatibility_are_defined() {
     require_text "Compatibility With Module Selection" || return 1
     require_text "Required first-party modules stay locked" || return 1
     require_text "Dependency closure" || return 1
-    require_text "Compatibility With Offline Packs" || return 1
+    require_text "Compatibility With The Entrypoint Cache And Future Offline Bundles" || return 1
     require_text "plugin_offline_policy_incompatible" || return 1
     require_text '`metadata_only`, `live_required`, or `prohibited`' || return 1
     pass "module_selection_and_offline_pack_compatibility_are_defined"
