@@ -433,8 +433,11 @@ describe('Generated verified installer args', () => {
     expect(stackContent).not.toContain('Environment=STORAGE_ROOT=$storage_root');
     expect(stackContent).not.toContain('ExecStartPre=${am_bin_exec} migrate');
     expect(stackContent).not.toContain('ExecStart=$am_bin serve-http');
-    expect(stackContent).toContain('systemctl --user enable --now agent-mail.service');
-    expect(stackContent).toContain('curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness >/dev/null');
+    expect(stackContent).toContain('systemctl --user enable agent-mail.service');
+    expect(stackContent).toContain('systemctl --user restart agent-mail.service');
+    expect(stackContent).toContain(
+      'agent_mail_service_curl -fsS --max-time 10 http://127.0.0.1:8765/health/liveness'
+    );
     expect(stackContent).toContain('http://127.0.0.1:8765/health/readiness');
     expect(stackContent).toContain('max_wait=240');
     expect(stackContent).not.toContain('am service install >/dev/null');
@@ -1051,7 +1054,7 @@ describe('Generated script headers', () => {
   test('source mode ignores an inherited force marker and preserves its orchestrator runner', () => {
     const scriptPath = resolve(GENERATED_DIR, 'install_base.sh');
     const result = spawnSync(
-      '/bin/bash',
+      'bash',
       [
         '-c',
         [
@@ -1067,7 +1070,7 @@ describe('Generated script headers', () => {
       {
         encoding: 'utf8',
         env: {
-          PATH: '/usr/bin:/bin',
+          PATH: process.env.PATH || '/usr/bin:/bin',
           ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE: '1',
         },
       }
