@@ -63,7 +63,7 @@ function sanitizeGaMeasurementId(value: unknown): string | undefined {
 const GA_MEASUREMENT_ID_RAW = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 export const GA_MEASUREMENT_ID = sanitizeGaMeasurementId(GA_MEASUREMENT_ID_RAW);
 
-type AnalyticsPrivacyWindow = Window & {
+type AnalyticsPrivacyWindow = {
   __acfsAnalyticsDocumentTainted?: boolean;
   [key: `ga-disable-${string}`]: boolean | undefined;
 };

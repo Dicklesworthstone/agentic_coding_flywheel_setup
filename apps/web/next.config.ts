@@ -42,8 +42,8 @@ const parseBuildCpus = (value: string | undefined): number | undefined => {
 const buildCpus = parseBuildCpus(process.env[NEXT_BUILD_CPUS_ENV]) ?? DEFAULT_BUILD_CPUS;
 
 const nextConfig: NextConfig = {
-  // Allow concurrent agents in the same checkout to opt into isolated Next.js
-  // artifacts by setting ACFS_NEXT_DIST_SCOPE before build/typegen/start.
+  // The isolated package scripts pair this scoped output with a private
+  // tsconfig so Next never writes scope-specific includes into tsconfig.json.
   ...(scopedDistDir ? { distDir: scopedDistDir } : {}),
   ...(scopedTsconfigPath ? { typescript: { tsconfigPath: scopedTsconfigPath } } : {}),
   turbopack: {

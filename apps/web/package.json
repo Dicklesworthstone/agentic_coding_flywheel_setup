@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build --webpack",
+    "build": "bash -lc 'export PATH=\"$PWD/node_modules/.bin:$PATH\"; if [[ -n \"${ACFS_NEXT_DIST_SCOPE:-}\" ]]; then exec bun run build:isolated -- \"$@\"; fi; exec next build --webpack \"$@\"' --",
     "build:isolated": "bash -lc 'export PATH=\"$PWD/node_modules/.bin:$PATH\"; scope=${ACFS_NEXT_DIST_SCOPE:-build-$PPID}; safe_scope=$(printf \"%s\" \"$scope\" | tr -cs \"[:alnum:]_-\" \"-\"); tsconfig=.tsconfig.next-${safe_scope}.json; trap \"rm -f -- \\\"$tsconfig\\\"\" EXIT; cp tsconfig.json \"$tsconfig\"; bun scripts/prepare-isolated-tsconfig.mjs \"$tsconfig\"; export ACFS_NEXT_DIST_SCOPE=\"$scope\" ACFS_NEXT_TSCONFIG_PATH=\"$tsconfig\"; next build --webpack \"$@\"' --",
     "start": "next start",
     "start:isolated": "bash -lc 'export PATH=\"$PWD/node_modules/.bin:$PATH\"; : \"${ACFS_NEXT_DIST_SCOPE:?Set ACFS_NEXT_DIST_SCOPE to the same value used for build}\"; next start \"$@\"' --",

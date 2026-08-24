@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 const scriptPath = fileURLToPath(
   new URL("./prepare-isolated-tsconfig.mjs", import.meta.url),
 );
+const packagePath = fileURLToPath(new URL("../package.json", import.meta.url));
 
 describe("prepare-isolated-tsconfig", () => {
   test("removes canonical and scoped Next type outputs without touching source globs", () => {
@@ -39,5 +40,14 @@ describe("prepare-isolated-tsconfig", () => {
       "**/*.ts",
       ".nextish/types/**/*.ts",
     ]);
+  });
+
+  test("routes explicitly scoped builds through the paired isolation wrapper", () => {
+    const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+    const buildScript = packageJson.scripts?.build;
+
+    expect(buildScript).toContain("ACFS_NEXT_DIST_SCOPE");
+    expect(buildScript).toContain("bun run build:isolated");
+    expect(buildScript).toContain("next build --webpack");
   });
 });

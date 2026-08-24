@@ -327,7 +327,6 @@ function CapacityPlanner() {
     }
     // Keep the controls usable when localStorage is unavailable while still
     // accepting persisted or cross-tab updates when the query has a value.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPlannerSelection(savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION);
   }, [savedVPSReadinessSelection, setVPSReadinessSelection, vpsReadinessSelectionLoaded]);
 
