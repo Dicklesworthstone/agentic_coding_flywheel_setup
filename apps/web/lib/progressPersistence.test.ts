@@ -307,6 +307,45 @@ describe("progress persistence guards", () => {
     );
     expect(getVPSReadinessSelection()).toEqual(expectedSelection);
     expect(browser.dispatchCalls).toHaveLength(1);
+
+    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
+      ...expectedSelection,
+      targetAgents: 999,
+    }));
+    expect(getVPSReadinessSelection()?.targetAgents).toBe(50);
+
+    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
+      ...expectedSelection,
+      targetAgents: -7,
+    }));
+    expect(getVPSReadinessSelection()?.targetAgents).toBe(5);
+
+    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
+      ...expectedSelection,
+      targetAgents: 13,
+    }));
+    expect(getVPSReadinessSelection()?.targetAgents).toBe(15);
+
+    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
+      ...expectedSelection,
+      targetAgents: null,
+    }));
+    expect(getVPSReadinessSelection()?.targetAgents).toBe(10);
+
+    localStorage.setItem(VPS_READINESS_SELECTION_KEY, JSON.stringify({
+      ...expectedSelection,
+      providerId: "OVH",
+      planName: "retired plan",
+      ubuntuVersion: "26.04",
+      region: "retired-region",
+    }));
+    expect(getVPSReadinessSelection()).toEqual({
+      ...expectedSelection,
+      providerId: "ovh",
+      planName: "VPS-5",
+      ubuntuVersion: "25.10",
+      region: "us-east",
+    });
   });
 
   test("VPS IP stays out of the URL when localStorage works", () => {

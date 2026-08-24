@@ -13,7 +13,11 @@ import {
   normalizeSSHUsername,
 } from "./inputValidation";
 import { safeGetItem, safeGetJSON, safeSetItem, safeSetJSON } from "./utils";
-import type { WorkloadId } from "./vpsProviders";
+import {
+  VPS_PROVIDERS,
+  VPS_UBUNTU_IMAGE_OPTIONS,
+  type WorkloadId,
+} from "./vpsProviders";
 
 export { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
 
@@ -52,6 +56,9 @@ const SSH_USERNAME_QUERY_KEY = "user";
 const ACFS_REF_QUERY_KEY = "ref";
 const USER_PREFERENCES_EVENT = "acfs:user-preferences-updated";
 const WORKLOAD_IDS: readonly WorkloadId[] = ["light", "standard", "heavy"];
+const MIN_TARGET_AGENTS = 5;
+const MAX_TARGET_AGENTS = 50;
+const TARGET_AGENT_STEP = 5;
 
 function normalizeStringList(values: unknown): string[] {
   if (!Array.isArray(values)) {
@@ -67,9 +74,9 @@ function normalizePreferenceString(value: unknown, fallback: string): string {
 }
 
 function normalizeTargetAgents(value: unknown): number {
-  const parsedValue = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsedValue)) return 10;
-  return Math.max(1, Math.floor(parsedValue));
+  if (typeof value !== "number" || !Number.isFinite(value)) return 10;
+  const steppedValue = Math.round(value / TARGET_AGENT_STEP) * TARGET_AGENT_STEP;
+  return Math.min(MAX_TARGET_AGENTS, Math.max(MIN_TARGET_AGENTS, steppedValue));
 }
 
 function normalizeWorkloadId(value: unknown): WorkloadId {
@@ -82,11 +89,35 @@ function normalizeVPSReadinessSelection(value: unknown): VPSReadinessSelection |
   }
 
   const record = value as Partial<Record<keyof VPSReadinessSelection, unknown>>;
+  const requestedProviderId = normalizePreferenceString(record.providerId, "other");
+  const provider = VPS_PROVIDERS.find(
+    (candidate) => candidate.id.toLowerCase() === requestedProviderId.toLowerCase(),
+  );
+  const requestedPlanName = normalizePreferenceString(record.planName, "custom plan");
+  const plan = provider
+    ? [provider.recommended, provider.budget].find(
+        (candidate) => candidate.name.toLowerCase() === requestedPlanName.toLowerCase(),
+      )
+    : undefined;
+  const requestedRegion = normalizePreferenceString(record.region, "not-listed");
+  const normalizedRequestedRegion = requestedRegion.toLowerCase();
+  const region = provider?.regionOptions.find(
+    (candidate) =>
+      candidate.id.toLowerCase() === normalizedRequestedRegion ||
+      candidate.aliases.some((alias) => alias.toLowerCase() === normalizedRequestedRegion),
+  );
+  const requestedUbuntuVersion = normalizePreferenceString(record.ubuntuVersion, "25.10");
+  const ubuntuVersion = VPS_UBUNTU_IMAGE_OPTIONS.includes(
+    requestedUbuntuVersion as (typeof VPS_UBUNTU_IMAGE_OPTIONS)[number],
+  )
+    ? requestedUbuntuVersion
+    : provider?.readiness.recommendedUbuntu ?? VPS_UBUNTU_IMAGE_OPTIONS[0];
+
   return {
-    providerId: normalizePreferenceString(record.providerId, "other"),
-    planName: normalizePreferenceString(record.planName, "custom plan"),
-    ubuntuVersion: normalizePreferenceString(record.ubuntuVersion, "25.10"),
-    region: normalizePreferenceString(record.region, "not-listed"),
+    providerId: provider?.id ?? "other",
+    planName: plan?.name ?? provider?.recommended.name ?? "custom plan",
+    ubuntuVersion,
+    region: region?.id ?? provider?.regionOptions[0]?.id ?? "not-listed",
     targetAgents: normalizeTargetAgents(record.targetAgents),
     workloadId: normalizeWorkloadId(record.workloadId),
   };

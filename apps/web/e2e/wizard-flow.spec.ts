@@ -21,6 +21,7 @@ const TIMEOUTS = {
 const COMPLETED_STEPS_KEY = "agent-flywheel-wizard-completed-steps";
 const COMMAND_COMPLETION_PREFIX = "acfs-command-";
 const ACFS_REF_KEY = "agent-flywheel-acfs-ref";
+const VPS_READINESS_SELECTION_KEY = "agent-flywheel-vps-readiness-selection";
 const FINAL_STEP_PREREQUISITES = Array.from({ length: 12 }, (_, index) => index + 1);
 
 function urlPathWithOptionalQuery(pathname: string): RegExp {
@@ -262,6 +263,77 @@ test.describe("Wizard Flow", () => {
 
     await expect(summary).toContainText("192 GB RAM / 96 vCPU");
     await expect(summary).toContainText("listed 48/64 GB VPS plans are undersized");
+  });
+
+  test("should hydrate and preserve saved VPS readiness choices", async ({ page }) => {
+    const savedSelection = {
+      providerId: "ovh",
+      planName: "VPS-4",
+      ubuntuVersion: "24.04",
+      region: "eu",
+      targetAgents: 25,
+      workloadId: "heavy",
+    };
+    await setupWizardState(page, { os: "mac", completedSteps: [1, 2, 3] });
+    await page.evaluate(
+      ({ key, selection }) => localStorage.setItem(key, JSON.stringify(selection)),
+      { key: VPS_READINESS_SELECTION_KEY, selection: savedSelection },
+    );
+
+    await page.goto("/wizard/rent-vps");
+    const calculator = page.getByTestId("vps-plan-calculator");
+    const readiness = page.getByTestId("provider-readiness-check");
+
+    await expect(calculator.getByLabel("Target agent count")).toHaveValue("25");
+    await expect(calculator.getByRole("button", { name: /Heavy/i })).toHaveClass(/border-primary\/50/);
+    await expect(readiness.getByLabel("Provider")).toHaveValue("ovh");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
+    await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("24.04");
+    await expect(readiness.getByLabel("Region")).toHaveValue("eu");
+
+    const persistedSelection = await page.evaluate((key) => {
+      const value = localStorage.getItem(key);
+      return value ? JSON.parse(value) : null;
+    }, VPS_READINESS_SELECTION_KEY);
+    expect(persistedSelection).toEqual(savedSelection);
+  });
+
+  test("should repair stale VPS readiness choices during hydration", async ({ page }) => {
+    const staleSelection = {
+      providerId: "OVH",
+      planName: "retired plan",
+      ubuntuVersion: "26.04",
+      region: "retired-region",
+      targetAgents: 13,
+      workloadId: "heavy",
+    };
+    await setupWizardState(page, { os: "mac", completedSteps: [1, 2, 3] });
+    await page.evaluate(
+      ({ key, selection }) => localStorage.setItem(key, JSON.stringify(selection)),
+      { key: VPS_READINESS_SELECTION_KEY, selection: staleSelection },
+    );
+
+    await page.goto("/wizard/rent-vps");
+    const calculator = page.getByTestId("vps-plan-calculator");
+    const readiness = page.getByTestId("provider-readiness-check");
+
+    await expect(calculator.getByLabel("Target agent count")).toHaveValue("15");
+    await expect(readiness.getByLabel("Provider")).toHaveValue("ovh");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-5");
+    await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("25.10");
+    await expect(readiness.getByLabel("Region")).toHaveValue("us-east");
+
+    await expect.poll(async () => page.evaluate((key) => {
+      const value = localStorage.getItem(key);
+      return value ? JSON.parse(value) : null;
+    }, VPS_READINESS_SELECTION_KEY)).toEqual({
+      providerId: "ovh",
+      planName: "VPS-5",
+      ubuntuVersion: "25.10",
+      region: "us-east",
+      targetAgents: 15,
+      workloadId: "heavy",
+    });
   });
 
   test("should surface provider readiness states for supported, unknown, and unsafe choices", async ({ page }, testInfo) => {

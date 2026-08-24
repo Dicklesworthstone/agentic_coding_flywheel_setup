@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -24,18 +24,21 @@ import { VPSComparison } from "@/components/wizard/VPSComparison";
 import { cn } from "@/lib/utils";
 import {
   VPS_PROVIDERS,
+  VPS_UBUNTU_IMAGE_OPTIONS,
   VPS_WORKLOAD_PROFILES,
   calculateRequiredSpecs,
   evaluateProviderPlans,
   validateVPSReadiness,
   type PlanStatus,
   type VPSReadinessStatus,
-  type WorkloadId,
 } from "@/lib/vpsProviders";
 import { markStepComplete } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { withCurrentSearch } from "@/lib/utils";
-import { useVPSReadinessSelection } from "@/lib/userPreferences";
+import {
+  useVPSReadinessSelection,
+  type VPSReadinessSelection,
+} from "@/lib/userPreferences";
 import {
   SimplerGuide,
   GuideSection,
@@ -214,7 +217,14 @@ const SPEC_CHECKLIST = [
 ];
 
 const AGENT_COUNT_PRESETS = [5, 10, 15, 25, 50];
-const UBUNTU_IMAGE_OPTIONS = ["25.10", "24.04", "22.04", "20.04"];
+const DEFAULT_VPS_READINESS_SELECTION: VPSReadinessSelection = {
+  providerId: VPS_PROVIDERS[0].id,
+  planName: VPS_PROVIDERS[0].recommended.name,
+  ubuntuVersion: "25.10",
+  region: VPS_PROVIDERS[0].regionOptions[0].id,
+  targetAgents: 10,
+  workloadId: "standard",
+};
 const COMFORTABLE_STATUSES = new Set<PlanStatus>(["pass"]);
 const PLAN_STATUS_COPY: Record<PlanStatus, { label: string; className: string }> = {
   pass: {
@@ -266,13 +276,19 @@ function readinessCopy(status: VPSReadinessStatus): { label: string; className: 
 }
 
 function CapacityPlanner() {
-  const [, setVPSReadinessSelection, vpsReadinessSelectionLoaded] = useVPSReadinessSelection();
-  const [agentCount, setAgentCount] = useState(10);
-  const [workloadId, setWorkloadId] = useState<WorkloadId>("standard");
-  const [readinessProviderId, setReadinessProviderId] = useState(VPS_PROVIDERS[0].id);
-  const [readinessPlanName, setReadinessPlanName] = useState(VPS_PROVIDERS[0].recommended.name);
-  const [ubuntuVersion, setUbuntuVersion] = useState("25.10");
-  const [readinessRegion, setReadinessRegion] = useState(VPS_PROVIDERS[0].regionOptions[0].id);
+  const [savedVPSReadinessSelection, setVPSReadinessSelection, vpsReadinessSelectionLoaded] =
+    useVPSReadinessSelection();
+  const [plannerSelection, setPlannerSelection] = useState(DEFAULT_VPS_READINESS_SELECTION);
+  const hasLocalPlannerInteraction = useRef(false);
+  const hasHydratedPlannerSelection = useRef(false);
+  const {
+    providerId: readinessProviderId,
+    planName: readinessPlanName,
+    ubuntuVersion,
+    region: readinessRegion,
+    targetAgents: agentCount,
+    workloadId,
+  } = plannerSelection;
   const workload =
     VPS_WORKLOAD_PROFILES.find((profile) => profile.id === workloadId) ?? VPS_WORKLOAD_PROFILES[1];
   const minimumSpecs = calculateRequiredSpecs(agentCount, workload, false);
@@ -298,30 +314,37 @@ function CapacityPlanner() {
 
   useEffect(() => {
     if (!vpsReadinessSelectionLoaded) return;
-    setVPSReadinessSelection({
-      providerId: readinessProviderId,
-      planName: readinessPlanName,
-      ubuntuVersion,
-      region: readinessRegion,
-      targetAgents: agentCount,
-      workloadId,
-    });
-  }, [
-    agentCount,
-    readinessPlanName,
-    readinessProviderId,
-    readinessRegion,
-    setVPSReadinessSelection,
-    ubuntuVersion,
-    vpsReadinessSelectionLoaded,
-    workloadId,
-  ]);
+    if (!hasHydratedPlannerSelection.current) {
+      hasHydratedPlannerSelection.current = true;
+      if (hasLocalPlannerInteraction.current) return;
+      const hydratedSelection = savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPlannerSelection(hydratedSelection);
+      // Persist the normalized value returned by the preference layer so stale
+      // provider, plan, region, image, or capacity choices are repaired once.
+      setVPSReadinessSelection(hydratedSelection);
+      return;
+    }
+    // Keep the controls usable when localStorage is unavailable while still
+    // accepting persisted or cross-tab updates when the query has a value.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPlannerSelection(savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION);
+  }, [savedVPSReadinessSelection, setVPSReadinessSelection, vpsReadinessSelectionLoaded]);
+
+  const updatePlannerSelection = (selection: VPSReadinessSelection) => {
+    hasLocalPlannerInteraction.current = true;
+    setPlannerSelection(selection);
+    setVPSReadinessSelection(selection);
+  };
 
   const handleReadinessProviderChange = (providerId: string) => {
-    setReadinessProviderId(providerId);
     const provider = VPS_PROVIDERS.find((entry) => entry.id === providerId);
-    setReadinessPlanName(provider?.recommended.name ?? "custom plan");
-    setReadinessRegion(provider?.regionOptions[0]?.id ?? "not-listed");
+    updatePlannerSelection({
+      ...plannerSelection,
+      providerId,
+      planName: provider?.recommended.name ?? "custom plan",
+      region: provider?.regionOptions[0]?.id ?? "not-listed",
+    });
   };
 
   return (
@@ -366,7 +389,10 @@ function CapacityPlanner() {
               max={50}
               step={5}
               value={agentCount}
-              onChange={(event) => setAgentCount(Number(event.target.value))}
+              onChange={(event) => updatePlannerSelection({
+                ...plannerSelection,
+                targetAgents: Number(event.target.value),
+              })}
               className="h-2 w-full cursor-pointer accent-primary"
               aria-label="Target agent count"
             />
@@ -375,7 +401,10 @@ function CapacityPlanner() {
                 <button
                   key={count}
                   type="button"
-                  onClick={() => setAgentCount(count)}
+                  onClick={() => updatePlannerSelection({
+                    ...plannerSelection,
+                    targetAgents: count,
+                  })}
                   className={cn(
                     "rounded-md border px-2 py-1 text-xs font-medium transition-colors",
                     agentCount === count
@@ -396,7 +425,10 @@ function CapacityPlanner() {
                 <button
                   key={profile.id}
                   type="button"
-                  onClick={() => setWorkloadId(profile.id)}
+                  onClick={() => updatePlannerSelection({
+                    ...plannerSelection,
+                    workloadId: profile.id,
+                  })}
                   className={cn(
                     "rounded-lg border p-3 text-left transition-colors",
                     workloadId === profile.id
@@ -552,7 +584,10 @@ function CapacityPlanner() {
             <select
               aria-label="Plan"
               value={readinessPlanName}
-              onChange={(event) => setReadinessPlanName(event.target.value)}
+              onChange={(event) => updatePlannerSelection({
+                ...plannerSelection,
+                planName: event.target.value,
+              })}
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
               {readinessPlans.length > 0 ? (
@@ -572,10 +607,13 @@ function CapacityPlanner() {
             <select
               aria-label="Ubuntu image"
               value={ubuntuVersion}
-              onChange={(event) => setUbuntuVersion(event.target.value)}
+              onChange={(event) => updatePlannerSelection({
+                ...plannerSelection,
+                ubuntuVersion: event.target.value,
+              })}
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
-              {UBUNTU_IMAGE_OPTIONS.map((version) => (
+              {VPS_UBUNTU_IMAGE_OPTIONS.map((version) => (
                 <option key={version} value={version}>
                   Ubuntu {version}
                 </option>
@@ -588,7 +626,10 @@ function CapacityPlanner() {
             <select
               aria-label="Region"
               value={readinessRegion}
-              onChange={(event) => setReadinessRegion(event.target.value)}
+              onChange={(event) => updatePlannerSelection({
+                ...plannerSelection,
+                region: event.target.value,
+              })}
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
               {readinessRegions.length > 0 ? (

@@ -68,6 +68,8 @@ export interface VPSProvider {
 export type WorkloadId = "light" | "standard" | "heavy";
 export type PlanStatus = "pass" | "warn" | "fail";
 
+export const VPS_UBUNTU_IMAGE_OPTIONS = ["25.10", "24.04", "22.04", "20.04"] as const;
+
 export interface WorkloadProfile {
   id: WorkloadId;
   label: string;

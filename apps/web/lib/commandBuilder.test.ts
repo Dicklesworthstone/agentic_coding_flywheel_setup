@@ -563,6 +563,20 @@ describe("buildTeamProfile", () => {
     expect(profile.redaction.secretSlotsRequired).toBe(true);
     expect(profile.serviceAccounts.every((account) => account.secretSlot.startsWith("secret://acfs/team/"))).toBe(true);
   });
+
+  test("replaces a malformed caller-supplied timestamp with a canonical UTC timestamp", () => {
+    const profile = buildTeamProfile({
+      ip: "",
+      os: "linux",
+      username: "ubuntu",
+      mode: "vibe",
+      ref: null,
+      generatedAt: "2026-02-31T00:00:00Z",
+    });
+
+    expect(profile.generatedAt).not.toBe("2026-02-31T00:00:00Z");
+    expect(profile.generatedAt).toBe(new Date(profile.generatedAt).toISOString());
+  });
 });
 
 describe("buildTeamProfileImportDiff", () => {
@@ -700,6 +714,93 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.installerCommand.command).toBeNull();
   });
 
+  test("rejects malformed generation metadata, provenance refs, and SSH ports", () => {
+    const original = sampleProfile();
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      generatedAt: "2026-02-31T00:00:00Z",
+      generatedBy: "third-party-importer",
+      provenance: {
+        ...original.provenance,
+        source: {
+          ...original.provenance.source,
+          acfsRef: "main;touch /tmp/acfs",
+        },
+      },
+      providerDefaults: {
+        ...original.providerDefaults,
+        sshPort: 2222,
+      },
+    });
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "generatedAt",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "generatedBy",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "provenance.source.acfsRef",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "providerDefaults.sshPort",
+      }),
+    ]));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects empty or non-string provenance hashes instead of bypassing integrity checks", () => {
+    const original = sampleProfile();
+    const malformedProfiles = [
+      {
+        path: "provenance.source.manifestSha256",
+        code: "team_profile_manifest_mismatch",
+        profile: {
+          ...original,
+          provenance: {
+            ...original.provenance,
+            source: {
+              ...original.provenance.source,
+              manifestSha256: "",
+            },
+          },
+        },
+      },
+      {
+        path: "provenance.source.checksumsYamlSha256",
+        code: "team_profile_checksums_mismatch",
+        profile: {
+          ...original,
+          provenance: {
+            ...original.provenance,
+            source: {
+              ...original.provenance.source,
+              checksumsYamlSha256: 0,
+            },
+          },
+        },
+      },
+    ];
+
+    for (const malformed of malformedProfiles) {
+      const diff = buildTeamProfileImportDiff(malformed.profile);
+
+      expect(diff.ok).toBe(false);
+      expect(diff.findings).toContainEqual(expect.objectContaining({
+        code: malformed.code,
+        path: malformed.path,
+      }));
+      expect(diff.installerCommand.command).toBeNull();
+    }
+  });
+
   test("refuses secret-bearing profiles without echoing credential-like values", () => {
     const credentialLikeValue = ["Bea", "rer <credential>"].join("");
     const profile = {
@@ -717,6 +818,166 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.refusals.map((finding) => finding.code)).toContain("team_profile_secret_material_refused");
     expect(json).not.toContain("Bearer");
     expect(json).not.toContain("<credential>");
+  });
+
+  test("refuses and redacts HTTP URL userinfo even without a password", () => {
+    const userinfoUrl = "https://alice@example.com/plugin";
+    const original = sampleProfile();
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      extensions: {
+        mirrorUrl: userinfoUrl,
+      },
+    });
+    const json = serializeTeamProfileImportDiffJson(diff);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.refusals).toContainEqual(expect.objectContaining({
+      code: "team_profile_secret_material_refused",
+      path: "extensions.mirrorUrl",
+    }));
+    expect(json).not.toContain("alice");
+    expect(json).not.toContain(userinfoUrl);
+  });
+
+  test("refuses and redacts credential material embedded in a field name", () => {
+    const credentialLikeKey = ["ghp_", "A1".repeat(12)].join("");
+    const original = sampleProfile();
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      extensions: {
+        [credentialLikeKey]: "ignored",
+      },
+    });
+    const json = serializeTeamProfileImportDiffJson(diff);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.refusals).toContainEqual(expect.objectContaining({
+      code: "team_profile_forbidden_field",
+      path: "<redacted>",
+    }));
+    expect(json).not.toContain(credentialLikeKey);
+  });
+
+  test("does not reject ordinary field names that only contain credential substrings", () => {
+    const original = sampleProfile();
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      extensions: {
+        tokenizerModel: "sentencepiece",
+        sessionlessMode: true,
+      },
+    });
+
+    expect(diff.ok).toBe(true);
+    expect(diff.refusals).toHaveLength(0);
+  });
+
+  test("refuses split multi-word credential phrases inside longer field names", () => {
+    for (const credentialField of ["rotatedApiKeyValue", "backup_private_key_path"]) {
+      const original = sampleProfile();
+      const diff = buildTeamProfileImportDiff({
+        ...original,
+        extensions: {
+          [credentialField]: "short-auth-value",
+        },
+      });
+
+      expect(diff.ok).toBe(false);
+      expect(diff.profile).toBeNull();
+      expect(diff.refusals).toContainEqual(expect.objectContaining({
+        code: "team_profile_forbidden_field",
+        path: `extensions.${credentialField}`,
+      }));
+      expect(serializeTeamProfileImportDiffJson(diff)).not.toContain("short-auth-value");
+    }
+  });
+
+  test("does not reject ordinary values that only contain credential substrings", () => {
+    const original = sampleProfile();
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      extensions: {
+        parser: "tokenizer",
+        runtimeMode: "sessionless",
+      },
+    });
+
+    expect(diff.ok).toBe(true);
+    expect(diff.refusals).toHaveLength(0);
+  });
+
+  test("does not let ignored redaction metadata hide credential material", () => {
+    const credentialLikeValue = ["Bea", "rer redaction-bypass"].join("");
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      redaction: {
+        ...original.redaction,
+        password: credentialLikeValue,
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+    const json = serializeTeamProfileImportDiffJson(diff);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.refusals).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "team_profile_forbidden_field",
+        path: "redaction.password",
+      }),
+      expect.objectContaining({
+        code: "team_profile_secret_material_refused",
+        path: "redaction.password",
+      }),
+    ]));
+    expect(json).not.toContain(credentialLikeValue);
+  });
+
+  test("only exempts known manifest ids in imported module plans", () => {
+    const profile = sampleProfile();
+    const credentialLikeModuleId = "api_token-value-that-must-not-be-trusted";
+    const diff = buildTeamProfileImportDiff({
+      ...profile,
+      install: {
+        ...profile.install,
+        modulePlan: {
+          ...profile.install.modulePlan,
+          excluded: [...profile.install.modulePlan.excluded, credentialLikeModuleId],
+        },
+      },
+    });
+    const json = serializeTeamProfileImportDiffJson(diff);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.refusals).toContainEqual(expect.objectContaining({
+      code: "team_profile_secret_material_refused",
+      path: `install.modulePlan.excluded.${profile.install.modulePlan.excluded.length}`,
+    }));
+    expect(json).not.toContain(credentialLikeModuleId);
+  });
+
+  test("only exempts canonical policy names in redaction metadata", () => {
+    const original = sampleProfile();
+    const credentialLikePolicy = ["Bea", "rer policy-array-bypass"].join("");
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      redaction: {
+        ...original.redaction,
+        forbiddenFields: [...original.redaction.forbiddenFields, credentialLikePolicy],
+      },
+    });
+    const json = serializeTeamProfileImportDiffJson(diff);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.refusals).toContainEqual(expect.objectContaining({
+      code: "team_profile_secret_material_refused",
+      path: `redaction.forbiddenFields.${original.redaction.forbiddenFields.length}`,
+    }));
+    expect(json).not.toContain(credentialLikePolicy);
   });
 
   test("rejects invalid import refs before building a command preview", () => {
@@ -768,6 +1029,93 @@ describe("buildTeamProfileImportDiff", () => {
     expect(json).not.toContain(rawCredential);
   });
 
+  test("rejects malformed service account metadata before the typed import cast", () => {
+    const credentialLikeAuthMethod = ["Bea", "rer should-not-appear"].join("");
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      serviceAccounts: [
+        {
+          ...original.serviceAccounts[0],
+          required: "false",
+          authMethod: credentialLikeAuthMethod,
+        },
+        {
+          ...original.serviceAccounts[1],
+          id: original.serviceAccounts[0].id,
+          secretSlot: original.serviceAccounts[0].secretSlot,
+        },
+      ],
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+    const json = serializeTeamProfileImportDiffJson(diff);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "serviceAccounts.0.required",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "serviceAccounts.0.authMethod",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "serviceAccounts.1.id",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "serviceAccounts.1.secretSlot",
+      }),
+    ]));
+    expect(diff.installerCommand.command).toBeNull();
+    expect(json).not.toContain(credentialLikeAuthMethod);
+  });
+
+  test("rejects malformed display and provider defaults before the typed import cast", () => {
+    const original = sampleProfile();
+    const providerDefaults = {
+      ...original.providerDefaults,
+      provider: { id: "contabo" },
+      planClass: ["Cloud VPS 50"],
+      operatingSystem: "debian-13",
+    };
+    delete (providerDefaults as Partial<typeof providerDefaults>).region;
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      displayName: { text: original.displayName },
+      providerDefaults,
+    });
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "displayName",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "providerDefaults.provider",
+      }),
+      expect.objectContaining({
+        code: "team_profile_missing_required_field",
+        path: "providerDefaults.region",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "providerDefaults.planClass",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "providerDefaults.operatingSystem",
+      }),
+    ]));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
   test("shows provider mismatches as safe default changes", () => {
     const diff = buildTeamProfileImportDiff(sampleProfile(), {
       providerSelection: {
@@ -816,6 +1164,208 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.incompatibilities.map((finding) => finding.code)).toContain("team_profile_unknown_module");
     expect(diff.installerCommand.command).toBeNull();
     expect(markdown).toContain("Blocked until incompatibilities and refusals are resolved.");
+  });
+
+  test("rejects non-string module selectors instead of silently widening the install", () => {
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      install: {
+        ...original.install,
+        profile: "full",
+        modules: {
+          only: [42],
+          onlyPhases: [],
+          skip: [],
+          noDeps: false,
+        },
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_schema_unsupported",
+      path: "install.modules.only",
+    }));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects blank module selectors instead of silently widening the install", () => {
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      install: {
+        ...original.install,
+        profile: "full",
+        modules: {
+          only: ["   "],
+          onlyPhases: [],
+          skip: [],
+          noDeps: false,
+        },
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_schema_unsupported",
+      path: "install.modules.only",
+    }));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects malformed compatibility arrays", () => {
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      compatibility: {
+        ...original.compatibility,
+        targetUbuntuVersions: [25.10],
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_schema_unsupported",
+      path: "compatibility.targetUbuntuVersions",
+    }));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects empty compatibility arrays instead of treating them as universal", () => {
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      compatibility: {
+        ...original.compatibility,
+        targetUbuntuVersions: [],
+        architectures: [],
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_schema_unsupported",
+      path: "compatibility.targetUbuntuVersions",
+    }));
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_arch_unsupported",
+      path: "compatibility.architectures",
+    }));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects unsupported compatibility schema versions and architectures", () => {
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      compatibility: {
+        ...original.compatibility,
+        schemaVersions: [99],
+        architectures: ["x86_64", "mips64"],
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_schema_unsupported",
+      path: "compatibility.schemaVersions",
+    }));
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_arch_unsupported",
+      path: "compatibility.architectures",
+    }));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects missing or unsupported compatibility policies", () => {
+    const original = sampleProfile();
+    const compatibility: Partial<typeof original.compatibility> = {
+      ...original.compatibility,
+      checksumsRefPolicy: "profile_override" as typeof original.compatibility.checksumsRefPolicy,
+    };
+    delete compatibility.installerRefPolicy;
+    const diff = buildTeamProfileImportDiff({
+      ...original,
+      compatibility,
+    });
+
+    expect(diff.ok).toBe(false);
+    expect(diff.profile).toBeNull();
+    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "team_profile_missing_required_field",
+        path: "compatibility.installerRefPolicy",
+      }),
+      expect.objectContaining({
+        code: "team_profile_schema_unsupported",
+        path: "compatibility.checksumsRefPolicy",
+      }),
+    ]));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects defaults that contradict the profile compatibility contract", () => {
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      compatibility: {
+        ...original.compatibility,
+        targetUbuntuVersions: ["25.10"],
+        architectures: ["x86_64"],
+      },
+      providerDefaults: {
+        ...original.providerDefaults,
+        operatingSystem: "ubuntu-24.04",
+        architecture: "aarch64",
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.incompatibilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: "team_profile_ubuntu_unsupported",
+        path: "providerDefaults.operatingSystem",
+      }),
+      expect.objectContaining({
+        code: "team_profile_arch_unsupported",
+        path: "providerDefaults.architecture",
+      }),
+    ]));
+    expect(diff.installerCommand.command).toBeNull();
+  });
+
+  test("rejects a ref type that contradicts the normalized ref value", () => {
+    const original = sampleProfile();
+    const profile = {
+      ...original,
+      install: {
+        ...original.install,
+        ref: {
+          ...original.install.ref,
+          type: "branch",
+        },
+      },
+    };
+    const diff = buildTeamProfileImportDiff(profile);
+
+    expect(diff.ok).toBe(false);
+    expect(diff.incompatibilities).toContainEqual(expect.objectContaining({
+      code: "team_profile_ref_policy_mismatch",
+      path: "install.ref.type",
+    }));
+    expect(diff.installerCommand.command).toBeNull();
   });
 
   test("blocks unknown module selection profiles instead of silently falling back to full", () => {
