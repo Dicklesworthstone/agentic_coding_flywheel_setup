@@ -8,7 +8,7 @@
  *   bun run generate (from packages/manifest)
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,
   constants,
@@ -131,7 +131,10 @@ function writeGeneratedFileNoFollow(path: string, content: string, mode: number)
   // mid-write (or a concurrent reader — install.sh sources these files) can
   // never observe a truncated generated file. O_EXCL on the temp path keeps
   // the no-symlink-target guarantees: we never open the destination at all.
-  const tmpPath = `${path}.tmp-${process.pid}`;
+  // A random suffix prevents a stale file from a killed process or recycled PID
+  // from blocking future runs. O_EXCL still makes a collision fail closed, and
+  // we never delete a pathname that this invocation did not create.
+  const tmpPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
   let fd: number | undefined;
   let renamed = false;
   try {
@@ -153,7 +156,7 @@ function writeGeneratedFileNoFollow(path: string, content: string, mode: number)
       try {
         unlinkSync(tmpPath);
       } catch {
-        // best-effort cleanup; the .tmp-<pid> file is inert if left behind
+        // best-effort cleanup; a leftover unique temp file is inert
       }
     }
   }

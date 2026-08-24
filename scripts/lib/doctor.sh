@@ -2231,7 +2231,11 @@ check_shell() {
     # shells with neither the loader nor any ~/.local/bin PATH entry. The
     # marker string mirrors fix_path_ordering in doctor_fix.sh.
     local acfs_path_marker="# ACFS PATH ordering (added by doctor --fix)"
-    if _acfs_doctor_zshrc_sources_acfs "$managed_zshrc" \
+    if [[ ! -d "$runtime_home/.acfs" ]]; then
+        # No managed install at all (matches the config.* skips above) —
+        # there is no ACFS PATH contract to enforce yet.
+        check "path.ordering" "PATH wiring in .zshrc" "skip" "no ~/.acfs directory"
+    elif _acfs_doctor_zshrc_sources_acfs "$managed_zshrc" \
        || grep -Fq "$acfs_path_marker" "$managed_zshrc" 2>/dev/null \
        || grep -q '\.local/bin' "$managed_zshrc" 2>/dev/null; then
         check "path.ordering" "PATH wiring in .zshrc" "pass"

@@ -687,7 +687,7 @@ acfs-update --bootstrap-self-update
 --cloud-only     Only update cloud CLIs
 --shell-only     Only update shell tools (OMZ, P10K, plugins, Atuin, Zoxide)
 --runtime-only   Only update runtimes (bun, rust, uv, go)
---stack          Include Agent Flywheel stack (enabled by default)
+--stack          Include Agent Flywheel stack tools (enabled by default)
 ```
 
 **Skip Categories:**

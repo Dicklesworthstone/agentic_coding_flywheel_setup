@@ -899,6 +899,30 @@ describe('validatePluginPackage', () => {
     }));
   });
 
+  test('rejects proxy input without invoking reflection traps', () => {
+    const plugin = validPlugin();
+    let reflectionTrapInvoked = false;
+    plugin.extensions = new Proxy({}, {
+      getPrototypeOf() {
+        reflectionTrapInvoked = true;
+        throw new Error('proxy reflection trap must not execute');
+      },
+      ownKeys() {
+        reflectionTrapInvoked = true;
+        throw new Error('proxy reflection trap must not execute');
+      },
+    });
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(reflectionTrapInvoked).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('Proxy objects'),
+    }));
+  });
+
   test('bounds direct object validation by JSON node count', () => {
     const plugin = validPlugin();
     plugin.extensions = {

@@ -1,6 +1,6 @@
 import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
 import { isIP } from 'node:net';
-import { TextDecoder } from 'node:util';
+import { TextDecoder, types as utilTypes } from 'node:util';
 import { z } from 'zod';
 import { ModuleWebMetadataSchema } from './schema.js';
 import type { InstallerChecksumEntry } from './validate.js';
@@ -371,6 +371,9 @@ function inspectPluginInputStructure(
       }
       if (typeof candidate.value !== 'object') {
         return refuse('Plugin manifest must contain only JSON-compatible values', candidate.path);
+      }
+      if (utilTypes.isProxy(candidate.value)) {
+        return refuse('Plugin manifest must not contain Proxy objects', candidate.path);
       }
       if (seen.has(candidate.value)) {
         return refuse(
