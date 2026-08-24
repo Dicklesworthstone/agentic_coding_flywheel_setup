@@ -132,6 +132,7 @@ describe("buildInstallCommand", () => {
 
     expect(command).not.toContain("TARGET_USER=");
     expect(command).toContain("--mode vibe");
+    expect(command).not.toContain("$(date +%s)");
   });
 
   test("includes TARGET_USER and --ref for a customized install", () => {

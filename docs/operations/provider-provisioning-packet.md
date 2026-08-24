@@ -169,7 +169,7 @@ setup requires copy-paste fidelity:
   "install": {
     "mode": "vibe",
     "sourceRef": "main",
-    "command": "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?$(date +%s)\" | bash -s -- --yes --mode vibe",
+    "command": "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh\" | bash -s -- --yes --mode vibe",
     "commandRunLocation": "vps-root-shell"
   }
 }

@@ -996,6 +996,7 @@ test.describe("Step 8: Pre-Flight Check Page", () => {
     const commandElement = page.locator("code").filter({ hasText: "scripts/preflight.sh" }).first();
     await expect(commandElement).toContainText("/v2.0.0/scripts/preflight.sh");
     await expect(commandElement).not.toContainText("/main/scripts/preflight.sh");
+    await expect(commandElement).not.toContainText("$(date +%s)");
   });
 
   test("should wait for saved pinned ref before exposing the preflight command", async ({ page }) => {

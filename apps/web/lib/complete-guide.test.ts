@@ -62,7 +62,7 @@ describe("complete guide derived claims", () => {
 
   test("installer examples come from the canonical builder contract", () => {
     expect(buildInstallCommand("vibe", null)).toBe(
-      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?$(date +%s)" | bash -s -- --yes --mode vibe',
+      'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" | bash -s -- --yes --mode vibe',
     );
     expect(pageSource).toContain("CURRENT_INSTALL_COMMAND");
     expect(pageSource).toContain("PINNED_INSTALL_COMMAND");

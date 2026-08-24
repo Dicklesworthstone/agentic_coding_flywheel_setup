@@ -109,7 +109,7 @@ valid_packet_fixture() {
   "install": {
     "mode": "vibe",
     "sourceRef": "main",
-    "command": "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?$(date +%s)\" | bash -s -- --yes --mode vibe",
+    "command": "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh\" | bash -s -- --yes --mode vibe",
     "commandRunLocation": "vps-root-shell"
   },
   "compatibility": {
@@ -127,7 +127,7 @@ valid_packet_fixture() {
   },
   "verificationCommands": [
     {"id": "ssh-root", "label": "Root SSH reaches the new VPS", "command": "ssh root@<target-host>", "runLocation": "local", "expectedStatus": "pass", "supportBundleSafe": false},
-    {"id": "installer", "label": "ACFS installer exits successfully", "command": "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh?$(date +%s)\" | bash -s -- --yes --mode vibe", "runLocation": "vps", "expectedStatus": "pass", "supportBundleSafe": true},
+    {"id": "installer", "label": "ACFS installer exits successfully", "command": "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh\" | bash -s -- --yes --mode vibe", "runLocation": "vps", "expectedStatus": "pass", "supportBundleSafe": true},
     {"id": "doctor", "label": "ACFS doctor passes or reports only documented warnings", "command": "acfs doctor", "runLocation": "vps", "expectedStatus": "pass", "supportBundleSafe": true}
   ],
   "expectedArtifacts": [

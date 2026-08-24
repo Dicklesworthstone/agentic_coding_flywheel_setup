@@ -506,7 +506,7 @@ export function buildInstallCommand(
   const selectorArgSuffix = selectorArgs ? ` ${selectorArgs}` : "";
   const installerUrl = `${INSTALL_SCRIPT_BASE_URL}/${installRef}/install.sh`;
 
-  return `curl -fsSL "${installerUrl}?$(date +%s)" | ${userEnv}bash -s -- --yes --mode ${mode}${refArg}${selectorArgSuffix}`;
+  return `curl -fsSL "${installerUrl}" | ${userEnv}bash -s -- --yes --mode ${mode}${refArg}${selectorArgSuffix}`;
 }
 
 /**

@@ -94,7 +94,7 @@ export default function PreflightCheckPage() {
   const preflightRef = normalizeGitRef(acfsRef) ?? DEFAULT_PREFLIGHT_REF;
   const preflightCommand = useMemo(
     () =>
-      `curl -fsSL "${PREFLIGHT_SCRIPT_BASE_URL}/${preflightRef}/scripts/preflight.sh?$(date +%s)" | bash`,
+      `curl -fsSL "${PREFLIGHT_SCRIPT_BASE_URL}/${preflightRef}/scripts/preflight.sh" | bash`,
     [preflightRef],
   );
 

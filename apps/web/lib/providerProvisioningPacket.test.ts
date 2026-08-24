@@ -157,6 +157,7 @@ describe("buildProviderProvisioningPacket", () => {
       readinessStatus: "supported",
     });
     expect(packet.install.command).toContain("--mode vibe");
+    expect(packet.install.command).not.toContain("$(date +%s)");
     expect(packet.install.commandRunLocation).toBe("vps-root-shell");
     expect(packet.verificationCommands.map((command) => command.id)).toEqual([
       "ssh-root",
