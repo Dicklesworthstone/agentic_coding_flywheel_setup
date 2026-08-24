@@ -454,13 +454,6 @@ if [[ "$ROOT_AVAIL_GB" -lt 5 ]]; then
         done < <(find /tmp -maxdepth 1 -name "$pattern" -mtime +7 -print0 2>/dev/null || true)
     done
 
-    # Clean old nightly logs (>30 days)
-    while IFS= read -r -d '' f; do
-        sz="$(du -sk "$f" 2>/dev/null | cut -f1 || true)"
-        sz="${sz:-0}"
-        rm -f "$f" 2>/dev/null && FREED=$((FREED + sz)) && log "  Cleaned: $f (${sz}KB)"
-    done < <(find "$LOG_DIR" -name "nightly-*.log" -mtime +30 -print0 2>/dev/null || true)
-
     # Cargo registry cache if > 500MB
     CARGO_REGISTRY="$HOME/.cargo/registry/cache"
     if [[ -d "$CARGO_REGISTRY" ]]; then
@@ -487,6 +480,13 @@ if [[ "$ROOT_AVAIL_GB" -lt 5 ]]; then
 
     log "Cleanup freed ~$((FREED / 1024))MB"
 fi
+
+# ── Housekeeping: rotate this service's own logs (>30 days) ──
+# Unconditional: one log accumulates per night, and until now it was only
+# ever cleaned once the disk had already dropped below 5GB free.
+while IFS= read -r -d '' f; do
+    rm -f "$f" 2>/dev/null && log "  Rotated old nightly log: $f"
+done < <(find "$LOG_DIR" -name "nightly-*.log" -mtime +30 -print0 2>/dev/null || true)
 
 # ── Run acfs-update ───────────────────────────────────────
 ACFS_UPDATE=""
@@ -524,7 +524,12 @@ if [[ "${ACFS_NIGHTLY_SELF_UPDATE:-false}" != "true" ]]; then
     # Only pass --no-self-update if this acfs-update supports it; older
     # acfs-update versions lack the flag and would error out on an unknown arg
     # (e.g. ACFS 0.1.0/0.5.0), which fails the whole nightly update.
-    if "$ACFS_UPDATE" --help 2>&1 | grep -q -- '--no-self-update'; then
+    # Capture the help text first: under `set -o pipefail`, piping straight
+    # into `grep -q` can fail spuriously (grep exits at the first match and
+    # the help writer dies on SIGPIPE), which would silently re-enable
+    # self-update on machines that must not self-update.
+    update_help="$("$ACFS_UPDATE" --help 2>&1 || true)"
+    if grep -q -- '--no-self-update' <<<"$update_help"; then
         NIGHTLY_UPDATE_ARGS+=(--no-self-update)
     fi
 fi
