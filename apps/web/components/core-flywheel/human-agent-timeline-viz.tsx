@@ -6,7 +6,7 @@ import {
   motion,
   useInView,
   useReducedMotion,
-} from "framer-motion";
+} from "@/components/motion";
 import {
   FileText,
   Layers,

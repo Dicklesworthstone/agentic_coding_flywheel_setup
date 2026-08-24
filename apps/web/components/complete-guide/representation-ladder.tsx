@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 import { Bug, Repeat } from "lucide-react";
 import { Hl } from "@/components/complete-guide/guide-components";
 

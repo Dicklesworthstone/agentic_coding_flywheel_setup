@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { motion, useInView, useReducedMotion } from "framer-motion";
+import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { Radar, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 

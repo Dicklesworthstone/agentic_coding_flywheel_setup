@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion, useInView, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useInView, useReducedMotion } from "@/components/motion";
 
 export function FlywheelDiagram() {
   const ref = useRef<HTMLDivElement>(null);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { motion, AnimatePresence, useReducedMotion, useInView } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion, useInView } from "@/components/motion";
 
 // =============================================================================
 // DATA

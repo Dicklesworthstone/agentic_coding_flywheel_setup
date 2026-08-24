@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { motion, useInView, useReducedMotion, AnimatePresence } from "framer-motion";
+import { motion, useInView, useReducedMotion, AnimatePresence } from "@/components/motion";
 import { BrainCircuit, FileCode2, ScrollText, AlertOctagon, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

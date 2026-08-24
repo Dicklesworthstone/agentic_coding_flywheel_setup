@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useCallback } from "react";
-import { motion, useInView, useReducedMotion } from "framer-motion";
+import { motion, useInView, useReducedMotion } from "@/components/motion";
 import { CheckCircle2 } from "lucide-react";
 import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 import { cn } from "@/lib/utils";

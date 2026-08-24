@@ -3,7 +3,8 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { AnimatePresence, m, type HTMLMotionProps } from "framer-motion";
+import { AnimatePresence, motion as m } from "@/components/motion";
+import type { HTMLMotionProps } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { springs } from "@/components/motion";

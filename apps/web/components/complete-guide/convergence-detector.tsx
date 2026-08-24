@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { motion, useInView, useReducedMotion } from "framer-motion";
+import { motion, useInView, useReducedMotion } from "@/components/motion";
 
 const EXHIBIT_PANEL_CLASS =
   "my-8 overflow-hidden rounded-[28px] border border-white/[0.12] bg-[radial-gradient(circle_at_top,rgba(52,211,153,0.12),transparent_42%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(2,6,23,0.96))] p-5 sm:p-6 lg:p-7 backdrop-blur-xl shadow-[0_35px_90px_-40px_rgba(2,6,23,0.95),inset_0_1px_1px_rgba(255,255,255,0.08)]";

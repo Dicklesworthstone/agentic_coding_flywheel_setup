@@ -6,8 +6,8 @@ import {
   AnimatePresence,
   useInView,
   useReducedMotion,
-  LayoutGroup,
-} from "framer-motion";
+} from "@/components/motion";
+import { LayoutGroup } from "framer-motion";
 import {
   AlertTriangle,
   CheckCircle2,

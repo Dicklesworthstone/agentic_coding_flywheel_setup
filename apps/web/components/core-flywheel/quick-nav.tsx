@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "@/components/motion";
 import { ChevronUp, List } from "lucide-react";
 
 const NAV_ITEMS = [

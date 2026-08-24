@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { motion, AnimatePresence, useInView } from "framer-motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import { Mail, Zap, XOctagon, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 

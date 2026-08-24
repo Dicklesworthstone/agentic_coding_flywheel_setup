@@ -2,7 +2,8 @@
 
 import { useEffect, useCallback, useSyncExternalStore, useRef } from "react";
 import { createPortal } from "react-dom";
-import { m, AnimatePresence, useDragControls, type PanInfo } from "framer-motion";
+import { motion as m, AnimatePresence } from "@/components/motion";
+import { useDragControls, type PanInfo } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";

@@ -7,7 +7,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import { motion, useReducedMotion, useInView, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion, useInView, AnimatePresence } from "@/components/motion";
 import {
   Check,
   Copy,
