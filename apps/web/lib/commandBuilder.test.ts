@@ -617,6 +617,55 @@ describe("buildTeamProfileImportDiff", () => {
     expect(markdown).toContain("## Installer Command");
   });
 
+  test("round-trips a pinned full commit SHA without false secret or OS changes", () => {
+    const commitSha = "a1b6c2f34aac7596e676688c36cb57cbbb869f3c";
+    const profile = buildTeamProfile({
+      ip: "203.0.113.42",
+      os: "mac",
+      username: "dev-user",
+      mode: "safe",
+      ref: commitSha,
+      generatedAt,
+      providerSelection: {
+        providerId: "contabo",
+        planName: "Cloud VPS 50",
+        ubuntuVersion: "25.10",
+        region: "us",
+        targetAgents: 10,
+        workloadId: "standard",
+      },
+      moduleSelection: {
+        profile: "cloud-only",
+      },
+    });
+
+    const diff = buildTeamProfileImportDiff(profile, {
+      providerSelection: {
+        providerId: "contabo",
+        planName: "Cloud VPS 50",
+        ubuntuVersion: "25.10",
+        region: "us",
+      },
+      installMode: "safe",
+      ref: commitSha,
+      ubuntuVersion: "25.10",
+      username: "dev-user",
+      architecture: "x86_64",
+      moduleSelection: { profile: "cloud-only" },
+    });
+
+    expect(profile.profileId).toBe("contabo-safe-a1b6c2f34aac-acfs");
+    expect(profile.install.ref).toEqual({
+      type: "commit",
+      value: commitSha,
+      pinOnExport: true,
+    });
+    expect(diff.ok).toBe(true);
+    expect(diff.refusals).toEqual([]);
+    expect(diff.safeDefaults.changes).toEqual([]);
+    expect(diff.installerCommand.command).toContain(`--ref "${commitSha}"`);
+  });
+
   test("blocks newer schemas before exposing profile contents", () => {
     const profile = {
       ...sampleProfile(),

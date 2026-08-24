@@ -182,6 +182,38 @@ EOF
     assert_output "Something blew up"
 }
 
+@test "state: later phase start preserves the prior failure diagnosis" {
+    state_init
+    state_phase_start "phase1" "first step"
+    state_phase_fail "phase1" "broken step" "Something blew up"
+
+    run state_phase_start "phase2" "continuing best-effort work"
+    assert_success
+
+    run state_get ".failed_phase"
+    assert_output "phase1"
+    run state_get ".failed_step"
+    assert_output "broken step"
+    run state_get ".failed_error"
+    assert_output "Something blew up"
+}
+
+@test "state: retrying the failed phase clears its stale diagnosis" {
+    state_init
+    state_phase_start "phase1" "first step"
+    state_phase_fail "phase1" "broken step" "Something blew up"
+
+    run state_phase_start "phase1" "retrying"
+    assert_success
+
+    run state_get ".failed_phase"
+    assert_output ""
+    run state_get ".failed_step"
+    assert_output ""
+    run state_get ".failed_error"
+    assert_output ""
+}
+
 @test "state: skip logic" {
     state_init
     

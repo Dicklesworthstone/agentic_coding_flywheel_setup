@@ -1412,6 +1412,27 @@ generate_resume_hint() {
         resume_args+=(--offline-pack "$ACFS_OFFLINE_PACK")
     fi
 
+    # Preserve manifest selection semantics. A targeted failed install must
+    # not suggest a resume command that silently expands into the full default
+    # installation plan.
+    local selection=""
+    if [[ "${ONLY_MODULES+x}" == "x" ]]; then
+        for selection in "${ONLY_MODULES[@]}"; do
+            resume_args+=(--only "$selection")
+        done
+    fi
+    if [[ "${ONLY_PHASES+x}" == "x" ]]; then
+        for selection in "${ONLY_PHASES[@]}"; do
+            resume_args+=(--only-phase "$selection")
+        done
+    fi
+    if [[ "${SKIP_MODULES+x}" == "x" ]]; then
+        for selection in "${SKIP_MODULES[@]}"; do
+            resume_args+=(--skip "$selection")
+        done
+    fi
+    [[ "${NO_DEPS:-false}" == "true" ]] && resume_args+=(--no-deps)
+
     # Add skip flags that were used
     [[ "${SKIP_POSTGRES:-false}" == "true" ]] && resume_args+=(--skip-postgres)
     [[ "${SKIP_VAULT:-false}" == "true" ]] && resume_args+=(--skip-vault)
@@ -1431,6 +1452,37 @@ generate_resume_hint() {
     done
 
     echo "$cmd"
+}
+
+acfs_install_run_has_failures() {
+    [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]] \
+        || [[ ${#ACFS_PHASE_FAILURES[@]} -gt 0 ]] \
+        || [[ ${#ACFS_MODULE_FAILURES[@]} -gt 0 ]]
+}
+
+# Emit success-only UI and integrations behind one terminal-status gate.
+# This intentionally returns success when the run failed: main still performs
+# the normal summary/exit path, but no success side effect escapes first.
+acfs_report_success_if_clean() {
+    local total_seconds="${1:-0}"
+
+    if acfs_install_run_has_failures; then
+        return 0
+    fi
+
+    if type -t show_completion &>/dev/null; then
+        show_completion 9 "$total_seconds"
+    fi
+    if type -t report_success &>/dev/null; then
+        report_success 9 "$total_seconds"
+    fi
+    acfs_summary_emit "success" "$total_seconds" 2>/dev/null || true
+    if type -t webhook_notify &>/dev/null; then
+        webhook_notify "success" "${ACFS_SUMMARY_FILE:-}" 2>/dev/null || true
+    fi
+    if type -t acfs_notify_install_success &>/dev/null; then
+        acfs_notify_install_success 2>/dev/null || true
+    fi
 }
 
 # Print the resume hint with explanation and copyable block
@@ -9604,33 +9656,6 @@ main() {
             fi
         fi
 
-        # Calculate installation time for success report
-        local installation_end_time total_seconds
-        installation_end_time=$(date +%s)
-        total_seconds=$((installation_end_time - installation_start_time))
-
-        # Show completion message with progress display
-        if type -t show_completion &>/dev/null; then
-            show_completion 9 "$total_seconds"
-        fi
-
-        # Report success with timing (mjt.5.8)
-        if type -t report_success &>/dev/null; then
-            report_success 9 "$total_seconds"
-        fi
-
-        # Emit install summary JSON (bd-31ps.3.2)
-        acfs_summary_emit "success" "$total_seconds" 2>/dev/null || true
-
-        # Send webhook notification if configured (bd-2zqr)
-        if type -t webhook_notify &>/dev/null; then
-            webhook_notify "success" "${ACFS_SUMMARY_FILE:-}" 2>/dev/null || true
-        fi
-        # Send ntfy.sh notification if configured (bd-2igt6)
-        if type -t acfs_notify_install_success &>/dev/null; then
-            acfs_notify_install_success 2>/dev/null || true
-        fi
-
         # Skip the post-install smoke test when --only / --only-phase was
         # used: the user asked for a targeted subset, so the full-stack
         # checks (agents, ntm, onboard, languages, …) will fail by design.
@@ -9643,6 +9668,14 @@ main() {
         else
             log_debug "Skipping post-install smoke test (--only/--only-phase mode)"
         fi
+
+        # Decide terminal status before emitting any completion UI, success
+        # artifact, webhook, or notification. This includes smoke-test failure,
+        # which used to be discovered only after success was already sent.
+        local installation_end_time total_seconds
+        installation_end_time=$(date +%s)
+        total_seconds=$((installation_end_time - installation_start_time))
+        acfs_report_success_if_clean "$total_seconds"
     fi
 
     # Normal completion path reached: the phase loop above already gave the
@@ -9651,7 +9684,7 @@ main() {
     ACFS_SKILLS_AND_SUMMARY_DONE=1
     print_summary
 
-    if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]] || [[ ${#ACFS_PHASE_FAILURES[@]} -gt 0 ]] || [[ ${#ACFS_MODULE_FAILURES[@]} -gt 0 ]]; then
+    if acfs_install_run_has_failures; then
         exit 1
     fi
 }

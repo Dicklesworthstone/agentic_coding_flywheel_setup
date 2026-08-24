@@ -627,7 +627,14 @@ function profileIdFromInputs(
   if (explicitProfileId) {
     return safeProfileSlug(explicitProfileId, "acfs-team-profile");
   }
-  return safeProfileSlug(`${provider}-${mode}-${sourceRef}-acfs`, "acfs-team-profile");
+  // A full commit SHA is public provenance, but the generic credential
+  // heuristic intentionally rejects opaque 40+ character values. Keep the
+  // exported ID useful and deterministic without feeding the full SHA into
+  // that heuristic; the complete pinned ref remains in install.ref.value.
+  const profileRef = inferRefType(sourceRef) === "commit"
+    ? sourceRef.slice(0, 12)
+    : sourceRef;
+  return safeProfileSlug(`${provider}-${mode}-${profileRef}-acfs`, "acfs-team-profile");
 }
 
 function normalizeTeamModuleSelection(input: ModuleSelectionInput | undefined): Required<Pick<ModuleSelectionInput, "onlyModules" | "onlyPhases" | "skipModules">> & {
@@ -870,6 +877,11 @@ function isAllowedPolicyPath(path: string): boolean {
     || /^serviceAccounts\.[0-9]+\.(authMethod|secretSlot)$/.test(path);
 }
 
+function isPublicCommitRef(path: string, value: string): boolean {
+  return (path === "install.ref.value" || path === "provenance.source.acfsRef")
+    && /^[a-f0-9]{40}$/i.test(value);
+}
+
 function collectSecurityFindings(
   value: unknown,
   path: string,
@@ -897,7 +909,12 @@ function collectSecurityFindings(
     return;
   }
 
-  if (typeof value === "string" && !isAllowedPolicyPath(path) && looksCredentialLikeValue(value)) {
+  if (
+    typeof value === "string"
+    && !isAllowedPolicyPath(path)
+    && !isPublicCommitRef(path, value)
+    && looksCredentialLikeValue(value)
+  ) {
     findings.push(importFinding(
       "team_profile_secret_material_refused",
       path,
@@ -1197,6 +1214,14 @@ function currentSourceRef(current: TeamProfileImportCurrentState): string {
   return normalizeGitRef(current.ref) ?? DEFAULT_INSTALL_REF;
 }
 
+function currentOperatingSystem(ubuntuVersion: string | null | undefined): string | null {
+  const normalized = collapseProfileWhitespace(ubuntuVersion ?? "");
+  if (!normalized) return null;
+  return /^[0-9]{2}\.[0-9]{2}$/.test(normalized)
+    ? `ubuntu-${normalized}`
+    : normalized;
+}
+
 export function buildTeamProfileImportDiff(
   input: unknown,
   current: TeamProfileImportCurrentState = {},
@@ -1248,7 +1273,11 @@ export function buildTeamProfileImportDiff(
     compareChange("providerDefaults.provider", currentProvider?.providerId ?? null, profile.providerDefaults.provider),
     compareChange("providerDefaults.region", currentProvider?.region ?? null, profile.providerDefaults.region),
     compareChange("providerDefaults.planClass", currentProvider?.planName ?? null, profile.providerDefaults.planClass),
-    compareChange("providerDefaults.operatingSystem", current.ubuntuVersion ?? null, profile.providerDefaults.operatingSystem),
+    compareChange(
+      "providerDefaults.operatingSystem",
+      currentOperatingSystem(current.ubuntuVersion),
+      profile.providerDefaults.operatingSystem,
+    ),
     compareChange("providerDefaults.architecture", current.architecture ?? null, profile.providerDefaults.architecture),
     compareChange("providerDefaults.sshUser", normalizeCommandUsername(current.username), profile.providerDefaults.sshUser),
   ]);

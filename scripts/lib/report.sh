@@ -223,6 +223,27 @@ report_build_resume_command() {
         resume_args+=(--checksums-ref "$ACFS_CHECKSUMS_REF")
     fi
 
+    # Keep this fallback in parity with install.sh's canonical resume builder.
+    # Standalone report tests source this file without the installer, so guard
+    # each optional array before expanding it under nounset.
+    local selection=""
+    if [[ "${ONLY_MODULES+x}" == "x" ]]; then
+        for selection in "${ONLY_MODULES[@]}"; do
+            resume_args+=(--only "$selection")
+        done
+    fi
+    if [[ "${ONLY_PHASES+x}" == "x" ]]; then
+        for selection in "${ONLY_PHASES[@]}"; do
+            resume_args+=(--only-phase "$selection")
+        done
+    fi
+    if [[ "${SKIP_MODULES+x}" == "x" ]]; then
+        for selection in "${SKIP_MODULES[@]}"; do
+            resume_args+=(--skip "$selection")
+        done
+    fi
+    [[ "${NO_DEPS:-false}" == "true" ]] && resume_args+=(--no-deps)
+
     if [[ -n "${SCRIPT_DIR:-}" ]]; then
         local_install="${SCRIPT_DIR%/}/install.sh"
         printf -v local_install '%q' "$local_install"

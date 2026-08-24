@@ -1416,12 +1416,12 @@ acfs_run_generated_category_phase() {
     if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
         log_error "Manifest index not loaded; cannot run generated category: $category"
         ACFS_MODULE_FAILURES+=("$category (manifest index not loaded)")
-        return 0
+        return 1
     fi
     if [[ "${ACFS_GENERATED_SOURCED:-false}" != "true" ]]; then
         log_error "Generated installers not sourced; cannot run generated category: $category"
         ACFS_MODULE_FAILURES+=("$category (generated installers not sourced)")
-        return 0
+        return 1
     fi
 
     local module=""
@@ -1429,6 +1429,7 @@ acfs_run_generated_category_phase() {
     local func=""
     local desc=""
     local ran_any=false
+    local had_failure=false
 
     # Count modules for progress tracking (bd-21kh)
     local module_count=0
@@ -1454,11 +1455,13 @@ acfs_run_generated_category_phase() {
         if [[ -z "$func" ]]; then
             log_error "Missing generated function for $module"
             ACFS_MODULE_FAILURES+=("$module (missing generated function)")
+            had_failure=true
             continue
         fi
         if ! declare -f "$func" >/dev/null 2>&1; then
             log_error "Generated function not found: $func (module $module)"
             ACFS_MODULE_FAILURES+=("$module (generated function not found: $func)")
+            had_failure=true
             continue
         fi
 
@@ -1491,6 +1494,7 @@ acfs_run_generated_category_phase() {
             local failure_reason="${ACFS_LAST_MODULE_FAILURE_REASON:-installation failed}"
             ACFS_MODULE_FAILURES+=("$module ($failure_reason)")
             ACFS_LAST_MODULE_FAILURE_REASON=""
+            had_failure=true
             ran_any=true
             continue
         fi
@@ -1504,6 +1508,14 @@ acfs_run_generated_category_phase() {
 
     if [[ "$ran_any" != "true" ]]; then
         log_detail "No generated modules selected for $category (phase $phase)"
+    fi
+
+    # Finish every selected module so best-effort tooling (notably the skills
+    # installer) still gets a chance to run, but propagate aggregate failure
+    # to run_phase. Otherwise the enclosing phase is persisted as completed
+    # and a resume skips the modules that actually failed.
+    if [[ "$had_failure" == "true" ]]; then
+        return 1
     fi
 
     return 0

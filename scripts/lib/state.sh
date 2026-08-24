@@ -1874,18 +1874,26 @@ state_phase_start() {
             .current_phase = $phase |
             .current_step = $step |
             .phase_start_time = $start |
-            .failed_phase = null |
-            .failed_step = null |
-            .failed_error = null
+            if (.failed_phase // "") == $phase then
+                .failed_phase = null |
+                .failed_step = null |
+                .failed_error = null
+            else
+                .
+            end
         ') || { _state_release_lock; return 1; }
     else
         new_state=$(echo "$state" | jq --arg phase "$phase_id" --argjson start "$start_time" '
             .current_phase = $phase |
             .current_step = null |
             .phase_start_time = $start |
-            .failed_phase = null |
-            .failed_step = null |
-            .failed_error = null
+            if (.failed_phase // "") == $phase then
+                .failed_phase = null |
+                .failed_step = null |
+                .failed_error = null
+            else
+                .
+            end
         ') || { _state_release_lock; return 1; }
     fi
 

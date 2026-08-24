@@ -94,6 +94,10 @@ run_test_1() {
 
     detect_environment
     source_generated_installers
+    ACFS_HOME="$workdir/home/.acfs"
+    ACFS_STATE_FILE="$ACFS_HOME/state.json"
+    export ACFS_HOME ACFS_STATE_FILE
+    state_init
 
     declare -f install_stack_ntm >/dev/null 2>&1 || { echo "FATAL: real install_stack_ntm not loaded"; exit 2; }
     declare -f install_stack_meta_skill >/dev/null 2>&1 || { echo "FATAL: real install_stack_meta_skill not loaded"; exit 2; }
@@ -118,19 +122,28 @@ run_test_1() {
     # install.sh's own `set -euo pipefail` is now active in this shell
     # (leaked in by sourcing it above), so an intentionally-nonzero return
     # here must be guarded, not just captured via a bare `$?` on the next line.
-    acfs_run_generated_category_phase "stack" "9" > "$category_log" 2>&1 || category_rc=$?
+    test_generated_stack_phase() {
+        acfs_run_generated_category_phase "stack" "9"
+    }
+    run_phase "stack" "8/9 Stack" test_generated_stack_phase > "$category_log" 2>&1 || category_rc=$?
 
     local meta_skill_ran="false"
     grep -q "stack.meta_skill installed" "$category_log" && meta_skill_ran="true"
     local ntm_recorded="false"
     local f
     for f in "${ACFS_MODULE_FAILURES[@]:-}"; do
-        [[ "$f" == "stack.ntm" ]] && ntm_recorded="true"
+        [[ "$f" == stack.ntm* ]] && ntm_recorded="true"
     done
+    local failed_phase=""
+    local stack_completed="false"
+    failed_phase=$(jq -r '.failed_phase // empty' "$ACFS_STATE_FILE")
+    jq -e '.completed_phases | index("stack") != null' "$ACFS_STATE_FILE" >/dev/null && stack_completed=true
 
     assert "1a. induced stack.ntm failure recorded in ACFS_MODULE_FAILURES" "$ntm_recorded"
     assert "1b. real install_stack_meta_skill still ran despite stack.ntm failing earlier in the same category loop" "$meta_skill_ran"
-    assert "1c. acfs_run_generated_category_phase did not abort the category (returned 0)" "$([[ $category_rc -eq 0 ]] && echo true || echo false)"
+    assert "1c. generated category reports aggregate failure after finishing later modules" "$([[ $category_rc -ne 0 ]] && echo true || echo false)"
+    assert "1d. run_phase persists the generated module failure on its enclosing phase" "$([[ "$failed_phase" == "stack" ]] && echo true || echo false)"
+    assert "1e. run_phase does not persist the failed stack phase as completed" "$([[ "$stack_completed" == "false" ]] && echo true || echo false)"
 
     DRY_RUN=false
     ACFS_SSH_KEY_WARNING=false
@@ -272,6 +285,55 @@ EOF
     assert "C2. benign pre-confirmation exit: fallback did NOT print a bogus summary" "$([[ "$c_summary" -eq 0 ]] && echo true || echo false)"
 }
 
+# ============================================================
+# Test 3: success side effects and resume selection are truthful
+# ============================================================
+run_test_3() {
+    local completion_calls=0
+    local report_calls=0
+    local summary_calls=0
+    local webhook_calls=0
+    local notification_calls=0
+
+    show_completion() { completion_calls=$((completion_calls + 1)); }
+    report_success() { report_calls=$((report_calls + 1)); }
+    acfs_summary_emit() { summary_calls=$((summary_calls + 1)); }
+    webhook_notify() { webhook_calls=$((webhook_calls + 1)); }
+    acfs_notify_install_success() { notification_calls=$((notification_calls + 1)); }
+
+    ACFS_PHASE_FAILURES=("4/9 CLI Tools")
+    ACFS_MODULE_FAILURES=("cli.modern (network)")
+    SMOKE_TEST_FAILED=false
+    acfs_report_success_if_clean 42
+
+    assert "D1. phase/module failure suppresses completion UI" "$([[ $completion_calls -eq 0 ]] && echo true || echo false)"
+    assert "D2. phase/module failure suppresses all success integrations" "$([[ $report_calls -eq 0 && $summary_calls -eq 0 && $webhook_calls -eq 0 && $notification_calls -eq 0 ]] && echo true || echo false)"
+
+    ACFS_PHASE_FAILURES=()
+    ACFS_MODULE_FAILURES=()
+    SMOKE_TEST_FAILED=true
+    acfs_report_success_if_clean 42
+    assert "D3. smoke-test failure suppresses all success side effects" "$([[ $completion_calls -eq 0 && $report_calls -eq 0 && $summary_calls -eq 0 && $webhook_calls -eq 0 && $notification_calls -eq 0 ]] && echo true || echo false)"
+
+    SMOKE_TEST_FAILED=false
+    acfs_report_success_if_clean 42
+    assert "D4. clean run emits each success side effect exactly once" "$([[ $completion_calls -eq 1 && $report_calls -eq 1 && $summary_calls -eq 1 && $webhook_calls -eq 1 && $notification_calls -eq 1 ]] && echo true || echo false)"
+
+    ONLY_MODULES=("stack.ntm" "stack.mcp_agent_mail")
+    ONLY_PHASES=("9")
+    SKIP_MODULES=("stack.cass")
+    NO_DEPS=true
+    local resume_hint=""
+    resume_hint=$(generate_resume_hint "stack" "MCP Agent Mail")
+    assert "D5. canonical resume keeps repeated --only selectors" "$([[ "$resume_hint" == *"--only stack.ntm"* && "$resume_hint" == *"--only stack.mcp_agent_mail"* ]] && echo true || echo false)"
+    assert "D6. canonical resume keeps phase, skip, and dependency selectors" "$([[ "$resume_hint" == *"--only-phase 9"* && "$resume_hint" == *"--skip stack.cass"* && "$resume_hint" == *"--no-deps"* ]] && echo true || echo false)"
+
+    ONLY_MODULES=()
+    ONLY_PHASES=()
+    SKIP_MODULES=()
+    NO_DEPS=false
+}
+
 main() {
     command -v timeout >/dev/null 2>&1 || { echo "timeout(1) is required for this test"; exit 1; }
 
@@ -281,6 +343,10 @@ main() {
     echo
     echo "== Test 2: EXIT trap fires exactly once, and only when it should =="
     run_test_2
+
+    echo
+    echo "== Test 3: success reporting and resume selection stay truthful =="
+    run_test_3
 
     echo
     echo "=============================================="

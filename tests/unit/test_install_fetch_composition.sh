@@ -266,7 +266,7 @@ if [[ "$HTTPBIN_OK" == "true" ]]; then
         "$([[ "$c_elapsed" -ge 15 && "$retries_happened" == "true" ]] && echo true || echo false)"
     assert "C2. stack.ntm's exhausted-fetch failure is recorded (record-and-continue, not silently dropped)" "$ntm_recorded"
     assert "C3. real install_stack_meta_skill STILL ran and installed despite stack.ntm's fetch exhausting all retries earlier in the same category loop" "$meta_skill_ran"
-    assert "C4. acfs_run_generated_category_phase did not abort the category (returned 0)" "$([[ $category_rc -eq 0 ]] && echo true || echo false)"
+    assert "C4. generated category reports aggregate failure after later modules run" "$([[ $category_rc -ne 0 ]] && echo true || echo false)"
 
     DRY_RUN=false
     ACFS_SSH_KEY_WARNING=false

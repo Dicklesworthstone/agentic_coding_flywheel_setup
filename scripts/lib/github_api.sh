@@ -687,7 +687,7 @@ _github_api_warn_suspect_empty() {
         head_bytes="$(head -c 200 "$body_file" 2>/dev/null || true)"
         case "$head_bytes" in
             '[]'*) shape="an EMPTY ARRAY" ;;
-            *'rate limit'*|*'API rate limit'*) shape="a RATE LIMIT error" ;;
+            *'rate limit'*) shape="a RATE LIMIT error" ;;
             *'Not Found'*) shape="a NOT FOUND error" ;;
             '{'*) shape="a JSON object carrying no tag_name" ;;
         esac
