@@ -4166,9 +4166,24 @@ acfs_run_verified_bootstrap_installer() {
         return 1
     fi
 
+    # Even with piped stdin, an ordinary curl invocation can still prompt via
+    # /dev/tty. setsid intentionally removes that controlling terminal, so only
+    # hand off install modes that are already guaranteed not to prompt.
+    if [[ "${YES_MODE:-false}" != "true" ]] \
+        && [[ "${DRY_RUN:-false}" != "true" ]] \
+        && [[ "${PRINT_MODE:-false}" != "true" ]] \
+        && [[ "${LIST_MODULES:-false}" != "true" ]] \
+        && [[ "${PRINT_PLAN_MODE:-false}" != "true" ]] \
+        && [[ "${RESET_STATE_ONLY:-false}" != "true" ]]; then
+        log_error "Verified streamed bootstrap requires --yes for an install run"
+        log_error "Use a local checkout when interactive prompts are required"
+        return 1
+    fi
+
     if [[ "${ACFS_BOOTSTRAP_CHILD_STATE:-QUIESCENT}" != "QUIESCENT" ]] \
         || [[ -n "${ACFS_BOOTSTRAP_CHILD_PID:-}" ]] \
-        || [[ -n "${ACFS_BOOTSTRAP_CHILD_PGID:-}" ]]; then
+        || [[ -n "${ACFS_BOOTSTRAP_CHILD_PGID:-}" ]] \
+        || [[ -n "${ACFS_BOOTSTRAP_CHILD_STARTTIME:-}" ]]; then
         log_error "Verified bootstrap handoff is already active"
         ACFS_BOOTSTRAP_PRESERVE_TREE=true
         return 1

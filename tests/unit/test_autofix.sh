@@ -2620,8 +2620,8 @@ test_acfs_undo_command_all_skips_undone_changes() {
     touch "$already_undone_marker" "$active_marker"
 
     local done_id active_id
-    done_id=$(record_change "test" "Already undone" "rm -f '$already_undone_marker'" "false" "info" '[]' '[]' '[]' 2>/dev/null)
-    active_id=$(record_change "test" "Still active" "rm -f '$active_marker'" "false" "info" '[]' '[]' '[]' 2>/dev/null)
+    done_id=$(record_change "test" "Initial baseline state" "rm -f '$already_undone_marker'" "false" "info" '[]' '[]' '[]' 2>/dev/null)
+    active_id=$(record_change "test" "Subsequent change" "rm -f '$active_marker'" "false" "info" '[]' '[]' '[]' 2>/dev/null)
     end_autofix_session 2>/dev/null || true
 
     local undo_record=""
@@ -2647,7 +2647,7 @@ test_acfs_undo_command_all_skips_undone_changes() {
         return 1
     fi
 
-    if [[ "$output" == *"already been undone"* ]] || [[ "$output" != *"All requested changes have been undone"* ]]; then
+    if [[ "$output" == *"has already been undone"* ]] || [[ "$output" != *"All requested changes have been undone"* ]]; then
         echo "  --all output indicates undone change was still queued: $output"
         rm -f "$already_undone_marker" "$active_marker"
         cleanup_test_env
