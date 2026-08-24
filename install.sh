@@ -5103,8 +5103,14 @@ acfs_arch_pkg_install() {
             # A failed full upgrade (e.g. a conflict needing manual resolution)
             # should not block installing the ACFS package set; fall back to a
             # refresh-only sync so the download URLs are at least current.
-            log_warn "pacman -Syu failed; continuing with a database refresh only"
-            "${sudo_cmd[@]}" "$pacman_bin" -Sy --noconfirm >/dev/null 2>&1 || true
+            # Never fall back to a bare `pacman -Sy`: refreshing the database
+            # and then installing packages without upgrading is the classic
+            # Arch partial-upgrade footgun (new packages link against libs the
+            # system does not have yet). Continue against the existing
+            # database instead; a stale mirror then surfaces as a clean
+            # per-package 404 that the caller retries, rather than a broken
+            # system.
+            log_warn "pacman -Syu failed; continuing with the existing package database (run 'sudo pacman -Syu' manually, then re-run the installer, if package installs fail)"
             ACFS_ARCH_DB_SYNCED=true
         fi
     fi
@@ -6814,7 +6820,20 @@ install_cloud_db_legacy_db() {
     elif [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
         # A bare psql client (e.g. from libpq) must not satisfy the server
         # check on Arch; key off the server package itself.
-        if pacman -Qq postgresql &>/dev/null; then
+        # The package being present is not enough to skip: a first run can
+        # install the package and then fail initdb or the service start, and a
+        # package-only guard would skip the repair on every re-run forever.
+        # Require an initialised cluster and (where systemd exists) an active
+        # service; acfs_arch_install_postgres is idempotent otherwise.
+        local arch_pg_ready=false
+        if pacman -Qq postgresql &>/dev/null && [[ -f /var/lib/postgres/data/PG_VERSION ]]; then
+            if command_exists systemctl && [[ -d /run/systemd/system ]]; then
+                systemctl is-active --quiet postgresql.service && arch_pg_ready=true
+            else
+                arch_pg_ready=true
+            fi
+        fi
+        if [[ "$arch_pg_ready" == "true" ]]; then
             log_detail "PostgreSQL already installed (pacman)"
         else
             log_detail "Installing PostgreSQL (pacman)"
@@ -8654,8 +8673,15 @@ run_smoke_test() {
             ((critical_failed += 1))
         fi
     else
+        # The admin group is distro-specific: Arch-family uses wheel (which is
+        # what the installer adds the user to), Ubuntu uses sudo. Checking for
+        # the Ubuntu name on Arch failed every safe-mode Arch install here.
+        local smoke_admin_group="sudo"
+        if [[ "${ACFS_DISTRO_FAMILY:-}" == "arch" ]]; then
+            smoke_admin_group="wheel"
+        fi
         if _smoke_run_as_target "command -v sudo >/dev/null" &>/dev/null && \
-            _smoke_run_as_target "id -nG | grep -qw sudo" &>/dev/null; then
+            _smoke_run_as_target "id -nG | grep -qw $smoke_admin_group" &>/dev/null; then
             echo "✅ Sudo: available (safe mode)" >&2
             ((critical_passed += 1))
         else
