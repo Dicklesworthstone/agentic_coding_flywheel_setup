@@ -9035,6 +9035,12 @@ Tip: use --print to see upstream install scripts that will be fetched."
     if [[ ${#ACFS_MODULE_FAILURES[@]} -gt 0 ]]; then
         summary_all_failures+=("${ACFS_MODULE_FAILURES[@]}")
     fi
+    # A failed post-install smoke test is a failure of the run too; without
+    # this the green "Installation Complete!" box printed right before the
+    # cleanup handler's "smoke test failed" message.
+    if [[ "${SMOKE_TEST_FAILED:-false}" == "true" ]]; then
+        summary_all_failures+=("post-install smoke test (critical checks failed; see [Smoke Test] above)")
+    fi
     local summary_has_failures=false
     local failures_section_plain=""
     local failures_section_gum=""
