@@ -10,7 +10,7 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="08f626cdf4f76d54b8e7b600894bab2c79dfecb251a263f312ac11acfb8aaabd"
+  [install.sh]="b519fc4657de108dcd999cf62cb6fde3d465f9042e88c2cbf49993c161a3c0dd"
   [checksums.yaml]="a62d703fe6d1953b22db8db249538c8a29eff8955f6e555ca4472fb2ee00a0e3"
   [scripts/preflight.sh]="6c49cbb7368c52cbfb720b2781e1b335379a88e151ce24a5b386e9b91b99273c"
   [scripts/lib/security.sh]="792e033fa3f397ca30307d5cc99d0fa2b6489258f1c17fe8d83604e765640733"
@@ -22,7 +22,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [scripts/lib/acfs-services.sh]="d4fbfcb6cce3cba3f266c72df4f9dee562f03f9563f457dca3194ed22db7adc7"
   [scripts/lib/doctor_fix.sh]="b5e7a73779aa965bdab0a1f2937cad38604a63f80de45deb67f243456c881a0c"
   [scripts/lib/offline_artifact_pack.sh]="43156c0b319c687a6f8ada2ec08279e9fd5def7059f795b645c3af48da22d5df"
-  [scripts/lib/autofix.sh]="0c6d6040226f9954edd26ee514c87a459f316f59d8c8b8669e619796669473ce"
+  [scripts/lib/autofix.sh]="841b6c8be8beb859ec91be5b37503c4e38ecefb6ae996cef20bc715ecfeafdcb"
   [scripts/lib/autofix_existing.sh]="5cbfc0e4051c30d9a52268b7cd5c1940089579fe5e2495d4da22ed609a05044f"
   [scripts/lib/autofix_unattended.sh]="848f5744f75503eebe422a9d2418ed6b1341cfd6452004ee0a4e902d04f5d94a"
   [scripts/lib/autofix_version_managers.sh]="e235b7bfb95115f00bf7a4e3398be504c576d1fbe97a64c64a988294d62d621e"
