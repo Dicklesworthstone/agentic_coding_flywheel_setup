@@ -4207,9 +4207,10 @@ acfs_run_verified_bootstrap_installer() {
     fi
 
     local -a child_args=()
+    local installer_cache_arg_seen=false
     while (($# > 0)); do
         case "$1" in
-            --bootstrap-archive|--ref|--checksums-ref|--verified-installer-cache)
+            --bootstrap-archive|--ref|--checksums-ref)
                 if (($# < 2)); then
                     log_error "$1 requires a value"
                     return 1
@@ -4217,7 +4218,18 @@ acfs_run_verified_bootstrap_installer() {
                 shift 2
                 ;;
             --bootstrap-archive=*|--ref=*|--checksums-ref=*|--verified-installer-cache=*)
+                if [[ "$1" == --verified-installer-cache=* ]]; then
+                    installer_cache_arg_seen=true
+                fi
                 shift
+                ;;
+            --verified-installer-cache)
+                if (($# < 2)); then
+                    log_error "$1 requires a value"
+                    return 1
+                fi
+                installer_cache_arg_seen=true
+                shift 2
                 ;;
             *)
                 child_args+=("$1")
@@ -4227,6 +4239,10 @@ acfs_run_verified_bootstrap_installer() {
     done
 
     child_args+=(--ref "$child_ref" --checksums-ref "$child_checksums_ref")
+    if [[ "$installer_cache_arg_seen" == "true" && -z "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]; then
+        log_error "Verified installer cache argument was not normalized before bootstrap handoff"
+        return 1
+    fi
     if [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]; then
         child_args+=(--verified-installer-cache "$ACFS_VERIFIED_INSTALLER_CACHE")
     fi
@@ -5170,21 +5186,6 @@ declare -A ACFS_UPSTREAM_URLS=()
 declare -A ACFS_UPSTREAM_SHA256=()
 ACFS_UPSTREAM_LOADED=false
 
-acfs_calculate_sha256() {
-    if command_exists sha256sum; then
-        sha256sum | cut -d' ' -f1
-        return 0
-    fi
-
-    if command_exists shasum; then
-        shasum -a 256 | cut -d' ' -f1
-        return 0
-    fi
-
-    log_error "No SHA256 tool available (need sha256sum or shasum)"
-    return 1
-}
-
 acfs_fetch_url_content() {
     local url="$1"
 
@@ -5483,6 +5484,8 @@ acfs_run_verified_upstream_script_as_target_with_env() {
     fi
 
     local staged_installer=""
+    acfs_stage_verified_installer \
+        staged_installer "$url" "$expected_sha256" "$tool" || return $?
 
     # Upstream installers stage downloads in TMPDIR and some enforce multi-GB
     # free-space floors. On systems where /tmp is a small tmpfs (common on
@@ -5499,24 +5502,28 @@ acfs_run_verified_upstream_script_as_target_with_env() {
         acfs_mktemp_bin="$(acfs_early_system_binary_path mktemp 2>/dev/null || true)"
         if [[ -z "$acfs_mkdir_bin" || -z "$acfs_mktemp_bin" ]]; then
             log_error "Trusted mkdir/mktemp are required for installer TMPDIR setup"
+            _acfs_remove_temp_files "$staged_installer"
             return 1
         fi
         if [[ ! -d "$TARGET_HOME" ]] \
             || _acfs_install_asset_has_symlink_component_under_prefix \
                 "$TARGET_HOME" "$acfs_tmpdir_parent"; then
             log_error "Refusing installer TMPDIR through a symlinked target-home path"
+            _acfs_remove_temp_files "$staged_installer"
             return 1
         fi
         # Create only as the target user. A privileged fallback could follow a
         # target-controlled ancestor symlink and chown an unrelated directory.
         if ! run_as_target "$acfs_mkdir_bin" -p "$acfs_tmpdir_parent" 2>/dev/null; then
             log_error "Target user cannot create installer TMPDIR parent: $acfs_tmpdir_parent"
+            _acfs_remove_temp_files "$staged_installer"
             return 1
         fi
         if [[ ! -d "$acfs_tmpdir_parent" ]] \
             || _acfs_install_asset_has_symlink_component_under_prefix \
                 "$TARGET_HOME" "$acfs_tmpdir_parent"; then
             log_error "Installer TMPDIR parent is not a confined real directory"
+            _acfs_remove_temp_files "$staged_installer"
             return 1
         fi
         if ! acfs_tmpdir="$(run_as_target "$acfs_mktemp_bin" -d "$acfs_tmpdir_parent/acfs.XXXXXX" 2>/dev/null)" \
@@ -5524,14 +5531,12 @@ acfs_run_verified_upstream_script_as_target_with_env() {
             || [[ ! -d "$acfs_tmpdir" ]] \
             || [[ -L "$acfs_tmpdir" ]]; then
             log_error "Failed to create a confined target-user installer TMPDIR"
+            _acfs_remove_temp_files "$staged_installer"
             return 1
         fi
         tmpdir_assignment="TMPDIR=$acfs_tmpdir"
         log_detail "Low space on /tmp ($(( tmp_avail_kb / 1024 ))MB); staging upstream installers in $acfs_tmpdir"
     fi
-
-    acfs_stage_verified_installer \
-        staged_installer "$url" "$expected_sha256" "$tool" || return $?
 
     # Keep the established `runner -s -- args...` contract: the verified file
     # is the runner's stdin, so argument numbering and installers that read

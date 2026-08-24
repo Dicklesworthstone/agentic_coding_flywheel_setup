@@ -2525,69 +2525,171 @@ EOF
     assert_success
 }
 
-@test "install.sh verifier refetches installer when fresh checksums change URL" {
+@test "install.sh verified installer wrapper stages cached bytes and preserves the runner contract" {
     local installer="$PROJECT_ROOT/install.sh"
-    local old_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail/main/install.sh"
-    local fresh_url="https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    local old_content='old python installer'
-    local rust_installer_body='new rust installer'
-    local stale_sha="1111111111111111111111111111111111111111111111111111111111111111"
-    local fresh_sha=""
+    local url="https://example.com/example/install.sh"
+    local expected_sha="1111111111111111111111111111111111111111111111111111111111111111"
+    local installer_body='verified staged installer bytes'
+    local staged_installer="$BATS_TEST_TMPDIR/staged-installer"
+    local stage_args_file="$BATS_TEST_TMPDIR/stage-args"
+    local stage_cache_file="$BATS_TEST_TMPDIR/stage-cache"
+    local runner_args_file="$BATS_TEST_TMPDIR/runner-args"
     local ran_content="$BATS_TEST_TMPDIR/ran-installer"
-    local ran_args="$BATS_TEST_TMPDIR/ran-args"
+    local cleanup_args_file="$BATS_TEST_TMPDIR/cleanup-args"
+    local live_fetch_marker="$BATS_TEST_TMPDIR/live-fetch-called"
+    local target_tmpdir=""
+    local -a stage_args=()
+    local -a runner_args=()
+    local -a cleanup_args=()
 
-    fresh_sha="$(printf '%s' "$rust_installer_body" | sha256sum | awk '{print $1}')"
+    printf '%s' "$installer_body" > "$staged_installer"
+    mkdir -p "$HOME/explicit-installer-cache"
+    export ACFS_VERIFIED_INSTALLER_CACHE="$HOME/explicit-installer-cache"
 
     eval "$(sed -n '/^acfs_run_verified_upstream_script_as_target_with_env()/,/^}$/p' "$installer")"
 
-    declare -gA ACFS_UPSTREAM_URLS=([mcp_agent_mail]="$old_url")
-    declare -gA ACFS_UPSTREAM_SHA256=([mcp_agent_mail]="$stale_sha")
+    declare -gA ACFS_UPSTREAM_URLS=([example]="$url")
+    declare -gA ACFS_UPSTREAM_SHA256=([example]="$expected_sha")
 
-    acfs_load_upstream_checksums() {
-        return 0
+    acfs_load_upstream_checksums() { return 0; }
+    df() {
+        printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+        printf 'mock 4096 1 1024 1%% /tmp\n'
     }
-
-    acfs_fetch_url_content() {
+    acfs_early_system_binary_path() {
         case "${1:-}" in
-            "$old_url") printf '%s' "$old_content" ;;
-            "$fresh_url") printf '%s' "$rust_installer_body" ;;
+            mkdir) printf '/bin/mkdir\n' ;;
+            mktemp) printf '/usr/bin/mktemp\n' ;;
             *) return 1 ;;
         esac
     }
+    _acfs_install_asset_has_symlink_component_under_prefix() { return 1; }
+    run_as_target() { "$@"; }
+    acfs_stage_verified_installer() {
+        local output_name="$1"
 
-    acfs_calculate_sha256() {
-        sha256sum | awk '{print $1}'
+        printf '%s\0' "$@" > "$stage_args_file"
+        printf '%s' "${ACFS_VERIFIED_INSTALLER_CACHE:-}" > "$stage_cache_file"
+        printf -v "$output_name" '%s' "$staged_installer"
     }
-
+    acfs_fetch_url_content() {
+        printf 'acfs_fetch_url_content\n' >> "$live_fetch_marker"
+        return 97
+    }
     acfs_fetch_fresh_checksums_via_api() {
-        cat <<EOF
-installers:
-  mcp_agent_mail:
-    url: "$fresh_url"
-    sha256: "$fresh_sha"
-EOF
+        printf 'acfs_fetch_fresh_checksums_via_api\n' >> "$live_fetch_marker"
+        return 97
     }
-
-    acfs_parse_checksums_content() {
-        ACFS_UPSTREAM_URLS[mcp_agent_mail]="$fresh_url"
-        ACFS_UPSTREAM_SHA256[mcp_agent_mail]="$fresh_sha"
+    verify_checksum() {
+        printf 'verify_checksum\n' >> "$live_fetch_marker"
+        return 97
     }
-
-    log_detail() { :; }
-    log_error() { :; }
-    log_success() { :; }
-    log_fatal() { return 1; }
-
     run_as_target_runner() {
-        printf '%s\n' "$*" > "$ran_args"
+        printf '%s\0' "$@" > "$runner_args_file"
         cat > "$ran_content"
     }
+    _acfs_remove_temp_files() {
+        printf '%s\0' "$@" > "$cleanup_args_file"
+    }
+    log_detail() { :; }
+    log_error() { :; }
 
-    run acfs_run_verified_upstream_script_as_target_with_env mcp_agent_mail bash "" --dest "$HOME/mcp_agent_mail" --yes
+    run acfs_run_verified_upstream_script_as_target_with_env \
+        example bash "CACHE_TOKEN=cache-token" --dest "$HOME/cache target" --yes
     assert_success
     assert_output ""
-    [[ "$(cat "$ran_content")" == "$rust_installer_body" ]]
-    [[ "$(cat "$ran_args")" == "bash -s -- --dest $HOME/mcp_agent_mail --yes" ]]
+
+    mapfile -d '' -t stage_args < "$stage_args_file"
+    assert_equal "${#stage_args[@]}" "4"
+    assert_equal "${stage_args[0]}" "staged_installer"
+    assert_equal "${stage_args[1]}" "$url"
+    assert_equal "${stage_args[2]}" "$expected_sha"
+    assert_equal "${stage_args[3]}" "example"
+    assert_equal "$(<"$stage_cache_file")" "$ACFS_VERIFIED_INSTALLER_CACHE"
+
+    mapfile -d '' -t runner_args < "$runner_args_file"
+    assert_equal "${#runner_args[@]}" "9"
+    assert_equal "${runner_args[0]}" "env"
+    assert_equal "${runner_args[1]}" "CACHE_TOKEN=cache-token"
+    [[ "${runner_args[2]}" == "TMPDIR=$TARGET_HOME/.cache/acfs/installer-tmp/acfs."* ]]
+    target_tmpdir="${runner_args[2]#TMPDIR=}"
+    [[ -d "$target_tmpdir" ]]
+    assert_equal "${runner_args[3]}" "bash"
+    assert_equal "${runner_args[4]}" "-s"
+    assert_equal "${runner_args[5]}" "--"
+    assert_equal "${runner_args[6]}" "--dest"
+    assert_equal "${runner_args[7]}" "$HOME/cache target"
+    assert_equal "${runner_args[8]}" "--yes"
+    assert_equal "$(<"$ran_content")" "$installer_body"
+
+    mapfile -d '' -t cleanup_args < "$cleanup_args_file"
+    assert_equal "${#cleanup_args[@]}" "1"
+    assert_equal "${cleanup_args[0]}" "$staged_installer"
+    [[ ! -e "$live_fetch_marker" ]]
+}
+
+@test "install.sh verified installer wrapper fails closed when cache staging fails" {
+    local installer="$PROJECT_ROOT/install.sh"
+    local url="https://example.com/example/install.sh"
+    local expected_sha="2222222222222222222222222222222222222222222222222222222222222222"
+    local stage_args_file="$BATS_TEST_TMPDIR/stage-failure-args"
+    local live_fetch_marker="$BATS_TEST_TMPDIR/stage-failure-live-fetch"
+    local runner_marker="$BATS_TEST_TMPDIR/stage-failure-runner"
+    local cleanup_marker="$BATS_TEST_TMPDIR/stage-failure-cleanup"
+    local -a stage_args=()
+
+    mkdir -p "$HOME/explicit-installer-cache"
+    export ACFS_VERIFIED_INSTALLER_CACHE="$HOME/explicit-installer-cache"
+
+    eval "$(sed -n '/^acfs_run_verified_upstream_script_as_target_with_env()/,/^}$/p' "$installer")"
+
+    declare -gA ACFS_UPSTREAM_URLS=([example]="$url")
+    declare -gA ACFS_UPSTREAM_SHA256=([example]="$expected_sha")
+
+    acfs_load_upstream_checksums() { return 0; }
+    df() {
+        printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n'
+        printf 'mock 4194304 1 3145728 1%% /tmp\n'
+    }
+    acfs_stage_verified_installer() {
+        printf '%s\0' "$@" > "$stage_args_file"
+        return 73
+    }
+    acfs_fetch_url_content() {
+        : > "$live_fetch_marker"
+        return 0
+    }
+    acfs_fetch_fresh_checksums_via_api() {
+        : > "$live_fetch_marker"
+        return 0
+    }
+    verify_checksum() {
+        : > "$live_fetch_marker"
+        return 0
+    }
+    run_as_target_runner() {
+        : > "$runner_marker"
+        return 0
+    }
+    _acfs_remove_temp_files() {
+        : > "$cleanup_marker"
+    }
+    log_detail() { :; }
+    log_error() { :; }
+
+    run acfs_run_verified_upstream_script_as_target_with_env example bash "" --yes
+    assert_equal "$status" "73"
+    assert_output ""
+
+    mapfile -d '' -t stage_args < "$stage_args_file"
+    assert_equal "${#stage_args[@]}" "4"
+    assert_equal "${stage_args[0]}" "staged_installer"
+    assert_equal "${stage_args[1]}" "$url"
+    assert_equal "${stage_args[2]}" "$expected_sha"
+    assert_equal "${stage_args[3]}" "example"
+    [[ ! -e "$live_fetch_marker" ]]
+    [[ ! -e "$runner_marker" ]]
+    [[ ! -e "$cleanup_marker" ]]
 }
 
 @test "update_require_security: does not probe bogus repo path when ACFS_REPO_ROOT is unset" {
@@ -8992,6 +9094,9 @@ EOF
     local -a install_asset_lines=(
         'install_asset "acfs/tmux/tmux.conf" "$ACFS_HOME/tmux/tmux.conf"'
         'install_asset "packages/onboard/onboard.sh" "$ACFS_HOME/onboard/onboard.sh"'
+        'install_asset "scripts/completions/_acfs" "$ACFS_HOME/completions/_acfs"'
+        'install_asset "scripts/completions/acfs.bash" "$ACFS_HOME/completions/acfs.bash"'
+        'install_asset "acfs.manifest.yaml" "$ACFS_HOME/acfs.manifest.yaml"'
         'install_asset "scripts/lib/logging.sh" "$ACFS_HOME/scripts/lib/logging.sh"'
         'install_asset "scripts/lib/output.sh" "$ACFS_HOME/scripts/lib/output.sh"'
         'install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh"'
@@ -9035,6 +9140,9 @@ EOF
     local -a update_pairs=(
         '"acfs/tmux/tmux.conf:tmux/tmux.conf"'
         '"packages/onboard/onboard.sh:onboard/onboard.sh"'
+        '"scripts/completions/_acfs:completions/_acfs"'
+        '"scripts/completions/acfs.bash:completions/acfs.bash"'
+        '"acfs.manifest.yaml:acfs.manifest.yaml"'
         '"scripts/lib/logging.sh:scripts/lib/logging.sh"'
         '"scripts/lib/output.sh:scripts/lib/output.sh"'
         '"scripts/lib/gum_ui.sh:scripts/lib/gum_ui.sh"'
@@ -9562,6 +9670,7 @@ EOF
         "$repo_root/acfs/onboard/lessons" \
         "$repo_root/acfs/tmux" \
         "$repo_root/packages/onboard" \
+        "$repo_root/scripts/completions" \
         "$repo_root/scripts/generated" \
         "$repo_root/scripts/lib/newproj_screens" \
         "$deployed_home"
@@ -9569,6 +9678,9 @@ EOF
     printf "tmux-runtime\n" > "$repo_root/acfs/tmux/tmux.conf"
     printf "lesson-runtime\n" > "$repo_root/acfs/onboard/lessons/00_welcome.md"
     printf "#!/usr/bin/env bash\nprintf 'onboard-runtime\\n'\n" > "$repo_root/packages/onboard/onboard.sh"
+    printf "manifest-runtime\n" > "$repo_root/acfs.manifest.yaml"
+    printf "zsh-completion-runtime\n" > "$repo_root/scripts/completions/_acfs"
+    printf "bash-completion-runtime\n" > "$repo_root/scripts/completions/acfs.bash"
     printf "#!/usr/bin/env bash\nprintf 'agents-runtime\\n'\n" > "$repo_root/scripts/generate-root-agents-md.sh"
     printf "#!/usr/bin/env bash\nprintf 'generated-runtime\\n'\n" > "$repo_root/scripts/generated/install_stack.sh"
     printf "output-runtime\n" > "$repo_root/scripts/lib/output.sh"
@@ -9597,6 +9709,15 @@ EOF
     run cat "$deployed_home/onboard/lessons/00_welcome.md"
     assert_success
     assert_output "lesson-runtime"
+    run cat "$deployed_home/acfs.manifest.yaml"
+    assert_success
+    assert_output "manifest-runtime"
+    run cat "$deployed_home/completions/_acfs"
+    assert_success
+    assert_output "zsh-completion-runtime"
+    run cat "$deployed_home/completions/acfs.bash"
+    assert_success
+    assert_output "bash-completion-runtime"
     run cat "$deployed_home/scripts/lib/output.sh"
     assert_success
     assert_output "output-runtime"
@@ -10072,12 +10193,17 @@ EOF
 @test "finalize keeps legacy runtime deployment after generated acfs phase" {
     local installer="$PROJECT_ROOT/install.sh"
     local block=""
+    local finalize_block=""
 
     block="$(sed -n '/if acfs_use_generated_category "acfs"/,/^    # Copy tmux config/p' "$installer")"
+    finalize_block="$(sed -n '/^finalize()/,/^}$/p' "$installer")"
 
     [[ "$block" == *'acfs_run_generated_category_phase "acfs" "10" || return 1'* ]]
     [[ "$block" == *'continuing legacy finalize for full runtime deployment parity'* ]]
     [[ "$block" != *$'\n        return 0'* ]]
+    [[ "$finalize_block" == *'install_asset "scripts/completions/_acfs" "$ACFS_HOME/completions/_acfs"'* ]]
+    [[ "$finalize_block" == *'install_asset "scripts/completions/acfs.bash" "$ACFS_HOME/completions/acfs.bash"'* ]]
+    [[ "$finalize_block" == *'install_asset "acfs.manifest.yaml" "$ACFS_HOME/acfs.manifest.yaml"'* ]]
 }
 
 @test "custom bin dir persists in state and nightly service PATH includes runtime bins" {
