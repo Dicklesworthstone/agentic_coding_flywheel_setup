@@ -1034,6 +1034,15 @@ else
 fi
 
 # ============================================================
+section "Test 12: User-facing troubleshooting does not recommend unverified curl | bash"
+# ============================================================
+if grep -n 'curl -fsSL https://claude.ai/install.sh | bash' "$UPDATE_SH"; then
+    fail "update.sh troubleshooting recommends direct unverified curl of claude.ai/install.sh"
+else
+    pass "update.sh troubleshooting uses verified ACFS update commands instead of direct curl"
+fi
+
+# ============================================================
 section "Summary"
 # ============================================================
 log ""

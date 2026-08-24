@@ -6806,7 +6806,7 @@ WHAT EACH CATEGORY UPDATES:
   apt:      System packages via apt update && apt upgrade && apt autoremove
   shell:    Oh-My-Zsh, Powerlevel10k, zsh plugins (git pull)
             Atuin, Zoxide (reinstall from upstream)
-  agents:   Claude Code (verified installer: curl claude.ai/install.sh | bash -- latest)
+  agents:   Claude Code (verified installer: checksums.yaml-pinned latest channel)
             Codex CLI (bun install -g --trust @openai/codex@latest)
             Antigravity CLI (agy update; installs agy-locked and maps gmi to agy)
             oh-my-pi (omp update; verified installer for fresh installs)
@@ -6844,8 +6844,9 @@ TROUBLESHOOTING:
     (After the update finishes, re-enable it:)
       sudo systemctl start unattended-upgrades
 
-  - If an agent update fails: try running the update command directly:
-    curl -fsSL https://claude.ai/install.sh | bash -s -- latest
+  - If an agent update fails: try running the verified update command:
+    acfs update --agents --force
+    # Or update individual agent CLIs:
     bun install -g --trust @openai/codex@latest
     agy update
 

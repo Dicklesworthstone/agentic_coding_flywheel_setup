@@ -94,7 +94,61 @@ test_support_capture_resource_profile_sanitizes_paths() {
     pass "support_capture_resource_profile_sanitizes_paths"
 }
 
+# Compliant inventory: no forbidden sensitive field names, so the fail-closed
+# validator in swarm_inventory.sh (44c2074b) lets the report summarize it.
 write_inventory_fixture() {
+    local path="$1"
+    mkdir -p "$(dirname "$path")"
+    cat > "$path" <<'JSON'
+{
+  "schema_version": 1,
+  "updated_at": "2026-05-08T00:00:00Z",
+  "defaults": {"workload": "standard", "stale_after_hours": 24},
+  "hosts": [
+    {
+      "id": "controller-1",
+      "display_name": "prod-controller.example.com",
+      "role": "swarm-controller",
+      "status": "active",
+      "last_probe_at": "2099-01-01T00:00:00Z",
+      "resources": {"cpu_count": 64, "mem_total_mib": 262144, "disk_available_mib": 524288},
+      "capacity": {"workload": "standard", "recommended_agents": 25, "safe_agents": 44},
+      "rch": {"worker": false, "controller": true, "workers_total": 8, "workers_healthy": 8},
+      "ntm": {"can_launch": true, "preferred_labels": ["swarm-25"]},
+      "ru": {"can_sync_repos": true}
+    },
+    {
+      "id": "rch-worker-a",
+      "role": "rch-worker",
+      "status": "active",
+      "last_probe_at": "2099-01-01T00:00:00Z",
+      "resources": {},
+      "capacity": {"recommended_agents": 0, "safe_agents": 0},
+      "rch": {"worker": true, "controller": false},
+      "ntm": {"can_launch": false},
+      "ru": {"can_sync_repos": false}
+    },
+    {
+      "id": "disabled-staging",
+      "role": "disabled",
+      "status": "disabled",
+      "last_probe_at": null,
+      "resources": {},
+      "capacity": {"recommended_agents": 20, "safe_agents": 30},
+      "rch": {},
+      "ntm": {"can_launch": false},
+      "ru": {"can_sync_repos": false}
+    }
+  ]
+}
+JSON
+}
+
+# Sensitive-laden inventory: contains forbidden field names (ssh_user,
+# ssh_key_path, provider_id, public_endpoint) and secret-shaped values, so the
+# validator refuses to summarize it and the capture must fail CLOSED with no
+# raw values anywhere in the bundle.
+write_sensitive_inventory_fixture() {
     local path="$1"
     mkdir -p "$(dirname "$path")"
     cat > "$path" <<'JSON'
@@ -227,6 +281,72 @@ test_support_capture_swarm_inventory_redacts_raw_hosts() {
     pass "support_capture_swarm_inventory_redacts_raw_hosts"
 }
 
+test_support_capture_swarm_inventory_fails_closed_on_sensitive_fields() {
+    local home_dir acfs_home bundle_dir inventory_path
+    home_dir="$ARTIFACT_DIR/sensitive-inventory-home"
+    acfs_home="$home_dir/.acfs"
+    bundle_dir="$ARTIFACT_DIR/sensitive-inventory-bundle"
+    inventory_path="$acfs_home/swarm/hosts.inventory.json"
+    mkdir -p "$home_dir" "$bundle_dir"
+    write_sensitive_inventory_fixture "$inventory_path"
+
+    env \
+        HOME="$home_dir" \
+        SUPPORT_SH="$SUPPORT_SH" \
+        REPO_ROOT="$REPO_ROOT" \
+        BUNDLE_DIR="$bundle_dir" \
+        ACFS_HOME="$acfs_home" \
+        bash -lc '
+            set -euo pipefail
+            log_step() { :; }
+            log_section() { :; }
+            log_detail() { :; }
+            log_success() { :; }
+            log_warn() { :; }
+            log_error() { :; }
+            # shellcheck source=../../scripts/lib/support.sh
+            source "$SUPPORT_SH"
+            _SUPPORT_ACFS_HOME="$ACFS_HOME"
+            _SUPPORT_SCRIPT_DIR="$REPO_ROOT/scripts/lib"
+            SUPPORT_TARGET_HOME="$HOME"
+            SWARM_INVENTORY_TIMEOUT=5
+            BUNDLE_FILES=()
+            # Real bundle flow tolerates capture failure (support.sh calls
+            # this with `|| true`) and still writes the manifest.
+            capture_swarm_inventory_json "$BUNDLE_DIR" || true
+            write_manifest "$BUNDLE_DIR"
+        ' >/dev/null || return 1
+
+    [[ -f "$bundle_dir/swarm_inventory.json" ]] || return 1
+    [[ -f "$bundle_dir/manifest.json" ]] || return 1
+
+    # The inventory validator (fail-closed since 44c2074b) refuses to
+    # summarize an inventory carrying forbidden sensitive fields: status must
+    # be fail, counts must stay zero, and only field PATHS may be echoed.
+    jq -e '
+      .schema_version == 1 and
+      .status == "fail" and
+      .capture.status == "fail" and
+      .summary.hosts_total == 0 and
+      .diagnostics.error_code == "forbidden_sensitive_field" and
+      (.diagnostics.redacted_field_paths | index("hosts[0].ssh_user") != null) and
+      .redaction.paths_redacted == true and
+      .redaction.raw_hosts_collected == false and
+      .redaction.secrets_collected == false
+    ' "$bundle_dir/swarm_inventory.json" >/dev/null || return 1
+
+    ! grep -Eq 'prod-controller\.example\.com|192\.0\.2\.10|ubuntu|id_rsa|provider-123|/home/alice|ghp_abcdefghijklmnopqrstuvwxyz' "$bundle_dir/swarm_inventory.json" || return 1
+
+    jq -e '
+      .diagnostics.swarm_inventory.included == true and
+      .diagnostics.swarm_inventory.status == "fail" and
+      .diagnostics.swarm_inventory.raw_hosts_collected == false
+    ' "$bundle_dir/manifest.json" >/dev/null || return 1
+    ! grep -Eq 'prod-controller\.example\.com|192\.0\.2\.10|ubuntu|id_rsa|provider-123|/home/alice|ghp_abcdefghijklmnopqrstuvwxyz' "$bundle_dir/manifest.json" || return 1
+
+    pass "support_capture_swarm_inventory_fails_closed_on_sensitive_fields"
+}
+
 test_support_capture_swarm_inventory_absent_is_structured() {
     local home_dir acfs_home bundle_dir
     home_dir="$ARTIFACT_DIR/inventory-absent-home"
@@ -342,6 +462,7 @@ main() {
 
     run_test test_support_capture_resource_profile_sanitizes_paths
     run_test test_support_capture_swarm_inventory_redacts_raw_hosts
+    run_test test_support_capture_swarm_inventory_fails_closed_on_sensitive_fields
     run_test test_support_capture_swarm_inventory_absent_is_structured
     run_test test_support_capture_swarm_inventory_malformed_is_sanitized
 
