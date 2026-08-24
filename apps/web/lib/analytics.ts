@@ -101,7 +101,7 @@ export const isAnalyticsPrivacyAllowed = (): boolean => {
     || privacyNavigator?.doNotTrack === '1'
     || (window as Window & { doNotTrack?: string }).doNotTrack === '1'
   ) return false;
-  if ((window as AnalyticsPrivacyWindow).__acfsAnalyticsDocumentTainted) return false;
+  if ((window as unknown as AnalyticsPrivacyWindow).__acfsAnalyticsDocumentTainted) return false;
   if (isPrivateWizardPath(window.location?.pathname ?? '')) return false;
   const referrer = typeof document === 'undefined' ? '' : document.referrer;
   return !analyticsContextContainsSensitiveState(

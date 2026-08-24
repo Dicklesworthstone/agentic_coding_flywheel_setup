@@ -2904,6 +2904,106 @@ export function generateWebIndex(): string {
 // Main
 // ============================================================
 
+const PLUGIN_PACKAGE_SUFFIXES = ['.json', '.yaml', '.yml'] as const;
+
+function pluginOptionValue(args: readonly string[], index: number, option: string): string {
+  const value = args[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${option} requires a value`);
+  }
+  return value;
+}
+
+function appendPluginDirectory(
+  paths: string[],
+  rawDirectory: string,
+  option: string,
+  cwd: string,
+): void {
+  if (!rawDirectory.trim()) {
+    throw new Error(`${option} requires a plugin package directory`);
+  }
+
+  const directory = resolve(cwd, rawDirectory);
+  let directoryStat: ReturnType<typeof lstatSync>;
+  try {
+    directoryStat = lstatSync(directory);
+  } catch {
+    throw new Error(`${option} is not a readable plugin package directory: ${directory}`);
+  }
+  if (directoryStat.isSymbolicLink() || !directoryStat.isDirectory()) {
+    throw new Error(`${option} must name a real plugin package directory: ${directory}`);
+  }
+
+  const entries = readdirSync(directory)
+    .filter((entry) => PLUGIN_PACKAGE_SUFFIXES.some((suffix) => entry.endsWith(suffix)))
+    .sort();
+  if (entries.length === 0) {
+    throw new Error(`${option} contains no JSON or YAML plugin packages: ${directory}`);
+  }
+  paths.push(...entries.map((entry) => join(directory, entry)));
+}
+
+export function collectPluginInputPaths(
+  args: readonly string[],
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+  cwd = process.cwd(),
+): string[] {
+  const paths: string[] = [];
+
+  for (let index = 0; index < args.length; index++) {
+    const argument = args[index];
+    if (argument === '--plugin' || argument === '--plugins') {
+      paths.push(resolve(cwd, pluginOptionValue(args, index, argument)));
+      index++;
+    } else if (argument.startsWith('--plugin=') || argument.startsWith('--plugins=')) {
+      const value = argument.slice(argument.indexOf('=') + 1);
+      if (!value.trim()) {
+        throw new Error(`${argument.slice(0, argument.indexOf('='))} requires a plugin package path`);
+      }
+      paths.push(resolve(cwd, value));
+    } else if (argument === '--plugins-dir' || argument === '--plugin-dir') {
+      appendPluginDirectory(
+        paths,
+        pluginOptionValue(args, index, argument),
+        argument,
+        cwd,
+      );
+      index++;
+    } else if (
+      argument.startsWith('--plugins-dir=') ||
+      argument.startsWith('--plugin-dir=')
+    ) {
+      const option = argument.slice(0, argument.indexOf('='));
+      appendPluginDirectory(
+        paths,
+        argument.slice(argument.indexOf('=') + 1),
+        option,
+        cwd,
+      );
+    }
+  }
+
+  const environmentPaths = environment.ACFS_PLUGIN_PATHS;
+  if (environmentPaths !== undefined) {
+    const configuredPaths = environmentPaths
+      .split(/[:;,]/)
+      .map((path) => path.trim())
+      .filter(Boolean);
+    if (configuredPaths.length === 0) {
+      throw new Error('ACFS_PLUGIN_PATHS must name at least one plugin package');
+    }
+    paths.push(...configuredPaths.map((path) => resolve(cwd, path)));
+  }
+
+  const environmentDirectory = environment.ACFS_PLUGINS_DIR;
+  if (environmentDirectory !== undefined) {
+    appendPluginDirectory(paths, environmentDirectory, 'ACFS_PLUGINS_DIR', cwd);
+  }
+
+  return paths;
+}
+
 /**
  * Show help message
  */
@@ -3035,52 +3135,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Discover and validate plugin packages if provided (bd-vv8x5)
-  const pluginPaths: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--plugin' || arg === '--plugins') {
-      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
-        pluginPaths.push(args[++i]);
-      }
-    } else if (arg.startsWith('--plugin=') || arg.startsWith('--plugins=')) {
-      pluginPaths.push(arg.split('=', 2)[1]);
-    } else if (arg === '--plugins-dir' || arg === '--plugin-dir') {
-      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
-        const dir = args[++i];
-        if (existsSync(dir)) {
-          for (const entry of readdirSync(dir).sort()) {
-            if (entry.endsWith('.json') || entry.endsWith('.yaml') || entry.endsWith('.yml')) {
-              pluginPaths.push(join(dir, entry));
-            }
-          }
-        }
-      }
-    } else if (arg.startsWith('--plugins-dir=') || arg.startsWith('--plugin-dir=')) {
-      const dir = arg.split('=', 2)[1];
-      if (existsSync(dir)) {
-        for (const entry of readdirSync(dir).sort()) {
-          if (entry.endsWith('.json') || entry.endsWith('.yaml') || entry.endsWith('.yml')) {
-            pluginPaths.push(join(dir, entry));
-          }
-        }
-      }
-    }
-  }
-
-  if (process.env.ACFS_PLUGIN_PATHS) {
-    for (const p of process.env.ACFS_PLUGIN_PATHS.split(/[:;,]/)) {
-      const trimmed = p.trim();
-      if (trimmed) pluginPaths.push(trimmed);
-    }
-  }
-  if (process.env.ACFS_PLUGINS_DIR && existsSync(process.env.ACFS_PLUGINS_DIR)) {
-    const dir = process.env.ACFS_PLUGINS_DIR;
-    for (const entry of readdirSync(dir).sort()) {
-      if (entry.endsWith('.json') || entry.endsWith('.yaml') || entry.endsWith('.yml')) {
-        pluginPaths.push(join(dir, entry));
-      }
-    }
+  // Explicit plugin inputs are a trust-boundary contract. A missing value or
+  // unreadable/empty directory must never degrade to first-party-only output.
+  let pluginPaths: string[];
+  try {
+    pluginPaths = collectPluginInputPaths(args);
+  } catch (error) {
+    console.error(`Plugin input error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(2);
   }
 
   let effectiveManifest = manifest;
@@ -3088,8 +3150,7 @@ async function main(): Promise<void> {
     const pluginResults: PluginValidationResult[] = [];
     const existingPluginModuleIds: string[] = [];
 
-    for (const rawPath of pluginPaths) {
-      const resolvedPath = resolve(process.cwd(), rawPath);
+    for (const resolvedPath of pluginPaths) {
       console.log(`Validating plugin package: ${resolvedPath}`);
       const result = loadPluginPackageFromFile(resolvedPath, {
         firstPartyManifest: manifest,

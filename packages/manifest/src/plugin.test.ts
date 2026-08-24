@@ -16,8 +16,7 @@ import {
   generateWebModules,
   generateWebTools,
   generateWebCommands,
-  generateWebTldr,
-  generateWebLessonsIndex,
+  collectPluginInputPaths,
 } from './generate.js';
 import { ModuleSchema } from './schema.js';
 import type { Manifest } from './types.js';
@@ -874,6 +873,44 @@ describe('loadPluginPackageFromFile', () => {
     const result = loadPluginPackageFromFile('/non/existent/path/plugin.json', validationOptions());
     expect(result.valid).toBe(false);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+  });
+});
+
+describe('collectPluginInputPaths', () => {
+  test('refuses missing option values and missing directories', () => {
+    const workingDirectory = mkdtempSync(join(tmpdir(), 'acfs-plugin-input-errors-'));
+
+    expect(() => collectPluginInputPaths(['--plugin'], {}, workingDirectory)).toThrow(
+      '--plugin requires a value'
+    );
+    expect(() =>
+      collectPluginInputPaths(['--plugins-dir', 'missing'], {}, workingDirectory)
+    ).toThrow('is not a readable plugin package directory');
+  });
+
+  test('expands supported directory entries deterministically', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'acfs-plugin-inputs-'));
+    const first = join(directory, 'a.json');
+    const second = join(directory, 'b.yaml');
+    writeFileSync(second, '{}\n', 'utf8');
+    writeFileSync(first, '{}\n', 'utf8');
+    writeFileSync(join(directory, 'notes.txt'), 'ignored\n', 'utf8');
+
+    expect(collectPluginInputPaths(['--plugins-dir', directory], {})).toEqual([
+      first,
+      second,
+    ]);
+  });
+
+  test('refuses explicitly configured empty plugin inputs', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'acfs-empty-plugin-inputs-'));
+
+    expect(() => collectPluginInputPaths([], { ACFS_PLUGIN_PATHS: '  ' })).toThrow(
+      'ACFS_PLUGIN_PATHS must name at least one plugin package'
+    );
+    expect(() => collectPluginInputPaths([], { ACFS_PLUGINS_DIR: directory })).toThrow(
+      'contains no JSON or YAML plugin packages'
+    );
   });
 });
 
