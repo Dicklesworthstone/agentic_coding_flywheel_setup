@@ -1295,7 +1295,7 @@ if [[ -z "$source_file" ]]; then
   exit 1
 fi
 
-mkdir -p "$target_bin"
+/usr/bin/mkdir -p "$target_bin"
 if [[ -L "$target_bin/agy-real" ]] || { [[ -e "$target_bin/agy-real" ]] && [[ ! -f "$target_bin/agy-real" ]]; }; then
   echo "agents.antigravity: refusing unsafe real binary path: $target_bin/agy-real" >&2
   exit 1
@@ -1305,14 +1305,14 @@ if [[ -L "$target_bin/agy" ]] || { [[ -e "$target_bin/agy" ]] && [[ ! -f "$targe
   exit 1
 fi
 if [[ -f "$target_bin/agy" ]]; then
-  if grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy"; then
+  if /usr/bin/grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy"; then
     agy_marker_rc=0
   else
     agy_marker_rc=$?
   fi
   case "$agy_marker_rc" in
     0) ;;
-    1) mv -f "$target_bin/agy" "$target_bin/agy-real" ;;
+    1) /usr/bin/mv -f "$target_bin/agy" "$target_bin/agy-real" ;;
     *)
       echo "agents.antigravity: unable to inspect existing launcher path: $target_bin/agy" >&2
       exit 1
@@ -1323,7 +1323,7 @@ if [[ ! -x "$target_bin/agy-real" ]]; then
   echo "agents.antigravity: real binary is missing or not executable: $target_bin/agy-real" >&2
   exit 1
 fi
-if grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy-real"; then
+if /usr/bin/grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults' "$target_bin/agy-real"; then
   echo "agents.antigravity: real path contains an ACFS launcher: $target_bin/agy-real" >&2
   exit 1
 else
@@ -1333,15 +1333,15 @@ else
     exit 1
   fi
 fi
-install -m 0755 "$source_file" "$target_bin/agy-locked"
-install -m 0755 "$source_file" "$target_bin/agy"
-install -m 0755 "$source_file" "$target_bin/gmi"
+/usr/bin/install -m 0755 "$source_file" "$target_bin/agy-locked"
+/usr/bin/install -m 0755 "$source_file" "$target_bin/agy"
+/usr/bin/install -m 0755 "$source_file" "$target_bin/gmi"
 
-if "$target_bin/agy-locked" --acfs-prime-settings; then
-  echo "agents.antigravity: agy locked settings and dcg hook primed" >&2
-else
-  echo "agents.antigravity: warning: settings will be primed on first agy launch" >&2
+if ! "$target_bin/agy-locked" --acfs-prime-settings; then
+  echo "agents.antigravity: failed to prime locked settings and dcg hook" >&2
+  exit 1
 fi
+echo "agents.antigravity: agy locked settings and dcg hook primed" >&2
 INSTALL_AGENTS_ANTIGRAVITY
         then
             log_error "agents.antigravity: install command failed: install agy-locked launchers and prime settings"
@@ -1360,17 +1360,19 @@ test -x "$target_bin/agy"
 test -x "$target_bin/agy-locked"
 test -x "$target_bin/agy-real"
 test -x "$target_bin/gmi"
-python3 - <<'PY'
+/usr/bin/python3 - <<'PY'
 import json
 import pathlib
 import sys
 
 settings_path = pathlib.Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
+hooks_path = pathlib.Path.home() / ".gemini" / "config" / "hooks.json"
 hook_path = pathlib.Path.home() / ".gemini" / "config" / "hooks" / "dcg-antigravity-hook.py"
 try:
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
 except Exception as exc:
-    print(f"invalid or missing Antigravity settings: {settings_path}: {exc}", file=sys.stderr)
+    print(f"invalid or missing Antigravity settings/hooks: {exc}", file=sys.stderr)
     raise SystemExit(1)
 
 expected = {
@@ -1396,6 +1398,25 @@ for key, value in expected.items():
         raise SystemExit(1)
 if not hook_path.is_file():
     print(f"Antigravity dcg hook is missing: {hook_path}", file=sys.stderr)
+    raise SystemExit(1)
+dcg_group = hooks.get("dcg")
+pre_tool_use = dcg_group.get("PreToolUse", []) if isinstance(dcg_group, dict) else []
+if not isinstance(pre_tool_use, list):
+    pre_tool_use = []
+hook_registered = any(
+    isinstance(entry, dict)
+    and entry.get("matcher") == "run_command"
+    and any(
+        isinstance(hook, dict)
+        and hook.get("type") == "command"
+        and hook.get("command") == str(hook_path)
+        and hook.get("timeout") == 6
+        for hook in entry.get("hooks", [])
+    )
+    for entry in pre_tool_use
+)
+if not isinstance(dcg_group, dict) or dcg_group.get("enabled") is not True or not hook_registered:
+    print(f"Antigravity dcg hook is not enabled and registered in {hooks_path}", file=sys.stderr)
     raise SystemExit(1)
 PY
 INSTALL_AGENTS_ANTIGRAVITY

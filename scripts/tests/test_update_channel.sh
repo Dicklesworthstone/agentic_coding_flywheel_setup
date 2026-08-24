@@ -957,6 +957,27 @@ else
 fi
 
 # ============================================================
+section "Test 9b: shell helpers route repairs through ACFS verification"
+# ============================================================
+if [[ -f "$ZSHRC" ]]; then
+    amserve_block=$(sed -n '/^amserve() {/,/^}/p' "$ZSHRC")
+    bv_block=$(sed -n '/^bv() {/,/^}/p' "$ZSHRC")
+    if echo "$amserve_block" | grep -Fq 'acfs update --stack-only' && \
+       echo "$bv_block" | grep -Fq 'acfs update --stack-only'; then
+        pass "amserve and bv recovery hints delegate to the ACFS stack updater"
+    else
+        fail "amserve or bv recovery hint bypasses the ACFS stack updater"
+    fi
+    if printf '%s\n%s\n' "$amserve_block" "$bv_block" | grep -Eq 'raw\.githubusercontent\.com|\|[[:space:]]*(bash|sh)([[:space:]]|$)'; then
+        fail "shell helper recovery hint contains a direct network-to-shell installer"
+    else
+        pass "shell helper recovery hints contain no direct network-to-shell installer"
+    fi
+else
+    skip "acfs.zshrc not found at $ZSHRC"
+fi
+
+# ============================================================
 section "Test 10: Completeness sweep — no bare 'claude update' in repo"
 # ============================================================
 # Grep across the whole repo for "claude update", excluding:

@@ -639,7 +639,7 @@ fi
 # MCP Agent Mail helper (leave the real `am` CLI available for service/macros)
 amserve() {
   if ! command -v am &>/dev/null; then
-    echo "am CLI not found — install with: curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh | bash"
+    echo "am CLI not found — repair with: acfs update --stack-only"
     return 1
   fi
 
@@ -732,8 +732,8 @@ bv() {
   if [[ -n "$bv_bin" ]]; then
     "$bv_bin" "$@"
   else
-    echo "Error: beads_viewer (bv) not found. Install with:" >&2
-    echo "  curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh | bash" >&2
+    echo "Error: beads_viewer (bv) not found. Repair with:" >&2
+    echo "  acfs update --stack-only" >&2
     return 1
   fi
 }

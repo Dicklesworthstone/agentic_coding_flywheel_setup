@@ -13076,6 +13076,32 @@ EOF
     assert_success
 }
 
+@test "doctor tool recovery hints use manifest-bound ACFS reinstall commands" {
+    local doctor_lib="$PROJECT_ROOT/scripts/lib/doctor.sh"
+    local module=""
+
+    run grep -E '(Re-run:|re-run:|Install:).*raw\.githubusercontent\.com/.*/install.*\.sh.*\|[[:space:]]*(bash|sh)' "$doctor_lib"
+    assert_failure
+
+    for module in \
+        tools.zoxide \
+        network.tailscale \
+        stack.ntm \
+        stack.slb \
+        stack.ultimate_bug_scanner \
+        stack.beads_viewer \
+        stack.cass \
+        stack.cm \
+        stack.caam \
+        stack.ru \
+        stack.beads_rust \
+        stack.meta_skill \
+        stack.rch; do
+        run grep -F "fix_for_module $module" "$doctor_lib"
+        assert_success
+    done
+}
+
 @test "install.sh: smoke fix command preserves pinned ref" {
     local installer="$PROJECT_ROOT/install.sh"
 

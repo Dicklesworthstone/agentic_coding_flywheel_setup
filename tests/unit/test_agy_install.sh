@@ -100,6 +100,12 @@ check "agy generated install step installs the locked launchers" \
   "awk '/acfs_generated_install_agents_antigravity\(\)/{f=1} f&&/install -m 0755.*agy-locked/{print;exit}' scripts/generated/install_agents.sh | grep -q agy-locked && awk '/acfs_generated_install_agents_antigravity\(\)/{f=1} f&&/install -m 0755.*gmi/{print;exit}' scripts/generated/install_agents.sh | grep -q gmi"
 check "agy generated install step primes locked settings" \
   "awk '/acfs_generated_install_agents_antigravity\(\)/{f=1} f&&/--acfs-prime-settings/{print;exit}' scripts/generated/install_agents.sh | grep -q -- --acfs-prime-settings"
+check "agy generated install step fails closed when settings priming fails" \
+  "grep -Fq 'if ! \"\$target_bin/agy-locked\" --acfs-prime-settings; then' scripts/generated/install_agents.sh && grep -Fq 'agents.antigravity: failed to prime locked settings and dcg hook' scripts/generated/install_agents.sh"
+check "agy generated install step uses trusted relocation utilities" \
+  "grep -Fq '/usr/bin/grep -aFq' scripts/generated/install_agents.sh && grep -Fq '/usr/bin/mv -f \"\$target_bin/agy\"' scripts/generated/install_agents.sh && grep -Fq '/usr/bin/install -m 0755' scripts/generated/install_agents.sh"
+check "agy generated verification proves dcg hook registration" \
+  "grep -Fq 'hook_registered = any(' scripts/generated/install_agents.sh && grep -Fq 'dcg_group.get(\"enabled\") is not True' scripts/generated/install_agents.sh"
 
 # 5. agy is resolvable through the security layer (URL + checksum lookup).
 check "get_checksum antigravity resolves to a 64-hex sha" \
