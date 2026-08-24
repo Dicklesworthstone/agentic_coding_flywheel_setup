@@ -6,13 +6,13 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-TEST_ROOT="${ACFS_OFFLINE_PACK_CONSUMER_TEST_DIR:-${TMPDIR:-/tmp}/acfs-offline-pack-consumer-$(date +%Y%m%d-%H%M%S)-$$}"
+TEST_ROOT="${ACFS_INSTALLER_CACHE_CONSUMER_TEST_DIR:-${TMPDIR:-/tmp}/acfs-installer-cache-consumer-$(date +%Y%m%d-%H%M%S)-$$}"
 TESTS_PASSED=0
 TESTS_FAILED=0
 
 TOOL="fixture_tool"
 URL="https://example.com/acfs/fixture-install.sh"
-CONTENT='printf "offline fixture\n"'
+CONTENT='printf "cached installer fixture\n"'
 
 mkdir -p "$TEST_ROOT"
 export CHECKSUMS_FILE="$TEST_ROOT/current-checksums.yaml"
@@ -229,6 +229,47 @@ expect_refusal_code() {
     pass "$test_name"
 }
 
+mutate_pack_manifest() {
+    local pack_root="$1"
+    local filter="$2"
+    local candidate="$pack_root/manifest.mutated.$$.json"
+
+    jq "$filter" "$pack_root/manifest.json" > "$candidate" || return 1
+    /bin/mv -- "$candidate" "$pack_root/manifest.json"
+}
+
+test_missing_required_policy_field_is_refused() {
+    local pack_root=""
+
+    pack_root="$(write_pack "missing-policy" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    mutate_pack_manifest "$pack_root" 'del(.policy.executionNetworkMode)' || return
+    expect_refusal_code "missing_required_policy_field_is_refused" "$pack_root" "pack_malformed_manifest"
+}
+
+test_duplicate_artifact_identity_is_refused() {
+    local pack_root=""
+
+    pack_root="$(write_pack "duplicate-artifact" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    mutate_pack_manifest "$pack_root" '.artifacts += [.artifacts[0]]' || return
+    expect_refusal_code "duplicate_artifact_identity_is_refused" "$pack_root" "pack_malformed_manifest"
+}
+
+test_architectureless_artifact_is_refused() {
+    local pack_root=""
+
+    pack_root="$(write_pack "missing-artifact-arch" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    mutate_pack_manifest "$pack_root" 'del(.artifacts[0].architecture)' || return
+    expect_refusal_code "architectureless_artifact_is_refused" "$pack_root" "pack_malformed_manifest"
+}
+
+test_failure_bearing_cache_is_refused() {
+    local pack_root=""
+
+    pack_root="$(write_pack "failure-bearing" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    mutate_pack_manifest "$pack_root" '.failures = [{code: "pack_download_failed"}]' || return
+    expect_refusal_code "failure_bearing_cache_is_refused" "$pack_root" "pack_malformed_manifest"
+}
+
 test_stale_pack_is_refused() {
     local pack_root=""
 
@@ -249,7 +290,7 @@ test_tampered_artifact_is_refused() {
 test_missing_artifact_is_refused() {
     local pack_root=""
 
-    pack_root="$(write_pack "missing" "$FUTURE_EXPIRES" "$CURRENT_ARCH" no)"
+    pack_root="$(write_pack "missing" "$FUTURE_EXPIRES" "$CURRENT_ARCH" manifest-only)"
     expect_refusal_code "missing_artifact_is_refused" "$pack_root" "pack_unbundled_required_module"
 }
 
@@ -355,6 +396,10 @@ test_artifact_swap_after_snapshot_cannot_change_emitted_bytes() {
 
 run_all_tests() {
     test_valid_pack_uses_local_artifact
+    test_missing_required_policy_field_is_refused
+    test_duplicate_artifact_identity_is_refused
+    test_architectureless_artifact_is_refused
+    test_failure_bearing_cache_is_refused
     test_stale_pack_is_refused
     test_tampered_artifact_is_refused
     test_missing_artifact_is_refused

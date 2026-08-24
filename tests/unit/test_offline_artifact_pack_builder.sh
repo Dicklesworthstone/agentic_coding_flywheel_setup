@@ -461,6 +461,67 @@ YAML
     pass "duplicate_module_id_is_refused"
 }
 
+test_invalid_module_markdown_reports_without_crashing() {
+    local source_root output status
+    source_root="$(write_fixture_source invalid-markdown valid)"
+
+    output="$(run_pack invalid-markdown build --dry-run --markdown --source-root "$source_root" --module stack.nope)"
+    status="$(cat "$ARTIFACT_DIR/invalid-markdown.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    [[ "$output" == *"pack_unknown_module: stack.nope"* ]] || return 1
+    [[ "$output" == *"stack.nope (no verified installer) no approved URL"* ]] || return 1
+    [[ "$output" != *"bad array subscript"* ]] || return 1
+
+    pass "invalid_module_markdown_reports_without_crashing"
+}
+
+test_duplicate_checksum_installer_key_is_refused() {
+    local source_root output status
+    source_root="$(write_fixture_source duplicate-checksum-key valid)"
+    cat >> "$source_root/checksums.yaml" <<'YAML'
+  rch:
+    url: "https://fixture.test/duplicate-checksum-key/rch-install.sh"
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+YAML
+
+    output="$(run_pack duplicate-checksum-key build --dry-run --json --source-root "$source_root" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/duplicate-checksum-key.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("pack_checksums_mismatch: duplicate installer key rch"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "duplicate_checksum_installer_key_is_refused"
+}
+
+test_clean_source_commit_cannot_claim_a_different_executing_builder() {
+    local source_root output_dir output status
+    source_root="$(write_fixture_source builder-mismatch valid)"
+    output_dir="$ARTIFACT_DIR/builder-mismatch/output"
+    printf '#!/usr/bin/env bash\nprintf "different builder bytes\\n"\n' > "$source_root/scripts/lib/offline_artifact_pack.sh"
+
+    git -C "$source_root" init -q -b main
+    git -C "$source_root" add -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib/offline_artifact_pack.sh
+    git -C "$source_root" -c user.name=ACFS -c user.email=acfs@example.invalid commit -q -m fixture
+
+    output="$(run_pack builder-mismatch build --json --source-root "$source_root" --output "$output_dir" --module stack.rch)"
+    status="$(cat "$ARTIFACT_DIR/builder-mismatch.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      .output.published == false and
+      .output.manifestPath == "" and
+      any(.validation.errors[]; contains("pack_source_changed: executing builder does not match sourceCommit"))
+    ' <<<"$output" >/dev/null || return 1
+    [[ ! -e "$output_dir/acfs-installer-cache" ]] || return 1
+
+    pass "clean_source_commit_cannot_claim_a_different_executing_builder"
+}
+
 test_invalid_verified_installer_runner_is_refused() {
     local source_root output status
     source_root="$(write_fixture_source invalid-runner valid stack.rch python)"
@@ -535,6 +596,9 @@ run_all_tests() {
         test_non_verified_module_is_refused
         test_invalid_module_id_cannot_escape_pack_root
         test_duplicate_module_id_is_refused
+        test_invalid_module_markdown_reports_without_crashing
+        test_duplicate_checksum_installer_key_is_refused
+        test_clean_source_commit_cannot_claim_a_different_executing_builder
         test_invalid_verified_installer_runner_is_refused
         test_best_effort_records_download_failure
         test_timeout_option_is_validated_and_recorded
