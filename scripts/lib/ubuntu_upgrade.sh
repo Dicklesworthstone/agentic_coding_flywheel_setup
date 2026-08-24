@@ -1467,7 +1467,9 @@ else
         exit 1
     }
 
-    if ! curl "\${CURL_ARGS[@]}" "\${INSTALL_URL}" > "\${STAGED_INSTALLER}"; then
+    if curl "\${CURL_ARGS[@]}" "\${INSTALL_URL}" > "\${STAGED_INSTALLER}"; then
+        :
+    else
         curl_status=\$?
         echo "Failed to fetch installer from \${INSTALL_URL} (exit code: \${curl_status})" >&2
         exit "\${curl_status}"

@@ -353,12 +353,14 @@ EOF_TRUSTED_CAT
 
     mkdir -p "$fake_bin"
     cat > "$fake_bin/bash" <<EOF
-#!/usr/bin/env bash
+#!/bin/sh
+if [ "\${1:-}" = "--probe" ]; then exit 0; fi
 : > "$marker"
 printf 'poisoned bash\n'
 exit 0
 EOF
     chmod +x "$fake_bin/bash"
+    "$fake_bin/bash" --probe
 
     local system_bash
     system_bash="$(command -v bash)"
@@ -440,12 +442,14 @@ EOF_NO_PARTIAL_EXECUTION
 
     mkdir -p "$fake_bin"
     cat > "$fake_bin/bash" <<EOF
-#!/usr/bin/env bash
+#!/bin/sh
+if [ "\${1:-}" = "--probe" ]; then exit 0; fi
 : > "$marker"
 printf 'poisoned recovery bash\n'
 exit 0
 EOF
     chmod +x "$fake_bin/bash"
+    "$fake_bin/bash" --probe
 
     local system_bash
     system_bash="$(command -v bash)"

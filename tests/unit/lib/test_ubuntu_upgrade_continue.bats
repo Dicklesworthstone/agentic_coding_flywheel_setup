@@ -122,11 +122,14 @@ EOF
     touch "$source_dir/scripts/templates/acfs-upgrade-resume.service"
 
     # Fake curl that writes an installer script
-    cat > "$fake_bin/curl" <<EOF
+    cat > "$fake_bin/curl" <<EOF_CURL
 #!/usr/bin/env bash
-printf '#!/usr/bin/env bash\nprintf "remote-executed:%%s\\\n" "\\\$*" > "$marker"\n'
+cat <<'EOF_SCRIPT'
+#!/usr/bin/env bash
+printf 'remote-executed:%s\n' "\$*" > "$marker"
+EOF_SCRIPT
 exit 0
-EOF
+EOF_CURL
     chmod +x "$fake_bin/curl"
 
     cp() {
@@ -168,7 +171,7 @@ EOF
     # Fake curl that writes a partial script and exits with error
     cat > "$fake_bin/curl" <<EOF
 #!/usr/bin/env bash
-printf 'touch "$marker"\n'
+printf 'touch "%s"\n' "$marker"
 exit 56
 EOF
     chmod +x "$fake_bin/curl"
@@ -194,6 +197,7 @@ EOF
     run env PATH="$fake_bin:$PATH" "$system_bash" "$resume_dir/continue_install.sh"
     assert_failure
     assert_output --partial "Failed to fetch installer"
+    assert_output --partial "exit code: 56"
 
     # Crucial assertion: partial script was never executed
     [[ ! -e "$marker" ]]
