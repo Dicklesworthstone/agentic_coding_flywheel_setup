@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   formatPluginDiagnostics,
-  loadPluginPackageFromFile,
+  loadPluginManifestFromFile,
   MAX_PLUGIN_JSON_NESTING_DEPTH,
   MAX_PLUGIN_MANIFEST_BYTES,
   mergeValidatedPlugins,
@@ -854,7 +854,7 @@ describe('validatePluginPackage', () => {
   });
 });
 
-describe('loadPluginPackageFromFile', () => {
+describe('loadPluginManifestFromFile', () => {
   test('loads and validates a valid JSON plugin file', () => {
     const dir = mkdtempSync(join(tmpdir(), 'acfs-plugin-test-'));
     const pluginPath = join(dir, 'plugin.json');
@@ -862,7 +862,7 @@ describe('loadPluginPackageFromFile', () => {
     const pluginBytes = JSON.stringify(plugin, null, 2);
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
+    const result = loadPluginManifestFromFile(pluginPath, validationOptions());
     expect(result.valid).toBe(true);
     expect(result.manifestModules.length).toBe(1);
     expect(result.manifestModules[0].id).toBe('plugin.example_tools.cli');
@@ -877,7 +877,7 @@ describe('loadPluginPackageFromFile', () => {
     delete opts.expectedPackageSha256;
     delete opts.packageSha256;
 
-    const result = loadPluginPackageFromFile(pluginPath, opts);
+    const result = loadPluginManifestFromFile(pluginPath, opts);
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -896,7 +896,7 @@ describe('loadPluginPackageFromFile', () => {
     const pluginBytes = JSON.stringify(validPlugin());
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
+    const result = loadPluginManifestFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -914,7 +914,7 @@ describe('loadPluginPackageFromFile', () => {
     writeFileSync(pluginPath, '{', 'utf-8');
     truncateSync(pluginPath, MAX_PLUGIN_MANIFEST_BYTES + 1);
 
-    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
+    const result = loadPluginManifestFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -939,7 +939,7 @@ describe('loadPluginPackageFromFile', () => {
     pluginBytes[displayNameOffset] = 0xff;
     writeFileSync(pluginPath, pluginBytes);
 
-    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
+    const result = loadPluginManifestFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -960,7 +960,7 @@ describe('loadPluginPackageFromFile', () => {
     );
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
+    const result = loadPluginManifestFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -983,7 +983,7 @@ describe('loadPluginPackageFromFile', () => {
     );
     writeFileSync(pluginPath, pluginBytes, 'utf-8');
 
-    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
+    const result = loadPluginManifestFromFile(pluginPath, validationOptions());
 
     expect(result.valid).toBe(false);
     expect(result.manifestModules).toHaveLength(0);
@@ -996,9 +996,11 @@ describe('loadPluginPackageFromFile', () => {
   });
 
   test('fails closed on non-existent or invalid JSON file', () => {
-    const result = loadPluginPackageFromFile('/non/existent/path/plugin.json', validationOptions());
+    const missingPath = '/non/existent/path/plugin.json';
+    const result = loadPluginManifestFromFile(missingPath, validationOptions());
     expect(result.valid).toBe(false);
     expect(result.diagnostics.length).toBeGreaterThan(0);
+    expect(formatPluginDiagnostics(result)).not.toContain(missingPath);
   });
 });
 

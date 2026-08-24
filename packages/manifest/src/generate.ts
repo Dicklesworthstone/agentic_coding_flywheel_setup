@@ -40,7 +40,7 @@ import {
   type InstallerChecksumEntry,
 } from './validate.js';
 import {
-  loadPluginPackageFromFile,
+  loadPluginManifestFromFile,
   mergeValidatedPlugins,
   formatPluginDiagnostics,
   type PluginValidationResult,
@@ -514,8 +514,9 @@ acfs_security_init() {
 
 function sourceOnlyHeader(message: string): string {
   return HEADER.replace(
-    '#!/bin/bash -p\n',
+    '#!/bin/bash -p\n# shellcheck disable=SC1090,SC1091\n',
     `#!/bin/bash -p
+# shellcheck disable=SC1090,SC1091
 if [[ "\${BASH_SOURCE[0]}" == "\$0" ]]; then
     builtin printf '%s\\n' '${message}' >&2
     exit 2
@@ -3154,9 +3155,9 @@ async function main(): Promise<void> {
     const pluginResults: PluginValidationResult[] = [];
     const existingPluginModuleIds: string[] = [];
 
-    for (const resolvedPath of pluginPaths) {
-      console.log(`Validating plugin package: ${resolvedPath}`);
-      const result = loadPluginPackageFromFile(resolvedPath, {
+    for (const [pluginIndex, resolvedPath] of pluginPaths.entries()) {
+      console.log(`Validating plugin manifest ${pluginIndex + 1}/${pluginPaths.length}`);
+      const result = loadPluginManifestFromFile(resolvedPath, {
         firstPartyManifest: manifest,
         installers,
         existingPluginModuleIds,
@@ -3174,7 +3175,7 @@ async function main(): Promise<void> {
       }
       pluginResults.push(result);
       console.log(
-        `✓ Plugin package "${result.package?.packageId ?? resolvedPath}" validated (${result.manifestModules.length} module(s))`
+        `✓ Plugin package "${result.package?.packageId ?? '<validated>'}" validated (${result.manifestModules.length} module(s))`
       );
     }
 

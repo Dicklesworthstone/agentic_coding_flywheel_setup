@@ -1,9 +1,9 @@
 #!/bin/bash -p
+# shellcheck disable=SC1090,SC1091
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     builtin printf '%s\n' 'ERROR: install_network.sh is a source-only library; run install.sh --only <module-id>' >&2
     exit 2
 fi
-# shellcheck disable=SC1090,SC1091
 # ============================================================
 # AUTO-GENERATED FROM acfs.manifest.yaml - DO NOT EDIT
 # Regenerate: bun run generate (from packages/manifest)

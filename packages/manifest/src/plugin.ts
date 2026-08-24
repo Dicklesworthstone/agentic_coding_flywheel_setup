@@ -1501,7 +1501,7 @@ export function formatPluginDiagnostics(result: PluginValidationResult): string 
  * The caller remains responsible for calculating the compressed package hash
  * and supplying both that value and its independently trusted expected digest.
  */
-export function loadPluginPackageFromFile(
+export function loadPluginManifestFromFile(
   filePath: string,
   options: PluginValidationOptions
 ): PluginValidationResult {
@@ -1531,7 +1531,7 @@ export function loadPluginPackageFromFile(
         diagnostics: [
           {
             code: 'plugin_missing_required_field',
-            message: `Plugin file is not a single-link regular file: ${filePath}`,
+            message: 'Plugin manifest is not a single-link regular file',
             path: '<file>',
             severity: 'error',
           },
@@ -1593,13 +1593,13 @@ export function loadPluginPackageFromFile(
       };
     }
     fileBytes = boundedBuffer.subarray(0, bytesRead);
-  } catch (error) {
+  } catch {
     return {
       valid: false,
       diagnostics: [
         {
           code: 'plugin_missing_required_field',
-          message: `Plugin file could not be opened safely: ${filePath} (${error instanceof Error ? error.message : String(error)})`,
+          message: 'Plugin manifest could not be opened safely',
           path: '<file>',
           severity: 'error',
         },
@@ -1630,13 +1630,13 @@ export function loadPluginPackageFromFile(
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
-  } catch (parseError) {
+  } catch {
     return {
       valid: false,
       diagnostics: [
         {
           code: 'plugin_missing_required_field',
-          message: `Plugin file contains invalid syntax: ${filePath} (${parseError instanceof Error ? parseError.message : String(parseError)})`,
+          message: 'Plugin manifest contains invalid JSON syntax',
           path: '<root>',
           severity: 'error',
         },
