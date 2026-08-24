@@ -1290,7 +1290,15 @@ dcg_hook_already_installed() {
     runtime_path="$(doctor_fix_runtime_path 2>/dev/null || true)"
     [[ -n "$dcg_bin" && -n "$runtime_home" && -n "$runtime_path" ]] || return 1
 
-    doctor_json="$(env HOME="$runtime_home" PATH="$runtime_path" "$dcg_bin" doctor --format json 2>/dev/null)" || return 1
+    # Cap the probe: a wedged dcg (e.g. blocked on config or a hook
+    # subprocess) would otherwise hang the fixer indefinitely.
+    local timeout_bin=""
+    timeout_bin="$(doctor_fix_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -n "$timeout_bin" ]]; then
+        doctor_json="$(env HOME="$runtime_home" PATH="$runtime_path" "$timeout_bin" 15s "$dcg_bin" doctor --format json 2>/dev/null)" || return 1
+    else
+        doctor_json="$(env HOME="$runtime_home" PATH="$runtime_path" "$dcg_bin" doctor --format json 2>/dev/null)" || return 1
+    fi
     [[ -n "$doctor_json" ]] || return 1
 
     jq_bin="$(doctor_fix_system_binary_path jq 2>/dev/null || true)"

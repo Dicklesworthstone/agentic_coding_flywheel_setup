@@ -974,6 +974,12 @@ EOF
 │                                                             │
 │  Press Ctrl+C to stop                                       │
 │                                                             │
+│  ⚠️  --public serves this dashboard with NO authentication. │
+│  Anyone who can reach ${ip}:${port} can read everything
+│  on it, including hostnames and install state. Prefer the   │
+│  default localhost mode with an SSH tunnel on networks      │
+│  you don't fully trust (e.g. anything beyond your tailnet). │
+│                                                             │
 │  ⚠️  This is a temporary server.                            │
 │  It stops when you close this terminal.                     │
 ╰─────────────────────────────────────────────────────────────╯

@@ -9,6 +9,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TEST_ROOT="${ACFS_INSTALLER_CACHE_CONSUMER_TEST_DIR:-${TMPDIR:-/tmp}/acfs-installer-cache-consumer-$(date +%Y%m%d-%H%M%S)-$$}"
 TESTS_PASSED=0
 TESTS_FAILED=0
+CACHE_TEST_NETWORK_CALLS=0
 
 TOOL="fixture_tool"
 URL="https://example.com/acfs/fixture-install.sh"
@@ -106,10 +107,12 @@ write_pack() {
     local arch="$3"
     local include_artifact="${4:-yes}"
     local artifact_rel="${5:-artifacts/fixture.module/${TOOL}-install.sh}"
+    local fixture_mode="${6:-valid}"
     local output_dir="$TEST_ROOT/$name"
     local pack_root="$output_dir/acfs-installer-cache"
     local artifact_path="$pack_root/$artifact_rel"
     local artifact_size=""
+    local artifact_content="$CONTENT"
     local artifacts_json="[]"
 
     mkdir -p "$pack_root/artifacts"
@@ -118,8 +121,14 @@ write_pack() {
 
     if [[ "$include_artifact" == "yes" ]]; then
         mkdir -p "${artifact_path%/*}"
-        printf '%s' "$CONTENT" > "$artifact_path"
-        artifact_size="$(acfs_security_file_size "$artifact_path")"
+        if [[ "$fixture_mode" == "tampered-artifact" ]]; then
+            artifact_content='tampered content'
+            artifact_size="$(printf '%s' "$CONTENT" | wc -c | tr -d '[:space:]')"
+        fi
+        printf '%s' "$artifact_content" > "$artifact_path"
+        if [[ -z "$artifact_size" ]]; then
+            artifact_size="$(acfs_security_file_size "$artifact_path")"
+        fi
     elif [[ "$include_artifact" == "manifest-only" ]]; then
         artifact_size="$(printf '%s' "$CONTENT" | wc -c | tr -d '[:space:]')"
     fi
@@ -155,6 +164,7 @@ write_pack() {
         --arg manifestSha "$MANIFEST_SHA" \
         --arg checksumsSha "$CHECKSUMS_SHA" \
         --arg arch "$arch" \
+        --arg fixtureMode "$fixture_mode" \
         --argjson artifacts "$artifacts_json" \
         '{
             schema: "acfs.verified-installer-entrypoint-cache.v1",
@@ -191,7 +201,18 @@ write_pack() {
                 verifiedInstallerPolicy: "must_match_checksums_yaml",
                 partialPackPolicy: "refuse_unless_best_effort_diagnostic"
             }
-        }' > "$pack_root/manifest.json"
+        }
+        | if $fixtureMode == "missing-policy" then
+            del(.policy.executionNetworkMode)
+          elif $fixtureMode == "duplicate-artifact" then
+            .artifacts += [.artifacts[0]]
+          elif $fixtureMode == "missing-artifact-arch" then
+            del(.artifacts[0].architecture)
+          elif $fixtureMode == "failure-bearing" then
+            .failures = [{code: "pack_download_failed"}]
+          else
+            .
+          end' > "$pack_root/manifest.json"
 
     printf '%s\n' "$pack_root"
 }
@@ -204,6 +225,7 @@ verify_with_pack() {
     export ACFS_VERIFIED_INSTALLER_CACHE="$pack_root"
 
     acfs_download_to_file() {
+        CACHE_TEST_NETWORK_CALLS=$((CACHE_TEST_NETWORK_CALLS + 1))
         echo "network download should not be used for cached installer entrypoints" >&2
         return 79
     }
@@ -242,10 +264,20 @@ expect_refusal_code() {
     local output_file="$TEST_ROOT/$test_name.out"
     local error_file="$TEST_ROOT/$test_name.err"
 
+    CACHE_TEST_NETWORK_CALLS=0
     if verify_with_pack "$pack_root" "$output_file" "$error_file"; then
         fail "$test_name" "verify_checksum unexpectedly succeeded"
         return
     fi
+
+    [[ "$CACHE_TEST_NETWORK_CALLS" -eq 0 ]] || {
+        fail "$test_name" "cache refusal attempted a live network fallback"
+        return
+    }
+    [[ ! -s "$output_file" ]] || {
+        fail "$test_name" "cache refusal emitted unverified bytes"
+        return
+    }
 
     grep -Fq "code=$code" "$error_file" || {
         fail "$test_name" "expected $code in error log"
@@ -254,44 +286,31 @@ expect_refusal_code() {
     pass "$test_name"
 }
 
-mutate_pack_manifest() {
-    local pack_root="$1"
-    local filter="$2"
-    local candidate="$pack_root/manifest.mutated.$$.json"
-
-    jq "$filter" "$pack_root/manifest.json" > "$candidate" || return 1
-    /bin/mv -- "$candidate" "$pack_root/manifest.json"
-}
-
 test_missing_required_policy_field_is_refused() {
     local pack_root=""
 
-    pack_root="$(write_pack "missing-policy" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
-    mutate_pack_manifest "$pack_root" 'del(.policy.executionNetworkMode)' || return
+    pack_root="$(write_pack "missing-policy" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes "artifacts/fixture.module/${TOOL}-install.sh" missing-policy)"
     expect_refusal_code "missing_required_policy_field_is_refused" "$pack_root" "pack_malformed_manifest"
 }
 
 test_duplicate_artifact_identity_is_refused() {
     local pack_root=""
 
-    pack_root="$(write_pack "duplicate-artifact" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
-    mutate_pack_manifest "$pack_root" '.artifacts += [.artifacts[0]]' || return
+    pack_root="$(write_pack "duplicate-artifact" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes "artifacts/fixture.module/${TOOL}-install.sh" duplicate-artifact)"
     expect_refusal_code "duplicate_artifact_identity_is_refused" "$pack_root" "pack_malformed_manifest"
 }
 
 test_architectureless_artifact_is_refused() {
     local pack_root=""
 
-    pack_root="$(write_pack "missing-artifact-arch" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
-    mutate_pack_manifest "$pack_root" 'del(.artifacts[0].architecture)' || return
+    pack_root="$(write_pack "missing-artifact-arch" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes "artifacts/fixture.module/${TOOL}-install.sh" missing-artifact-arch)"
     expect_refusal_code "architectureless_artifact_is_refused" "$pack_root" "pack_malformed_manifest"
 }
 
 test_failure_bearing_cache_is_refused() {
     local pack_root=""
 
-    pack_root="$(write_pack "failure-bearing" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
-    mutate_pack_manifest "$pack_root" '.failures = [{code: "pack_download_failed"}]' || return
+    pack_root="$(write_pack "failure-bearing" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes "artifacts/fixture.module/${TOOL}-install.sh" failure-bearing)"
     expect_refusal_code "failure_bearing_cache_is_refused" "$pack_root" "pack_malformed_manifest"
 }
 
@@ -304,11 +323,8 @@ test_stale_pack_is_refused() {
 
 test_tampered_artifact_is_refused() {
     local pack_root=""
-    local artifact_path=""
 
-    pack_root="$(write_pack "tampered" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
-    artifact_path="$pack_root/artifacts/fixture.module/${TOOL}-install.sh"
-    printf '%s' 'tampered content' > "$artifact_path"
+    pack_root="$(write_pack "tampered" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes "artifacts/fixture.module/${TOOL}-install.sh" tampered-artifact)"
     expect_refusal_code "tampered_artifact_is_refused" "$pack_root" "pack_hash_mismatch"
 }
 
@@ -388,35 +404,39 @@ test_live_path_still_works_without_pack() {
     pass "live_path_still_works_without_pack"
 }
 
-test_artifact_swap_after_snapshot_cannot_change_emitted_bytes() {
+test_verified_emission_uses_private_snapshot() {
     local pack_root=""
     local artifact_path=""
-    local output_file="$TEST_ROOT/swap-before-emit.out"
-    local error_file="$TEST_ROOT/swap-before-emit.err"
+    local emitted_path_file="$TEST_ROOT/private-snapshot-path.txt"
+    local output_file="$TEST_ROOT/private-snapshot.out"
+    local error_file="$TEST_ROOT/private-snapshot.err"
+    local emitted_path=""
 
-    pack_root="$(write_pack "swap-before-emit" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
+    pack_root="$(write_pack "private-snapshot" "$FUTURE_EXPIRES" "$CURRENT_ARCH" yes)"
     artifact_path="$pack_root/artifacts/fixture.module/${TOOL}-install.sh"
 
-    # Deterministically model a concurrent replacement after the private
-    # snapshot has been verified. The emitted bytes must still come from that
-    # snapshot, never from the now-mutated shared cache pathname.
+    # Mutation-sensitive seam: the old consumer emitted artifact_path directly;
+    # the hardened consumer must emit a distinct private snapshot pathname.
     acfs_security_cat_file() {
         local file="$1"
-        if [[ "$file" != "$artifact_path" ]]; then
-            printf '%s' 'tampered after snapshot' > "$artifact_path"
-        fi
+        printf '%s\n' "$file" > "$emitted_path_file"
         /bin/cat "$file"
     }
 
     if ! verify_with_pack "$pack_root" "$output_file" "$error_file"; then
-        fail "artifact_swap_after_snapshot_cannot_change_emitted_bytes" "verified private snapshot was not emitted"
+        fail "verified_emission_uses_private_snapshot" "verified private snapshot was not emitted"
         return
     fi
-    [[ "$(< "$output_file")" == "$CONTENT" ]] || {
-        fail "artifact_swap_after_snapshot_cannot_change_emitted_bytes" "mutated shared bytes escaped to stdout"
+    emitted_path="$(< "$emitted_path_file")"
+    [[ -n "$emitted_path" && "$emitted_path" != "$artifact_path" ]] || {
+        fail "verified_emission_uses_private_snapshot" "consumer emitted the shared cache pathname"
         return
     }
-    pass "artifact_swap_after_snapshot_cannot_change_emitted_bytes"
+    [[ "$(< "$output_file")" == "$CONTENT" ]] || {
+        fail "verified_emission_uses_private_snapshot" "verified snapshot bytes were not emitted"
+        return
+    }
+    pass "verified_emission_uses_private_snapshot"
 }
 
 run_all_tests() {
@@ -432,7 +452,7 @@ run_all_tests() {
     test_unsupported_arch_is_refused
     test_missing_pack_fails_closed
     test_live_path_still_works_without_pack
-    test_artifact_swap_after_snapshot_cannot_change_emitted_bytes
+    test_verified_emission_uses_private_snapshot
 
     echo ""
     echo "Installer entrypoint cache consumer tests: $TESTS_PASSED passed, $TESTS_FAILED failed"

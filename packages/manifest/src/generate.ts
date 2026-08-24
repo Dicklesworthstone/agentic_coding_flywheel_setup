@@ -14,7 +14,9 @@ import {
   constants,
   fchmodSync,
   fstatSync,
-  ftruncateSync,
+  fsyncSync,
+  renameSync,
+  unlinkSync,
   writeFileSync,
   mkdirSync,
   readFileSync,
@@ -108,29 +110,42 @@ function assertSafeGeneratedDirectory(directory: string): void {
 }
 
 function writeGeneratedFileNoFollow(path: string, content: string, mode: number): void {
-  const existed = existsSync(path);
-  if (existed) {
+  if (existsSync(path)) {
     const stat = lstatSync(path);
     if (stat.isSymbolicLink() || !stat.isFile() || stat.nlink !== 1) {
       throw new Error(`Refusing unsafe generated output target: ${path}`);
     }
   }
 
+  // Write to a sibling temp file and rename it over the target so a crash
+  // mid-write (or a concurrent reader — install.sh sources these files) can
+  // never observe a truncated generated file. O_EXCL on the temp path keeps
+  // the no-symlink-target guarantees: we never open the destination at all.
+  const tmpPath = `${path}.tmp-${process.pid}`;
   let fd: number | undefined;
+  let renamed = false;
   try {
-    const commonFlags = constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
-    fd = existed
-      ? openSync(path, commonFlags)
-      : openSync(path, commonFlags | constants.O_CREAT | constants.O_EXCL, mode);
-    const opened = fstatSync(fd);
-    if (!opened.isFile() || opened.nlink !== 1) {
-      throw new Error(`Generated output changed while being opened: ${path}`);
-    }
-    if (existed) ftruncateSync(fd, 0);
+    fd = openSync(
+      tmpPath,
+      constants.O_WRONLY | constants.O_NOFOLLOW | constants.O_CREAT | constants.O_EXCL,
+      mode,
+    );
     writeFileSync(fd, content);
-    fchmodSync(fd, mode);
+    fchmodSync(fd, mode); // umask may have masked bits at open()
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = undefined;
+    renameSync(tmpPath, path);
+    renamed = true;
   } finally {
     if (fd !== undefined) closeSync(fd);
+    if (!renamed) {
+      try {
+        unlinkSync(tmpPath);
+      } catch {
+        // best-effort cleanup; the .tmp-<pid> file is inert if left behind
+      }
+    }
   }
 }
 
