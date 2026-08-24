@@ -2298,10 +2298,21 @@ check_cloud() {
     tailscale_bin="$(doctor_binary_path tailscale 2>/dev/null || true)"
     if [[ -n "$tailscale_bin" ]]; then
         local ts_status
+        # `tailscale status --json` talks to tailscaled over its socket and
+        # can hang indefinitely when the daemon is wedged; cap it so doctor
+        # always finishes. (No head -n1 here: the JSON is multi-line.)
+        local ts_probe_cmd=("$tailscale_bin" status --json)
+        local ts_timeout_bin=""
+        ts_timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+        if [[ -n "$ts_timeout_bin" ]]; then
+            ts_probe_cmd=("$ts_timeout_bin" 5 "$tailscale_bin" status --json)
+        fi
         if command -v jq &>/dev/null; then
-            ts_status=$("$tailscale_bin" status --json 2>/dev/null | jq -r '.BackendState // "unknown"' 2>/dev/null || echo "unknown")
+            ts_status=$("${ts_probe_cmd[@]}" 2>/dev/null | jq -r '.BackendState // "unknown"' 2>/dev/null || echo "unknown")
+            # jq emits nothing (not "unknown") when the probe produced no JSON
+            ts_status="${ts_status:-unknown}"
         else
-            ts_status=$("$tailscale_bin" status --json 2>/dev/null | sed -n 's/.*"BackendState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+            ts_status=$("${ts_probe_cmd[@]}" 2>/dev/null | sed -n 's/.*"BackendState"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
             ts_status="${ts_status:-unknown}"
         fi
         case "$ts_status" in
@@ -2525,8 +2536,16 @@ check_stack() {
                && [[ "$TARGET_USER" != "$(${id_bin:-id} -un 2>/dev/null || true)" ]]; then
                 systemctl_user_args=(--machine="${TARGET_USER}@.host" --user)
             fi
-            [[ -n "$systemctl_bin" ]] && "$systemctl_bin" "${systemctl_user_args[@]}" show-environment >/dev/null 2>&1 && \
-                ! "$systemctl_bin" "${systemctl_user_args[@]}" is-active --quiet agent-mail.service >/dev/null 2>&1
+            # systemctl --user (especially via --machine) goes through D-Bus
+            # and can hang on a wedged session bus; cap both probes.
+            local am_systemctl_cmd=("$systemctl_bin")
+            local am_timeout_bin=""
+            am_timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+            if [[ -n "$am_timeout_bin" ]] && [[ -n "$systemctl_bin" ]]; then
+                am_systemctl_cmd=("$am_timeout_bin" 5 "$systemctl_bin")
+            fi
+            [[ -n "$systemctl_bin" ]] && "${am_systemctl_cmd[@]}" "${systemctl_user_args[@]}" show-environment >/dev/null 2>&1 && \
+                ! "${am_systemctl_cmd[@]}" "${systemctl_user_args[@]}" is-active --quiet agent-mail.service >/dev/null 2>&1
         }; then
             check "stack.mcp_agent_mail" "$am_label" "warn" \
                 "HTTP endpoint is healthy but agent-mail.service is inactive; rerun install/update to migrate off the fallback launcher" \
@@ -2659,7 +2678,10 @@ check_stack() {
     fi
 
     if [[ -n "$rch_bin" ]] && [[ -x "$rch_bin" ]]; then
-        rch_version=$("$rch_bin" --version 2>/dev/null | head -n1) || rch_version="installed"
+        # get_version_line runs the probe under a timeout so a wedged rch
+        # binary (e.g. blocked on remote config) can't hang doctor.
+        rch_version=$(get_version_line "$rch_bin") || rch_version="installed"
+        [[ "$rch_version" == "available" ]] && rch_version="installed"
         check "stack.rch" "rch ($rch_version)" "pass" "installed"
     else
         # Also check if RCH config exists (indicates partial/previous install)

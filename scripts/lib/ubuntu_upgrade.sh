@@ -846,6 +846,33 @@ ubuntu_do_upgrade() {
         fi
 
         if [[ -z "$acfs_source_dir" ]]; then
+            # Hop 2+ of a multi-release upgrade runs from the resume service
+            # (upgrade_resume.sh), where SCRIPT_DIR / ACFS_BOOTSTRAP_DIR are
+            # unset. There is no source tree to regenerate infrastructure from,
+            # but none is needed: the resume script, its lib dir, and
+            # continue_context.env that launched this attempt are still on
+            # disk, and the service stays enabled until the whole sequence
+            # completes. Reuse them — record state and reboot, and the enabled
+            # service re-attempts this same hop once the pending kernel update
+            # is applied. Without this branch, returning 1 here makes the
+            # resume script treat the hop as a hard failure and disable the
+            # service, stranding the machine mid-upgrade. (Extends the #165 fix.)
+            local resume_reuse_dir="${ACFS_RESUME_DIR:-/var/lib/acfs}"
+            if [[ -x "${resume_reuse_dir}/upgrade_resume.sh" ]] \
+               && [[ -f "${resume_reuse_dir}/continue_context.env" ]] \
+               && { systemctl is-enabled --quiet acfs-upgrade-resume.service 2>/dev/null \
+                    || systemctl enable acfs-upgrade-resume.service >/dev/null 2>&1; }; then
+                if type -t state_update &>/dev/null; then
+                    state_update ".ubuntu_upgrade.enabled = true | .ubuntu_upgrade.current_stage = \"pre_upgrade_reboot\"" 2>/dev/null || true
+                fi
+                if type -t upgrade_update_motd &>/dev/null; then
+                    upgrade_update_motd "Rebooting to apply kernel updates before Ubuntu upgrade..."
+                fi
+                log_warn "Rebooting in 5 seconds to clear pending kernel updates (existing resume service will re-attempt this hop)..."
+                sleep 5
+                shutdown -r now "ACFS: Rebooting to apply kernel updates before do-release-upgrade"
+                exit 0
+            fi
             log_error "Cannot determine ACFS source directory for resume setup; refusing automatic reboot"
             return 1
         fi

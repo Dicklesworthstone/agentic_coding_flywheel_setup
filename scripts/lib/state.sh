@@ -782,13 +782,16 @@ _state_acquire_lock() {
 
     # Open lock file on FD 200 (same FD convention as autofix.sh)
     # Using >> to avoid truncating while opening for locking
+    # Fallback FD is 195, NOT 199: install.sh holds its install lock on FD
+    # 199 (fallback 198) for its whole run, and ubuntu_upgrade.sh uses
+    # 197/196. Reopening 199 here would silently drop the install lock.
     if [[ -z "${ACFS_LOCK_FD:-}" ]]; then
         if (exec 200>>"$lock_file") 2>/dev/null; then
             exec 200>>"$lock_file"
             ACFS_LOCK_FD=200
-        elif (exec 199>>"$lock_file") 2>/dev/null; then
-            exec 199>>"$lock_file"
-            ACFS_LOCK_FD=199
+        elif (exec 195>>"$lock_file") 2>/dev/null; then
+            exec 195>>"$lock_file"
+            ACFS_LOCK_FD=195
         else
             # Lock acquisition not possible, return failure
             return 1
@@ -817,8 +820,8 @@ _state_acquire_lock() {
 
 _state_close_lock_fd() {
     case "${ACFS_LOCK_FD:-}" in
-        199)
-            { exec 199>&-; } 2>/dev/null || true
+        195)
+            { exec 195>&-; } 2>/dev/null || true
             ;;
         200)
             { exec 200>&-; } 2>/dev/null || true
