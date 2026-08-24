@@ -7,8 +7,6 @@ import {
   serverEventHasExactShape,
   serverEventParamsArePrivacySafe,
   serverTrackPayloadHasExactShape,
-  type RawTrackPayload,
-  type RawEventPayload,
 } from './validation';
 
 const GA_MEASUREMENT_ID_RAW = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
@@ -65,23 +63,8 @@ const GA_API_SECRET = sanitizeGaApiSecret(GA_API_SECRET_RAW);
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 60; // 60 requests per minute per IP
 const MAX_EVENTS_PER_REQUEST = 10;
-const MAX_CLIENT_ID_LENGTH = 100;
-const MAX_EVENT_NAME_LENGTH = 40;
 const MAX_REQUEST_BODY_BYTES = 32_000; // hard cap to reduce abuse/memory pressure
-const MAX_PARAM_KEYS_PER_EVENT = 25;
-const MAX_PARAM_KEY_LENGTH = 40;
-const MAX_PARAM_STRING_LENGTH = 300;
 const GA_FETCH_TIMEOUT_MS = 3000;
-const ALLOWED_SERVER_EVENT_NAMES = new Set<ServerAnalyticsEventName>(
-  SERVER_ANALYTICS_EVENT_NAMES
-);
-const ALLOWED_LESSON_COMPLETION_PERCENTAGES = new Set(
-  Array.from(
-    { length: TOTAL_LESSONS },
-    (_, index) => Math.round(((index + 1) / TOTAL_LESSONS) * 100)
-  )
-);
-const MAX_LESSON_FUNNEL_MINUTES = 525_600;
 
 class PayloadTooLargeError extends Error {
   override name = 'PayloadTooLargeError';
@@ -165,21 +148,6 @@ function cleanupExpiredEntries(): void {
       rateLimitMap.delete(ip);
     }
   }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function hasExactlyKeys(
-  value: Record<string, unknown>,
-  expectedKeys: readonly string[]
-): boolean {
-  const actualKeys = Object.keys(value);
-  return actualKeys.length === expectedKeys.length
-    && expectedKeys.every(key => Object.prototype.hasOwnProperty.call(value, key));
 }
 
 function normalizeIP(raw: string): string {

@@ -51,6 +51,12 @@ describe('server analytics trust boundary', () => {
       params: {},
       debug: true,
     })).toBe(false);
+
+    class EventLookalike {
+      name = 'conversion';
+      params = {};
+    }
+    expect(serverEventHasExactShape(new EventLookalike())).toBe(false);
   });
 
   test('enforces the exact parameter schema for each server event', () => {

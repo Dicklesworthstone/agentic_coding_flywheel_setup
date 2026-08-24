@@ -26,7 +26,9 @@ export const ALLOWED_LESSON_COMPLETION_PERCENTAGES = new Set(
 );
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 function hasExactlyKeys(record: Record<string, unknown>, expectedKeys: readonly string[]): boolean {
