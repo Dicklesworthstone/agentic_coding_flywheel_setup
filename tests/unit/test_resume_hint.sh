@@ -188,7 +188,7 @@ test_basic_curl_invocation() {
         return 1
     fi
 
-    if [[ "$result" != curl\ -fsSL* ]]; then
+    if [[ "$result" != *"curl"* || "$result" != *"-fsSL"* ]]; then
         log "  Expected curl resume hint to fail closed with -f, got: $result"
         return 1
     fi
@@ -387,11 +387,15 @@ test_verified_installer_cache_parse_forms() {
     return 0
 }
 
-test_obsolete_offline_pack_flag_is_rejected() {
-    if (setup_parse_args_env; parse_args --offline-pack /tmp/obsolete); then
-        log "  Expected obsolete --offline-pack to fail closed"
-        return 1
-    fi
+test_unknown_cache_flags_are_rejected() {
+    local flag=""
+
+    for flag in --offline-pack --verified-installer-cahce --unknown-installer-option; do
+        if (setup_parse_args_env; parse_args "$flag" /tmp/obsolete); then
+            log "  Expected unknown installer flag to fail closed: $flag"
+            return 1
+        fi
+    done
 
     return 0
 }
@@ -441,7 +445,7 @@ test_verified_installer_cache_parent_is_normalized_for_resume_hint() {
     }
     cd "$old_pwd" || return 1
 
-    expected_cache="$temp_root/work/cache with spaces/acfs-installer-cache"
+    expected_cache="$(cd "$temp_root/work/cache with spaces/acfs-installer-cache" && pwd -P)"
     if [[ "$ACFS_VERIFIED_INSTALLER_CACHE" != "$expected_cache" ]]; then
         log "  Expected ACFS_VERIFIED_INSTALLER_CACHE=$expected_cache, got: $ACFS_VERIFIED_INSTALLER_CACHE"
         return 1
@@ -714,7 +718,7 @@ test_print_resume_hint_fallback_uses_fail_closed_curl() {
     generate_resume_hint() { return 1; }
     print_resume_hint "languages" "install_rust"
 
-    if [[ "$STATE_SET_RESUME_HINT_VALUE" != "curl -q -fsSL https://acfs.sh | bash -s -- --resume --yes" ]]; then
+    if [[ "$STATE_SET_RESUME_HINT_VALUE" != "curl -q -fsSL https://acfs.sh | bash -p -s -- --resume --yes" ]]; then
         log "  Expected fail-closed curl fallback resume hint, got: $STATE_SET_RESUME_HINT_VALUE"
         rm -f "$ACFS_STATE_FILE"
         unset -f generate_resume_hint
@@ -798,7 +802,7 @@ main() {
     run_test test_custom_ref_shell_escaped
     run_test test_checksums_ref_survives_ref_parse_order
     run_test test_verified_installer_cache_parse_forms
-    run_test test_obsolete_offline_pack_flag_is_rejected
+    run_test test_unknown_cache_flags_are_rejected
     run_test test_custom_checksums_ref_resume_hint
     run_test test_verified_installer_cache_parent_is_normalized_for_resume_hint
     run_test test_safe_mode

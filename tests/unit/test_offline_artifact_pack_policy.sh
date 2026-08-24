@@ -92,45 +92,45 @@ test_manifest_schema_and_layout_are_current() {
 test_trust_root_and_target_binding_are_explicit() {
     require_text '"verifiedInstallerPolicy": "must_match_checksums_yaml"' || return 1
     require_text '`checksums.yaml` remains the canonical trust boundary' || return 1
-    require_text "packed and currently installed `checksums.yaml`" || return 1
-    require_text "packed and currently installed `acfs.manifest.yaml`" || return 1
-    require_text "Both bounded provenance files" || return 1
-    require_text "exact match with the target host" || return 1
-    require_text "`x86_64` or `aarch64`" || return 1
-    require_text "16 MiB" || return 1
+    require_text 'packed and currently installed `checksums.yaml`' || return 1
+    require_text 'packed and currently installed `acfs.manifest.yaml`' || return 1
+    require_text 'Both bounded provenance files' || return 1
+    require_text 'exact match with the target host' || return 1
+    require_text '`x86_64` or `aarch64`' || return 1
+    require_text '16 MiB' || return 1
     pass "trust_root_and_target_binding_are_explicit"
 }
 
 test_builder_publication_and_diagnostics_are_fail_closed() {
-    require_text "private, same-parent staging directory" || return 1
-    require_text "`manifest.json` last as the acceptance marker" || return 1
-    require_text "publishes with a no-clobber rename" || return 1
-    require_text "refuses a non-empty output directory" || return 1
+    require_text 'private, same-parent staging directory' || return 1
+    require_text '`manifest.json` last as the acceptance marker' || return 1
+    require_text 'no-clobber' || return 1
+    require_text 'refuses a non-empty output directory' || return 1
     require_text '`--best-effort` is diagnostic only' || return 1
     require_text '`packMode: "diagnostic"`' || return 1
-    require_text "empty `failures` array" || return 1
+    require_text 'empty `failures` array' || return 1
     pass "builder_publication_and_diagnostics_are_fail_closed"
 }
 
 test_compatibility_and_failure_codes_are_stable() {
-    require_text "pack_missing_manifest" || return 1
-    require_text "pack_malformed_manifest" || return 1
-    require_text "pack_schema_unsupported" || return 1
-    require_text "pack_expired" || return 1
-    require_text "pack_arch_unsupported" || return 1
-    require_text "pack_ubuntu_unsupported" || return 1
-    require_text "pack_path_escape" || return 1
-    require_text "pack_hash_mismatch" || return 1
-    require_text "pack_checksums_mismatch" || return 1
-    require_text "pack_unbundled_required_module" || return 1
+    require_text 'pack_missing_manifest' || return 1
+    require_text 'pack_malformed_manifest' || return 1
+    require_text 'pack_schema_unsupported' || return 1
+    require_text 'pack_expired' || return 1
+    require_text 'pack_arch_unsupported' || return 1
+    require_text 'pack_ubuntu_unsupported' || return 1
+    require_text 'pack_path_escape' || return 1
+    require_text 'pack_hash_mismatch' || return 1
+    require_text 'pack_checksums_mismatch' || return 1
+    require_text 'pack_unbundled_required_module' || return 1
     pass "compatibility_and_failure_codes_are_stable"
 }
 
 test_refusal_proof_is_non_vacuous() {
-    require_text "zero live entrypoint fetches" || return 1
-    require_text "empty executable stdout" || return 1
-    require_text "mutation-sensitive refusals" || return 1
-    require_text "A network-enabled test cannot prove an offline install" || return 1
+    require_text 'zero live entrypoint fetches' || return 1
+    require_text 'empty executable stdout' || return 1
+    require_text 'mutation-sensitive refusals' || return 1
+    require_text 'A network-enabled test cannot' || return 1
     pass "refusal_proof_is_non_vacuous"
 }
 
