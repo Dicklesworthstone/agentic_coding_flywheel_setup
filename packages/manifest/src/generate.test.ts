@@ -321,6 +321,16 @@ describe('Generated verified installer args', () => {
     for (const { tool, runner } of legacyCalls) {
       expect(producers.get(tool)).toBe(runner);
     }
+
+    const stackLibrary = readFileSync(resolve(PROJECT_ROOT, 'scripts/lib/stack.sh'), 'utf-8');
+    const slbStart = stackLibrary.indexOf('install_slb() {');
+    const slbEnd = stackLibrary.indexOf('\n}', slbStart);
+    const slbInstaller = stackLibrary.slice(slbStart, slbEnd);
+
+    expect(slbStart).toBeGreaterThanOrEqual(0);
+    expect(slbEnd).toBeGreaterThan(slbStart);
+    expect(slbInstaller).toContain('_stack_run_verified_installer "$tool"');
+    expect(slbInstaller).not.toContain('git clone');
   });
 
   test('generated verified installers never stream verification output into an interpreter', () => {

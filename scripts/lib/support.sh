@@ -977,10 +977,16 @@ support_manifest_diagnostic_json() {
             else 0
             end;
         def has_unredacted_string_field($pattern):
+            # NOTE: any(gen; cond) does not accept an "as" binding in the
+            # generator slot ("any(paths(strings) as $path; ...)" is a jq
+            # compile error, which used to silently disable this whole proof
+            # program via the summary_failed fallback). Bind inside the
+            # condition instead, where . is the generated path array.
             . as $root
-            | any(paths(strings) as $path;
-                (($path[-1] | tostring | test($pattern; "i")) and
-                 (($root | getpath($path) | startswith("<REDACTED:")) | not))
+            | any(paths(strings);
+                . as $path
+                | (($path[-1] | tostring | test($pattern; "i")) and
+                   (($root | getpath($path) | startswith("<REDACTED:")) | not))
               );
         def has_raw_host_field:
             has_unredacted_string_field("^(host|hostname|host_name|ip|ip_address|address|ssh_user)$");

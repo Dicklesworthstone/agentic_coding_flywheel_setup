@@ -2205,40 +2205,7 @@ install_slb() {
 
     log_detail "Installing ${STACK_NAMES[$tool]}..."
 
-    # SLB upstream installer is broken due to module path mismatch
-    # Build from source instead
-    local slb_build_cmd
-    slb_build_cmd="$(cat <<'EOF'
-set -euo pipefail
-mkdir -p "$HOME/go/bin"
-SLB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/slb_build.XXXXXX")"
-trap 'rm -rf "$SLB_TMP"' EXIT
-cd "$SLB_TMP"
-git clone --depth 1 https://github.com/Dicklesworthstone/simultaneous_launch_button.git .
-go build -o "$HOME/go/bin/slb" ./cmd/slb
-
-# Add ~/go/bin to PATH if not already present
-acfs_has_active_go_bin_path() {
-  local file="${1:-}"
-  [[ -f "$file" ]] || return 1
-
-  awk '
-      /^[[:space:]]*#/ { next }
-      /^[[:space:]]*(export[[:space:]]+)?PATH[[:space:]]*=/ && index($0, "$HOME/go/bin") { found=1; exit }
-      END { exit(found ? 0 : 1) }
-  ' "$file" 2>/dev/null
-}
-
-# Do not append to ~/.zshrc: acfs.zshrc already exports $HOME/go/bin, and a
-# three-line append turns the two-line managed loader into an "unmanaged"
-# ~/.zshrc that every later shell-phase run backs up and rewrites.
-if ! acfs_has_active_go_bin_path ~/.zshrc; then
-  echo "note: \$HOME/go/bin is exported by ~/.acfs/zsh/acfs.zshrc; open a new shell to pick it up" >&2
-fi
-EOF
-)"
-
-    if _stack_run_as_user "$slb_build_cmd"; then
+    if _stack_run_verified_installer "$tool"; then
         if _stack_is_installed "$tool"; then
             log_success "${STACK_NAMES[$tool]} installed"
             return 0
