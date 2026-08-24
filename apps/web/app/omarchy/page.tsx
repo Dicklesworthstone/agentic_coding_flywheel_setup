@@ -642,22 +642,22 @@ export default function OmarchyPage() {
                     {DOCTOR_LINES.map((line) => (
                       <li key={line.label} className="flex flex-wrap items-baseline gap-x-3">
                         {line.status === "ok" ? (
-                          <span className="shrink-0 font-bold text-[#9ece6a]">✔ OK  </span>
+                          <span className="shrink-0 font-bold text-[#9ece6a]">✓ PASS</span>
                         ) : (
                           <span className="shrink-0 font-bold text-[#a9b1d6]/70">○ SKIP</span>
                         )}
                         <span className={line.status === "skip" ? "text-[#a9b1d6]/70" : ""}>{line.label}</span>
                         {line.note ? (
-                          <span className="basis-full pl-[4.5rem] text-[11px] italic text-[#a9b1d6]/50 sm:basis-auto sm:pl-0">
-                            — {line.note}
+                          <span className="basis-full pl-[4.5rem] text-[11px] italic text-[#a9b1d6]/50">
+                            Note: {line.note}
                           </span>
                         ) : null}
                       </li>
                     ))}
                   </ul>
                   <p className="mt-3 text-[#a9b1d6]/70">
-                    Overall: <span className="text-[#9ece6a]">all checks passed</span>
-                    <span className="text-[#a9b1d6]/50"> (4 skipped — Arch-family)</span>
+                    Summary: <span className="text-[#9ece6a]">8 passed</span>, 0 warnings, 0 failed,{" "}
+                    <span className="text-[#a9b1d6]/50">4 skipped</span>
                   </p>
                 </div>
               </div>
