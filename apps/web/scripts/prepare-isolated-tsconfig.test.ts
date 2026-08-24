@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { toScopedDistDir } from "../next.config";
 
 const scriptPath = fileURLToPath(
   new URL("./prepare-isolated-tsconfig.mjs", import.meta.url),
@@ -49,5 +50,29 @@ describe("prepare-isolated-tsconfig", () => {
     expect(buildScript).toContain("ACFS_NEXT_DIST_SCOPE");
     expect(buildScript).toContain("bun run build:isolated");
     expect(buildScript).toContain("next build --webpack");
+  });
+
+  test("uses one injective, fail-closed scope grammar in every wrapper", () => {
+    const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+    const scopedScriptNames = [
+      "build:isolated",
+      "lint:isolated",
+      "type-check:isolated",
+    ];
+
+    for (const scriptName of scopedScriptNames) {
+      const script = packageJson.scripts?.[scriptName];
+      expect(script).toContain("^[a-z0-9][a-z0-9_-]{0,63}$");
+      expect(script).not.toContain("tr -cs");
+    }
+
+    expect(toScopedDistDir("review-42_alpha")).toBe(".next-review-42_alpha");
+    expect(toScopedDistDir("")).toBeUndefined();
+
+    // These values previously normalized onto another scope's output directory.
+    expect(() => toScopedDistDir("Review-42_alpha")).toThrow();
+    expect(() => toScopedDistDir("review 42_alpha")).toThrow();
+    expect(() => toScopedDistDir("-review-42")).toThrow();
+    expect(() => toScopedDistDir(`a${"b".repeat(64)}`)).toThrow();
   });
 });

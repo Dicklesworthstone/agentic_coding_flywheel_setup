@@ -6,7 +6,7 @@ import {
   serverEventHasExactShape,
   serverEventParamsArePrivacySafe,
   serverTrackPayloadHasExactShape,
-} from './route';
+} from './validation';
 import { TOTAL_LESSONS } from '@/lib/lessons';
 
 describe('server analytics trust boundary', () => {

@@ -9,15 +9,14 @@ const NEXT_TSCONFIG_PATH_ENV = "ACFS_NEXT_TSCONFIG_PATH";
 const NEXT_BUILD_CPUS_ENV = "ACFS_NEXT_BUILD_CPUS";
 const DEFAULT_BUILD_CPUS = 1;
 
-const toScopedDistDir = (scope: string): string | undefined => {
-  const normalized = scope
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  if (!normalized) return undefined;
-  return `.next-${normalized}`;
+export const toScopedDistDir = (scope: string): string | undefined => {
+  if (!scope) return undefined;
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(scope)) {
+    throw new Error(
+      `${NEXT_DIST_SCOPE_ENV} must match ^[a-z0-9][a-z0-9_-]{0,63}$ when set.`
+    );
+  }
+  return `.next-${scope}`;
 };
 
 const scopedDistDir = toScopedDistDir(process.env[NEXT_DIST_SCOPE_ENV] ?? "");
