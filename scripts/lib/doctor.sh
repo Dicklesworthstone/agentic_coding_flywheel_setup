@@ -2197,21 +2197,21 @@ check_shell() {
     local managed_tmux_conf="$runtime_home/.acfs/tmux/tmux.conf"
 
     if [[ ! -d "$runtime_home/.acfs" ]]; then
-        check "config.acfs_zshrc" "ACFS zshrc asset" "skip" "~/.acfs not present"
-        check "config.tmux" "ACFS tmux config asset" "skip" "~/.acfs not present"
+        check "config.acfs_zshrc" "ACFS zshrc asset" "skip" "no ~/.acfs directory"
+        check "config.tmux" "ACFS tmux config asset" "skip" "no ~/.acfs directory"
     else
         if [[ -f "$managed_acfs_zshrc" ]]; then
             check "config.acfs_zshrc" "ACFS zshrc asset" "pass"
         else
             check "config.acfs_zshrc" "ACFS zshrc asset" "warn" \
-                "~/.acfs/zsh/acfs.zshrc missing (alias/PATH loader gone)" \
+                "missing ~/.acfs/zsh/acfs.zshrc (alias/PATH loader gone)" \
                 "Run: acfs update   (or: acfs doctor --fix --yes)"
         fi
         if [[ -f "$managed_tmux_conf" ]]; then
             check "config.tmux" "ACFS tmux config asset" "pass"
         else
             check "config.tmux" "ACFS tmux config asset" "warn" \
-                "~/.acfs/tmux/tmux.conf missing" \
+                "missing ~/.acfs/tmux/tmux.conf" \
                 "Run: acfs update   (or: acfs doctor --fix --yes)"
         fi
     fi
