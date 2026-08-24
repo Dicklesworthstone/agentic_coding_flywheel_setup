@@ -393,7 +393,9 @@ cmd_start() {
 
     # Pre-flight: check all binaries exist
     local missing=0
-    [[ -n "$_AM_BIN" ]] || { _err "Missing binary: am (needed for agent-mail)"; missing=1; }
+    if ! _agent_mail_is_healthy && ! _native_agent_mail_unit_available; then
+        [[ -n "$_AM_BIN" ]] || { _err "Missing binary: am (needed for the Agent Mail fallback)"; missing=1; }
+    fi
     [[ -n "$_CM_BIN" ]] || { _err "Missing binary: cm (needed for cm)"; missing=1; }
     [[ -n "$_CASS_BIN" ]] || { _err "Missing binary: cass (needed for cass)"; missing=1; }
     [[ -n "$_CURL_BIN" ]] || { _err "Missing system binary: curl (needed for health checks)"; missing=1; }
@@ -523,7 +525,6 @@ cmd_stop() {
 
     if _agent_mail_is_healthy; then
         _warn "Agent Mail is still healthy but is not owned by the ACFS native service or tmux session; it was left untouched."
-        rc=1
     fi
     return $rc
 }

@@ -802,7 +802,7 @@ find_user_bin() {
 dcg_hook_registered() {
     local settings_file="$TARGET_HOME/.claude/settings.json"
     local alt_settings_file="$TARGET_HOME/.config/claude/settings.json"
-    local dcg_command_pattern='(^|[[:space:]/])dcg([[:space:]]|$)'
+    local dcg_command_pattern='(^|[[:space:]/"\x27;&|()<>])dcg([[:space:]"\x27;&|()<>]|$)'
 
     if claude_settings_has_command_hook "$settings_file" "$dcg_command_pattern"; then
         return 0
@@ -921,7 +921,7 @@ remove_dcg_hook_from_settings() {
 
     # Anchored: a bare `test("dcg")` also removed user hooks whose command
     # merely contained the substring (e.g. ~/scripts/dcg_notify.sh).
-    local dcg_command_pattern='(^|[[:space:]/])dcg([[:space:]]|$)'
+    local dcg_command_pattern='(^|[[:space:]/"\x27;&|()<>])dcg([[:space:]"\x27;&|()<>]|$)'
     local jq_program
     IFS= read -r -d '' jq_program <<'JQ' || true
 def strip_dcg:
@@ -1110,6 +1110,7 @@ check_supabase_status() {
 
 check_wrangler_status() {
     local wrangler_bin
+    local bash_bin=""
     wrangler_bin="$(find_user_bin "wrangler" 2>/dev/null || true)"
 
     if [[ -z "$wrangler_bin" || ! -x "$wrangler_bin" ]]; then
@@ -1119,9 +1120,15 @@ check_wrangler_status() {
 
     if run_as_user "$wrangler_bin" whoami >/dev/null 2>&1; then
         SERVICE_STATUS[wrangler]="configured"
-    elif services_setup_has_usable_secret "${CLOUDFLARE_API_TOKEN:-}" && \
-       run_as_user env CLOUDFLARE_API_TOKEN="$CLOUDFLARE_API_TOKEN" "$wrangler_bin" whoami >/dev/null 2>&1; then
-        SERVICE_STATUS[wrangler]="configured"
+    elif services_setup_has_usable_secret "${CLOUDFLARE_API_TOKEN:-}"; then
+        bash_bin="$(services_setup_system_binary_path bash 2>/dev/null || true)"
+        if [[ -n "$bash_bin" ]] && printf '%s\n' "$CLOUDFLARE_API_TOKEN" | \
+            run_as_user "$bash_bin" -c 'IFS= read -r acfs_tok; export CLOUDFLARE_API_TOKEN="$acfs_tok"; exec "$0" whoami' "$wrangler_bin" \
+                >/dev/null 2>&1; then
+            SERVICE_STATUS[wrangler]="configured"
+        else
+            SERVICE_STATUS[wrangler]="installed"
+        fi
     else
         SERVICE_STATUS[wrangler]="installed"
     fi
@@ -1288,6 +1295,12 @@ setup_claude() {
         fi
     fi
 
+    if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" ]]; then
+        gum_warn "Claude Code requires interactive OAuth; skipping in --yes mode."
+        gum_detail "Run 'acfs services-setup' interactively to authenticate Claude Code."
+        return 0
+    fi
+
     gum_box "Claude Code Setup" "Claude Code uses OAuth to authenticate.
 When you run 'claude', it will:
 1. Open a browser window (or show a URL)
@@ -1296,10 +1309,16 @@ When you run 'claude', it will:
 
 Press Enter to launch Claude Code login..."
 
-    read -r
+    if ! read -r; then
+        gum_warn "Claude Code login cancelled because stdin reached EOF."
+        return 1
+    fi
 
     # Run claude interactively
-    run_as_user "$claude_bin" || true
+    if ! run_as_user "$claude_bin"; then
+        gum_error "Claude Code login failed."
+        return 1
+    fi
 
     # Re-check status
     check_claude_status
@@ -1307,7 +1326,9 @@ Press Enter to launch Claude Code login..."
         gum_success "Claude Code configured successfully!"
     else
         gum_warn "Claude Code may not be fully configured. Try running 'claude' again."
+        return 1
     fi
+    return 0
 }
 
 setup_codex() {
@@ -1325,17 +1346,30 @@ setup_codex() {
         fi
     fi
 
+    if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" ]]; then
+        gum_warn "Codex requires interactive device authentication; skipping in --yes mode."
+        gum_detail "Run 'acfs services-setup' interactively to authenticate Codex."
+        return 0
+    fi
+
     gum_box "Codex CLI Setup" "Codex works best on a headless VPS with device auth.
 If you have device auth enabled in ChatGPT Settings → Security, we will launch
 that flow now. If not, use the SSH tunnel fallback from the website wizard."
 
     gum_detail "Launching Codex device-auth login..."
-    run_as_user "$codex_bin" login --device-auth || true
+    if ! run_as_user "$codex_bin" login --device-auth; then
+        gum_error "Codex device-auth login failed."
+        return 1
+    fi
 
     check_codex_status
     if [[ "${SERVICE_STATUS[codex]:-unknown}" == "configured" ]]; then
         gum_success "Codex CLI configured successfully!"
+    else
+        gum_warn "Codex CLI did not report configured credentials after login."
+        return 1
     fi
+    return 0
 }
 
 configure_dcg() {
@@ -1471,7 +1505,7 @@ Interactive:
   acfs services-setup
 
 Options:
-  --yes, -y    Non-interactive mode
+  --yes, -y    Configure all services that have non-interactive credentials
   --install-claude-guard  Install DCG hook for Claude Code (non-interactive)
   --help, -h   Show this help
 EOF
@@ -1499,6 +1533,10 @@ maybe_run_cli_action() {
         shift || true
     done
 
+    if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" && -z "$SERVICES_SETUP_ACTION" ]]; then
+        SERVICES_SETUP_ACTION="setup-all"
+    fi
+
     return 0
 }
 
@@ -1513,6 +1551,14 @@ run_cli_action() {
                 return 1
             fi
             configure_dcg
+            return $?
+            ;;
+        setup-all)
+            if ! init_target_context; then
+                return 1
+            fi
+            check_all_status
+            setup_all_unconfigured
             return $?
             ;;
         *)
@@ -1536,6 +1582,12 @@ setup_gemini() {
         fi
     fi
 
+    if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" ]]; then
+        gum_warn "Gemini CLI requires interactive OAuth; skipping in --yes mode."
+        gum_detail "Run 'acfs services-setup' interactively to authenticate Gemini CLI."
+        return 0
+    fi
+
     gum_box "Gemini CLI Setup" "Gemini CLI uses Google OAuth to authenticate.
 When you run 'gemini', it will:
 1. Open a browser window (or show a URL)
@@ -1544,14 +1596,24 @@ When you run 'gemini', it will:
 
 Press Enter to launch Gemini login..."
 
-    read -r
+    if ! read -r; then
+        gum_warn "Gemini CLI login cancelled because stdin reached EOF."
+        return 1
+    fi
 
-    run_as_user "$gemini_bin" || true
+    if ! run_as_user "$gemini_bin"; then
+        gum_error "Gemini CLI login failed."
+        return 1
+    fi
 
     check_gemini_status
     if [[ "${SERVICE_STATUS[gemini]:-unknown}" == "configured" ]]; then
         gum_success "Gemini CLI configured successfully!"
+    else
+        gum_warn "Gemini CLI did not report configured credentials after login."
+        return 1
     fi
+    return 0
 }
 
 setup_vercel() {
@@ -1570,6 +1632,11 @@ setup_vercel() {
         fi
     fi
 
+    if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" && -z "${VERCEL_TOKEN:-}" ]]; then
+        gum_warn "VERCEL_TOKEN is not set; skipping Vercel in --yes mode."
+        return 0
+    fi
+
     if [[ -n "${VERCEL_TOKEN:-}" ]]; then
         gum_box "Vercel Setup" "Using VERCEL_TOKEN from your environment to authenticate the CLI."
     else
@@ -1579,9 +1646,11 @@ If you already created one at https://vercel.com/account/tokens, export
 VERCEL_TOKEN and rerun this step for a non-browser flow.
 
 Press Enter to continue with Vercel login..."
+        if ! read -r; then
+            gum_warn "Vercel login cancelled because stdin reached EOF."
+            return 1
+        fi
     fi
-
-    read -r
 
     if [[ -n "${VERCEL_TOKEN:-}" ]]; then
         # Vercel rejects --token with `login`; an exported VERCEL_TOKEN is the
@@ -1598,13 +1667,20 @@ Press Enter to continue with Vercel login..."
             return 1
         fi
     else
-        run_as_user "$vercel_bin" login || true
+        if ! run_as_user "$vercel_bin" login; then
+            gum_error "Vercel login failed."
+            return 1
+        fi
     fi
 
     check_vercel_status
     if [[ "${SERVICE_STATUS[vercel]:-unknown}" == "configured" ]]; then
         gum_success "Vercel configured successfully!"
+    else
+        gum_warn "Vercel did not report usable credentials after login."
+        return 1
     fi
+    return 0
 }
 
 setup_supabase() {
@@ -1622,6 +1698,11 @@ setup_supabase() {
         fi
     fi
 
+    if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" && -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
+        gum_warn "SUPABASE_ACCESS_TOKEN is not set; skipping Supabase in --yes mode."
+        return 0
+    fi
+
     if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
         gum_box "Supabase Setup" "Using SUPABASE_ACCESS_TOKEN from your environment to configure the CLI."
     else
@@ -1631,9 +1712,11 @@ Note: some Supabase projects expose the direct Postgres host over IPv6-only.
 If your VPS/network is IPv4-only, use the Supabase pooler connection string instead.
 
 Press Enter to continue with Supabase login..."
+        if ! read -r; then
+            gum_warn "Supabase login cancelled because stdin reached EOF."
+            return 1
+        fi
     fi
-
-    read -r
 
     if [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
         # Supabase resolves a piped token before starting its interactive flow,
@@ -1644,13 +1727,20 @@ Press Enter to continue with Supabase login..."
             return 1
         fi
     else
-        run_as_user "$supabase_bin" login --no-browser || true
+        if ! run_as_user "$supabase_bin" login --no-browser; then
+            gum_error "Supabase login failed."
+            return 1
+        fi
     fi
 
     check_supabase_status
     if [[ "${SERVICE_STATUS[supabase]:-unknown}" == "configured" ]]; then
         gum_success "Supabase configured successfully!"
+    else
+        gum_warn "Supabase did not report usable credentials after login."
+        return 1
     fi
+    return 0
 }
 
 setup_wrangler() {
@@ -1668,6 +1758,11 @@ setup_wrangler() {
         fi
     fi
 
+    if [[ "$SERVICES_SETUP_NONINTERACTIVE" == "true" && -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+        gum_warn "CLOUDFLARE_API_TOKEN is not set; skipping Wrangler in --yes mode."
+        return 0
+    fi
+
     if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
         gum_box "Cloudflare Wrangler Setup" "Using CLOUDFLARE_API_TOKEN from your environment.
 If your workflows need it, also export CLOUDFLARE_ACCOUNT_ID."
@@ -1682,20 +1777,26 @@ Recommended flow:
 You can still try browser-based login if you have a browser-capable session or SSH tunnel."
     fi
 
-    read -r
-
     if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
         gum_detail "Using CLOUDFLARE_API_TOKEN from environment"
     elif gum_confirm "Try browser-based 'wrangler login' anyway?"; then
-        run_as_user "$wrangler_bin" login || true
+        if ! run_as_user "$wrangler_bin" login; then
+            gum_error "Wrangler login failed."
+            return 1
+        fi
     else
         gum_warn "Skipping Wrangler OAuth. Export CLOUDFLARE_API_TOKEN and rerun this step when ready."
+        return 0
     fi
 
     check_wrangler_status
     if [[ "${SERVICE_STATUS[wrangler]:-unknown}" == "configured" ]]; then
         gum_success "Cloudflare/Wrangler configured successfully!"
+    else
+        gum_warn "Wrangler did not accept the configured credentials."
+        return 1
     fi
+    return 0
 }
 
 setup_postgres() {
@@ -1851,6 +1952,7 @@ setup_all_unconfigured() {
     local services=("claude" "codex" "gemini" "dcg" "vercel" "supabase" "wrangler")
     local labels=("Claude Code" "Codex CLI" "Gemini CLI" "DCG (Destructive Command Guard)" "Vercel" "Supabase" "Cloudflare Wrangler")
     local setup_funcs=("setup_claude" "setup_codex" "setup_gemini" "configure_dcg" "setup_vercel" "setup_supabase" "setup_wrangler")
+    local had_failure=false
 
     # Count services needing setup
     local needs_setup=0
@@ -1908,7 +2010,10 @@ $(gum style --foreground "$ACFS_PINK" --bold "Setting up $label...")"
                 gum_step "$current" "$needs_setup" "Setting up $label..."
             fi
 
-            $func || true
+            if ! "$func"; then
+                had_failure=true
+                gum_warn "$label setup failed; continuing with the remaining services."
+            fi
         fi
     done
 
@@ -1917,7 +2022,10 @@ $(gum style --foreground "$ACFS_PINK" --bold "Setting up $label...")"
     if [[ "$HAS_GUM" == "true" ]]; then
         gum style --foreground "$ACFS_MUTED" "Checking PostgreSQL status..."
     fi
-    setup_postgres
+    if ! setup_postgres; then
+        had_failure=true
+        gum_warn "PostgreSQL status check failed; continuing with final reporting."
+    fi
 
     # Refresh the canonical agent guide (~/.acfs/docs/flywheel-agent-guide.md)
     # with current tool versions. Deployment into instruction files stays an
@@ -1927,6 +2035,9 @@ $(gum style --foreground "$ACFS_PINK" --bold "Setting up $label...")"
         "$agents_script" 2>/dev/null || true
     fi
 
+    check_all_status
+    print_status_table
+
     echo ""
     if [[ "$HAS_GUM" == "true" ]]; then
         gum style \
@@ -1935,11 +2046,17 @@ $(gum style --foreground "$ACFS_PINK" --bold "Setting up $label...")"
             --padding "1 2" \
             --margin "1 0" \
             --align center \
-            "$(gum style --foreground "$ACFS_SUCCESS" --bold '✓ Setup Complete!')
-$(gum style --foreground "$ACFS_TEAL" "All available services have been configured")"
+            "$(gum style --foreground "$ACFS_SUCCESS" --bold '✓ Setup Pass Complete!')
+$(gum style --foreground "$ACFS_TEAL" "Available configuration steps have finished")"
     else
-        gum_success "Setup complete!"
+        gum_success "Setup pass complete!"
     fi
+
+    if [[ "$had_failure" == "true" ]]; then
+        gum_warn "One or more service setup steps failed. Review the messages above and retry those services."
+        return 1
+    fi
+    return 0
 }
 
 # ============================================================
