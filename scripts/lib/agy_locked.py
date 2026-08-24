@@ -83,7 +83,8 @@ import sys
 
 
 DCG_TIMEOUT_SECONDS = 4
-DCG_BLOCKING_DECISIONS = frozenset({"deny", "block", "ask", "indeterminate"})
+DCG_DENY_DECISIONS = frozenset({"deny", "block"})
+DCG_REVIEW_DECISIONS = frozenset({"ask", "indeterminate"})
 
 
 def emit(decision, reason=None):
@@ -126,6 +127,11 @@ def main():
         return 0
 
     dcg_bin = os.environ.get("DCG_BIN", os.path.expanduser("~/.local/bin/dcg"))
+    dcg_env = os.environ.copy()
+    # DCG v0.9.2 understands stdin robot mode but predates the --dialect CLI
+    # flag. Newer releases accept the equivalent environment setting, while
+    # older releases safely ignore it and evaluate all supported dialects.
+    dcg_env["DCG_DIALECT"] = "posix"
     try:
         proc = subprocess.run(
             [
@@ -135,8 +141,6 @@ def main():
                 "antigravity",
                 "test",
                 "--stdin",
-                "--dialect",
-                "posix",
             ],
             input=command,
             text=True,
@@ -144,6 +148,7 @@ def main():
             stderr=subprocess.PIPE,
             timeout=DCG_TIMEOUT_SECONDS,
             check=False,
+            env=dcg_env,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         emit("allow", f"dcg unavailable; fail-open: {exc}")
@@ -157,20 +162,43 @@ def main():
         result = {}
 
     decision = result.get("decision")
-    if proc.returncode == 1 or decision in DCG_BLOCKING_DECISIONS:
-        reason = (
-            result.get("reason")
-            or result.get("explanation")
-            or proc.stderr.strip()
-            or "dcg blocked this command"
-        )
-        rule_id = result.get("rule_id")
-        if rule_id:
-            reason = f"{reason} ({rule_id})"
+    reason = (
+        result.get("reason")
+        or result.get("explanation")
+        or proc.stderr.strip()
+        or "dcg returned no explanation"
+    )
+    rule_id = result.get("rule_id")
+    if rule_id:
+        reason = f"{reason} ({rule_id})"
+
+    if decision in DCG_DENY_DECISIONS:
         emit("deny", f"Blocked by dcg: {reason}")
         return 0
 
-    emit("allow")
+    if decision in DCG_REVIEW_DECISIONS:
+        emit("force_ask", f"Review required by dcg: {reason}")
+        return 0
+
+    if proc.returncode == 1:
+        emit("force_ask", "dcg withheld execution but returned no usable verdict")
+        return 0
+
+    if decision in {"allow", "warn", "log"}:
+        emit("allow")
+        return 0
+
+    # DCG deliberately fails open on infrastructure and output failures. Keep
+    # that availability policy here; exit 1 above remains fail-safe because it
+    # is DCG's explicit withheld-execution signal.
+    if proc.returncode != 0:
+        reason = (
+            proc.stderr.strip()
+            or f"evaluator exited with status {proc.returncode}"
+        )
+        emit("allow", f"dcg unavailable; fail-open: {reason}")
+    else:
+        emit("allow", "dcg unavailable; fail-open: invalid evaluator output")
     return 0
 
 
@@ -400,8 +428,6 @@ def ensure_dcg_hook():
         pre_tool = []
 
     kept_entries = []
-    run_command_hooks = []
-    run_command_extras = {}
     for entry in pre_tool:
         if not isinstance(entry, dict):
             kept_entries.append(entry)
@@ -413,31 +439,25 @@ def ensure_dcg_hook():
         if not isinstance(hooks_value, list):
             kept_entries.append(entry)
             continue
-        if not run_command_extras:
-            run_command_extras = {
-                key: value
-                for key, value in entry.items()
-                if key not in {"matcher", "hooks"}
-            }
-        for hook in hooks_value:
-            if not is_dcg_hook(hook):
-                run_command_hooks.append(hook)
+        non_dcg_hooks = [hook for hook in hooks_value if not is_dcg_hook(hook)]
+        if len(non_dcg_hooks) == len(hooks_value):
+            kept_entries.append(entry)
+        elif non_dcg_hooks:
+            kept_entries.append({**entry, "hooks": non_dcg_hooks})
 
-    run_command_hooks.insert(
-        0,
-        {
-            "type": "command",
-            "command": str(DCG_HOOK),
-            "timeout": HOOK_TIMEOUT_SECONDS,
-        },
-    )
+    acfs_dcg_entry = {
+        "matcher": "run_command",
+        "hooks": [
+            {
+                "type": "command",
+                "command": str(DCG_HOOK),
+                "timeout": HOOK_TIMEOUT_SECONDS,
+            }
+        ],
+    }
     group["enabled"] = True
     group["PreToolUse"] = [
-        {
-            **run_command_extras,
-            "matcher": "run_command",
-            "hooks": run_command_hooks,
-        },
+        acfs_dcg_entry,
         *kept_entries,
     ]
     hooks["dcg"] = group

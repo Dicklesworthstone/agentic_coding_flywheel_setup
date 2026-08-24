@@ -187,6 +187,14 @@ function ToolCard({ tool, index }: ToolCardProps) {
                     {formatStarCount(tool.stars)}
                   </span>
                 )}
+                {tool.plugin && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-medium text-purple-300 border border-purple-500/30"
+                    title={`Plugin package: ${tool.plugin.packageId} (v${tool.plugin.version})`}
+                  >
+                    Plugin: {tool.plugin.packageId}
+                  </span>
+                )}
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {tool.shortName}

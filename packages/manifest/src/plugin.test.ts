@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, truncateSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import {
   formatPluginDiagnostics,
   loadPluginManifestFromFile,
@@ -297,7 +297,7 @@ describe('validatePluginPackage', () => {
   test('detects duplicate plugin module IDs', () => {
     const plugin = validPlugin();
     const modules = plugin.modules as Record<string, unknown>[];
-    modules.push({ ...modules[0] });
+    modules.push(structuredClone(modules[0]));
 
     expect(diagnosticCodes(plugin)).toContain('plugin_module_collision');
   });
@@ -1440,5 +1440,25 @@ describe('Installer, doctor, and web metadata generation from validated plugins'
 
     expect(webCommands).toContain('moduleId: "plugin.example_tools.cli"');
     expect(webCommands).toContain('cliName: "example"');
+  });
+});
+
+describe('Documentation plugin example fixtures', () => {
+  test('safe plugin example in plugin-review-workflow.md validates successfully', () => {
+    const docPath = resolve(__dirname, '../../../docs/operations/plugin-review-workflow.md');
+    const docContent = readFileSync(docPath, 'utf-8');
+
+    // Extract JSON code block under "Safe Plugin Example"
+    const jsonMatch = docContent.match(/```json\n([\s\S]*?)\n```/);
+    expect(jsonMatch).not.toBeNull();
+    const parsed = JSON.parse(jsonMatch![1]);
+
+    const result = validatePluginPackage(parsed, validationOptions());
+    if (!result.valid) {
+      console.error('Doc example validation failed:', formatPluginDiagnostics(result));
+    }
+    expect(result.valid).toBe(true);
+    expect(result.manifestModules.length).toBe(1);
+    expect(result.manifestModules[0].id).toBe('plugin.example_tools.cli');
   });
 });
