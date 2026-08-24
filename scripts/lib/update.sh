@@ -1588,7 +1588,7 @@ update_create_target_readable_temp_file() {
     rm_bin="$(update_system_binary_path rm 2>/dev/null || true)"
     local stat_bin=""
     stat_bin="$(update_system_binary_path stat 2>/dev/null || true)"
-    if [[ -z "$mktemp_bin" || -z "$mkdir_bin" || -z "$chmod_bin" || -z "$rm_bin" ]]; then
+    if [[ -z "$mktemp_bin" || -z "$mkdir_bin" || -z "$chmod_bin" || -z "$rm_bin" || -z "$stat_bin" ]]; then
         echo "Trusted temp-file helpers unavailable" >&2
         return 1
     fi
@@ -1619,12 +1619,16 @@ update_create_target_readable_temp_file() {
         # the target user. In a world-writable directory without the sticky
         # bit (e.g. a pre-existing 0777 /data/tmp) any local user could swap
         # the file between verification and execution, so skip such dirs.
-        if [[ -n "$stat_bin" ]]; then
-            local dir_mode=""
-            dir_mode="$("$stat_bin" -c '%A' "$tmpdir_candidate" 2>/dev/null || true)"
-            if [[ "$dir_mode" == ????????w? ]] && [[ ! -k "$tmpdir_candidate" ]]; then
-                continue
-            fi
+        # Group-writable shared directories have the same replacement risk.
+        local dir_mode=""
+        local dir_mode_value=0
+        dir_mode="$("$stat_bin" -c '%a' "$tmpdir_candidate" 2>/dev/null || true)"
+        if [[ ! "$dir_mode" =~ ^[0-7]{3,4}$ ]]; then
+            continue
+        fi
+        dir_mode_value=$((8#$dir_mode))
+        if (( (dir_mode_value & 0022) != 0 )) && [[ ! -k "$tmpdir_candidate" ]]; then
+            continue
         fi
         templates+=("$tmpdir_candidate/${prefix}.XXXXXX")
     done
