@@ -379,6 +379,7 @@ test_durable_write_uses_narrow_gnu_sync_with_portable_fallback() {
     grep -Fxq '        "$sync_bin"' <<< "$helper_body" || return 1
     [[ "$atomic_body" == *'swarm_inventory_sync_path "$sync_bin" "$temp_file"'* ]] || return 1
     [[ "$atomic_body" == *'swarm_inventory_sync_path "$sync_bin" "$parent_dir"'* ]] || return 1
+    ! grep -Eq '^[[:space:]]*"\$sync_bin"[[:space:]]*$' <<< "$atomic_body" || return 1
 
     pass "durable_write_uses_narrow_gnu_sync_with_portable_fallback"
 }
@@ -386,6 +387,7 @@ test_durable_write_uses_narrow_gnu_sync_with_portable_fallback() {
 test_privileged_execution_uses_fixed_interpreter_and_path() {
     [[ "$(sed -n '1p' "$SWARM_INV_SH")" == '#!/bin/bash' ]] || return 1
     grep -Fq 'readonly SWARM_INV_PRIVILEGED_PATH="/usr/sbin:/usr/bin:/sbin:/bin"' "$SWARM_INV_SH" || return 1
+    grep -Fq 'if [[ $EUID -eq 0 ]]; then' "$SWARM_INV_SH" || return 1
     grep -Fq 'export PATH="$SWARM_INV_PRIVILEGED_PATH"' "$SWARM_INV_SH" || return 1
 
     pass "privileged_execution_uses_fixed_interpreter_and_path"

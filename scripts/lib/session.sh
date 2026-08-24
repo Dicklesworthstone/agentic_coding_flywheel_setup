@@ -1587,7 +1587,6 @@ write_native_claude_from_canonical() {
                 return 1
             fi
             acfs_session_require_new_destination "$target_dir" "$target_path" || return 1
-            acfs_session_publish_new_file "$target_tmp" "$target_dir" "$target_path" || return 1
 
             # Update/seed sessions-index while the workspace transaction lock is held.
             local index_file=""
@@ -1648,6 +1647,11 @@ write_native_claude_from_canonical() {
             elif ! printf '{"version":1,"entries":[]}\n' | jq "${index_jq_args[@]}" "$index_filter" > "$index_tmp"; then
                 acfs_session_remove_temp_files "$index_tmp"
                 log_error "Failed to create Claude sessions-index: $index_file"
+                return 1
+            fi
+
+            if ! acfs_session_publish_new_file "$target_tmp" "$target_dir" "$target_path"; then
+                acfs_session_remove_temp_files "$index_tmp"
                 return 1
             fi
 
@@ -1964,40 +1968,45 @@ write_native_gemini_from_canonical() {
                 fi
             fi
 
-            acfs_session_publish_new_file "$target_tmp" "$chats_dir" "$target_path" || return 1
-
             if [[ -L "$logs_path" ]] || { [[ -e "$logs_path" ]] && [[ ! -f "$logs_path" ]]; }; then
                 acfs_session_remove_temp_files "$msg_tmp"
                 log_error "Refusing unsafe Gemini logs file: $logs_path"
                 return 1
             fi
 
+            local logs_existed=false
             logs_tmp=$(mktemp "${root_dir}/.logs.XXXXXX.tmp") || {
                 acfs_session_remove_temp_files "$msg_tmp"
                 return 1
             }
             if [[ -f "$logs_path" ]]; then
+                logs_existed=true
                 if ! jq --argjson add "$user_log_entries" '. + $add' "$logs_path" > "$logs_tmp"; then
                     acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
                     log_error "Refusing to replace malformed Gemini logs file: $logs_path"
                     return 1
                 fi
+            elif ! printf '%s\n' "$user_log_entries" > "$logs_tmp"; then
+                acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+                log_error "Failed to stage Gemini logs file: $logs_path"
+                return 1
+            fi
+
+            if ! acfs_session_publish_new_file "$target_tmp" "$chats_dir" "$target_path"; then
+                acfs_session_remove_temp_files "$logs_tmp"
+                return 1
+            fi
+
+            if [[ "$logs_existed" == "true" ]]; then
                 if ! mv -- "$logs_tmp" "$logs_path"; then
                     acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
                     log_error "Failed to update Gemini logs file: $logs_path"
                     return 1
                 fi
-            else
-                if ! printf '%s\n' "$user_log_entries" > "$logs_tmp"; then
-                    acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
-                    log_error "Failed to stage Gemini logs file: $logs_path"
-                    return 1
-                fi
-                if ! acfs_session_publish_new_file "$logs_tmp" "$root_dir" "$logs_path"; then
-                    acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
-                    log_error "Failed to publish Gemini logs file: $logs_path"
-                    return 1
-                fi
+            elif ! acfs_session_publish_new_file "$logs_tmp" "$root_dir" "$logs_path"; then
+                acfs_session_remove_temp_files "$msg_tmp" "$logs_tmp"
+                log_error "Failed to publish Gemini logs file: $logs_path"
+                return 1
             fi
         ); then
             acfs_session_remove_temp_files "$target_tmp" "$msg_tmp" "$logs_tmp"

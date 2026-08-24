@@ -1665,6 +1665,8 @@ print_resume_hint() {
     local failed_phase="${1:-}"
     local failed_step="${2:-}"
     local resume_cmd=""
+    local resume_repo_owner="${ACFS_REPO_OWNER:-Dicklesworthstone}"
+    local resume_repo_name="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
     if ! resume_cmd=$(generate_resume_hint "${failed_phase:-}" "${failed_step:-}" 2>/dev/null); then
         if [[ -n "${SCRIPT_DIR:-}" ]] \
             && [[ -z "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" ]]; then
@@ -1673,7 +1675,16 @@ print_resume_hint() {
             printf -v local_install '%q' "$local_install"
             resume_cmd="bash $local_install --resume --yes"
         else
-            resume_cmd="curl -q -fsSL https://acfs.sh | bash -p -s -- --resume --yes"
+            local fallback_ref="${ACFS_COMMIT_SHA_FULL:-${ACFS_REF_INPUT:-main}}"
+            local fallback_url="https://acfs.sh"
+            local fallback_url_q=""
+            if [[ "$resume_repo_owner" != "Dicklesworthstone" ]] \
+                || [[ "$resume_repo_name" != "agentic_coding_flywheel_setup" ]] \
+                || [[ "$fallback_ref" != "main" ]]; then
+                fallback_url="https://raw.githubusercontent.com/${resume_repo_owner}/${resume_repo_name}/${fallback_ref}/install.sh"
+            fi
+            printf -v fallback_url_q '%q' "$fallback_url"
+            resume_cmd="curl -q -fsSL $fallback_url_q | bash -p -s -- --resume --yes"
         fi
     fi
 
@@ -4234,6 +4245,7 @@ acfs_run_verified_bootstrap_installer() {
     ACFS_BOOTSTRAP_SLEEP_BIN="$sleep_bin"
     ACFS_BOOTSTRAP_CHILD_PID=""
     ACFS_BOOTSTRAP_CHILD_PGID=""
+    ACFS_BOOTSTRAP_CHILD_STARTTIME=""
     ACFS_BOOTSTRAP_PENDING_SIGNAL=""
     ACFS_BOOTSTRAP_SIGNAL_HANDLING=false
     ACFS_BOOTSTRAP_PRESERVE_TREE=false
@@ -4274,13 +4286,17 @@ acfs_run_verified_bootstrap_installer() {
     # Do not trust $! as a group identity until the OS confirms that the exact
     # launcher became its own process-group leader. Signals received during this
     # window remain pending in the SPAWNING state.
+    local observed_identity=""
     local observed_pgid=""
+    local observed_starttime=""
     local group_validated=false
     local validation_attempt=0
     for ((validation_attempt = 0; validation_attempt < 20; validation_attempt++)); do
-        observed_pgid="$("$ps_bin" -o pgid= -p "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true)"
-        observed_pgid="${observed_pgid//[[:space:]]/}"
-        if [[ "$observed_pgid" == "$ACFS_BOOTSTRAP_CHILD_PID" ]]; then
+        observed_identity="$(_acfs_bootstrap_proc_identity "$ACFS_BOOTSTRAP_CHILD_PID" 2>/dev/null || true)"
+        observed_pgid="${observed_identity%% *}"
+        observed_starttime="${observed_identity#* }"
+        if [[ "$observed_pgid" == "$ACFS_BOOTSTRAP_CHILD_PID" ]] \
+            && [[ "$observed_starttime" =~ ^[0-9]+$ ]]; then
             group_validated=true
             break
         fi
@@ -4307,6 +4323,7 @@ acfs_run_verified_bootstrap_installer() {
     fi
 
     ACFS_BOOTSTRAP_CHILD_PGID="$ACFS_BOOTSTRAP_CHILD_PID"
+    ACFS_BOOTSTRAP_CHILD_STARTTIME="$observed_starttime"
     ACFS_BOOTSTRAP_CHILD_STATE="RUNNING"
 
     # Replay a signal that arrived in the fork-to-publication window only after
