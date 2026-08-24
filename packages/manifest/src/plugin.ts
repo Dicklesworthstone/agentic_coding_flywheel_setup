@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
-import { closeSync, constants, fstatSync, openSync, readFileSync } from 'node:fs';
-import { parse as parseYaml } from 'yaml';
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
 import { z } from 'zod';
 import { ModuleWebMetadataSchema } from './schema.js';
 import type { InstallerChecksumEntry } from './validate.js';
@@ -15,6 +14,7 @@ import { isValidCategory, toGeneratedFunctionName } from './utils.js';
 
 const PLUGIN_SCHEMA = 'acfs.plugin-package.v1';
 const SUPPORTED_SCHEMA_VERSION = 1;
+export const MAX_PLUGIN_MANIFEST_BYTES = 1_048_576;
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/i;
 const VERIFIED_INSTALLER_TOOL_PATTERN = /^[a-z][a-z0-9_]*$/;
 const ENV_ASSIGNMENT_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=.*$/;
@@ -1379,6 +1379,21 @@ export function loadPluginPackageFromFile(
   filePath: string,
   options: Omit<PluginValidationOptions, 'packageSha256'>
 ): PluginValidationResult {
+  if (!filePath.endsWith('.json')) {
+    return {
+      valid: false,
+      diagnostics: [
+        {
+          code: 'plugin_archive_layout_invalid',
+          message: 'Plugin manifests must use the JSON-only .json format',
+          path: '<file>',
+          severity: 'error',
+        },
+      ],
+      manifestModules: [],
+    };
+  }
+
   let fd: number | undefined;
   let fileBytes: Buffer;
   try {
@@ -1398,7 +1413,60 @@ export function loadPluginPackageFromFile(
         manifestModules: [],
       };
     }
-    fileBytes = readFileSync(fd);
+    if (stat.size > MAX_PLUGIN_MANIFEST_BYTES) {
+      return {
+        valid: false,
+        diagnostics: [
+          {
+            code: 'plugin_disallowed_behavior',
+            message: 'Plugin manifest exceeds the maximum accepted byte size',
+            path: '<file>',
+            severity: 'error',
+            context: {
+              sizeBytes: stat.size,
+              maximumBytes: MAX_PLUGIN_MANIFEST_BYTES,
+            },
+          },
+        ],
+        manifestModules: [],
+      };
+    }
+
+    // Bound the read itself as well as the pre-read metadata check. A regular
+    // file can grow after fstat(), so read at most one byte beyond the limit
+    // and fail closed if that sentinel byte exists.
+    const boundedBuffer = Buffer.alloc(MAX_PLUGIN_MANIFEST_BYTES + 1);
+    let bytesRead = 0;
+    while (bytesRead < boundedBuffer.length) {
+      const count = readSync(
+        fd,
+        boundedBuffer,
+        bytesRead,
+        boundedBuffer.length - bytesRead,
+        null
+      );
+      if (count === 0) break;
+      bytesRead += count;
+    }
+    if (bytesRead > MAX_PLUGIN_MANIFEST_BYTES) {
+      return {
+        valid: false,
+        diagnostics: [
+          {
+            code: 'plugin_disallowed_behavior',
+            message: 'Plugin manifest exceeds the maximum accepted byte size',
+            path: '<file>',
+            severity: 'error',
+            context: {
+              sizeBytes: bytesRead,
+              maximumBytes: MAX_PLUGIN_MANIFEST_BYTES,
+            },
+          },
+        ],
+        manifestModules: [],
+      };
+    }
+    fileBytes = boundedBuffer.subarray(0, bytesRead);
   } catch (error) {
     return {
       valid: false,
@@ -1420,11 +1488,7 @@ export function loadPluginPackageFromFile(
   const text = fileBytes.toString('utf-8');
   let parsed: unknown;
   try {
-    if (filePath.endsWith('.json')) {
-      parsed = JSON.parse(text);
-    } else {
-      parsed = parseYaml(text);
-    }
+    parsed = JSON.parse(text);
   } catch (parseError) {
     return {
       valid: false,

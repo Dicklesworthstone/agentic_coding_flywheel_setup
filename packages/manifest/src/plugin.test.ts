@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   formatPluginDiagnostics,
   loadPluginPackageFromFile,
+  MAX_PLUGIN_MANIFEST_BYTES,
   mergeValidatedPlugins,
   validatePluginPackage,
   type PluginValidationOptions,
@@ -888,6 +889,50 @@ describe('loadPluginPackageFromFile', () => {
     }));
   });
 
+  test('refuses YAML before parsing even when its content is valid JSON', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acfs-yaml-plugin-test-'));
+    const pluginPath = join(dir, 'plugin.yaml');
+    const pluginBytes = JSON.stringify(validPlugin());
+    const expectedPackageSha256 = createHash('sha256').update(pluginBytes).digest('hex');
+    writeFileSync(pluginPath, pluginBytes, 'utf-8');
+
+    const result = loadPluginPackageFromFile(
+      pluginPath,
+      validationOptions({ expectedPackageSha256 })
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'plugin_archive_layout_invalid',
+        path: '<file>',
+      }),
+    ]);
+  });
+
+  test('refuses an oversized manifest before syntax parsing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'acfs-oversized-plugin-test-'));
+    const pluginPath = join(dir, 'plugin.json');
+    writeFileSync(pluginPath, '{', 'utf-8');
+    truncateSync(pluginPath, MAX_PLUGIN_MANIFEST_BYTES + 1);
+
+    const result = loadPluginPackageFromFile(pluginPath, validationOptions());
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: 'plugin_disallowed_behavior',
+        path: '<file>',
+        context: {
+          sizeBytes: MAX_PLUGIN_MANIFEST_BYTES + 1,
+          maximumBytes: MAX_PLUGIN_MANIFEST_BYTES,
+        },
+      }),
+    ]);
+  });
+
   test('fails closed on non-existent or invalid JSON file', () => {
     const result = loadPluginPackageFromFile('/non/existent/path/plugin.json', validationOptions());
     expect(result.valid).toBe(false);
@@ -910,9 +955,10 @@ describe('collectPluginInputPaths', () => {
   test('expands supported directory entries deterministically', () => {
     const directory = mkdtempSync(join(tmpdir(), 'acfs-plugin-inputs-'));
     const first = join(directory, 'a.json');
-    const second = join(directory, 'b.yaml');
+    const second = join(directory, 'b.json');
     writeFileSync(second, '{}\n', 'utf8');
     writeFileSync(first, '{}\n', 'utf8');
+    writeFileSync(join(directory, 'ignored.yaml'), '{}\n', 'utf8');
     writeFileSync(join(directory, 'notes.txt'), 'ignored\n', 'utf8');
 
     expect(collectPluginInputPaths(['--plugins-dir', directory], {})).toEqual([
@@ -928,7 +974,7 @@ describe('collectPluginInputPaths', () => {
       'ACFS_PLUGIN_PATHS must name at least one plugin package'
     );
     expect(() => collectPluginInputPaths([], { ACFS_PLUGINS_DIR: directory })).toThrow(
-      'contains no JSON or YAML plugin packages'
+      'contains no JSON plugin packages'
     );
   });
 });

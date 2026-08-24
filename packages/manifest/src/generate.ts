@@ -2904,7 +2904,7 @@ export function generateWebIndex(): string {
 // Main
 // ============================================================
 
-const PLUGIN_PACKAGE_SUFFIXES = ['.json', '.yaml', '.yml'] as const;
+const PLUGIN_PACKAGE_SUFFIXES = ['.json'] as const;
 
 function pluginOptionValue(args: readonly string[], index: number, option: string): string {
   const value = args[index + 1];
@@ -2939,7 +2939,7 @@ function appendPluginDirectory(
     .filter((entry) => PLUGIN_PACKAGE_SUFFIXES.some((suffix) => entry.endsWith(suffix)))
     .sort();
   if (entries.length === 0) {
-    throw new Error(`${option} contains no JSON or YAML plugin packages: ${directory}`);
+    throw new Error(`${option} contains no JSON plugin packages: ${directory}`);
   }
   paths.push(...entries.map((entry) => join(directory, entry)));
 }
@@ -3017,7 +3017,7 @@ Options:
   --verbose      Show more details (with --dry-run: show content previews)
   --validate     Validate manifest and checksums coverage, exit with status
   --diff         Show diff between current and generated files
-  --plugin       Path to a plugin package JSON/YAML file (can be repeated)
+  --plugin       Path to a plugin package JSON file (can be repeated)
   --plugins-dir  Directory containing plugin package files
   --help         Show this help message
 
