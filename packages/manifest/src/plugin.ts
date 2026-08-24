@@ -1478,7 +1478,15 @@ function validateTarget(
   target: PluginValidationTarget | undefined,
   diagnostics: PluginDiagnostic[]
 ): void {
-  if (!target) return;
+  if (!target) {
+    addDiagnostic(diagnostics, {
+      code: 'plugin_target_unsupported',
+      message: 'Plugin validation requires an explicit target OS, version, architecture, and libc',
+      path: '<validation-target>',
+      severity: 'error',
+    });
+    return;
+  }
   if (targetMatches(plugin, target)) return;
 
   addDiagnostic(diagnostics, {

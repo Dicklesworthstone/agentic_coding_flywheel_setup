@@ -545,6 +545,20 @@ describe('validatePluginPackage', () => {
     expect(result.diagnostics[0].code).toBe('plugin_target_unsupported');
   });
 
+  test('fails closed when the validation target is omitted', () => {
+    const result = validatePluginPackage(
+      validPlugin(),
+      validationOptions({ target: undefined })
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.manifestModules).toHaveLength(0);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_target_unsupported',
+      path: '<validation-target>',
+    }));
+  });
+
   test('rejects disallowed executable install fields', () => {
     const plugin = validPlugin();
     const modules = plugin.modules as Record<string, unknown>[];
@@ -874,6 +888,21 @@ describe('validatePluginPackage', () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       code: 'plugin_disallowed_behavior',
       message: expect.stringContaining('maximum JSON node count'),
+    }));
+  });
+
+  test('rejects sparse arrays whose declared length exceeds the validation budget', () => {
+    const plugin = validPlugin();
+    const sparseEntries: unknown[] = [];
+    sparseEntries.length = MAX_PLUGIN_JSON_NODES + 1;
+    plugin.extensions = { sparseEntries };
+
+    const result = validatePluginPackage(plugin, validationOptions());
+
+    expect(result.valid).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'plugin_disallowed_behavior',
+      message: expect.stringContaining('maximum item count'),
     }));
   });
 

@@ -253,6 +253,22 @@ test_non_https_source_is_refused() {
     pass "non_https_source_is_refused"
 }
 
+test_single_backslash_is_refused_by_url_and_path_guards() {
+    if ! (
+        source "$OFFLINE_PACK_SH"
+        source "$REPO_ROOT/scripts/lib/security.sh"
+
+        ! offline_pack_installer_url_is_safe 'https://fixture.test/path\installer.sh'
+        ! acfs_offline_pack_path_is_safe 'artifacts\stack.rch\installer.sh'
+        offline_pack_installer_url_is_safe 'https://fixture.test/path/installer.sh'
+        acfs_offline_pack_path_is_safe 'artifacts/stack.rch/installer.sh'
+    ); then
+        return 1
+    fi
+
+    pass "single_backslash_is_refused_by_url_and_path_guards"
+}
+
 test_build_writes_manifest_and_verified_artifact() {
     local source_root output_dir output status manifest artifact_path expected_sha
     local builder_env_sha source_index_sha
@@ -792,6 +808,7 @@ run_all_tests() {
     local tests=(
         test_dry_run_json_uses_manifest_and_checksums
         test_non_https_source_is_refused
+        test_single_backslash_is_refused_by_url_and_path_guards
         test_build_writes_manifest_and_verified_artifact
         test_build_refuses_dirty_versioned_source_surfaces
         test_build_binds_clean_versioned_source_commit
