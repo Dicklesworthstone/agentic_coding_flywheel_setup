@@ -436,6 +436,10 @@ log_warn()  { _autofix_log WARN "$@"; }
 log_info()  { _autofix_log INFO "$@"; }
 log_debug() { _autofix_log DEBUG "$@"; }
 
+autofix_iso8601_timestamp() {
+    date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ"
+}
+
 # =============================================================================
 # Crash-Safe I/O Functions
 # =============================================================================
@@ -1480,7 +1484,7 @@ update_integrity_file() {
 
     local integrity_record
     integrity_record=$(jq -n \
-        --arg ts "$(date -Iseconds)" \
+        --arg ts "$(autofix_iso8601_timestamp)" \
         --arg changes "$changes_checksum" \
         --arg undos "$undos_checksum" \
         --argjson backups "$backup_count" \
@@ -1673,7 +1677,9 @@ start_autofix_session() {
     fi
 
     # Write session start marker
-    if ! write_atomic "$ACFS_STATE_DIR/.session" "{\"id\": \"$ACFS_SESSION_ID\", \"start\": \"$(date -Iseconds)\", \"pid\": $$}"; then
+    local session_ts=""
+    session_ts="$(autofix_iso8601_timestamp)"
+    if ! write_atomic "$ACFS_STATE_DIR/.session" "{\"id\": \"$ACFS_SESSION_ID\", \"start\": \"$session_ts\", \"pid\": $$}"; then
         log_error "Failed to persist autofix session marker"
         autofix_release_session_lock
         ACFS_SESSION_ID=""
@@ -2159,7 +2165,7 @@ record_change() {
     local change_id
     change_id="chg_$(printf '%04d' $((max_seq + 1)))"
     local timestamp
-    timestamp=$(date -Iseconds)
+    timestamp=$(autofix_iso8601_timestamp)
 
     # Compute post-fix checksums for affected files
     local post_checksums_json="[]"
@@ -2249,7 +2255,7 @@ autofix_append_failed_undo_record() {
     [[ "$undo_exit_code" =~ ^[0-9]+$ ]] || undo_exit_code=1
     if ! failed_record=$(jq -cn \
         --arg id "$change_id" \
-        --arg ts "$(date -Iseconds)" \
+        --arg ts "$(autofix_iso8601_timestamp)" \
         --argjson code "$undo_exit_code" \
         --arg status "failed" \
         '{undone: $id, timestamp: $ts, exit_code: $code, status: $status}'); then
@@ -2495,7 +2501,7 @@ undo_change() {
     local pending_record=""
     if ! pending_record=$(jq -cn \
         --arg id "$change_id" \
-        --arg ts "$(date -Iseconds)" \
+        --arg ts "$(autofix_iso8601_timestamp)" \
         --arg status "pending" \
         '{undone: $id, timestamp: $ts, status: $status}'); then
         log_error "Failed to build pending undo record for $change_id"
@@ -2593,7 +2599,7 @@ undo_change() {
     local undo_record
     if ! undo_record=$(jq -cn \
         --arg id "$change_id" \
-        --arg ts "$(date -Iseconds)" \
+        --arg ts "$(autofix_iso8601_timestamp)" \
         --argjson code "$undo_exit_code" \
         --arg status "applied" \
         '{undone: $id, timestamp: $ts, exit_code: $code, status: $status}'); then

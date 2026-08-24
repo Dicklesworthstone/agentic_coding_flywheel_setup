@@ -2186,9 +2186,11 @@ test_undo_change_never_executes_checksum_invalid_record_with_force() {
 
     local marker_file="/tmp/test_untrusted_undo_marker_$$"
     local change_id=""
+    local orig_record=""
     local tampered_record=""
     change_id="$(record_change "test" "Untrusted undo" "true" false info '[]' '[]' '[]')"
-    tampered_record="$(printf '%s' "${ACFS_CHANGE_RECORDS[$change_id]}" | jq -c --arg command "printf compromised > '$marker_file'" '.undo_command = $command')"
+    orig_record="$(grep -F "\"id\":\"$change_id\"" "$ACFS_CHANGES_FILE" | tail -1)"
+    tampered_record="$(printf '%s' "$orig_record" | jq -c --arg command "printf compromised > '$marker_file'" '.undo_command = $command')"
     ACFS_CHANGE_RECORDS["$change_id"]="$tampered_record"
 
     if undo_change "$change_id" true true >/dev/null 2>&1; then
@@ -2222,9 +2224,11 @@ test_undo_change_rejects_checksummed_malformed_record() {
 
     local marker_file="/tmp/test_malformed_undo_marker_$$"
     local change_id=""
+    local orig_record=""
     local malformed_record=""
     change_id="$(record_change "test" "Malformed undo" "true" false info '[]' '[]' '[]')"
-    malformed_record="$(printf '%s' "${ACFS_CHANGE_RECORDS[$change_id]}" | jq -c 'del(.record_checksum) | .undo_requires_root = "yes"')"
+    orig_record="$(grep -F "\"id\":\"$change_id\"" "$ACFS_CHANGES_FILE" | tail -1)"
+    malformed_record="$(printf '%s' "$orig_record" | jq -c 'del(.record_checksum) | .undo_requires_root = "yes"')"
     malformed_record="$(autofix_add_record_checksum "$malformed_record")"
     malformed_record="$(printf '%s' "$malformed_record" | jq -c --arg command "printf compromised > '$marker_file'" 'del(.record_checksum) | .undo_command = $command')"
     malformed_record="$(autofix_add_record_checksum "$malformed_record")"
@@ -3186,7 +3190,9 @@ test_undo_change_refuses_incomplete_post_snapshot_without_force() {
 
     local incomplete_record=""
     local incomplete_checksum=""
-    incomplete_record=$(printf '%s' "${ACFS_CHANGE_RECORDS[$change_id]}" | jq -c 'del(.post_checksums, .record_checksum)')
+    local orig_record=""
+    orig_record="$(grep -F "\"id\":\"$change_id\"" "$ACFS_CHANGES_FILE" | tail -1)"
+    incomplete_record=$(printf '%s' "$orig_record" | jq -c 'del(.post_checksums, .record_checksum)')
     incomplete_checksum=$(compute_record_checksum "$incomplete_record")
     incomplete_record=$(printf '%s' "$incomplete_record" | jq -c --arg sum "$incomplete_checksum" '.record_checksum = $sum')
     ACFS_CHANGE_RECORDS["$change_id"]="$incomplete_record"
@@ -3370,7 +3376,10 @@ test_record_change_change_id_sequence_does_not_collide_after_journal_repair() {
     for i in 1 2 3 4 5; do
         local cid="chg_$(printf '%04d' "$i")"
         local rec
-        rec=$(jq -cn --arg id "$cid" '{id: $id, description: "seed", undone: false}')
+        rec=$(jq -cn \
+            --arg id "$cid" \
+            --arg ts "2026-08-24T12:00:00Z" \
+            '{id: $id, timestamp: $ts, session_id: "seed_sess", category: "test", description: "seed", undo_command: "true", undo_requires_root: false, reversible: true, severity: "info", files: [], backups: [], post_checksums: [], manual_steps: [], undone: false}')
         local csum
         csum=$(compute_record_checksum "$rec")
         rec=$(printf '%s' "$rec" | jq -c --arg sum "$csum" '. + {record_checksum: $sum}')
@@ -3382,6 +3391,7 @@ test_record_change_change_id_sequence_does_not_collide_after_journal_repair() {
     temp_f=$(mktemp)
     grep -v '"id":"chg_0003"' "$ACFS_CHANGES_FILE" > "$temp_f"
     mv "$temp_f" "$ACFS_CHANGES_FILE"
+    update_integrity_file >/dev/null 2>&1 || true
 
     if ! start_autofix_session >/dev/null 2>&1; then
         echo "  Failed to start session"
