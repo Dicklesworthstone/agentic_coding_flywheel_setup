@@ -616,14 +616,7 @@ acfs_security_file_size() {
 }
 
 acfs_offline_pack_requested() {
-    [[ -n "${ACFS_OFFLINE_PACK:-${ACFS_OFFLINE_ARTIFACT_PACK:-}}" ]]
-}
-
-acfs_offline_pack_fail_closed() {
-    local mode="${ACFS_OFFLINE_NETWORK_MODE:-offline}"
-    local required="${ACFS_OFFLINE_PACK_REQUIRED:-}"
-
-    [[ "$mode" == "offline" || "$mode" == "disabled" || "$required" == "true" || "$required" == "1" ]]
+    [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]
 }
 
 acfs_offline_pack_error() {
@@ -631,7 +624,7 @@ acfs_offline_pack_error() {
     local name="$2"
     local detail="$3"
 
-    log_error "offline_pack_refused code=$code tool=$name"
+    log_error "installer_cache_refused code=$code tool=$name"
     printf "  Detail: %s\n" "$detail" >&2
 }
 
@@ -653,6 +646,33 @@ acfs_offline_pack_current_arch() {
     esac
 }
 
+acfs_offline_pack_current_ubuntu_version() {
+    local os_release="/etc/os-release"
+    local line=""
+    local os_id=""
+    local version_id=""
+
+    [[ -r "$os_release" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        case "$line" in
+            ID=*)
+                os_id="${line#ID=}"
+                os_id="${os_id%\"}"
+                os_id="${os_id#\"}"
+                ;;
+            VERSION_ID=*)
+                version_id="${line#VERSION_ID=}"
+                version_id="${version_id%\"}"
+                version_id="${version_id#\"}"
+                ;;
+        esac
+    done < "$os_release"
+
+    [[ "$os_id" == "ubuntu" && "$version_id" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+    printf '%s\n' "$version_id"
+}
+
 acfs_offline_pack_current_manifest_file() {
     local manifest_file="${ACFS_MANIFEST_YAML:-}"
     local default_manifest="$SECURITY_SCRIPT_DIR/../../acfs.manifest.yaml"
@@ -670,12 +690,13 @@ acfs_offline_pack_current_manifest_file() {
 }
 
 acfs_offline_pack_locate() {
-    local configured="${ACFS_OFFLINE_PACK:-${ACFS_OFFLINE_ARTIFACT_PACK:-}}"
+    local configured="${ACFS_VERIFIED_INSTALLER_CACHE:-}"
     local name="$1"
     local pack_root=""
+    local manifest_size=""
 
     if [[ -z "$configured" ]]; then
-        acfs_offline_pack_error "pack_missing_manifest" "$name" "ACFS_OFFLINE_PACK is empty"
+        acfs_offline_pack_error "pack_missing_manifest" "$name" "ACFS_VERIFIED_INSTALLER_CACHE is empty"
         return 1
     fi
 
@@ -685,14 +706,23 @@ acfs_offline_pack_locate() {
     esac
     configured="${configured%/}"
 
-    if [[ -d "$configured/acfs-offline-pack" ]]; then
-        pack_root="$configured/acfs-offline-pack"
+    if [[ -d "$configured/acfs-installer-cache" ]]; then
+        pack_root="$configured/acfs-installer-cache"
     else
         pack_root="$configured"
     fi
 
-    if [[ ! -r "$pack_root/manifest.json" ]]; then
+    if [[ ! -f "$pack_root/manifest.json" || -L "$pack_root/manifest.json" || ! -r "$pack_root/manifest.json" ]]; then
         acfs_offline_pack_error "pack_missing_manifest" "$name" "manifest.json is absent under $pack_root"
+        return 1
+    fi
+    if ! acfs_offline_pack_artifact_is_contained "$pack_root" "$pack_root/manifest.json"; then
+        acfs_offline_pack_error "pack_path_escape" "$name" "manifest.json resolves outside the cache"
+        return 1
+    fi
+    manifest_size="$(acfs_security_file_size "$pack_root/manifest.json" 2>/dev/null || true)"
+    if [[ ! "$manifest_size" =~ ^[0-9]+$ || "$manifest_size" -gt 8388608 ]]; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "manifest.json exceeds the 8 MiB policy limit"
         return 1
     fi
 
@@ -703,7 +733,7 @@ acfs_offline_pack_path_is_safe() {
     local rel_path="${1:-}"
 
     case "$rel_path" in
-        ""|.|..|/*|./*|../*|*/..|*"/../"*|*"/./"*|*"/")
+        ""|.|..|/*|./*|../*|*/..|*"/../"*|*"/./"*|*"//"*|*'\'*|*"/"|*$'\n'*|*$'\r'*|*$'\t'*)
             return 1
             ;;
     esac
@@ -766,12 +796,13 @@ acfs_offline_pack_validate_manifest() {
     local schema=""
     local schema_version=""
     local pack_mode=""
-    local network_mode=""
+    local pack_scope=""
     local policy=""
     local expires_at=""
     local expires_epoch=""
     local now_epoch=""
     local arch=""
+    local ubuntu_version=""
     local checksums_declared=""
     local checksums_actual=""
     local pack_checksums_actual=""
@@ -789,28 +820,71 @@ acfs_offline_pack_validate_manifest() {
         return 1
     fi
 
+    if ! "$jq_bin" -e '
+        (type == "object") and
+        (.schema | type == "string") and
+        (.schemaVersion | type == "number" and floor == .) and
+        (.generatedBy | type == "string" and length > 0) and
+        (.generatedAt | type == "string" and length > 0) and
+        (.expiresAt | type == "string" and length > 0) and
+        (.staleAfterDays | type == "number" and floor == . and . > 0) and
+        (.packMode | type == "string") and
+        (.packScope | type == "string") and
+        (.acfs | type == "object") and
+        (.acfs.manifestSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.acfs.checksumsYamlSha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.targets | type == "array" and length > 0) and
+        (all(.targets[]; (.os | type == "string") and (.version | type == "string") and (.architecture | type == "string"))) and
+        (.modules | type == "array") and
+        (all(.modules[]; (.id | type == "string" and length > 0) and (.coverage == "entrypoint_cached") and (.verifiedInstallerKey | type == "string" and length > 0))) and
+        (([.modules[].id] | length) == ([.modules[].id] | unique | length)) and
+        (.artifacts | type == "array") and
+        (all(.artifacts[];
+            (.id | type == "string" and length > 0) and
+            (.moduleId | type == "string" and length > 0) and
+            (.kind == "verified_installer_entrypoint") and
+            (.verifiedInstallerKey | type == "string" and length > 0) and
+            (.path | type == "string" and length > 0) and
+            (.sourceUrl | type == "string" and startswith("https://")) and
+            (.sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+            (.sizeBytes | type == "number" and floor == . and . >= 0)
+        )) and
+        (([.artifacts[].id] | length) == ([.artifacts[].id] | unique | length)) and
+        (([.artifacts[].path] | length) == ([.artifacts[].path] | unique | length)) and
+        (.failures | type == "array") and
+        (.policy | type == "object") and
+        (.policy.entrypointFetchMode == "cache_required") and
+        (.policy.executionNetworkMode == "required") and
+        (.policy.transitiveClosure == "not_bundled") and
+        (.policy.bootstrap == "not_bundled") and
+        (.policy.verifiedInstallerPolicy == "must_match_checksums_yaml")
+    ' "$manifest_file" >/dev/null 2>&1; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "manifest.json is missing required cache security fields or contains duplicate identities"
+        return 1
+    fi
+
     schema="$("$jq_bin" -r '.schema // empty' "$manifest_file")"
     schema_version="$("$jq_bin" -r '.schemaVersion // empty' "$manifest_file")"
-    if [[ "$schema" != "acfs.offline-artifact-pack.v1" || "$schema_version" != "1" ]]; then
+    if [[ "$schema" != "acfs.verified-installer-entrypoint-cache.v1" || "$schema_version" != "1" ]]; then
         acfs_offline_pack_error "pack_schema_unsupported" "$name" "unsupported schema=${schema:-missing} schemaVersion=${schema_version:-missing}"
         return 1
     fi
 
-    pack_mode="$("$jq_bin" -r '.packMode // "complete"' "$manifest_file")"
-    if [[ "$pack_mode" != "complete" ]]; then
-        acfs_offline_pack_error "pack_unbundled_required_module" "$name" "packMode=$pack_mode cannot satisfy a verified offline install"
+    pack_mode="$("$jq_bin" -r '.packMode' "$manifest_file")"
+    if [[ "$pack_mode" != "entrypoint-cache" ]]; then
+        acfs_offline_pack_error "pack_unbundled_required_module" "$name" "packMode=$pack_mode cannot satisfy a required installer entrypoint cache"
+        return 1
+    fi
+
+    pack_scope="$("$jq_bin" -r '.packScope' "$manifest_file")"
+    if [[ "$pack_scope" != "verified_installer_entrypoints" ]]; then
+        acfs_offline_pack_error "pack_unbundled_required_module" "$name" "packScope=$pack_scope is not a verified installer entrypoint cache"
         return 1
     fi
 
     policy="$("$jq_bin" -r '.policy.verifiedInstallerPolicy // empty' "$manifest_file")"
     if [[ "$policy" != "must_match_checksums_yaml" ]]; then
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "verifiedInstallerPolicy must be must_match_checksums_yaml"
-        return 1
-    fi
-
-    network_mode="$("$jq_bin" -r '.policy.networkMode // "offline"' "$manifest_file")"
-    if [[ "$network_mode" != "offline" ]]; then
-        acfs_offline_pack_error "pack_unbundled_required_module" "$name" "policy.networkMode=$network_mode does not provide offline guarantees"
         return 1
     fi
 
@@ -826,10 +900,15 @@ acfs_offline_pack_validate_manifest() {
         acfs_offline_pack_error "pack_arch_unsupported" "$name" "unable to determine current architecture"
         return 1
     }
-    if ! "$jq_bin" -e --arg arch "$arch" '
-        any(.targets[]?; ((.os // "ubuntu") == "ubuntu") and (((.architecture // .arch // "") == $arch) or ((.architectures // []) | index($arch))))
+    ubuntu_version="$(acfs_offline_pack_current_ubuntu_version 2>/dev/null || true)"
+    if [[ -z "$ubuntu_version" ]]; then
+        acfs_offline_pack_error "pack_ubuntu_unsupported" "$name" "unable to determine Ubuntu VERSION_ID"
+        return 1
+    fi
+    if ! "$jq_bin" -e --arg arch "$arch" --arg ubuntuVersion "$ubuntu_version" '
+        any(.targets[]; .os == "ubuntu" and .architecture == $arch and .version == $ubuntuVersion)
     ' "$manifest_file" >/dev/null; then
-        acfs_offline_pack_error "pack_arch_unsupported" "$name" "current architecture $arch is not listed in targets[]"
+        acfs_offline_pack_error "pack_ubuntu_unsupported" "$name" "Ubuntu $ubuntu_version on $arch is not listed in targets[]"
         return 1
     fi
 
@@ -846,8 +925,12 @@ acfs_offline_pack_validate_manifest() {
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "pack was built with a different checksums.yaml"
         return 1
     fi
-    if [[ ! -r "$pack_root/checksums.yaml" ]]; then
+    if [[ ! -f "$pack_root/checksums.yaml" || -L "$pack_root/checksums.yaml" || ! -r "$pack_root/checksums.yaml" ]]; then
         acfs_offline_pack_error "pack_checksums_mismatch" "$name" "pack copy of checksums.yaml is missing"
+        return 1
+    fi
+    if ! acfs_offline_pack_artifact_is_contained "$pack_root" "$pack_root/checksums.yaml"; then
+        acfs_offline_pack_error "pack_path_escape" "$name" "pack copy of checksums.yaml resolves outside the cache"
         return 1
     fi
     pack_checksums_actual="$(calculate_file_sha256 "$pack_root/checksums.yaml")" || return 1
@@ -856,21 +939,19 @@ acfs_offline_pack_validate_manifest() {
         return 1
     fi
 
-    manifest_declared="$("$jq_bin" -r '.acfs.manifestSha256 // empty' "$manifest_file")"
-    if [[ -n "$manifest_declared" ]]; then
-        current_manifest="$(acfs_offline_pack_current_manifest_file 2>/dev/null || true)"
-        if [[ -z "$current_manifest" ]]; then
-            acfs_offline_pack_error "pack_malformed_manifest" "$name" "current acfs.manifest.yaml is unavailable for pack comparison"
-            return 1
-        fi
-        manifest_actual="$(calculate_file_sha256 "$current_manifest")" || {
-            acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to checksum current acfs.manifest.yaml"
-            return 1
-        }
-        if [[ "$manifest_actual" != "$manifest_declared" ]]; then
-            acfs_offline_pack_error "pack_malformed_manifest" "$name" "pack was built with a different acfs.manifest.yaml"
-            return 1
-        fi
+    manifest_declared="$("$jq_bin" -r '.acfs.manifestSha256' "$manifest_file")"
+    current_manifest="$(acfs_offline_pack_current_manifest_file 2>/dev/null || true)"
+    if [[ -z "$current_manifest" || ! -f "$current_manifest" || -L "$current_manifest" ]]; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "current acfs.manifest.yaml is unavailable for cache comparison"
+        return 1
+    fi
+    manifest_actual="$(calculate_file_sha256 "$current_manifest")" || {
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "failed to checksum current acfs.manifest.yaml"
+        return 1
+    }
+    if [[ "$manifest_actual" != "$manifest_declared" ]]; then
+        acfs_offline_pack_error "pack_malformed_manifest" "$name" "cache was built with a different acfs.manifest.yaml"
+        return 1
     fi
 
     return 0
@@ -909,7 +990,7 @@ acfs_offline_pack_verify_artifact() {
         def artifact_arch: (.architecture // .platform.arch // "");
         [
             .artifacts[]?
-            | select((.kind == "verified_installer" or .kind == "verified_installer_script") and .verifiedInstallerKey == $key)
+            | select(.kind == "verified_installer_entrypoint" and .verifiedInstallerKey == $key)
             | select((.sourceUrl // "") == $url)
             | select(((.sha256 // "") == $sha) or ((.checksumsYamlSha256 // "") == $sha))
             | select((artifact_arch == "") or (artifact_arch == $arch))
@@ -930,7 +1011,7 @@ acfs_offline_pack_verify_artifact() {
 
     IFS=$'\t' read -r module_id rel_path artifact_sha size_bytes <<< "$artifact_tsv"
     if ! "$jq_bin" -e --arg moduleId "$module_id" --arg key "$name" '
-        any(.modules[]?; .id == $moduleId and (.bundlingPolicy // "") == "bundled" and (.verifiedInstallerKey // "") == $key)
+        any(.modules[]; .id == $moduleId and .coverage == "entrypoint_cached" and .verifiedInstallerKey == $key)
     ' "$manifest_file" >/dev/null; then
         acfs_offline_pack_error "pack_unbundled_required_module" "$name" "module $module_id is not marked bundled for verifiedInstallerKey=$name"
         return 1
@@ -997,8 +1078,8 @@ acfs_offline_pack_verify_artifact() {
         fi
     fi
 
-    log_detail "offline_pack_hit tool=$name module=$module_id artifact=$rel_path"
-    log_success "Verified offline artifact: $name"
+    log_detail "installer_cache_hit tool=$name module=$module_id artifact=$rel_path"
+    log_success "Verified cached installer entrypoint: $name"
     acfs_security_cat_file "$artifact_snapshot" || emit_status=$?
     _acfs_remove_temp_files "$artifact_snapshot"
     return "$emit_status"
@@ -1062,10 +1143,9 @@ verify_checksum() {
         if [[ "$offline_status" -eq 0 ]]; then
             return 0
         fi
-        if acfs_offline_pack_fail_closed; then
-            return "$offline_status"
-        fi
-        log_warn "offline_pack_live_fallback tool=$name url=$url"
+        # Supplying a cache is an explicit capability constraint: never turn a
+        # missing or invalid cached entrypoint into an ambient live fetch.
+        return "$offline_status"
     fi
 
     # Create safe temp file

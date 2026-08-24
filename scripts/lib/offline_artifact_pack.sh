@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # ============================================================
-# ACFS Offline Artifact Pack Builder
+# ACFS Verified Installer Entrypoint Pack Builder
 #
-# Prepares an inspectable offline pack from acfs.manifest.yaml verified
-# installer entries and checksums.yaml approved source URLs.
+# Prepares an inspectable cache of checksum-pinned installer entrypoints from
+# acfs.manifest.yaml and checksums.yaml. The entrypoints may themselves download
+# release payloads; this v1 format is not a transitive offline-install bundle.
 # ============================================================
 
 set -euo pipefail
 
-OFFLINE_PACK_BUILD_SCHEMA="acfs.offline-artifact-pack-build.v1"
-OFFLINE_PACK_SCHEMA="acfs.offline-artifact-pack.v1"
+OFFLINE_PACK_BUILD_SCHEMA="acfs.verified-installer-entrypoint-cache-build.v1"
+OFFLINE_PACK_SCHEMA="acfs.verified-installer-entrypoint-cache.v1"
+OFFLINE_PACK_SCOPE="verified_installer_entrypoints"
+OFFLINE_PACK_COMPLETE_MODE="entrypoint-cache"
 OFFLINE_PACK_FORMAT="markdown"
 OFFLINE_PACK_DRY_RUN=false
 OFFLINE_PACK_BEST_EFFORT=false
@@ -34,9 +37,14 @@ OFFLINE_PACK_AWK_BIN=""
 OFFLINE_PACK_SOURCE_REF="unknown"
 OFFLINE_PACK_SOURCE_COMMIT="unknown"
 OFFLINE_PACK_SOURCE_TREE_STATE="unversioned"
+OFFLINE_PACK_PUBLISHED=false
+OFFLINE_PACK_STAGING_ROOT=""
 
 declare -gA OFFLINE_PACK_INSTALLER_URL=()
 declare -gA OFFLINE_PACK_INSTALLER_SHA=()
+declare -gA OFFLINE_PACK_INSTALLER_SEEN=()
+declare -gA OFFLINE_PACK_INSTALLER_URL_SEEN=()
+declare -gA OFFLINE_PACK_INSTALLER_SHA_SEEN=()
 declare -gA OFFLINE_PACK_MODULE_KNOWN=()
 declare -gA OFFLINE_PACK_MODULE_TOOL=()
 declare -gA OFFLINE_PACK_MODULE_RUNNER=()
@@ -45,16 +53,16 @@ declare -ga OFFLINE_PACK_VERIFIED_MODULES=()
 
 offline_pack_usage() {
     cat <<'EOF'
-Usage: acfs offline-pack build [OPTIONS]
+Usage: acfs installer-cache build [OPTIONS]
 
 Options:
-  --output DIR          Directory that will receive acfs-offline-pack/
+  --output DIR          Directory that will receive acfs-installer-cache/
   --module ID          Include one manifest module (repeatable; default: all verified installers)
   --dry-run            Print the resolved pack plan without writing files
   --best-effort        Write a diagnostic pack even when some downloads fail
   --json               Emit machine-readable JSON
   --markdown           Emit human-readable output (default)
-  --source-root DIR    ACFS source root (default: inferred from this script)
+  --source-root DIR    ACFS source root (default: installed tree or checkout containing this script)
   --manifest-file FILE Manifest YAML (default: SOURCE_ROOT/acfs.manifest.yaml)
   --checksums-file FILE checksums.yaml (default: SOURCE_ROOT/checksums.yaml)
   --arch ARCH          Target architecture (default: uname -m)
@@ -63,9 +71,13 @@ Options:
   --expires-days DAYS  Expiry window recorded in manifest.json (default: 30)
   --help, -h           Show this help
 
-The builder only bundles modules that use verified_installer metadata and whose
-installer URL and SHA256 are present in checksums.yaml. It refuses partial packs
-unless --best-effort is set, in which case manifest.json is marked diagnostic.
+The builder caches only modules that use verified_installer metadata and whose
+installer URL and SHA256 are present in checksums.yaml. These scripts can still
+download release archives, packages, or other transitive payloads when executed;
+the resulting v1 pack is therefore not a network-free installation bundle.
+
+The builder refuses partial entrypoint caches unless --best-effort is set, in
+which case manifest.json is marked diagnostic.
 EOF
 }
 
@@ -194,7 +206,7 @@ offline_pack_required_binary_path() {
 offline_pack_require_jq() {
     OFFLINE_PACK_JQ_BIN="$(offline_pack_required_binary_path jq 2>/dev/null || true)"
     if [[ -z "$OFFLINE_PACK_JQ_BIN" ]]; then
-        echo "Error: jq is required for offline artifact pack building" >&2
+        echo "Error: jq is required for installer cache building" >&2
         return 2
     fi
 }
@@ -226,6 +238,21 @@ offline_pack_mkdir_p() {
 
     mkdir_bin="$(offline_pack_required_binary_path mkdir)" || return $?
     "$mkdir_bin" -p "$@"
+}
+
+offline_pack_mktemp_dir() {
+    local template="$1"
+    local mktemp_bin=""
+
+    mktemp_bin="$(offline_pack_required_binary_path mktemp)" || return $?
+    "$mktemp_bin" -d "$template"
+}
+
+offline_pack_mv() {
+    local mv_bin=""
+
+    mv_bin="$(offline_pack_required_binary_path mv)" || return $?
+    "$mv_bin" "$@"
 }
 
 offline_pack_cp() {
@@ -289,14 +316,14 @@ offline_pack_capture_source_snapshot() {
         return 1
     fi
 
-    if ! dirty_sources="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all --ignore-submodules=none -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs 2>/dev/null)"; then
+    if ! dirty_sources="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all --ignore-submodules=none -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib/offline_artifact_pack.sh 2>/dev/null)"; then
         OFFLINE_PACK_SOURCE_TREE_STATE="invalid"
         offline_pack_add_error "pack_source_unverifiable: unable to inspect copied source surfaces"
         return 1
     fi
     if [[ -n "$dirty_sources" ]]; then
         OFFLINE_PACK_SOURCE_TREE_STATE="dirty"
-        offline_pack_add_error "pack_source_dirty: copied source surfaces differ from HEAD"
+        offline_pack_add_error "pack_source_dirty: pack inputs or builder differ from HEAD"
         return 1
     fi
 
@@ -318,8 +345,12 @@ offline_pack_capture_source_snapshot() {
 }
 
 offline_pack_assert_source_snapshot_unchanged() {
+    local pack_root="$1"
     local current_commit=""
     local dirty_sources=""
+    local rel_path=""
+    local expected_sha=""
+    local actual_sha=""
 
     [[ "$OFFLINE_PACK_SOURCE_TREE_STATE" == "clean" ]] || return 0
     current_commit="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" rev-parse HEAD 2>/dev/null || true)"
@@ -327,12 +358,30 @@ offline_pack_assert_source_snapshot_unchanged() {
         offline_pack_add_error "pack_source_changed: source HEAD moved while the pack was built"
         return 1
     fi
-    if ! dirty_sources="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all --ignore-submodules=none -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib scripts/generated acfs 2>/dev/null)"; then
+    if ! dirty_sources="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" status --porcelain=v1 --untracked-files=all --ignore-submodules=none -- VERSION acfs.manifest.yaml checksums.yaml scripts/lib/offline_artifact_pack.sh 2>/dev/null)"; then
         offline_pack_add_error "pack_source_unverifiable: unable to recheck copied source surfaces"
         return 1
     fi
     if [[ -n "$dirty_sources" ]]; then
         offline_pack_add_error "pack_source_changed: copied source surfaces changed while the pack was built"
+        return 1
+    fi
+
+    # A clean status before and after copying is still only a sampled pathname
+    # view. Compare shipped inputs with immutable Git blobs so a concurrent
+    # modify-copy-restore sequence cannot inherit a false sourceCommit claim.
+    for rel_path in VERSION acfs.manifest.yaml checksums.yaml; do
+        expected_sha="$(offline_pack_git_blob_sha256 "$OFFLINE_PACK_SOURCE_COMMIT" "$rel_path" 2>/dev/null || true)"
+        actual_sha="$(offline_pack_sha256 "$pack_root/$rel_path" 2>/dev/null || true)"
+        if [[ ! "$expected_sha" =~ ^[0-9a-f]{64}$ || "$actual_sha" != "$expected_sha" ]]; then
+            offline_pack_add_error "pack_source_changed: packed $rel_path does not match sourceCommit"
+            return 1
+        fi
+    done
+    expected_sha="$(offline_pack_git_blob_sha256 "$OFFLINE_PACK_SOURCE_COMMIT" scripts/lib/offline_artifact_pack.sh 2>/dev/null || true)"
+    actual_sha="$(offline_pack_sha256 "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib/offline_artifact_pack.sh" 2>/dev/null || true)"
+    if [[ ! "$expected_sha" =~ ^[0-9a-f]{64}$ || "$actual_sha" != "$expected_sha" ]]; then
+        offline_pack_add_error "pack_source_changed: builder does not match sourceCommit"
         return 1
     fi
     return 0
@@ -342,6 +391,9 @@ offline_pack_curl_binary_path() {
     local override="${ACFS_OFFLINE_PACK_CURL_BIN:-}"
 
     if [[ -n "$override" ]]; then
+        if [[ "${ACFS_OFFLINE_PACK_TEST_MODE:-false}" != "true" ]]; then
+            return 127
+        fi
         case "$override" in
             /*)
                 [[ -x "$override" ]] || return 127
@@ -412,6 +464,32 @@ offline_pack_sha256() {
     printf '%s\n' "$hash"
 }
 
+offline_pack_git_blob_sha256() {
+    local commit="$1"
+    local rel_path="$2"
+    local hash_spec=""
+    local hash_tool=""
+    local hash_bin=""
+    local output=""
+    local hash=""
+
+    hash_spec="$(offline_pack_hash_tool)" || return 1
+    hash_tool="${hash_spec%%:*}"
+    hash_bin="${hash_spec#*:}"
+    case "$hash_tool" in
+        sha256sum)
+            output="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" show "$commit:$rel_path" | "$hash_bin")" || return 1
+            ;;
+        shasum)
+            output="$(offline_pack_git -C "$OFFLINE_PACK_SOURCE_ROOT" show "$commit:$rel_path" | "$hash_bin" -a 256)" || return 1
+            ;;
+        *) return 1 ;;
+    esac
+    read -r hash _ <<<"$output"
+    [[ "$hash" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+    printf '%s\n' "${hash,,}"
+}
+
 offline_pack_file_size() {
     local file="$1"
     local wc_bin=""
@@ -441,8 +519,8 @@ offline_pack_parse_args() {
         offline_pack_usage
         return 100
     elif [[ -n "${1:-}" && "${1:-}" != -* ]]; then
-        echo "Error: unknown offline-pack subcommand: $1" >&2
-        echo "Run 'acfs offline-pack --help' for usage." >&2
+        echo "Error: unknown installer-cache subcommand: $1" >&2
+        echo "Run 'acfs installer-cache --help' for usage." >&2
         return 2
     fi
 
@@ -544,7 +622,7 @@ offline_pack_parse_args() {
                 ;;
             *)
                 echo "Error: unknown option: $1" >&2
-                echo "Run 'acfs offline-pack --help' for usage." >&2
+                echo "Run 'acfs installer-cache --help' for usage." >&2
                 return 2
                 ;;
         esac
@@ -626,6 +704,25 @@ offline_pack_installer_runner_is_valid() {
     esac
 }
 
+offline_pack_installer_url_is_safe() {
+    local url="${1:-}"
+    local rest=""
+
+    case "$url" in
+        https://*) ;;
+        *) return 1 ;;
+    esac
+    rest="${url#https://}"
+    [[ -n "$rest" ]] || return 1
+    # Installer URLs are policy metadata and are later emitted in reports.
+    # Refuse credentials, query secrets, fragments, backslashes, whitespace,
+    # and control characters rather than attempting lossy redaction.
+    case "$rest" in
+        *'@'*|*'?'*|*'#'*|*'\'*|*[[:space:]]*) return 1 ;;
+    esac
+    [[ "$rest" != *$'\n'* && "$rest" != *$'\r'* && "$rest" != *$'\t'* ]]
+}
+
 offline_pack_load_checksums() {
     local file="$1"
     local line=""
@@ -668,17 +765,33 @@ offline_pack_load_checksums() {
             fi
             if (( indent_len == tool_indent )); then
                 current_tool="${BASH_REMATCH[1]}"
+                if [[ -n "${OFFLINE_PACK_INSTALLER_SEEN[$current_tool]:-}" ]]; then
+                    offline_pack_add_error "pack_checksums_mismatch: duplicate installer key $current_tool"
+                    current_tool=""
+                    continue
+                fi
+                OFFLINE_PACK_INSTALLER_SEEN["$current_tool"]=1
                 continue
             fi
         fi
 
         if [[ -n "$current_tool" && "$line" =~ ^[[:space:]]*url:[[:space:]]*(.*)$ ]]; then
+            if [[ -n "${OFFLINE_PACK_INSTALLER_URL_SEEN[$current_tool]:-}" ]]; then
+                offline_pack_add_error "pack_checksums_mismatch: duplicate url for installer key $current_tool"
+                continue
+            fi
+            OFFLINE_PACK_INSTALLER_URL_SEEN["$current_tool"]=1
             value="$(offline_pack_trim_yaml_scalar "${BASH_REMATCH[1]}")"
             OFFLINE_PACK_INSTALLER_URL["$current_tool"]="$value"
             continue
         fi
 
         if [[ -n "$current_tool" && "$line" =~ ^[[:space:]]*sha256:[[:space:]]*(.*)$ ]]; then
+            if [[ -n "${OFFLINE_PACK_INSTALLER_SHA_SEEN[$current_tool]:-}" ]]; then
+                offline_pack_add_error "pack_checksums_mismatch: duplicate sha256 for installer key $current_tool"
+                continue
+            fi
+            OFFLINE_PACK_INSTALLER_SHA_SEEN["$current_tool"]=1
             value="$(offline_pack_trim_yaml_scalar "${BASH_REMATCH[1]}")"
             if [[ "$value" =~ ^[0-9A-Fa-f]{64}$ ]]; then
                 OFFLINE_PACK_INSTALLER_SHA["$current_tool"]="${value,,}"
@@ -812,12 +925,9 @@ offline_pack_select_modules() {
             continue
         fi
 
-        case "$url" in
-            https://*) ;;
-            *)
-                offline_pack_add_error "pack_non_https_source: installer key $tool must use an HTTPS source URL"
-                ;;
-        esac
+        if ! offline_pack_installer_url_is_safe "$url"; then
+            offline_pack_add_error "pack_non_https_source: installer key $tool must use a credential-free HTTPS URL without query or fragment data"
+        fi
     done
 }
 
@@ -840,63 +950,39 @@ offline_pack_output_dir_is_empty() {
 
 offline_pack_validate_source_layout() {
     local source_file=""
-    local source_tree=""
-    local unsafe_path=""
 
-    # The pack is later executed as code. Refuse links and special files so a
-    # clean tracked symlink cannot smuggle host-dependent bytes or escape the
-    # pack root after cp -R. Only ordinary files/directories are admissible.
+    # The cache carries only these reviewed metadata inputs. In particular, it
+    # does not copy the repository's scripts/generated/acfs trees: those bytes
+    # were not consumed by the v1 installer path and carrying unhashed executable
+    # trees expanded the trust surface without providing an offline guarantee.
     for source_file in \
         "$OFFLINE_PACK_SOURCE_ROOT/VERSION" \
         "$OFFLINE_PACK_MANIFEST_FILE" \
-        "$OFFLINE_PACK_CHECKSUMS_FILE"
+        "$OFFLINE_PACK_CHECKSUMS_FILE" \
+        "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib/offline_artifact_pack.sh"
     do
         if [[ -L "$source_file" ]] || [[ ! -f "$source_file" ]]; then
             offline_pack_add_error "pack_source_unsafe: required source input is not a regular non-symlink file: $source_file"
             return 1
         fi
     done
-
-    for source_tree in \
-        "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib" \
-        "$OFFLINE_PACK_SOURCE_ROOT/scripts/generated" \
-        "$OFFLINE_PACK_SOURCE_ROOT/acfs"
-    do
-        if [[ -L "$source_tree" ]] || [[ ! -d "$source_tree" ]]; then
-            offline_pack_add_error "pack_source_unsafe: required source tree is not a regular non-symlink directory: $source_tree"
-            return 1
-        fi
-        unsafe_path="$(
-            offline_pack_find "$source_tree" -mindepth 1 \
-                \( -type l -o \( ! -type f ! -type d \) \) \
-                -print -quit
-        )" || {
-            offline_pack_add_error "pack_source_unverifiable: unable to inspect source tree $source_tree"
-            return 1
-        }
-        if [[ -n "$unsafe_path" ]]; then
-            offline_pack_add_error "pack_source_unsafe: source tree contains a symlink or special file: $unsafe_path"
-            return 1
-        fi
-    done
 }
 
 offline_pack_prepare_layout() {
-    local output_dir="$1"
-    local pack_root="$2"
+    local pack_root="$1"
     local rel=""
 
-    if [[ -e "$pack_root" ]]; then
-        offline_pack_add_error "pack_output_not_empty: $pack_root already exists"
+    if [[ ! -d "$pack_root" || -L "$pack_root" ]]; then
+        offline_pack_add_error "pack_output_unwritable: staging directory is missing or unsafe: $pack_root"
         return 1
     fi
 
-    if ! offline_pack_output_dir_is_empty "$output_dir"; then
-        offline_pack_add_error "pack_output_not_empty: $output_dir is not empty"
+    if ! offline_pack_output_dir_is_empty "$pack_root"; then
+        offline_pack_add_error "pack_output_not_empty: staging directory is not empty: $pack_root"
         return 1
     fi
 
-    if ! offline_pack_mkdir_p "$pack_root/scripts" "$pack_root/provenance" "$pack_root/artifacts"; then
+    if ! offline_pack_mkdir_p "$pack_root/provenance" "$pack_root/artifacts"; then
         offline_pack_add_error "pack_output_unwritable: unable to create pack layout under $pack_root"
         return 1
     fi
@@ -928,25 +1014,6 @@ offline_pack_prepare_layout() {
         esac
     done
 
-    for rel in scripts/lib scripts/generated acfs; do
-        [[ -e "$OFFLINE_PACK_SOURCE_ROOT/$rel" ]] || {
-            offline_pack_add_error "pack_source_missing: $rel"
-            return 1
-        }
-    done
-
-    if ! offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/scripts/lib" "$pack_root/scripts/lib"; then
-        offline_pack_add_error "pack_copy_failed: unable to copy scripts/lib"
-        return 1
-    fi
-    if ! offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/scripts/generated" "$pack_root/scripts/generated"; then
-        offline_pack_add_error "pack_copy_failed: unable to copy scripts/generated"
-        return 1
-    fi
-    if ! offline_pack_cp -R "$OFFLINE_PACK_SOURCE_ROOT/acfs" "$pack_root/acfs"; then
-        offline_pack_add_error "pack_copy_failed: unable to copy acfs"
-        return 1
-    fi
 }
 
 offline_pack_fetch_url() {
@@ -955,12 +1022,14 @@ offline_pack_fetch_url() {
     local curl_args=()
     local curl_bin=""
 
-    offline_pack_mkdir_p "${destination%/*}"
+    offline_pack_mkdir_p "${destination%/*}" || return 1
 
     case "$url" in
         https://*)
             curl_bin="$(offline_pack_curl_binary_path)" || return 1
-            curl_args=(--proto '=https' --proto-redir '=https' -fsSL --connect-timeout 10 --max-time "$OFFLINE_PACK_TIMEOUT_SECONDS" -o "$destination" "$url")
+            # -q must be the first option so ambient ~/.curlrc configuration
+            # cannot redirect, proxy, upload, or otherwise mutate this transfer.
+            curl_args=(-q --proto '=https' --proto-redir '=https' -fsSL --connect-timeout 10 --max-time "$OFFLINE_PACK_TIMEOUT_SECONDS" -o "$destination" "$url")
             "$curl_bin" "${curl_args[@]}"
             ;;
         *)
@@ -978,13 +1047,13 @@ offline_pack_append_module_json() {
     OFFLINE_PACK_MODULES_JSON="$(
         offline_pack_jq -c \
             --arg id "$module_id" \
-            --arg policy "bundled" \
+            --arg coverage "entrypoint_cached" \
             --arg tool "$tool" \
             --arg runner "$runner" \
             --arg argsRaw "$args_raw" \
             '. + [{
                 id: $id,
-                bundlingPolicy: $policy,
+                coverage: $coverage,
                 verifiedInstallerKey: $tool,
                 verifiedInstallerRunner: $runner,
                 verifiedInstallerArgsRaw: $argsRaw
@@ -1014,7 +1083,7 @@ offline_pack_append_artifact_json() {
             '. + [{
                 id: $id,
                 moduleId: $moduleId,
-                kind: "verified_installer",
+                kind: "verified_installer_entrypoint",
                 verifiedInstallerKey: $key,
                 path: $path,
                 sourceUrl: $sourceUrl,
@@ -1060,27 +1129,43 @@ offline_pack_download_artifacts() {
         if (( fetch_status != 0 )); then
             message="pack_download_failed: $module_id from $url"
             offline_pack_add_error "$message"
-            offline_pack_append_failure "pack_download_failed" "$module_id" "$tool" "$message"
+            offline_pack_append_failure "pack_download_failed" "$module_id" "$tool" "$message" || return 1
             if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
                 return 1
             fi
             continue
         fi
 
-        actual="$(offline_pack_sha256 "$artifact_path")"
+        if ! actual="$(offline_pack_sha256 "$artifact_path")"; then
+            message="pack_hash_failed: unable to checksum $module_id"
+            offline_pack_add_error "$message"
+            offline_pack_append_failure "pack_hash_failed" "$module_id" "$tool" "$message" || return 1
+            if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
+                return 1
+            fi
+            continue
+        fi
         if [[ "$actual" != "$expected" ]]; then
             message="pack_hash_mismatch: $module_id expected $expected got $actual"
             offline_pack_add_error "$message"
-            offline_pack_append_failure "pack_hash_mismatch" "$module_id" "$tool" "$message"
+            offline_pack_append_failure "pack_hash_mismatch" "$module_id" "$tool" "$message" || return 1
             if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
                 return 1
             fi
             continue
         fi
 
-        size_bytes="$(offline_pack_file_size "$artifact_path")"
-        offline_pack_append_module_json "$module_id" "$tool" "$runner" "$args_raw"
-        offline_pack_append_artifact_json "$module_id" "$tool" "$rel_path" "$url" "$actual" "$size_bytes"
+        if ! size_bytes="$(offline_pack_file_size "$artifact_path")"; then
+            message="pack_size_failed: unable to measure $module_id"
+            offline_pack_add_error "$message"
+            offline_pack_append_failure "pack_size_failed" "$module_id" "$tool" "$message" || return 1
+            if [[ "$OFFLINE_PACK_BEST_EFFORT" != "true" ]]; then
+                return 1
+            fi
+            continue
+        fi
+        offline_pack_append_module_json "$module_id" "$tool" "$runner" "$args_raw" || return 1
+        offline_pack_append_artifact_json "$module_id" "$tool" "$rel_path" "$url" "$actual" "$size_bytes" || return 1
     done
 }
 
@@ -1114,6 +1199,8 @@ offline_pack_plan_json() {
         --arg status "$(offline_pack_status)" \
         --arg mode "dry-run" \
         --arg packSchema "$OFFLINE_PACK_SCHEMA" \
+        --arg packScope "$OFFLINE_PACK_SCOPE" \
+        --arg executionNetworkMode "required" \
         --arg generatedAt "$generated_at" \
         --arg expiresAt "$expires_at" \
         --arg arch "$OFFLINE_PACK_ARCH" \
@@ -1129,6 +1216,9 @@ offline_pack_plan_json() {
           mode: $mode,
           pack: {
             schema: $packSchema,
+            packScope: $packScope,
+            executionNetworkMode: $executionNetworkMode,
+            transitiveClosure: "not_bundled",
             generatedAt: $generatedAt,
             expiresAt: $expiresAt,
             staleAfterDays: $staleAfterDays,
@@ -1147,7 +1237,7 @@ offline_pack_write_manifest() {
     local version="unknown"
     local manifest_sha=""
     local checksums_sha=""
-    local pack_mode="complete"
+    local pack_mode="$OFFLINE_PACK_COMPLETE_MODE"
 
     [[ "$OFFLINE_PACK_BEST_EFFORT" == "true" && ${#OFFLINE_PACK_ERRORS[@]} -gt 0 ]] && pack_mode="diagnostic"
     # Describe the bytes actually shipped, not pathnames that were read before
@@ -1156,17 +1246,40 @@ offline_pack_write_manifest() {
         version="$(< "$pack_root/VERSION")"
         version="${version//[[:space:]]/}"
     fi
-    manifest_sha="$(offline_pack_sha256 "$pack_root/acfs.manifest.yaml")"
-    checksums_sha="$(offline_pack_sha256 "$pack_root/checksums.yaml")"
+    manifest_sha="$(offline_pack_sha256 "$pack_root/acfs.manifest.yaml")" || return 1
+    checksums_sha="$(offline_pack_sha256 "$pack_root/checksums.yaml")" || return 1
 
-    offline_pack_jq -n \
+    if ! offline_pack_jq -n \
+        --arg generatedAt "$generated_at" \
+        --arg sourceRef "$OFFLINE_PACK_SOURCE_REF" \
+        --arg sourceCommit "$OFFLINE_PACK_SOURCE_COMMIT" \
+        --arg sourceTreeState "$OFFLINE_PACK_SOURCE_TREE_STATE" \
+        --arg arch "$OFFLINE_PACK_ARCH" \
+        --arg ubuntuVersion "$OFFLINE_PACK_UBUNTU_VERSION" \
+        '{generatedAt: $generatedAt, sourceRef: $sourceRef, sourceCommit: $sourceCommit, sourceTreeState: $sourceTreeState, target: {os: "ubuntu", version: $ubuntuVersion, architecture: $arch}}' \
+        > "$pack_root/provenance/builder-env.json"; then
+        return 1
+    fi
+
+    if ! offline_pack_jq -n \
+        --argjson artifacts "$OFFLINE_PACK_ARTIFACTS_JSON" \
+        '{artifacts: $artifacts}' \
+        > "$pack_root/provenance/source-index.json"; then
+        return 1
+    fi
+
+    # manifest.json is the acceptance marker. Write it only after every other
+    # staged file exists; the caller publishes the whole staging directory with
+    # one same-filesystem rename after this function succeeds.
+    if ! offline_pack_jq -n \
         --arg schema "$OFFLINE_PACK_SCHEMA" \
         --argjson schemaVersion 1 \
-        --arg generatedBy "acfs offline-pack build" \
+        --arg generatedBy "acfs installer-cache build" \
         --arg generatedAt "$generated_at" \
         --arg expiresAt "$expires_at" \
         --argjson staleAfterDays "$OFFLINE_PACK_EXPIRES_DAYS" \
         --arg packMode "$pack_mode" \
+        --arg packScope "$OFFLINE_PACK_SCOPE" \
         --arg acfsVersion "$version" \
         --arg sourceRef "$OFFLINE_PACK_SOURCE_REF" \
         --arg sourceCommit "$OFFLINE_PACK_SOURCE_COMMIT" \
@@ -1186,6 +1299,7 @@ offline_pack_write_manifest() {
           expiresAt: $expiresAt,
           staleAfterDays: $staleAfterDays,
           packMode: $packMode,
+          packScope: $packScope,
           acfs: {
             version: $acfsVersion,
             sourceRef: $sourceRef,
@@ -1199,35 +1313,27 @@ offline_pack_write_manifest() {
           artifacts: $artifacts,
           failures: $failures,
           policy: {
-            networkMode: "offline",
+            entrypointFetchMode: "cache_required",
+            executionNetworkMode: "required",
+            transitiveClosure: "not_bundled",
+            bootstrap: "not_bundled",
             verifiedInstallerPolicy: "must_match_checksums_yaml",
             partialPackPolicy: "refuse_unless_best_effort_diagnostic"
           }
-        }' > "$pack_root/manifest.json"
-
-    offline_pack_jq -n \
-        --arg generatedAt "$generated_at" \
-        --arg sourceRef "$OFFLINE_PACK_SOURCE_REF" \
-        --arg sourceCommit "$OFFLINE_PACK_SOURCE_COMMIT" \
-        --arg sourceTreeState "$OFFLINE_PACK_SOURCE_TREE_STATE" \
-        --arg arch "$OFFLINE_PACK_ARCH" \
-        --arg ubuntuVersion "$OFFLINE_PACK_UBUNTU_VERSION" \
-        '{generatedAt: $generatedAt, sourceRef: $sourceRef, sourceCommit: $sourceCommit, sourceTreeState: $sourceTreeState, target: {os: "ubuntu", version: $ubuntuVersion, architecture: $arch}}' \
-        > "$pack_root/provenance/builder-env.json"
-
-    offline_pack_jq -n \
-        --argjson artifacts "$OFFLINE_PACK_ARTIFACTS_JSON" \
-        '{artifacts: $artifacts}' \
-        > "$pack_root/provenance/source-index.json"
+        }' > "$pack_root/manifest.json"; then
+        return 1
+    fi
 }
 
 offline_pack_result_json() {
     local pack_root="$1"
     local generated_at="$2"
     local manifest_path=""
-    local pack_mode="complete"
+    local pack_mode="$OFFLINE_PACK_COMPLETE_MODE"
 
-    [[ -n "$pack_root" ]] && manifest_path="$pack_root/manifest.json"
+    if [[ "$OFFLINE_PACK_PUBLISHED" == "true" && -f "$pack_root/manifest.json" ]]; then
+        manifest_path="$pack_root/manifest.json"
+    fi
     [[ "$OFFLINE_PACK_BEST_EFFORT" == "true" && ${#OFFLINE_PACK_ERRORS[@]} -gt 0 ]] && pack_mode="diagnostic"
 
     offline_pack_jq -n \
@@ -1236,7 +1342,9 @@ offline_pack_result_json() {
         --arg generatedAt "$generated_at" \
         --arg outputDir "$OFFLINE_PACK_OUTPUT_DIR" \
         --arg packRoot "$pack_root" \
+        --arg stagingRoot "$OFFLINE_PACK_STAGING_ROOT" \
         --arg manifestPath "$manifest_path" \
+        --argjson published "$OFFLINE_PACK_PUBLISHED" \
         --arg packMode "$pack_mode" \
         --argjson modules "$OFFLINE_PACK_MODULES_JSON" \
         --argjson artifacts "$OFFLINE_PACK_ARTIFACTS_JSON" \
@@ -1247,7 +1355,7 @@ offline_pack_result_json() {
           schema: $schema,
           status: $status,
           generatedAt: $generatedAt,
-          output: {directory: $outputDir, packRoot: $packRoot, manifestPath: $manifestPath, packMode: $packMode},
+          output: {directory: $outputDir, packRoot: $packRoot, stagingRoot: $stagingRoot, manifestPath: $manifestPath, packMode: $packMode, published: $published},
           pack: {modules: $modules, artifacts: $artifacts, failures: $failures},
           validation: {errors: $errors[0], warnings: $warnings[0]}
         }'
@@ -1276,12 +1384,16 @@ offline_pack_emit_markdown() {
     local url=""
 
     status="$(offline_pack_status)"
-    printf 'ACFS Offline Artifact Pack Build\n'
+    printf 'ACFS Verified Installer Entrypoint Pack Build\n'
     printf 'Status: %s\n' "$status"
     printf 'Mode: %s\n' "$([[ "$OFFLINE_PACK_DRY_RUN" == "true" ]] && printf 'dry-run' || printf 'build')"
     printf 'Target: Ubuntu %s on %s\n' "$OFFLINE_PACK_UBUNTU_VERSION" "$OFFLINE_PACK_ARCH"
+    printf 'Capability: verified installer entrypoints only; downstream network may be required\n'
     if [[ -n "$pack_root" ]]; then
         printf 'Pack root: %s\n' "$pack_root"
+    fi
+    if [[ "$OFFLINE_PACK_PUBLISHED" != "true" && -n "$OFFLINE_PACK_STAGING_ROOT" ]]; then
+        printf 'Unpublished diagnostic staging root: %s\n' "$OFFLINE_PACK_STAGING_ROOT"
     fi
     printf '\n'
 
@@ -1321,6 +1433,7 @@ offline_pack_main() {
     local expires_at=""
     local output_dir=""
     local pack_root=""
+    local staging_root=""
 
     offline_pack_parse_args "$@" || {
         parse_status=$?
@@ -1363,24 +1476,50 @@ offline_pack_main() {
 
     output_dir="$(offline_pack_abs_dir "$OFFLINE_PACK_OUTPUT_DIR")"
     OFFLINE_PACK_OUTPUT_DIR="$output_dir"
-    pack_root="$output_dir/acfs-offline-pack"
+    pack_root="$output_dir/acfs-installer-cache"
 
-    if ! offline_pack_prepare_layout "$output_dir" "$pack_root"; then
+    if [[ -e "$pack_root" ]] || ! offline_pack_output_dir_is_empty "$output_dir"; then
+        offline_pack_add_error "pack_output_not_empty: $output_dir is not empty"
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
     fi
 
-    if ! offline_pack_download_artifacts "$pack_root"; then
+    staging_root="$(offline_pack_mktemp_dir "$output_dir/.acfs-installer-cache.build.XXXXXX" 2>/dev/null || true)"
+    if [[ -z "$staging_root" || ! -d "$staging_root" || -L "$staging_root" ]]; then
+        offline_pack_add_error "pack_output_unwritable: unable to create private staging directory under $output_dir"
+        offline_pack_emit_result "$pack_root" "$generated_at"
+        return 1
+    fi
+    OFFLINE_PACK_STAGING_ROOT="$staging_root"
+
+    if ! offline_pack_prepare_layout "$staging_root"; then
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
     fi
 
-    if ! offline_pack_assert_source_snapshot_unchanged; then
+    if ! offline_pack_download_artifacts "$staging_root"; then
         offline_pack_emit_result "$pack_root" "$generated_at"
         return 1
     fi
 
-    offline_pack_write_manifest "$pack_root" "$generated_at" "$expires_at"
+    if ! offline_pack_assert_source_snapshot_unchanged "$staging_root"; then
+        offline_pack_emit_result "$pack_root" "$generated_at"
+        return 1
+    fi
+
+    if ! offline_pack_write_manifest "$staging_root" "$generated_at" "$expires_at" \
+        || ! offline_pack_jq -e . "$staging_root/manifest.json" >/dev/null; then
+        offline_pack_add_error "pack_manifest_write_failed: unable to write and parse manifest.json"
+        offline_pack_emit_result "$pack_root" "$generated_at"
+        return 1
+    fi
+    if ! offline_pack_mv "$staging_root" "$pack_root"; then
+        offline_pack_add_error "pack_publish_failed: unable to publish completed cache at $pack_root"
+        offline_pack_emit_result "$pack_root" "$generated_at"
+        return 1
+    fi
+    OFFLINE_PACK_STAGING_ROOT=""
+    OFFLINE_PACK_PUBLISHED=true
     offline_pack_emit_result "$pack_root" "$generated_at"
 
     if [[ "$(offline_pack_status)" == "fail" ]]; then

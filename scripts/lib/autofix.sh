@@ -1241,11 +1241,11 @@ autofix_close_fd() {
     local fd="${1:-}"
     if [[ -n "$fd" && "$fd" =~ ^[0-9]+$ ]]; then
         case "$fd" in
-            9) exec 9>&- 2>/dev/null || true ;;
-            8) exec 8>&- 2>/dev/null || true ;;
-            7) exec 7>&- 2>/dev/null || true ;;
-            6) exec 6>&- 2>/dev/null || true ;;
-            *) eval "exec ${fd}>&-" 2>/dev/null || true ;;
+            9) exec 9>&- || true ;;
+            8) exec 8>&- || true ;;
+            7) exec 7>&- || true ;;
+            6) exec 6>&- || true ;;
+            *) eval "exec ${fd}>&-" || true ;;
         esac
     fi
 }
@@ -1260,10 +1260,10 @@ autofix_open_lock_fd() {
     for candidate_fd in 9 8 7 6; do
         if ! { true >&"$candidate_fd"; } 2>/dev/null; then
             case "$candidate_fd" in
-                9) exec 9>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "9"; return 0; } ;;
-                8) exec 8>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "8"; return 0; } ;;
-                7) exec 7>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "7"; return 0; } ;;
-                6) exec 6>"$target_file" 2>/dev/null && { printf -v "$_out_var" '%s' "6"; return 0; } ;;
+                9) exec 9>"$target_file" && { printf -v "$_out_var" '%s' "9"; return 0; } ;;
+                8) exec 8>"$target_file" && { printf -v "$_out_var" '%s' "8"; return 0; } ;;
+                7) exec 7>"$target_file" && { printf -v "$_out_var" '%s' "7"; return 0; } ;;
+                6) exec 6>"$target_file" && { printf -v "$_out_var" '%s' "6"; return 0; } ;;
             esac
         fi
     done
