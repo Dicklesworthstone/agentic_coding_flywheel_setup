@@ -2165,14 +2165,14 @@ check_shell() {
     elif [[ -n "$eza_bin" ]]; then
         check "shell.lsd_or_eza" "eza (fallback)" "pass"
     else
-        check "shell.lsd_or_eza" "lsd/eza" "warn" "neither installed" "sudo apt install lsd"
+        check "shell.lsd_or_eza" "lsd/eza" "warn" "neither installed" "$(doctor_pkg_install_hint lsd)"
     fi
 
     check_command "shell.atuin" "Atuin" "atuin" "$(fix_for_module "shell.atuin")"
-    check_command "shell.fzf" "fzf" "fzf" "sudo apt install fzf"
+    check_command "shell.fzf" "fzf" "fzf" "$(doctor_pkg_install_hint fzf)"
     check_command "shell.zoxide" "zoxide" "zoxide" \
         "Re-run: curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | bash"
-    check_command "shell.direnv" "direnv" "direnv" "sudo apt install direnv"
+    check_command "shell.direnv" "direnv" "direnv" "$(doctor_pkg_install_hint direnv)"
 
     blank_line
 }
@@ -2184,9 +2184,9 @@ check_core_tools() {
     check_command "tool.bun" "Bun" "bun" "$(fix_for_module "lang.bun")"
     check_command "tool.uv" "uv" "uv" "$(fix_for_module "lang.uv")"
     check_command "tool.cargo" "Cargo (Rust)" "cargo" "$(fix_for_module "lang.rust")"
-    check_command "tool.go" "Go" "go" "sudo apt install golang-go"
-    check_command "tool.tmux" "tmux" "tmux" "sudo apt install tmux"
-    check_command "tool.rg" "ripgrep" "rg" "sudo apt install ripgrep"
+    check_command "tool.go" "Go" "go" "$(doctor_pkg_install_hint golang-go go)"
+    check_command "tool.tmux" "tmux" "tmux" "$(doctor_pkg_install_hint tmux)"
+    check_command "tool.rg" "ripgrep" "rg" "$(doctor_pkg_install_hint ripgrep)"
     check_command "tool.gh" "GitHub CLI (gh)" "gh" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y gh"
     check_command "tool.git_lfs" "Git LFS" "git-lfs" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y git-lfs"
     check_command "tool.rsync" "rsync" "rsync" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y rsync"
@@ -3879,7 +3879,7 @@ check_postgres_connection() {
 
     # Skip if not installed
     if ! psql_bin="$(doctor_binary_path psql 2>/dev/null || true)" || [[ -z "$psql_bin" ]]; then
-        check "deep.db.postgres_connect" "PostgreSQL connection" "warn" "psql not installed" "sudo apt install postgresql-client"
+        check "deep.db.postgres_connect" "PostgreSQL connection" "warn" "psql not installed" "$(doctor_pkg_install_hint postgresql-client postgresql)"
         return
     fi
 
@@ -3968,7 +3968,7 @@ deep_check_tmux_performance() {
     local tmux_bin=""
 
     if ! tmux_bin="$(doctor_binary_path tmux 2>/dev/null || true)" || [[ -z "$tmux_bin" ]]; then
-        check "deep.tmux.present" "tmux responsiveness" "warn" "tmux not installed" "sudo apt install tmux"
+        check "deep.tmux.present" "tmux responsiveness" "warn" "tmux not installed" "$(doctor_pkg_install_hint tmux)"
         return
     fi
 
@@ -4216,7 +4216,7 @@ deep_check_notifications() {
     local curl_bin=""
     curl_bin="$(_acfs_doctor_system_binary_path curl 2>/dev/null || true)"
     if [[ -z "$curl_bin" ]]; then
-        check "deep.notifications.ntfy" "ntfy.sh notifications" "warn" "curl not available" "apt install curl"
+        check "deep.notifications.ntfy" "ntfy.sh notifications" "warn" "curl not available" "$(doctor_pkg_install_hint curl)"
         return
     fi
 
@@ -4272,7 +4272,7 @@ check_gh_auth() {
     local gh_bin=""
 
     if ! gh_bin="$(doctor_binary_path gh 2>/dev/null || true)" || [[ -z "$gh_bin" ]]; then
-        check "deep.cloud.gh_auth" "GitHub CLI" "warn" "not installed" "sudo apt install gh"
+        check "deep.cloud.gh_auth" "GitHub CLI" "warn" "not installed" "$(doctor_pkg_install_hint gh github-cli)"
         return
     fi
 

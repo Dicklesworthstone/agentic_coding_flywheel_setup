@@ -34,7 +34,7 @@
 #   --skip <module>       Skip a specific module (repeatable)
 #   --no-deps             Disable automatic dependency closure (expert/debug)
 #   --checksums-ref <ref> Fetch checksums.yaml from this ref (default: main for pinned tags/SHAs)
-#   --offline-pack <dir>  Use an extracted acfs-offline-pack/ and refuse live fallback
+#   --verified-installer-cache <dir>  Use a verified installer entrypoint cache; refuse live fallback
 #   --bootstrap-archive <file>  Use an explicitly selected local repository archive
 #   --ref <ref>          Git ref to install (branch, tag, or SHA). Equivalent to
 #                        ACFS_REF env var but works reliably in curl|bash pipelines.
@@ -179,10 +179,8 @@ ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_
 export ACFS_RAW ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_CHECKSUMS_REF_EXPLICIT ACFS_VERSION
 CHECKSUMS_FILE=""
 export CHECKSUMS_FILE
-ACFS_OFFLINE_PACK="${ACFS_OFFLINE_PACK:-}"
-ACFS_OFFLINE_NETWORK_MODE="${ACFS_OFFLINE_NETWORK_MODE:-}"
-ACFS_OFFLINE_PACK_REQUIRED="${ACFS_OFFLINE_PACK_REQUIRED:-}"
-export ACFS_OFFLINE_PACK ACFS_OFFLINE_NETWORK_MODE ACFS_OFFLINE_PACK_REQUIRED
+ACFS_VERIFIED_INSTALLER_CACHE="${ACFS_VERIFIED_INSTALLER_CACHE:-}"
+export ACFS_VERIFIED_INSTALLER_CACHE
 ACFS_COMMIT_SHA=""       # Short SHA for display (12 chars)
 ACFS_COMMIT_SHA_FULL=""  # Full SHA for pinning resume scripts (40 chars)
 
@@ -1579,8 +1577,8 @@ generate_resume_hint() {
         # checksum metadata from main, not the symbolic branch used originally.
         resume_args+=(--checksums-ref "$ACFS_CHECKSUMS_REF")
     fi
-    if [[ -n "${ACFS_OFFLINE_PACK:-}" ]]; then
-        resume_args+=(--offline-pack "$ACFS_OFFLINE_PACK")
+    if [[ -n "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]; then
+        resume_args+=(--verified-installer-cache "$ACFS_VERIFIED_INSTALLER_CACHE")
     fi
     if [[ "${ACFS_VERIFIED_BOOTSTRAP_SOURCE:-}" == "local_archive" ]] \
         && [[ -n "${ACFS_BOOTSTRAP_ORIGINAL_ARCHIVE_PATH:-}" ]]; then
@@ -2195,11 +2193,12 @@ acfs_require_ref_arg_value() {
     esac
 }
 
-acfs_resolve_offline_pack_dir() {
+acfs_resolve_verified_installer_cache_dir() {
     local flag="$1"
     local value="${2:-}"
     local candidate=""
     local resolved=""
+    local cache_root=""
 
     if [[ -z "$value" || "$value" == -* ]]; then
         log_fatal "$flag requires a directory"
@@ -2215,18 +2214,25 @@ acfs_resolve_offline_pack_dir() {
     candidate="${candidate%/}"
 
     if [[ -z "$candidate" || ! -d "$candidate" ]]; then
-        log_fatal "$flag must point to an existing extracted offline pack directory (got: $value)"
+        log_fatal "$flag must point to an existing verified installer cache directory (got: $value)"
     fi
 
     resolved="$(cd "$candidate" && pwd -P)" || {
         log_fatal "$flag could not resolve directory: $value"
     }
 
-    if [[ ! -r "$resolved/manifest.json" && ! -r "$resolved/acfs-offline-pack/manifest.json" ]]; then
-        log_fatal "$flag must point to acfs-offline-pack/ or its parent directory with manifest.json"
+    if [[ -r "$resolved/manifest.json" ]]; then
+        cache_root="$resolved"
+    elif [[ -r "$resolved/acfs-installer-cache/manifest.json" ]]; then
+        cache_root="$resolved/acfs-installer-cache"
+    else
+        log_fatal "$flag must point to acfs-installer-cache/ or its parent directory with manifest.json"
     fi
 
-    printf '%s\n' "$resolved"
+    cache_root="$(cd "$cache_root" && pwd -P)" || {
+        log_fatal "$flag could not resolve the verified installer cache root: $value"
+    }
+    printf '%s\n' "$cache_root"
 }
 
 acfs_resolve_bootstrap_archive_file() {
@@ -2295,19 +2301,16 @@ acfs_select_bootstrap_archive_file() {
     fi
 }
 
-acfs_normalize_offline_pack_configuration() {
-    if [[ -z "${ACFS_OFFLINE_PACK:-}" ]]; then
+acfs_normalize_verified_installer_cache_configuration() {
+    if [[ -z "${ACFS_VERIFIED_INSTALLER_CACHE:-}" ]]; then
         return 0
     fi
 
-    ACFS_OFFLINE_PACK="$(acfs_resolve_offline_pack_dir "ACFS_OFFLINE_PACK" "$ACFS_OFFLINE_PACK")"
-    if [[ -z "${ACFS_OFFLINE_NETWORK_MODE:-}" ]]; then
-        ACFS_OFFLINE_NETWORK_MODE=offline
-    fi
-    if [[ "${ACFS_OFFLINE_NETWORK_MODE:-}" == "offline" && -z "${ACFS_OFFLINE_PACK_REQUIRED:-}" ]]; then
-        ACFS_OFFLINE_PACK_REQUIRED=true
-    fi
-    export ACFS_OFFLINE_PACK ACFS_OFFLINE_NETWORK_MODE ACFS_OFFLINE_PACK_REQUIRED
+    ACFS_VERIFIED_INSTALLER_CACHE="$(
+        acfs_resolve_verified_installer_cache_dir \
+            "ACFS_VERIFIED_INSTALLER_CACHE" "$ACFS_VERIFIED_INSTALLER_CACHE"
+    )"
+    export ACFS_VERIFIED_INSTALLER_CACHE
 }
 
 parse_args() {
@@ -2328,6 +2331,8 @@ Options:
   --print                 Print script without running
   --resume                Resume interrupted installation
   --force-reinstall       Force reinstall of all modules
+  --verified-installer-cache <dir>
+                          Use a verified installer entrypoint cache and refuse live fallback
   --help, -h              Show this help message
 EOF
                 exit 0
@@ -2430,23 +2435,21 @@ EOF
                 ACFS_CHECKSUMS_RAW="https://raw.githubusercontent.com/${ACFS_REPO_OWNER}/${ACFS_REPO_NAME}/${ACFS_CHECKSUMS_REF}"
                 export ACFS_CHECKSUMS_REF ACFS_CHECKSUMS_RAW ACFS_CHECKSUMS_REF_EXPLICIT
                 ;;
-            --offline-pack|--offline-pack=*)
-                if [[ "$1" == "--offline-pack" ]]; then
+            --verified-installer-cache|--verified-installer-cache=*)
+                if [[ "$1" == "--verified-installer-cache" ]]; then
                     if [[ -z "${2:-}" || "$2" == -* ]]; then
-                        log_fatal "--offline-pack requires a directory"
+                        log_fatal "--verified-installer-cache requires a directory"
                     fi
-                    ACFS_OFFLINE_PACK="$2"
+                    ACFS_VERIFIED_INSTALLER_CACHE="$2"
                     shift 2
                 else
-                    ACFS_OFFLINE_PACK="${1#*=}"
-                    if [[ -z "$ACFS_OFFLINE_PACK" ]]; then
-                        log_fatal "--offline-pack requires a directory"
+                    ACFS_VERIFIED_INSTALLER_CACHE="${1#*=}"
+                    if [[ -z "$ACFS_VERIFIED_INSTALLER_CACHE" ]]; then
+                        log_fatal "--verified-installer-cache requires a directory"
                     fi
                     shift
                 fi
-                ACFS_OFFLINE_NETWORK_MODE=offline
-                ACFS_OFFLINE_PACK_REQUIRED=true
-                export ACFS_OFFLINE_PACK ACFS_OFFLINE_NETWORK_MODE ACFS_OFFLINE_PACK_REQUIRED
+                export ACFS_VERIFIED_INSTALLER_CACHE
                 ;;
             --bootstrap-archive|--bootstrap-archive=*)
                 if [[ "$1" == "--bootstrap-archive" ]]; then
@@ -11010,7 +11013,7 @@ main() {
         exit 0
     fi
 
-    acfs_normalize_offline_pack_configuration
+    acfs_normalize_verified_installer_cache_configuration
 
     if [[ -z "${SCRIPT_DIR:-}" ]]; then
         # Resolve ACFS_REF to a specific commit SHA early to prevent mixed-ref installs.
