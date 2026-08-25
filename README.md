@@ -30,8 +30,17 @@
 ### Quick Install
 
 ```bash
-{ curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh" || curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh"; } | bash -s -- --yes --mode vibe
+{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe
 ```
+
+> [!NOTE]
+> `raw.githubusercontent.com` is listed first deliberately. jsDelivr caches a *mutable* `@main`
+> reference, so it can serve an installer that is hours or days behind the repository. When that
+> happens the stale installer's bootstrap extraction list does not match the current checksum
+> ledger and the install fails with `INTEGRITY: <file> missing` — a failure that looks like a
+> repository defect but is purely a CDN cache artifact. Keeping the authoritative source primary
+> and the CDN as fallback preserves the resilience without that failure mode. Please do not
+> reorder these.
 
 The installer is **idempotent**—if interrupted, simply re-run it. It will automatically resume from the last completed phase without prompts.
 
@@ -456,7 +465,7 @@ The installer is the heart of ACFS—a modular Bash script that transforms a fre
 Full vibe mode (recommended for throwaway VPS):
 
 ```bash
-{ curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh" || curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh"; } | bash -s -- --yes --mode vibe
+{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe
 ```
 
 Interactive mode (asks for confirmation):
@@ -3088,7 +3097,7 @@ For local development, use the individual tools directly.
 
 The installer is **checkpointed**. Simply re-run it:
 ```bash
-{ curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh" || curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh"; } | bash -s -- --yes --mode vibe
+{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe
 ```
 
 It will skip already-completed phases and resume where it left off.
@@ -4415,7 +4424,7 @@ for f in ~/.zshrc ~/.tmux.conf ~/.p10k.zsh; do
   [ -f "$f" ] && mv "$f" "$f".backup."$ts"
 done
 
-{ curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh" || curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh"; } | bash -s -- --yes --mode vibe --force-reinstall
+{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe --force-reinstall
 ```
 
 ---
