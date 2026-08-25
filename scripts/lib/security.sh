@@ -2031,6 +2031,12 @@ acfs_load_checksums_strict() {
     local tool=""
     local expected_count=0
     local timestamp_header_pattern='^# checksums\.yaml - Auto-generated [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$'
+    local file_size=""
+    local tr_bin=""
+    local cmp_bin=""
+    local tail_bin=""
+    local last_byte=""
+    local nul_stripped=""
     local -A parsed_urls=()
     local -A parsed_checksums=()
     local -n output_urls="$urls_var"
@@ -2038,6 +2044,31 @@ acfs_load_checksums_strict() {
 
     if [[ ! -f "$file" || -L "$file" || ! -r "$file" ]]; then
         acfs_strict_checksums_error "$file" 0 "expected a readable regular non-symlink file"
+        return 1
+    fi
+    file_size="$(acfs_security_file_size "$file" 2>/dev/null || true)"
+    if [[ ! "$file_size" =~ ^[0-9]+$ ]] || (( file_size > ACFS_CHECKSUMS_YAML_MAX_BYTES )); then
+        acfs_strict_checksums_error "$file" 0 "file exceeds the checksum-policy size limit"
+        return 1
+    fi
+
+    # Bash variables cannot represent NUL bytes, so detect them before the
+    # line parser rather than letting `read` silently erase security-relevant
+    # input.  The parser may only consume the exact bytes it validates.
+    tr_bin="$(acfs_security_required_binary_path tr)" || return $?
+    cmp_bin="$(acfs_security_required_binary_path cmp)" || return $?
+    nul_stripped="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-checksums-no-nul.XXXXXX" 2>/dev/null || true)"
+    if [[ -z "$nul_stripped" ]] \
+        || ! LC_ALL=C "$tr_bin" -d '\000' < "$file" > "$nul_stripped" \
+        || ! "$cmp_bin" -s "$file" "$nul_stripped"; then
+        [[ -n "$nul_stripped" ]] && _acfs_remove_temp_files "$nul_stripped"
+        acfs_strict_checksums_error "$file" 0 "NUL bytes or an unreadable byte stream are forbidden"
+        return 1
+    fi
+    _acfs_remove_temp_files "$nul_stripped"
+    tail_bin="$(acfs_security_required_binary_path tail)" || return $?
+    if ! last_byte="$("$tail_bin" -c 1 < "$file" 2>/dev/null)" || [[ -n "$last_byte" ]]; then
+        acfs_strict_checksums_error "$file" 0 "file must end with exactly the generated newline boundary"
         return 1
     fi
 

@@ -44,7 +44,7 @@ AUTHORIZATION_FILE="$STATE_DIR/authorized-checksum-change"
 EXPECTED_BUN_VERSION="1.3.8"
 MONITOR_EXEC_PATH="$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 MONITOR_RUN_BUDGET_SECONDS=1050
-MONITOR_FAILURE_RESERVE_SECONDS=30
+MONITOR_FAILURE_RESERVE_SECONDS=60
 MONITOR_STARTED_AT_SECONDS=$SECONDS
 STATE="INIT"
 
@@ -144,9 +144,15 @@ run_clean_bounded() {
         "$@"
 }
 
+run_failure_bounded() {
+    timeout --signal=TERM --kill-after=5 20 "$@"
+}
+
 sha256_file() {
-    local file="$1" digest=""
+    local file="$1" digest="" links=""
     [[ -f "$file" && ! -L "$file" && -r "$file" ]] || return 1
+    links="$(stat -c '%h' -- "$file" 2>/dev/null)" || return 1
+    [[ "$links" == "1" ]] || return 1
     digest="$(sha256sum -- "$file" 2>/dev/null)" || return 1
     digest="${digest%% *}"
     [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || return 1
@@ -273,7 +279,7 @@ authorization_is_valid() {
     [[ "$mode" =~ ^[0-7]{3,4}$ && "$size" =~ ^[0-9]+$ ]] || return 1
     (( size > 0 && size <= 256 )) || return 1
     mode_value=$((8#$mode))
-    (( (mode_value & 022) == 0 )) || return 1
+    (( (mode_value & 077) == 0 )) || return 1
     mapfile -t lines < "$AUTHORIZATION_FILE" || return 1
     [[ ${#lines[@]} -eq 1 && "${lines[0]}" == "authorize:$digest" ]]
 }
@@ -290,7 +296,8 @@ record_external_review() {
         printf 'This monitor observed installer bytes outside the exact trusted owner boundary.\n\n'
         printf -- '- Authorization digest: `%s`\n' "$digest"
         printf -- '- Authorization status: `%s`\n' "$authorization_status"
-        printf -- '- Pinned base: `%s`\n\n' "$BASE_HEAD"
+        printf -- '- Pinned base: `%s`\n' "$BASE_HEAD"
+        printf -- '- Verification report SHA256: `%s`\n\n' "$VERIFICATION_REPORT_SHA256"
         printf '### First-observation evidence\n\n'
         jq -r --argjson names "$external_names_json" '
           .mismatches[] | select(.name as $name | $names | index($name)) |
@@ -301,22 +308,22 @@ record_external_review() {
         printf '```text\nauthorize:%s\n```\n' "$digest"
     } > "$body_file" || return 1
 
-    existing="$(gh issue list --repo "$repo_slug" --state open \
+    existing="$(run_bounded 45 gh issue list --repo "$repo_slug" --state open \
         --label security --label checksum-update \
         --search "$digest" --json number -q '.[0].number' \
         2>>"$LOG_FILE" || true)"
     if [[ -n "$existing" && "$existing" != "null" ]]; then
-        gh issue comment "$existing" --repo "$repo_slug" \
+        run_bounded 45 gh issue comment "$existing" --repo "$repo_slug" \
             --body-file "$body_file" >>"$LOG_FILE" 2>&1
         return
     fi
-    if gh issue create --repo "$repo_slug" \
+    if run_bounded 45 gh issue create --repo "$repo_slug" \
         --title "External installer checksum authorization ${digest:0:12}" \
         --label security --label checksum-update \
         --body-file "$body_file" >>"$LOG_FILE" 2>&1; then
         return 0
     fi
-    gh issue create --repo "$repo_slug" \
+    run_bounded 45 gh issue create --repo "$repo_slug" \
         --title "External installer checksum authorization ${digest:0:12}" \
         --body-file "$body_file" >>"$LOG_FILE" 2>&1
 }
@@ -365,16 +372,16 @@ _alert_fail_closed_streak() {
     # external-change review issue below)
     local repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
     local existing=""
-    existing="$(gh issue list --repo "$repo_slug" --state open \
+    existing="$(run_failure_bounded gh issue list --repo "$repo_slug" --state open \
         --label monitoring \
         --search "Checksum monitor failing closed" \
         --json number -q '.[0].number' 2>>"$LOG_FILE" || true)"
     if [[ -n "$existing" && "$existing" != "null" ]]; then
-        gh issue comment "$existing" --repo "$repo_slug" \
+        run_failure_bounded gh issue comment "$existing" --repo "$repo_slug" \
             --body "$alert_msg" >>"$LOG_FILE" 2>&1 \
             && log "commented on existing monitoring issue #$existing" || true
     else
-        if gh issue create --repo "$repo_slug" \
+        if run_failure_bounded gh issue create --repo "$repo_slug" \
             --title "🚨 Checksum monitor failing closed - checksums unmonitored" \
             --label monitoring \
             --body "$alert_msg" >>"$LOG_FILE" 2>&1; then
@@ -382,7 +389,7 @@ _alert_fail_closed_streak() {
         else
             # The label exists in the canonical repo; if it is ever missing,
             # an unlabeled alert (dedupe degraded) beats no alert at all.
-            gh issue create --repo "$repo_slug" \
+            run_failure_bounded gh issue create --repo "$repo_slug" \
                 --title "🚨 Checksum monitor failing closed - checksums unmonitored" \
                 --body "$alert_msg" >>"$LOG_FILE" 2>&1 \
                 && log "created monitoring alert issue (unlabeled fallback)" || true
@@ -429,7 +436,7 @@ unset GIT_QUARANTINE_PATH GIT_REPLACE_REF_BASE GIT_SSH_COMMAND GIT_SSH_VARIANT
 unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE
 unset GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE
 unset GIT_ASKPASS SSH_ASKPASS GH_HOST GH_REPO
-for dep in git gh jq curl bun flock sha256sum stat sort uniq awk sed cmp mktemp paste head id cp; do
+for dep in bash env git gh jq curl bun flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp timeout; do
     command -v "$dep" >/dev/null 2>&1 || fail_closed "missing dependency: $dep"
 done
 
@@ -448,7 +455,7 @@ esac
     || fail_closed "monitor clone must already be on main"
 require_clean_tree \
     || fail_closed "monitor clone has local tracked, staged, or untracked changes"
-git fetch --quiet origin main master 2>>"$LOG_FILE" \
+run_bounded 60 git fetch --quiet origin main master 2>>"$LOG_FILE" \
     || fail_closed "fetch of main and legacy mirror failed"
 read_remote_heads || fail_closed "could not resolve exactly one remote main and mirror ref"
 [[ "$REMOTE_MAIN_HEAD" == "$REMOTE_MASTER_HEAD" ]] \
@@ -466,7 +473,7 @@ actual_bun_version="$(run_clean bun --version 2>>"$LOG_FILE" || true)"
 [[ "$actual_bun_version" == "$EXPECTED_BUN_VERSION" ]] \
     || fail_closed "Bun version mismatch: expected $EXPECTED_BUN_VERSION, found ${actual_bun_version:-unavailable}"
 ( cd packages/manifest \
-    && run_clean bun install --frozen-lockfile --ignore-scripts --silent >>"$LOG_FILE" 2>&1 ) \
+    && run_clean_bounded 90 bun install --frozen-lockfile --ignore-scripts --silent >>"$LOG_FILE" 2>&1 ) \
     || fail_closed "frozen, lifecycle-disabled Bun install failed in packages/manifest"
 require_clean_tree || fail_closed "dependency preparation changed tracked or untracked repository state"
 advance_state LOCKED CLEAN_BASE
@@ -476,7 +483,7 @@ log "clean base pinned to $BASE_HEAD"
 drift_json="$(mktemp "$STATE_DIR/drift-$RUN_TS.XXXXXX.json")" \
     || fail_closed "could not allocate drift evidence file"
 set +e
-run_clean bash scripts/check-manifest-drift.sh --json >"$drift_json" 2>>"$LOG_FILE"
+run_clean_bounded 120 bash scripts/check-manifest-drift.sh --json >"$drift_json" 2>>"$LOG_FILE"
 drift_exit=$?
 set -e
 validate_drift_report "$drift_json" \
@@ -498,11 +505,13 @@ CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)" \
 verify_json="$(mktemp "$STATE_DIR/verify-$RUN_TS.XXXXXX.json")" \
     || fail_closed "could not allocate verification evidence file"
 set +e
-run_clean bash scripts/lib/security.sh --verify --json >"$verify_json" 2>>"$LOG_FILE"
+run_clean_bounded 300 bash scripts/lib/security.sh --verify --json >"$verify_json" 2>>"$LOG_FILE"
 verify_exit=$?
 set -e
 validate_verification_report "$verify_json" "$CURRENT_CHECKSUMS_SHA256" \
     || fail_closed "checksum verification returned data outside its strict bound report contract"
+VERIFICATION_REPORT_SHA256="$(sha256_file "$verify_json")" \
+    || fail_closed "could not bind the validated verification report bytes"
 
 mismatches="$(jq '.mismatches | length' "$verify_json")"
 errors="$(jq '.errors | length' "$verify_json")"
@@ -550,10 +559,10 @@ if [[ "$mismatches" -gt 0 ]]; then
         || fail_closed "could not allocate raw candidate evidence file"
     validated_candidate="$(mktemp "$STATE_DIR/checksums-validated-$RUN_TS.XXXXXX.yaml")" \
         || fail_closed "could not allocate validated candidate evidence file"
-    run_clean bash scripts/lib/security.sh --update-checksums \
+    run_clean_bounded 300 bash scripts/lib/security.sh --update-checksums \
         >"$raw_candidate" 2>>"$LOG_FILE" \
         || fail_closed "canonical checksum candidate generation failed"
-    run_clean bash scripts/lib/security.sh \
+    run_clean_bounded 60 bash scripts/lib/security.sh \
         --validate-checksum-candidate checksums.yaml "$raw_candidate" "$verify_json" \
         >"$validated_candidate" 2>>"$LOG_FILE" \
         || fail_closed "candidate is not exactly implied by the first verification report"
@@ -601,7 +610,7 @@ if [[ "$mismatches" -gt 0 ]]; then
     [[ "$(sha256_file checksums.yaml)" == "$CANDIDATE_SHA256" ]] \
         || fail_closed "placed checksums.yaml does not match the validated candidate"
     ( cd packages/manifest \
-        && run_clean bun run generate >>"$LOG_FILE" 2>&1 ) \
+        && run_clean_bounded 120 bun run generate >>"$LOG_FILE" 2>&1 ) \
         || fail_closed "generation from the validated checksum candidate failed"
     assert_closed_publication_worktree \
         || fail_closed "generation escaped the closed publication path set"
@@ -609,7 +618,7 @@ if [[ "$mismatches" -gt 0 ]]; then
     post_drift_json="$(mktemp "$STATE_DIR/post-generate-drift-$RUN_TS.XXXXXX.json")" \
         || fail_closed "could not allocate post-generation evidence file"
     set +e
-    run_clean bash scripts/check-manifest-drift.sh --json \
+    run_clean_bounded 120 bash scripts/check-manifest-drift.sh --json \
         >"$post_drift_json" 2>>"$LOG_FILE"
     post_drift_exit=$?
     set -e
@@ -626,6 +635,7 @@ advance_state AUTHORIZED GENERATED
 
 for publication_path in "${PUBLICATION_PATHS[@]}"; do
     [[ -f "$publication_path" && ! -L "$publication_path" ]] \
+        && [[ "$(stat -c '%h' -- "$publication_path" 2>/dev/null || true)" == "1" ]] \
         || fail_closed "closed publication member is missing or unsafe: $publication_path"
 done
 
@@ -664,7 +674,8 @@ if [[ "$publication_required" == "true" ]]; then
         -c commit.gpgsign=false \
         commit --quiet \
         -m "chore(security): publish validated checksums for ${changed_tools}" \
-        -m "First-observation report: ${CURRENT_CHECKSUMS_SHA256}" \
+        -m "Observed checksums policy: ${CURRENT_CHECKSUMS_SHA256}" \
+        -m "Verification evidence: ${VERIFICATION_REPORT_SHA256}" \
         -m "Validated candidate: ${CANDIDATE_SHA256}" \
         -m "Changed tools: ${changed_tools}" \
         -m "Trusted: ${trusted_changed:-none}" \
@@ -695,7 +706,7 @@ if [[ "$publication_required" == "true" ]]; then
     printf 'prepared\t%s\t%s\n' "$BASE_HEAD" "$PUBLISH_HEAD" >> "$publication_journal" \
         || fail_closed "could not record prepared publication"
     set +e
-    git -c core.hooksPath=/dev/null push --atomic --quiet origin \
+    run_bounded 90 git -c core.hooksPath=/dev/null push --atomic --quiet origin \
         "$PUBLISH_HEAD:refs/heads/main" \
         "$PUBLISH_HEAD:refs/heads/master" >>"$LOG_FILE" 2>&1
     push_exit=$?

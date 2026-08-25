@@ -394,6 +394,35 @@ EOF
     fi
 }
 
+test_strict_checksums_parser_rejects_byte_boundary_smuggling() {
+    local name="strict checksum parser rejects erased NULs and missing final newline"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local -A parsed_urls=()
+    local -A parsed_checksums=()
+    local policy="$TEST_TMP_DIR/strict-nul.yaml"
+    local unterminated_policy="$TEST_TMP_DIR/strict-unterminated.yaml"
+    local policy_without_final_newline=""
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    write_strict_policy_fixture "$policy" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    printf '\0' >> "$policy"
+    write_strict_policy_fixture "$unterminated_policy" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    policy_without_final_newline="$(acfs_security_cat_file "$unterminated_policy")"
+    printf '%s' "$policy_without_final_newline" > "$unterminated_policy"
+    if ! acfs_load_checksums_strict "$policy" parsed_urls parsed_checksums 2>/dev/null \
+        && ! acfs_load_checksums_strict "$unterminated_policy" parsed_urls parsed_checksums 2>/dev/null; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "A byte-mutated policy was normalized and accepted"
+    fi
+}
+
 test_versioned_checksum_report_binds_urls_hashes_and_exit_status() {
     local name="versioned checksum report binds URLs/hashes and returns nonzero on mismatch"
     local -A urls=(
@@ -791,6 +820,7 @@ setup_fixtures
 test_strict_checksums_parser_accepts_canonical_closed_world
 test_strict_checksums_parser_rejects_noncanonical_mutations_transactionally
 test_strict_checksums_parser_rejects_incomplete_set_and_extra_syntax
+test_strict_checksums_parser_rejects_byte_boundary_smuggling
 test_versioned_checksum_report_binds_urls_hashes_and_exit_status
 test_checksum_candidate_validation_is_exact_and_network_free
 test_checksum_candidate_validation_rejects_cross_wired_hashes

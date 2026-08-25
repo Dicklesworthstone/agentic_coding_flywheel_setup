@@ -625,6 +625,53 @@ export default function RunInstallerPage() {
         </div>
       </DetailsSection>
 
+      {/* Poor-network & Pre-cached Install (Verified Installer Cache) */}
+      <DetailsSection summary="Poor connection or slow network? Use a pre-cached installer">
+        <div className="space-y-4 text-sm">
+          <p className="text-muted-foreground">
+            If your VPS has a flaky or slow connection to upstream script hosts, you can pre-build
+            a verified installer entrypoint cache on a fast machine and transfer it to the VPS:
+          </p>
+
+          <div className="space-y-3">
+            <div>
+              <p className="font-semibold text-foreground">1. Build cache on your local/connected machine:</p>
+              <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
+                acfs installer-cache build --output /tmp/acfs-cache
+              </div>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground">2. Transfer cache to your VPS via SCP:</p>
+              <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
+                scp -r /tmp/acfs-cache/acfs-installer-cache root@{vpsIP}:/tmp/acfs-installer-cache
+              </div>
+            </div>
+
+            <div>
+              <p className="font-semibold text-foreground">3. Run installer with cache flag on VPS:</p>
+              <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
+                curl -fsSL &quot;https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/{effectiveSourceRef}/install.sh&quot; | bash -s -- --verified-installer-cache /tmp/acfs-installer-cache --yes --mode {installMode}
+              </div>
+            </div>
+          </div>
+
+          <AlertCard variant="info" title="Cache Boundaries &amp; Requirements">
+            <ul className="list-disc list-inside space-y-1 text-xs text-muted-foreground">
+              <li>
+                <strong>Entrypoint Protection:</strong> The cache verifies and loads SHA-256-approved tool installer scripts locally without downloading them live.
+              </li>
+              <li>
+                <strong>Network Still Required:</strong> The VPS still needs basic internet connectivity for standard APT packages, Cargo crates, and language registries.
+              </li>
+              <li>
+                <strong>No Secrets or Keys:</strong> The cache contains only public installer scripts—credentials, API keys, and tokens are never bundled.
+              </li>
+            </ul>
+          </AlertCard>
+        </div>
+      </DetailsSection>
+
       {/* What it installs - collapsible */}
       <DetailsSection summary="What this command installs">
         <div className="grid gap-4 sm:grid-cols-2">

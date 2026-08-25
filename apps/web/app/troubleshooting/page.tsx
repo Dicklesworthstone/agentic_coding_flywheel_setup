@@ -572,6 +572,51 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
     ],
     prevention: "Use a verified payment method and respond promptly to verification emails.",
   },
+  {
+    id: "installer-slow-network-cache",
+    title: "Installer Downloads Timing Out or Slow Network",
+    category: "installation",
+    symptoms: [
+      "curl errors or timeout during installer execution",
+      "Verified installer script downloads hanging or timing out",
+      "Flaky VPS connection repeatedly interrupting installation",
+    ],
+    causes: [
+      "VPS network route has low bandwidth or high latency to upstream CDNs",
+      "Transient network drops interrupting live tool script downloads",
+    ],
+    solutions: [
+      {
+        title: "Re-run the installer (idempotent resume)",
+        steps: [
+          "The installer is checkpointed and idempotent",
+          "Simply re-run the one-liner command; it will resume from the last completed phase",
+        ],
+        command: "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --yes --mode vibe",
+        runLocation: "vps",
+      },
+      {
+        title: "Build and transfer a verified installer cache",
+        steps: [
+          "Build the verified installer cache on a high-speed connected machine",
+          "Transfer the cache directory to your VPS using scp",
+          "Run the installer pointing to the local verified installer cache directory",
+        ],
+        command: "acfs installer-cache build --output /tmp/acfs-cache && scp -r /tmp/acfs-cache/acfs-installer-cache root@YOUR_VPS_IP:/tmp/acfs-installer-cache",
+        runLocation: "local",
+      },
+      {
+        title: "Run installer with cache flag on VPS",
+        steps: [
+          "Run install.sh with --verified-installer-cache flag pointing to the transferred directory",
+          "Note: VPS still requires basic internet access for APT packages and Cargo crates",
+        ],
+        command: "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh | bash -s -- --verified-installer-cache /tmp/acfs-installer-cache --yes --mode vibe",
+        runLocation: "vps",
+      },
+    ],
+    prevention: "Pre-building the verified installer cache avoids live entrypoint downloads during VPS installation.",
+  },
 ];
 
 // Build searchable index

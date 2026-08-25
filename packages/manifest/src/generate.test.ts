@@ -1265,6 +1265,20 @@ describe('Generated script headers', () => {
       'install_asset_from_path "$generated_script"'
     );
 
+    const updater = readFileSync(
+      resolve(PROJECT_ROOT, 'scripts/lib/update.sh'),
+      'utf-8'
+    );
+    expect(updater).toContain(
+      'Refusing unexpected generated runtime asset:'
+    );
+    expect(updater).toContain(
+      'Refusing unexpected generated runtime asset from $source_ref:'
+    );
+    expect(updater).not.toContain(
+      '_acfs_sync_deployed_file "scripts/generated/$generated_name"'
+    );
+
     const driftChecker = readFileSync(
       resolve(PROJECT_ROOT, 'scripts/check-manifest-drift.sh'),
       'utf-8'
