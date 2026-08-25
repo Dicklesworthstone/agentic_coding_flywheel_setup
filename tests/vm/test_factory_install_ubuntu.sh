@@ -43,6 +43,7 @@ PACKET_ONLY_MODULES_CSV=""
 PACKET_ONLY_PHASES_CSV=""
 PACKET_SKIP_MODULES_CSV=""
 PACKET_NO_DEPS=false
+PROVISIONING_PACKET_VALIDATED=false
 
 usage() {
     cat <<'EOF'
@@ -290,7 +291,10 @@ write_factory_sentinel_artifacts() {
 
     local packet_json="{}"
     local packet_projection_status="not_supplied"
-    if [[ -n "$PROVISIONING_PACKET" && -f "$PROVISIONING_PACKET" ]]; then
+    if [[ -n "$PROVISIONING_PACKET" ]]; then
+        packet_projection_status="not_validated"
+    fi
+    if [[ "$PROVISIONING_PACKET_VALIDATED" == "true" && -f "$PROVISIONING_PACKET" ]]; then
         packet_projection_status="unavailable"
         if packet_json="$(jq -ce '{
                 schema: .schema,
@@ -384,7 +388,7 @@ write_factory_sentinel_artifacts() {
 $([[ -n "$sanitized_error_msg" ]] && echo "- **Error**: ${sanitized_error_msg}" || echo "None")
 
 ## Provisioning Packet
-$([[ -n "$PROVISIONING_PACKET" ]] && echo "Validated and mapped from: $(basename "$PROVISIONING_PACKET")" || echo "No packet supplied (direct factory run)")
+$([[ -n "$PROVISIONING_PACKET" ]] && echo "Packet supplied; projection status: ${packet_projection_status}" || echo "No packet supplied (direct factory run)")
 EOF
 }
 
@@ -394,7 +398,7 @@ validate_provisioning_packet() {
     fi
     if [[ ! -f "$PROVISIONING_PACKET" ]]; then
         echo "ERROR: provisioning packet file not found: $PROVISIONING_PACKET" >&2
-        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet file not found: $PROVISIONING_PACKET"
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet file not found"
         redact_local_factory_artifacts
         exit 2
     fi
@@ -402,7 +406,7 @@ validate_provisioning_packet() {
     local validator="$REPO_ROOT/scripts/lib/provisioning_packet.sh"
     if [[ ! -r "$validator" ]]; then
         echo "ERROR: provisioning packet validator not found: $validator" >&2
-        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet validator not found: $validator"
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet validator unavailable"
         redact_local_factory_artifacts
         exit 2
     fi
@@ -411,6 +415,14 @@ validate_provisioning_packet() {
     if ! val_out="$(bash "$validator" --file "$PROVISIONING_PACKET" --json 2>&1)"; then
         echo "ERROR: provisioning packet failed validation: $val_out" >&2
         write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet failed validation: $val_out"
+        redact_local_factory_artifacts
+        exit 2
+    fi
+    PROVISIONING_PACKET_VALIDATED=true
+
+    if [[ -n "$INSTALL_URL" ]]; then
+        echo "ERROR: --install-url cannot be combined with a provisioning packet" >&2
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "install URL override conflicts with provisioning packet source intent"
         redact_local_factory_artifacts
         exit 2
     fi

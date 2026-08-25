@@ -166,31 +166,31 @@ provisioning_packet_validate_enums() {
     os_distribution="$(provisioning_packet_scalar "osImage.distribution")"
 
     [[ "$schema" == "$PROVISIONING_PACKET_SCHEMA" ]] || \
-        provisioning_packet_add_error "Unsupported schema: ${schema:-<missing>}"
+        provisioning_packet_add_error "Unsupported or missing packet schema."
     [[ "$schema_version" == "1" ]] || \
-        provisioning_packet_add_error "Unsupported schemaVersion: ${schema_version:-<missing>}"
+        provisioning_packet_add_error "Unsupported or missing packet schemaVersion."
 
     case "$stage" in
         draft|ready_for_manual_provider_checkout|ready_for_api_provisioning|provider_server_created|installer_ready|verified|blocked) ;;
-        *) provisioning_packet_add_error "Unsupported packet stage: ${stage:-<missing>}" ;;
+        *) provisioning_packet_add_error "Unsupported or missing packet stage." ;;
     esac
 
     case "$provider_level" in
         manual|cloud_init_only|api_supported) ;;
-        *) provisioning_packet_add_error "Unsupported provider automationLevel: ${provider_level:-<missing>}" ;;
+        *) provisioning_packet_add_error "Unsupported or missing provider automationLevel." ;;
     esac
 
     case "$readiness_status" in
         supported|borderline) ;;
         unknown) provisioning_packet_add_warning "Provider readiness is unknown; verify provider, plan, OS, region, and SSH access manually." ;;
         unsupported) provisioning_packet_add_error "Provider readiness is unsupported; do not provision until packet choices are fixed." ;;
-        *) provisioning_packet_add_error "Unsupported compatibility readinessStatus: ${readiness_status:-<missing>}" ;;
+        *) provisioning_packet_add_error "Unsupported or missing compatibility readinessStatus." ;;
     esac
 
     case "$os_status" in
         supported|borderline|unknown) ;;
         unsupported) provisioning_packet_add_error "Ubuntu image readiness is unsupported." ;;
-        *) provisioning_packet_add_error "Unsupported OS readinessStatus: ${os_status:-<missing>}" ;;
+        *) provisioning_packet_add_error "Unsupported or missing OS readinessStatus." ;;
     esac
 
     [[ "$os_distribution" == "ubuntu" ]] || \
@@ -223,7 +223,7 @@ provisioning_packet_validate_username() {
     username="$(provisioning_packet_scalar "access.username")"
 
     if [[ ${#username} -gt 32 || ! "$username" =~ ^[a-z_][a-z0-9._-]*$ || "$username" == "root" ]]; then
-        provisioning_packet_add_error "access.username is not a valid Linux username: ${username:-<missing>}"
+        provisioning_packet_add_error "access.username is not a valid Linux username or is root."
     fi
 }
 
@@ -307,7 +307,7 @@ provisioning_packet_validate_install_command() {
 
     case "$command_location" in
         vps-root-shell|cloud-init|provider-api) ;;
-        *) provisioning_packet_add_error "Unsupported install.commandRunLocation: ${command_location:-<missing>}" ;;
+        *) provisioning_packet_add_error "Unsupported or missing install.commandRunLocation." ;;
     esac
 
     if [[ ! "$source_ref" =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]{0,119}$ ]] \
@@ -331,21 +331,21 @@ provisioning_packet_validate_install_command() {
     fi
 
     [[ "$command_text" == *"--mode ${install_mode}"* ]] || \
-        provisioning_packet_add_error "install.command does not use the declared install.mode: $install_mode"
+        provisioning_packet_add_error "install.command does not use the declared install.mode."
 
     if [[ "$source_ref" == "main" ]]; then
         [[ "$command_text" == *"/main/install.sh"* ]] || \
             provisioning_packet_add_error "install.command does not fetch the declared main sourceRef."
     else
         [[ "$command_text" == *"/${source_ref}/install.sh"* ]] || \
-            provisioning_packet_add_error "install.command does not fetch the declared sourceRef: $source_ref"
+            provisioning_packet_add_error "install.command does not fetch the declared sourceRef."
         [[ "$command_text" == *"--ref \"${source_ref}\""* ]] || \
-            provisioning_packet_add_error "install.command is missing the declared --ref: $source_ref"
+            provisioning_packet_add_error "install.command is missing the declared --ref."
     fi
 
     if [[ "$username" != "ubuntu" ]]; then
         [[ "$command_text" == *"TARGET_USER=\"${username}\""* ]] || \
-            provisioning_packet_add_error "install.command does not set TARGET_USER for access.username: $username"
+            provisioning_packet_add_error "install.command does not set TARGET_USER for access.username."
     fi
 
     while IFS=$'\t' read -r selector_kind selector_value; do
@@ -354,20 +354,20 @@ provisioning_packet_validate_install_command() {
             profile)
                 if [[ "$selector_value" != "$install_mode" && "$selector_value" != "full" ]]; then
                     [[ "$command_text" == *"--profile \"${selector_value}\""* ]] || \
-                        provisioning_packet_add_error "install.command is missing declared profile selector: $selector_value"
+                        provisioning_packet_add_error "install.command is missing a declared profile selector."
                 fi
                 ;;
             onlyModules)
-                [[ "$command_text" == *"--only \"${selector_value}\""* || "$command_text" == *"--profile "* ]] || \
-                    provisioning_packet_add_error "install.command is missing declared module selector: $selector_value"
+                [[ "$command_text" == *"--only \"${selector_value}\""* ]] || \
+                    provisioning_packet_add_error "install.command is missing declared module selector."
                 ;;
             onlyPhases)
-                [[ "$command_text" == *"--only-phase \"${selector_value}\""* || "$command_text" == *"--profile "* ]] || \
-                    provisioning_packet_add_error "install.command is missing declared phase selector: $selector_value"
+                [[ "$command_text" == *"--only-phase \"${selector_value}\""* ]] || \
+                    provisioning_packet_add_error "install.command is missing declared phase selector."
                 ;;
             skipModules)
                 [[ "$command_text" == *"--skip \"${selector_value}\""* ]] || \
-                    provisioning_packet_add_error "install.command is missing declared skip selector: $selector_value"
+                    provisioning_packet_add_error "install.command is missing declared skip selector."
                 ;;
         esac
     done < <(jq -r '
@@ -466,6 +466,16 @@ provisioning_packet_emit_json() {
     local target_agents=""
 
     status="$(provisioning_packet_status)"
+    if [[ "$status" == "fail" ]]; then
+        jq -n \
+            --arg schema "$PROVISIONING_PACKET_CHECK_SCHEMA" \
+            --arg status "$status" \
+            --slurpfile errors <(provisioning_packet_json_string_lines "${PROVISIONING_PACKET_ERRORS[@]}" | jq -R . | jq -s .) \
+            --slurpfile warnings <(provisioning_packet_json_string_lines "${PROVISIONING_PACKET_WARNINGS[@]}" | jq -R . | jq -s .) \
+            '{schema: $schema, status: $status, validation: {errors: $errors[0], warnings: $warnings[0]}}'
+        return
+    fi
+
     manual_steps="$(jq -c '.provider.manualStepsRemaining // []' "$PROVISIONING_PACKET_FILE")"
     verification_commands="$(jq -c '[.verificationCommands[]? | {
       id: .id,
@@ -553,6 +563,12 @@ provisioning_packet_emit_markdown() {
     status="$(provisioning_packet_status)"
     printf 'ACFS Provider Provisioning Packet Check\n'
     printf 'Status: %s\n' "$status"
+    if [[ "$status" == "fail" ]]; then
+        provisioning_packet_print_array "Errors:" "${PROVISIONING_PACKET_ERRORS[@]}"
+        provisioning_packet_print_array "Warnings:" "${PROVISIONING_PACKET_WARNINGS[@]}"
+        return
+    fi
+
     printf 'Schema: %s\n' "$(provisioning_packet_scalar "schema")"
     printf 'Stage: %s\n' "$(provisioning_packet_scalar "stage")"
     printf 'Provider: %s (%s)\n' \

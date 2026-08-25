@@ -237,6 +237,10 @@ if [[ -n "$PROVISIONING_PACKET" ]]; then
         echo "ERROR: provisioning packet failed validation" >&2
         exit 2
     fi
+    if [[ -n "$INSTALL_URL" ]]; then
+        echo "ERROR: --install-url cannot be combined with a provisioning packet" >&2
+        exit 2
+    fi
 
     packet_ubuntu="$(jq -er '.osImage.version' "$PROVISIONING_PACKET")"
     packet_ref="$(jq -er '.install.sourceRef' "$PROVISIONING_PACKET")"

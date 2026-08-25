@@ -250,6 +250,24 @@ test_no_tty_fallback_behavior() {
     pass "no_tty_fallback_behavior"
 }
 
+test_interactive_profile_reselection_clears_stale_mode() {
+    source_manifest_index
+    reset_selection_env
+
+    # Choose safe, go back, choose minimal, then proceed. Minimal has no mode of
+    # its own, so the abandoned safe choice must not leak into the final plan.
+    if ! _acfs_interactive_module_selector_on_tty <<< $'2\n2\n3\n1' >/dev/null; then
+        fail "interactive_profile_reselection_clears_stale_mode" "Interactive selector did not complete"
+        return 1
+    fi
+    [[ "$ACFS_SELECTED_PROFILE" == "minimal" ]] \
+        || { fail "interactive_profile_reselection_clears_stale_mode" "Minimal profile was not selected"; return 1; }
+    [[ "$MODE" == "vibe" ]] \
+        || { fail "interactive_profile_reselection_clears_stale_mode" "Abandoned safe mode leaked into minimal profile"; return 1; }
+
+    pass "interactive_profile_reselection_clears_stale_mode"
+}
+
 run_all_tests() {
     test_all_canonical_profiles_apply_successfully
     test_unknown_profile_fails_cleanly
@@ -261,6 +279,7 @@ run_all_tests() {
     test_selector_profile_rejects_explicit_only
     test_selection_review_rendering_contains_expected_sections
     test_no_tty_fallback_behavior
+    test_interactive_profile_reselection_clears_stale_mode
 
     echo ""
     echo "Tests passed: $TESTS_PASSED"

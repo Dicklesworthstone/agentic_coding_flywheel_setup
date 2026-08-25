@@ -358,6 +358,7 @@ _acfs_interactive_module_selector_on_tty() {
                     SKIP_MODULES=()
                     ACFS_SELECTED_PROFILE=""
                     ACFS_EXPLICIT_TARGETED_SELECTION=false
+                    MODE="vibe"
                     break
                     ;;
                 3)

@@ -8,6 +8,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROVISIONING_PACKET_SH="$REPO_ROOT/scripts/lib/provisioning_packet.sh"
 FACTORY_INSTALL_SH="$REPO_ROOT/tests/vm/test_factory_install_ubuntu.sh"
+QEMU_FACTORY_INSTALL_SH="$REPO_ROOT/tests/vm/test_factory_install_qemu.sh"
 
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -307,6 +308,36 @@ test_secret_values_are_refused() {
     pass "secret_values_are_refused"
 }
 
+test_failed_validation_never_echoes_packet_values() {
+    local packet unsafe_packet output status
+    packet="$(valid_packet_fixture)"
+    unsafe_packet="$ARTIFACT_DIR/unsafe-diagnostic-packet.json"
+    jq '
+      .provider.name = "ghp_123456789012345678901234567890" |
+      .stage = "ghp_123456789012345678901234567890"
+    ' "$packet" > "$unsafe_packet"
+
+    output="$(run_packet unsafe-diagnostic-json --json --file "$unsafe_packet")"
+    status="$(cat "$ARTIFACT_DIR/unsafe-diagnostic-json.exit")"
+    [[ "$status" -eq 1 ]] || return 1
+    [[ "$output" != *"ghp_123456789012345678901234567890"* ]] || return 1
+    jq -e '
+      .status == "fail" and
+      (.packet | not) and
+      (.validation.manualSteps | not) and
+      (.validation.verificationCommands | not)
+    ' <<<"$output" >/dev/null || return 1
+
+    output="$(run_packet unsafe-diagnostic-markdown --markdown --file "$unsafe_packet")"
+    status="$(cat "$ARTIFACT_DIR/unsafe-diagnostic-markdown.exit")"
+    [[ "$status" -eq 1 ]] || return 1
+    [[ "$output" != *"ghp_123456789012345678901234567890"* ]] || return 1
+    [[ "$output" != *"Manual provider steps:"* ]] || return 1
+    [[ "$output" != *"Verification checklist:"* ]] || return 1
+
+    pass "failed_validation_never_echoes_packet_values"
+}
+
 test_packet_rejects_root_username_and_command_drift() {
     local packet invalid_packet output status
     packet="$(valid_packet_fixture)"
@@ -332,6 +363,26 @@ test_packet_rejects_root_username_and_command_drift() {
     ' <<<"$output" >/dev/null || return 1
 
     pass "packet_rejects_root_username_and_command_drift"
+}
+
+test_profile_flag_cannot_impersonate_explicit_selectors() {
+    local packet invalid_packet output status
+    packet="$(valid_packet_fixture)"
+    invalid_packet="$ARTIFACT_DIR/profile-selector-impersonation-packet.json"
+    jq '
+      .install.moduleSelection = {profile: "full", onlyModules: ["base.system"], onlyPhases: ["1"]} |
+      .install.command = "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh\" | bash -s -- --yes --mode vibe --profile \"full\""
+    ' "$packet" > "$invalid_packet"
+
+    output="$(run_packet profile-selector-impersonation --json --file "$invalid_packet")"
+    status="$(cat "$ARTIFACT_DIR/profile-selector-impersonation.exit")"
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      any(.validation.errors[]; contains("declared module selector")) and
+      any(.validation.errors[]; contains("declared phase selector"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "profile_flag_cannot_impersonate_explicit_selectors"
 }
 
 test_packet_refuses_raw_target_host_and_ref_mismatch() {
@@ -403,7 +454,9 @@ JSON
     jq -e '
       .status == "failed" and
       .failureCategory == "provider_setup" and
-      .exitCode == 2
+      .exitCode == 2 and
+      .provisioningPacketProjection.status == "not_validated" and
+      .provisioningPacketProjection.packet == null
     ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
 
     pass "factory_sentinel_rejects_invalid_packet_with_provider_setup_category"
@@ -493,6 +546,34 @@ test_factory_rejects_explicit_packet_conflicts_before_ssh() {
     pass "factory_rejects_explicit_packet_conflicts_before_ssh"
 }
 
+test_factory_rejects_packet_install_url_override() {
+    local packet out_dir status
+    packet="$(valid_packet_fixture)"
+    out_dir="$ARTIFACT_DIR/factory-install-url-conflict"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --provisioning-packet "$packet" \
+        --install-url "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/other-ref/install.sh" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    [[ "$status" -eq 2 ]] || return 1
+    jq -e '
+      .failureCategory == "provider_setup" and
+      .errorMessage == "install URL override conflicts with provisioning packet source intent"
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    status=0
+    "$QEMU_FACTORY_INSTALL_SH" \
+        --provisioning-packet "$packet" \
+        --install-url "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/other-ref/install.sh" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 2 ]] || return 1
+
+    pass "factory_rejects_packet_install_url_override"
+}
+
 test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens() {
     local packet out_dir status
     packet="$(valid_packet_fixture)"
@@ -525,7 +606,9 @@ run_all_tests() {
         test_unknown_provider_warns_without_provider_api
         test_unsupported_os_fails_validation
         test_secret_values_are_refused
+        test_failed_validation_never_echoes_packet_values
         test_packet_rejects_root_username_and_command_drift
+        test_profile_flag_cannot_impersonate_explicit_selectors
         test_packet_refuses_raw_target_host_and_ref_mismatch
         test_malformed_packet_fails_with_json_error
         test_factory_sentinel_rejects_invalid_packet_with_provider_setup_category
@@ -533,6 +616,7 @@ run_all_tests() {
         test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens
         test_factory_maps_canonical_packet_before_building_url
         test_factory_rejects_explicit_packet_conflicts_before_ssh
+        test_factory_rejects_packet_install_url_override
     )
 
     for test_name in "${tests[@]}"; do
