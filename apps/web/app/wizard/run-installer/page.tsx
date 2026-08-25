@@ -100,6 +100,8 @@ const DEFAULT_VPS_READINESS_SELECTION: VPSReadinessSelection = {
   workloadId: "standard",
 };
 
+const VERIFIED_INSTALLER_CACHE_PATH = "/var/cache/acfs-installer-cache";
+
 function downloadTextFile(filename: string, contents: string, mimeType: string) {
   const blob = new Blob([contents], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -184,6 +186,14 @@ export default function RunInstallerPage() {
   const installCommand = useMemo(
     () => buildInstallCommand(effectiveInstallMode, effectiveRef, effectiveSSHUsername),
     [effectiveInstallMode, effectiveRef, effectiveSSHUsername],
+  );
+  const cacheTransferTarget = useMemo(
+    () => formatSshTarget("root", effectiveVpsIP),
+    [effectiveVpsIP],
+  );
+  const cachedInstallCommand = useMemo(
+    () => `${installCommand} --verified-installer-cache "${VERIFIED_INSTALLER_CACHE_PATH}"`,
+    [installCommand],
   );
   const handoffRunbook = useMemo(
     () => buildHandoffRunbook({
@@ -519,9 +529,9 @@ export default function RunInstallerPage() {
             <strong>Don&apos;t panic!</strong> If your SSH connection drops during installation:
           </p>
           <ol className="list-decimal list-inside space-y-1 text-sm">
-            <li>The installer keeps running on the VPS</li>
-            <li>Just SSH back in using the same command</li>
-            <li>Run the installer command again — it will resume where it left off</li>
+            <li>SSH back into the VPS</li>
+            <li>Check the latest ACFS log to see whether installation is still active</li>
+            <li>If it stopped, run the same installer command again so the checkpointed install can resume</li>
           </ol>
           <p className="text-sm text-muted-foreground">
             The installer is designed to be run multiple times safely. If anything fails,
@@ -643,15 +653,16 @@ export default function RunInstallerPage() {
 
             <div>
               <p className="font-semibold text-foreground">2. Transfer cache to your VPS via SCP:</p>
-              <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
-                scp -r /tmp/acfs-cache/acfs-installer-cache root@{vpsIP}:/tmp/acfs-installer-cache
+              <div className="mt-1 space-y-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
+                <div>ssh {cacheTransferTarget} &apos;install -d -m 700 {VERIFIED_INSTALLER_CACHE_PATH}&apos;</div>
+                <div>scp -r /tmp/acfs-cache/acfs-installer-cache/. {cacheTransferTarget}:{VERIFIED_INSTALLER_CACHE_PATH}/</div>
               </div>
             </div>
 
             <div>
               <p className="font-semibold text-foreground">3. Run installer with cache flag on VPS:</p>
               <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
-                curl -fsSL &quot;https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/{effectiveSourceRef}/install.sh&quot; | bash -s -- --verified-installer-cache /tmp/acfs-installer-cache --yes --mode {installMode}
+                {cachedInstallCommand}
               </div>
             </div>
           </div>
@@ -659,7 +670,7 @@ export default function RunInstallerPage() {
           <AlertCard variant="info" title="Cache Boundaries &amp; Requirements">
             <ul className="list-disc list-inside space-y-1 text-xs text-muted-foreground">
               <li>
-                <strong>Entrypoint Protection:</strong> The cache verifies and loads SHA-256-approved tool installer scripts locally without downloading them live.
+                <strong>Third-party Entrypoint Protection:</strong> The cache verifies and loads SHA-256-approved tool installer scripts locally. The ACFS bootstrap command itself is still downloaded from the selected source ref.
               </li>
               <li>
                 <strong>Network Still Required:</strong> The VPS still needs basic internet connectivity for standard APT packages, Cargo crates, and language registries.
