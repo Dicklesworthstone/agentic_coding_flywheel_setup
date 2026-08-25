@@ -81,7 +81,10 @@ _acfs_update_wants_lock() {
 # would terminate the caller — a test that silently passes without running its
 # assertions. When sourced, BASH_SOURCE[0] is this file while $0 is the caller.
 _acfs_update_is_direct_run() {
-    [[ "${BASH_SOURCE[0]}" == "$0" ]]
+    # `:-$0` so an interpreter without BASH_SOURCE cannot trip `set -u` here;
+    # the fallback compares equal, i.e. defaults to guarding rather than to
+    # silently skipping the lock.
+    [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]
 }
 
 if _acfs_update_is_direct_run \
