@@ -184,7 +184,11 @@ describe('Generated manifest_index.sh content', () => {
 
   test('dependencies are correctly formatted', () => {
     for (const module of manifest.modules) {
-      const deps = module.dependencies?.join(',') ?? '';
+      const dependencies = [...(module.dependencies ?? [])];
+      if (module.run_as === 'target_user' && module.id !== 'users.ubuntu' && !dependencies.includes('users.ubuntu')) {
+        dependencies.push('users.ubuntu');
+      }
+      const deps = dependencies.join(',');
       // Generator emits associative-array keys as `[module.id]` (unquoted, safe for our IDs).
       expect(manifestIndexContent).toContain(`['${module.id}']="${deps}"`);
     }
@@ -1406,6 +1410,16 @@ describe('manifest-modules.ts structure', () => {
     expect(content).toContain('"stack.mcp_agent_mail"');
     expect(content).toContain('id: "cloud-only"');
     expect(content).toContain('"cloud.wrangler"');
+  });
+
+  test('target-user modules carry the generated user-normalization dependency', () => {
+    for (const module of manifest.modules.filter((entry) => entry.run_as === 'target_user')) {
+      const moduleBlock = content.match(
+        new RegExp(`id: "${module.id.replaceAll('.', '\\.')}"[\\s\\S]*?\\n  },`),
+      )?.[0];
+      expect(moduleBlock).toBeDefined();
+      expect(moduleBlock).toContain('"users.ubuntu"');
+    }
   });
 });
 

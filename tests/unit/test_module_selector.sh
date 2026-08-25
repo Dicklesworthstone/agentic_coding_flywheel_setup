@@ -3,7 +3,7 @@
 # ACFS - Unit Tests for Interactive Module Selector (bd-l56ty)
 # ============================================================
 
-set -euo pipefail
+set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT_DIR="$REPO_ROOT/scripts/lib"
@@ -41,7 +41,39 @@ reset_selection_env() {
     ACFS_SELECTED_PROFILE=""
     ACFS_CLI_PROFILE=""
     ACFS_INTERACTIVE=false
-    export ONLY_MODULES ONLY_PHASES SKIP_MODULES SKIP_TAGS SKIP_CATEGORIES NO_DEPS MODE YES_MODE ACFS_SELECTED_PROFILE ACFS_CLI_PROFILE ACFS_INTERACTIVE
+    ACFS_EXPLICIT_TARGETED_SELECTION=false
+    export ONLY_MODULES ONLY_PHASES SKIP_MODULES SKIP_TAGS SKIP_CATEGORIES NO_DEPS MODE YES_MODE ACFS_SELECTED_PROFILE ACFS_CLI_PROFILE ACFS_INTERACTIVE ACFS_EXPLICIT_TARGETED_SELECTION
+}
+
+test_profile_application_replaces_derived_selectors() {
+    source_manifest_index
+    reset_selection_env
+
+    acfs_apply_profile "minimal" || { fail "profile_state_transition" "minimal profile failed"; return 1; }
+    acfs_apply_profile "cloud-only" || { fail "profile_state_transition" "cloud-only profile failed"; return 1; }
+
+    [[ " ${ONLY_MODULES[*]} " == *" cloud.wrangler "* ]] \
+        || { fail "profile_state_transition" "cloud selector missing after transition"; return 1; }
+    [[ " ${ONLY_MODULES[*]} " != *" agents.claude "* ]] \
+        || { fail "profile_state_transition" "minimal selector leaked into cloud-only"; return 1; }
+
+    pass "profile_application_replaces_derived_selectors"
+}
+
+test_selector_profile_rejects_explicit_only() {
+    source_manifest_index
+    reset_selection_env
+    ONLY_MODULES=("agents.codex")
+    ACFS_EXPLICIT_TARGETED_SELECTION=true
+
+    local output status=0
+    output="$(acfs_apply_profile "minimal" 2>&1)" || status=$?
+    [[ "$status" -ne 0 ]] \
+        || { fail "selector_profile_rejects_explicit_only" "conflicting profile was accepted"; return 1; }
+    [[ "$output" == *"cannot be combined"* ]] \
+        || { fail "selector_profile_rejects_explicit_only" "missing conflict explanation"; return 1; }
+
+    pass "selector_profile_rejects_explicit_only"
 }
 
 test_all_canonical_profiles_apply_successfully() {
@@ -225,6 +257,8 @@ run_all_tests() {
     test_agents_only_profile_expands_dependencies_correctly
     test_locked_core_modules_metadata_is_consistent
     test_reproducible_cli_command_formatting
+    test_profile_application_replaces_derived_selectors
+    test_selector_profile_rejects_explicit_only
     test_selection_review_rendering_contains_expected_sections
     test_no_tty_fallback_behavior
 

@@ -104,6 +104,9 @@ jobs:
       - name: Run retry-classifier parity test
         run: bash tests/unit/test_retry_classifier_parity.sh
 
+      - name: Run module selector unit tests
+        run: bash tests/unit/test_module_selector.sh
+
       - name: Run Ubuntu upgrade rehearsal tests
         run: bash scripts/tests/ubuntu_upgrade_test.sh
 

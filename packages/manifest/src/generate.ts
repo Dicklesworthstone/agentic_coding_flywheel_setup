@@ -1251,6 +1251,18 @@ function joinList(values?: string[]): string {
   return values.join(',');
 }
 
+function selectionDependencies(module: Module): string[] {
+  const dependencies = [...(module.dependencies ?? [])];
+  if (
+    module.run_as === 'target_user'
+    && module.id !== 'users.ubuntu'
+    && !dependencies.includes('users.ubuntu')
+  ) {
+    dependencies.push('users.ubuntu');
+  }
+  return dependencies;
+}
+
 function computeContentSha256(content: string | Buffer): string {
   return createHash('sha256').update(content).digest('hex');
 }
@@ -2013,7 +2025,7 @@ export function generateManifestIndex(manifest: Manifest, manifestSha256: string
 
   lines.push('declare -gA ACFS_MODULE_DEPS=(');
   for (const module of orderedModules) {
-    lines.push(`  ['${module.id}']="${escapeBash(joinList(module.dependencies))}"`);
+    lines.push(`  ['${module.id}']="${escapeBash(joinList(selectionDependencies(module)))}"`);
   }
   lines.push(')');
   lines.push('');
@@ -2688,7 +2700,7 @@ export function generateWebModules(
     lines.push(`    description: "${escapeTs(module.description)}",`);
     lines.push(`    category: "${escapeTs(resolveModuleCategory(module))}",`);
     lines.push(`    phase: ${getModulePhase(module)},`);
-    lines.push(`    dependencies: ${formatTsArray(module.dependencies ?? [], 4)},`);
+    lines.push(`    dependencies: ${formatTsArray(selectionDependencies(module), 4)},`);
     lines.push(`    tags: ${formatTsArray(module.tags ?? [], 4)},`);
     lines.push(`    enabledByDefault: ${module.enabled_by_default ? 'true' : 'false'},`);
     lines.push(`    optional: ${module.optional ? 'true' : 'false'},`);

@@ -181,6 +181,8 @@ Implementations must produce the same effective plan for the same manifest and s
 12. Emit `ACFS_EFFECTIVE_PLAN` by iterating `ACFS_MODULES_IN_ORDER`; this preserves phase order and topological order from the generator.
 13. Emit `ACFS_EFFECTIVE_RUN[module]=1` for every included module and exclusion reasons for everything not included.
 
+The generator derives `users.ubuntu` as a selection dependency for every module whose canonical `run_as` is `target_user`. This invariant comes from execution metadata rather than duplicated manifest lists: a fresh targeted install must normalize the target account before any target-user module executes. `--no-deps` remains the explicit expert escape hatch.
+
 ### Required Core Modules
 
 The resolver does not hard-code a separate required-module list. Requiredness is expressed through dependencies, `enabled_by_default`, and tags such as `critical`. A skip is allowed only when it does not break the selected dependency graph, or when `--no-deps` is explicitly set for debugging. User-facing profile UIs must explain any skipped `critical` module before generating a command, and the generated command should prefer `--print-plan` first.
@@ -251,7 +253,7 @@ Minimal profile, once a shared profile artifact exists:
 curl -fsSL "..." | bash -s -- --yes --profile minimal --print-plan
 ```
 
-Until `--profile` exists, UIs must not emit that command. They should either hide the profile or lower it to tested `--only` selectors from shared metadata.
+UIs emit selector-bearing profiles with `--profile`; mode-only `full`, `safe`, and `vibe` profiles serialize their independent `--mode` plus any explicit selectors instead.
 
 Cloud-only plan:
 
