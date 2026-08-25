@@ -41,7 +41,17 @@ export NEEDRESTART_SUSPEND=1
 # would `exec 9>` the path again — closing the inherited description, briefly
 # releasing the lock, and letting a waiting run seize it while this one is
 # mid-update. Inheriting is both cheaper and safer.
-ACFS_UPDATE_LOCK="${ACFS_UPDATE_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/acfs-update.$(id -u).lock}"
+# The lock path depends ONLY on the uid — deliberately not on $XDG_RUNTIME_DIR
+# or $TMPDIR. Both vary between invocation contexts for the SAME user, and two
+# runs that pick different paths do not exclude each other at all:
+#   - `runuser -u ubuntu` leaks root's XDG_RUNTIME_DIR=/run/user/0, which the
+#     target user cannot even open (verified: the guard degraded to unlocked on
+#     exactly the dual-user hosts this fix is for);
+#   - TMPDIR differs between an interactive shell and a cron/ssh invocation;
+#   - /run/user/<uid> exists only when that user has a logind session, so it
+#     varies by context too.
+# /tmp is always present, always writable, and identical from every context.
+ACFS_UPDATE_LOCK="${ACFS_UPDATE_LOCK:-/tmp/acfs-update.$(id -u).lock}"
 
 # Stamp the holder AFTER acquiring, via a truncating write (tee) so a shorter
 # line cannot leave a previous holder's trailing bytes behind. Safe to truncate
@@ -65,7 +75,18 @@ _acfs_update_wants_lock() {
     return 0
 }
 
-if [[ "${ACFS_SELF_UPDATE_DONE:-false}" != "true" ]] && _acfs_update_wants_lock "$@"; then
+# Only guard a DIRECT execution. tests/vm/test_acfs_update.sh sources this file
+# to reuse its functions; in a sourced context `exec 9<>` would plant an fd in
+# the caller's shell and, worse, the "another run in progress" path's `exit 0`
+# would terminate the caller — a test that silently passes without running its
+# assertions. When sourced, BASH_SOURCE[0] is this file while $0 is the caller.
+_acfs_update_is_direct_run() {
+    [[ "${BASH_SOURCE[0]}" == "$0" ]]
+}
+
+if _acfs_update_is_direct_run \
+    && [[ "${ACFS_SELF_UPDATE_DONE:-false}" != "true" ]] \
+    && _acfs_update_wants_lock "$@"; then
     if command -v flock >/dev/null 2>&1; then
         # `9<>` (O_RDWR|O_CREAT), never `9>` (O_TRUNC): opening the lock must
         # not erase the holder record that a blocked run is about to read.
