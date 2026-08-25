@@ -789,11 +789,31 @@ test_manifest_guard_scripts_cover_all_generated_outputs() {
 
     local hook_file="$REPO_ROOT/scripts/hooks/pre-commit"
     local drift_file="$REPO_ROOT/scripts/check-manifest-drift.sh"
+    local ledger_guard=""
 
     if grep -Fq 'git add apps/web/lib/generated/' "$hook_file"; then
         harness_pass "Pre-commit hook stages apps/web/lib/generated/"
     else
         harness_fail "Pre-commit hook does not stage apps/web/lib/generated/"
+    fi
+
+    ledger_guard="$(sed -n '/^# Internal checksum ledger guard/,$p' "$hook_file")"
+    if [[ "$ledger_guard" == *'ledger_is_staged=false'* ]] \
+        && [[ "$ledger_guard" == *'ledger_is_staged=true'* ]] \
+        && [[ "$ledger_guard" == *'git show "HEAD:$LEDGER_PATH"'* ]] \
+        && [[ "$ledger_guard" == *'git diff --name-only --diff-filter=ACMRD'* ]] \
+        && [[ "$ledger_guard" == *'Cannot verify the checksum ledger with unstaged covered changes'* ]] \
+        && [[ "$ledger_guard" == *'Checksum-covered files are staged for deletion'* ]]; then
+        harness_pass "Checksum ledger guard keeps staged and working-tree snapshots separate"
+    else
+        harness_fail "Checksum ledger guard can mix staged and working-tree snapshots"
+    fi
+
+    if [[ "$ledger_guard" != *'bun run generate'* ]] \
+        && [[ "$ledger_guard" != *'git add -- "$LEDGER_PATH"'* ]]; then
+        harness_pass "Checksum ledger guard verifies without mutating the index or working tree"
+    else
+        harness_fail "Checksum ledger guard mutates repository state during verification"
     fi
 
     if grep -q 'bun run generate:diff' "$drift_file"; then

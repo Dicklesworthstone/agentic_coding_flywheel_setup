@@ -59,8 +59,10 @@ fi
 # scripts/lib/**, packages/onboard/**, install.sh and friends. Editing
 # scripts/lib/support.sh triggers nothing today.
 #
-# This guard detects drift WITHOUT needing bun, so it still fails closed on a
-# machine that cannot run the generator, and auto-repairs when bun is present.
+# This guard detects drift without running the generator. A pre-commit hook
+# must validate the index, not regenerate from the working tree: partial
+# staging could otherwise make the committed ledger hash bytes that are not in
+# the commit.
 # ---------------------------------------------------------------------------
 
 LEDGER_PATH="scripts/generated/internal_checksums.sh"
@@ -73,14 +75,38 @@ acfs_sha256() {
     fi
 }
 
-# Read ledger keys and expected hashes from the STAGED ledger when it is staged,
-# otherwise from HEAD's copy, so the guard reflects what the commit will contain.
+ledger_is_staged=false
+if git diff --cached --name-only | grep -qxF "$LEDGER_PATH"; then
+    ledger_is_staged=true
+fi
+
+# Read ledger keys and expected hashes from the staged ledger when it is staged,
+# otherwise from HEAD's copy. Never read an unstaged working-tree ledger here.
 acfs_ledger_stream() {
-    if git diff --cached --name-only | grep -qxF "$LEDGER_PATH"; then
+    if [[ "$ledger_is_staged" == "true" ]]; then
         git show ":$LEDGER_PATH" 2>/dev/null
-    elif [[ -f "$LEDGER_PATH" ]]; then
-        cat "$LEDGER_PATH"
+    else
+        git show "HEAD:$LEDGER_PATH" 2>/dev/null
     fi
+}
+
+acfs_ledger_expected_hash() {
+    local target_path="$1"
+    printf '%s\n' "$ledger_data" | awk -v target="$target_path" '
+        {
+            line = $0
+            sub(/^[[:space:]]*/, "", line)
+            prefix = "[" target "]=\""
+            if (index(line, prefix) == 1) {
+                hash = substr(line, length(prefix) + 1)
+                sub(/\"$/, "", hash)
+                if (length(hash) == 64 && hash ~ /^[0-9a-f]+$/) {
+                    print hash
+                    exit
+                }
+            }
+        }
+    '
 }
 
 if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
@@ -108,55 +134,53 @@ if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
         exit 1
     fi
 
+    # Track unstaged covered changes. If the staged commit also changes the
+    # ledger or needs a regeneration, generating from the working tree would
+    # mix two snapshots and create a self-inconsistent commit.
+    unstaged_covered=""
+    while IFS= read -r unstaged; do
+        [[ -n "$unstaged" ]] || continue
+        expected="$(acfs_ledger_expected_hash "$unstaged" || true)"
+        [[ -n "$expected" ]] || continue
+        unstaged_covered="${unstaged_covered}  $unstaged"$'\n'
+    done < <(git diff --name-only --diff-filter=ACMRD)
+
     # Drift: compare each staged covered file against the ledger's expectation.
     drifted=""
+    staged_deletions=""
     while IFS= read -r staged; do
         [[ -n "$staged" ]] || continue
-        # `|| true` below: a staged file that is not ledger-covered makes grep
-        # exit 1, which under `set -e` would kill the hook silently.
-        expected="$(printf '%s\n' "$ledger_data" \
-            | grep -oE "^[[:space:]]*\[${staged//\//\\/}\]=\"[0-9a-f]{64}\"" \
-            | grep -oE '[0-9a-f]{64}' | head -1 || true)"
+        expected="$(acfs_ledger_expected_hash "$staged" || true)"
         [[ -n "$expected" ]] || continue          # not a covered file
-        actual="$(git show ":$staged" 2>/dev/null | acfs_sha256 || true)"
+        if ! actual="$(git show ":$staged" 2>/dev/null | acfs_sha256)"; then
+            staged_deletions="${staged_deletions}  $staged"$'\n'
+            continue
+        fi
         [[ "$actual" == "$expected" ]] || drifted="${drifted}  $staged"$'\n'
-    done < <(git diff --cached --name-only --diff-filter=ACMR)
+    done < <(git diff --cached --name-only --diff-filter=ACMRD)
+
+    if [[ -n "$staged_deletions" ]]; then
+        echo "❌ Checksum-covered files are staged for deletion:"
+        printf '%s' "$staged_deletions"
+        echo "   Update the generator/archive contract explicitly before removing a covered file."
+        exit 1
+    fi
+
+    if [[ -n "$unstaged_covered" ]] \
+        && { [[ "$ledger_is_staged" == "true" ]] || [[ -n "$drifted" ]]; }; then
+        echo "❌ Cannot verify the checksum ledger with unstaged covered changes:"
+        printf '%s' "$unstaged_covered"
+        echo "   The generator reads working-tree bytes, while this commit contains index bytes."
+        echo "   Stage the complete covered change set or otherwise resolve those files,"
+        echo "   then run: cd packages/manifest && bun run generate"
+        exit 1
+    fi
 
     if [[ -n "$drifted" ]]; then
-        echo "📦 Checksum-covered files changed without a ledger regeneration:"
+        echo "❌ Checksum-covered files changed without a ledger regeneration:"
         printf '%s' "$drifted"
-        if command -v bun >/dev/null 2>&1; then
-            echo "   Regenerating $LEDGER_PATH ..."
-            (cd packages/manifest && bun install --silent && bun run generate) || {
-                echo "❌ Generator failed. Fix that before committing."
-                exit 1
-            }
-            git add -- "$LEDGER_PATH"
-            # Re-verify against the newly staged ledger; if it still disagrees the
-            # generator is not authoritative for these paths and a human should look.
-            ledger_data="$(git show ":$LEDGER_PATH" 2>/dev/null)"
-            still=""
-            while IFS= read -r staged; do
-                [[ -n "$staged" ]] || continue
-                expected="$(printf '%s\n' "$ledger_data" \
-                    | grep -oE "^[[:space:]]*\[${staged//\//\\/}\]=\"[0-9a-f]{64}\"" \
-                    | grep -oE '[0-9a-f]{64}' | head -1 || true)"
-                [[ -n "$expected" ]] || continue
-                actual="$(git show ":$staged" 2>/dev/null | acfs_sha256 || true)"
-                [[ "$actual" == "$expected" ]] || still="${still}  $staged"$'\n'
-            done < <(git diff --cached --name-only --diff-filter=ACMR)
-            if [[ -n "$still" ]]; then
-                echo "❌ Ledger still disagrees after regeneration:"
-                printf '%s' "$still"
-                exit 1
-            fi
-            echo "✅ Ledger regenerated and staged"
-        else
-            echo "❌ bun is not available, so the ledger cannot be regenerated here."
-            echo "   Commit blocked: shipping this would break 'curl | bash' for new users."
-            echo "   Run:  cd packages/manifest && bun run generate"
-            echo "   then: git add $LEDGER_PATH"
-            exit 1
-        fi
+        echo "   Run:  cd packages/manifest && bun run generate"
+        echo "   Then review and stage the coherent generated output before committing."
+        exit 1
     fi
 fi
