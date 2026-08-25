@@ -16,11 +16,11 @@ installers:
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
-    sha256: "df2e45cc8b8476042c0f14cae7daf61181eac80398443a217970f7307f380b96"
+    sha256: "e3fef338202d4070ff740e7456908067df85042e4eec328c0595551d78724e03"
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
-    sha256: "e80d329a7a58680e8b98a1135b0d97eb0743c11afab264351474e501c239172c"
+    sha256: "b70c22f75df4bb0cefe96fe4f4356fa8aba1be0e06ad18e8a65cc0a4af989d36"
 
   brenner_bot:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh"
@@ -60,7 +60,7 @@ installers:
 
   dcg:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/destructive_command_guard/main/install.sh"
-    sha256: "5037f43f8072400896ad21f94ac9265306fd2be6e720d408f5306bc4c36cd2e1"
+    sha256: "895fdd0f1cfd370f5a3e344c078da90d279742732b25e7e4eb20bbb9efa0b167"
 
   dsr:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/doodlestein_self_releaser/main/install.sh"
@@ -96,7 +96,7 @@ installers:
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "2c43cd5a86d5e5a6d0a24e8f9ee2cb873c2e23e918fec7470346841b129f2604"
+    sha256: "55c09241161476b727636ea9f010c020411f368091142e7924d7dc744799df03"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
