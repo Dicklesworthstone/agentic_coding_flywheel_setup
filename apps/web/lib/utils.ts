@@ -79,7 +79,7 @@ const CAMPAIGN_QUERY_KEYS = new Set([
   "utm_source",
   "utm_term",
 ]);
-const SAFE_PROFILE_QUERY_VALUES = new Set(
+const SAFE_PROFILE_QUERY_VALUES: ReadonlySet<string> = new Set(
   manifestSelectionProfiles.filter((profile) => !profile.mode).map((profile) => profile.id),
 );
 
