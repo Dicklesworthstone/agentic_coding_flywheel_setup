@@ -204,6 +204,70 @@ else
     pass "environment summary omits raw host and home identity (jq unavailable skip)"
 fi
 
+# ============================================================
+# Tests: Team profile support snapshot
+# ============================================================
+echo ""
+echo "=== Team Profile Support Snapshot ==="
+
+if jq_bin=$(command -v jq 2>/dev/null); then
+    team_home="$TEST_DIR/team-home"
+    team_bundle="$TEST_DIR/team-bundle"
+    mkdir -p "$team_home/.acfs" "$team_bundle"
+    printf '%s\n' '{
+      "schema": "acfs.team-profile.v1",
+      "schemaVersion": 1,
+      "profileId": "example-team-vps",
+      "install": {
+        "mode": "vibe",
+        "profile": "full",
+        "modules": {
+          "only": ["base.system"],
+          "onlyPhases": ["4"],
+          "skip": ["cloud.vault"],
+          "noDeps": false
+        },
+        "privateNote": "must-not-escape"
+      },
+      "serviceAccounts": [{
+        "id": "github",
+        "required": true,
+        "authMethod": "browser_login",
+        "secretSlot": "secret://acfs/team/github-auth",
+        "privateNote": "must-not-escape"
+      }],
+      "providerDefaults": {"provider": "private-provider.example"},
+      "redaction": {"allowSecretValues": false, "secretSlotsRequired": true}
+    }' > "$team_home/.acfs/acfs-team-profile.json"
+
+    SUPPORT_TARGET_HOME="$team_home"
+    unset ACFS_TEAM_PROFILE_PATH
+    BUNDLE_FILES=()
+    capture_team_profile_json "$team_bundle"
+    team_snapshot="$team_bundle/team_profile.json"
+    team_status=$("$jq_bin" -r '.status' "$team_snapshot")
+    assert_equals "Team profile default filename is discovered" "$team_status" "pass"
+    team_projection=$("$jq_bin" -c '{profileId, install, serviceAccounts}' "$team_snapshot")
+    assert_contains "Team profile snapshot includes safe slot requirements" "$team_projection" '"secretSlot":"secret://acfs/team/github-auth"'
+    assert_contains "Team profile snapshot includes validated module choices" "$team_projection" '"only":["base.system"]'
+    assert_not_contains "Team profile snapshot omits provider defaults" "$(cat "$team_snapshot")" "private-provider.example"
+    assert_not_contains "Team profile snapshot omits unknown nested metadata" "$(cat "$team_snapshot")" "must-not-escape"
+
+    printf '%s\n' '{"schema":"acfs.team-profile.v1","schemaVersion":2,"profileId":"bad"}' > "$team_home/.acfs/acfs-team-profile.json"
+    capture_team_profile_json "$team_bundle"
+    malformed_status=$("$jq_bin" -r '[.status, .capture.status, (.profileId // "omitted")] | join("|")' "$team_snapshot")
+    assert_equals "Invalid team profile fails closed without raw fields" "$malformed_status" "warn|skipped|omitted"
+
+    mv "$team_home/.acfs/acfs-team-profile.json" "$team_home/profile-invalid.json"
+    printf '%s\n' '{"schema":"acfs.team-profile.v1","schemaVersion":1}' > "$team_home/profile-target.json"
+    ln -s "$team_home/profile-target.json" "$team_home/.acfs/acfs-team-profile.json"
+    capture_team_profile_json "$team_bundle"
+    symlink_status=$("$jq_bin" -r '[.status, .capture.status] | join("|")' "$team_snapshot")
+    assert_equals "Symlinked team profile is refused" "$symlink_status" "warn|skipped"
+else
+    pass "Team profile support snapshot (jq unavailable skip)"
+fi
+
 identity_scan_dir="$TEST_DIR/identity-scan"
 mkdir -p "$identity_scan_dir"
 SUPPORT_TARGET_HOME="$TEST_DIR/private-home"

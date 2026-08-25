@@ -177,7 +177,7 @@ If your organization uses a shared ACFS team profile (`acfs-team-profile.json`):
    - `secret://acfs/team/anthropic_api_key` → `claude auth login` or export `ANTHROPIC_API_KEY`
    - `secret://acfs/team/openai_api_key` → `codex auth login` or export `OPENAI_API_KEY`
    - `secret://acfs/team/github_token` → `gh auth login`
-3. **Safe Support Bundles:** When generating diagnostics with `acfs support-bundle`, your team profile defaults and slot statuses are included for easy troubleshooting, while all credentials and IP addresses remain strictly redacted.
+3. **Safe Support Bundles:** When generating diagnostics with `acfs support-bundle`, only validated install choices and service-account slot requirements are included. Secret values, provider details, machine addresses, and the raw profile are not collected.
 
 ---
 

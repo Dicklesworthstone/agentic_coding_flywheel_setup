@@ -2177,16 +2177,24 @@ capture_team_profile_json() {
     local bundle_dir="$1"
     local profile_file="$bundle_dir/team_profile.json"
     local target_home="${SUPPORT_TARGET_HOME:-${_SUPPORT_CURRENT_HOME:-${HOME:-/tmp}}}"
-    local profile_candidate="${ACFS_TEAM_PROFILE_PATH:-$target_home/.acfs/team-profile.json}"
+    local profile_candidate="${ACFS_TEAM_PROFILE_PATH:-$target_home/.acfs/acfs-team-profile.json}"
     local jq_bin=""
+    local profile_size=""
+    local max_profile_bytes=1048576
 
-    jq_bin="$(support_resolve_jq_binary 2>/dev/null || true)"
+    jq_bin="$(support_system_binary_path jq 2>/dev/null || true)"
 
-    if [[ ! -f "$profile_candidate" ]]; then
+    if [[ ! -e "$profile_candidate" && ! -L "$profile_candidate" ]]; then
         if [[ -n "$jq_bin" ]]; then
-            printf '{"schema_version":1,"status":"info","present":false,"capture":{"status":"info","reason":"no team profile found at %s"},"redaction":{"secrets_collected":false}}\n' "$profile_candidate" > "$profile_file"
+            "$jq_bin" -n '{
+                schema_version: 1,
+                status: "info",
+                present: false,
+                capture: {status: "info", reason: "no ACFS team profile found"},
+                redaction: {secrets_collected: false, raw_profile_collected: false}
+            }' > "$profile_file"
         else
-            printf '{"schema_version":1,"status":"info","present":false}\n' > "$profile_file"
+            printf '{"schema_version":1,"status":"info","present":false,"capture":{"status":"info","reason":"no ACFS team profile found"},"redaction":{"secrets_collected":false,"raw_profile_collected":false}}\n' > "$profile_file"
         fi
         record_bundle_file "team_profile.json"
         return 0
@@ -2194,43 +2202,96 @@ capture_team_profile_json() {
 
     log_detail "Capturing team profile summary (redacted)..."
 
-    if [[ -n "$jq_bin" ]]; then
-        "$jq_bin" '
+    if [[ -z "$jq_bin" ]]; then
+        printf '{"schema_version":1,"status":"warn","present":true,"capture":{"status":"skipped","reason":"trusted jq binary unavailable"},"redaction":{"secrets_collected":false,"raw_profile_collected":false}}\n' > "$profile_file"
+    elif [[ -L "$profile_candidate" || ! -f "$profile_candidate" || ! -r "$profile_candidate" ]]; then
+        "$jq_bin" -n '{
+            schema_version: 1,
+            status: "warn",
+            present: true,
+            capture: {status: "skipped", reason: "team profile is not a readable regular file"},
+            redaction: {secrets_collected: false, raw_profile_collected: false}
+        }' > "$profile_file"
+    else
+        profile_size="$(wc -c < "$profile_candidate" 2>/dev/null || true)"
+        if [[ ! "$profile_size" =~ ^[0-9]+$ || "$profile_size" -gt "$max_profile_bytes" ]]; then
+            "$jq_bin" -n '{
+                schema_version: 1,
+                status: "warn",
+                present: true,
+                capture: {status: "skipped", reason: "team profile exceeds the support capture size limit"},
+                redaction: {secrets_collected: false, raw_profile_collected: false}
+            }' > "$profile_file"
+        elif ! "$jq_bin" -e '
+            type == "object"
+            and .schema == "acfs.team-profile.v1"
+            and .schemaVersion == 1
+            and (.profileId | type == "string" and test("^[a-z0-9][a-z0-9._-]{0,79}$"))
+            and (.install | type == "object")
+            and (.install.mode | type == "string" and (. == "safe" or . == "vibe"))
+            and (.install.profile | type == "string" and test("^[a-z0-9][a-z0-9._-]{0,79}$"))
+            and (.install.modules | type == "object")
+            and (.install.modules.only | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
+            and (.install.modules.onlyPhases | type == "array" and all(.[]; type == "string" and test("^[0-9]{1,3}$")))
+            and (.install.modules.skip | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
+            and (.install.modules.noDeps | type == "boolean")
+            and (.serviceAccounts | type == "array")
+            and all(.serviceAccounts[];
+                type == "object"
+                and (.id | type == "string" and test("^[a-z0-9][a-z0-9._-]{0,79}$"))
+                and (.required | type == "boolean")
+                and (.authMethod | type == "string" and (. == "browser_login" or . == "api_token" or . == "cli_login"))
+                and (.secretSlot | type == "string" and test("^secret://acfs/team/[a-z0-9][a-z0-9._-]{0,127}$"))
+            )
+            and (([.serviceAccounts[].id] | unique | length) == (.serviceAccounts | length))
+            and (([.serviceAccounts[].secretSlot] | unique | length) == (.serviceAccounts | length))
+            and (.redaction | type == "object")
+            and .redaction.allowSecretValues == false
+            and .redaction.secretSlotsRequired == true
+        ' "$profile_candidate" >/dev/null 2>&1; then
+            "$jq_bin" -n '{
+                schema_version: 1,
+                status: "warn",
+                present: true,
+                capture: {status: "skipped", reason: "team profile failed schema validation"},
+                redaction: {secrets_collected: false, raw_profile_collected: false}
+            }' > "$profile_file"
+        elif ! "$jq_bin" '
             {
                 schema_version: 1,
                 status: "pass",
                 present: true,
                 profileId: .profileId,
-                displayName: .displayName,
-                description: .description,
-                schema: .schema,
-                schemaVersion: .schemaVersion,
-                generatedAt: .generatedAt,
-                generatedBy: .generatedBy,
-                compatibility: .compatibility,
-                providerDefaults: {
-                    provider: .providerDefaults.provider,
-                    region: .providerDefaults.region,
-                    planClass: .providerDefaults.planClass,
-                    operatingSystem: .providerDefaults.operatingSystem,
-                    architecture: .providerDefaults.architecture,
-                    sshUser: .providerDefaults.sshUser,
-                    sshPort: .providerDefaults.sshPort
+                install: {
+                    mode: .install.mode,
+                    profile: .install.profile,
+                    modules: {
+                        only: .install.modules.only,
+                        onlyPhases: .install.modules.onlyPhases,
+                        skip: .install.modules.skip,
+                        noDeps: .install.modules.noDeps
+                    }
                 },
-                install: .install,
-                shellPreferences: .shellPreferences,
-                lessonChoices: .lessonChoices,
-                secretSlots: (if .secretSlots then [.secretSlots[] | { slot: .slot, required: .required, description: .description }] else [] end),
+                serviceAccounts: [.serviceAccounts[] | {
+                    id: .id,
+                    required: .required,
+                    authMethod: .authMethod,
+                    secretSlot: .secretSlot
+                }],
                 redaction: {
                     secrets_collected: false,
-                    raw_credentials_scrubbed: true
+                    raw_profile_collected: false
                 }
             }
-        ' "$profile_candidate" > "$profile_file" 2>/dev/null || {
-            printf '{"schema_version":1,"status":"warn","present":true,"capture":{"status":"warn","reason":"team profile JSON parsing failed"},"redaction":{"secrets_collected":false}}\n' > "$profile_file"
-        }
-    else
-        printf '{"schema_version":1,"status":"pass","present":true,"redaction":{"secrets_collected":false}}\n' > "$profile_file"
+        ' "$profile_candidate" > "$profile_file" 2>/dev/null; then
+            "$jq_bin" -n '{
+                schema_version: 1,
+                status: "warn",
+                present: true,
+                capture: {status: "skipped", reason: "team profile sanitization failed"},
+                redaction: {secrets_collected: false, raw_profile_collected: false}
+            }' > "$profile_file"
+        fi
     fi
 
     record_bundle_file "team_profile.json"
@@ -2985,11 +3046,19 @@ redact_private_key_blocks() {
 
 support_sed_in_place() {
     local file="${!#}"
-    local tmp="${file}.tmp.$$"
-    if sed -E "${@:1:$#-1}" "$file" > "$tmp" 2>/dev/null && mv -f "$tmp" "$file" 2>/dev/null; then
+    local tmp=""
+
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    tmp="$(mktemp "${file}.redacted.XXXXXX" 2>/dev/null)" || return 1
+    if sed -E "${@:1:$#-1}" "$file" > "$tmp" 2>/dev/null \
+        && [[ -f "$file" && ! -L "$file" ]] \
+        && mv "$tmp" "$file" 2>/dev/null; then
         return 0
     fi
-    rm -f "$tmp" 2>/dev/null || true
+
+    printf '<REDACTED:redaction_failed>\n' > "$tmp" 2>/dev/null || return 1
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    mv "$tmp" "$file" 2>/dev/null || return 1
     return 1
 }
 
