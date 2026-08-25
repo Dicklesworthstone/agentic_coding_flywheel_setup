@@ -110,6 +110,34 @@ acfs_ledger_expected_hash() {
 }
 
 if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
+    ledger_declared_count="$(printf '%s\n' "$ledger_data" | awk -F= '
+        $1 == "ACFS_INTERNAL_CHECKSUMS_COUNT" && $2 ~ /^[0-9]+$/ { print $2; exit }
+    ')"
+    ledger_parsed_count="$(printf '%s\n' "$ledger_data" | awk '
+        /^[[:space:]]*\[[^]]+\]="[0-9a-f]{64}"$/ { count += 1 }
+        END { print count + 0 }
+    ')"
+    ledger_unique_count="$(printf '%s\n' "$ledger_data" | awk '
+        /^[[:space:]]*\[[^]]+\]="[0-9a-f]{64}"$/ {
+            line = $0
+            sub(/^[[:space:]]*\[/, "", line)
+            sub(/\]="[0-9a-f]{64}"$/, "", line)
+            seen[line] = 1
+        }
+        END {
+            for (line in seen) count += 1
+            print count + 0
+        }
+    ')"
+    if [[ -z "$ledger_declared_count" ]] \
+        || [[ "$ledger_parsed_count" -ne "$ledger_declared_count" ]] \
+        || [[ "$ledger_unique_count" -ne "$ledger_parsed_count" ]]; then
+        echo "❌ Internal checksum ledger structure is malformed:"
+        echo "   declared=${ledger_declared_count:-missing} parsed=$ledger_parsed_count unique=$ledger_unique_count"
+        echo "   Run:  cd packages/manifest && bun run generate"
+        exit 1
+    fi
+
     # Membership: every ledger entry must be reachable by install.sh's bootstrap
     # extraction. A key outside those patterns can never be present in the
     # unpacked archive, which surfaces to users as "INTEGRITY: <path> missing"
@@ -145,9 +173,17 @@ if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
         unstaged_covered="${unstaged_covered}  $unstaged"$'\n'
     done < <(git diff --name-only --diff-filter=ACMRD)
 
-    # Drift: compare each staged covered file against the ledger's expectation.
+    # Drift: when the ledger is staged, validate every entry against the
+    # candidate commit (the index). This catches ledger-only hash corruption,
+    # not just covered files that also happen to be staged. Otherwise, checking
+    # the staged covered paths is sufficient because HEAD's ledger is trusted.
     drifted=""
     staged_deletions=""
+    if [[ "$ledger_is_staged" == "true" ]]; then
+        candidate_paths="$(printf '%s\n' "$ledger_data" | grep -oE '^[[:space:]]*\[[^]]+\]=' | sed 's/^[[:space:]]*\[//; s/\]=$//')"
+    else
+        candidate_paths="$(git diff --cached --name-only --diff-filter=ACMRD)"
+    fi
     while IFS= read -r staged; do
         [[ -n "$staged" ]] || continue
         expected="$(acfs_ledger_expected_hash "$staged" || true)"
@@ -157,7 +193,7 @@ if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
             continue
         fi
         [[ "$actual" == "$expected" ]] || drifted="${drifted}  $staged"$'\n'
-    done < <(git diff --cached --name-only --diff-filter=ACMRD)
+    done <<< "$candidate_paths"
 
     if [[ -n "$staged_deletions" ]]; then
         echo "❌ Checksum-covered files are staged for deletion:"

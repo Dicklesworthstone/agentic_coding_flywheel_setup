@@ -804,6 +804,8 @@ test_manifest_guard_scripts_cover_all_generated_outputs() {
         && [[ "$ledger_guard" == *'ledger_is_staged=true'* ]] \
         && [[ "$ledger_guard" == *'git show "HEAD:$LEDGER_PATH"'* ]] \
         && [[ "$ledger_guard" == *'git diff --name-only --diff-filter=ACMRD'* ]] \
+        && [[ "$ledger_guard" == *'ledger_parsed_count'* ]] \
+        && [[ "$ledger_guard" == *'candidate_paths="$(printf'* ]] \
         && [[ "$ledger_guard" == *'Cannot verify the checksum ledger with unstaged covered changes'* ]] \
         && [[ "$ledger_guard" == *'Checksum-covered files are staged for deletion'* ]]; then
         harness_pass "Checksum ledger guard keeps staged and working-tree snapshots separate"
