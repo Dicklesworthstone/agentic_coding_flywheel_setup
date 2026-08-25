@@ -287,7 +287,7 @@ provisioning_packet_validate_shapes() {
           and (.supportBundleSafe | type == "boolean")
           and (.redactionRequired | type == "boolean")
         ))
-        and (all(.. | strings; test("[\\u0000-\\u001F\\u007F\\u202A-\\u202E\\u2066-\\u2069]") | not))
+        and (all(.. | strings; test("[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]") | not))
         and (if (.install | has("moduleSelection")) and .install.moduleSelection != null then
           .install.moduleSelection as $selection
           | ($selection | type == "object")
