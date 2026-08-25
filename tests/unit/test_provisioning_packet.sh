@@ -385,6 +385,49 @@ test_profile_flag_cannot_impersonate_explicit_selectors() {
     pass "profile_flag_cannot_impersonate_explicit_selectors"
 }
 
+test_false_selector_defaults_and_scalar_type_confusion_are_rejected() {
+    local packet invalid_packet output status
+    packet="$(valid_packet_fixture)"
+    invalid_packet="$ARTIFACT_DIR/type-confusion-packet.json"
+    jq '
+      .provider.name = {unexpected: "object"} |
+      .install.moduleSelection = {onlyModules: false, noDeps: false}
+    ' "$packet" > "$invalid_packet"
+
+    output="$(run_packet type-confusion --json --file "$invalid_packet")"
+    status="$(cat "$ARTIFACT_DIR/type-confusion.exit")"
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("structural contract")) and
+      (.packet | not)
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "false_selector_defaults_and_scalar_type_confusion_are_rejected"
+}
+
+test_terminal_and_bidi_control_characters_are_rejected() {
+    local packet invalid_packet output status
+    packet="$(valid_packet_fixture)"
+    invalid_packet="$ARTIFACT_DIR/control-character-packet.json"
+    jq '
+      .provider.name = "Contabo\u001b[31m" |
+      .region.id = "safe\u202Egnorw"
+    ' "$packet" > "$invalid_packet"
+
+    output="$(run_packet control-characters --json --file "$invalid_packet")"
+    status="$(cat "$ARTIFACT_DIR/control-characters.exit")"
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("structural contract")) and
+      (.packet | not)
+    ' <<<"$output" >/dev/null || return 1
+    [[ "$output" != *$'\033'* ]] || return 1
+
+    pass "terminal_and_bidi_control_characters_are_rejected"
+}
+
 test_packet_refuses_raw_target_host_and_ref_mismatch() {
     local packet invalid_packet output status
     packet="$(valid_packet_fixture)"
@@ -609,6 +652,8 @@ run_all_tests() {
         test_failed_validation_never_echoes_packet_values
         test_packet_rejects_root_username_and_command_drift
         test_profile_flag_cannot_impersonate_explicit_selectors
+        test_false_selector_defaults_and_scalar_type_confusion_are_rejected
+        test_terminal_and_bidi_control_characters_are_rejected
         test_packet_refuses_raw_target_host_and_ref_mismatch
         test_malformed_packet_fails_with_json_error
         test_factory_sentinel_rejects_invalid_packet_with_provider_setup_category

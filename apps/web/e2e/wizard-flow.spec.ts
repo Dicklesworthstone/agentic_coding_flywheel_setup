@@ -2030,6 +2030,32 @@ test.describe("Command Builder Panel", () => {
     await expect(page.locator('code').filter({ hasText: '--mode safe' }).first()).toBeVisible();
   });
 
+  test("should persist a module profile and expose its resolved plan", async ({ page }) => {
+    await page.goto("/wizard/launch-onboarding");
+    await page.waitForLoadState("domcontentloaded");
+
+    const minimalProfile = page.getByRole("button", { name: "Minimal", exact: true });
+    await minimalProfile.click();
+    await expect(minimalProfile).toHaveAttribute("aria-pressed", "true");
+
+    const installerCommand = page.locator("code").filter({ hasText: "curl -fsSL" }).first();
+    await expect(installerCommand).toContainText('--profile "minimal"');
+    await expect(page).toHaveURL(/(?:\?|&)profile=minimal(?:&|$)/);
+
+    await page.getByRole("button", { name: /Install Plan:/ }).click();
+    await expect(page.getByText(/Included Modules \(\d+\):/)).toBeVisible();
+    await expect(page.getByText(/Skipped Modules \(\d+\):/)).toBeVisible();
+    await expect(page.getByText(/dependency of /).first()).toBeVisible();
+
+    const copyInstaller = page.getByRole("button", { name: "Copy Run installer command" });
+    await copyInstaller.click();
+    await expect(copyInstaller.locator("svg.text-\\[oklch\\(0\\.72_0\\.19_145\\)\\]")).toBeVisible();
+
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+    await expect(page.locator("code").filter({ hasText: "curl -fsSL" }).first()).toContainText('--profile "minimal"');
+  });
+
   test("should show advanced settings when clicked", async ({ page }) => {
     await page.goto("/wizard/launch-onboarding");
     await page.waitForLoadState("domcontentloaded");
@@ -2266,5 +2292,17 @@ test.describe("Command Builder Panel - Mobile", () => {
 
     // Command should update
     await expect(page.locator('code').filter({ hasText: '--mode safe' }).first()).toBeVisible();
+  });
+
+  test("should serialize a selected module profile on mobile", async ({ page }) => {
+    await page.goto("/wizard/launch-onboarding");
+    await page.waitForLoadState("domcontentloaded");
+
+    const agentsOnlyProfile = page.getByRole("button", { name: "Agents only", exact: true });
+    await agentsOnlyProfile.click();
+    await expect(agentsOnlyProfile).toHaveAttribute("aria-pressed", "true");
+
+    await expect(page).toHaveURL(/(?:\?|&)profile=agents-only(?:&|$)/);
+    await expect(page.locator("code").filter({ hasText: "curl -fsSL" }).first()).toContainText('--profile "agents-only"');
   });
 });

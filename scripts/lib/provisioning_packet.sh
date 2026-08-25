@@ -229,26 +229,47 @@ provisioning_packet_validate_username() {
 
 provisioning_packet_validate_shapes() {
     if ! jq -e '
-        (.schemaVersion | type == "number" and floor == .)
+        (.schema | type == "string")
+        and (.schemaVersion | type == "number" and floor == .)
+        and (.stage | type == "string")
         and (.privacy | type == "object")
+        and (.privacy.supportBundleSafe | type == "boolean")
+        and (.privacy.rawProviderCredentialsIncluded | type == "boolean")
+        and (.privacy.rawTargetHostIncluded | type == "boolean")
+        and (.privacy.rawPrivateKeyIncluded | type == "boolean")
+        and (.privacy.rawPrivateKeyPathIncluded | type == "boolean")
+        and (.privacy.rawCloudInitIncludedInSupportBundle | type == "boolean")
+        and (.provenance | type == "object")
+        and (.provenance.sourceRef | type == "string")
         and (.provider | type == "object")
+        and (.provider.id | type == "string")
+        and (.provider.name | type == "string")
+        and (.provider.automationLevel | type == "string")
         and (.provider.manualStepsRemaining | type == "array" and all(.[]; type == "string"))
         and (.region | type == "object")
+        and (.region.id | type == "string")
+        and (.region.readinessStatus | type == "string")
         and (.size | type == "object")
+        and (.size.planName | type == "string")
         and (.osImage | type == "object")
         and (.osImage.distribution | type == "string")
         and (.osImage.version | type == "string" and test("^[0-9]{2}\\.[0-9]{2}$"))
         and (.osImage.readinessStatus | type == "string")
         and (.access | type == "object")
         and (.access.username | type == "string")
+        and (.access.sshPrivateKeyIncluded | type == "boolean")
+        and (.access.sshPrivateKeyPathIncluded | type == "boolean")
         and (.cloudInit | type == "object")
+        and (.cloudInit.mode | type == "string")
         and (.install | type == "object")
         and (.install.mode | type == "string")
         and (.install.sourceRef | type == "string")
         and (.install.command | type == "string")
         and (.install.commandRunLocation | type == "string")
         and (.compatibility | type == "object")
+        and (.compatibility.workloadId | type == "string")
         and (.compatibility.targetAgents | type == "number" and floor == . and . >= 1)
+        and (.compatibility.readinessStatus | type == "string")
         and (.verificationCommands | type == "array" and all(.[];
           type == "object"
           and (.id | type == "string")
@@ -266,17 +287,20 @@ provisioning_packet_validate_shapes() {
           and (.supportBundleSafe | type == "boolean")
           and (.redactionRequired | type == "boolean")
         ))
-        and (
-          (.install.moduleSelection // {}) as $selection
+        and (all(.. | strings; test("[\\u0000-\\u001F\\u007F\\u202A-\\u202E\\u2066-\\u2069]") | not))
+        and (if (.install | has("moduleSelection")) and .install.moduleSelection != null then
+          .install.moduleSelection as $selection
           | ($selection | type == "object")
-          and (($selection.profile // "") | type == "string" and test("^[a-z0-9][a-z0-9._-]{0,79}$") or . == "")
-          and (($selection.onlyModules // []) | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
-          and (($selection.onlyPhases // []) | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
-          and (($selection.skipModules // []) | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
-          and (($selection.skipTags // []) | type == "array" and length == 0)
-          and (($selection.skipCategories // []) | type == "array" and length == 0)
-          and (($selection.noDeps // false) | type == "boolean")
-        )
+          and (($selection | has("profile") | not) or ($selection.profile | type == "string" and test("^[a-z0-9][a-z0-9._-]{0,79}$")))
+          and (($selection | has("onlyModules") | not) or ($selection.onlyModules | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$"))))
+          and (($selection | has("onlyPhases") | not) or ($selection.onlyPhases | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$"))))
+          and (($selection | has("skipModules") | not) or ($selection.skipModules | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$"))))
+          and (($selection | has("skipTags") | not) or ($selection.skipTags | type == "array" and length == 0))
+          and (($selection | has("skipCategories") | not) or ($selection.skipCategories | type == "array" and length == 0))
+          and (($selection | has("noDeps") | not) or ($selection.noDeps | type == "boolean"))
+        else
+          true
+        end)
     ' "$PROVISIONING_PACKET_FILE" >/dev/null 2>&1; then
         provisioning_packet_add_error "Packet fields do not match the v1 structural contract."
     fi

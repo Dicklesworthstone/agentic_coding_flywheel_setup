@@ -133,12 +133,17 @@ function SettingsToggle({
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-muted-foreground">{label}:</span>
-      <div className="flex flex-wrap rounded-lg border border-border/50 bg-muted/30 p-0.5">
+      <div
+        className="flex flex-wrap rounded-lg border border-border/50 bg-muted/30 p-0.5"
+        role="group"
+        aria-label={`${label} selection`}
+      >
         {options.map((opt) => (
           <button
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
+            aria-pressed={value === opt.value}
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
               value === opt.value
