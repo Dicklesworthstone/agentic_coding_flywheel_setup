@@ -142,6 +142,7 @@ export default function RunInstallerPage() {
   const effectiveUserOS = userOS ?? "mac";
   const effectiveVpsIP = vpsIP ?? "";
   const effectiveSSHUsername = sshUsername.trim() || "ubuntu";
+  const effectiveTargetUbuntuVersion = vpsReadinessSelection?.ubuntuVersion ?? "25.10";
   const reconnectCommand = useMemo(
     () => `ssh -i ~/.ssh/acfs_ed25519 ${formatSshTarget(effectiveSSHUsername, effectiveVpsIP)}`,
     [effectiveSSHUsername, effectiveVpsIP],
@@ -647,8 +648,11 @@ export default function RunInstallerPage() {
             <div>
               <p className="font-semibold text-foreground">1. Build cache on your local/connected machine:</p>
               <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
-                acfs installer-cache build --output /tmp/acfs-cache
+                acfs installer-cache build --arch x86_64 --ubuntu-version {effectiveTargetUbuntuVersion} --output /tmp/acfs-cache
               </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                If your VPS uses ARM64, replace <code className="rounded bg-muted px-1 py-0.5">x86_64</code> with <code className="rounded bg-muted px-1 py-0.5">aarch64</code>.
+              </p>
             </div>
 
             <div>

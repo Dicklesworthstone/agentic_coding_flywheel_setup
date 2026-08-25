@@ -287,8 +287,13 @@ provisioning_packet_validate_install_command() {
         *) provisioning_packet_add_error "Unsupported install.commandRunLocation: ${command_location:-<missing>}" ;;
     esac
 
-    if [[ ! "$source_ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] \
-        || [[ "$source_ref" == *".."* || "$source_ref" == *"//"* || "$source_ref" == */.lock ]]; then
+    if [[ ! "$source_ref" =~ ^[A-Za-z0-9_][A-Za-z0-9._/-]{0,119}$ ]] \
+        || [[ "$source_ref" == *".."* \
+            || "$source_ref" == *"//"* \
+            || "$source_ref" == *"/."* \
+            || "$source_ref" == *.lock \
+            || "$source_ref" == *. \
+            || "$source_ref" == */ ]]; then
         provisioning_packet_add_error "install.sourceRef is not a safe Git ref."
         return
     fi
