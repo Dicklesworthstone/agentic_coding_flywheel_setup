@@ -641,24 +641,26 @@ export function useACFSRef(): [string | null, (ref: string | null) => void, bool
 
 // --- Module Selection Profile ---
 
-const VALID_PROFILES = new Set(manifestSelectionProfiles.map((p) => p.id));
+const VALID_WEB_PROFILES = new Set(
+  manifestSelectionProfiles.filter((profile) => !profile.mode).map((profile) => profile.id),
+);
 
 export function getModuleProfile(): ModuleSelectionProfileId {
   const fromQuery = getQueryParam(MODULE_PROFILE_QUERY_KEY);
-  if (fromQuery && VALID_PROFILES.has(fromQuery as ModuleSelectionProfileId)) {
+  if (fromQuery && VALID_WEB_PROFILES.has(fromQuery as ModuleSelectionProfileId)) {
     return fromQuery as ModuleSelectionProfileId;
   }
   const stored = safeGetItem(MODULE_PROFILE_KEY);
-  if (stored && VALID_PROFILES.has(stored as ModuleSelectionProfileId)) {
+  if (stored && VALID_WEB_PROFILES.has(stored as ModuleSelectionProfileId)) {
     return stored as ModuleSelectionProfileId;
   }
-  return "vibe";
+  return "full";
 }
 
 export function setModuleProfile(profile: ModuleSelectionProfileId): boolean {
-  if (!VALID_PROFILES.has(profile)) return false;
+  if (!VALID_WEB_PROFILES.has(profile)) return false;
   const storedOk = safeSetItem(MODULE_PROFILE_KEY, profile);
-  const urlOk = setQueryParam(MODULE_PROFILE_QUERY_KEY, profile === "vibe" ? null : profile);
+  const urlOk = setQueryParam(MODULE_PROFILE_QUERY_KEY, profile === "full" ? null : profile);
   if (storedOk || urlOk) {
     emitUserPreferencesUpdate();
   }
@@ -682,5 +684,5 @@ export function useModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleS
     }
   }, [queryClient]);
 
-  return [data ?? "vibe", setProfile, status === "success"];
+  return [data ?? "full", setProfile, status === "success"];
 }

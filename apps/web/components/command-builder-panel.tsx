@@ -11,7 +11,6 @@ import {
   Settings2,
   ChevronDown,
   Boxes,
-  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, copyTextToClipboard } from "@/lib/utils";
@@ -324,7 +323,7 @@ export function CommandBuilderPanel() {
   }, [normalizedRefDraft, ref, refDraft, setRef]);
 
   const profileOptions = useMemo(() => {
-    return manifestSelectionProfiles.map((p) => ({
+    return manifestSelectionProfiles.filter((p) => !p.mode).map((p) => ({
       value: p.id,
       label: p.label,
     }));

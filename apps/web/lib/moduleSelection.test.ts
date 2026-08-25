@@ -249,6 +249,23 @@ describe("buildInstallSelectorArgs", () => {
     ]);
   });
 
+  test("preserves explicit selectors when paired with a mode-only profile", () => {
+    expect(buildInstallSelectorArgs({
+      profile: "safe",
+      onlyModules: ["agents.codex"],
+    })).toEqual([
+      "--only",
+      "\"agents.codex\"",
+    ]);
+    expect(buildInstallSelectorArgs({
+      profile: "full",
+      onlyPhases: ["agents"],
+    })).toEqual([
+      "--only-phase",
+      "\"7\"",
+    ]);
+  });
+
   test("throws instead of serializing invalid selectors", () => {
     expect(() => buildInstallSelectorArgs({ onlyModules: ["bad;module"] })).toThrow(
       "Unknown module id in --only: bad;module",

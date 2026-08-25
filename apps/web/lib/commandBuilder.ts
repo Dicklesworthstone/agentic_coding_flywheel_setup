@@ -2017,9 +2017,12 @@ export function buildShareURL(inputs: CommandBuilderInputs): string {
   url.searchParams.set("os", inputs.os);
   if (safeUsername !== "ubuntu") {
     url.searchParams.set("user", safeUsername);
+  } else {
+    url.searchParams.delete("user");
+  }
   url.searchParams.set("mode", inputs.mode);
   const profile = inputs.moduleSelection?.profile;
-  if (profile && profile !== "vibe") {
+  if (profile && profile !== "full") {
     url.searchParams.set("profile", profile);
   } else {
     url.searchParams.delete("profile");

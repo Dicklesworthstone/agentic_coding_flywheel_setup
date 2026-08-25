@@ -354,9 +354,10 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.install.command).toContain('TARGET_USER="dev-user"');
     expect(packet.install.command).toContain('--ref "v1.2.3"');
     expect(packet.install.command).toContain("/v1.2.3/install.sh");
-    expect(packet.install.command).toContain('--only "cloud.wrangler"');
-    expect(packet.install.command).toContain('--only "cloud.supabase"');
-    expect(packet.install.command).toContain('--only "cloud.vercel"');
+    expect(packet.install.command).toContain('--profile "cloud-only"');
+    expect(packet.install.command).not.toContain('--only "cloud.wrangler"');
+    expect(packet.install.command).not.toContain('--only "cloud.supabase"');
+    expect(packet.install.command).not.toContain('--only "cloud.vercel"');
   });
 
   test("stores only known module selection fields in support-safe packets", () => {

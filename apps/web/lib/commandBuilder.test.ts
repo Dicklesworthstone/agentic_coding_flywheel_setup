@@ -276,7 +276,7 @@ describe("buildCommands", () => {
 
     const installer = commands.find((command) => command.id === "installer");
 
-    expect(installer?.command).toContain('--only-phase "9"');
+    expect(installer?.command).toContain('--profile "stack-only"');
   });
 });
 
@@ -466,7 +466,7 @@ describe("buildTeamProfile", () => {
       "Selected cloud modules may require live provider or CLI authentication after install.",
     );
     expect(review).toContain("# ACFS Team Profile Review");
-    expect(review).toContain('--only "cloud.wrangler"');
+    expect(review).toContain('--profile "cloud-only"');
     expect(json).not.toContain("203.0.113.42");
     expect(review).not.toContain("203.0.113.42");
   });
@@ -636,7 +636,7 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.ok).toBe(true);
     expect(diff.safeDefaults.changes.map((change) => change.field)).toContain("providerDefaults.provider");
     expect(diff.installerCommand.command).toContain('--ref "v1.2.3"');
-    expect(diff.installerCommand.command).toContain('--only "cloud.wrangler"');
+    expect(diff.installerCommand.command).toContain('--profile "cloud-only"');
     expect(diff.secretSlots.required).toEqual(["secret://acfs/team/github-auth"]);
     expect(json).toContain("\"dryRun\": true");
     expect(markdown).toContain("Status: ready");
@@ -1550,7 +1550,7 @@ describe("buildShareURL", () => {
     }
   });
 
-  test("includes profile parameter in share URL when not default vibe", () => {
+  test("includes profile parameter in share URL when not default full", () => {
     const originalWindow = globalThis.window;
 
     Object.defineProperty(globalThis, "window", {

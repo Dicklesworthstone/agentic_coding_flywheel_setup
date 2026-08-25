@@ -6,6 +6,7 @@ import {
   normalizeGitRef,
   normalizeSSHUsername,
 } from "./inputValidation"
+import { manifestSelectionProfiles } from "./generated/manifest-modules"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -78,6 +79,9 @@ const CAMPAIGN_QUERY_KEYS = new Set([
   "utm_source",
   "utm_term",
 ]);
+const SAFE_PROFILE_QUERY_VALUES = new Set(
+  manifestSelectionProfiles.filter((profile) => !profile.mode).map((profile) => profile.id),
+);
 
 function normalizedQueryKey(key: string): string {
   return key.replace(/[^a-z0-9]/gi, "").toLowerCase();
@@ -156,6 +160,8 @@ function isSafeQueryEntry(key: string, value: string): boolean {
       return value === "mac" || value === "windows" || value === "linux";
     case "mode":
       return value === "vibe" || value === "safe";
+    case "profile":
+      return SAFE_PROFILE_QUERY_VALUES.has(value);
     case "user":
       return normalizeSSHUsername(value) === value;
     case "ref":

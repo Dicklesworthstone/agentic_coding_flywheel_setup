@@ -438,7 +438,11 @@ describe("progress persistence guards", () => {
 
     expect(queryContainsSensitiveState(query)).toBe(true);
     expect(stripSensitiveQueryState(query)).toBe("os=mac&mode=safe");
-    expect(queryContainsSensitiveState("?utm_source=docs&mode=vibe&ref=v0.7.0")).toBe(false);
+    expect(queryContainsSensitiveState("?utm_source=docs&mode=vibe&profile=minimal&ref=v0.7.0")).toBe(false);
+    expect(stripSensitiveQueryState("?mode=safe&profile=cloud-only"))
+      .toBe("mode=safe&profile=cloud-only");
+    expect(queryContainsSensitiveState("?profile=safe")).toBe(true);
+    expect(queryContainsSensitiveState("?profile=unknown-profile")).toBe(true);
     expect(queryContainsSensitiveState("?from=verify-key-connection")).toBe(false);
     expect(queryContainsSensitiveState("?from=arbitrary-low-entropy-value")).toBe(true);
     expect(stripSensitiveQueryState("?utm_source=docs&unknown=value&mode=vibe"))

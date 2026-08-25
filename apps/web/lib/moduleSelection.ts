@@ -353,10 +353,14 @@ export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): stri
 
   const normalized = normalizeSelection(input, manifestSelectionProfiles);
   const args: string[] = [];
+  const profileHasSelectors = Boolean(
+    normalized.profile
+      && (normalized.profile.onlyModules.length > 0 || normalized.profile.onlyPhases.length > 0),
+  );
 
-  if (normalized.profile && normalized.profile.id !== "full" && normalized.profile.id !== "vibe") {
+  if (normalized.profile && profileHasSelectors) {
     args.push("--profile", quoteInstallArg(normalized.profile.id));
-  } else if (!normalized.profile) {
+  } else {
     for (const moduleId of normalized.onlyModules) {
       args.push("--only", quoteInstallArg(moduleId));
     }
