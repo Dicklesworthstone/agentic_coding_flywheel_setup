@@ -3240,6 +3240,7 @@ sync_acfs_deployed() {
         "scripts/lib/gum_ui.sh:scripts/lib/gum_ui.sh"
         "scripts/lib/progress.sh:scripts/lib/progress.sh"
         "scripts/lib/install_helpers.sh:scripts/lib/install_helpers.sh"
+        "scripts/lib/module_selector.sh:scripts/lib/module_selector.sh"
         "scripts/lib/stack.sh:scripts/lib/stack.sh"
         "scripts/lib/contract.sh:scripts/lib/contract.sh"
         "scripts/lib/nightly_update.sh:scripts/lib/nightly_update.sh"

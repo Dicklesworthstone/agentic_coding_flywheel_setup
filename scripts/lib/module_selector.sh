@@ -12,34 +12,37 @@ if [[ -n "${_ACFS_MODULE_SELECTOR_SH_LOADED:-}" ]]; then
 fi
 _ACFS_MODULE_SELECTOR_SH_LOADED=1
 
-SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+ACFS_MODULE_SELECTOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Ensure dependencies are available
 if ! declare -F log_info &>/dev/null; then
-    if [[ -f "$SCRIPT_DIR/logging.sh" ]]; then
+    if [[ -f "$ACFS_MODULE_SELECTOR_DIR/logging.sh" ]]; then
         # shellcheck source=logging.sh
-        source "$SCRIPT_DIR/logging.sh"
+        source "$ACFS_MODULE_SELECTOR_DIR/logging.sh"
     fi
 fi
 
 if ! declare -F acfs_resolve_selection &>/dev/null; then
-    if [[ -f "$SCRIPT_DIR/install_helpers.sh" ]]; then
+    if [[ -f "$ACFS_MODULE_SELECTOR_DIR/install_helpers.sh" ]]; then
         # shellcheck source=install_helpers.sh
-        source "$SCRIPT_DIR/install_helpers.sh"
+        source "$ACFS_MODULE_SELECTOR_DIR/install_helpers.sh"
     fi
 fi
 
 acfs_is_interactive_terminal() {
     # Non-interactive if explicitly requested or running in automated test/CI
-    if [[ "${YES_MODE:-false}" == "true" ]] || [[ "${DEBIAN_FRONTEND:-}" == "noninteractive" ]] || [[ "${CI:-}" == "true" ]]; then
+    if [[ "${YES_MODE:-false}" == "true" ]] || [[ "${CI:-}" == "true" ]]; then
         return 1
     fi
 
-    # Interactive if stdin/stdout are attached to a terminal or /dev/tty is available
+    # Interactive if stdin/stdout are attached to a terminal or one bidirectional
+    # /dev/tty descriptor can actually be opened by the caller.
     if [[ -t 0 && -t 1 ]]; then
         return 0
     fi
-    if [[ -r /dev/tty && -w /dev/tty ]]; then
+    local tty_fd=""
+    if exec {tty_fd}<>/dev/tty 2>/dev/null; then
+        exec {tty_fd}>&-
         return 0
     fi
     return 1
@@ -50,16 +53,22 @@ acfs_format_reproducible_cli_command() {
     if [[ -n "${MODE:-}" && "$MODE" != "vibe" ]]; then
         cmd+=" --mode $MODE"
     fi
-    if [[ -n "${ACFS_SELECTED_PROFILE:-}" && "$ACFS_SELECTED_PROFILE" != "full" && "$ACFS_SELECTED_PROFILE" != "vibe" ]]; then
+    local profile_has_selectors=false
+    if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]] \
+        && { [[ -n "${ACFS_PROFILE_ONLY_MODULES["$ACFS_SELECTED_PROFILE"]:-}" ]] \
+            || [[ -n "${ACFS_PROFILE_ONLY_PHASES["$ACFS_SELECTED_PROFILE"]:-}" ]]; }; then
+        profile_has_selectors=true
+    fi
+    if [[ "$profile_has_selectors" == "true" ]]; then
         cmd+=" --profile $ACFS_SELECTED_PROFILE"
     fi
-    if [[ "${#ONLY_MODULES[@]}" -gt 0 && -z "${ACFS_SELECTED_PROFILE:-}" ]]; then
+    if [[ "${#ONLY_MODULES[@]}" -gt 0 && "$profile_has_selectors" != "true" ]]; then
         local m=""
         for m in "${ONLY_MODULES[@]}"; do
             [[ -n "$m" ]] && cmd+=" --only $m"
         done
     fi
-    if [[ "${#ONLY_PHASES[@]}" -gt 0 && -z "${ACFS_SELECTED_PROFILE:-}" ]]; then
+    if [[ "${#ONLY_PHASES[@]}" -gt 0 && "$profile_has_selectors" != "true" ]]; then
         local ph=""
         for ph in "${ONLY_PHASES[@]}"; do
             [[ -n "$ph" ]] && cmd+=" --only-phase $ph"
@@ -150,11 +159,11 @@ acfs_interactive_custom_module_toggles() {
 
     local i=1
     for mod in "${optional_modules[@]}"; do
-        local state="[x]"
-        local s=""
-        for s in "${SKIP_MODULES[@]}"; do
-            if [[ "$s" == "$mod" ]]; then
-                state="[ ]"
+        local state="[ ]"
+        local selected=""
+        for selected in "${ONLY_MODULES[@]}"; do
+            if [[ "$selected" == "$mod" ]]; then
+                state="[x]"
                 break
             fi
         done
@@ -167,10 +176,9 @@ acfs_interactive_custom_module_toggles() {
 
     local input=""
     while true; do
-        if [[ -r /dev/tty ]]; then
-            read -r -p "Toggle [number/ID/done]: " input < /dev/tty
-        else
-            read -r -p "Toggle [number/ID/done]: " input
+        if ! read -r -p "Toggle [number/ID/done]: " input; then
+            echo "Input closed; cancelling module customization." >&2
+            return 1
         fi
 
         [[ -z "$input" || "$input" == "done" || "$input" == "d" ]] && break
@@ -192,29 +200,36 @@ acfs_interactive_custom_module_toggles() {
             continue
         fi
 
-        # Check if already skipped
-        local is_skipped=false
-        local new_skips=()
-        for s in "${SKIP_MODULES[@]}"; do
-            if [[ "$s" == "$target" ]]; then
-                is_skipped=true
+        local is_selected=false
+        local new_selection=()
+        for selected in "${ONLY_MODULES[@]}"; do
+            if [[ "$selected" == "$target" ]]; then
+                is_selected=true
             else
-                new_skips+=("$s")
+                new_selection+=("$selected")
             fi
         done
 
-        if [[ "$is_skipped" == "true" ]]; then
-            SKIP_MODULES=("${new_skips[@]}")
-            echo "Enabled: $target"
+        if [[ "$is_selected" == "true" ]]; then
+            ONLY_MODULES=("${new_selection[@]}")
+            echo "Disabled: $target"
         else
-            SKIP_MODULES+=("$target")
-            echo "Skipped: $target"
+            ONLY_MODULES+=("$target")
+            echo "Enabled: $target"
         fi
     done
 }
 
+acfs_prepare_custom_selection() {
+    ONLY_MODULES=("${ACFS_EFFECTIVE_PLAN[@]}")
+    ONLY_PHASES=()
+    SKIP_MODULES=()
+    ACFS_SELECTED_PROFILE=""
+    ACFS_EXPLICIT_TARGETED_SELECTION=true
+    export ACFS_SELECTED_PROFILE
+}
+
 acfs_interactive_module_selector() {
-    # If not in an interactive terminal, handle gracefully
     if ! acfs_is_interactive_terminal; then
         if [[ "${ACFS_INTERACTIVE:-false}" == "true" ]]; then
             log_error "Interactive module selection requested (--interactive), but no interactive TTY is attached."
@@ -226,12 +241,25 @@ acfs_interactive_module_selector() {
         return $?
     fi
 
-    # Ensure manifest index is loaded
     if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
-        source_manifest_index 2>/dev/null || true
+        if ! source_manifest_index 2>/dev/null; then
+            log_error "Manifest index not loaded. Cannot open module selector."
+            return 1
+        fi
     fi
 
-    # Interactive flow
+    local tty_fd=""
+    if ! exec {tty_fd}<>/dev/tty 2>/dev/null; then
+        log_error "Interactive module selection requested, but /dev/tty could not be opened."
+        return 1
+    fi
+    local selector_status=0
+    _acfs_interactive_module_selector_on_tty <&"$tty_fd" >&"$tty_fd" || selector_status=$?
+    exec {tty_fd}>&-
+    return "$selector_status"
+}
+
+_acfs_interactive_module_selector_on_tty() {
     while true; do
         echo ""
         echo "╔═══════════════════════════════════════════════════════════════╗"
@@ -250,33 +278,44 @@ acfs_interactive_module_selector() {
         echo ""
 
         local profile_choice=""
-        if [[ -r /dev/tty ]]; then
-            read -r -p " Choose profile [1-7, q]: " profile_choice < /dev/tty
-        else
-            read -r -p " Choose profile [1-7, q]: " profile_choice
+        if ! read -r -p " Choose profile [1-7, q]: " profile_choice; then
+            echo "Input closed; cancelling installation." >&2
+            return 1
         fi
 
         case "$profile_choice" in
             1|vibe|"")
+                ACFS_EXPLICIT_TARGETED_SELECTION=false
                 acfs_apply_profile "vibe"
                 ;;
             2|safe)
+                ACFS_EXPLICIT_TARGETED_SELECTION=false
                 acfs_apply_profile "safe"
                 ;;
             3|minimal)
+                ACFS_EXPLICIT_TARGETED_SELECTION=false
                 acfs_apply_profile "minimal"
                 ;;
             4|agents-only|agents)
+                ACFS_EXPLICIT_TARGETED_SELECTION=false
                 acfs_apply_profile "agents-only"
                 ;;
             5|cloud-only|cloud)
+                ACFS_EXPLICIT_TARGETED_SELECTION=false
                 acfs_apply_profile "cloud-only"
                 ;;
             6|stack-only|stack)
+                ACFS_EXPLICIT_TARGETED_SELECTION=false
                 acfs_apply_profile "stack-only"
                 ;;
             7|custom)
-                acfs_interactive_custom_module_toggles
+                if ! acfs_resolve_selection; then
+                    continue
+                fi
+                acfs_prepare_custom_selection
+                if ! acfs_interactive_custom_module_toggles; then
+                    return 1
+                fi
                 ;;
             q|Q|quit|exit)
                 echo "Installation cancelled by user." >&2
@@ -296,45 +335,50 @@ acfs_interactive_module_selector() {
         acfs_render_selection_review
 
         local confirm_choice=""
-        echo " What would you like to do?"
-        echo "   1) Proceed with installation"
-        echo "   2) Choose a different profile"
-        echo "   3) Customize individual modules"
-        echo "   q) Abort"
-        echo ""
-        if [[ -r /dev/tty ]]; then
-            read -r -p " Selection [1-3, q]: " confirm_choice < /dev/tty
-        else
-            read -r -p " Selection [1-3, q]: " confirm_choice
-        fi
-
-        case "$confirm_choice" in
-            1|""|y|Y|yes)
-                echo "Proceeding with installation..."
-                return 0
-                ;;
-            2)
-                # Reset only/skip filters and loop back
-                ONLY_MODULES=()
-                ONLY_PHASES=()
-                SKIP_MODULES=()
-                continue
-                ;;
-            3)
-                acfs_interactive_custom_module_toggles
-                if ! acfs_resolve_selection; then
-                    continue
-                fi
-                acfs_render_selection_review
-                ;;
-            q|Q|quit|abort)
-                echo "Installation cancelled by user." >&2
+        while true; do
+            echo " What would you like to do?"
+            echo "   1) Proceed with installation"
+            echo "   2) Choose a different profile"
+            echo "   3) Customize individual modules"
+            echo "   q) Abort"
+            echo ""
+            if ! read -r -p " Selection [1-3, q]: " confirm_choice; then
+                echo "Input closed; cancelling installation." >&2
                 return 1
-                ;;
-            *)
-                echo "Proceeding with installation..."
-                return 0
-                ;;
-        esac
+            fi
+
+            case "$confirm_choice" in
+                1|""|y|Y|yes)
+                    echo "Proceeding with installation..."
+                    return 0
+                    ;;
+                2)
+                    ONLY_MODULES=()
+                    ONLY_PHASES=()
+                    SKIP_MODULES=()
+                    ACFS_SELECTED_PROFILE=""
+                    ACFS_EXPLICIT_TARGETED_SELECTION=false
+                    break
+                    ;;
+                3)
+                    acfs_prepare_custom_selection
+                    if ! acfs_interactive_custom_module_toggles; then
+                        return 1
+                    fi
+                    if ! acfs_resolve_selection; then
+                        continue
+                    fi
+                    acfs_render_selection_review
+                    continue
+                    ;;
+                q|Q|quit|abort)
+                    echo "Installation cancelled by user." >&2
+                    return 1
+                    ;;
+                *)
+                    echo "Invalid selection: $confirm_choice" >&2
+                    ;;
+            esac
+        done
     done
 }

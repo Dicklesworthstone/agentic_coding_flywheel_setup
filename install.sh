@@ -1592,12 +1592,19 @@ generate_resume_hint() {
     # not suggest a resume command that silently expands into the full default
     # installation plan.
     local selection=""
-    if [[ "${ONLY_MODULES+x}" == "x" ]]; then
+    local selected_profile_has_selectors=false
+    if [[ -n "${ACFS_SELECTED_PROFILE:-}" ]] \
+        && { [[ -n "${ACFS_PROFILE_ONLY_MODULES["$ACFS_SELECTED_PROFILE"]:-}" ]] \
+            || [[ -n "${ACFS_PROFILE_ONLY_PHASES["$ACFS_SELECTED_PROFILE"]:-}" ]]; }; then
+        selected_profile_has_selectors=true
+        resume_args+=(--profile "$ACFS_SELECTED_PROFILE")
+    fi
+    if [[ "$selected_profile_has_selectors" != "true" && "${ONLY_MODULES+x}" == "x" ]]; then
         for selection in "${ONLY_MODULES[@]}"; do
             resume_args+=(--only "$selection")
         done
     fi
-    if [[ "${ONLY_PHASES+x}" == "x" ]]; then
+    if [[ "$selected_profile_has_selectors" != "true" && "${ONLY_PHASES+x}" == "x" ]]; then
         for selection in "${ONLY_PHASES[@]}"; do
             resume_args+=(--only-phase "$selection")
         done
