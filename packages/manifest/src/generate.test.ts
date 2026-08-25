@@ -1375,10 +1375,17 @@ describe('Generated web files have correct headers', () => {
 
 describe('manifest-modules.ts structure', () => {
   let content: string;
+  let manifest: Manifest;
 
   beforeAll(() => {
     const filepath = resolve(WEB_GENERATED_DIR, 'manifest-modules.ts');
     content = readFileSync(filepath, 'utf-8');
+    const parseResult = parseManifestFile(MANIFEST_PATH);
+    expect(parseResult.success).toBe(true);
+    if (!parseResult.success || !parseResult.data) {
+      throw new Error(`Failed to parse manifest: ${parseResult.error?.message}`);
+    }
+    manifest = parseResult.data;
   });
 
   test('exports ManifestModuleMetadata interface', () => {
