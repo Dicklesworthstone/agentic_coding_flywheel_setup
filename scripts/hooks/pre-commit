@@ -45,3 +45,118 @@ if git diff --cached --name-only | grep -qE '^(acfs\.manifest\.yaml|packages/man
         echo "✅ Regenerated and staged scripts/generated/"
     fi
 fi
+
+# ---------------------------------------------------------------------------
+# Internal checksum ledger guard
+#
+# scripts/generated/internal_checksums.sh pins the SHA256 of 113 runtime files.
+# install.sh verifies every one of them before it will run, so a commit that
+# changes a covered file without regenerating the ledger breaks `curl | bash`
+# for every new user until someone happens to regenerate.
+#
+# The manifest check above does not catch this: it only fires on
+# acfs.manifest.yaml and packages/manifest/**, while the ledger covers
+# scripts/lib/**, packages/onboard/**, install.sh and friends. Editing
+# scripts/lib/support.sh triggers nothing today.
+#
+# This guard detects drift WITHOUT needing bun, so it still fails closed on a
+# machine that cannot run the generator, and auto-repairs when bun is present.
+# ---------------------------------------------------------------------------
+
+LEDGER_PATH="scripts/generated/internal_checksums.sh"
+
+acfs_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | cut -d' ' -f1
+    else
+        shasum -a 256 | cut -d' ' -f1
+    fi
+}
+
+# Read ledger keys and expected hashes from the STAGED ledger when it is staged,
+# otherwise from HEAD's copy, so the guard reflects what the commit will contain.
+acfs_ledger_stream() {
+    if git diff --cached --name-only | grep -qxF "$LEDGER_PATH"; then
+        git show ":$LEDGER_PATH" 2>/dev/null
+    elif [[ -f "$LEDGER_PATH" ]]; then
+        cat "$LEDGER_PATH"
+    fi
+}
+
+if ledger_data="$(acfs_ledger_stream)" && [[ -n "$ledger_data" ]]; then
+    # Membership: every ledger entry must be reachable by install.sh's bootstrap
+    # extraction. A key outside those patterns can never be present in the
+    # unpacked archive, which surfaces to users as "INTEGRITY: <path> missing"
+    # -- a structurally different failure from a stale hash, and one no amount
+    # of regenerating will fix.
+    unreachable=""
+    while IFS= read -r key; do
+        case "$key" in
+            scripts/*|packages/onboard/*|acfs/*) ;;
+            install.sh|checksums.yaml|acfs.manifest.yaml|VERSION) ;;
+            *) unreachable="${unreachable}  $key"$'\n' ;;
+        esac
+    done < <(printf '%s\n' "$ledger_data" | grep -oE '^[[:space:]]*\[[^]]+\]=' | sed 's/^[[:space:]]*\[//; s/\]=$//')
+
+    if [[ -n "$unreachable" ]]; then
+        echo "❌ Internal checksum ledger covers files the bootstrap archive never extracts:"
+        printf '%s' "$unreachable"
+        echo "   install.sh unpacks only: scripts/** packages/onboard/** acfs/**"
+        echo "                            install.sh checksums.yaml acfs.manifest.yaml VERSION"
+        echo "   Either add the path to the extraction list in install.sh, or drop it"
+        echo "   from the ledger. Users would otherwise see 'INTEGRITY: <path> missing'."
+        exit 1
+    fi
+
+    # Drift: compare each staged covered file against the ledger's expectation.
+    drifted=""
+    while IFS= read -r staged; do
+        [[ -n "$staged" ]] || continue
+        # `|| true` below: a staged file that is not ledger-covered makes grep
+        # exit 1, which under `set -e` would kill the hook silently.
+        expected="$(printf '%s\n' "$ledger_data" \
+            | grep -oE "^[[:space:]]*\[${staged//\//\\/}\]=\"[0-9a-f]{64}\"" \
+            | grep -oE '[0-9a-f]{64}' | head -1 || true)"
+        [[ -n "$expected" ]] || continue          # not a covered file
+        actual="$(git show ":$staged" 2>/dev/null | acfs_sha256 || true)"
+        [[ "$actual" == "$expected" ]] || drifted="${drifted}  $staged"$'\n'
+    done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+    if [[ -n "$drifted" ]]; then
+        echo "📦 Checksum-covered files changed without a ledger regeneration:"
+        printf '%s' "$drifted"
+        if command -v bun >/dev/null 2>&1; then
+            echo "   Regenerating $LEDGER_PATH ..."
+            (cd packages/manifest && bun install --silent && bun run generate) || {
+                echo "❌ Generator failed. Fix that before committing."
+                exit 1
+            }
+            git add -- "$LEDGER_PATH"
+            # Re-verify against the newly staged ledger; if it still disagrees the
+            # generator is not authoritative for these paths and a human should look.
+            ledger_data="$(git show ":$LEDGER_PATH" 2>/dev/null)"
+            still=""
+            while IFS= read -r staged; do
+                [[ -n "$staged" ]] || continue
+                expected="$(printf '%s\n' "$ledger_data" \
+                    | grep -oE "^[[:space:]]*\[${staged//\//\\/}\]=\"[0-9a-f]{64}\"" \
+                    | grep -oE '[0-9a-f]{64}' | head -1 || true)"
+                [[ -n "$expected" ]] || continue
+                actual="$(git show ":$staged" 2>/dev/null | acfs_sha256 || true)"
+                [[ "$actual" == "$expected" ]] || still="${still}  $staged"$'\n'
+            done < <(git diff --cached --name-only --diff-filter=ACMR)
+            if [[ -n "$still" ]]; then
+                echo "❌ Ledger still disagrees after regeneration:"
+                printf '%s' "$still"
+                exit 1
+            fi
+            echo "✅ Ledger regenerated and staged"
+        else
+            echo "❌ bun is not available, so the ledger cannot be regenerated here."
+            echo "   Commit blocked: shipping this would break 'curl | bash' for new users."
+            echo "   Run:  cd packages/manifest && bun run generate"
+            echo "   then: git add $LEDGER_PATH"
+            exit 1
+        fi
+    fi
+fi
