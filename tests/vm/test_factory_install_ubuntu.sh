@@ -491,6 +491,11 @@ set -euo pipefail
 : "${ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS:?}"
 : "${ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS:?}"
 : "${ACFS_FACTORY_RUN_MODE:?}"
+: "${ACFS_FACTORY_PROFILE:=}"
+: "${ACFS_FACTORY_ONLY_MODULES_CSV:=}"
+: "${ACFS_FACTORY_ONLY_PHASES_CSV:=}"
+: "${ACFS_FACTORY_SKIP_MODULES_CSV:=}"
+: "${ACFS_FACTORY_NO_DEPS:=false}"
 
 REMOTE_LOG="${ACFS_FACTORY_REMOTE_DIR}/factory-e2e.log"
 REMOTE_JSONL="${ACFS_FACTORY_REMOTE_DIR}/factory-e2e.jsonl"
@@ -550,12 +555,12 @@ run_target_step() {
     local target_home=""
     local target_path=""
 
-    target_home="$(getent passwd ubuntu | cut -d: -f6)"
-    [[ -n "$target_home" ]] || fail "$phase" "unable to resolve ubuntu home"
+    target_home="$(getent passwd "$ACFS_FACTORY_TARGET_USERNAME" | cut -d: -f6)"
+    [[ -n "$target_home" ]] || fail "$phase" "unable to resolve target-user home"
     target_path="$target_home/.local/bin:$target_home/.acfs/bin:$target_home/.cargo/bin:$target_home/.bun/bin:$target_home/.atuin/bin:$target_home/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
     log_event "$phase" "start" "$script"
-    if sudo -n -u ubuntu env ACFS_DOCTOR_CI=true HOME="$target_home" PATH="$target_path" bash -lc "$script"; then
+    if sudo -n -u "$ACFS_FACTORY_TARGET_USERNAME" env ACFS_DOCTOR_CI=true HOME="$target_home" PATH="$target_path" bash -lc "$script"; then
         pass "$phase" "$script"
     else
         local rc=$?
@@ -608,12 +613,49 @@ run_install_once() {
     timeout "$ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS" bash -s -- \
         "$ACFS_FACTORY_INSTALL_URL" \
         "$ACFS_FACTORY_MODE" \
-        "$ACFS_FACTORY_REF" > "$log_file" 2>&1 <<'INSTALL_SCRIPT'
+        "$ACFS_FACTORY_REF" \
+        "$ACFS_FACTORY_TARGET_USERNAME" \
+        "$ACFS_FACTORY_PROFILE" \
+        "$ACFS_FACTORY_ONLY_MODULES_CSV" \
+        "$ACFS_FACTORY_ONLY_PHASES_CSV" \
+        "$ACFS_FACTORY_SKIP_MODULES_CSV" \
+        "$ACFS_FACTORY_NO_DEPS" > "$log_file" 2>&1 <<'INSTALL_SCRIPT'
 set -euo pipefail
 install_url="$1"
 mode="$2"
 ref="$3"
-curl -fsSL "$install_url" | bash -s -- --yes --mode "$mode" --ref "$ref"
+target_username="$4"
+profile="$5"
+only_modules_csv="$6"
+only_phases_csv="$7"
+skip_modules_csv="$8"
+no_deps="$9"
+installer_args=(--yes --mode "$mode" --ref "$ref")
+if [[ -n "$profile" ]]; then
+    installer_args+=(--profile "$profile")
+fi
+if [[ -n "$only_modules_csv" ]]; then
+    IFS=',' read -r -a only_modules <<< "$only_modules_csv"
+    for selector in "${only_modules[@]}"; do
+        installer_args+=(--only "$selector")
+    done
+fi
+if [[ -n "$only_phases_csv" ]]; then
+    IFS=',' read -r -a only_phases <<< "$only_phases_csv"
+    for selector in "${only_phases[@]}"; do
+        installer_args+=(--only-phase "$selector")
+    done
+fi
+if [[ -n "$skip_modules_csv" ]]; then
+    IFS=',' read -r -a skip_modules <<< "$skip_modules_csv"
+    for selector in "${skip_modules[@]}"; do
+        installer_args+=(--skip "$selector")
+    done
+fi
+if [[ "$no_deps" == "true" ]]; then
+    installer_args+=(--no-deps)
+fi
+curl -fsSL "$install_url" | TARGET_USER="$target_username" bash -s -- "${installer_args[@]}"
 INSTALL_SCRIPT
     rc=$?
     set -e
@@ -654,26 +696,26 @@ assert_systemd_host() {
 }
 
 assert_fresh_user_state() {
-    if id ubuntu >/dev/null 2>&1; then
-        if [[ "$ACFS_FACTORY_EXPECT_NO_UBUNTU" == "true" ]]; then
-            fail "preflight.fresh_user" "ubuntu user already exists before install"
+    if id "$ACFS_FACTORY_TARGET_USERNAME" >/dev/null 2>&1; then
+        if [[ "$ACFS_FACTORY_EXPECT_NO_TARGET_USER" == "true" ]]; then
+            fail "preflight.fresh_user" "target user already exists before install"
         fi
-        pass "preflight.fresh_user" "ubuntu user pre-exists and was allowed"
+        pass "preflight.fresh_user" "target user pre-exists and was allowed"
     else
-        pass "preflight.fresh_user" "ubuntu user does not exist before install"
+        pass "preflight.fresh_user" "target user does not exist before install"
     fi
 }
 
 assert_target_user() {
     local home=""
     local uid=""
-    id ubuntu >/dev/null 2>&1 || fail "post.user" "ubuntu user was not created"
-    home="$(getent passwd ubuntu | cut -d: -f6)"
-    [[ "$home" == "/home/ubuntu" ]] || fail "post.user_home" "expected /home/ubuntu, got ${home:-empty}"
-    [[ -d /home/ubuntu ]] || fail "post.home_dir" "/home/ubuntu missing"
-    uid="$(id -u ubuntu)"
+    id "$ACFS_FACTORY_TARGET_USERNAME" >/dev/null 2>&1 || fail "post.user" "target user was not created"
+    home="$(getent passwd "$ACFS_FACTORY_TARGET_USERNAME" | cut -d: -f6)"
+    [[ "$home" == "/home/$ACFS_FACTORY_TARGET_USERNAME" ]] || fail "post.user_home" "unexpected target-user home: ${home:-empty}"
+    [[ -d "$home" ]] || fail "post.home_dir" "target-user home missing"
+    uid="$(id -u "$ACFS_FACTORY_TARGET_USERNAME")"
     [[ -d "/run/user/$uid" ]] || fail "post.runtime_dir" "/run/user/$uid missing"
-    pass "post.user" "ubuntu user, home, and runtime dir exist"
+    pass "post.user" "target user, home, and runtime dir exist"
 }
 
 assert_ssh_key_merge() {
@@ -688,11 +730,12 @@ assert_ssh_key_merge() {
     }
 
     public_key="$(printf '%s' "$key_b64" | base64 -d)"
-    [[ -f /home/ubuntu/.ssh/authorized_keys ]] || fail "post.ssh_keys" "authorized_keys missing"
-    grep -Fxq "$public_key" /home/ubuntu/.ssh/authorized_keys || fail "post.ssh_keys" "seeded key missing from ubuntu authorized_keys"
-    count="$(grep -Fxc "$public_key" /home/ubuntu/.ssh/authorized_keys || true)"
+    local authorized_keys="/home/$ACFS_FACTORY_TARGET_USERNAME/.ssh/authorized_keys"
+    [[ -f "$authorized_keys" ]] || fail "post.ssh_keys" "authorized_keys missing"
+    grep -Fxq "$public_key" "$authorized_keys" || fail "post.ssh_keys" "seeded key missing from target-user authorized_keys"
+    count="$(grep -Fxc "$public_key" "$authorized_keys" || true)"
     [[ "$count" == "1" ]] || fail "post.ssh_keys" "seeded key count expected 1, got $count"
-    last_char="$(tail -c 1 /home/ubuntu/.ssh/authorized_keys | od -An -t u1 | tr -d ' ' 2>/dev/null || true)"
+    last_char="$(tail -c 1 "$authorized_keys" | od -An -t u1 | tr -d ' ' 2>/dev/null || true)"
     [[ "$last_char" == "10" ]] || fail "post.ssh_keys" "authorized_keys does not end with newline"
     pass "post.ssh_keys" "seeded key merged exactly once with trailing newline"
 }
@@ -738,7 +781,8 @@ systemctl --user is-enabled acfs-nightly-update.timer >/dev/null
 }
 
 redact_factory_artifacts() {
-    local support_lib="/home/ubuntu/.acfs/scripts/lib/support.sh"
+    local target_home="/home/$ACFS_FACTORY_TARGET_USERNAME"
+    local support_lib="$target_home/.acfs/scripts/lib/support.sh"
     local stage="${ACFS_FACTORY_REMOTE_DIR}/redacted-artifacts-$(date +%s)"
     local file=""
 
@@ -747,7 +791,7 @@ redact_factory_artifacts() {
     mkdir -p \
         "$stage/factory" \
         "$stage/var-log-acfs" \
-        "$stage/home-ubuntu-acfs-logs"
+        "$stage/target-acfs-logs"
 
     for file in "$REMOTE_LOG" "$REMOTE_JSONL" "$INSTALL_LOG" "$IDEMPOTENCY_LOG"; do
         [[ -f "$file" ]] || continue
@@ -756,8 +800,8 @@ redact_factory_artifacts() {
     if [[ -d /var/log/acfs ]]; then
         cp -a /var/log/acfs/. "$stage/var-log-acfs/" 2>/dev/null || true
     fi
-    if [[ -d /home/ubuntu/.acfs/logs ]]; then
-        cp -a /home/ubuntu/.acfs/logs/. "$stage/home-ubuntu-acfs-logs/" 2>/dev/null || true
+    if [[ -d "$target_home/.acfs/logs" ]]; then
+        cp -a "$target_home/.acfs/logs/." "$stage/target-acfs-logs/" 2>/dev/null || true
     fi
 
     # shellcheck source=/dev/null
@@ -783,13 +827,14 @@ collect_artifacts() {
 
 wait_for_post_install_ready() {
     local deadline=$((SECONDS + ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS))
-    local target_path="/home/ubuntu/.local/bin:/home/ubuntu/.acfs/bin:/home/ubuntu/.cargo/bin:/home/ubuntu/.bun/bin:/home/ubuntu/.atuin/bin:/home/ubuntu/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+    local target_home="/home/$ACFS_FACTORY_TARGET_USERNAME"
+    local target_path="$target_home/.local/bin:$target_home/.acfs/bin:$target_home/.cargo/bin:$target_home/.bun/bin:$target_home/.atuin/bin:$target_home/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
     while [[ "$SECONDS" -lt "$deadline" ]]; do
-        if id ubuntu >/dev/null 2>&1 \
-            && [[ -f /home/ubuntu/.acfs/VERSION ]] \
-            && sudo -n -u ubuntu env ACFS_DOCTOR_CI=true HOME=/home/ubuntu PATH="$target_path" bash -lc 'command -v acfs >/dev/null' >/dev/null 2>&1; then
-            pass "post.wait_ready" "ACFS files and ubuntu user are present"
+        if id "$ACFS_FACTORY_TARGET_USERNAME" >/dev/null 2>&1 \
+            && [[ -f "$target_home/.acfs/VERSION" ]] \
+            && sudo -n -u "$ACFS_FACTORY_TARGET_USERNAME" env ACFS_DOCTOR_CI=true HOME="$target_home" PATH="$target_path" bash -lc 'command -v acfs >/dev/null' >/dev/null 2>&1; then
+            pass "post.wait_ready" "ACFS files and target user are present"
             return 0
         fi
         log_event "post.wait_ready" "wait" "installation/resume still in progress"
@@ -866,12 +911,18 @@ run_remote_runner() {
         "ACFS_FACTORY_INSTALL_URL=$INSTALL_URL"
         "ACFS_FACTORY_REF=$REF"
         "ACFS_FACTORY_MODE=$MODE"
+        "ACFS_FACTORY_TARGET_USERNAME=$TARGET_USERNAME"
         "ACFS_FACTORY_EXPECT_UBUNTU_VERSION=$EXPECT_UBUNTU_VERSION"
         "ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION=$EXPECT_FINAL_UBUNTU_VERSION"
-        "ACFS_FACTORY_EXPECT_NO_UBUNTU=$EXPECT_NO_UBUNTU"
+        "ACFS_FACTORY_EXPECT_NO_TARGET_USER=$EXPECT_NO_TARGET_USER"
         "ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS=$INSTALL_TIMEOUT_SECONDS"
         "ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS=$POST_REBOOT_TIMEOUT_SECONDS"
         "ACFS_FACTORY_PUBLIC_KEY_B64=$public_key_b64"
+        "ACFS_FACTORY_PROFILE=$PACKET_PROFILE"
+        "ACFS_FACTORY_ONLY_MODULES_CSV=$PACKET_ONLY_MODULES_CSV"
+        "ACFS_FACTORY_ONLY_PHASES_CSV=$PACKET_ONLY_PHASES_CSV"
+        "ACFS_FACTORY_SKIP_MODULES_CSV=$PACKET_SKIP_MODULES_CSV"
+        "ACFS_FACTORY_NO_DEPS=$PACKET_NO_DEPS"
         "ACFS_FACTORY_RUN_MODE=$run_mode"
         bash
         "$remote_runner"
@@ -936,8 +987,8 @@ failure_category="none"
 err_detail=""
 if [[ "$remote_status" -ne 0 ]]; then
     if [[ -f "$ARTIFACTS_DIR/factory-e2e.jsonl" ]] && grep -q '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" 2>/dev/null; then
-        failed_step="$(grep '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" | tail -n1 | jq -r '.step // empty' 2>/dev/null || true)"
-        failed_step_detail="$(grep '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" | tail -n1 | jq -r '.detail // empty' 2>/dev/null || true)"
+        failed_step="$(grep '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" | tail -n1 | jq -r '.phase // empty' 2>/dev/null || true)"
+        failed_step_detail="$(grep '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" | tail -n1 | jq -r '.message // empty' 2>/dev/null || true)"
         err_detail="Step $failed_step failed: $failed_step_detail"
         case "$failed_step" in
             preflight*|os*|user_state*) failure_category="provider_setup" ;;
