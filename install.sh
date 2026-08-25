@@ -436,6 +436,9 @@ ONLY_MODULES=()
 ONLY_PHASES=()
 SKIP_MODULES=()
 NO_DEPS=false
+ACFS_CLI_PROFILE=""
+ACFS_SELECTED_PROFILE=""
+ACFS_EXPLICIT_TARGETED_SELECTION=false
 
 # Resume/reinstall options (used by state.sh confirm_resume)
 export ACFS_FORCE_RESUME=false
@@ -2547,6 +2550,7 @@ EOF
                     log_fatal "--only requires a module ID"
                 fi
                 ONLY_MODULES+=("$2")
+                ACFS_EXPLICIT_TARGETED_SELECTION=true
                 shift 2
                 ;;
             --only-phase)
@@ -2555,6 +2559,7 @@ EOF
                     log_fatal "--only-phase requires a phase number"
                 fi
                 ONLY_PHASES+=("$2")
+                ACFS_EXPLICIT_TARGETED_SELECTION=true
                 shift 2
                 ;;
             --skip)
@@ -11539,7 +11544,7 @@ main() {
     # the resume service will call install.sh again to continue.
     # Skip when --only or --only-phase is specified, since the user
     # is targeting a specific module on an already-installed system.
-    if [[ ${#ONLY_MODULES[@]} -eq 0 ]] && [[ ${#ONLY_PHASES[@]} -eq 0 ]]; then
+    if [[ "${ACFS_EXPLICIT_TARGETED_SELECTION:-false}" != "true" ]]; then
         run_ubuntu_upgrade_phase "$@"
     else
         log_debug "Skipping Ubuntu auto-upgrade (--only/--only-phase mode)"

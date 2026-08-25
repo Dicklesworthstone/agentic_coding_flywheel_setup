@@ -173,7 +173,10 @@ acfs_apply_profile() {
     fi
 
     if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
-        source_manifest_index 2>/dev/null || true
+        if ! source_manifest_index 2>/dev/null; then
+            log_error "Manifest index not loaded. Cannot apply profile $profile_id."
+            return 1
+        fi
     fi
 
     local -A profile_exists=()
@@ -187,6 +190,27 @@ acfs_apply_profile() {
         return 1
     fi
 
+    local only_mods="${ACFS_PROFILE_ONLY_MODULES["$profile_id"]:-}"
+    local only_phs="${ACFS_PROFILE_ONLY_PHASES["$profile_id"]:-}"
+    local profile_has_selectors=false
+    if [[ -n "$only_mods" || -n "$only_phs" ]]; then
+        profile_has_selectors=true
+    fi
+    if [[ "$profile_has_selectors" == "true" ]] \
+        && [[ "${ACFS_EXPLICIT_TARGETED_SELECTION:-false}" == "true" ]]; then
+        log_error "Selection error: profile $profile_id cannot be combined with explicit --only or --only-phase selectors."
+        return 1
+    fi
+
+    # A profile application is a state transition, not an append operation.
+    # Mode-only profiles preserve explicit selectors; selector-bearing profiles
+    # replace any selection previously derived from another profile.
+    if [[ "$profile_has_selectors" == "true" ]] \
+        || [[ "${ACFS_EXPLICIT_TARGETED_SELECTION:-false}" != "true" ]]; then
+        ONLY_MODULES=()
+        ONLY_PHASES=()
+    fi
+
     # Set mode if specified by profile
     local mode="${ACFS_PROFILE_MODE["$profile_id"]:-}"
     if [[ -n "$mode" ]]; then
@@ -194,7 +218,6 @@ acfs_apply_profile() {
     fi
 
     # Populate ONLY_MODULES if profile defines onlyModules
-    local only_mods="${ACFS_PROFILE_ONLY_MODULES["$profile_id"]:-}"
     if [[ -n "$only_mods" ]]; then
         IFS=',' read -ra _mods <<< "$only_mods"
         local m=""
@@ -204,7 +227,6 @@ acfs_apply_profile() {
     fi
 
     # Populate ONLY_PHASES if profile defines onlyPhases
-    local only_phs="${ACFS_PROFILE_ONLY_PHASES["$profile_id"]:-}"
     if [[ -n "$only_phs" ]]; then
         IFS=',' read -ra _phs <<< "$only_phs"
         local ph=""
