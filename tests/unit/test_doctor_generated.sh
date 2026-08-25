@@ -18,6 +18,7 @@ set -uo pipefail
 # Get the absolute path to the scripts directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ACFS_TEST_BASH_BIN="${BASH:-$(command -v bash)}"
 
 # Source the test harness
 source "$REPO_ROOT/tests/vm/lib/test_harness.sh"
@@ -485,7 +486,7 @@ EOF
     chmod +x "$fake_bin/sudo"
 
     local root_output=""
-    root_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser bash -c '
+    root_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser "$ACFS_TEST_BASH_BIN" -c '
         source "'"$checks_file"'"
         run_manifest_check_command root "printf \"%s\\n\" root-check-ran"
     ' 2>&1 || true)
@@ -497,7 +498,7 @@ EOF
     fi
 
     local target_user_output=""
-    target_user_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser bash -c '
+    target_user_output=$(HOME="$fake_home" PATH="$fake_bin:/usr/bin:/bin" TARGET_USER=customuser "$ACFS_TEST_BASH_BIN" -c '
         source "'"$checks_file"'"
         run_manifest_check_command target_user "printf target-user-check-ran\\n"
     ' 2>&1 || true)
@@ -543,8 +544,8 @@ test_workspace_checks_are_not_required_health_failures() {
     fi
 }
 
-test_base_filesystem_3_verify_runs_with_injected_helpers() {
-    harness_section "Test: base.filesystem.3 verify uses injected helper resolution"
+test_base_filesystem_2_verify_runs_with_injected_helpers() {
+    harness_section "Test: base.filesystem.2 verify uses injected helper resolution"
 
     local checks_file="$REPO_ROOT/scripts/generated/doctor_checks.sh"
     if [[ ! -f "$checks_file" ]]; then
@@ -552,7 +553,7 @@ test_base_filesystem_3_verify_runs_with_injected_helpers() {
         return
     fi
 
-    # Extract the encoded command for base.filesystem.3 from the
+    # Extract the encoded command for base.filesystem.2 from the
     # MANIFEST_CHECKS array. The bash array entries contain literal
     # \" sequences (escaped quotes), so awk -v RS='"' would split
     # mid-entry and silently truncate the command to a comment-only
@@ -560,11 +561,11 @@ test_base_filesystem_3_verify_runs_with_injected_helpers() {
     # script. Source the file in a clean subshell instead and pull
     # the entry directly from the array.
     local entry=""
-    entry="$(bash -c "
+    entry="$("$ACFS_TEST_BASH_BIN" -c "
         set -euo pipefail
         source ${checks_file@Q}
         for e in \"\${MANIFEST_CHECKS[@]}\"; do
-            if [[ \"\$e\" == 'base.filesystem.3'\$'\\t'* ]]; then
+            if [[ \"\$e\" == 'base.filesystem.2'\$'\\t'* ]]; then
                 printf '%s' \"\$e\"
                 exit 0
             fi
@@ -572,15 +573,15 @@ test_base_filesystem_3_verify_runs_with_injected_helpers() {
         exit 1
     ")"
     if [[ -z "$entry" ]]; then
-        harness_fail "could not extract base.filesystem.3 entry from $checks_file"
+        harness_fail "could not extract base.filesystem.2 entry from $checks_file"
         return
     fi
 
-    # Strip leading "base.filesystem.3\t<desc>\t" and trailing
+    # Strip leading "base.filesystem.2\t<desc>\t" and trailing
     # "\trequired\troot" to isolate the command body, then decode
     # the embedded \\n \" \$ etc. via printf %b — same way the
     # doctor decodes manifest commands.
-    local rest="${entry#base.filesystem.3$'\t'}"  # strip id
+    local rest="${entry#base.filesystem.2$'\t'}"  # strip id
     rest="${rest#*$'\t'}"                          # strip desc
     local encoded_cmd="${rest%$'\t'required$'\t'root}"
     local cmd=""
@@ -590,7 +591,7 @@ test_base_filesystem_3_verify_runs_with_injected_helpers() {
     # logic (test -d "$target_home/.acfs"). If it doesn't, the
     # extraction broke and we'd false-pass on a stub.
     if [[ "$cmd" != *'test -d "$target_home/.acfs"'* ]]; then
-        harness_fail "decoded base.filesystem.3 body is missing the verify line — extraction is broken" \
+        harness_fail "decoded base.filesystem.2 body is missing the verify line — extraction is broken" \
             "first 400 chars: ${cmd:0:400}"
         return
     fi
@@ -631,13 +632,13 @@ acfs_generated_resolve_current_user() {
         TARGET_USER="$(id -un)" \
         TARGET_HOME="$temp_root/stale-home" \
         ACFS_TEST_PASSWD_HOME="$temp_root" \
-        bash -o pipefail -c "$wrapped_cmd" 2>&1)"
+        "$ACFS_TEST_BASH_BIN" -o pipefail -c "$wrapped_cmd" 2>&1)"
     local rc=$?
 
     if [[ $rc -eq 0 ]]; then
-        harness_pass "base.filesystem.3 repairs stale TARGET_HOME through passwd helper data"
+        harness_pass "base.filesystem.2 repairs stale TARGET_HOME through passwd helper data"
     else
-        harness_fail "base.filesystem.3 fails with stale TARGET_HOME despite helper data (rc=$rc)" "$output"
+        harness_fail "base.filesystem.2 fails with stale TARGET_HOME despite helper data (rc=$rc)" "$output"
     fi
 
     # Same again, but WITHOUT TARGET_HOME — exercise the injected passwd
@@ -648,13 +649,13 @@ acfs_generated_resolve_current_user() {
         ACFS_TEST_PASSWD_HOME="$temp_root" \
         USER="$(id -un)" \
         HOME="$temp_root" \
-        bash -o pipefail -c "$wrapped_cmd" 2>&1)"
+        "$ACFS_TEST_BASH_BIN" -o pipefail -c "$wrapped_cmd" 2>&1)"
     rc=$?
 
     if [[ $rc -eq 0 ]]; then
-        harness_pass "base.filesystem.3 falls back to getent / HOME when TARGET_HOME is unset"
+        harness_pass "base.filesystem.2 falls back to getent / HOME when TARGET_HOME is unset"
     else
-        harness_fail "base.filesystem.3 fallback path failed (rc=$rc)" "$output"
+        harness_fail "base.filesystem.2 fallback path failed (rc=$rc)" "$output"
     fi
 
     # Negative test: with no TARGET_HOME, no matching USER, and
@@ -664,12 +665,12 @@ acfs_generated_resolve_current_user() {
     output="$(env -i \
         PATH="/usr/local/bin:/usr/bin:/bin" \
         TARGET_USER="nonexistent_user_that_should_not_exist_anywhere_xyz" \
-        bash -o pipefail -c "$wrapped_cmd" 2>&1)"
+        "$ACFS_TEST_BASH_BIN" -o pipefail -c "$wrapped_cmd" 2>&1)"
     rc=$?
     if [[ $rc -ne 0 ]] && [[ "$output" == *"Unable to resolve TARGET_HOME"* ]]; then
-        harness_pass "base.filesystem.3 fails closed with explanatory error when nothing resolves"
+        harness_pass "base.filesystem.2 fails closed with explanatory error when nothing resolves"
     else
-        harness_fail "base.filesystem.3 should fail closed with diagnostic when no resolution path works" \
+        harness_fail "base.filesystem.2 should fail closed with diagnostic when no resolution path works" \
             "rc=$rc output: $output"
     fi
 
@@ -791,7 +792,8 @@ test_manifest_guard_scripts_cover_all_generated_outputs() {
     local drift_file="$REPO_ROOT/scripts/check-manifest-drift.sh"
     local ledger_guard=""
 
-    if grep -Fq 'git add apps/web/lib/generated/' "$hook_file"; then
+    if grep -Fq 'git add -u apps/web/lib/generated/' "$hook_file" \
+        && grep -Fq 'git ls-files --others --exclude-standard -- apps/web/lib/generated' "$hook_file"; then
         harness_pass "Pre-commit hook stages apps/web/lib/generated/"
     else
         harness_fail "Pre-commit hook does not stage apps/web/lib/generated/"
@@ -809,7 +811,7 @@ test_manifest_guard_scripts_cover_all_generated_outputs() {
         harness_fail "Checksum ledger guard can mix staged and working-tree snapshots"
     fi
 
-    if [[ "$ledger_guard" != *'bun run generate'* ]] \
+    if [[ "$ledger_guard" != *'(cd packages/manifest && bun run generate)'* ]] \
         && [[ "$ledger_guard" != *'git add -- "$LEDGER_PATH"'* ]]; then
         harness_pass "Checksum ledger guard verifies without mutating the index or working tree"
     else
@@ -853,7 +855,11 @@ test_manifest_guard_scripts_cover_all_generated_outputs() {
 
     local drift_output=""
     local drift_status=0
-    drift_output=$(PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    local bun_bin=""
+    local drift_path=""
+    bun_bin="$(command -v bun || true)"
+    drift_path="$(dirname "$bun_bin"):/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    drift_output=$(PATH="$drift_path" \
         "$drift_file" --json --quiet 2>&1) || drift_status=$?
     if [[ "$drift_status" -eq 0 ]] \
         && echo "$drift_output" | jq -e '
@@ -896,7 +902,7 @@ main() {
     test_root_checks_preserve_target_context
     test_generated_manifest_checks_use_hardened_target_path
     test_generated_run_manifest_check_command_handles_unresolved_target_home_by_context
-    test_base_filesystem_3_verify_runs_with_injected_helpers
+    test_base_filesystem_2_verify_runs_with_injected_helpers
     test_workspace_checks_are_not_required_health_failures
     test_generated_target_home_fallbacks_are_dynamic
     test_meta_skill_arm64_linux_guidance
