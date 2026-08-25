@@ -3052,13 +3052,13 @@ support_sed_in_place() {
     tmp="$(mktemp "${file}.redacted.XXXXXX" 2>/dev/null)" || return 1
     if sed -E "${@:1:$#-1}" "$file" > "$tmp" 2>/dev/null \
         && [[ -f "$file" && ! -L "$file" ]] \
-        && mv "$tmp" "$file" 2>/dev/null; then
+        && mv -- "$tmp" "$file" 2>/dev/null; then
         return 0
     fi
 
     printf '<REDACTED:redaction_failed>\n' > "$tmp" 2>/dev/null || return 1
     [[ -f "$file" && ! -L "$file" ]] || return 1
-    mv "$tmp" "$file" 2>/dev/null || return 1
+    mv -- "$tmp" "$file" 2>/dev/null || return 1
     return 1
 }
 

@@ -236,13 +236,36 @@ provisioning_packet_validate_shapes() {
         and (.region | type == "object")
         and (.size | type == "object")
         and (.osImage | type == "object")
+        and (.osImage.distribution | type == "string")
+        and (.osImage.version | type == "string" and test("^[0-9]{2}\\.[0-9]{2}$"))
+        and (.osImage.readinessStatus | type == "string")
         and (.access | type == "object")
+        and (.access.username | type == "string")
         and (.cloudInit | type == "object")
         and (.install | type == "object")
+        and (.install.mode | type == "string")
+        and (.install.sourceRef | type == "string")
+        and (.install.command | type == "string")
+        and (.install.commandRunLocation | type == "string")
         and (.compatibility | type == "object")
         and (.compatibility.targetAgents | type == "number" and floor == . and . >= 1)
-        and (.verificationCommands | type == "array")
-        and (.expectedArtifacts | type == "array")
+        and (.verificationCommands | type == "array" and all(.[];
+          type == "object"
+          and (.id | type == "string")
+          and (.label | type == "string")
+          and (.command | type == "string")
+          and (.runLocation | type == "string")
+          and (.expectedStatus | type == "string")
+          and (.supportBundleSafe | type == "boolean")
+        ))
+        and (.expectedArtifacts | type == "array" and all(.[];
+          type == "object"
+          and (.id | type == "string")
+          and (.pathPattern | type == "string")
+          and (.producedBy | type == "string")
+          and (.supportBundleSafe | type == "boolean")
+          and (.redactionRequired | type == "boolean")
+        ))
         and (
           (.install.moduleSelection // {}) as $selection
           | ($selection | type == "object")
@@ -444,7 +467,13 @@ provisioning_packet_emit_json() {
 
     status="$(provisioning_packet_status)"
     manual_steps="$(jq -c '.provider.manualStepsRemaining // []' "$PROVISIONING_PACKET_FILE")"
-    verification_commands="$(jq -c '.verificationCommands // []' "$PROVISIONING_PACKET_FILE")"
+    verification_commands="$(jq -c '[.verificationCommands[]? | {
+      id: .id,
+      label: .label,
+      runLocation: .runLocation,
+      expectedStatus: .expectedStatus,
+      supportBundleSafe: .supportBundleSafe
+    }]' "$PROVISIONING_PACKET_FILE")"
     target_agents="$(provisioning_packet_scalar "compatibility.targetAgents")"
     if [[ ! "$target_agents" =~ ^[0-9]+$ ]]; then
         target_agents=0
