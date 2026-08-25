@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PROVISIONING_PACKET_SH="$REPO_ROOT/scripts/lib/provisioning_packet.sh"
+FACTORY_INSTALL_SH="$REPO_ROOT/tests/vm/test_factory_install_ubuntu.sh"
 
 TESTS_PASSED=0
 TESTS_FAILED=0
@@ -305,6 +306,90 @@ JSON
     pass "malformed_packet_fails_with_json_error"
 }
 
+test_factory_sentinel_rejects_invalid_packet_with_provider_setup_category() {
+    local packet out_dir status
+    packet="$(write_fixture invalid-os-sentinel-packet.json <<'JSON'
+{
+  "schema": "acfs.provider-provisioning-packet.v1",
+  "schemaVersion": 1,
+  "stage": "ready_for_manual_provider_checkout",
+  "os": {"id": "debian", "initialReleaseId": "12", "expectedFinalReleaseId": "12"}
+}
+JSON
+)"
+    out_dir="$ARTIFACT_DIR/factory-sentinel-invalid-os"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@127.0.0.1 \
+        --provisioning-packet "$packet" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    [[ "$status" -eq 2 ]] || return 1
+    [[ -f "$out_dir/factory-sentinel-manifest.json" ]] || return 1
+    [[ -f "$out_dir/factory-sentinel-summary.md" ]] || return 1
+
+    jq -e '
+      .status == "failed" and
+      .failureCategory == "provider_setup" and
+      .exitCode == 2
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    pass "factory_sentinel_rejects_invalid_packet_with_provider_setup_category"
+}
+
+test_factory_sentinel_rejects_unreachable_ssh_with_ssh_category() {
+    local packet out_dir status
+    packet="$(valid_packet_fixture)"
+    out_dir="$ARTIFACT_DIR/factory-sentinel-ssh-unreachable"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@127.0.0.1 \
+        --ssh-port 59999 \
+        --provisioning-packet "$packet" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    [[ "$status" -eq 1 ]] || return 1
+    [[ -f "$out_dir/factory-sentinel-manifest.json" ]] || return 1
+    [[ -f "$out_dir/factory-sentinel-summary.md" ]] || return 1
+
+    jq -e '
+      .status == "failed" and
+      .failureCategory == "ssh" and
+      .exitCode == 1 and
+      .target.host == "root@<REDACTED:host_ip>"
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    pass "factory_sentinel_rejects_unreachable_ssh_with_ssh_category"
+}
+
+test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens() {
+    local packet out_dir status
+    packet="$(valid_packet_fixture)"
+    out_dir="$ARTIFACT_DIR/factory-sentinel-redaction"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@192.0.2.123 \
+        --ssh-port 59998 \
+        --provisioning-packet "$packet" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    # Verify that raw host IP is not exposed in the manifest JSON or summary markdown
+    if grep -q "192.0.2.123" "$out_dir/factory-sentinel-manifest.json"; then
+        return 1
+    fi
+    if grep -q "192.0.2.123" "$out_dir/factory-sentinel-summary.md"; then
+        return 1
+    fi
+
+    pass "factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens"
+}
+
 run_all_tests() {
     local test_name=""
     local tests=(
@@ -314,6 +399,9 @@ run_all_tests() {
         test_unsupported_os_fails_validation
         test_secret_values_are_refused
         test_malformed_packet_fails_with_json_error
+        test_factory_sentinel_rejects_invalid_packet_with_provider_setup_category
+        test_factory_sentinel_rejects_unreachable_ssh_with_ssh_category
+        test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens
     )
 
     for test_name in "${tests[@]}"; do

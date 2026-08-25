@@ -174,6 +174,7 @@ INTERNAL_CHECKSUM_REQUIRED_PATHS=(
     scripts/lib/dashboard.sh
     scripts/lib/info.sh
     scripts/lib/landing_plane.sh
+    scripts/lib/module_selector.sh
     scripts/lib/newproj.sh
     scripts/lib/newproj_agents.sh
     scripts/lib/newproj_detect.sh

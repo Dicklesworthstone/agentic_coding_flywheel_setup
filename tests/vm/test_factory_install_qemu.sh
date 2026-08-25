@@ -31,6 +31,7 @@ ARTIFACTS_DIR="${ACFS_QEMU_ARTIFACTS_DIR:-}"
 KEY_DIR="${ACFS_QEMU_KEY_DIR:-}"
 INSTALL_URL="${ACFS_FACTORY_INSTALL_URL:-}"
 ALLOW_INSTALL_REBOOT="${ACFS_QEMU_ALLOW_INSTALL_REBOOT:-false}"
+PROVISIONING_PACKET="${ACFS_FACTORY_PROVISIONING_PACKET:-}"
 LEAVE_RUNNING=false
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -42,9 +43,11 @@ Usage:
   tests/vm/test_factory_install_qemu.sh [options]
 
 Options:
-  --ubuntu <version>           Ubuntu cloud image version (default: 25.10).
+  --ubuntu <version>           Ubuntu release to boot (default: 25.10).
   --ref <ref>                  ACFS ref to install (default: ACFS_REF or main).
   --mode <mode>                Install mode: vibe or safe (default: vibe).
+  --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
+  --packet <path>              Alias for --provisioning-packet.
   --expect-final-ubuntu <ver>  Required final VERSION_ID after install/resume.
   --install-url <url>          Override public install.sh URL.
   --image-url <url>            Override Ubuntu cloud image URL.
@@ -91,6 +94,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mode)
             MODE="${2:-}"
+            shift 2
+            ;;
+        --provisioning-packet|--packet)
+            PROVISIONING_PACKET="${2:-}"
             shift 2
             ;;
         --expect-final-ubuntu)
@@ -482,6 +489,10 @@ run_factory_harness() {
 
     if [[ -n "$INSTALL_URL" ]]; then
         factory_args+=(--install-url "$INSTALL_URL")
+    fi
+
+    if [[ -n "$PROVISIONING_PACKET" ]]; then
+        factory_args+=(--provisioning-packet "$PROVISIONING_PACKET")
     fi
 
     "$SCRIPT_DIR/test_factory_install_ubuntu.sh" "${factory_args[@]}"

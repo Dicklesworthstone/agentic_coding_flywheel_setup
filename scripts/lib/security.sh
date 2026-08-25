@@ -2072,6 +2072,7 @@ acfs_load_checksums_strict() {
         return 1
     fi
 
+    # shellcheck disable=SC2094
     while IFS= read -r line || [[ -n "$line" ]]; do
         line_number=$((line_number + 1))
         if [[ "$line" =~ [[:cntrl:]] ]]; then

@@ -173,26 +173,29 @@ fi
 
 if jq_bin=$(command -v jq 2>/dev/null); then
     jq_dir="$(dirname "$jq_bin")"
-    env_output=""
-    if env_output=$(env -i PATH="$jq_dir:/usr/bin:/bin" HOME="$TEST_DIR/no-shell-home" SUPPORT_SH="$SUPPORT_SH" TEST_BUNDLE="$TEST_DIR/no-shell-bundle" JQ_BIN="$jq_bin" bash -lc '
-        set -euo pipefail
-        unset SHELL
-        mkdir -p "$HOME" "$TEST_BUNDLE"
-        log_step() { :; }
-        log_section() { :; }
-        log_detail() { :; }
-        log_success() { :; }
-        log_warn() { :; }
-        log_error() { :; }
-        source "$SUPPORT_SH"
-        _SUPPORT_CURRENT_HOME="$HOME"
-        _SUPPORT_ACFS_HOME=""
-        SUPPORT_TARGET_HOME="$HOME"
-        SUPPORT_TARGET_USER="tester"
-        BUNDLE_FILES=()
-        capture_env_summary "$TEST_BUNDLE"
-        "$JQ_BIN" -r '[.shell, .hostname, .user, .home, .acfs_home, (.redaction.paths_redacted | tostring), (.redaction.raw_hosts_collected | tostring), (.redaction.raw_paths_collected | tostring)] | join("|")' "$TEST_BUNDLE/environment.json"
-    ' 2>&1); then
+    bash_dir="$(dirname "$BASH")"
+    env_output="$(
+        env -i PATH="$jq_dir:$bash_dir:/usr/bin:/bin" HOME="$TEST_DIR/no-shell-home" SUPPORT_SH="$SUPPORT_SH" TEST_BUNDLE="$TEST_DIR/no-shell-bundle" JQ_BIN="$jq_bin" "$BASH" -c '
+            set -euo pipefail
+            unset SHELL
+            mkdir -p "$HOME" "$TEST_BUNDLE"
+            log_step() { :; }
+            log_section() { :; }
+            log_detail() { :; }
+            log_success() { :; }
+            log_warn() { :; }
+            log_error() { :; }
+            source "$SUPPORT_SH"
+            _SUPPORT_CURRENT_HOME="$HOME"
+            _SUPPORT_ACFS_HOME=""
+            SUPPORT_TARGET_HOME="$HOME"
+            SUPPORT_TARGET_USER="tester"
+            BUNDLE_FILES=()
+            capture_env_summary "$TEST_BUNDLE"
+            "$JQ_BIN" -r "[.shell, .hostname, .user, .home, .acfs_home, (.redaction.paths_redacted | tostring), (.redaction.raw_hosts_collected | tostring), (.redaction.raw_paths_collected | tostring)] | join(\"|\")" "$TEST_BUNDLE/environment.json"
+        ' 2>&1
+    )"
+    if [[ "$env_output" == "unknown|<REDACTED:hostname>|<REDACTED:user>|<REDACTED:path>|<REDACTED:path>|true|false|false" ]]; then
         assert_equals "environment summary omits raw host and home identity" "$env_output" "unknown|<REDACTED:hostname>|<REDACTED:user>|<REDACTED:path>|<REDACTED:path>|true|false|false"
     else
         fail "environment summary omits raw host and home identity" "$env_output"

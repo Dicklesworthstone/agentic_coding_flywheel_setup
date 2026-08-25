@@ -2326,7 +2326,8 @@ Usage:
 
 Options:
   --yes, -y               Non-interactive mode (accept defaults)
-  --mode <vibe|safe>      Install profile (default: vibe)
+  --mode <vibe|safe>      Install mode (default: vibe)
+  --profile <profile>     Module profile (e.g. vibe, safe, minimal, agents-only, cloud-only, stack-only)
   --dry-run               Preview changes without applying
   --print                 Print script without running
   --resume                Resume interrupted installation
@@ -2348,6 +2349,21 @@ EOF
             --print)
                 PRINT_MODE=true
                 shift
+                ;;
+            --profile|--profile=*)
+                if [[ "$1" == "--profile" ]]; then
+                    if [[ -z "${2:-}" || "$2" == -* ]]; then
+                        log_fatal "--profile requires a profile ID"
+                    fi
+                    ACFS_CLI_PROFILE="$2"
+                    shift 2
+                else
+                    ACFS_CLI_PROFILE="${1#*=}"
+                    if [[ -z "$ACFS_CLI_PROFILE" ]]; then
+                        log_fatal "--profile requires a profile ID"
+                    fi
+                    shift
+                fi
                 ;;
             --mode)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
@@ -2811,6 +2827,11 @@ detect_environment() {
         unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
         source "$ACFS_LIB_DIR/install_helpers.sh"
         unset ACFS_FORCE_INSTALL_HELPERS_SECURITY_REDEFINE
+    fi
+
+    if [[ -f "$ACFS_LIB_DIR/module_selector.sh" ]]; then
+        # shellcheck source=scripts/lib/module_selector.sh
+        source "$ACFS_LIB_DIR/module_selector.sh"
     fi
 
     # Generated manifest installers target Ubuntu/apt. On Arch-family systems
@@ -3755,6 +3776,7 @@ acfs_load_internal_checksums_data() {
         scripts/lib/dashboard.sh
         scripts/lib/info.sh
         scripts/lib/landing_plane.sh
+        scripts/lib/module_selector.sh
         scripts/lib/newproj.sh
         scripts/lib/newproj_agents.sh
         scripts/lib/newproj_detect.sh
@@ -10296,6 +10318,7 @@ finalize() {
     try_step "Installing gum_ui.sh" install_asset "scripts/lib/gum_ui.sh" "$ACFS_HOME/scripts/lib/gum_ui.sh" || return 1
     try_step "Installing progress.sh" install_asset "scripts/lib/progress.sh" "$ACFS_HOME/scripts/lib/progress.sh" || return 1
     try_step "Installing install_helpers.sh" install_asset "scripts/lib/install_helpers.sh" "$ACFS_HOME/scripts/lib/install_helpers.sh" || return 1
+    try_step "Installing module_selector.sh" install_asset "scripts/lib/module_selector.sh" "$ACFS_HOME/scripts/lib/module_selector.sh" || return 1
     try_step "Installing stack.sh" install_asset "scripts/lib/stack.sh" "$ACFS_HOME/scripts/lib/stack.sh" || return 1
     try_step "Installing contract.sh" install_asset "scripts/lib/contract.sh" "$ACFS_HOME/scripts/lib/contract.sh" || return 1
     try_step "Installing security.sh" install_asset "scripts/lib/security.sh" "$ACFS_HOME/scripts/lib/security.sh" || return 1
@@ -11303,13 +11326,26 @@ main() {
     # through the manifest-driven selection engine
     acfs_apply_legacy_skips
 
-    # Resolve module selection (mjt.5.4)
+    # Apply profile if requested via CLI flag (bd-l56ty)
+    if [[ -n "${ACFS_CLI_PROFILE:-}" ]]; then
+        if ! acfs_apply_profile "$ACFS_CLI_PROFILE"; then
+            exit 1
+        fi
+    fi
+
+    # Interactive module selector if requested (--interactive) or resolve module selection (mjt.5.4)
     # Computes ACFS_EFFECTIVE_PLAN and ACFS_EFFECTIVE_RUN based on:
-    # - CLI flags (--only, --skip, --no-deps, --only-phase)
+    # - CLI flags (--profile, --only, --skip, --no-deps, --only-phase)
     # - Legacy flags mapped above
     # - Manifest defaults and dependency graph
-    if ! acfs_resolve_selection; then
-        exit 1
+    if [[ "${ACFS_INTERACTIVE:-false}" == "true" ]] && [[ "${YES_MODE:-false}" != "true" ]] && [[ "$LIST_MODULES" != "true" ]] && [[ "$PRINT_PLAN_MODE" != "true" ]] && [[ "$DRY_RUN" != "true" ]]; then
+        if ! acfs_interactive_module_selector; then
+            exit 1
+        fi
+    else
+        if ! acfs_resolve_selection; then
+            exit 1
+        fi
     fi
 
     # Handle --list-modules: print available modules and exit (mjt.5.3)

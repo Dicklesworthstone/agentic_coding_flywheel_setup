@@ -151,6 +151,73 @@ acfs_normalize_only_phases() {
     return 0
 }
 
+source_manifest_index() {
+    if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" == "true" ]]; then
+        return 0
+    fi
+    local root="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+    local index_path="${ACFS_GENERATED_DIR:-$root/scripts/generated}/manifest_index.sh"
+    if [[ -f "$index_path" ]]; then
+        # shellcheck source=../generated/manifest_index.sh
+        source "$index_path"
+        return 0
+    fi
+    return 1
+}
+
+acfs_apply_profile() {
+    local profile_id="$1"
+    if [[ -z "$profile_id" ]]; then
+        log_error "--profile requires a profile name"
+        return 1
+    fi
+
+    if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
+        source_manifest_index 2>/dev/null || true
+    fi
+
+    local -A profile_exists=()
+    local p=""
+    for p in "${ACFS_PROFILES_IN_ORDER[@]}"; do
+        profile_exists["$p"]=1
+    done
+
+    if [[ -z "${profile_exists[$profile_id]:-}" ]]; then
+        log_error "Unknown profile id: $profile_id (available: ${ACFS_PROFILES_IN_ORDER[*]})"
+        return 1
+    fi
+
+    # Set mode if specified by profile
+    local mode="${ACFS_PROFILE_MODE["$profile_id"]:-}"
+    if [[ -n "$mode" ]]; then
+        MODE="$mode"
+    fi
+
+    # Populate ONLY_MODULES if profile defines onlyModules
+    local only_mods="${ACFS_PROFILE_ONLY_MODULES["$profile_id"]:-}"
+    if [[ -n "$only_mods" ]]; then
+        IFS=',' read -ra _mods <<< "$only_mods"
+        local m=""
+        for m in "${_mods[@]}"; do
+            [[ -n "$m" ]] && ONLY_MODULES+=("$m")
+        done
+    fi
+
+    # Populate ONLY_PHASES if profile defines onlyPhases
+    local only_phs="${ACFS_PROFILE_ONLY_PHASES["$profile_id"]:-}"
+    if [[ -n "$only_phs" ]]; then
+        IFS=',' read -ra _phs <<< "$only_phs"
+        local ph=""
+        for ph in "${_phs[@]}"; do
+            [[ -n "$ph" ]] && ONLY_PHASES+=("$ph")
+        done
+    fi
+
+    ACFS_SELECTED_PROFILE="$profile_id"
+    export ACFS_SELECTED_PROFILE
+    return 0
+}
+
 acfs_resolve_selection() {
     if [[ "${ACFS_MANIFEST_INDEX_LOADED:-false}" != "true" ]]; then
         log_error "Manifest index not loaded. Cannot resolve selection."

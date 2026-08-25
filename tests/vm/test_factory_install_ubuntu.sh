@@ -29,6 +29,7 @@ INSTALL_TIMEOUT_SECONDS="${ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS:-14400}"
 POST_REBOOT_TIMEOUT_SECONDS="${ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS:-14400}"
 ALLOW_INSTALL_REBOOT="${ACFS_FACTORY_ALLOW_INSTALL_REBOOT:-false}"
 PUBLIC_KEY_FILE="${ACFS_FACTORY_PUBLIC_KEY_FILE:-}"
+PROVISIONING_PACKET="${ACFS_FACTORY_PROVISIONING_PACKET:-}"
 INSTALL_URL="${ACFS_FACTORY_INSTALL_URL:-}"
 ARTIFACTS_DIR="${ACFS_FACTORY_ARTIFACTS_DIR:-}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -48,6 +49,8 @@ Options:
   --ssh-port <port>           SSH port.
   --ref <ref>                 ACFS ref to install (default: ACFS_REF or main).
   --mode <mode>               Install mode: vibe or safe (default: vibe).
+  --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
+  --packet <path>             Alias for --provisioning-packet.
   --expect-ubuntu <version>   Required initial VERSION_ID from /etc/os-release (default: 25.10).
   --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: 25.10).
   --allow-existing-ubuntu     Do not fail if the ubuntu user exists before install.
@@ -64,6 +67,7 @@ Environment equivalents:
   ACFS_FACTORY_SSH_KEY
   ACFS_FACTORY_SSH_PORT
   ACFS_FACTORY_MODE
+  ACFS_FACTORY_PROVISIONING_PACKET
   ACFS_FACTORY_EXPECT_UBUNTU_VERSION
   ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION
   ACFS_FACTORY_EXPECT_NO_UBUNTU
@@ -102,6 +106,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --mode)
             MODE="${2:-}"
+            shift 2
+            ;;
+        --provisioning-packet|--packet)
+            PROVISIONING_PACKET="${2:-}"
             shift 2
             ;;
         --expect-ubuntu)
@@ -231,6 +239,163 @@ if [[ -n "$PUBLIC_KEY_FILE" ]]; then
     fi
 fi
 
+redact_local_factory_artifacts() {
+    local support_lib="$REPO_ROOT/scripts/lib/support.sh"
+
+    if [[ ! -r "$support_lib" ]]; then
+        echo "ERROR: support redaction library missing: $support_lib" >&2
+        return 1
+    fi
+
+    (
+        # shellcheck source=../../scripts/lib/support.sh
+        source "$support_lib"
+        REDACT=true
+        REDACTION_COUNT=0
+        VERBOSE=false
+        redact_bundle "$ARTIFACTS_DIR"
+    )
+}
+
+write_factory_sentinel_artifacts() {
+    local status="$1"
+    local failure_category="$2"
+    local exit_code="$3"
+    local error_msg="${4:-}"
+
+    local manifest_file="$ARTIFACTS_DIR/factory-sentinel-manifest.json"
+    local summary_file="$ARTIFACTS_DIR/factory-sentinel-summary.md"
+
+    local packet_json="{}"
+    if [[ -n "$PROVISIONING_PACKET" && -f "$PROVISIONING_PACKET" ]]; then
+        if command -v jq >/dev/null 2>&1; then
+            packet_json="$(jq -c '{
+                schema: .schema,
+                schemaVersion: .schemaVersion,
+                stage: .stage,
+                provider: {id: .provider.id, name: .provider.name, automationLevel: .provider.automationLevel},
+                region: {id: .region.id, label: .region.label, readinessStatus: .region.readinessStatus},
+                os: {id: .os.id, initialReleaseId: .os.initialReleaseId, expectedFinalReleaseId: .os.expectedFinalReleaseId},
+                user: {targetUsername: .user.targetUsername},
+                installPlan: {mode: .installPlan.mode, installRef: .installPlan.installRef}
+            }' "$PROVISIONING_PACKET" 2>/dev/null || echo "{}")"
+        fi
+    fi
+
+    local target_redacted sanitized_error_msg
+    target_redacted="$(echo "$SSH_TARGET" | sed -E 's/([A-Za-z0-9._%+-]+@)?([0-9]{1,3}\.){3}[0-9]{1,3}/\1<REDACTED:host_ip>/g; s/([A-Za-z0-9._%+-]+@)?(([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}|::1)/\1<REDACTED:host_ip>/g')"
+    sanitized_error_msg="$(echo "$error_msg" | sed -E 's/([A-Za-z0-9._%+-]+@)?([0-9]{1,3}\.){3}[0-9]{1,3}/\1<REDACTED:host_ip>/g; s/([A-Za-z0-9._%+-]+@)?(([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}|::1)/\1<REDACTED:host_ip>/g')"
+
+    if command -v jq >/dev/null 2>&1; then
+        jq -n \
+            --arg schema "acfs.factory-sentinel-manifest.v1" \
+            --arg timestamp "$TIMESTAMP" \
+            --arg status "$status" \
+            --arg failure_category "$failure_category" \
+            --argjson exit_code "$exit_code" \
+            --arg error_msg "$sanitized_error_msg" \
+            --arg ssh_target_redacted "$target_redacted" \
+            --arg ref "$REF" \
+            --arg mode "$MODE" \
+            --arg expect_ubuntu "$EXPECT_UBUNTU_VERSION" \
+            --arg expect_final_ubuntu "$EXPECT_FINAL_UBUNTU_VERSION" \
+            --argjson packet "$packet_json" \
+            '{
+                schema: $schema,
+                timestamp: $timestamp,
+                status: $status,
+                failureCategory: $failure_category,
+                exitCode: $exit_code,
+                errorMessage: (if $error_msg != "" then $error_msg else null end),
+                target: {
+                    host: $ssh_target_redacted,
+                    ref: $ref,
+                    mode: $mode,
+                    expectedInitialUbuntu: $expect_ubuntu,
+                    expectedFinalUbuntu: $expect_final_ubuntu
+                },
+                provisioningPacket: (if $packet == {} then null else $packet end),
+                artifacts: [
+                    "factory-e2e.log",
+                    "factory-e2e.jsonl",
+                    "install.log",
+                    "idempotency.log",
+                    "factory-sentinel-manifest.json",
+                    "factory-sentinel-summary.md"
+                ]
+            }' > "$manifest_file" 2>/dev/null || true
+    fi
+
+    cat > "$summary_file" <<EOF
+# ACFS Factory Host Sentinel Report
+
+- **Status**: ${status}
+- **Timestamp**: ${TIMESTAMP}
+- **Failure Category**: ${failure_category}
+- **Exit Code**: ${exit_code}
+- **Ref**: ${REF}
+- **Mode**: ${MODE}
+- **Expected OS**: Ubuntu ${EXPECT_UBUNTU_VERSION} -> ${EXPECT_FINAL_UBUNTU_VERSION}
+
+## Failure Diagnostics
+$([[ -n "$sanitized_error_msg" ]] && echo "- **Error**: ${sanitized_error_msg}" || echo "None")
+
+## Provisioning Packet
+$([[ -n "$PROVISIONING_PACKET" ]] && echo "Validated and mapped from: $(basename "$PROVISIONING_PACKET")" || echo "No packet supplied (direct factory run)")
+EOF
+}
+
+validate_provisioning_packet() {
+    if [[ -z "$PROVISIONING_PACKET" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$PROVISIONING_PACKET" ]]; then
+        echo "ERROR: provisioning packet file not found: $PROVISIONING_PACKET" >&2
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet file not found: $PROVISIONING_PACKET"
+        redact_local_factory_artifacts
+        exit 2
+    fi
+
+    local validator="$REPO_ROOT/scripts/lib/provisioning_packet.sh"
+    if [[ ! -r "$validator" ]]; then
+        echo "ERROR: provisioning packet validator not found: $validator" >&2
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet validator not found: $validator"
+        redact_local_factory_artifacts
+        exit 2
+    fi
+
+    local val_out
+    if ! val_out="$(bash "$validator" --file "$PROVISIONING_PACKET" --json 2>&1)"; then
+        echo "ERROR: provisioning packet failed validation: $val_out" >&2
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "provisioning packet failed validation: $val_out"
+        redact_local_factory_artifacts
+        exit 2
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        local packet_init_os packet_final_os packet_ref packet_mode
+        packet_init_os="$(jq -r '.os.initialReleaseId // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
+        packet_final_os="$(jq -r '.os.expectedFinalReleaseId // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
+        packet_ref="$(jq -r '.provenance.sourceRef // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
+        packet_mode="$(jq -r '.installPlan.mode // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
+
+        if [[ -n "$packet_init_os" && "$EXPECT_UBUNTU_VERSION" == "25.10" && -z "${ACFS_FACTORY_EXPECT_UBUNTU_VERSION:-}" ]]; then
+            EXPECT_UBUNTU_VERSION="$packet_init_os"
+        fi
+        if [[ -n "$packet_final_os" && "$EXPECT_FINAL_UBUNTU_VERSION" == "25.10" && -z "${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION:-}" ]]; then
+            EXPECT_FINAL_UBUNTU_VERSION="$packet_final_os"
+        fi
+        if [[ -n "$packet_ref" && "$REF" == "main" && -z "${ACFS_REF:-}" ]]; then
+            REF="$packet_ref"
+        fi
+        if [[ -n "$packet_mode" && "$MODE" == "vibe" && -z "${ACFS_FACTORY_MODE:-}" ]]; then
+            MODE="$packet_mode"
+        fi
+    fi
+}
+
+validate_provisioning_packet
+
 remote_dir="/var/log/acfs/factory-e2e-${TIMESTAMP}"
 remote_runner="${remote_dir}/remote-runner.sh"
 local_runner="${ARTIFACTS_DIR}/remote-runner.sh"
@@ -244,7 +409,12 @@ echo "[factory-e2e] Allow install reboot: $ALLOW_INSTALL_REBOOT" >&2
 echo "[factory-e2e] Artifacts: $ARTIFACTS_DIR" >&2
 
 # shellcheck disable=SC2029  # remote_dir is intentionally generated locally.
-ssh "${ssh_args[@]}" "$SSH_TARGET" "mkdir -p '$remote_dir' && chmod 700 '$remote_dir'"
+if ! ssh "${ssh_args[@]}" "$SSH_TARGET" "mkdir -p '$remote_dir' && chmod 700 '$remote_dir'" 2>/dev/null; then
+    echo "ERROR: failed initial SSH connection to $SSH_TARGET" >&2
+    write_factory_sentinel_artifacts "failed" "ssh" 1 "failed initial SSH connection to $SSH_TARGET"
+    redact_local_factory_artifacts
+    exit 1
+fi
 
 cat > "$local_runner" <<'REMOTE_RUNNER'
 #!/usr/bin/env bash
@@ -666,24 +836,6 @@ wait_for_ssh_ready() {
     return 1
 }
 
-redact_local_factory_artifacts() {
-    local support_lib="$REPO_ROOT/scripts/lib/support.sh"
-
-    if [[ ! -r "$support_lib" ]]; then
-        echo "ERROR: support redaction library missing: $support_lib" >&2
-        return 1
-    fi
-
-    (
-        # shellcheck source=../../scripts/lib/support.sh
-        source "$support_lib"
-        REDACT=true
-        REDACTION_COUNT=0
-        VERBOSE=false
-        redact_bundle "$ARTIFACTS_DIR"
-    )
-}
-
 collect_remote_artifacts() {
     echo "[factory-e2e] Collecting remote artifacts from $remote_dir" >&2
     scp "${scp_args[@]}" "$SSH_TARGET:$remote_dir/factory-e2e.log" "$ARTIFACTS_DIR/" 2>/dev/null || true
@@ -719,9 +871,30 @@ fi
 
 collect_remote_artifacts
 
+failure_category="none"
+err_detail=""
 if [[ "$remote_status" -ne 0 ]]; then
+    if [[ -f "$ARTIFACTS_DIR/factory-e2e.jsonl" ]] && grep -q '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" 2>/dev/null; then
+        failed_step="$(grep '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" | tail -n1 | jq -r '.step // empty' 2>/dev/null || true)"
+        failed_step_detail="$(grep '"status":"fail"' "$ARTIFACTS_DIR/factory-e2e.jsonl" | tail -n1 | jq -r '.detail // empty' 2>/dev/null || true)"
+        err_detail="Step $failed_step failed: $failed_step_detail"
+        case "$failed_step" in
+            preflight*|os*|user_state*) failure_category="provider_setup" ;;
+            install*) failure_category="installer" ;;
+            post*|doctor*) failure_category="post_install_doctor" ;;
+            *) failure_category="installer" ;;
+        esac
+    else
+        failure_category="installer"
+        err_detail="Remote runner exited with status $remote_status"
+    fi
+    write_factory_sentinel_artifacts "failed" "$failure_category" "$remote_status" "$err_detail"
+    redact_local_factory_artifacts
     echo "ERROR: factory E2E failed with exit code $remote_status. Artifacts: $ARTIFACTS_DIR" >&2
     exit "$remote_status"
 fi
+
+write_factory_sentinel_artifacts "success" "none" 0
+redact_local_factory_artifacts
 
 echo "[factory-e2e] PASS: factory Ubuntu installer E2E passed. Artifacts: $ARTIFACTS_DIR" >&2

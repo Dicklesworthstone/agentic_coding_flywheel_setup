@@ -609,6 +609,7 @@ const INTERNAL_SCRIPTS_TO_CHECKSUM = [
   'scripts/lib/dashboard.sh',
   'scripts/lib/info.sh',
   'scripts/lib/landing_plane.sh',
+  'scripts/lib/module_selector.sh',
   'scripts/lib/newproj.sh',
   'scripts/lib/newproj_agents.sh',
   'scripts/lib/newproj_detect.sh',
@@ -1907,6 +1908,75 @@ function generatePostInstallMessage(module: Module): string[] {
 // Generators
 // ============================================================
 
+export const WEB_SELECTION_PROFILES = [
+  {
+    id: 'full',
+    label: 'Full',
+    onlyModules: [] as string[],
+    onlyPhases: [] as string[],
+  },
+  {
+    id: 'safe',
+    label: 'Safe',
+    mode: 'safe',
+    onlyModules: [] as string[],
+    onlyPhases: [] as string[],
+  },
+  {
+    id: 'vibe',
+    label: 'Vibe',
+    mode: 'vibe',
+    onlyModules: [] as string[],
+    onlyPhases: [] as string[],
+  },
+  {
+    id: 'minimal',
+    label: 'Minimal',
+    onlyModules: [
+      'shell.omz',
+      'cli.modern',
+      'lang.bun',
+      'lang.uv',
+      'agents.claude',
+      'agents.codex',
+      'agents.antigravity',
+      'stack.ntm',
+      'stack.mcp_agent_mail',
+      'stack.ultimate_bug_scanner',
+      'stack.beads_rust',
+      'stack.beads_viewer',
+      'stack.cass',
+      'stack.cm',
+      'stack.dcg',
+      'stack.ru',
+      'stack.rch',
+      'acfs.workspace',
+      'acfs.onboard',
+      'acfs.update',
+      'acfs.doctor',
+    ],
+    onlyPhases: [] as string[],
+  },
+  {
+    id: 'agents-only',
+    label: 'Agents only',
+    onlyModules: [] as string[],
+    onlyPhases: ['agents'],
+  },
+  {
+    id: 'cloud-only',
+    label: 'Cloud only',
+    onlyModules: ['cloud.wrangler', 'cloud.supabase', 'cloud.vercel'],
+    onlyPhases: [] as string[],
+  },
+  {
+    id: 'stack-only',
+    label: 'Stack only',
+    onlyModules: [] as string[],
+    onlyPhases: ['stack'],
+  },
+] as const;
+
 /**
  * Generate manifest index script (data-only, deterministic)
  */
@@ -2042,6 +2112,54 @@ export function generateManifestIndex(manifest: Manifest, manifestSha256: string
   lines.push(')');
   lines.push('');
 
+  lines.push('declare -gA ACFS_MODULE_OPTIONAL=(');
+  for (const module of orderedModules) {
+    lines.push(`  ['${module.id}']="${module.optional === true ? '1' : '0'}"`);
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('ACFS_PROFILES_IN_ORDER=(');
+  for (const profile of WEB_SELECTION_PROFILES) {
+    lines.push(`  "${profile.id}"`);
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('declare -gA ACFS_PROFILE_LABEL=(');
+  for (const profile of WEB_SELECTION_PROFILES) {
+    lines.push(`  ['${profile.id}']="${escapeBash(profile.label)}"`);
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('declare -gA ACFS_PROFILE_MODE=(');
+  for (const profile of WEB_SELECTION_PROFILES) {
+    if ('mode' in profile && profile.mode) {
+      lines.push(`  ['${profile.id}']="${escapeBash(profile.mode)}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('declare -gA ACFS_PROFILE_ONLY_MODULES=(');
+  for (const profile of WEB_SELECTION_PROFILES) {
+    if (profile.onlyModules.length > 0) {
+      lines.push(`  ['${profile.id}']="${escapeBash(profile.onlyModules.join(','))}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
+  lines.push('declare -gA ACFS_PROFILE_ONLY_PHASES=(');
+  for (const profile of WEB_SELECTION_PROFILES) {
+    if (profile.onlyPhases.length > 0) {
+      lines.push(`  ['${profile.id}']="${escapeBash(profile.onlyPhases.join(','))}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
   // Mark that the index is fully loaded (used by acfs_resolve_selection)
   lines.push('ACFS_MANIFEST_INDEX_LOADED=true');
   lines.push('');
@@ -2113,8 +2231,10 @@ export function generateCategoryScript(manifest: Manifest, category: ModuleCateg
   // Generate individual install functions
   for (const module of generatedModules) {
     const funcName = toGeneratedFunctionName(module.id);
-    const pluginComment = module.plugin ? ` [plugin: ${module.plugin.packageId}@${module.plugin.version}]` : '';
-    lines.push(`# ${sanitizeForBashComment(`${module.description}${pluginComment}`)}`);
+    const pluginComment = module.plugin
+      ? ` [plugin: ${sanitizeForBashComment(module.plugin.packageId)}@${sanitizeForBashComment(module.plugin.version)}]`
+      : '';
+    lines.push(`# ${sanitizeForBashComment(module.description)}${pluginComment}`);
     lines.push(`${funcName}() {`);
     lines.push(`    local module_id="${module.id}"`);
     lines.push('    acfs_require_contract "module:${module_id}" || return 1');
@@ -2469,75 +2589,6 @@ const TS_HEADER = `// ==========================================================
 // To regenerate: bun run --cwd packages/manifest generate
 // ============================================================
 `;
-
-const WEB_SELECTION_PROFILES = [
-  {
-    id: 'full',
-    label: 'Full',
-    onlyModules: [],
-    onlyPhases: [],
-  },
-  {
-    id: 'safe',
-    label: 'Safe',
-    mode: 'safe',
-    onlyModules: [],
-    onlyPhases: [],
-  },
-  {
-    id: 'vibe',
-    label: 'Vibe',
-    mode: 'vibe',
-    onlyModules: [],
-    onlyPhases: [],
-  },
-  {
-    id: 'minimal',
-    label: 'Minimal',
-    onlyModules: [
-      'shell.omz',
-      'cli.modern',
-      'lang.bun',
-      'lang.uv',
-      'agents.claude',
-      'agents.codex',
-      'agents.antigravity',
-      'stack.ntm',
-      'stack.mcp_agent_mail',
-      'stack.ultimate_bug_scanner',
-      'stack.beads_rust',
-      'stack.beads_viewer',
-      'stack.cass',
-      'stack.cm',
-      'stack.dcg',
-      'stack.ru',
-      'stack.rch',
-      'acfs.workspace',
-      'acfs.onboard',
-      'acfs.update',
-      'acfs.doctor',
-    ],
-    onlyPhases: [],
-  },
-  {
-    id: 'agents-only',
-    label: 'Agents only',
-    onlyModules: [],
-    onlyPhases: ['agents'],
-  },
-  {
-    id: 'cloud-only',
-    label: 'Cloud only',
-    onlyModules: ['cloud.wrangler', 'cloud.supabase', 'cloud.vercel'],
-    onlyPhases: [],
-  },
-  {
-    id: 'stack-only',
-    label: 'Stack only',
-    onlyModules: [],
-    onlyPhases: ['stack'],
-  },
-] as const;
 
 /**
  * Escape a string for use inside a TypeScript string literal (double-quoted).

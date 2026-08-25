@@ -36,13 +36,18 @@ set -euo pipefail
 
 MONITOR_REPO="${ACFS_MONITOR_REPO:-$HOME/acfs-monitor}"
 STATE_DIR="${ACFS_MONITOR_STATE:-$HOME/.local/state/acfs-monitor}"
+# System utilities are resolved only from root-owned system prefixes. Bun is
+# bound separately below because it intentionally lives under the monitor
+# owner's home directory.
+MONITOR_EXEC_PATH="/usr/local/bin:/usr/bin:/bin"
+BUN_BIN="$HOME/.bun/bin/bun"
+export PATH="$MONITOR_EXEC_PATH"
 LOG_DIR="$STATE_DIR/logs"
 LOCK_FILE="$STATE_DIR/monitor.lock"
-RUN_TS="$(date -u +%Y%m%dT%H%M%SZ)"
+RUN_TS="$(/usr/bin/date -u +%Y%m%dT%H%M%SZ)"
 LOG_FILE="$LOG_DIR/run-$RUN_TS.log"
 AUTHORIZATION_FILE="$STATE_DIR/authorized-checksum-change"
 EXPECTED_BUN_VERSION="1.3.8"
-MONITOR_EXEC_PATH="$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 MONITOR_RUN_BUDGET_SECONDS=1050
 MONITOR_FAILURE_RESERVE_SECONDS=60
 MONITOR_STARTED_AT_SECONDS=$SECONDS
@@ -83,10 +88,11 @@ for publication_path in "${PUBLICATION_PATHS[@]}"; do
     PUBLICATION_PATH_SET["$publication_path"]=1
 done
 
-mkdir -p "$LOG_DIR"
+/usr/bin/mkdir -p "$LOG_DIR"
 
 log() {
-    printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" | tee -a "$LOG_FILE" >&2
+    printf '[%s] %s\n' "$(/usr/bin/date -u +%H:%M:%S)" "$*" \
+        | /usr/bin/tee -a "$LOG_FILE" >&2
 }
 
 advance_state() {
@@ -113,6 +119,20 @@ run_clean() {
         CI=1 \
         NO_COLOR=1 \
         "$@"
+}
+
+run_bun_clean() {
+    env -i \
+        HOME="$HOME" \
+        USER="${USER:-}" \
+        LOGNAME="${LOGNAME:-${USER:-}}" \
+        PATH="$MONITOR_EXEC_PATH" \
+        LANG=C \
+        LC_ALL=C \
+        TZ=UTC \
+        CI=1 \
+        NO_COLOR=1 \
+        "$BUN_BIN" "$@"
 }
 
 run_bounded() {
@@ -142,6 +162,22 @@ run_clean_bounded() {
         CI=1 \
         NO_COLOR=1 \
         "$@"
+}
+
+run_bun_clean_bounded() {
+    local requested_seconds="$1"
+    shift
+    run_bounded "$requested_seconds" env -i \
+        HOME="$HOME" \
+        USER="${USER:-}" \
+        LOGNAME="${LOGNAME:-${USER:-}}" \
+        PATH="$MONITOR_EXEC_PATH" \
+        LANG=C \
+        LC_ALL=C \
+        TZ=UTC \
+        CI=1 \
+        NO_COLOR=1 \
+        "$BUN_BIN" "$@"
 }
 
 run_failure_bounded() {
@@ -183,81 +219,87 @@ require_clean_tree() {
         && git diff --cached --quiet --exit-code --
 }
 
-json_has_duplicate_paths() {
-    local file="$1" duplicate=""
-    duplicate="$({
-        jq --stream -c 'select(length == 2) | .[0]' "$file" 2>/dev/null \
-            | sort \
-            | uniq -d \
-            | head -n 1
-    } || true)"
-    [[ -n "$duplicate" ]]
+canonical_compact_json_is_exact() {
+    local file="$1" canonical="" canonical_digest="" source_digest=""
+    canonical="$(jq -c . "$file" 2>/dev/null)" || return 1
+    [[ "$canonical" != *$'\n'* ]] || return 1
+    canonical_digest="$(printf '%s\n' "$canonical" | sha256sum | awk '{print $1}')" \
+        || return 1
+    source_digest="$(sha256_file "$file")" || return 1
+    [[ "$canonical_digest" =~ ^[0-9a-f]{64}$ ]] \
+        && [[ "$canonical_digest" == "$source_digest" ]]
 }
 
 validate_drift_report() {
     local file="$1"
-    ! json_has_duplicate_paths "$file" || return 1
+    # The drift producer emits one compact jq object. Requiring byte-canonical
+    # compact JSON rejects duplicate keys, alternate encodings, trailing data,
+    # and empty-container duplicate-key cases before the field schema runs.
+    canonical_compact_json_is_exact "$file" || return 1
     jq -e '
+        def exact_keys($wanted): type == "object" and keys == ($wanted | sort);
+        def count: type == "number" and floor == . and . >= 0;
+        def strings: type == "array" and all(.[]; type == "string");
         type == "object" and
-        ((keys | sort) == ([
+        exact_keys([
           "drift_detected", "generated_artifacts", "internal_scripts",
           "manifest", "manifest_contract", "reasons", "repo_mcp_configs"
-        ] | sort)) and
+        ]) and
         (.drift_detected | type == "boolean") and
-        (.reasons | type == "array") and all(.reasons[]; type == "string") and
-        (.generated_artifacts | type == "object") and
+        (.reasons | strings) and
+        (.manifest | exact_keys(["actual_sha256", "index_modules", "manifest_modules", "recorded_sha256", "sha256_line_count"])) and
+        (.manifest.actual_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.manifest.recorded_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+        (.manifest.sha256_line_count | count) and
+        (.manifest.manifest_modules | count) and
+        (.manifest.index_modules | count) and
+        (.internal_scripts | exact_keys(["checked", "drift_files", "drifted"])) and
+        (.internal_scripts.checked | count) and
+        (.internal_scripts.drifted | count) and
+        (.internal_scripts.drift_files | strings) and
+        (.repo_mcp_configs | exact_keys(["checked", "drift_files", "drifted", "expected_url"])) and
+        (.repo_mcp_configs.expected_url == "http://127.0.0.1:8765/mcp/") and
+        (.repo_mcp_configs.checked | count) and
+        (.repo_mcp_configs.drifted | count) and
+        (.repo_mcp_configs.drift_files | strings) and
+        (.generated_artifacts | exact_keys(["drift_files", "drifted", "status"])) and
         (.generated_artifacts.status == "clean" or .generated_artifacts.status == "drift") and
-        (.generated_artifacts.drifted | type == "number") and
-        (.generated_artifacts.drift_files | type == "array") and
-        (.internal_scripts.drifted | type == "number") and
-        (.repo_mcp_configs.drifted | type == "number") and
-        (.manifest_contract.drifted | type == "number")
+        (.generated_artifacts.drifted | count) and
+        (.generated_artifacts.drift_files | strings) and
+        (.manifest_contract | exact_keys(["checked", "drift_files", "drifted", "mismatch_codes", "status"])) and
+        (.manifest_contract.status == "clean" or .manifest_contract.status == "drift") and
+        (.manifest_contract.checked | count) and
+        (.manifest_contract.drifted | count) and
+        (.manifest_contract.drift_files | strings) and
+        (.manifest_contract.mismatch_codes | strings)
     ' "$file" >/dev/null 2>&1
 }
 
 validate_verification_report() {
     local file="$1" expected_digest="$2"
-    ! json_has_duplicate_paths "$file" || return 1
-    jq -e --arg expected_digest "$expected_digest" '
-        def hash: type == "string" and test("^[0-9a-f]{64}$");
-        def https_url: type == "string" and startswith("https://");
-        type == "object" and
-        ((keys | sort) == ([
-          "checksumsYamlSha256", "errors", "matches", "mismatches",
-          "schema", "schemaVersion", "skipped", "timestamp", "total"
-        ] | sort)) and
-        .schema == "acfs.installer-checksum-verification.v1" and
-        .schemaVersion == 1 and
-        (.timestamp | type == "string" and length > 0) and
-        .checksumsYamlSha256 == $expected_digest and
-        (.total | type == "number" and floor == . and . > 0) and
-        (.matches | type == "array") and
-        (.mismatches | type == "array") and
-        (.errors | type == "array") and
-        (.skipped | type == "array") and
-        all(.matches[];
-          ((keys | sort) == (["checksum", "name", "url"] | sort)) and
-          (.name | type == "string" and length > 0) and
-          (.url | https_url) and (.checksum | hash)) and
-        all(.mismatches[];
-          ((keys | sort) == (["actual", "expected", "name", "url"] | sort)) and
-          (.name | type == "string" and length > 0) and
-          (.url | https_url) and (.expected | hash) and (.actual | hash)) and
-        all(.errors[];
-          ((keys | sort) == (["error", "name", "url"] | sort)) and
-          (.name | type == "string" and length > 0) and
-          (.url | https_url) and (.error | type == "string" and length > 0)) and
-        all(.skipped[];
-          ((keys | sort) == (["name", "reason", "url"] | sort)) and
-          (.name | type == "string" and length > 0) and
-          (.url | https_url) and (.reason | type == "string" and length > 0)) and
-        .total == ((.matches | length) + (.mismatches | length) +
-                   (.errors | length) + (.skipped | length)) and
-        ([.matches[].name, .mismatches[].name, .errors[].name, .skipped[].name]
-          | length) ==
-        ([.matches[].name, .mismatches[].name, .errors[].name, .skipped[].name]
-          | unique | length)
-    ' "$file" >/dev/null 2>&1
+    canonical_compact_json_is_exact "$file" || return 1
+    [[ "$(sha256_file checksums.yaml)" == "$expected_digest" ]] || return 1
+    # Delegate exact schema, duplicate-key detection, installer membership,
+    # URL/hash bindings, and report-to-policy digest binding to security.sh's
+    # authoritative offline report validator. This accepts complete match and
+    # mismatch partitions without pretending the current policy is already
+    # the later candidate.
+    run_clean_bounded 30 bash -c '
+        set -euo pipefail
+        source "$1"
+        declare -A urls=() checksums=() matches=() mismatch_expected=()
+        declare -A mismatch_actual=() errors=() skipped=()
+        acfs_load_checksums_strict "$2" urls checksums
+        digest="$(calculate_file_sha256 "$2")"
+        [[ "$digest" == "$3" ]]
+        acfs_validate_installer_checksum_report \
+            "$4" urls checksums "$digest" \
+            matches mismatch_expected mismatch_actual errors skipped
+    ' bash \
+        "$PWD/scripts/lib/security.sh" \
+        "$PWD/checksums.yaml" \
+        "$expected_digest" \
+        "$file" >/dev/null 2>&1
 }
 
 is_trusted_installer_url() {
@@ -286,11 +328,15 @@ authorization_is_valid() {
 
 record_external_review() {
     local report="$1" digest="$2" authorization_status="$3"
-    local body_file="" existing="" external_names_json="[]" repo_slug=""
+    local body_file="" existing="" external_names_json="[]" external_evidence="" repo_slug=""
     repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
     body_file="$(mktemp "$STATE_DIR/external-review-$RUN_TS.XXXXXX.md")" || return 1
     external_names_json="$(printf '%s\n' "${EXTERNAL_CHANGED[@]}" | jq -R . | jq -s .)" \
         || return 1
+    external_evidence="$(jq -r --argjson names "$external_names_json" '
+      .mismatches[] | select(.name as $name | $names | index($name)) |
+      "- `\(.name)`\n  - URL: `\(.url)`\n  - expected: `\(.expected)`\n  - observed: `\(.actual)`"
+    ' "$report")" || return 1
     {
         printf '## External installer checksum authorization\n\n'
         printf 'This monitor observed installer bytes outside the exact trusted owner boundary.\n\n'
@@ -299,10 +345,7 @@ record_external_review() {
         printf -- '- Pinned base: `%s`\n' "$BASE_HEAD"
         printf -- '- Verification report SHA256: `%s`\n\n' "$VERIFICATION_REPORT_SHA256"
         printf '### First-observation evidence\n\n'
-        jq -r --argjson names "$external_names_json" '
-          .mismatches[] | select(.name as $name | $names | index($name)) |
-          "- `\(.name)`\n  - URL: `\(.url)`\n  - expected: `\(.expected)`\n  - observed: `\(.actual)`"
-        ' "$report"
+        printf '%s\n' "$external_evidence"
         printf '\n### Human authorization\n\n'
         printf 'After reviewing the upstream bytes, place exactly this line in `%s` as an owner-only, non-symlink file:\n\n' "$AUTHORIZATION_FILE"
         printf '```text\nauthorize:%s\n```\n' "$digest"
@@ -329,20 +372,31 @@ record_external_review() {
 }
 
 assert_closed_publication_worktree() {
-    local path=""
-    while IFS= read -r -d '' path; do
+    local path="" tracked_paths="" untracked_paths="" deleted_paths=""
+    # Capture each producer's status before inspecting output. Git's default
+    # C quoting keeps pathnames containing newlines on one line; force it so a
+    # hostile filename cannot be split into an apparently allowed suffix.
+    tracked_paths="$(git -c core.quotePath=true diff --name-only -- 2>>"$LOG_FILE")" \
+        || return 1
+    untracked_paths="$(git -c core.quotePath=true ls-files --others --exclude-standard -- 2>>"$LOG_FILE")" \
+        || return 1
+    deleted_paths="$(git -c core.quotePath=true diff --name-only --diff-filter=D -- 2>>"$LOG_FILE")" \
+        || return 1
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
         [[ -n "${PUBLICATION_PATH_SET[$path]+present}" ]] || {
             log "unexpected tracked mutation: $path"
             return 1
         }
-    done < <(git diff --name-only -z --)
-    while IFS= read -r -d '' path; do
+    done <<< "$tracked_paths"
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
         [[ -n "${PUBLICATION_PATH_SET[$path]+present}" ]] || {
             log "unexpected untracked path: $path"
             return 1
         }
-    done < <(git ls-files --others --exclude-standard -z --)
-    if [[ -n "$(git diff --name-only --diff-filter=D --)" ]]; then
+    done <<< "$untracked_paths"
+    if [[ -n "$deleted_paths" ]]; then
         log "publication would contain a deletion"
         return 1
     fi
@@ -421,7 +475,6 @@ advance_state INIT LOCKED
 
 log "ACFS checksum monitor starting (repo: $MONITOR_REPO)"
 
-export PATH="$MONITOR_EXEC_PATH"
 # Monitor location/notification overrides were captured above. Everything
 # capable of redirecting Git, checksum, manifest, plugin, or package-manager
 # behavior is removed before the first repository observation.
@@ -436,9 +489,54 @@ unset GIT_QUARANTINE_PATH GIT_REPLACE_REF_BASE GIT_SSH_COMMAND GIT_SSH_VARIANT
 unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE
 unset GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE
 unset GIT_ASKPASS SSH_ASKPASS GH_HOST GH_REPO
-for dep in bash env git gh jq curl bun flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp timeout; do
-    command -v "$dep" >/dev/null 2>&1 || fail_closed "missing dependency: $dep"
+for system_prefix in /usr/local/bin /usr/bin /bin; do
+    [[ -d "$system_prefix" ]] || continue
+    prefix_real="$(/usr/bin/readlink -f -- "$system_prefix" 2>/dev/null || true)"
+    prefix_owner="$(/usr/bin/stat -c '%u' -- "$prefix_real" 2>/dev/null || true)"
+    prefix_mode="$(/usr/bin/stat -c '%a' -- "$prefix_real" 2>/dev/null || true)"
+    [[ "$prefix_real" == /* && "$prefix_owner" == "0" && "$prefix_mode" =~ ^[0-7]{3,4}$ ]] \
+        || fail_closed "trusted system prefix metadata is unsafe: $system_prefix"
+    prefix_mode_value=$((8#$prefix_mode))
+    (( (prefix_mode_value & 022) == 0 )) \
+        || fail_closed "trusted system prefix is group/world writable: $system_prefix -> $prefix_real"
 done
+for dep in bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp timeout readlink date tee mkdir hostname cat; do
+    dep_path="$(command -v "$dep" 2>/dev/null || true)"
+    [[ "$dep_path" == /* ]] || fail_closed "missing dependency: $dep"
+    dep_real="$(/usr/bin/readlink -f -- "$dep_path" 2>/dev/null || true)"
+    case "$dep_real" in
+        /usr/bin/*|/usr/local/bin/*) ;;
+        *) fail_closed "dependency resolves outside trusted system prefixes: $dep -> ${dep_real:-unresolved}" ;;
+    esac
+    [[ -f "$dep_real" && -x "$dep_real" ]] \
+        || fail_closed "dependency is not a regular executable: $dep -> $dep_real"
+    dep_owner="$(/usr/bin/stat -c '%u' -- "$dep_real" 2>/dev/null || true)"
+    dep_mode="$(/usr/bin/stat -c '%a' -- "$dep_real" 2>/dev/null || true)"
+    [[ "$dep_owner" == "0" && "$dep_mode" =~ ^[0-7]{3,4}$ ]] \
+        || fail_closed "dependency metadata is unsafe: $dep -> $dep_real"
+    dep_mode_value=$((8#$dep_mode))
+    (( (dep_mode_value & 022) == 0 )) \
+        || fail_closed "dependency is group/world writable: $dep -> $dep_real"
+done
+
+[[ -f "$BUN_BIN" && ! -L "$BUN_BIN" && -x "$BUN_BIN" ]] \
+    || fail_closed "pinned Bun binary is missing or unsafe: $BUN_BIN"
+bun_dir="${BUN_BIN%/*}"
+bun_dir_owner="$(stat -c '%u' -- "$bun_dir" 2>/dev/null || true)"
+bun_dir_mode="$(stat -c '%a' -- "$bun_dir" 2>/dev/null || true)"
+[[ "$bun_dir_owner" == "$(id -u)" && "$bun_dir_mode" =~ ^[0-7]{3,4}$ ]] \
+    || fail_closed "pinned Bun directory metadata is unsafe: $bun_dir"
+bun_dir_mode_value=$((8#$bun_dir_mode))
+(( (bun_dir_mode_value & 022) == 0 )) \
+    || fail_closed "pinned Bun directory is group/world writable: $bun_dir"
+bun_owner="$(stat -c '%u' -- "$BUN_BIN" 2>/dev/null || true)"
+bun_links="$(stat -c '%h' -- "$BUN_BIN" 2>/dev/null || true)"
+bun_mode="$(stat -c '%a' -- "$BUN_BIN" 2>/dev/null || true)"
+[[ "$bun_owner" == "$(id -u)" && "$bun_links" == "1" && "$bun_mode" =~ ^[0-7]{3,4}$ ]] \
+    || fail_closed "pinned Bun binary metadata is unsafe: $BUN_BIN"
+bun_mode_value=$((8#$bun_mode))
+(( (bun_mode_value & 022) == 0 )) \
+    || fail_closed "pinned Bun binary is group/world writable: $BUN_BIN"
 
 [[ -d "$MONITOR_REPO/.git" ]] || fail_closed "monitor clone not found at $MONITOR_REPO"
 cd "$MONITOR_REPO"
@@ -469,11 +567,11 @@ BASE_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
     || fail_closed "local HEAD is not the fetched remote base"
 require_clean_tree || fail_closed "clone is not clean after synchronization"
 
-actual_bun_version="$(run_clean bun --version 2>>"$LOG_FILE" || true)"
+actual_bun_version="$(run_bun_clean --version 2>>"$LOG_FILE" || true)"
 [[ "$actual_bun_version" == "$EXPECTED_BUN_VERSION" ]] \
     || fail_closed "Bun version mismatch: expected $EXPECTED_BUN_VERSION, found ${actual_bun_version:-unavailable}"
 ( cd packages/manifest \
-    && run_clean_bounded 90 bun install --frozen-lockfile --ignore-scripts --silent >>"$LOG_FILE" 2>&1 ) \
+    && run_bun_clean_bounded 90 install --frozen-lockfile --ignore-scripts --silent >>"$LOG_FILE" 2>&1 ) \
     || fail_closed "frozen, lifecycle-disabled Bun install failed in packages/manifest"
 require_clean_tree || fail_closed "dependency preparation changed tracked or untracked repository state"
 advance_state LOCKED CLEAN_BASE
@@ -538,15 +636,21 @@ advance_state CLEAN_BASE OBSERVED
 TRUSTED_CHANGED=()
 EXTERNAL_CHANGED=()
 if [[ "$mismatches" -gt 0 ]]; then
+    mismatch_rows="$(jq -r '.mismatches[] | [.name, .url] | @tsv' "$verify_json")" \
+        || fail_closed "could not classify validated checksum mismatches"
     while IFS=$'\t' read -r name url; do
+        [[ -n "$name" ]] || continue
         if is_trusted_installer_url "$url"; then
             TRUSTED_CHANGED+=("$name")
         else
             EXTERNAL_CHANGED+=("$name")
         fi
-    done < <(jq -r '.mismatches[] | [.name, .url] | @tsv' "$verify_json")
+    done <<< "$mismatch_rows"
+    (( ${#TRUSTED_CHANGED[@]} + ${#EXTERNAL_CHANGED[@]} == mismatches )) \
+        || fail_closed "mismatch classification did not cover the full validated report"
 fi
-changed_tools="$(jq -r '.mismatches[].name' "$verify_json" | paste -sd, -)"
+changed_tools="$(jq -r '.mismatches[].name' "$verify_json" | paste -sd, -)" \
+    || fail_closed "could not summarize validated checksum mismatches"
 trusted_changed="$(printf '%s\n' "${TRUSTED_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
 external_changed="$(printf '%s\n' "${EXTERNAL_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
 log "changed tools: ${changed_tools:-none} (trusted: ${trusted_changed:-none}; external: ${external_changed:-none})"
@@ -587,7 +691,7 @@ if [[ ${#EXTERNAL_CHANGED[@]} -gt 0 ]]; then
         jq -cS '[.mismatches[] | {actual, expected, name, url}] | sort_by(.name)' "$verify_json" \
             | sha256sum \
             | awk '{print $1}'
-    )"
+    )" || fail_closed "could not hash the external-change authorization evidence"
     [[ "$authorization_digest" =~ ^[0-9a-f]{64}$ ]] \
         || fail_closed "could not derive the external-change authorization digest"
     if authorization_is_valid "$authorization_digest"; then
@@ -610,7 +714,7 @@ if [[ "$mismatches" -gt 0 ]]; then
     [[ "$(sha256_file checksums.yaml)" == "$CANDIDATE_SHA256" ]] \
         || fail_closed "placed checksums.yaml does not match the validated candidate"
     ( cd packages/manifest \
-        && run_clean_bounded 120 bun run generate >>"$LOG_FILE" 2>&1 ) \
+        && run_bun_clean_bounded 120 run generate >>"$LOG_FILE" 2>&1 ) \
         || fail_closed "generation from the validated checksum candidate failed"
     assert_closed_publication_worktree \
         || fail_closed "generation escaped the closed publication path set"
@@ -644,11 +748,16 @@ if [[ "$publication_required" == "true" ]]; then
         || fail_closed "worktree contains bytes outside the closed publication set"
     git add -- "${PUBLICATION_PATHS[@]}" \
         || fail_closed "could not stage the closed publication set"
-    while IFS= read -r -d '' staged_path; do
+    staged_paths="$(git -c core.quotePath=true diff --cached --name-only -- 2>>"$LOG_FILE")" \
+        || fail_closed "could not enumerate the staged publication"
+    while IFS= read -r staged_path; do
+        [[ -n "$staged_path" ]] || continue
         [[ -n "${PUBLICATION_PATH_SET[$staged_path]+present}" ]] \
             || fail_closed "unexpected staged publication path: $staged_path"
-    done < <(git diff --cached --name-only -z --)
-    [[ -z "$(git diff --cached --name-only --diff-filter=D --)" ]] \
+    done <<< "$staged_paths"
+    staged_deletions="$(git -c core.quotePath=true diff --cached --name-only --diff-filter=D -- 2>>"$LOG_FILE")" \
+        || fail_closed "could not enumerate staged deletions"
+    [[ -z "$staged_deletions" ]] \
         || fail_closed "refusing to stage a file deletion"
     git diff --quiet --exit-code -- \
         || fail_closed "worktree bytes changed after staging"
@@ -686,10 +795,13 @@ if [[ "$publication_required" == "true" ]]; then
     [[ "$PUBLISH_HEAD" =~ ^[0-9a-f]{40}$ ]] \
         && [[ "$(git rev-parse "${PUBLISH_HEAD}^" 2>/dev/null || true)" == "$BASE_HEAD" ]] \
         || fail_closed "publication commit is not the direct child of the observed base"
-    while IFS= read -r -d '' committed_path; do
+    committed_paths="$(git -c core.quotePath=true diff-tree --no-commit-id --name-only -r "$PUBLISH_HEAD" 2>>"$LOG_FILE")" \
+        || fail_closed "could not enumerate the publication commit"
+    while IFS= read -r committed_path; do
+        [[ -n "$committed_path" ]] || continue
         [[ -n "${PUBLICATION_PATH_SET[$committed_path]+present}" ]] \
             || fail_closed "publication commit contains unexpected path: $committed_path"
-    done < <(git diff-tree --no-commit-id --name-only -r -z "$PUBLISH_HEAD")
+    done <<< "$committed_paths"
     require_clean_tree || fail_closed "repository is not clean after publication commit"
     committed=true
 fi

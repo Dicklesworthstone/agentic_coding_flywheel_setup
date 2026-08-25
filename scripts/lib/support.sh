@@ -11,7 +11,7 @@ _SUPPORT_ORIGINAL_HOME_WAS_SET=false
 _SUPPORT_RESTORE_ERREXIT=false
 _SUPPORT_RESTORE_NOUNSET=false
 _SUPPORT_RESTORE_PIPEFAIL=false
-if [[ -v HOME ]]; then
+if [[ -n "${HOME+x}" ]]; then
     _SUPPORT_ORIGINAL_HOME="$HOME"
     _SUPPORT_ORIGINAL_HOME_WAS_SET=true
 fi
@@ -2170,6 +2170,73 @@ capture_resource_profile_json() {
     [[ "$capture_status" == "pass" ]]
 }
 
+# Capture a sanitized ACFS team-profile snapshot if one exists on the machine.
+# All secret values and raw credentials are strictly scrubbed.
+# Usage: capture_team_profile_json <bundle_dir>
+capture_team_profile_json() {
+    local bundle_dir="$1"
+    local profile_file="$bundle_dir/team_profile.json"
+    local target_home="${SUPPORT_TARGET_HOME:-${_SUPPORT_CURRENT_HOME:-${HOME:-/tmp}}}"
+    local profile_candidate="${ACFS_TEAM_PROFILE_PATH:-$target_home/.acfs/team-profile.json}"
+    local jq_bin=""
+
+    jq_bin="$(support_resolve_jq_binary 2>/dev/null || true)"
+
+    if [[ ! -f "$profile_candidate" ]]; then
+        if [[ -n "$jq_bin" ]]; then
+            printf '{"schema_version":1,"status":"info","present":false,"capture":{"status":"info","reason":"no team profile found at %s"},"redaction":{"secrets_collected":false}}\n' "$profile_candidate" > "$profile_file"
+        else
+            printf '{"schema_version":1,"status":"info","present":false}\n' > "$profile_file"
+        fi
+        record_bundle_file "team_profile.json"
+        return 0
+    fi
+
+    log_detail "Capturing team profile summary (redacted)..."
+
+    if [[ -n "$jq_bin" ]]; then
+        "$jq_bin" '
+            {
+                schema_version: 1,
+                status: "pass",
+                present: true,
+                profileId: .profileId,
+                displayName: .displayName,
+                description: .description,
+                schema: .schema,
+                schemaVersion: .schemaVersion,
+                generatedAt: .generatedAt,
+                generatedBy: .generatedBy,
+                compatibility: .compatibility,
+                providerDefaults: {
+                    provider: .providerDefaults.provider,
+                    region: .providerDefaults.region,
+                    planClass: .providerDefaults.planClass,
+                    operatingSystem: .providerDefaults.operatingSystem,
+                    architecture: .providerDefaults.architecture,
+                    sshUser: .providerDefaults.sshUser,
+                    sshPort: .providerDefaults.sshPort
+                },
+                install: .install,
+                shellPreferences: .shellPreferences,
+                lessonChoices: .lessonChoices,
+                secretSlots: (if .secretSlots then [.secretSlots[] | { slot: .slot, required: .required, description: .description }] else [] end),
+                redaction: {
+                    secrets_collected: false,
+                    raw_credentials_scrubbed: true
+                }
+            }
+        ' "$profile_candidate" > "$profile_file" 2>/dev/null || {
+            printf '{"schema_version":1,"status":"warn","present":true,"capture":{"status":"warn","reason":"team profile JSON parsing failed"},"redaction":{"secrets_collected":false}}\n' > "$profile_file"
+        }
+    else
+        printf '{"schema_version":1,"status":"pass","present":true,"redaction":{"secrets_collected":false}}\n' > "$profile_file"
+    fi
+
+    record_bundle_file "team_profile.json"
+    return 0
+}
+
 support_binary_path_any() {
     local candidate=""
     local path_value=""
@@ -2628,11 +2695,13 @@ write_manifest() {
     local swarm_inventory_manifest=""
     local versions_manifest=""
     local environment_manifest=""
+    local team_profile_manifest=""
     doctor_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "doctor.json" "doctor" '["secret_values","local_paths","command_output"]' "$jq_bin")"
     swarm_status_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "swarm_status.json" "swarm_status" '["host_metrics","local_paths","command_output"]' "$jq_bin")"
     swarm_timeline_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "swarm_timeline.json" "swarm_timeline" '["agent_mail_bodies","terminal_history","tmux_panes","command_output","local_paths"]' "$jq_bin")"
     provenance_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "provenance.json" "provenance" '["tool_versions","install_sources","local_paths"]' "$jq_bin")"
     resource_profile_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "resource_profile.json" "resource_profile" '["local_paths","wrapper_commands","secret_values"]' "$jq_bin")"
+    team_profile_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "team_profile.json" "team_profile" '["secret_values","raw_credentials"]' "$jq_bin")"
     local_progress_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "local_progress.json" "local_progress" '["local_milestones","wizard_steps","installer_phase_ids","onboard_lesson_numbers"]' "$jq_bin")"
     checkpoint_summary_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "checkpoint_summary.json" "checkpoint_summary" '["state_schema_version","installer_phase_ids","checkpoint_status"]' "$jq_bin")"
     swarm_inventory_manifest="$(support_manifest_diagnostic_json "$bundle_dir" "swarm_inventory.json" "swarm_inventory" '["hostnames","ip_addresses","ssh_users","ssh_key_paths","provider_ids","repo_paths","home_paths","token_like_notes"]' "$jq_bin")"
@@ -2655,6 +2724,7 @@ write_manifest() {
         --argjson swarm_timeline_manifest "$swarm_timeline_manifest" \
         --argjson provenance_manifest "$provenance_manifest" \
         --argjson resource_profile_manifest "$resource_profile_manifest" \
+        --argjson team_profile_manifest "$team_profile_manifest" \
         --argjson local_progress_manifest "$local_progress_manifest" \
         --argjson checkpoint_summary_manifest "$checkpoint_summary_manifest" \
         --argjson swarm_inventory_manifest "$swarm_inventory_manifest" \
@@ -2684,6 +2754,7 @@ write_manifest() {
                 swarm_timeline: $swarm_timeline_manifest,
                 provenance: $provenance_manifest,
                 resource_profile: $resource_profile_manifest,
+                team_profile: $team_profile_manifest,
                 local_progress: $local_progress_manifest,
                 checkpoint_summary: $checkpoint_summary_manifest,
                 swarm_inventory: $swarm_inventory_manifest,
@@ -2809,6 +2880,8 @@ write_support_report_index() {
     support_report_write_link_line "$bundle_dir" "provenance.json" "Tool provenance" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "resource_profile.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "resource_profile.json" "Resource profile" "$status" "$report_file"
+    status="$(support_report_json_status "$bundle_dir" "team_profile.json" "$jq_bin")"
+    support_report_write_link_line "$bundle_dir" "team_profile.json" "Team profile" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "local_progress.json" "$jq_bin")"
     support_report_write_link_line "$bundle_dir" "local_progress.json" "Local progress" "$status" "$report_file"
     status="$(support_report_json_status "$bundle_dir" "checkpoint_summary.json" "$jq_bin")"
@@ -2910,6 +2983,16 @@ redact_private_key_blocks() {
     return 0
 }
 
+support_sed_in_place() {
+    local file="${!#}"
+    local tmp="${file}.tmp.$$"
+    if sed -E "${@:1:$#-1}" "$file" > "$tmp" 2>/dev/null && mv -f "$tmp" "$file" 2>/dev/null; then
+        return 0
+    fi
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+}
+
 # Redact sensitive values from a single text file in-place.
 # Increments REDACTION_COUNT once when the file content changes.
 # Usage: redact_file <file_path>
@@ -2917,8 +3000,10 @@ redact_file() {
     local file="$1"
 
     # Skip binary files (check first 512 bytes for null bytes)
-    # -a forces grep to treat input as text (otherwise it silently skips binary data)
-    if head -c 512 "$file" 2>/dev/null | grep -qaP '\x00'; then
+    local header_raw header_nonull
+    header_raw="$(head -c 512 "$file" 2>/dev/null | wc -c | tr -d ' ' || echo 0)"
+    header_nonull="$(head -c 512 "$file" 2>/dev/null | LC_ALL=C tr -d '\0' | wc -c | tr -d ' ' || echo 0)"
+    if [[ "$header_raw" -gt 0 && "$header_raw" != "$header_nonull" ]]; then
         printf '<REDACTED:binary_file>\n' > "$file" 2>/dev/null || return 1
         REDACTION_COUNT=$((REDACTION_COUNT + 1))
         return 0
@@ -2935,7 +3020,7 @@ redact_file() {
 
     # Apply redaction patterns using sed -E (extended regex)
     # Order: specific patterns first, then generic catch-alls
-    sed -E -i \
+    support_sed_in_place \
         -e 's/sk-[a-zA-Z0-9_-]{20,}/<REDACTED:api_key>/g' \
         -e 's/AKIA[A-Z0-9]{16}/<REDACTED:aws_key>/g' \
         -e 's/gh[pousr]_[a-zA-Z0-9]{36,}/<REDACTED:github_token>/g' \
@@ -2948,7 +3033,7 @@ redact_file() {
         -e "s/(Generated password for '?[A-Za-z_][A-Za-z0-9._-]*'?[[:space:]]*:[[:space:]]*)[^[:space:]<>]{4,}/\1<REDACTED:password>/g" \
         -e "s/^(\+[^|]*echo[[:space:]]+['\"]?[A-Za-z_][A-Za-z0-9._-]*):[^[:space:]|'\"]+(['\"]?[[:space:]]*\|.*chpasswd)/\1:<REDACTED:password>\2/" \
         -e "s/^(\+.*(PASSWORD|PASSWD|TOKEN|SECRET|API_KEY)[A-Za-z0-9_]*=)[^[:space:]]+/\1<REDACTED:xtrace_assignment>/" \
-        "$file" 2>/dev/null || {
+        "$file" || {
             # Fail closed: a sed error used to skip the remaining redaction
             # batches while manifest.json still claimed redaction was applied.
             printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
@@ -2956,7 +3041,7 @@ redact_file() {
         }
 
     # JSON-style secrets: "key_name": "value"
-    sed -E -i \
+    support_sed_in_place \
         -e 's/"(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)"[[:space:]]*:[[:space:]]*"([^"]{8,})"/"\1": "<REDACTED:\1>"/g' \
         -e 's/"(password|PASSWORD|passwd|PASSWD)"[[:space:]]*:[[:space:]]*"([^"]{4,})"/"\1": "<REDACTED:password>"/g' \
         -e 's/"([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))"[[:space:]]*:[[:space:]]*"([^"<>]{4,})"/"\1": "<REDACTED:password>"/g' \
@@ -2965,7 +3050,7 @@ redact_file() {
         -e 's/"([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))"[[:space:]]*:[[:space:]]*"([^"<>]{8,})"/"\1": "<REDACTED:generic_secret>"/g' \
         -e 's/"(body_md|body_text|thread_snippet|message_snippet|mail_snippet|message_preview)"[[:space:]]*:[[:space:]]*"([^"]*)"/"\1": "<REDACTED:message_snippet>"/g' \
         -e 's#"(command|command_line|cmd|cwd|path|project_key|working_directory)"([[:space:]]*:[[:space:]]*")([^"]*)/(home|Users)/[A-Za-z0-9._-]+/[A-Za-z0-9._~+@%/=-]+([^"]*)"#"\1"\2\3/<REDACTED:path>\5"#g' \
-        "$file" 2>/dev/null || {
+        "$file" || {
             # Fail closed: a sed error used to skip the remaining redaction
             # batches while manifest.json still claimed redaction was applied.
             printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
@@ -2974,28 +3059,28 @@ redact_file() {
 
     # Shell-style quoted secrets can contain spaces. Redact the full quoted
     # value before the unquoted catch-alls below see only the first word.
-    sed -E -i \
+    support_sed_in_place \
         -e 's/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\2"<REDACTED:\1>"/g' \
         -e 's/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\2"<REDACTED:password>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\3"<REDACTED:password>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\3"<REDACTED:generic_secret>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)"([^"<>]{4,})"/\1\3"<REDACTED:password>"/g' \
         -e 's/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*)"([^"<>]{8,})"/\1\3"<REDACTED:generic_secret>"/g' \
-        "$file" 2>/dev/null || {
+        "$file" || {
             # Fail closed: a sed error used to skip the remaining redaction
             # batches while manifest.json still claimed redaction was applied.
             printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
             return 1
         }
 
-    sed -E -i \
+    support_sed_in_place \
         -e "s/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\2'<REDACTED:\1>'/g" \
         -e "s/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\2'<REDACTED:password>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\3'<REDACTED:password>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\3'<REDACTED:generic_secret>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*)'([^'<>]{4,})'/\1\3'<REDACTED:password>'/g" \
         -e "s/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*)'([^'<>]{8,})'/\1\3'<REDACTED:generic_secret>'/g" \
-        "$file" 2>/dev/null || {
+        "$file" || {
             # Fail closed: a sed error used to skip the remaining redaction
             # batches while manifest.json still claimed redaction was applied.
             printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
@@ -3004,14 +3089,14 @@ redact_file() {
 
     # Generic key=value secrets (case-insensitive would need per-line processing;
     # instead match common casings)
-    sed -E -i \
-        -e 's/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{8,})/\1\2<REDACTED:\1>/g' \
-        -e 's/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{4,})/\1\2<REDACTED:password>/g' \
-        -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{4,})/\1\3<REDACTED:password>/g' \
-        -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{8,})/\1\3<REDACTED:generic_secret>/g' \
-        -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{4,})/\1\3<REDACTED:password>/g' \
-        -e 's/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>\n]{8,})/\1\3<REDACTED:generic_secret>/g' \
-        "$file" 2>/dev/null || {
+    support_sed_in_place \
+        -e 's/(api_key|API_KEY|ApiKey|api_secret|API_SECRET|secret_key|SECRET_KEY|access_token|ACCESS_TOKEN|refresh_token|REFRESH_TOKEN|auth_token|AUTH_TOKEN|client_secret|CLIENT_SECRET|private_key|PRIVATE_KEY)([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{8,})/\1\2<REDACTED:\1>/g' \
+        -e 's/(password|PASSWORD|passwd|PASSWD)([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{4,})/\1\2<REDACTED:password>/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(password|PASSWORD|passwd|PASSWD))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{4,})/\1\3<REDACTED:password>/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*[_-]+[A-Za-z0-9_-]*(api[_-]?key|API[_-]?KEY|ApiKey|api[_-]?secret|API[_-]?SECRET|secret[_-]?key|SECRET[_-]?KEY|access[_-]?key|ACCESS[_-]?KEY|access[_-]?token|ACCESS[_-]?TOKEN|refresh[_-]?token|REFRESH[_-]?TOKEN|auth[_-]?token|AUTH[_-]?TOKEN|client[_-]?secret|CLIENT[_-]?SECRET|private[_-]?key|PRIVATE[_-]?KEY|secret|SECRET|token|TOKEN))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{8,})/\1\3<REDACTED:generic_secret>/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*(Password|Passwd))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{4,})/\1\3<REDACTED:password>/g' \
+        -e 's/([A-Za-z][A-Za-z0-9]*(ApiKey|APIKey|ApiSecret|SecretKey|AccessKey|AccessToken|RefreshToken|AuthToken|ClientSecret|PrivateKey|Secret|Token))([[:space:]]*[=:][[:space:]]*["'"'"']?)([^ "'"'"'<>[:space:]]{8,})/\1\3<REDACTED:generic_secret>/g' \
+        "$file" || {
             # Fail closed: a sed error used to skip the remaining redaction
             # batches while manifest.json still claimed redaction was applied.
             printf '<REDACTED:redaction_failed>\n' > "$file" 2>/dev/null || true
@@ -3198,6 +3283,7 @@ main() {
     capture_swarm_status_json "$bundle_dir" || true
     capture_provenance_json "$bundle_dir" || true
     capture_resource_profile_json "$bundle_dir" || true
+    capture_team_profile_json "$bundle_dir" || true
     capture_swarm_inventory_json "$bundle_dir" || true
     capture_swarm_timeline_json "$bundle_dir" || true
 

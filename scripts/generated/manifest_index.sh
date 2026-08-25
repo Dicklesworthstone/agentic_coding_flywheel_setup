@@ -871,4 +871,116 @@ declare -gA ACFS_MODULE_PLUGIN_VERSION=(
 declare -gA ACFS_MODULE_PLUGIN_SHA256=(
 )
 
+declare -gA ACFS_MODULE_OPTIONAL=(
+  ['base.system']="0"
+  ['users.ubuntu']="0"
+  ['base.filesystem']="0"
+  ['shell.zsh']="0"
+  ['shell.omz']="0"
+  ['cli.modern']="0"
+  ['tools.lazygit']="0"
+  ['tools.lazydocker']="0"
+  ['network.tailscale']="0"
+  ['network.ssh_keepalive']="1"
+  ['lang.bun']="0"
+  ['lang.uv']="0"
+  ['lang.rust']="0"
+  ['lang.go']="0"
+  ['lang.nvm']="0"
+  ['tools.atuin']="0"
+  ['tools.zoxide']="0"
+  ['tools.ast_grep']="0"
+  ['agents.claude']="0"
+  ['agents.codex']="0"
+  ['agents.gemini']="1"
+  ['agents.antigravity']="0"
+  ['agents.opencode']="1"
+  ['agents.omp']="1"
+  ['agents.grok']="1"
+  ['tools.vault']="1"
+  ['db.postgres18']="1"
+  ['cloud.wrangler']="1"
+  ['cloud.supabase']="1"
+  ['cloud.vercel']="1"
+  ['stack.ntm']="0"
+  ['stack.mcp_agent_mail']="0"
+  ['stack.meta_skill']="0"
+  ['stack.automated_plan_reviser']="1"
+  ['stack.jeffreysprompts']="1"
+  ['stack.process_triage']="1"
+  ['stack.ultimate_bug_scanner']="0"
+  ['stack.beads_rust']="0"
+  ['stack.beads_viewer']="0"
+  ['stack.cass']="0"
+  ['stack.cm']="0"
+  ['stack.caam']="0"
+  ['stack.slb']="1"
+  ['stack.dcg']="0"
+  ['stack.ru']="0"
+  ['stack.brenner_bot']="1"
+  ['stack.rch']="1"
+  ['stack.wezterm_automata']="1"
+  ['stack.srps']="1"
+  ['stack.frankensearch']="1"
+  ['stack.storage_ballast_helper']="1"
+  ['stack.cross_agent_session_resumer']="1"
+  ['stack.doodlestein_self_releaser']="1"
+  ['stack.agent_settings_backup']="1"
+  ['stack.pcr']="1"
+  ['stack.eidetic_engine_cli']="1"
+  ['stack.franken_markdown']="1"
+  ['stack.pi_agent_rust']="1"
+  ['stack.power_failure_resumer']="1"
+  ['utils.giil']="1"
+  ['utils.csctf']="1"
+  ['utils.xf']="1"
+  ['utils.toon_rust']="1"
+  ['utils.rano']="1"
+  ['utils.mdwb']="1"
+  ['utils.s2p']="1"
+  ['utils.rust_proxy']="1"
+  ['utils.aadc']="1"
+  ['utils.caut']="1"
+  ['acfs.workspace']="1"
+  ['acfs.onboard']="0"
+  ['acfs.update']="0"
+  ['acfs.nightly']="1"
+  ['acfs.doctor']="0"
+)
+
+ACFS_PROFILES_IN_ORDER=(
+  "full"
+  "safe"
+  "vibe"
+  "minimal"
+  "agents-only"
+  "cloud-only"
+  "stack-only"
+)
+
+declare -gA ACFS_PROFILE_LABEL=(
+  ['full']="Full"
+  ['safe']="Safe"
+  ['vibe']="Vibe"
+  ['minimal']="Minimal"
+  ['agents-only']="Agents only"
+  ['cloud-only']="Cloud only"
+  ['stack-only']="Stack only"
+)
+
+declare -gA ACFS_PROFILE_MODE=(
+  ['safe']="safe"
+  ['vibe']="vibe"
+)
+
+declare -gA ACFS_PROFILE_ONLY_MODULES=(
+  ['minimal']="shell.omz,cli.modern,lang.bun,lang.uv,agents.claude,agents.codex,agents.antigravity,stack.ntm,stack.mcp_agent_mail,stack.ultimate_bug_scanner,stack.beads_rust,stack.beads_viewer,stack.cass,stack.cm,stack.dcg,stack.ru,stack.rch,acfs.workspace,acfs.onboard,acfs.update,acfs.doctor"
+  ['cloud-only']="cloud.wrangler,cloud.supabase,cloud.vercel"
+)
+
+declare -gA ACFS_PROFILE_ONLY_PHASES=(
+  ['agents-only']="agents"
+  ['stack-only']="stack"
+)
+
 ACFS_MANIFEST_INDEX_LOADED=true
