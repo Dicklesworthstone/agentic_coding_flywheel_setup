@@ -46,12 +46,6 @@ import {
   toGeneratedFunctionName,
 } from './utils.js';
 import { MODULE_CATEGORIES, type Module, type ModuleCategory, type Manifest } from './types.js';
-import {
-  formatPluginDiagnostics,
-  loadPluginManifestFromFile,
-  mergeValidatedPlugins,
-  type PluginValidationResult,
-} from './plugin.js';
 
 // ============================================================
 // Configuration
@@ -594,6 +588,59 @@ const INTERNAL_SCRIPTS_TO_CHECKSUM = [
   'scripts/templates/acfs-nightly-update.service',
   'scripts/templates/acfs-nightly-update.timer',
   'packages/onboard/onboard.sh',
+  'VERSION',
+  'acfs.manifest.yaml',
+  'acfs/AGENTS.md',
+  'acfs/onboard/docs/ntm/command_palette.md',
+  'acfs/tmux/tmux.conf',
+  'acfs/zsh/acfs.zshrc',
+  'acfs/zsh/p10k.zsh',
+  'scripts/completions/_acfs',
+  'scripts/completions/acfs.bash',
+  'scripts/generate-root-agents-md.sh',
+  'scripts/lib/agy_e2e_harness.sh',
+  'scripts/lib/agy_locked.py',
+  'scripts/lib/agy_model_guard.sh',
+  'scripts/lib/capacity.sh',
+  'scripts/lib/changelog.sh',
+  'scripts/lib/cheatsheet.sh',
+  'scripts/lib/continue.sh',
+  'scripts/lib/credential_preflight.sh',
+  'scripts/lib/dashboard.sh',
+  'scripts/lib/info.sh',
+  'scripts/lib/landing_plane.sh',
+  'scripts/lib/newproj.sh',
+  'scripts/lib/newproj_agents.sh',
+  'scripts/lib/newproj_detect.sh',
+  'scripts/lib/newproj_errors.sh',
+  'scripts/lib/newproj_logging.sh',
+  'scripts/lib/newproj_screens.sh',
+  'scripts/lib/newproj_screens/screen_agents_preview.sh',
+  'scripts/lib/newproj_screens/screen_confirmation.sh',
+  'scripts/lib/newproj_screens/screen_directory.sh',
+  'scripts/lib/newproj_screens/screen_features.sh',
+  'scripts/lib/newproj_screens/screen_progress.sh',
+  'scripts/lib/newproj_screens/screen_project_name.sh',
+  'scripts/lib/newproj_screens/screen_success.sh',
+  'scripts/lib/newproj_screens/screen_tech_stack.sh',
+  'scripts/lib/newproj_screens/screen_welcome.sh',
+  'scripts/lib/newproj_tui.sh',
+  'scripts/lib/notifications.sh',
+  'scripts/lib/policy_lint.sh',
+  'scripts/lib/provenance.sh',
+  'scripts/lib/rescue.sh',
+  'scripts/lib/status.sh',
+  'scripts/lib/support.sh',
+  'scripts/lib/swarm_assign.sh',
+  'scripts/lib/swarm_calibration.sh',
+  'scripts/lib/swarm_convergence.sh',
+  'scripts/lib/swarm_doctor.sh',
+  'scripts/lib/swarm_inventory.sh',
+  'scripts/lib/swarm_packet.sh',
+  'scripts/lib/swarm_plan.sh',
+  'scripts/lib/swarm_simulation.sh',
+  'scripts/lib/swarm_status.sh',
+  'scripts/services-setup.sh',
   'scripts/generated/manifest_index.sh',
   'scripts/generated/doctor_checks.sh',
   'scripts/generated/install_all.sh',
@@ -845,7 +892,7 @@ export function stripOptionalVerifySuffix(command: string): string {
  * breaking the generated script structure.
  */
 function sanitizeForBashComment(str: string): string {
-  return str.replace(/[\r\n\t]+/g, ' ').trim();
+  return str.replace(/[\u0000-\u001f\u007f]+/gu, ' ').trim();
 }
 
 function indentLines(lines: string[], spaces: number): string[] {
@@ -2067,7 +2114,7 @@ export function generateCategoryScript(manifest: Manifest, category: ModuleCateg
   for (const module of generatedModules) {
     const funcName = toGeneratedFunctionName(module.id);
     const pluginComment = module.plugin ? ` [plugin: ${module.plugin.packageId}@${module.plugin.version}]` : '';
-    lines.push(`# ${sanitizeForBashComment(module.description)}${pluginComment}`);
+    lines.push(`# ${sanitizeForBashComment(`${module.description}${pluginComment}`)}`);
     lines.push(`${funcName}() {`);
     lines.push(`    local module_id="${module.id}"`);
     lines.push('    acfs_require_contract "module:${module_id}" || return 1');
@@ -3040,6 +3087,34 @@ export function enforcePluginActivationBoundary(pluginPaths: readonly string[]):
 }
 
 /**
+ * Refuse plugin activation from raw process inputs before resolving paths or
+ * reading any repository input. A disabled trust surface must not turn a
+ * missing directory, ambient variable, or untrusted path into filesystem I/O.
+ */
+export function enforceRawPluginActivationBoundary(
+  args: readonly string[],
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): void {
+  const hasPluginOption = args.some((argument) =>
+    argument === '--plugin' ||
+    argument === '--plugins' ||
+    argument === '--plugin-dir' ||
+    argument === '--plugins-dir' ||
+    argument.startsWith('--plugin=') ||
+    argument.startsWith('--plugins=') ||
+    argument.startsWith('--plugin-dir=') ||
+    argument.startsWith('--plugins-dir=')
+  );
+  const hasAmbientPluginInput =
+    environment.ACFS_PLUGIN_PATHS !== undefined ||
+    environment.ACFS_PLUGINS_DIR !== undefined;
+
+  if (hasPluginOption || hasAmbientPluginInput) {
+    throw new Error(PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE);
+  }
+}
+
+/**
  * Show help message
  */
 function showHelp(): void {
@@ -3077,6 +3152,16 @@ async function main(): Promise<void> {
   if (help) {
     showHelp();
     process.exit(0);
+  }
+
+  // Reject the unavailable feature before manifest/checksum reads and before
+  // directory discovery. Then validate the remaining control-only CLI surface.
+  try {
+    enforceRawPluginActivationBoundary(args);
+    enforcePluginActivationBoundary(collectPluginInputPaths(args));
+  } catch (error) {
+    console.error(`Plugin input error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(2);
   }
 
   console.log('ACFS Manifest-to-Installer Generator');
@@ -3171,47 +3256,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const validatedPlugins: PluginValidationResult[] = [];
-  try {
-    const pluginPaths = collectPluginInputPaths(args);
-    for (const pluginPath of pluginPaths) {
-      const fileBytes = readRegularFileNoFollow(pluginPath, `Plugin package ${pluginPath}`);
-      const fileHash = createHash('sha256').update(fileBytes).digest('hex');
-      const result = loadPluginManifestFromFile(pluginPath, {
-        firstPartyManifest: manifest,
-        installers,
-        target: {
-          os: 'ubuntu',
-          version: '25.10',
-          arch: 'x86_64',
-          libc: 'glibc',
-        },
-        packageSha256: fileHash,
-        expectedPackageSha256: fileHash,
-      });
-      if (!result.valid) {
-        console.error(`Plugin validation failed for "${pluginPath}":`);
-        console.error(formatPluginDiagnostics(result));
-        process.exit(1);
-      }
-      validatedPlugins.push(result);
-    }
-  } catch (error) {
-    console.error(`Plugin input error: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(2);
-  }
-
-  const effectiveManifest =
-    validatedPlugins.length > 0 ? mergeValidatedPlugins(manifest, validatedPlugins) : manifest;
+  const effectiveManifest = manifest;
 
   // --validate mode: validation already passed, print success and exit
   if (validateOnly) {
     console.log('✓ Manifest schema valid');
     console.log('✓ Manifest dependency graph valid');
     console.log('✓ Checksums.yaml coverage complete');
-    if (validatedPlugins.length > 0) {
-      console.log(`✓ Plugin packages valid (${validatedPlugins.length} package(s))`);
-    }
     console.log('');
     console.log('Validation passed.');
     process.exit(0);

@@ -57,6 +57,79 @@ installers:
 EOF
 }
 
+STRICT_HASH_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+STRICT_HASH_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+STRICT_HASH_C="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+STRICT_HASH_D="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+
+write_strict_policy_fixture() {
+    local destination="$1"
+    local alpha_hash="$2"
+    local beta_hash="$3"
+    local beta_url="${4:-https://example.com/beta.sh}"
+
+    cat > "$destination" << EOF
+# checksums.yaml - Auto-generated 2026-08-24T12:00:00Z
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  alpha:
+    url: "https://example.com/alpha.sh"
+    sha256: "$alpha_hash"
+
+  beta:
+    url: "$beta_url"
+    sha256: "$beta_hash"
+EOF
+}
+
+write_strict_mismatch_report_fixture() {
+    local destination="$1"
+    local policy_digest="$2"
+    local beta_actual="$3"
+
+    cat > "$destination" << EOF
+{
+  "schema": "acfs.installer-checksum-verification.v1",
+  "schemaVersion": 1,
+  "timestamp": "2026-08-24T16:00:00Z",
+  "checksumsYamlSha256": "$policy_digest",
+  "total": 2,
+  "matches": [
+    {"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}
+  ],
+  "mismatches": [
+    {"name":"beta","url":"https://example.com/beta.sh","expected":"$STRICT_HASH_B","actual":"$beta_actual"}
+  ],
+  "errors": [],
+  "skipped": []
+}
+EOF
+}
+
+write_strict_error_report_fixture() {
+    local destination="$1"
+    local policy_digest="$2"
+
+    cat > "$destination" << EOF
+{
+  "schema": "acfs.installer-checksum-verification.v1",
+  "schemaVersion": 1,
+  "timestamp": "2026-08-24T16:00:00Z",
+  "checksumsYamlSha256": "$policy_digest",
+  "total": 2,
+  "matches": [
+    {"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}
+  ],
+  "mismatches": [],
+  "errors": [
+    {"name":"beta","url":"https://example.com/beta.sh","error":"upstream unavailable"}
+  ],
+  "skipped": []
+}
+EOF
+}
+
 # ============================================================
 # Test Cases: HTTPS Enforcement
 # ============================================================
@@ -249,6 +322,245 @@ test_get_checksum_missing() {
         test_pass "$name"
     else
         test_fail "$name" "Expected empty, Got: $result"
+    fi
+}
+
+# ============================================================
+# Test Cases: Strict Checksum Evidence Boundary
+# ============================================================
+
+test_strict_checksums_parser_accepts_canonical_closed_world() {
+    local name="strict checksum parser accepts the canonical closed-world policy"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local -A parsed_urls=()
+    local -A parsed_checksums=()
+    local policy="$TEST_TMP_DIR/strict-current.yaml"
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    write_strict_policy_fixture "$policy" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    if acfs_load_checksums_strict "$policy" parsed_urls parsed_checksums 2>/dev/null \
+        && [[ "${#parsed_urls[@]}" -eq 2 ]] \
+        && [[ "${parsed_urls[alpha]:-}" == "https://example.com/alpha.sh" ]] \
+        && [[ "${parsed_checksums[beta]:-}" == "$STRICT_HASH_B" ]]; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "Canonical policy was not parsed and bound exactly"
+    fi
+}
+
+test_strict_checksums_parser_rejects_noncanonical_mutations_transactionally() {
+    local name="strict checksum parser rejects sort/case mutations without clobbering trusted state"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local -A parsed_urls=([trusted]="https://trusted.example/install.sh")
+    local -A parsed_checksums=([trusted]="$STRICT_HASH_D")
+    local policy="$TEST_TMP_DIR/strict-mutated.yaml"
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    cat > "$policy" << EOF
+# checksums.yaml - Auto-generated 2026-08-24T12:00:00Z
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  beta:
+    url: "https://example.com/beta.sh"
+    sha256: "$STRICT_HASH_B"
+
+  alpha:
+    url: "https://example.com/alpha.sh"
+    sha256: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+EOF
+    if ! acfs_load_checksums_strict "$policy" parsed_urls parsed_checksums 2>/dev/null \
+        && [[ "${#parsed_urls[@]}" -eq 1 ]] \
+        && [[ "${parsed_urls[trusted]:-}" == "https://trusted.example/install.sh" ]] \
+        && [[ "${parsed_checksums[trusted]:-}" == "$STRICT_HASH_D" ]]; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "A malformed policy was accepted or partially committed"
+    fi
+}
+
+test_strict_checksums_parser_rejects_incomplete_set_and_extra_syntax() {
+    local name="strict checksum parser rejects incomplete policy and non-canonical syntax"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local -A parsed_urls=()
+    local -A parsed_checksums=()
+    local policy="$TEST_TMP_DIR/strict-incomplete.yaml"
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    cat > "$policy" << EOF
+# checksums.yaml - Auto-generated 2026-08-24T12:00:00Z
+# Run: ./scripts/lib/security.sh --update-checksums
+
+installers:
+  alpha:
+    url: "https://example.com/alpha.sh"
+    sha256: "$STRICT_HASH_A"
+unexpected: true
+EOF
+    if ! acfs_load_checksums_strict "$policy" parsed_urls parsed_checksums 2>/dev/null; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "Incomplete or augmented policy was accepted"
+    fi
+}
+
+test_checksum_candidate_validation_is_exact_and_network_free() {
+    local name="checksum candidate proof emits exact reviewed bytes without network access"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/candidate-current.yaml"
+    local candidate="$TEST_TMP_DIR/candidate-good.yaml"
+    local report="$TEST_TMP_DIR/candidate-report.json"
+    local network_marker="$TEST_TMP_DIR/candidate-network-called"
+    local current_digest=""
+    local validated=""
+    local expected=""
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    write_strict_policy_fixture "$current" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    write_strict_policy_fixture "$candidate" "$STRICT_HASH_A" "$STRICT_HASH_C"
+    current_digest="$(calculate_file_sha256 "$current")"
+    write_strict_mismatch_report_fixture "$report" "$current_digest" "$STRICT_HASH_C"
+    fetch_checksum() {
+        printf 'network path was invoked\n' > "$network_marker"
+        return 99
+    }
+
+    if validated="$(acfs_validate_checksum_candidate "$current" "$candidate" "$report" 2>/dev/null)"; then
+        expected="$(acfs_security_cat_file "$candidate")"
+        if [[ "$validated" == "$expected" && ! -e "$network_marker" ]]; then
+            passed=true
+        fi
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "Candidate proof changed bytes, failed valid evidence, or invoked the network"
+    fi
+}
+
+test_checksum_candidate_validation_rejects_cross_wired_hashes() {
+    local name="checksum candidate proof rejects matched and mismatched hash cross-wiring"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/crosswire-current.yaml"
+    local changed_match="$TEST_TMP_DIR/crosswire-match.yaml"
+    local wrong_actual="$TEST_TMP_DIR/crosswire-actual.yaml"
+    local report="$TEST_TMP_DIR/crosswire-report.json"
+    local current_digest=""
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    write_strict_policy_fixture "$current" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    write_strict_policy_fixture "$changed_match" "$STRICT_HASH_D" "$STRICT_HASH_C"
+    write_strict_policy_fixture "$wrong_actual" "$STRICT_HASH_A" "$STRICT_HASH_D"
+    current_digest="$(calculate_file_sha256 "$current")"
+    write_strict_mismatch_report_fixture "$report" "$current_digest" "$STRICT_HASH_C"
+
+    if ! acfs_validate_checksum_candidate "$current" "$changed_match" "$report" >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$wrong_actual" "$report" >/dev/null 2>&1; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "A candidate changed a matched tool or substituted an unobserved digest"
+    fi
+}
+
+test_checksum_candidate_validation_rejects_url_drift_and_incomplete_evidence() {
+    local name="checksum candidate proof rejects URL drift and error-bearing evidence"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/boundary-current.yaml"
+    local url_drift="$TEST_TMP_DIR/boundary-url.yaml"
+    local candidate="$TEST_TMP_DIR/boundary-candidate.yaml"
+    local mismatch_report="$TEST_TMP_DIR/boundary-mismatch.json"
+    local error_report="$TEST_TMP_DIR/boundary-error.json"
+    local current_digest=""
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    write_strict_policy_fixture "$current" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    write_strict_policy_fixture "$url_drift" "$STRICT_HASH_A" "$STRICT_HASH_C" "https://mirror.example/beta.sh"
+    write_strict_policy_fixture "$candidate" "$STRICT_HASH_A" "$STRICT_HASH_C"
+    current_digest="$(calculate_file_sha256 "$current")"
+    write_strict_mismatch_report_fixture "$mismatch_report" "$current_digest" "$STRICT_HASH_C"
+    write_strict_error_report_fixture "$error_report" "$current_digest"
+
+    if ! acfs_validate_checksum_candidate "$current" "$url_drift" "$mismatch_report" >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$candidate" "$error_report" >/dev/null 2>&1; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "URL drift or incomplete verification evidence authorized a candidate"
+    fi
+}
+
+test_checksum_report_rejects_duplicate_keys_and_policy_digest_drift() {
+    local name="checksum report rejects duplicate JSON keys and stale policy digests"
+    local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
+    local current="$TEST_TMP_DIR/report-current.yaml"
+    local candidate="$TEST_TMP_DIR/report-candidate.yaml"
+    local duplicate_report="$TEST_TMP_DIR/report-duplicate.json"
+    local stale_report="$TEST_TMP_DIR/report-stale.json"
+    local current_digest=""
+    local passed=false
+
+    ACFS_SECURITY_REQUIRED_INSTALLERS=(alpha beta)
+    write_strict_policy_fixture "$current" "$STRICT_HASH_A" "$STRICT_HASH_B"
+    write_strict_policy_fixture "$candidate" "$STRICT_HASH_A" "$STRICT_HASH_C"
+    current_digest="$(calculate_file_sha256 "$current")"
+    write_strict_mismatch_report_fixture "$stale_report" "$STRICT_HASH_D" "$STRICT_HASH_C"
+    cat > "$duplicate_report" << EOF
+{
+  "schema": "acfs.installer-checksum-verification.v1",
+  "schemaVersion": 1,
+  "schemaVersion": 1,
+  "timestamp": "2026-08-24T16:00:00Z",
+  "checksumsYamlSha256": "$current_digest",
+  "total": 2,
+  "matches": [{"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}],
+  "mismatches": [{"name":"beta","url":"https://example.com/beta.sh","expected":"$STRICT_HASH_B","actual":"$STRICT_HASH_C"}],
+  "errors": [],
+  "skipped": []
+}
+EOF
+
+    if ! acfs_validate_checksum_candidate "$current" "$candidate" "$duplicate_report" >/dev/null 2>&1 \
+        && ! acfs_validate_checksum_candidate "$current" "$candidate" "$stale_report" >/dev/null 2>&1; then
+        passed=true
+    fi
+    ACFS_SECURITY_REQUIRED_INSTALLERS=("${saved_required[@]}")
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "Duplicate-key or stale-digest evidence was accepted"
     fi
 }
 
@@ -464,6 +776,17 @@ test_non_retryable_exit_code_success
 # KNOWN_INSTALLERS tests
 test_known_installers_has_entries
 test_known_installers_all_https
+
+# Strict policy/report/candidate boundary tests.  Use one fixture directory so
+# all mutation cases operate on explicitly named, isolated evidence files.
+setup_fixtures
+test_strict_checksums_parser_accepts_canonical_closed_world
+test_strict_checksums_parser_rejects_noncanonical_mutations_transactionally
+test_strict_checksums_parser_rejects_incomplete_set_and_extra_syntax
+test_checksum_candidate_validation_is_exact_and_network_free
+test_checksum_candidate_validation_rejects_cross_wired_hashes
+test_checksum_candidate_validation_rejects_url_drift_and_incomplete_evidence
+test_checksum_report_rejects_duplicate_keys_and_policy_digest_drift
 
 echo ""
 echo "==================="

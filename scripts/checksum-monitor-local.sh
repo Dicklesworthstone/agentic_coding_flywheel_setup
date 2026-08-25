@@ -382,206 +382,333 @@ advance_state INIT LOCKED
 
 log "ACFS checksum monitor starting (repo: $MONITOR_REPO)"
 
-for dep in git gh jq curl bun flock; do
+export PATH="$MONITOR_EXEC_PATH"
+# Monitor location/notification overrides were captured above. Everything
+# capable of redirecting Git, checksum, manifest, plugin, or package-manager
+# behavior is removed before the first repository observation.
+unset CHECKSUMS_FILE ACFS_REPO_ROOT ACFS_MANIFEST_YAML ACFS_CHECKSUMS_YAML
+unset ACFS_VERIFIED_INSTALLER_CACHE ACFS_REPO_OWNER ACFS_REPO_NAME ACFS_CHECKSUMS_REF
+unset ACFS_CURL_BIN ACFS_PLUGIN_PATHS ACFS_PLUGINS_DIR
+unset BUN_INSTALL BUN_CONFIG_REGISTRY npm_config_registry NPM_CONFIG_REGISTRY
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG_SYSTEM GIT_CONFIG_GLOBAL
+unset GIT_CONFIG_NOSYSTEM GIT_CONFIG_COUNT GIT_CEILING_DIRECTORIES GIT_NAMESPACE
+unset GIT_QUARANTINE_PATH GIT_REPLACE_REF_BASE GIT_SSH_COMMAND GIT_SSH_VARIANT
+unset GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE
+unset GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE
+unset GIT_ASKPASS SSH_ASKPASS GH_HOST GH_REPO
+for dep in git gh jq curl bun flock sha256sum stat sort uniq awk sed cmp mktemp paste head id cp; do
     command -v "$dep" >/dev/null 2>&1 || fail_closed "missing dependency: $dep"
 done
 
 [[ -d "$MONITOR_REPO/.git" ]] || fail_closed "monitor clone not found at $MONITOR_REPO"
 cd "$MONITOR_REPO"
+origin_url="$(git remote get-url origin 2>/dev/null || true)"
+case "$origin_url" in
+    https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup|\
+    https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git|\
+    git@github.com:Dicklesworthstone/agentic_coding_flywheel_setup.git) ;;
+    *) fail_closed "origin does not name the canonical ACFS repository: ${origin_url:-missing}" ;;
+esac
 
-# ---- 1. sync clone to origin/main (never destructive) ----
-git fetch origin main --quiet || fail_closed "git fetch failed"
-git checkout main --quiet 2>/dev/null || fail_closed "cannot checkout main"
-if ! git merge --ff-only origin/main --quiet 2>>"$LOG_FILE"; then
-    fail_closed "clone has diverged from origin/main (refusing non-ff merge; inspect $MONITOR_REPO manually)"
+# ---- CLEAN_BASE: clean main, then one ff-only synchronization ----
+[[ "$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)" == "main" ]] \
+    || fail_closed "monitor clone must already be on main"
+require_clean_tree \
+    || fail_closed "monitor clone has local tracked, staged, or untracked changes"
+git fetch --quiet origin main master 2>>"$LOG_FILE" \
+    || fail_closed "fetch of main and legacy mirror failed"
+read_remote_heads || fail_closed "could not resolve exactly one remote main and mirror ref"
+[[ "$REMOTE_MAIN_HEAD" == "$REMOTE_MASTER_HEAD" ]] \
+    || fail_closed "remote main and legacy mirror differ before observation"
+if ! git -c core.hooksPath=/dev/null merge --ff-only --quiet \
+    refs/remotes/origin/main 2>>"$LOG_FILE"; then
+    fail_closed "local main is not an exact fast-forward of origin/main"
 fi
-log "clone synced to $(git rev-parse --short HEAD)"
+BASE_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
+[[ "$BASE_HEAD" =~ ^[0-9a-f]{40}$ && "$BASE_HEAD" == "$REMOTE_MAIN_HEAD" ]] \
+    || fail_closed "local HEAD is not the fetched remote base"
+require_clean_tree || fail_closed "clone is not clean after synchronization"
 
-# Commit identity for any automated commits from this host.
-git config user.name  "acfs-checksum-monitor ($(hostname -s))"
-git config user.email "jeff141421@gmail.com"
+actual_bun_version="$(run_clean bun --version 2>>"$LOG_FILE" || true)"
+[[ "$actual_bun_version" == "$EXPECTED_BUN_VERSION" ]] \
+    || fail_closed "Bun version mismatch: expected $EXPECTED_BUN_VERSION, found ${actual_bun_version:-unavailable}"
+( cd packages/manifest \
+    && run_clean bun install --frozen-lockfile --ignore-scripts --silent >>"$LOG_FILE" 2>&1 ) \
+    || fail_closed "frozen, lifecycle-disabled Bun install failed in packages/manifest"
+require_clean_tree || fail_closed "dependency preparation changed tracked or untracked repository state"
+advance_state LOCKED CLEAN_BASE
+log "clean base pinned to $BASE_HEAD"
 
-# ---- generator dependencies (idempotent, quiet) ----
-( cd packages/manifest && bun install --silent >>"$LOG_FILE" 2>&1 ) \
-    || fail_closed "bun install failed in packages/manifest"
-
-# ---- 2. generated-artifact drift check ----
-drift_json="$STATE_DIR/drift-$RUN_TS.json"
+# ---- OBSERVED: drift plus the first and only authoritative network report ----
+drift_json="$(mktemp "$STATE_DIR/drift-$RUN_TS.XXXXXX.json")" \
+    || fail_closed "could not allocate drift evidence file"
 set +e
-bash scripts/check-manifest-drift.sh --json >"$drift_json" 2>>"$LOG_FILE"
+run_clean bash scripts/check-manifest-drift.sh --json >"$drift_json" 2>>"$LOG_FILE"
 drift_exit=$?
 set -e
-if [[ "$drift_exit" -gt 1 ]]; then
-    fail_closed "drift checker failed (exit $drift_exit)"
-fi
-jq empty "$drift_json" 2>/dev/null || fail_closed "drift checker returned invalid JSON"
+validate_drift_report "$drift_json" \
+    || fail_closed "drift checker returned data outside its strict JSON contract"
 
 drift_detected="$(jq -r '.drift_detected' "$drift_json")"
-drift_fixed=false
-if [[ "$drift_detected" == "true" ]]; then
+if [[ "$drift_exit" -eq 0 && "$drift_detected" == "false" ]]; then
+    log "generated artifacts are clean"
+elif [[ "$drift_exit" -eq 1 && "$drift_detected" == "true" ]]; then
     log "generated artifact drift detected:"
     jq -r '.reasons[] | "  - \(.)"' "$drift_json" | tee -a "$LOG_FILE" >&2
-    # --fix regenerates, commits, and pushes on its own (same as the workflow).
-    bash scripts/check-manifest-drift.sh --fix >>"$LOG_FILE" 2>&1 \
-        || fail_closed "drift --fix failed (see $LOG_FILE)"
-    drift_fixed=true
-    log "drift auto-fixed and pushed"
+    fail_closed "pinned base already contains generated drift; repair it independently before checksum publication"
 else
-    log "no generated-artifact drift"
+    fail_closed "drift checker exit/result mismatch (exit $drift_exit, drift=$drift_detected)"
 fi
 
-# ---- 3. verify upstream checksums ----
-verify_json="$STATE_DIR/verify-$RUN_TS.json"
+CURRENT_CHECKSUMS_SHA256="$(sha256_file checksums.yaml)" \
+    || fail_closed "canonical checksums.yaml is missing, unsafe, or unreadable"
+verify_json="$(mktemp "$STATE_DIR/verify-$RUN_TS.XXXXXX.json")" \
+    || fail_closed "could not allocate verification evidence file"
 set +e
-bash scripts/lib/security.sh --verify --json >"$verify_json" 2>>"$LOG_FILE"
+run_clean bash scripts/lib/security.sh --verify --json >"$verify_json" 2>>"$LOG_FILE"
+verify_exit=$?
 set -e
-jq empty "$verify_json" 2>/dev/null || fail_closed "checksum verification returned invalid JSON"
+validate_verification_report "$verify_json" "$CURRENT_CHECKSUMS_SHA256" \
+    || fail_closed "checksum verification returned data outside its strict bound report contract"
 
 mismatches="$(jq '.mismatches | length' "$verify_json")"
 errors="$(jq '.errors | length' "$verify_json")"
 skipped="$(jq '.skipped | length' "$verify_json")"
 
-# ---- 4. fail closed on any error/skip ----
 if [[ "$errors" -gt 0 || "$skipped" -gt 0 ]]; then
     jq -r '.errors[]?  | "  error: \(.name) -> \(.error)"'    "$verify_json" | tee -a "$LOG_FILE" >&2
     jq -r '.skipped[]? | "  skipped: \(.name) -> \(.reason)"' "$verify_json" | tee -a "$LOG_FILE" >&2
     fail_closed "verification returned $errors error(s) / $skipped skip(s); refusing to auto-update checksums.yaml"
 fi
-
-trusted_changed=""
-external_changed=""
-if [[ "$mismatches" -gt 0 ]]; then
-    while IFS= read -r name; do
-        url="$(jq -r --arg n "$name" '.mismatches[] | select(.name==$n) | .url // empty' "$verify_json")"
-        if [[ "$url" == *"Dicklesworthstone"* ]]; then
-            trusted_changed="${trusted_changed}${name},"
-        else
-            external_changed="${external_changed}${name},"
-        fi
-    done < <(jq -r '.mismatches[].name' "$verify_json")
+if [[ "$mismatches" -eq 0 && "$verify_exit" -ne 0 ]]; then
+    fail_closed "verification reported no mismatch but exited $verify_exit"
 fi
-trusted_changed="${trusted_changed%,}"
-external_changed="${external_changed%,}"
+if [[ "$mismatches" -gt 0 && "$verify_exit" -ne 1 ]]; then
+    fail_closed "verification reported $mismatches mismatch(es) but exited $verify_exit"
+fi
+[[ "$(sha256_file checksums.yaml)" == "$CURRENT_CHECKSUMS_SHA256" ]] \
+    || fail_closed "checksums.yaml changed during first observation"
+[[ "$(git rev-parse HEAD 2>/dev/null || true)" == "$BASE_HEAD" ]] \
+    || fail_closed "HEAD changed during observation"
+require_clean_tree || fail_closed "repository changed during observation"
+advance_state CLEAN_BASE OBSERVED
+
+TRUSTED_CHANGED=()
+EXTERNAL_CHANGED=()
+if [[ "$mismatches" -gt 0 ]]; then
+    while IFS=$'\t' read -r name url; do
+        if is_trusted_installer_url "$url"; then
+            TRUSTED_CHANGED+=("$name")
+        else
+            EXTERNAL_CHANGED+=("$name")
+        fi
+    done < <(jq -r '.mismatches[] | [.name, .url] | @tsv' "$verify_json")
+fi
+changed_tools="$(jq -r '.mismatches[].name' "$verify_json" | paste -sd, -)"
+trusted_changed="$(printf '%s\n' "${TRUSTED_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
+external_changed="$(printf '%s\n' "${EXTERNAL_CHANGED[@]:-}" | sed '/^$/d' | paste -sd, -)"
+log "changed tools: ${changed_tools:-none} (trusted: ${trusted_changed:-none}; external: ${external_changed:-none})"
+
+raw_candidate=""
+validated_candidate=""
+CANDIDATE_SHA256="$CURRENT_CHECKSUMS_SHA256"
+if [[ "$mismatches" -gt 0 ]]; then
+    raw_candidate="$(mktemp "$STATE_DIR/checksums-raw-$RUN_TS.XXXXXX.yaml")" \
+        || fail_closed "could not allocate raw candidate evidence file"
+    validated_candidate="$(mktemp "$STATE_DIR/checksums-validated-$RUN_TS.XXXXXX.yaml")" \
+        || fail_closed "could not allocate validated candidate evidence file"
+    run_clean bash scripts/lib/security.sh --update-checksums \
+        >"$raw_candidate" 2>>"$LOG_FILE" \
+        || fail_closed "canonical checksum candidate generation failed"
+    run_clean bash scripts/lib/security.sh \
+        --validate-checksum-candidate checksums.yaml "$raw_candidate" "$verify_json" \
+        >"$validated_candidate" 2>>"$LOG_FILE" \
+        || fail_closed "candidate is not exactly implied by the first verification report"
+    cmp -s -- "$raw_candidate" "$validated_candidate" \
+        || fail_closed "candidate validator did not reproduce the exact reviewed candidate bytes"
+    CANDIDATE_SHA256="$(sha256_file "$validated_candidate")" \
+        || fail_closed "validated checksum candidate is empty or unsafe"
+    [[ "$CANDIDATE_SHA256" != "$CURRENT_CHECKSUMS_SHA256" ]] \
+        || fail_closed "verification reported mismatch but the validated candidate is byte-identical"
+else
+    log "all checksums match the first upstream observation"
+fi
+[[ "$(sha256_file checksums.yaml)" == "$CURRENT_CHECKSUMS_SHA256" ]] \
+    || fail_closed "checksums.yaml changed while validating the candidate"
+require_clean_tree || fail_closed "repository changed while validating the candidate"
+advance_state OBSERVED CANDIDATE_VALIDATED
+
+authorization_digest=""
+authorization_consumed=false
+if [[ ${#EXTERNAL_CHANGED[@]} -gt 0 ]]; then
+    authorization_digest="$(
+        jq -cS '[.mismatches[] | {actual, expected, name, url}] | sort_by(.name)' "$verify_json" \
+            | sha256sum \
+            | awk '{print $1}'
+    )"
+    [[ "$authorization_digest" =~ ^[0-9a-f]{64}$ ]] \
+        || fail_closed "could not derive the external-change authorization digest"
+    if authorization_is_valid "$authorization_digest"; then
+        authorization_status="authorized"
+    else
+        authorization_status="required"
+    fi
+    record_external_review "$verify_json" "$authorization_digest" "$authorization_status" \
+        || fail_closed "could not record external checksum evidence before mutation"
+    [[ "$authorization_status" == "authorized" ]] \
+        || fail_closed "external checksum changes require authorize:$authorization_digest in $AUTHORIZATION_FILE"
+    authorization_consumed=true
+fi
+advance_state CANDIDATE_VALIDATED AUTHORIZED
+
+publication_required=false
+if [[ "$mismatches" -gt 0 ]]; then
+    command cp -- "$validated_candidate" checksums.yaml \
+        || fail_closed "could not place the validated checksum candidate"
+    [[ "$(sha256_file checksums.yaml)" == "$CANDIDATE_SHA256" ]] \
+        || fail_closed "placed checksums.yaml does not match the validated candidate"
+    ( cd packages/manifest \
+        && run_clean bun run generate >>"$LOG_FILE" 2>&1 ) \
+        || fail_closed "generation from the validated checksum candidate failed"
+    assert_closed_publication_worktree \
+        || fail_closed "generation escaped the closed publication path set"
+
+    post_drift_json="$(mktemp "$STATE_DIR/post-generate-drift-$RUN_TS.XXXXXX.json")" \
+        || fail_closed "could not allocate post-generation evidence file"
+    set +e
+    run_clean bash scripts/check-manifest-drift.sh --json \
+        >"$post_drift_json" 2>>"$LOG_FILE"
+    post_drift_exit=$?
+    set -e
+    validate_drift_report "$post_drift_json" \
+        || fail_closed "post-generation drift report violated its strict JSON contract"
+    [[ "$post_drift_exit" -eq 0 ]] \
+        && [[ "$(jq -r '.drift_detected' "$post_drift_json")" == "false" ]] \
+        || fail_closed "validated candidate did not produce a clean generated-artifact contract"
+    [[ "$(sha256_file checksums.yaml)" == "$CANDIDATE_SHA256" ]] \
+        || fail_closed "checksums.yaml changed during generation"
+    publication_required=true
+fi
+advance_state AUTHORIZED GENERATED
+
+for publication_path in "${PUBLICATION_PATHS[@]}"; do
+    [[ -f "$publication_path" && ! -L "$publication_path" ]] \
+        || fail_closed "closed publication member is missing or unsafe: $publication_path"
+done
+
+if [[ "$publication_required" == "true" ]]; then
+    assert_closed_publication_worktree \
+        || fail_closed "worktree contains bytes outside the closed publication set"
+    git add -- "${PUBLICATION_PATHS[@]}" \
+        || fail_closed "could not stage the closed publication set"
+    while IFS= read -r -d '' staged_path; do
+        [[ -n "${PUBLICATION_PATH_SET[$staged_path]+present}" ]] \
+            || fail_closed "unexpected staged publication path: $staged_path"
+    done < <(git diff --cached --name-only -z --)
+    [[ -z "$(git diff --cached --name-only --diff-filter=D --)" ]] \
+        || fail_closed "refusing to stage a file deletion"
+    git diff --quiet --exit-code -- \
+        || fail_closed "worktree bytes changed after staging"
+    git diff --cached --check \
+        || fail_closed "staged publication failed whitespace/error checks"
+    git diff --cached --quiet --exit-code -- \
+        && fail_closed "validated mismatch produced no staged publication"
+else
+    require_clean_tree || fail_closed "no-op run acquired repository mutations"
+fi
+advance_state GENERATED STAGED
+
+read_remote_heads || fail_closed "could not re-read remote refs before commit"
+[[ "$REMOTE_MAIN_HEAD" == "$BASE_HEAD" && "$REMOTE_MASTER_HEAD" == "$BASE_HEAD" ]] \
+    || fail_closed "remote base moved after observation; refusing to commit stale evidence"
 
 committed=false
-if [[ "$mismatches" -gt 0 ]]; then
-    changed_tools="$(jq -r '.mismatches[].name' "$verify_json" | paste -sd, -)"
-    log "changed tools: $changed_tools (trusted: ${trusted_changed:-none}; external: ${external_changed:-none})"
+PUBLISH_HEAD="$BASE_HEAD"
+if [[ "$publication_required" == "true" ]]; then
+    git -c "user.name=acfs-checksum-monitor ($(hostname -s))" \
+        -c user.email=jeff141421@gmail.com \
+        -c core.hooksPath=/dev/null \
+        -c commit.gpgsign=false \
+        commit --quiet \
+        -m "chore(security): publish validated checksums for ${changed_tools}" \
+        -m "First-observation report: ${CURRENT_CHECKSUMS_SHA256}" \
+        -m "Validated candidate: ${CANDIDATE_SHA256}" \
+        -m "Changed tools: ${changed_tools}" \
+        -m "Trusted: ${trusted_changed:-none}" \
+        -m "External: ${external_changed:-none}" \
+        -m "Authorization: ${authorization_digest:-not-required}" \
+        || fail_closed "closed checksum publication commit failed"
+    PUBLISH_HEAD="$(git rev-parse HEAD 2>/dev/null || true)"
+    [[ "$PUBLISH_HEAD" =~ ^[0-9a-f]{40}$ ]] \
+        && [[ "$(git rev-parse "${PUBLISH_HEAD}^" 2>/dev/null || true)" == "$BASE_HEAD" ]] \
+        || fail_closed "publication commit is not the direct child of the observed base"
+    while IFS= read -r -d '' committed_path; do
+        [[ -n "${PUBLICATION_PATH_SET[$committed_path]+present}" ]] \
+            || fail_closed "publication commit contains unexpected path: $committed_path"
+    done < <(git diff-tree --no-commit-id --name-only -r -z "$PUBLISH_HEAD")
+    require_clean_tree || fail_closed "repository is not clean after publication commit"
+    committed=true
+fi
+advance_state STAGED COMMITTED
 
-    # ---- 5. regenerate checksums via the canonical updater ----
-    candidate="$STATE_DIR/checksums-$RUN_TS.yaml"
-    bash scripts/lib/security.sh --update-checksums >"$candidate" 2>>"$LOG_FILE" \
-        || fail_closed "--update-checksums failed"
-    # Belt-and-suspenders beyond the workflow: never accept an empty or
-    # shrunken candidate (a network blip must not truncate the manifest).
-    old_count="$(grep -c 'sha256:' checksums.yaml || true)"
-    new_count="$(grep -c 'sha256:' "$candidate" || true)"
-    if [[ ! -s "$candidate" || "$new_count" -lt "$old_count" ]]; then
-        fail_closed "candidate checksums.yaml invalid (entries: $new_count vs $old_count)"
-    fi
-    cp "$candidate" checksums.yaml
+read_remote_heads || fail_closed "could not read remote refs immediately before publication"
+[[ "$REMOTE_MAIN_HEAD" == "$BASE_HEAD" && "$REMOTE_MASTER_HEAD" == "$BASE_HEAD" ]] \
+    || fail_closed "remote refs moved before atomic publication"
 
-    # Regenerate in the same run: manifest-modules.ts embeds
-    # checksumsYamlSha256, so skipping this leaves a guaranteed drift for
-    # the next run to clean up (the Actions workflow had that two-step lag).
-    ( cd packages/manifest && bun run generate >>"$LOG_FILE" 2>&1 ) \
-        || fail_closed "regeneration after checksum update failed"
-
-    # Tracked files plus brand-new generator outputs only; other stray
-    # untracked files in the generated dirs must never ride along in an
-    # automated commit. Without the new-file pass, a first-time generated
-    # script (new manifest category) would stay untracked and the drift
-    # check would wedge the monitor on every run.
-    git add checksums.yaml 2>/dev/null || true
-    git add -u scripts/generated/ apps/web/lib/generated/ 2>/dev/null || true
-    while IFS= read -r new_generated; do
-        case "$new_generated" in
-            scripts/generated/*.sh|apps/web/lib/generated/*.ts) git add -- "$new_generated" 2>/dev/null || true ;;
-        esac
-    done < <(git ls-files --others --exclude-standard -- scripts/generated apps/web/lib/generated 2>/dev/null)
-    if git diff --cached --quiet; then
-        log "no staged changes after regeneration (already current)"
-    else
-        subject="chore(security): auto-update checksums for ${changed_tools}"
-        if [[ "$drift_fixed" == "true" ]]; then
-            subject="chore(security): auto-update checksums + generated drift fixes"
-        fi
-        git commit --quiet \
-            -m "$subject" \
-            -m "Updated checksums for upstream installer scripts that have changed." \
-            -m "" \
-            -m "Changed tools: ${changed_tools}" \
-            -m "Trusted: ${trusted_changed:-none}" \
-            -m "External: ${external_changed:-none}" \
-            -m "Drift fixed: ${drift_fixed}" \
-            -m "" \
-            -m "Generated by checksum-monitor-local on $(hostname -s)"
-        if ! git pull --rebase --quiet origin main; then
-            git rebase --abort 2>/dev/null || true
-            # Leaving the local commit in place wedged the monitor for good:
-            # the next run's `merge --ff-only origin/main` then fails forever
-            # ("diverged") with only a log line. This clone is dedicated and
-            # every monitor commit is regenerable, so drop the local commit
-            # and let the next run redo it on top of the new origin/main.
-            if git checkout --quiet --detach && git branch -f main origin/main && git checkout --quiet main; then
-                log "rebase conflict; discarded the local monitor commit and re-synced to origin/main — next run will retry"
-            else
-                log "rebase conflict and re-sync failed; inspect $MONITOR_REPO manually"
-            fi
+push_result="not-required"
+if [[ "$publication_required" == "true" ]]; then
+    publication_journal="$(mktemp "$STATE_DIR/publication-$RUN_TS.XXXXXX.journal")" \
+        || fail_closed "could not allocate publication journal"
+    printf 'prepared\t%s\t%s\n' "$BASE_HEAD" "$PUBLISH_HEAD" >> "$publication_journal" \
+        || fail_closed "could not record prepared publication"
+    set +e
+    git -c core.hooksPath=/dev/null push --atomic --quiet origin \
+        "$PUBLISH_HEAD:refs/heads/main" \
+        "$PUBLISH_HEAD:refs/heads/master" >>"$LOG_FILE" 2>&1
+    push_exit=$?
+    set -e
+    printf 'push-exit\t%s\n' "$push_exit" >> "$publication_journal" \
+        || fail_closed "could not journal the publication result"
+    read_remote_heads \
+        || fail_closed "atomic push result is ambiguous because remote refs cannot be read"
+    if [[ "$REMOTE_MAIN_HEAD" == "$PUBLISH_HEAD" && "$REMOTE_MASTER_HEAD" == "$PUBLISH_HEAD" ]]; then
+        if [[ "$push_exit" -eq 0 ]]; then
+            push_result="accepted"
         else
-            git push --quiet origin HEAD:main \
-                && git push --quiet origin main:master \
-                && committed=true
-            log "checksum update pushed (main + master)"
+            push_result="reconciled-after-ambiguous-exit"
         fi
-    fi
-else
-    log "all checksums match upstream"
-fi
-
-# ---- 6. issue for external changes (security visibility) ----
-if [[ -n "$external_changed" && "$committed" == "true" ]]; then
-    repo_slug="Dicklesworthstone/agentic_coding_flywheel_setup"
-    body_file="$STATE_DIR/issue-body-$RUN_TS.md"
-    {
-        echo "## External Installer Checksums Updated"
-        echo
-        echo "The following **external** (non-Dicklesworthstone) installer scripts have changed:"
-        echo
-        tr ',' '\n' <<<"$external_changed" | sed 's/^/- `/; s/$/`/'
-        echo
-        echo "### Action Required"
-        echo "These checksums were automatically updated. Please verify the upstream changes are legitimate:"
-        echo
-        tr ',' '\n' <<<"$external_changed" | sed 's/^/- [ ] Review /; s/$/ changes/'
-        echo
-        echo "### Why this matters"
-        echo "External installers (ohmyzsh, rustup, bun, etc.) could be compromised. While auto-updating keeps users unblocked, a quick review ensures we're not distributing malicious code."
-        echo
-        echo "---"
-        echo "Auto-generated by checksum-monitor-local on $(hostname -s)"
-    } >"$body_file"
-
-    existing="$(gh issue list --repo "$repo_slug" --state open \
-        --label security --label checksum-update \
-        --search "External installer checksums" \
-        --json number -q '.[0].number' 2>>"$LOG_FILE" || true)"
-    if [[ -n "$existing" && "$existing" != "null" ]]; then
-        gh issue comment "$existing" --repo "$repo_slug" \
-            --body "### Additional changes detected
-
-$(command cat "$body_file")" >>"$LOG_FILE" 2>&1 \
-            && log "commented on existing issue #$existing"
+    elif [[ "$REMOTE_MAIN_HEAD" == "$BASE_HEAD" && "$REMOTE_MASTER_HEAD" == "$BASE_HEAD" ]]; then
+        fail_closed "atomic publication was not accepted (push exit $push_exit)"
     else
-        gh issue create --repo "$repo_slug" \
-            --title "🔐 External installer checksums updated - review recommended" \
-            --label security --label checksum-update \
-            --body-file "$body_file" >>"$LOG_FILE" 2>&1 \
-            && log "created external-change review issue"
+        fail_closed "remote refs are mixed or unexpected after atomic publication attempt"
     fi
+    printf 'remote-observed\t%s\t%s\t%s\n' \
+        "$REMOTE_MAIN_HEAD" "$REMOTE_MASTER_HEAD" "$push_result" \
+        >> "$publication_journal" \
+        || fail_closed "could not journal reconciled remote publication"
+fi
+advance_state COMMITTED ATOMIC_PUBLISHED
+
+# A second independent remote read is the acceptance boundary. Local source,
+# a successful git exit, or one remote-tracking ref is not publication proof.
+read_remote_heads || fail_closed "remote verification after publication failed"
+[[ "$REMOTE_MAIN_HEAD" == "$PUBLISH_HEAD" && "$REMOTE_MASTER_HEAD" == "$PUBLISH_HEAD" ]] \
+    || fail_closed "remote verification does not match the intended publication commit"
+[[ "$(git rev-parse HEAD 2>/dev/null || true)" == "$PUBLISH_HEAD" ]] \
+    || fail_closed "local HEAD changed before remote acceptance"
+require_clean_tree || fail_closed "repository is not clean at remote acceptance"
+advance_state ATOMIC_PUBLISHED REMOTE_VERIFIED
+
+if [[ "$authorization_consumed" == "true" ]]; then
+    printf 'used:%s:%s\n' "$authorization_digest" "$PUBLISH_HEAD" \
+        > "$AUTHORIZATION_FILE" \
+        || fail_closed "remote publication succeeded but authorization consumption could not be recorded"
 fi
 
-# Healthy run: clear the consecutive fail-closed streak
-printf '0\n' > "$FAIL_STREAK_FILE" 2>/dev/null || true
+# Only an accepted remote state can clear monitoring failure history.
+printf '0\n' > "$FAIL_STREAK_FILE" \
+    || fail_closed "remote publication is verified but the healthy-state marker could not be written"
+advance_state REMOTE_VERIFIED HEALTHY
 
-log "summary: result=ok drift_detected=$drift_detected drift_fixed=$drift_fixed mismatches=$mismatches errors=$errors skipped=$skipped trusted=${trusted_changed:-none} external=${external_changed:-none} committed=$committed"
+log "summary: result=ok state=$STATE base=$BASE_HEAD published=$PUBLISH_HEAD push=$push_result mismatches=$mismatches errors=$errors skipped=$skipped trusted=${trusted_changed:-none} external=${external_changed:-none} committed=$committed"

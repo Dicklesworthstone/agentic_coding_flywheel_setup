@@ -1,22 +1,11 @@
-name: Auto-Update Upstream Checksums
+# RETIRED: production checksum monitoring runs only from the maintainer-owned
+# systemd service in scripts/checksum-monitor-local.sh. This manual-only,
+# permanently skipped workflow retains historical implementation context
+# without creating a second writer or implying GitHub-hosted acceptance proof.
+name: Retired - Checksum Monitor Reference
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"  # Every 15 minutes — minimizes stale-checksum window
-  workflow_dispatch:         # Manual trigger for testing
-  push:
-    branches:
-      - main
-    paths:
-      - 'install.sh'
-      - 'acfs.manifest.yaml'
-      - 'checksums.yaml'
-      - 'packages/manifest/**'
-      - 'scripts/lib/**'
-      - 'scripts/generated/**'
-      - '.github/workflows/checksum-monitor.yml'
-  repository_dispatch:
-    types: [upstream-changed]  # Triggered by our other repos via webhook
+  workflow_dispatch: {}
 
 concurrency:
   group: checksum-monitor
@@ -24,11 +13,14 @@ concurrency:
 
 jobs:
   auto-update-checksums:
+    # Deliberately disabled. A GitHub-hosted runner cannot establish the local
+    # monitor's owner-held lock, authorization file, or durable publication
+    # journal, so it is not an equivalent publisher.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
-      contents: write
-      issues: write  # For creating issues on failure
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -52,10 +44,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.8
 
       - name: Install manifest generator dependencies
-        run: bun install
+        run: bun install --frozen-lockfile --ignore-scripts
         working-directory: packages/manifest
 
       - name: Verify generated artifact drift

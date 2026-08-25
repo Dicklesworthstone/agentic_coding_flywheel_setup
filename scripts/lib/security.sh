@@ -627,8 +627,7 @@ acfs_security_close_fd() {
     local fd="${1:-}"
 
     [[ "$fd" =~ ^[0-9]+$ ]] || return 0
-    # The numeric-only check above makes this dynamic redirection non-injectable.
-    eval "exec ${fd}<&-" 2>/dev/null || true
+    exec {fd}<&- 2>/dev/null || true
 }
 
 acfs_security_release_bound_snapshot() {
@@ -2031,6 +2030,7 @@ acfs_load_checksums_strict() {
     local checksum=""
     local tool=""
     local expected_count=0
+    local timestamp_header_pattern='^# checksums\.yaml - Auto-generated [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(Z|[+-][0-9]{2}:[0-9]{2})$'
     local -A parsed_urls=()
     local -A parsed_checksums=()
     local -n output_urls="$urls_var"
@@ -2050,7 +2050,7 @@ acfs_load_checksums_strict() {
 
         case "$state" in
             timestamp_header)
-                if [[ "$line" != '# checksums.yaml - Auto-generated '?* ]]; then
+                if [[ ! "$line" =~ $timestamp_header_pattern ]]; then
                     acfs_strict_checksums_error "$file" "$line_number" "expected the generated timestamp header"
                     return 1
                 fi
@@ -2926,151 +2926,484 @@ verify_all_installers() {
     fi
 }
 
-# Verify all known installers and output as JSON
-# Usage: verify_all_installers_json
-# Output: JSON object with matches, mismatches, and errors arrays
+# Verify the exact strict policy supplied by the caller and output a versioned
+# JSON evidence object.  The caller is responsible for snapshotting/binding the
+# checksums policy before invoking this networked phase.
+#
+# Arguments:
+#   $1 - SHA256 of the exact checksums.yaml snapshot
+#   $2 - name of associative array containing installer URLs
+#   $3 - name of associative array containing expected SHA256 values
 verify_all_installers_json() {
-    local timestamp
-    timestamp="$(acfs_security_date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-    # Arrays to collect results
-    local matches=()
-    local mismatches=()
-    local errors=()
-    local skipped=()
+    local checksums_digest="$1"
+    local urls_var="$2"
+    local checksums_var="$3"
+    local -n verification_urls="$urls_var"
+    local -n verification_checksums="$checksums_var"
+    local timestamp=""
+    local -a matches=()
+    local -a mismatches=()
+    local -a errors=()
+    local -a skipped=()
+    local -a installer_names=()
     local total=0
+    local name=""
 
-    # Helper function to escape strings for JSON
+    [[ "$checksums_digest" =~ ^[0-9a-f]{64}$ ]] || {
+        log_error "Cannot emit checksum evidence without a bound checksums.yaml digest"
+        return 1
+    }
+    timestamp="$(acfs_security_date -u +"%Y-%m-%dT%H:%M:%SZ")" || return 1
+
     _json_escape() {
         local s="$1"
-        s="${s//\\/\\\\}" # escape backslashes
-        s="${s//\"/\\\"}" # escape quotes
-        s="${s//$'\n'/\\n}" # escape newlines
-        s="${s//$'\r'/\\r}" # escape CR
-        s="${s//$'\t'/\\t}" # escape tabs
-        # Also escape control characters (0x00-0x1F)
+        s="${s//\\/\\\\}"
+        s="${s//\"/\\\"}"
+        s="${s//$'\n'/\\n}"
+        s="${s//$'\r'/\\r}"
+        s="${s//$'\t'/\\t}"
         # shellcheck disable=SC1003
-        s=$(printf '%s' "$s" | tr '\000-\037' ' ')
+        s="$(printf '%s' "$s" | tr '\000-\037' ' ')"
         printf '%s' "$s"
     }
 
-    for name in "${!KNOWN_INSTALLERS[@]}"; do
-        local url="${KNOWN_INSTALLERS[$name]}"
-        local expected="${LOADED_CHECKSUMS[$name]:-}"
-        total=$((total + 1))
+    installer_names=("${!verification_urls[@]}")
+    if (( ${#installer_names[@]} > 0 )); then
+        mapfile -t installer_names < <(printf '%s\n' "${installer_names[@]}" | acfs_security_sort_lines)
+    fi
 
-        if [[ -z "$expected" ]]; then
-            skipped+=("{\"name\":\"$(_json_escape "$name")\",\"reason\":\"no checksum recorded\"}")
-            continue
-        fi
-
+    for name in "${installer_names[@]}"; do
+        local url="${verification_urls[$name]:-}"
+        local expected="${verification_checksums[$name]:-}"
         local actual=""
         local fetch_error=""
         local tmp_err=""
+        total=$((total + 1))
 
-        # Create temp file for stderr capture. If this fails, do not use a
-        # predictable fallback path; lose stderr detail instead.
-        tmp_err="$(acfs_security_mktemp 2>/dev/null)" || tmp_err=""
-
-        # Capture stdout to variable, stderr to file (if tmp_err exists)
-        if [[ -n "$tmp_err" ]]; then
-            if actual=$(fetch_checksum "$url" 2>"$tmp_err"); then
-                # Success
-                :
-            else
-                # Failure
-                fetch_error="$(acfs_security_cat_file "$tmp_err")"
-                [[ -z "$fetch_error" ]] && fetch_error="Unknown error fetching checksum"
-            fi
-            _acfs_remove_temp_files "$tmp_err"
-        else
-            # Fallback: capture combined output or lose stderr if we can't separate them safely
-            # without a temp file. Here we prioritize safety over error details.
-            if actual=$(fetch_checksum "$url" 2>/dev/null); then
-                :
-            else
-                fetch_error="Unknown error (mktemp failed, stderr unavailable)"
-            fi
+        if [[ -z "$url" || -z "$expected" ]]; then
+            skipped+=("{\"name\":\"$(_json_escape "$name")\",\"url\":\"$(_json_escape "$url")\",\"reason\":\"policy entry is incomplete\"}")
+            continue
         fi
 
+        tmp_err="$(acfs_security_mktemp 2>/dev/null || true)"
+        if [[ -n "$tmp_err" ]]; then
+            if actual="$(fetch_checksum "$url" 2>"$tmp_err")"; then
+                :
+            else
+                fetch_error="$(acfs_security_cat_file "$tmp_err" 2>/dev/null || true)"
+                [[ -n "$fetch_error" ]] || fetch_error="unknown error fetching checksum"
+            fi
+            _acfs_remove_temp_files "$tmp_err"
+        elif ! actual="$(fetch_checksum "$url" 2>/dev/null)"; then
+            fetch_error="unknown error fetching checksum (private stderr capture unavailable)"
+        fi
+
+        # Bound error evidence so a hostile upstream cannot inflate the JSON
+        # artifact without limit through diagnostics.
+        fetch_error="${fetch_error:0:2048}"
         if [[ -n "$fetch_error" ]]; then
-            local escaped_error
-            escaped_error=$(_json_escape "$fetch_error")
-            errors+=("{\"name\":\"$(_json_escape "$name")\",\"url\":\"$(_json_escape "$url")\",\"error\":\"$escaped_error\"}")
+            errors+=("{\"name\":\"$(_json_escape "$name")\",\"url\":\"$(_json_escape "$url")\",\"error\":\"$(_json_escape "$fetch_error")\"}")
+        elif [[ ! "$actual" =~ ^[0-9a-f]{64}$ ]]; then
+            errors+=("{\"name\":\"$(_json_escape "$name")\",\"url\":\"$(_json_escape "$url")\",\"error\":\"upstream fetch did not produce a lowercase SHA256 digest\"}")
         elif [[ "$actual" == "$expected" ]]; then
-            matches+=("{\"name\":\"$(_json_escape "$name")\",\"checksum\":\"$expected\"}")
+            matches+=("{\"name\":\"$(_json_escape "$name")\",\"url\":\"$(_json_escape "$url")\",\"checksum\":\"$expected\"}")
         else
             mismatches+=("{\"name\":\"$(_json_escape "$name")\",\"url\":\"$(_json_escape "$url")\",\"expected\":\"$expected\",\"actual\":\"$actual\"}")
         fi
     done
 
-    # Build JSON output
     echo "{"
+    echo "  \"schema\": \"acfs.installer-checksum-verification.v1\","
+    echo "  \"schemaVersion\": 1,"
     echo "  \"timestamp\": \"$timestamp\","
+    echo "  \"checksumsYamlSha256\": \"$checksums_digest\","
     echo "  \"total\": $total,"
 
-    # Matches array
     echo "  \"matches\": ["
     local first=true
+    local item=""
     for item in "${matches[@]}"; do
-        if [[ "$first" == "true" ]]; then
-            first=false
-        else
-            echo ","
-        fi
+        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
         echo -n "    $item"
     done
-    if [[ ${#matches[@]} -gt 0 ]]; then echo; fi
+    (( ${#matches[@]} == 0 )) || echo
     echo "  ],"
 
-    # Mismatches array
     echo "  \"mismatches\": ["
     first=true
     for item in "${mismatches[@]}"; do
-        if [[ "$first" == "true" ]]; then
-            first=false
-        else
-            echo ","
-        fi
+        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
         echo -n "    $item"
     done
-    if [[ ${#mismatches[@]} -gt 0 ]]; then echo; fi
+    (( ${#mismatches[@]} == 0 )) || echo
     echo "  ],"
 
-    # Errors array
     echo "  \"errors\": ["
     first=true
     for item in "${errors[@]}"; do
-        if [[ "$first" == "true" ]]; then
-            first=false
-        else
-            echo ","
-        fi
+        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
         echo -n "    $item"
     done
-    if [[ ${#errors[@]} -gt 0 ]]; then echo; fi
+    (( ${#errors[@]} == 0 )) || echo
     echo "  ],"
 
-    # Skipped array
     echo "  \"skipped\": ["
     first=true
     for item in "${skipped[@]}"; do
-        if [[ "$first" == "true" ]]; then
-            first=false
-        else
-            echo ","
-        fi
+        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
         echo -n "    $item"
     done
-    if [[ ${#skipped[@]} -gt 0 ]]; then echo; fi
+    (( ${#skipped[@]} == 0 )) || echo
     echo "  ]"
-
     echo "}"
 
-    # Return non-zero if there are mismatches or errors
-    if [[ ${#mismatches[@]} -gt 0 || ${#errors[@]} -gt 0 ]]; then
+    if (( ${#mismatches[@]} > 0 || ${#errors[@]} > 0 || ${#skipped[@]} > 0 )); then
         return 1
     fi
+    return 0
+}
+
+# Validate report structure and bind every partition entry back to the exact
+# strict checksums policy.  Associative outputs are committed transactionally.
+acfs_validate_installer_checksum_report() {
+    local report_file="$1"
+    local urls_var="$2"
+    local checksums_var="$3"
+    local checksums_digest="$4"
+    local matches_var="$5"
+    local mismatch_expected_var="$6"
+    local mismatch_actual_var="$7"
+    local errors_var="$8"
+    local skipped_var="$9"
+    local -n current_urls="$urls_var"
+    local -n current_checksums="$checksums_var"
+    local -n output_matches="$matches_var"
+    local -n output_mismatch_expected="$mismatch_expected_var"
+    local -n output_mismatch_actual="$mismatch_actual_var"
+    local -n output_errors="$errors_var"
+    local -n output_skipped="$skipped_var"
+    local -A parsed_matches=()
+    local -A parsed_mismatch_expected=()
+    local -A parsed_mismatch_actual=()
+    local -A parsed_errors=()
+    local -A parsed_skipped=()
+    local -A seen=()
+    local jq_bin=""
+    local report_digest=""
+    local report_total=""
+    local name=""
+    local url=""
+    local checksum=""
+    local expected=""
+    local actual=""
+    local tool=""
+
+    [[ "$checksums_digest" =~ ^[0-9a-f]{64}$ ]] || return 1
+    if [[ ! -f "$report_file" || -L "$report_file" || ! -r "$report_file" ]]; then
+        log_error "Checksum verification report must be a readable regular non-symlink file"
+        return 1
+    fi
+    jq_bin="$(acfs_security_required_binary_path jq)" || return $?
+
+    # jq normally applies last-key-wins semantics.  Streaming first preserves
+    # repeated leaf paths so duplicate JSON keys cannot hide evidence.
+    if ! "$jq_bin" --stream -s -e '
+        map(select(length == 2) | (.[0] | @json)) as $paths
+        | ($paths | length) == ($paths | unique | length)
+    ' "$report_file" >/dev/null 2>&1; then
+        log_error "Checksum verification report is invalid JSON or contains duplicate keys"
+        return 1
+    fi
+
+    if ! "$jq_bin" -e '
+        def exact_keys($wanted): type == "object" and keys == $wanted;
+        def good_name: type == "string" and test("^[a-z][a-z0-9_]*$");
+        def good_url: type == "string" and test("^https://[^[:space:]]+$");
+        def good_hash: type == "string" and test("^[0-9a-f]{64}$");
+        exact_keys(["checksumsYamlSha256", "errors", "matches", "mismatches", "schema", "schemaVersion", "skipped", "timestamp", "total"])
+        and .schema == "acfs.installer-checksum-verification.v1"
+        and .schemaVersion == 1
+        and (.timestamp | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+        and (.checksumsYamlSha256 | good_hash)
+        and (.total | type == "number" and floor == . and . >= 0)
+        and (.matches | type == "array")
+        and (.mismatches | type == "array")
+        and (.errors | type == "array")
+        and (.skipped | type == "array")
+        and all(.matches[]; exact_keys(["checksum", "name", "url"]) and (.name | good_name) and (.url | good_url) and (.checksum | good_hash))
+        and all(.mismatches[]; exact_keys(["actual", "expected", "name", "url"]) and (.name | good_name) and (.url | good_url) and (.expected | good_hash) and (.actual | good_hash))
+        and all(.errors[]; exact_keys(["error", "name", "url"]) and (.name | good_name) and (.url | good_url) and (.error | type == "string" and length > 0))
+        and all(.skipped[]; exact_keys(["name", "reason", "url"]) and (.name | good_name) and (.url | good_url) and (.reason | type == "string" and length > 0))
+        and .total == ((.matches | length) + (.mismatches | length) + (.errors | length) + (.skipped | length))
+        and (([.matches, .mismatches, .errors, .skipped] | add | map(.name)) as $names
+            | ($names | length) == ($names | unique | length))
+    ' "$report_file" >/dev/null 2>&1; then
+        log_error "Checksum verification report does not match schema v1"
+        return 1
+    fi
+
+    report_digest="$("$jq_bin" -r '.checksumsYamlSha256' "$report_file")" || return 1
+    report_total="$("$jq_bin" -r '.total' "$report_file")" || return 1
+    if [[ "$report_digest" != "$checksums_digest" ]] \
+        || [[ ! "$report_total" =~ ^[0-9]+$ ]] \
+        || (( report_total != ${#current_checksums[@]} )); then
+        log_error "Checksum verification report is not bound to the current checksums policy"
+        return 1
+    fi
+
+    while IFS=$'\t' read -r name url checksum; do
+        [[ -n "$name" ]] || continue
+        if [[ -n "${seen[$name]:-}" ]] \
+            || [[ "${current_urls[$name]:-}" != "$url" ]] \
+            || [[ "${current_checksums[$name]:-}" != "$checksum" ]]; then
+            log_error "Checksum verification match is not bound to policy entry: $name"
+            return 1
+        fi
+        seen["$name"]="match"
+        parsed_matches["$name"]="$checksum"
+    done < <("$jq_bin" -r '.matches[] | [.name, .url, .checksum] | @tsv' "$report_file")
+
+    while IFS=$'\t' read -r name url expected actual; do
+        [[ -n "$name" ]] || continue
+        if [[ -n "${seen[$name]:-}" ]] \
+            || [[ "${current_urls[$name]:-}" != "$url" ]] \
+            || [[ "${current_checksums[$name]:-}" != "$expected" ]]; then
+            log_error "Checksum verification mismatch is not bound to policy entry: $name"
+            return 1
+        fi
+        seen["$name"]="mismatch"
+        parsed_mismatch_expected["$name"]="$expected"
+        parsed_mismatch_actual["$name"]="$actual"
+    done < <("$jq_bin" -r '.mismatches[] | [.name, .url, .expected, .actual] | @tsv' "$report_file")
+
+    while IFS=$'\t' read -r name url; do
+        [[ -n "$name" ]] || continue
+        if [[ -n "${seen[$name]:-}" ]] || [[ "${current_urls[$name]:-}" != "$url" ]]; then
+            log_error "Checksum verification error is not bound to policy entry: $name"
+            return 1
+        fi
+        seen["$name"]="error"
+        parsed_errors["$name"]="error"
+    done < <("$jq_bin" -r '.errors[] | [.name, .url] | @tsv' "$report_file")
+
+    while IFS=$'\t' read -r name url; do
+        [[ -n "$name" ]] || continue
+        if [[ -n "${seen[$name]:-}" ]] || [[ "${current_urls[$name]:-}" != "$url" ]]; then
+            log_error "Checksum verification skip is not bound to policy entry: $name"
+            return 1
+        fi
+        seen["$name"]="skipped"
+        parsed_skipped["$name"]="skipped"
+    done < <("$jq_bin" -r '.skipped[] | [.name, .url] | @tsv' "$report_file")
+
+    for tool in "${!current_checksums[@]}"; do
+        if [[ -z "${seen[$tool]:-}" ]]; then
+            log_error "Checksum verification report omits policy entry: $tool"
+            return 1
+        fi
+    done
+
+    output_matches=()
+    output_mismatch_expected=()
+    output_mismatch_actual=()
+    output_errors=()
+    output_skipped=()
+    for tool in "${!parsed_matches[@]}"; do output_matches["$tool"]="${parsed_matches[$tool]}"; done
+    for tool in "${!parsed_mismatch_expected[@]}"; do
+        output_mismatch_expected["$tool"]="${parsed_mismatch_expected[$tool]}"
+        output_mismatch_actual["$tool"]="${parsed_mismatch_actual[$tool]}"
+    done
+    for tool in "${!parsed_errors[@]}"; do output_errors["$tool"]="${parsed_errors[$tool]}"; done
+    for tool in "${!parsed_skipped[@]}"; do output_skipped["$tool"]="${parsed_skipped[$tool]}"; done
+    return 0
+}
+
+# Run the networked verifier against a byte-stable strict policy, validate its
+# own evidence, then emit JSON only after the source policy passes a final
+# identity/hash fence.
+acfs_verify_all_installers_json_from_file() {
+    local checksums_file="$1"
+    local checksums_snapshot=""
+    local checksums_fd=""
+    local checksums_digest=""
+    local report_file=""
+    local verify_status=0
+    local -A strict_urls=()
+    local -A strict_checksums=()
+    local -A report_matches=()
+    local -A report_mismatch_expected=()
+    local -A report_mismatch_actual=()
+    local -A report_errors=()
+    local -A report_skipped=()
+
+    if ! acfs_security_open_bound_snapshot \
+        "$checksums_file" "$ACFS_CHECKSUMS_YAML_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-checksums-policy.XXXXXX" "checksums policy" \
+        checksums_snapshot checksums_fd checksums_digest; then
+        return 1
+    fi
+    if ! acfs_load_checksums_strict "$checksums_snapshot" strict_urls strict_checksums; then
+        acfs_security_release_bound_snapshot "$checksums_snapshot" "$checksums_fd"
+        return 1
+    fi
+
+    report_file="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-checksum-report.XXXXXX" 2>/dev/null || true)"
+    if [[ -z "$report_file" ]]; then
+        log_error "Unable to create a private checksum verification report"
+        acfs_security_release_bound_snapshot "$checksums_snapshot" "$checksums_fd"
+        return 1
+    fi
+    if verify_all_installers_json "$checksums_digest" strict_urls strict_checksums > "$report_file"; then
+        verify_status=0
+    else
+        verify_status=$?
+    fi
+
+    if ! acfs_validate_installer_checksum_report \
+        "$report_file" strict_urls strict_checksums "$checksums_digest" \
+        report_matches report_mismatch_expected report_mismatch_actual report_errors report_skipped; then
+        _acfs_remove_temp_files "$report_file"
+        acfs_security_release_bound_snapshot "$checksums_snapshot" "$checksums_fd"
+        return 1
+    fi
+    if ! acfs_security_bound_snapshot_is_current \
+        "$checksums_file" "$checksums_fd" "$checksums_digest" \
+        "$ACFS_CHECKSUMS_YAML_MAX_BYTES" "checksums policy"; then
+        _acfs_remove_temp_files "$report_file"
+        acfs_security_release_bound_snapshot "$checksums_snapshot" "$checksums_fd"
+        return 1
+    fi
+
+    acfs_security_cat_file "$report_file" || verify_status=1
+    _acfs_remove_temp_files "$report_file"
+    acfs_security_release_bound_snapshot "$checksums_snapshot" "$checksums_fd"
+    return "$verify_status"
+}
+
+# Validate, without network access, that a reviewed candidate changes exactly
+# the mismatch set observed in a bound verification report.  On success stdout
+# is the exact private snapshot of CANDIDATE, suitable for an atomic install.
+acfs_validate_checksum_candidate() {
+    local current_file="$1"
+    local candidate_file="$2"
+    local report_file="$3"
+    local current_snapshot="" current_fd="" current_digest=""
+    local candidate_snapshot="" candidate_fd="" candidate_digest=""
+    local report_snapshot="" report_fd="" report_digest=""
+    local tool=""
+    local -A current_urls=() current_checksums=()
+    local -A candidate_urls=() candidate_checksums=()
+    local -A report_matches=()
+    local -A report_mismatch_expected=()
+    local -A report_mismatch_actual=()
+    local -A report_errors=()
+    local -A report_skipped=()
+
+    if [[ -e "$current_file" && -e "$candidate_file" && "$current_file" -ef "$candidate_file" ]] \
+        || [[ -e "$current_file" && -e "$report_file" && "$current_file" -ef "$report_file" ]] \
+        || [[ -e "$candidate_file" && -e "$report_file" && "$candidate_file" -ef "$report_file" ]]; then
+        log_error "Current policy, candidate, and report must be distinct files (hard-link aliases are forbidden)"
+        return 1
+    fi
+
+    if ! acfs_security_open_bound_snapshot \
+        "$current_file" "$ACFS_CHECKSUMS_YAML_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-checksums-current.XXXXXX" "current checksums policy" \
+        current_snapshot current_fd current_digest; then
+        return 1
+    fi
+    if ! acfs_security_open_bound_snapshot \
+        "$candidate_file" "$ACFS_CHECKSUMS_YAML_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-checksums-candidate.XXXXXX" "checksum candidate" \
+        candidate_snapshot candidate_fd candidate_digest; then
+        acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+        return 1
+    fi
+    if ! acfs_security_open_bound_snapshot \
+        "$report_file" "$ACFS_CHECKSUM_REPORT_MAX_BYTES" \
+        "${TMPDIR:-/tmp}/acfs-checksum-evidence.XXXXXX" "checksum verification report" \
+        report_snapshot report_fd report_digest; then
+        acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+        acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+        return 1
+    fi
+
+    if ! acfs_load_checksums_strict "$current_snapshot" current_urls current_checksums \
+        || ! acfs_load_checksums_strict "$candidate_snapshot" candidate_urls candidate_checksums \
+        || ! acfs_validate_installer_checksum_report \
+            "$report_snapshot" current_urls current_checksums "$current_digest" \
+            report_matches report_mismatch_expected report_mismatch_actual report_errors report_skipped; then
+        acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+        acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+        acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+        return 1
+    fi
+
+    if (( ${#report_errors[@]} > 0 || ${#report_skipped[@]} > 0 )); then
+        log_error "Checksum candidate cannot be authorized from a report containing errors or skipped installers"
+        acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+        acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+        acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+        return 1
+    fi
+
+    for tool in "${!current_checksums[@]}"; do
+        if [[ "${candidate_urls[$tool]:-}" != "${current_urls[$tool]}" ]]; then
+            log_error "Checksum candidate changes installer URL or set: $tool"
+            acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+            acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+            acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+            return 1
+        fi
+
+        if [[ -n "${report_matches[$tool]+present}" ]]; then
+            if [[ "${candidate_checksums[$tool]:-}" != "${current_checksums[$tool]}" ]]; then
+                log_error "Checksum candidate changes a report-matched installer: $tool"
+                acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+                acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+                acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+                return 1
+            fi
+        elif [[ -n "${report_mismatch_actual[$tool]+present}" ]]; then
+            if [[ "${report_mismatch_expected[$tool]}" != "${current_checksums[$tool]}" ]] \
+                || [[ "${candidate_checksums[$tool]:-}" != "${report_mismatch_actual[$tool]}" ]] \
+                || [[ "${candidate_checksums[$tool]}" == "${current_checksums[$tool]}" ]]; then
+                log_error "Checksum candidate does not exactly apply the observed mismatch: $tool"
+                acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+                acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+                acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+                return 1
+            fi
+        else
+            log_error "Checksum report has no decisive match/mismatch observation for: $tool"
+            acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+            acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+            acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+            return 1
+        fi
+    done
+
+    if ! acfs_security_bound_snapshot_is_current \
+            "$current_file" "$current_fd" "$current_digest" "$ACFS_CHECKSUMS_YAML_MAX_BYTES" "current checksums policy" \
+        || ! acfs_security_bound_snapshot_is_current \
+            "$candidate_file" "$candidate_fd" "$candidate_digest" "$ACFS_CHECKSUMS_YAML_MAX_BYTES" "checksum candidate" \
+        || ! acfs_security_bound_snapshot_is_current \
+            "$report_file" "$report_fd" "$report_digest" "$ACFS_CHECKSUM_REPORT_MAX_BYTES" "checksum verification report"; then
+        acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+        acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+        acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+        return 1
+    fi
+
+    acfs_security_cat_file "$candidate_snapshot" || {
+        acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+        acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+        acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
+        return 1
+    }
+    acfs_security_release_bound_snapshot "$report_snapshot" "$report_fd"
+    acfs_security_release_bound_snapshot "$candidate_snapshot" "$candidate_fd"
+    acfs_security_release_bound_snapshot "$current_snapshot" "$current_fd"
     return 0
 }
 
@@ -3086,11 +3419,13 @@ Usage:
   security.sh [command] [options]
 
 Commands:
-  --print              Print all upstream URLs
-  --update-checksums   Generate checksums.yaml content
-  --verify             Verify all installers against saved checksums
-  --checksum URL       Calculate SHA256 of a URL
-  --help               Show this help
+  --print                                      Print all upstream URLs
+  --update-checksums                           Generate checksums.yaml content
+  --verify                                     Verify all installers against saved checksums
+  --validate-checksum-candidate CURRENT CANDIDATE REPORT
+                                               Prove candidate equals the observed mismatch set
+  --checksum URL                               Calculate SHA256 of a URL
+  --help                                       Show this help
 
 Options:
   --json               Output in JSON format (use with --verify)
@@ -3102,6 +3437,7 @@ Examples:
                                                                         # so any fetch error leaves it empty
   ./security.sh --verify
   ./security.sh --verify --json
+  ./security.sh --validate-checksum-candidate checksums.yaml /tmp/candidate.yaml /tmp/verification.json > /tmp/validated.yaml
   ./security.sh --checksum https://bun.sh/install
 EOF
 }
@@ -3124,17 +3460,32 @@ main() {
             print_current_checksums
             ;;
         --verify)
-            load_checksums
             if [[ "$json_output" == "true" ]]; then
-                verify_all_installers_json
+                if [[ "$#" -ne 2 || "${2:-}" != "--json" ]]; then
+                    echo "Usage: security.sh --verify --json" >&2
+                    return 1
+                fi
+                acfs_verify_all_installers_json_from_file "$CHECKSUMS_FILE"
             else
+                if [[ "$#" -ne 1 ]]; then
+                    echo "Usage: security.sh --verify [--json]" >&2
+                    return 1
+                fi
+                load_checksums
                 verify_all_installers
             fi
             ;;
+        --validate-checksum-candidate)
+            if [[ "$#" -ne 4 ]]; then
+                echo "Usage: security.sh --validate-checksum-candidate CURRENT CANDIDATE REPORT" >&2
+                return 1
+            fi
+            acfs_validate_checksum_candidate "$2" "$3" "$4"
+            ;;
         --checksum)
-            if [[ -z "${2:-}" ]]; then
+            if [[ "$#" -ne 2 || -z "${2:-}" ]]; then
                 echo "Usage: security.sh --checksum URL" >&2
-                exit 1
+                return 1
             fi
             fetch_checksum "$2"
             ;;

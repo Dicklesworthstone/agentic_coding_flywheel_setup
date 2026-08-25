@@ -33,8 +33,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 1. Test that a valid plugin passes CLI validation
-test_valid_plugin_validation_gate() {
+# 1. A schema-valid JSON file is still not an activation authority.
+test_valid_plugin_activation_is_refused() {
     local valid_json="$ARTIFACT_DIR/valid-plugin.json"
     cat > "$valid_json" <<'JSON'
 {
@@ -108,21 +108,26 @@ test_valid_plugin_validation_gate() {
 JSON
 
     local output
-    if ! output="$(bun run "$MANIFEST_GEN" --validate --plugin "$valid_json" 2>&1)"; then
-        fail "valid_plugin_validation_gate" "Command failed unexpectedly: $output"
+    if output="$(bun run "$MANIFEST_GEN" --validate --plugin "$valid_json" 2>&1)"; then
+        fail "valid_plugin_activation_is_refused" "Command succeeded without archive/review bindings: $output"
         return 0
     fi
 
-    if [[ "$output" != *"Plugin packages valid"* ]]; then
-        fail "valid_plugin_validation_gate" "Output missing success confirmation: $output"
+    if [[ "$output" != *"Plugin package activation is not implemented"* ]]; then
+        fail "valid_plugin_activation_is_refused" "Output missing fail-closed activation reason: $output"
+        return 0
+    fi
+    if [[ "$output" == *"Validation passed"* || "$output" == *"Plugin packages valid"* ]]; then
+        fail "valid_plugin_activation_is_refused" "Output falsely claimed validation success: $output"
         return 0
     fi
 
-    pass "valid_plugin_validation_gate"
+    pass "valid_plugin_activation_is_refused"
 }
 
-# 2. Test that an invalid plugin (disallowed shell/checksum missing) fails validation gate
-test_invalid_plugin_fails_validation_gate() {
+# 2. Refusal precedes descriptor parsing, so an invalid descriptor cannot
+# distinguish itself or turn the disabled surface into filesystem work.
+test_invalid_plugin_activation_is_refused_before_validation() {
     local invalid_json="$ARTIFACT_DIR/invalid-plugin.json"
     cat > "$invalid_json" <<'JSON'
 {
@@ -191,44 +196,87 @@ JSON
 
     local output
     if output="$(bun run "$MANIFEST_GEN" --validate --plugin "$invalid_json" 2>&1)"; then
-        fail "invalid_plugin_fails_validation_gate" "Command succeeded when it should have failed: $output"
+        fail "invalid_plugin_activation_is_refused_before_validation" "Command succeeded when it should have failed: $output"
         return 0
     fi
 
-    if [[ "$output" != *"plugin_verified_installer_checksum_required"* ]]; then
-        fail "invalid_plugin_fails_validation_gate" "Output missing expected error code: $output"
+    if [[ "$output" != *"Plugin package activation is not implemented"* ]]; then
+        fail "invalid_plugin_activation_is_refused_before_validation" "Output missing fail-closed activation reason: $output"
         return 0
     fi
 
-    pass "invalid_plugin_fails_validation_gate"
+    pass "invalid_plugin_activation_is_refused_before_validation"
 }
 
-test_plugin_diff_mode() {
+test_plugin_diff_activation_is_refused() {
     local valid_json="$ARTIFACT_DIR/valid-plugin.json"
     local output
-    output="$(bun run "$MANIFEST_GEN" --diff --plugin "$valid_json" 2>&1 || true)"
-
-    if [[ "$output" != *"[DIFF] install_tools.sh"* ]]; then
-        fail "plugin_diff_mode" "Diff missing install_tools.sh diff line: $output"
+    if output="$(bun run "$MANIFEST_GEN" --diff --plugin "$valid_json" 2>&1)"; then
+        fail "plugin_diff_activation_is_refused" "Diff mode accepted unbound plugin input: $output"
         return 0
     fi
 
-    if [[ "$output" != *"[DIFF] manifest_index.sh"* ]]; then
-        fail "plugin_diff_mode" "Diff missing manifest_index.sh diff line: $output"
+    if [[ "$output" != *"Plugin package activation is not implemented"* ]]; then
+        fail "plugin_diff_activation_is_refused" "Output missing fail-closed activation reason: $output"
         return 0
     fi
 
-    if [[ "$output" != *"Generated files would change"* ]]; then
-        fail "plugin_diff_mode" "Diff missing change notice: $output"
+    if [[ "$output" == *"[DIFF]"* || "$output" == *"Generated files would change"* ]]; then
+        fail "plugin_diff_activation_is_refused" "Generator inspected or emitted output after refusal: $output"
         return 0
     fi
 
-    pass "plugin_diff_mode"
+    pass "plugin_diff_activation_is_refused"
 }
 
-test_valid_plugin_validation_gate
-test_invalid_plugin_fails_validation_gate
-test_plugin_diff_mode
+test_missing_plugin_inputs_are_refused_before_path_errors() {
+    local output=""
+    local input_kind=""
+    local -a invocation_args=()
+
+    for input_kind in plugin directory
+    do
+        if [[ "$input_kind" == "plugin" ]]; then
+            invocation_args=(--plugin /definitely/missing/plugin.json)
+        else
+            invocation_args=(--plugins-dir /definitely/missing/plugins)
+        fi
+        if output="$(bun run "$MANIFEST_GEN" --validate "${invocation_args[@]}" 2>&1)"; then
+            fail "missing_plugin_inputs_are_refused_before_path_errors" "$input_kind unexpectedly succeeded: $output"
+            return 0
+        fi
+        if [[ "$output" != *"Plugin package activation is not implemented"* ]] \
+            || [[ "$output" == *"not a readable plugin package directory"* ]]; then
+            fail "missing_plugin_inputs_are_refused_before_path_errors" "$input_kind: $output"
+            return 0
+        fi
+    done
+
+    if output="$(ACFS_PLUGIN_PATHS=/definitely/missing/plugin.json bun run "$MANIFEST_GEN" --validate 2>&1)"; then
+        fail "missing_plugin_inputs_are_refused_before_path_errors" "ambient path unexpectedly succeeded: $output"
+        return 0
+    fi
+    if [[ "$output" != *"Plugin package activation is not implemented"* ]]; then
+        fail "missing_plugin_inputs_are_refused_before_path_errors" "ambient path: $output"
+        return 0
+    fi
+    if output="$(ACFS_PLUGINS_DIR=/definitely/missing/plugins bun run "$MANIFEST_GEN" --validate 2>&1)"; then
+        fail "missing_plugin_inputs_are_refused_before_path_errors" "ambient directory unexpectedly succeeded: $output"
+        return 0
+    fi
+    if [[ "$output" != *"Plugin package activation is not implemented"* ]] \
+        || [[ "$output" == *"not a readable plugin package directory"* ]]; then
+        fail "missing_plugin_inputs_are_refused_before_path_errors" "ambient directory: $output"
+        return 0
+    fi
+
+    pass "missing_plugin_inputs_are_refused_before_path_errors"
+}
+
+test_valid_plugin_activation_is_refused
+test_invalid_plugin_activation_is_refused_before_validation
+test_plugin_diff_activation_is_refused
+test_missing_plugin_inputs_are_refused_before_path_errors
 
 echo ""
 echo "Tests passed: $TESTS_PASSED"

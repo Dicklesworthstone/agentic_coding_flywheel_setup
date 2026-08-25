@@ -21,6 +21,7 @@ import {
   generateWebCommands,
   collectPluginInputPaths,
   enforcePluginActivationBoundary,
+  enforceRawPluginActivationBoundary,
   PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE,
 } from './generate.js';
 import { ModuleSchema } from './schema.js';
@@ -1325,6 +1326,25 @@ describe('collectPluginInputPaths', () => {
     );
   });
 
+  test('refuses raw plugin inputs before resolving paths or reading directories', () => {
+    const unavailable = () => PLUGIN_ACTIVATION_UNAVAILABLE_MESSAGE;
+    expect(() => enforceRawPluginActivationBoundary([
+      '--validate',
+      '--plugin',
+      '/definitely/missing/plugin.json',
+    ], {})).toThrow(unavailable());
+    expect(() => enforceRawPluginActivationBoundary([
+      '--plugins-dir=/definitely/missing/plugins',
+    ], {})).toThrow(unavailable());
+    expect(() => enforceRawPluginActivationBoundary([], {
+      ACFS_PLUGIN_PATHS: '/definitely/missing/plugin.json',
+    })).toThrow(unavailable());
+    expect(() => enforceRawPluginActivationBoundary([], {
+      ACFS_PLUGINS_DIR: '/definitely/missing/plugins',
+    })).toThrow(unavailable());
+    expect(() => enforceRawPluginActivationBoundary(['--validate'], {})).not.toThrow();
+  });
+
   test('accepts documented control flags but rejects unknown arguments', () => {
     expect(
       collectPluginInputPaths(
@@ -1423,6 +1443,26 @@ describe('Installer, doctor, and web metadata generation from validated plugins'
     const categoryScript = generateCategoryScript(merged, 'tools');
 
     expect(categoryScript).toContain('[plugin: example.tools@1.2.3]');
+  });
+
+  test('keeps forged normalized plugin provenance inside one Bash comment line', () => {
+    const manifest = firstPartyManifest();
+    const validationResult = validatePluginPackage(validPlugin(), validationOptions());
+    expect(validationResult.valid).toBe(true);
+
+    const merged = mergeValidatedPlugins(manifest, [validationResult]);
+    const pluginModule = merged.modules.find(
+      (module) => module.id === 'plugin.example_tools.cli'
+    );
+    expect(pluginModule?.plugin).toBeDefined();
+    pluginModule!.plugin!.version = '1.2.3\nprintf compromised\u0007';
+
+    const categoryScript = generateCategoryScript(merged, 'tools');
+    expect(categoryScript).not.toContain('\nprintf compromised');
+    expect(categoryScript).not.toContain('\u0007');
+    expect(categoryScript).toContain(
+      '# Example command-line tool. [plugin: example.tools@1.2.3 printf compromised]'
+    );
   });
 
   test('generates doctor checks with plugin verify command and tab delimiter', () => {
