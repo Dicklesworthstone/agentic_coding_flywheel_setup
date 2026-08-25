@@ -23,6 +23,84 @@ export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=a
 export NEEDRESTART_SUSPEND=1
 
+# ── single-instance guard ───────────────────────────────────────────────────
+# Concurrent updates are a correctness hazard, not just a slow one: every run
+# drives `cargo install --force` into the SAME $CARGO_HOME, so they contend on
+# cargo's package-cache lock and race each other replacing binaries in
+# ~/.cargo/bin, on top of duplicating all rustup/npm/installer work. Three
+# overlapping runs were observed on one host, each independently reinstalling
+# the same tools while the box became unreachable.
+#
+# The lock is per-UID because the hazard is a shared CARGO_HOME/RUSTUP_HOME:
+# a root run and a target-user run (via runuser) have different homes and do
+# not conflict, while two runs as the same user do.
+#
+# Deliberately NOT re-acquired after the self-update re-exec. `flock` is held
+# on the open file description, which survives `exec` (fd 9 has no CLOEXEC),
+# so the re-executed process inherits the held lock. Re-running the block
+# would `exec 9>` the path again — closing the inherited description, briefly
+# releasing the lock, and letting a waiting run seize it while this one is
+# mid-update. Inheriting is both cheaper and safer.
+ACFS_UPDATE_LOCK="${ACFS_UPDATE_LOCK:-${XDG_RUNTIME_DIR:-/tmp}/acfs-update.$(id -u).lock}"
+
+# Stamp the holder AFTER acquiring, via a truncating write (tee) so a shorter
+# line cannot leave a previous holder's trailing bytes behind. Safe to truncate
+# here precisely because we hold the lock.
+_acfs_stamp_update_lock() {
+    printf 'pid=%s started=%s user=%s\n' \
+        "$$" "$(date -Is 2>/dev/null || date)" "$(id -un 2>/dev/null || echo "$EUID")" \
+        | tee "$ACFS_UPDATE_LOCK" >/dev/null 2>&1 || true
+}
+
+# `--help`/`-h` must always answer, even while another update holds the lock:
+# argument parsing happens far below this point, so without this check a user
+# asking for usage during a long run would get "skipping" instead of help.
+_acfs_update_wants_lock() {
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --help | -h) return 1 ;;
+        esac
+    done
+    return 0
+}
+
+if [[ "${ACFS_SELF_UPDATE_DONE:-false}" != "true" ]] && _acfs_update_wants_lock "$@"; then
+    if command -v flock >/dev/null 2>&1; then
+        # `9<>` (O_RDWR|O_CREAT), never `9>` (O_TRUNC): opening the lock must
+        # not erase the holder record that a blocked run is about to read.
+        #
+        # Probe in a SUBSHELL first. `exec` with no command applies its
+        # redirections permanently to the current shell, so the obvious
+        # `if exec 9<>"$LOCK" 2>/dev/null` would also make `2>/dev/null`
+        # permanent — silently discarding stderr for the entire rest of the
+        # update. Probing in a subshell keeps that redirect scoped, and also
+        # contains the fatal-exit behaviour a redirection error triggers on the
+        # `exec` special builtin.
+        if ( exec 3<>"$ACFS_UPDATE_LOCK" ) 2>/dev/null; then
+            exec 9<>"$ACFS_UPDATE_LOCK"
+            if flock -n 9; then
+                _acfs_stamp_update_lock
+            elif [[ "${ACFS_UPDATE_LOCK_WAIT:-0}" == "1" ]]; then
+                echo "acfs update: another run is in progress, waiting for it to finish..." >&2
+                flock 9
+                _acfs_stamp_update_lock
+            else
+                echo "acfs update: another run is already in progress for this user; skipping." >&2
+                if [[ -s "$ACFS_UPDATE_LOCK" ]]; then
+                    echo "  holder: $(head -1 "$ACFS_UPDATE_LOCK" 2>/dev/null)" >&2
+                fi
+                echo "  set ACFS_UPDATE_LOCK_WAIT=1 to queue behind it instead of skipping." >&2
+                exit 0
+            fi
+        else
+            echo "acfs update: cannot open lock file $ACFS_UPDATE_LOCK; continuing unlocked." >&2
+        fi
+    else
+        echo "acfs update: flock not found; continuing without a single-instance guard." >&2
+    fi
+fi
+
 ACFS_VERSION="${ACFS_VERSION:-0.1.0}"
 ACFS_REPO_OWNER="${ACFS_REPO_OWNER:-Dicklesworthstone}"
 ACFS_REPO_NAME="${ACFS_REPO_NAME:-agentic_coding_flywheel_setup}"
