@@ -89,21 +89,7 @@ write_strict_mismatch_report_fixture() {
     local beta_actual="$3"
 
     cat > "$destination" << EOF
-{
-  "schema": "acfs.installer-checksum-verification.v1",
-  "schemaVersion": 1,
-  "timestamp": "2026-08-24T16:00:00Z",
-  "checksumsYamlSha256": "$policy_digest",
-  "total": 2,
-  "matches": [
-    {"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}
-  ],
-  "mismatches": [
-    {"name":"beta","url":"https://example.com/beta.sh","expected":"$STRICT_HASH_B","actual":"$beta_actual"}
-  ],
-  "errors": [],
-  "skipped": []
-}
+{"schema":"acfs.installer-checksum-verification.v1","schemaVersion":1,"timestamp":"2026-08-24T16:00:00Z","checksumsYamlSha256":"$policy_digest","total":2,"matches":[{"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}],"mismatches":[{"name":"beta","url":"https://example.com/beta.sh","expected":"$STRICT_HASH_B","actual":"$beta_actual"}],"errors":[],"skipped":[]}
 EOF
 }
 
@@ -112,21 +98,7 @@ write_strict_error_report_fixture() {
     local policy_digest="$2"
 
     cat > "$destination" << EOF
-{
-  "schema": "acfs.installer-checksum-verification.v1",
-  "schemaVersion": 1,
-  "timestamp": "2026-08-24T16:00:00Z",
-  "checksumsYamlSha256": "$policy_digest",
-  "total": 2,
-  "matches": [
-    {"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}
-  ],
-  "mismatches": [],
-  "errors": [
-    {"name":"beta","url":"https://example.com/beta.sh","error":"upstream unavailable"}
-  ],
-  "skipped": []
-}
+{"schema":"acfs.installer-checksum-verification.v1","schemaVersion":1,"timestamp":"2026-08-24T16:00:00Z","checksumsYamlSha256":"$policy_digest","total":2,"matches":[{"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}],"mismatches":[],"errors":[{"name":"beta","url":"https://example.com/beta.sh","error":"upstream unavailable"}],"skipped":[]}
 EOF
 }
 
@@ -422,6 +394,53 @@ EOF
     fi
 }
 
+test_versioned_checksum_report_binds_urls_hashes_and_exit_status() {
+    local name="versioned checksum report binds URLs/hashes and returns nonzero on mismatch"
+    local -A urls=(
+        [alpha]="https://example.com/alpha.sh"
+        [beta]="https://example.com/beta.sh"
+    )
+    local -A checksums=(
+        [alpha]="$STRICT_HASH_A"
+        [beta]="$STRICT_HASH_B"
+    )
+    local report=""
+    local status=0
+    local passed=false
+
+    fetch_checksum() {
+        case "$1" in
+            https://example.com/alpha.sh) printf '%s\n' "$STRICT_HASH_A" ;;
+            https://example.com/beta.sh) printf '%s\n' "$STRICT_HASH_C" ;;
+            *) return 1 ;;
+        esac
+    }
+    if report="$(verify_all_installers_json "$STRICT_HASH_D" urls checksums 2>/dev/null)"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    if [[ "$status" -eq 1 && "$report" != *$'\n'* ]] \
+        && printf '%s\n' "$report" | jq -e --arg digest "$STRICT_HASH_D" \
+            '.schema == "acfs.installer-checksum-verification.v1"
+             and .schemaVersion == 1
+             and .checksumsYamlSha256 == $digest
+             and .total == 2
+             and (.matches == [{"name":"alpha","url":"https://example.com/alpha.sh","checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}])
+             and (.mismatches == [{"name":"beta","url":"https://example.com/beta.sh","expected":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","actual":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}])
+             and (.errors | length) == 0
+             and (.skipped | length) == 0' >/dev/null; then
+        passed=true
+    fi
+
+    if [[ "$passed" == "true" ]]; then
+        test_pass "$name"
+    else
+        test_fail "$name" "Report lost a policy binding or returned a false-green status"
+    fi
+}
+
 test_checksum_candidate_validation_is_exact_and_network_free() {
     local name="checksum candidate proof emits exact reviewed bytes without network access"
     local -a saved_required=("${ACFS_SECURITY_REQUIRED_INSTALLERS[@]}")
@@ -537,18 +556,7 @@ test_checksum_report_rejects_duplicate_keys_and_policy_digest_drift() {
     current_digest="$(calculate_file_sha256 "$current")"
     write_strict_mismatch_report_fixture "$stale_report" "$STRICT_HASH_D" "$STRICT_HASH_C"
     cat > "$duplicate_report" << EOF
-{
-  "schema": "acfs.installer-checksum-verification.v1",
-  "schemaVersion": 1,
-  "schemaVersion": 1,
-  "timestamp": "2026-08-24T16:00:00Z",
-  "checksumsYamlSha256": "$current_digest",
-  "total": 2,
-  "matches": [{"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}],
-  "mismatches": [{"name":"beta","url":"https://example.com/beta.sh","expected":"$STRICT_HASH_B","actual":"$STRICT_HASH_C"}],
-  "errors": [],
-  "skipped": []
-}
+{"schema":"acfs.installer-checksum-verification.v1","schemaVersion":1,"timestamp":"2026-08-24T16:00:00Z","checksumsYamlSha256":"$current_digest","total":2,"matches":[],"matches":[{"name":"alpha","url":"https://example.com/alpha.sh","checksum":"$STRICT_HASH_A"}],"mismatches":[{"name":"beta","url":"https://example.com/beta.sh","expected":"$STRICT_HASH_B","actual":"$STRICT_HASH_C"}],"errors":[],"skipped":[]}
 EOF
 
     if ! acfs_validate_checksum_candidate "$current" "$candidate" "$duplicate_report" >/dev/null 2>&1 \
@@ -783,6 +791,7 @@ setup_fixtures
 test_strict_checksums_parser_accepts_canonical_closed_world
 test_strict_checksums_parser_rejects_noncanonical_mutations_transactionally
 test_strict_checksums_parser_rejects_incomplete_set_and_extra_syntax
+test_versioned_checksum_report_binds_urls_hashes_and_exit_status
 test_checksum_candidate_validation_is_exact_and_network_free
 test_checksum_candidate_validation_rejects_cross_wired_hashes
 test_checksum_candidate_validation_rejects_url_drift_and_incomplete_evidence

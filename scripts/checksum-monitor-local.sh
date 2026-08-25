@@ -43,6 +43,9 @@ LOG_FILE="$LOG_DIR/run-$RUN_TS.log"
 AUTHORIZATION_FILE="$STATE_DIR/authorized-checksum-change"
 EXPECTED_BUN_VERSION="1.3.8"
 MONITOR_EXEC_PATH="$HOME/.bun/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+MONITOR_RUN_BUDGET_SECONDS=1050
+MONITOR_FAILURE_RESERVE_SECONDS=30
+MONITOR_STARTED_AT_SECONDS=$SECONDS
 STATE="INIT"
 
 # Exact files the monitor may publish. Directory pathspecs and extension
@@ -112,6 +115,35 @@ run_clean() {
         "$@"
 }
 
+run_bounded() {
+    local requested_seconds="$1"
+    shift
+    local elapsed=$((SECONDS - MONITOR_STARTED_AT_SECONDS))
+    local remaining=$((MONITOR_RUN_BUDGET_SECONDS - elapsed - MONITOR_FAILURE_RESERVE_SECONDS))
+    local limit="$requested_seconds"
+    (( remaining > 0 )) || return 124
+    if (( limit > remaining )); then
+        limit="$remaining"
+    fi
+    timeout --signal=TERM --kill-after=10 "${limit}s" "$@"
+}
+
+run_clean_bounded() {
+    local requested_seconds="$1"
+    shift
+    run_bounded "$requested_seconds" env -i \
+        HOME="$HOME" \
+        USER="${USER:-}" \
+        LOGNAME="${LOGNAME:-${USER:-}}" \
+        PATH="$MONITOR_EXEC_PATH" \
+        LANG=C \
+        LC_ALL=C \
+        TZ=UTC \
+        CI=1 \
+        NO_COLOR=1 \
+        "$@"
+}
+
 sha256_file() {
     local file="$1" digest=""
     [[ -f "$file" && ! -L "$file" && -r "$file" ]] || return 1
@@ -125,7 +157,7 @@ REMOTE_MAIN_HEAD=""
 REMOTE_MASTER_HEAD=""
 read_remote_heads() {
     local refs="" main_count="" mirror_count=""
-    refs="$(git ls-remote --heads origin refs/heads/main refs/heads/master 2>>"$LOG_FILE")" \
+    refs="$(run_bounded 45 git ls-remote --heads origin refs/heads/main refs/heads/master 2>>"$LOG_FILE")" \
         || return 1
     main_count="$(awk '$2 == "refs/heads/main" { count += 1 } END { print count + 0 }' <<< "$refs")"
     mirror_count="$(awk '$2 == "refs/heads/master" { count += 1 } END { print count + 0 }' <<< "$refs")"

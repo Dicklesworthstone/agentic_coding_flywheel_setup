@@ -3285,21 +3285,76 @@ sync_acfs_deployed() {
         _acfs_sync_deployed_file "$repo_rel" "$deployed_rel"
     done
 
+    local -a generated_paths=(
+        scripts/generated/doctor_checks.sh
+        scripts/generated/install_acfs.sh
+        scripts/generated/install_agents.sh
+        scripts/generated/install_all.sh
+        scripts/generated/install_base.sh
+        scripts/generated/install_cli.sh
+        scripts/generated/install_cloud.sh
+        scripts/generated/install_db.sh
+        scripts/generated/install_filesystem.sh
+        scripts/generated/install_lang.sh
+        scripts/generated/install_network.sh
+        scripts/generated/install_shell.sh
+        scripts/generated/install_stack.sh
+        scripts/generated/install_tools.sh
+        scripts/generated/install_users.sh
+        scripts/generated/internal_checksums.sh
+        scripts/generated/manifest_index.sh
+    )
     local generated_script=""
-    local generated_name=""
+    local expected_generated=""
+    local generated_allowed=false
+    local generated_tree=""
     if [[ -n "$source_ref" ]]; then
+        if ! generated_tree="$(git -C "$ACFS_REPO_ROOT" ls-tree -r --name-only "$source_ref" -- scripts/generated 2>/dev/null)"; then
+            log_to_file "Unable to enumerate generated runtime assets from $source_ref"
+            return 1
+        fi
         while IFS= read -r generated_script; do
             [[ "$generated_script" == scripts/generated/*.sh ]] || continue
-            generated_name="$(basename "$generated_script")"
-            _acfs_sync_deployed_file "$generated_script" "scripts/generated/$generated_name"
-        done < <(git -C "$ACFS_REPO_ROOT" ls-tree -r --name-only "$source_ref" -- scripts/generated 2>/dev/null || true)
+            generated_allowed=false
+            for expected_generated in "${generated_paths[@]}"; do
+                if [[ "$generated_script" == "$expected_generated" ]]; then
+                    generated_allowed=true
+                    break
+                fi
+            done
+            if [[ "$generated_allowed" != "true" ]]; then
+                log_to_file "Refusing unexpected generated runtime asset from $source_ref: $generated_script"
+                return 1
+            fi
+        done <<< "$generated_tree"
     else
         for generated_script in "$ACFS_REPO_ROOT/scripts/generated/"*.sh; do
             [[ -f "$generated_script" ]] || continue
-            generated_name="$(basename "$generated_script")"
-            _acfs_sync_deployed_file "scripts/generated/$generated_name" "scripts/generated/$generated_name"
+            generated_script="scripts/generated/$(basename "$generated_script")"
+            generated_allowed=false
+            for expected_generated in "${generated_paths[@]}"; do
+                if [[ "$generated_script" == "$expected_generated" ]]; then
+                    generated_allowed=true
+                    break
+                fi
+            done
+            if [[ "$generated_allowed" != "true" ]]; then
+                log_to_file "Refusing unexpected generated runtime asset: $generated_script"
+                return 1
+            fi
         done
     fi
+
+    for generated_script in "${generated_paths[@]}"; do
+        if [[ -n "$source_ref" ]]; then
+            if ! git -C "$ACFS_REPO_ROOT" cat-file -e "${source_ref}:${generated_script}" 2>/dev/null; then
+                continue
+            fi
+        elif [[ ! -f "$ACFS_REPO_ROOT/$generated_script" || -L "$ACFS_REPO_ROOT/$generated_script" ]]; then
+            continue
+        fi
+        _acfs_sync_deployed_file "$generated_script" "$generated_script"
+    done
 
     local lesson_file=""
     local lesson_name=""

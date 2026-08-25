@@ -153,6 +153,59 @@ INTERNAL_CHECKSUM_REQUIRED_PATHS=(
     scripts/templates/acfs-nightly-update.service
     scripts/templates/acfs-nightly-update.timer
     packages/onboard/onboard.sh
+    VERSION
+    acfs.manifest.yaml
+    acfs/AGENTS.md
+    acfs/onboard/docs/ntm/command_palette.md
+    acfs/tmux/tmux.conf
+    acfs/zsh/acfs.zshrc
+    acfs/zsh/p10k.zsh
+    scripts/completions/_acfs
+    scripts/completions/acfs.bash
+    scripts/generate-root-agents-md.sh
+    scripts/lib/agy_e2e_harness.sh
+    scripts/lib/agy_locked.py
+    scripts/lib/agy_model_guard.sh
+    scripts/lib/capacity.sh
+    scripts/lib/changelog.sh
+    scripts/lib/cheatsheet.sh
+    scripts/lib/continue.sh
+    scripts/lib/credential_preflight.sh
+    scripts/lib/dashboard.sh
+    scripts/lib/info.sh
+    scripts/lib/landing_plane.sh
+    scripts/lib/newproj.sh
+    scripts/lib/newproj_agents.sh
+    scripts/lib/newproj_detect.sh
+    scripts/lib/newproj_errors.sh
+    scripts/lib/newproj_logging.sh
+    scripts/lib/newproj_screens.sh
+    scripts/lib/newproj_screens/screen_agents_preview.sh
+    scripts/lib/newproj_screens/screen_confirmation.sh
+    scripts/lib/newproj_screens/screen_directory.sh
+    scripts/lib/newproj_screens/screen_features.sh
+    scripts/lib/newproj_screens/screen_progress.sh
+    scripts/lib/newproj_screens/screen_project_name.sh
+    scripts/lib/newproj_screens/screen_success.sh
+    scripts/lib/newproj_screens/screen_tech_stack.sh
+    scripts/lib/newproj_screens/screen_welcome.sh
+    scripts/lib/newproj_tui.sh
+    scripts/lib/notifications.sh
+    scripts/lib/policy_lint.sh
+    scripts/lib/provenance.sh
+    scripts/lib/rescue.sh
+    scripts/lib/status.sh
+    scripts/lib/support.sh
+    scripts/lib/swarm_assign.sh
+    scripts/lib/swarm_calibration.sh
+    scripts/lib/swarm_convergence.sh
+    scripts/lib/swarm_doctor.sh
+    scripts/lib/swarm_inventory.sh
+    scripts/lib/swarm_packet.sh
+    scripts/lib/swarm_plan.sh
+    scripts/lib/swarm_simulation.sh
+    scripts/lib/swarm_status.sh
+    scripts/services-setup.sh
     scripts/generated/manifest_index.sh
     scripts/generated/doctor_checks.sh
     scripts/generated/install_all.sh
@@ -246,7 +299,7 @@ parse_internal_checksums_file() {
     local parse_state="expect_schema"
     for line in "${ledger_lines[@]}"; do
         ((line_count += 1))
-        if (( line_count > 128 )) || ((${#line} > 4096)); then
+        if (( line_count > 256 )) || ((${#line} > 4096)); then
             log_error "Internal checksum ledger exceeds its bounded data grammar"
             return 1
         fi

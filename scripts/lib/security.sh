@@ -3012,50 +3012,33 @@ verify_all_installers_json() {
         fi
     done
 
-    echo "{"
-    echo "  \"schema\": \"acfs.installer-checksum-verification.v1\","
-    echo "  \"schemaVersion\": 1,"
-    echo "  \"timestamp\": \"$timestamp\","
-    echo "  \"checksumsYamlSha256\": \"$checksums_digest\","
-    echo "  \"total\": $total,"
-
-    echo "  \"matches\": ["
+    printf '{"schema":"acfs.installer-checksum-verification.v1","schemaVersion":1,"timestamp":"%s","checksumsYamlSha256":"%s","total":%d,"matches":[' \
+        "$timestamp" "$checksums_digest" "$total"
     local first=true
     local item=""
     for item in "${matches[@]}"; do
-        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
-        echo -n "    $item"
+        if [[ "$first" == "true" ]]; then first=false; else printf ','; fi
+        printf '%s' "$item"
     done
-    (( ${#matches[@]} == 0 )) || echo
-    echo "  ],"
-
-    echo "  \"mismatches\": ["
+    printf '],"mismatches":['
     first=true
     for item in "${mismatches[@]}"; do
-        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
-        echo -n "    $item"
+        if [[ "$first" == "true" ]]; then first=false; else printf ','; fi
+        printf '%s' "$item"
     done
-    (( ${#mismatches[@]} == 0 )) || echo
-    echo "  ],"
-
-    echo "  \"errors\": ["
+    printf '],"errors":['
     first=true
     for item in "${errors[@]}"; do
-        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
-        echo -n "    $item"
+        if [[ "$first" == "true" ]]; then first=false; else printf ','; fi
+        printf '%s' "$item"
     done
-    (( ${#errors[@]} == 0 )) || echo
-    echo "  ],"
-
-    echo "  \"skipped\": ["
+    printf '],"skipped":['
     first=true
     for item in "${skipped[@]}"; do
-        if [[ "$first" == "true" ]]; then first=false; else echo ","; fi
-        echo -n "    $item"
+        if [[ "$first" == "true" ]]; then first=false; else printf ','; fi
+        printf '%s' "$item"
     done
-    (( ${#skipped[@]} == 0 )) || echo
-    echo "  ]"
-    echo "}"
+    printf ']}\n'
 
     if (( ${#mismatches[@]} > 0 || ${#errors[@]} > 0 || ${#skipped[@]} > 0 )); then
         return 1
@@ -3089,6 +3072,8 @@ acfs_validate_installer_checksum_report() {
     local -A parsed_skipped=()
     local -A seen=()
     local jq_bin=""
+    local cmp_bin=""
+    local canonical_report=""
     local report_digest=""
     local report_total=""
     local name=""
@@ -3104,6 +3089,21 @@ acfs_validate_installer_checksum_report() {
         return 1
     fi
     jq_bin="$(acfs_security_required_binary_path jq)" || return $?
+    cmp_bin="$(acfs_security_required_binary_path cmp)" || return $?
+
+    # Require jq's compact, single-document encoding.  In addition to making
+    # evidence reproducible, byte equality with a re-serialization rejects all
+    # duplicate-key forms (including empty-container/full-container collisions
+    # that a leaf-only stream cannot distinguish).
+    canonical_report="$(acfs_security_mktemp "${TMPDIR:-/tmp}/acfs-checksum-report-canonical.XXXXXX" 2>/dev/null || true)"
+    if [[ -z "$canonical_report" ]] \
+        || ! "$jq_bin" -c . "$report_file" > "$canonical_report" 2>/dev/null \
+        || ! "$cmp_bin" -s "$report_file" "$canonical_report"; then
+        [[ -n "$canonical_report" ]] && _acfs_remove_temp_files "$canonical_report"
+        log_error "Checksum verification report is not canonical single-document JSON"
+        return 1
+    fi
+    _acfs_remove_temp_files "$canonical_report"
 
     # jq normally applies last-key-wins semantics.  Streaming first preserves
     # repeated leaf paths so duplicate JSON keys cannot hide evidence.
