@@ -16,7 +16,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 UBUNTU_VERSION="${ACFS_QEMU_UBUNTU_VERSION:-25.10}"
 MODE="${ACFS_QEMU_MODE:-vibe}"
 REF="${ACFS_REF:-main}"
-EXPECT_FINAL_UBUNTU_VERSION="${ACFS_QEMU_EXPECT_FINAL_UBUNTU_VERSION:-$UBUNTU_VERSION}"
+TARGET_USERNAME="${ACFS_QEMU_TARGET_USERNAME:-ubuntu}"
+EXPECT_FINAL_UBUNTU_VERSION="${ACFS_QEMU_EXPECT_FINAL_UBUNTU_VERSION:-25.10}"
 INSTALL_TIMEOUT_SECONDS="${ACFS_QEMU_INSTALL_TIMEOUT_SECONDS:-14400}"
 POST_REBOOT_TIMEOUT_SECONDS="${ACFS_QEMU_POST_REBOOT_TIMEOUT_SECONDS:-14400}"
 BOOT_TIMEOUT_SECONDS="${ACFS_QEMU_BOOT_TIMEOUT_SECONDS:-900}"
@@ -34,6 +35,10 @@ ALLOW_INSTALL_REBOOT="${ACFS_QEMU_ALLOW_INSTALL_REBOOT:-false}"
 PROVISIONING_PACKET="${ACFS_FACTORY_PROVISIONING_PACKET:-}"
 LEAVE_RUNNING=false
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+UBUNTU_EXPLICIT=$([[ -n "${ACFS_QEMU_UBUNTU_VERSION+x}" ]] && printf true || printf false)
+MODE_EXPLICIT=$([[ -n "${ACFS_QEMU_MODE+x}" ]] && printf true || printf false)
+REF_EXPLICIT=$([[ -n "${ACFS_REF+x}" ]] && printf true || printf false)
+TARGET_USERNAME_EXPLICIT=$([[ -n "${ACFS_QEMU_TARGET_USERNAME+x}" ]] && printf true || printf false)
 
 usage() {
     cat <<'EOF'
@@ -46,6 +51,7 @@ Options:
   --ubuntu <version>           Ubuntu release to boot (default: 25.10).
   --ref <ref>                  ACFS ref to install (default: ACFS_REF or main).
   --mode <mode>                Install mode: vibe or safe (default: vibe).
+  --target-username <name>     Expected non-root ACFS user (default: ubuntu).
   --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
   --packet <path>              Alias for --provisioning-packet.
   --expect-final-ubuntu <ver>  Required final VERSION_ID after install/resume.
@@ -86,14 +92,22 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --ubuntu)
             UBUNTU_VERSION="${2:-}"
+            UBUNTU_EXPLICIT=true
             shift 2
             ;;
         --ref)
             REF="${2:-}"
+            REF_EXPLICIT=true
             shift 2
             ;;
         --mode)
             MODE="${2:-}"
+            MODE_EXPLICIT=true
+            shift 2
+            ;;
+        --target-username)
+            TARGET_USERNAME="${2:-}"
+            TARGET_USERNAME_EXPLICIT=true
             shift 2
             ;;
         --provisioning-packet|--packet)
@@ -184,6 +198,11 @@ case "$MODE" in
         ;;
 esac
 
+if [[ ${#TARGET_USERNAME} -gt 32 || ! "$TARGET_USERNAME" =~ ^[a-z_][a-z0-9._-]*$ || "$TARGET_USERNAME" == "root" ]]; then
+    echo "ERROR: --target-username must be a valid non-root Linux username" >&2
+    exit 1
+fi
+
 for numeric_value in \
     "memory:$MEMORY_MB" \
     "cpus:$CPUS" \
@@ -202,6 +221,43 @@ done
 if [[ -n "$SSH_PORT" ]] && { [[ ! "$SSH_PORT" =~ ^[0-9]+$ ]] || [[ "$SSH_PORT" -lt 1024 ]] || [[ "$SSH_PORT" -gt 65535 ]]; }; then
     echo "ERROR: --ssh-port must be an integer from 1024 to 65535 (got: $SSH_PORT)" >&2
     exit 1
+fi
+
+if [[ -n "$PROVISIONING_PACKET" ]]; then
+    if [[ ! -f "$PROVISIONING_PACKET" ]]; then
+        echo "ERROR: provisioning packet file not found: $PROVISIONING_PACKET" >&2
+        exit 2
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "ERROR: jq is required when using a provisioning packet" >&2
+        exit 2
+    fi
+    validator="$REPO_ROOT/scripts/lib/provisioning_packet.sh"
+    if [[ ! -r "$validator" ]] || ! bash "$validator" --file "$PROVISIONING_PACKET" --json >/dev/null; then
+        echo "ERROR: provisioning packet failed validation" >&2
+        exit 2
+    fi
+
+    packet_ubuntu="$(jq -er '.osImage.version' "$PROVISIONING_PACKET")"
+    packet_ref="$(jq -er '.install.sourceRef' "$PROVISIONING_PACKET")"
+    packet_mode="$(jq -er '.install.mode' "$PROVISIONING_PACKET")"
+    packet_username="$(jq -er '.access.username' "$PROVISIONING_PACKET")"
+    packet_location="$(jq -er '.install.commandRunLocation' "$PROVISIONING_PACKET")"
+    if [[ "$packet_location" != "vps-root-shell" ]]; then
+        echo "ERROR: QEMU factory execution requires install.commandRunLocation=vps-root-shell" >&2
+        exit 2
+    fi
+    if [[ "$UBUNTU_EXPLICIT" == "true" && "$UBUNTU_VERSION" != "$packet_ubuntu" ]] \
+        || [[ "$REF_EXPLICIT" == "true" && "$REF" != "$packet_ref" ]] \
+        || [[ "$MODE_EXPLICIT" == "true" && "$MODE" != "$packet_mode" ]] \
+        || [[ "$TARGET_USERNAME_EXPLICIT" == "true" && "$TARGET_USERNAME" != "$packet_username" ]]; then
+        echo "ERROR: explicit QEMU arguments conflict with the provisioning packet" >&2
+        exit 2
+    fi
+    UBUNTU_VERSION="$packet_ubuntu"
+    REF="$packet_ref"
+    MODE="$packet_mode"
+    TARGET_USERNAME="$packet_username"
 fi
 
 if [[ -z "$IMAGE_URL" ]]; then
@@ -475,6 +531,7 @@ run_factory_harness() {
         --ssh-port "$forwarded_port"
         --ref "$REF"
         --mode "$MODE"
+        --target-username "$TARGET_USERNAME"
         --expect-ubuntu "$UBUNTU_VERSION"
         --expect-final-ubuntu "$EXPECT_FINAL_UBUNTU_VERSION"
         --public-key-file "${ssh_key}.pub"

@@ -180,6 +180,26 @@ secret_packet_fixture() {
     printf '%s\n' "$target_path"
 }
 
+distinct_factory_packet_fixture() {
+    local source_path="$1"
+    local target_path="$ARTIFACT_DIR/distinct-factory-packet.json"
+    jq '
+      .osImage.version = "24.04" |
+      .access.username = "acfsbot" |
+      .install.mode = "safe" |
+      .install.sourceRef = "v9.9.9-test" |
+      .provenance.sourceRef = "v9.9.9-test" |
+      .install.moduleSelection = {
+        onlyModules: ["base.system"],
+        onlyPhases: [],
+        skipModules: ["tools.vault"],
+        noDeps: true
+      } |
+      .install.command = "curl -fsSL \"https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/v9.9.9-test/install.sh\" | TARGET_USER=\"acfsbot\" bash -s -- --yes --mode safe --ref \"v9.9.9-test\" --only \"base.system\" --skip \"tools.vault\" --no-deps"
+    ' "$source_path" > "$target_path"
+    printf '%s\n' "$target_path"
+}
+
 run_packet() {
     local name="$1"
     shift
@@ -287,6 +307,33 @@ test_secret_values_are_refused() {
     pass "secret_values_are_refused"
 }
 
+test_packet_rejects_root_username_and_command_drift() {
+    local packet invalid_packet output status
+    packet="$(valid_packet_fixture)"
+    invalid_packet="$ARTIFACT_DIR/root-command-drift-packet.json"
+    jq '
+      .access.username = "root" |
+      .install.mode = "safe" |
+      .install.moduleSelection = {onlyModules: ["base.system"], noDeps: true} |
+      .install.command = "npm install"
+    ' "$packet" > "$invalid_packet"
+
+    output="$(run_packet root-command-drift --json --file "$invalid_packet")"
+    status="$(cat "$ARTIFACT_DIR/root-command-drift.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("valid Linux username")) and
+      any(.validation.errors[]; contains("wrong-package-manager")) and
+      any(.validation.errors[]; contains("declared install.mode")) and
+      any(.validation.errors[]; contains("declared module selector")) and
+      any(.validation.errors[]; contains("--no-deps"))
+    ' <<<"$output" >/dev/null || return 1
+
+    pass "packet_rejects_root_username_and_command_drift"
+}
+
 test_malformed_packet_fails_with_json_error() {
     local packet output status
     packet="$(write_fixture malformed-packet.json <<'JSON'
@@ -360,10 +407,67 @@ test_factory_sentinel_rejects_unreachable_ssh_with_ssh_category() {
       .status == "failed" and
       .failureCategory == "ssh" and
       .exitCode == 1 and
-      .target.host == "root@<REDACTED:host_ip>"
+      .target.host == "root@<REDACTED:host>"
     ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
 
     pass "factory_sentinel_rejects_unreachable_ssh_with_ssh_category"
+}
+
+test_factory_maps_canonical_packet_before_building_url() {
+    local packet distinct_packet out_dir status
+    packet="$(valid_packet_fixture)"
+    distinct_packet="$(distinct_factory_packet_fixture "$packet")"
+    out_dir="$ARTIFACT_DIR/factory-canonical-mapping"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --ssh-port 59997 \
+        --provisioning-packet "$distinct_packet" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .failureCategory == "ssh" and
+      .target.host == "root@<REDACTED:host>" and
+      .target.ref == "v9.9.9-test" and
+      .target.mode == "safe" and
+      .target.username == "acfsbot" and
+      .target.expectedInitialUbuntu == "24.04" and
+      .provisioningPacketProjection.status == "captured" and
+      .provisioningPacketProjection.packet.osImage.version == "24.04" and
+      .provisioningPacketProjection.packet.access.username == "acfsbot" and
+      .provisioningPacketProjection.packet.install.sourceRef == "v9.9.9-test" and
+      .provisioningPacketProjection.packet.install.moduleSelection.onlyModules == ["base.system"]
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+    ! grep -q 'localhost' "$out_dir/factory-sentinel-manifest.json" || return 1
+    ! grep -q 'localhost' "$out_dir/factory-sentinel-summary.md" || return 1
+
+    pass "factory_maps_canonical_packet_before_building_url"
+}
+
+test_factory_rejects_explicit_packet_conflicts_before_ssh() {
+    local packet distinct_packet out_dir status
+    packet="$(valid_packet_fixture)"
+    distinct_packet="$(distinct_factory_packet_fixture "$packet")"
+    out_dir="$ARTIFACT_DIR/factory-explicit-conflict"
+    mkdir -p "$out_dir"
+
+    status=0
+    "$FACTORY_INSTALL_SH" \
+        --ssh-target root@localhost \
+        --mode vibe \
+        --provisioning-packet "$distinct_packet" \
+        --artifacts-dir "$out_dir" >/dev/null 2>&1 || status=$?
+
+    [[ "$status" -eq 2 ]] || return 1
+    jq -e '
+      .failureCategory == "provider_setup" and
+      .errorMessage == "explicit factory arguments conflict with provisioning packet intent"
+    ' "$out_dir/factory-sentinel-manifest.json" >/dev/null || return 1
+
+    pass "factory_rejects_explicit_packet_conflicts_before_ssh"
 }
 
 test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens() {
@@ -398,10 +502,13 @@ run_all_tests() {
         test_unknown_provider_warns_without_provider_api
         test_unsupported_os_fails_validation
         test_secret_values_are_refused
+        test_packet_rejects_root_username_and_command_drift
         test_malformed_packet_fails_with_json_error
         test_factory_sentinel_rejects_invalid_packet_with_provider_setup_category
         test_factory_sentinel_rejects_unreachable_ssh_with_ssh_category
         test_factory_sentinel_manifest_redacts_host_ip_and_sensitive_tokens
+        test_factory_maps_canonical_packet_before_building_url
+        test_factory_rejects_explicit_packet_conflicts_before_ssh
     )
 
     for test_name in "${tests[@]}"; do
