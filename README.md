@@ -30,7 +30,7 @@
 ### Quick Install
 
 ```bash
-{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe
+{ acfs_installer="$(curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh")" || acfs_installer="$(curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh")"; } && printf '%s\n' "$acfs_installer" | bash -s -- --yes --mode vibe
 ```
 
 > [!NOTE]
@@ -40,7 +40,8 @@
 > ledger and the install fails with `INTEGRITY: <file> missing` — a failure that looks like a
 > repository defect but is purely a CDN cache artifact. Keeping the authoritative source primary
 > and the CDN as fallback preserves the resilience without that failure mode. Please do not
-> reorder these.
+> reorder these. Each download is buffered before execution so a failed request cannot concatenate
+> a partial installer with the fallback response.
 
 The installer is **idempotent**—if interrupted, simply re-run it. It will automatically resume from the last completed phase without prompts.
 
@@ -465,7 +466,7 @@ The installer is the heart of ACFS—a modular Bash script that transforms a fre
 Full vibe mode (recommended for throwaway VPS):
 
 ```bash
-{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe
+{ acfs_installer="$(curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh")" || acfs_installer="$(curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh")"; } && printf '%s\n' "$acfs_installer" | bash -s -- --yes --mode vibe
 ```
 
 Interactive mode (asks for confirmation):
@@ -3097,7 +3098,7 @@ For local development, use the individual tools directly.
 
 The installer is **checkpointed**. Simply re-run it:
 ```bash
-{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe
+{ acfs_installer="$(curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh")" || acfs_installer="$(curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh")"; } && printf '%s\n' "$acfs_installer" | bash -s -- --yes --mode vibe
 ```
 
 It will skip already-completed phases and resume where it left off.
@@ -4424,7 +4425,7 @@ for f in ~/.zshrc ~/.tmux.conf ~/.p10k.zsh; do
   [ -f "$f" ] && mv "$f" "$f".backup."$ts"
 done
 
-{ curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" || curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh"; } | bash -s -- --yes --mode vibe --force-reinstall
+{ acfs_installer="$(curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh")" || acfs_installer="$(curl -fsSL "https://cdn.jsdelivr.net/gh/Dicklesworthstone/agentic_coding_flywheel_setup@main/install.sh")"; } && printf '%s\n' "$acfs_installer" | bash -s -- --yes --mode vibe --force-reinstall
 ```
 
 ---
