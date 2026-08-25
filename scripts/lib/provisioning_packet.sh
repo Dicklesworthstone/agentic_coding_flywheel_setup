@@ -222,17 +222,53 @@ provisioning_packet_validate_username() {
     local username=""
     username="$(provisioning_packet_scalar "access.username")"
 
-    if [[ ! "$username" =~ ^[a-z_][a-z0-9._-]*$ ]]; then
+    if [[ ${#username} -gt 32 || ! "$username" =~ ^[a-z_][a-z0-9._-]*$ || "$username" == "root" ]]; then
         provisioning_packet_add_error "access.username is not a valid Linux username: ${username:-<missing>}"
+    fi
+}
+
+provisioning_packet_validate_shapes() {
+    if ! jq -e '
+        (.schemaVersion | type == "number" and floor == .)
+        and (.privacy | type == "object")
+        and (.provider | type == "object")
+        and (.provider.manualStepsRemaining | type == "array" and all(.[]; type == "string"))
+        and (.region | type == "object")
+        and (.size | type == "object")
+        and (.osImage | type == "object")
+        and (.access | type == "object")
+        and (.cloudInit | type == "object")
+        and (.install | type == "object")
+        and (.compatibility | type == "object")
+        and (.compatibility.targetAgents | type == "number" and floor == . and . >= 1)
+        and (.verificationCommands | type == "array")
+        and (.expectedArtifacts | type == "array")
+        and (
+          (.install.moduleSelection // {}) as $selection
+          | ($selection | type == "object")
+          and (($selection.profile // "") | type == "string" and test("^[a-z0-9][a-z0-9._-]{0,79}$") or . == "")
+          and (($selection.onlyModules // []) | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
+          and (($selection.onlyPhases // []) | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
+          and (($selection.skipModules // []) | type == "array" and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9._-]{0,127}$")))
+          and (($selection.skipTags // []) | type == "array" and length == 0)
+          and (($selection.skipCategories // []) | type == "array" and length == 0)
+          and (($selection.noDeps // false) | type == "boolean")
+        )
+    ' "$PROVISIONING_PACKET_FILE" >/dev/null 2>&1; then
+        provisioning_packet_add_error "Packet fields do not match the v1 structural contract."
     fi
 }
 
 provisioning_packet_validate_install_command() {
     local command_text=""
+    local install_mode=""
+    local command_location=""
     local source_ref=""
     local username=""
 
     command_text="$(provisioning_packet_scalar "install.command")"
+    install_mode="$(provisioning_packet_scalar "install.mode")"
+    command_location="$(provisioning_packet_scalar "install.commandRunLocation")"
     source_ref="$(provisioning_packet_scalar "install.sourceRef")"
     username="$(provisioning_packet_scalar "access.username")"
 
@@ -241,9 +277,29 @@ provisioning_packet_validate_install_command() {
         return
     }
 
-    if [[ "$command_text" =~ rm[[:space:]]+-rf|git[[:space:]]+reset|git[[:space:]]+clean|\b(npm|yarn|pnpm)\b ]]; then
+    case "$install_mode" in
+        vibe|safe) ;;
+        *) provisioning_packet_add_error "install.mode must be vibe or safe." ;;
+    esac
+
+    case "$command_location" in
+        vps-root-shell|cloud-init|provider-api) ;;
+        *) provisioning_packet_add_error "Unsupported install.commandRunLocation: ${command_location:-<missing>}" ;;
+    esac
+
+    if [[ ! "$source_ref" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] \
+        || [[ "$source_ref" == *".."* || "$source_ref" == *"//"* || "$source_ref" == */.lock ]]; then
+        provisioning_packet_add_error "install.sourceRef is not a safe Git ref."
+        return
+    fi
+
+    if [[ "$command_text" =~ rm[[:space:]]+-rf|git[[:space:]]+reset|git[[:space:]]+clean ]] \
+        || [[ "$command_text" =~ (^|[[:space:]])(npm|yarn|pnpm)($|[[:space:]]) ]]; then
         provisioning_packet_add_error "install.command contains a forbidden destructive or wrong-package-manager command."
     fi
+
+    [[ "$command_text" == *"--mode ${install_mode}"* ]] || \
+        provisioning_packet_add_error "install.command does not use the declared install.mode: $install_mode"
 
     if [[ "$source_ref" == "main" ]]; then
         [[ "$command_text" == *"/main/install.sh"* ]] || \
@@ -258,6 +314,42 @@ provisioning_packet_validate_install_command() {
     if [[ "$username" != "ubuntu" ]]; then
         [[ "$command_text" == *"TARGET_USER=\"${username}\""* ]] || \
             provisioning_packet_add_error "install.command does not set TARGET_USER for access.username: $username"
+    fi
+
+    while IFS=$'\t' read -r selector_kind selector_value; do
+        [[ -n "$selector_kind" && -n "$selector_value" ]] || continue
+        case "$selector_kind" in
+            profile)
+                if [[ "$selector_value" != "$install_mode" && "$selector_value" != "full" ]]; then
+                    [[ "$command_text" == *"--profile \"${selector_value}\""* ]] || \
+                        provisioning_packet_add_error "install.command is missing declared profile selector: $selector_value"
+                fi
+                ;;
+            onlyModules)
+                [[ "$command_text" == *"--only \"${selector_value}\""* || "$command_text" == *"--profile "* ]] || \
+                    provisioning_packet_add_error "install.command is missing declared module selector: $selector_value"
+                ;;
+            onlyPhases)
+                [[ "$command_text" == *"--only-phase \"${selector_value}\""* || "$command_text" == *"--profile "* ]] || \
+                    provisioning_packet_add_error "install.command is missing declared phase selector: $selector_value"
+                ;;
+            skipModules)
+                [[ "$command_text" == *"--skip \"${selector_value}\""* ]] || \
+                    provisioning_packet_add_error "install.command is missing declared skip selector: $selector_value"
+                ;;
+        esac
+    done < <(jq -r '
+      (.install.moduleSelection // {}) as $selection
+      | ([if ($selection.profile // "") != "" then ["profile", $selection.profile] else empty end]
+        + [($selection.onlyModules // [])[] | ["onlyModules", .]]
+        + [($selection.onlyPhases // [])[] | ["onlyPhases", .]]
+        + [($selection.skipModules // [])[] | ["skipModules", .]])[]?
+      | @tsv
+    ' "$PROVISIONING_PACKET_FILE")
+
+    if provisioning_packet_bool_is "install.moduleSelection.noDeps" true; then
+        [[ "$command_text" == *"--no-deps"* ]] || \
+            provisioning_packet_add_error "install.command is missing declared --no-deps selector."
     fi
 }
 
@@ -302,6 +394,7 @@ provisioning_packet_scan_secret_values() {
 
 provisioning_packet_validate_packet() {
     provisioning_packet_validate_required_fields
+    provisioning_packet_validate_shapes
     provisioning_packet_validate_enums
     provisioning_packet_validate_redaction_flags
     provisioning_packet_validate_username

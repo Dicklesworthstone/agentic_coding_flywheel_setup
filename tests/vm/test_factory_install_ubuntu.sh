@@ -22,9 +22,10 @@ SSH_KEY="${ACFS_FACTORY_SSH_KEY:-}"
 SSH_PORT="${ACFS_FACTORY_SSH_PORT:-}"
 REF="${ACFS_REF:-main}"
 MODE="${ACFS_FACTORY_MODE:-vibe}"
+TARGET_USERNAME="${ACFS_FACTORY_TARGET_USERNAME:-ubuntu}"
 EXPECT_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_UBUNTU_VERSION:-25.10}"
 EXPECT_FINAL_UBUNTU_VERSION="${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION:-25.10}"
-EXPECT_NO_UBUNTU="${ACFS_FACTORY_EXPECT_NO_UBUNTU:-true}"
+EXPECT_NO_TARGET_USER="${ACFS_FACTORY_EXPECT_NO_TARGET_USER:-true}"
 INSTALL_TIMEOUT_SECONDS="${ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS:-14400}"
 POST_REBOOT_TIMEOUT_SECONDS="${ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS:-14400}"
 ALLOW_INSTALL_REBOOT="${ACFS_FACTORY_ALLOW_INSTALL_REBOOT:-false}"
@@ -33,6 +34,15 @@ PROVISIONING_PACKET="${ACFS_FACTORY_PROVISIONING_PACKET:-}"
 INSTALL_URL="${ACFS_FACTORY_INSTALL_URL:-}"
 ARTIFACTS_DIR="${ACFS_FACTORY_ARTIFACTS_DIR:-}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+REF_EXPLICIT=$([[ -n "${ACFS_REF+x}" ]] && printf true || printf false)
+MODE_EXPLICIT=$([[ -n "${ACFS_FACTORY_MODE+x}" ]] && printf true || printf false)
+TARGET_USERNAME_EXPLICIT=$([[ -n "${ACFS_FACTORY_TARGET_USERNAME+x}" ]] && printf true || printf false)
+EXPECT_UBUNTU_EXPLICIT=$([[ -n "${ACFS_FACTORY_EXPECT_UBUNTU_VERSION+x}" ]] && printf true || printf false)
+PACKET_PROFILE=""
+PACKET_ONLY_MODULES_CSV=""
+PACKET_ONLY_PHASES_CSV=""
+PACKET_SKIP_MODULES_CSV=""
+PACKET_NO_DEPS=false
 
 usage() {
     cat <<'EOF'
@@ -49,11 +59,12 @@ Options:
   --ssh-port <port>           SSH port.
   --ref <ref>                 ACFS ref to install (default: ACFS_REF or main).
   --mode <mode>               Install mode: vibe or safe (default: vibe).
+  --target-username <name>    Expected non-root ACFS user (default: ubuntu).
   --provisioning-packet <path> Provider provisioning packet JSON to validate and map.
   --packet <path>             Alias for --provisioning-packet.
   --expect-ubuntu <version>   Required initial VERSION_ID from /etc/os-release (default: 25.10).
   --expect-final-ubuntu <ver> Required final VERSION_ID after install/resume (default: 25.10).
-  --allow-existing-ubuntu     Do not fail if the ubuntu user exists before install.
+  --allow-existing-target-user Do not fail if the target user exists before install.
   --allow-install-reboot      Treat SSH disconnects during install as expected and reconnect.
   --public-key-file <path>    Public key to seed into root authorized_keys before install.
   --install-timeout <seconds> Timeout per installer run (default: 14400).
@@ -67,10 +78,11 @@ Environment equivalents:
   ACFS_FACTORY_SSH_KEY
   ACFS_FACTORY_SSH_PORT
   ACFS_FACTORY_MODE
+  ACFS_FACTORY_TARGET_USERNAME
   ACFS_FACTORY_PROVISIONING_PACKET
   ACFS_FACTORY_EXPECT_UBUNTU_VERSION
   ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION
-  ACFS_FACTORY_EXPECT_NO_UBUNTU
+  ACFS_FACTORY_EXPECT_NO_TARGET_USER
   ACFS_FACTORY_ALLOW_INSTALL_REBOOT
   ACFS_FACTORY_PUBLIC_KEY_FILE
   ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS
@@ -80,7 +92,7 @@ Environment equivalents:
 
 Notes:
   - This test is meant for a disposable, freshly provisioned VM/VPS.
-  - By default it fails if the ubuntu user already exists before install.
+  - By default it fails if the target user already exists before install.
   - It does not clean up the remote host; preserve it for failure forensics or
     destroy it using your provider tooling after reviewing artifacts.
 EOF
@@ -102,10 +114,17 @@ while [[ $# -gt 0 ]]; do
             ;;
         --ref)
             REF="${2:-}"
+            REF_EXPLICIT=true
             shift 2
             ;;
         --mode)
             MODE="${2:-}"
+            MODE_EXPLICIT=true
+            shift 2
+            ;;
+        --target-username)
+            TARGET_USERNAME="${2:-}"
+            TARGET_USERNAME_EXPLICIT=true
             shift 2
             ;;
         --provisioning-packet|--packet)
@@ -114,14 +133,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         --expect-ubuntu)
             EXPECT_UBUNTU_VERSION="${2:-}"
+            EXPECT_UBUNTU_EXPLICIT=true
             shift 2
             ;;
         --expect-final-ubuntu)
             EXPECT_FINAL_UBUNTU_VERSION="${2:-}"
             shift 2
             ;;
-        --allow-existing-ubuntu)
-            EXPECT_NO_UBUNTU=false
+        --allow-existing-target-user)
+            EXPECT_NO_TARGET_USER=false
             shift
             ;;
         --allow-install-reboot)
@@ -173,6 +193,11 @@ case "$MODE" in
         ;;
 esac
 
+if [[ ${#TARGET_USERNAME} -gt 32 || ! "$TARGET_USERNAME" =~ ^[a-z_][a-z0-9._-]*$ || "$TARGET_USERNAME" == "root" ]]; then
+    echo "ERROR: --target-username must be a valid non-root Linux username" >&2
+    exit 1
+fi
+
 if [[ -z "$REF" ]]; then
     echo "ERROR: --ref cannot be empty" >&2
     exit 1
@@ -193,10 +218,6 @@ if [[ -n "$PUBLIC_KEY_FILE" && ! -r "$PUBLIC_KEY_FILE" ]]; then
     exit 1
 fi
 
-if [[ -z "$INSTALL_URL" ]]; then
-    INSTALL_URL="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${REF}/install.sh?acfs_factory_e2e=${TIMESTAMP}"
-fi
-
 if [[ -z "$ARTIFACTS_DIR" ]]; then
     ARTIFACTS_DIR="$REPO_ROOT/tests/artifacts/factory-install-${TIMESTAMP}"
 fi
@@ -214,6 +235,7 @@ require_cmd scp
 require_cmd date
 require_cmd mkdir
 require_cmd base64
+require_cmd jq
 
 ssh_args=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
 scp_args=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20)
@@ -267,27 +289,42 @@ write_factory_sentinel_artifacts() {
     local summary_file="$ARTIFACTS_DIR/factory-sentinel-summary.md"
 
     local packet_json="{}"
+    local packet_projection_status="not_supplied"
     if [[ -n "$PROVISIONING_PACKET" && -f "$PROVISIONING_PACKET" ]]; then
-        if command -v jq >/dev/null 2>&1; then
-            packet_json="$(jq -c '{
+        packet_projection_status="unavailable"
+        if packet_json="$(jq -ce '{
                 schema: .schema,
                 schemaVersion: .schemaVersion,
                 stage: .stage,
                 provider: {id: .provider.id, name: .provider.name, automationLevel: .provider.automationLevel},
                 region: {id: .region.id, label: .region.label, readinessStatus: .region.readinessStatus},
-                os: {id: .os.id, initialReleaseId: .os.initialReleaseId, expectedFinalReleaseId: .os.expectedFinalReleaseId},
-                user: {targetUsername: .user.targetUsername},
-                installPlan: {mode: .installPlan.mode, installRef: .installPlan.installRef}
-            }' "$PROVISIONING_PACKET" 2>/dev/null || echo "{}")"
+                osImage: {distribution: .osImage.distribution, version: .osImage.version, readinessStatus: .osImage.readinessStatus},
+                access: {username: .access.username},
+                install: {
+                    mode: .install.mode,
+                    sourceRef: .install.sourceRef,
+                    moduleSelection: (.install.moduleSelection // null)
+                }
+            }' "$PROVISIONING_PACKET" 2>/dev/null)"; then
+            packet_projection_status="captured"
+        else
+            packet_json="{}"
         fi
     fi
 
     local target_redacted sanitized_error_msg
-    target_redacted="$(echo "$SSH_TARGET" | sed -E 's/([A-Za-z0-9._%+-]+@)?([0-9]{1,3}\.){3}[0-9]{1,3}/\1<REDACTED:host_ip>/g; s/([A-Za-z0-9._%+-]+@)?(([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}|::1)/\1<REDACTED:host_ip>/g')"
-    sanitized_error_msg="$(echo "$error_msg" | sed -E 's/([A-Za-z0-9._%+-]+@)?([0-9]{1,3}\.){3}[0-9]{1,3}/\1<REDACTED:host_ip>/g; s/([A-Za-z0-9._%+-]+@)?(([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}|::1)/\1<REDACTED:host_ip>/g')"
+    if [[ "$SSH_TARGET" == *@* ]]; then
+        target_redacted="${SSH_TARGET%%@*}@<REDACTED:host>"
+    else
+        target_redacted="<REDACTED:host>"
+    fi
+    if [[ -n "$SSH_TARGET" && "$error_msg" == *"$SSH_TARGET"* ]]; then
+        sanitized_error_msg="Factory host operation failed; target address redacted."
+    else
+        sanitized_error_msg="$error_msg"
+    fi
 
-    if command -v jq >/dev/null 2>&1; then
-        jq -n \
+    jq -n \
             --arg schema "acfs.factory-sentinel-manifest.v1" \
             --arg timestamp "$TIMESTAMP" \
             --arg status "$status" \
@@ -299,6 +336,8 @@ write_factory_sentinel_artifacts() {
             --arg mode "$MODE" \
             --arg expect_ubuntu "$EXPECT_UBUNTU_VERSION" \
             --arg expect_final_ubuntu "$EXPECT_FINAL_UBUNTU_VERSION" \
+            --arg target_username "$TARGET_USERNAME" \
+            --arg packet_projection_status "$packet_projection_status" \
             --argjson packet "$packet_json" \
             '{
                 schema: $schema,
@@ -311,10 +350,14 @@ write_factory_sentinel_artifacts() {
                     host: $ssh_target_redacted,
                     ref: $ref,
                     mode: $mode,
+                    username: $target_username,
                     expectedInitialUbuntu: $expect_ubuntu,
                     expectedFinalUbuntu: $expect_final_ubuntu
                 },
-                provisioningPacket: (if $packet == {} then null else $packet end),
+                provisioningPacketProjection: {
+                    status: $packet_projection_status,
+                    packet: (if $packet == {} then null else $packet end)
+                },
                 artifacts: [
                     "factory-e2e.log",
                     "factory-e2e.jsonl",
@@ -323,8 +366,7 @@ write_factory_sentinel_artifacts() {
                     "factory-sentinel-manifest.json",
                     "factory-sentinel-summary.md"
                 ]
-            }' > "$manifest_file" 2>/dev/null || true
-    fi
+            }' > "$manifest_file"
 
     cat > "$summary_file" <<EOF
 # ACFS Factory Host Sentinel Report
@@ -335,6 +377,7 @@ write_factory_sentinel_artifacts() {
 - **Exit Code**: ${exit_code}
 - **Ref**: ${REF}
 - **Mode**: ${MODE}
+- **Target Username**: ${TARGET_USERNAME}
 - **Expected OS**: Ubuntu ${EXPECT_UBUNTU_VERSION} -> ${EXPECT_FINAL_UBUNTU_VERSION}
 
 ## Failure Diagnostics
@@ -372,29 +415,46 @@ validate_provisioning_packet() {
         exit 2
     fi
 
-    if command -v jq >/dev/null 2>&1; then
-        local packet_init_os packet_final_os packet_ref packet_mode
-        packet_init_os="$(jq -r '.os.initialReleaseId // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
-        packet_final_os="$(jq -r '.os.expectedFinalReleaseId // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
-        packet_ref="$(jq -r '.provenance.sourceRef // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
-        packet_mode="$(jq -r '.installPlan.mode // empty' "$PROVISIONING_PACKET" 2>/dev/null || true)"
+    local packet_init_os packet_ref packet_mode packet_username packet_location
+    packet_init_os="$(jq -er '.osImage.version' "$PROVISIONING_PACKET")"
+    packet_ref="$(jq -er '.install.sourceRef' "$PROVISIONING_PACKET")"
+    packet_mode="$(jq -er '.install.mode' "$PROVISIONING_PACKET")"
+    packet_username="$(jq -er '.access.username' "$PROVISIONING_PACKET")"
+    packet_location="$(jq -er '.install.commandRunLocation' "$PROVISIONING_PACKET")"
 
-        if [[ -n "$packet_init_os" && "$EXPECT_UBUNTU_VERSION" == "25.10" && -z "${ACFS_FACTORY_EXPECT_UBUNTU_VERSION:-}" ]]; then
-            EXPECT_UBUNTU_VERSION="$packet_init_os"
-        fi
-        if [[ -n "$packet_final_os" && "$EXPECT_FINAL_UBUNTU_VERSION" == "25.10" && -z "${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION:-}" ]]; then
-            EXPECT_FINAL_UBUNTU_VERSION="$packet_final_os"
-        fi
-        if [[ -n "$packet_ref" && "$REF" == "main" && -z "${ACFS_REF:-}" ]]; then
-            REF="$packet_ref"
-        fi
-        if [[ -n "$packet_mode" && "$MODE" == "vibe" && -z "${ACFS_FACTORY_MODE:-}" ]]; then
-            MODE="$packet_mode"
-        fi
+    if [[ "$packet_location" != "vps-root-shell" ]]; then
+        echo "ERROR: factory SSH execution requires install.commandRunLocation=vps-root-shell" >&2
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "packet install location is not compatible with the SSH factory runner"
+        redact_local_factory_artifacts
+        exit 2
     fi
+
+    if [[ "$REF_EXPLICIT" == "true" && "$REF" != "$packet_ref" ]] \
+        || [[ "$MODE_EXPLICIT" == "true" && "$MODE" != "$packet_mode" ]] \
+        || [[ "$TARGET_USERNAME_EXPLICIT" == "true" && "$TARGET_USERNAME" != "$packet_username" ]] \
+        || [[ "$EXPECT_UBUNTU_EXPLICIT" == "true" && "$EXPECT_UBUNTU_VERSION" != "$packet_init_os" ]]; then
+        echo "ERROR: explicit factory arguments conflict with the provisioning packet" >&2
+        write_factory_sentinel_artifacts "failed" "provider_setup" 2 "explicit factory arguments conflict with provisioning packet intent"
+        redact_local_factory_artifacts
+        exit 2
+    fi
+
+    REF="$packet_ref"
+    MODE="$packet_mode"
+    TARGET_USERNAME="$packet_username"
+    EXPECT_UBUNTU_VERSION="$packet_init_os"
+    PACKET_PROFILE="$(jq -r '.install.moduleSelection.profile // empty' "$PROVISIONING_PACKET")"
+    PACKET_ONLY_MODULES_CSV="$(jq -r '(.install.moduleSelection.onlyModules // []) | join(",")' "$PROVISIONING_PACKET")"
+    PACKET_ONLY_PHASES_CSV="$(jq -r '(.install.moduleSelection.onlyPhases // []) | join(",")' "$PROVISIONING_PACKET")"
+    PACKET_SKIP_MODULES_CSV="$(jq -r '(.install.moduleSelection.skipModules // []) | join(",")' "$PROVISIONING_PACKET")"
+    PACKET_NO_DEPS="$(jq -r '.install.moduleSelection.noDeps // false' "$PROVISIONING_PACKET")"
 }
 
 validate_provisioning_packet
+
+if [[ -z "$INSTALL_URL" ]]; then
+    INSTALL_URL="https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/${REF}/install.sh?acfs_factory_e2e=${TIMESTAMP}"
+fi
 
 remote_dir="/var/log/acfs/factory-e2e-${TIMESTAMP}"
 remote_runner="${remote_dir}/remote-runner.sh"
@@ -424,9 +484,10 @@ set -euo pipefail
 : "${ACFS_FACTORY_INSTALL_URL:?}"
 : "${ACFS_FACTORY_REF:?}"
 : "${ACFS_FACTORY_MODE:?}"
+: "${ACFS_FACTORY_TARGET_USERNAME:?}"
 : "${ACFS_FACTORY_EXPECT_UBUNTU_VERSION:?}"
 : "${ACFS_FACTORY_EXPECT_FINAL_UBUNTU_VERSION:?}"
-: "${ACFS_FACTORY_EXPECT_NO_UBUNTU:?}"
+: "${ACFS_FACTORY_EXPECT_NO_TARGET_USER:?}"
 : "${ACFS_FACTORY_INSTALL_TIMEOUT_SECONDS:?}"
 : "${ACFS_FACTORY_POST_REBOOT_TIMEOUT_SECONDS:?}"
 : "${ACFS_FACTORY_RUN_MODE:?}"
