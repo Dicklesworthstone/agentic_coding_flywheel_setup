@@ -108,6 +108,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 4,
     dependencies: [
       "shell.zsh",
+      "users.ubuntu",
     ],
     tags: [
       "critical",
@@ -201,6 +202,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "critical",
@@ -216,6 +218,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "critical",
@@ -231,6 +234,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "critical",
@@ -261,6 +265,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "critical",
@@ -276,6 +281,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -291,6 +297,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -306,6 +313,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 6,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -320,6 +328,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 7,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -335,6 +344,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 7,
     dependencies: [
       "lang.bun",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -351,6 +361,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "lang.bun",
       "lang.nvm",
+      "users.ubuntu",
     ],
     tags: [
       "legacy",
@@ -366,6 +377,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 7,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -381,6 +393,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 7,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -396,6 +409,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 7,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -411,6 +425,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 7,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -456,6 +471,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 8,
     dependencies: [
       "lang.bun",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -472,6 +488,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "base.system",
       "base.filesystem",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -487,6 +504,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 8,
     dependencies: [
       "lang.bun",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -502,6 +520,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "cli.modern",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -517,6 +536,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "lang.bun",
       "lang.uv",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -532,6 +552,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "lang.rust",
       "lang.uv",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -547,6 +568,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -560,7 +582,9 @@ export const manifestModules: ManifestModuleMetadata[] = [
     description: "Curated battle-tested prompts for AI agents - browse and install as skills (jfp)",
     category: "stack",
     phase: 9,
-    dependencies: [],
+    dependencies: [
+      "users.ubuntu",
+    ],
     tags: [
       "recommended",
       "agent-skills",
@@ -576,6 +600,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -593,6 +618,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
       "lang.bun",
       "lang.uv",
       "tools.ast_grep",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -607,6 +633,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -622,6 +649,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "lang.go",
       "stack.beads_rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -637,6 +665,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "lang.rust",
       "lang.uv",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -652,6 +681,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "lang.rust",
       "lang.uv",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -666,6 +696,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.bun",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -680,6 +711,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.go",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -694,6 +726,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "agents.claude",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -710,6 +743,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "cli.modern",
       "stack.ntm",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -725,6 +759,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "lang.rust",
       "stack.cass",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -739,6 +774,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -754,6 +790,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "optional",
@@ -770,6 +807,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     dependencies: [
       "base.system",
       "lang.go",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -785,6 +823,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -800,6 +839,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -815,6 +855,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -830,6 +871,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "cli.modern",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -845,6 +887,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -860,6 +903,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "agents.claude",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -876,6 +920,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -891,6 +936,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -906,6 +952,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -921,6 +968,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "cli.modern",
+      "users.ubuntu",
     ],
     tags: [
       "recommended",
@@ -936,6 +984,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -950,6 +999,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "base.system",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -964,6 +1014,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -979,6 +1030,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -994,6 +1046,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -1010,6 +1063,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -1026,6 +1080,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.bun",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -1042,6 +1097,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -1058,6 +1114,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -1073,6 +1130,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 9,
     dependencies: [
       "lang.rust",
+      "users.ubuntu",
     ],
     tags: [
       "utility",
@@ -1091,6 +1149,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
       "agents.codex",
       "agents.antigravity",
       "cli.modern",
+      "users.ubuntu",
     ],
     tags: [
       "workspace",
@@ -1104,7 +1163,9 @@ export const manifestModules: ManifestModuleMetadata[] = [
     description: "Onboarding TUI tutorial",
     category: "acfs",
     phase: 10,
-    dependencies: [],
+    dependencies: [
+      "users.ubuntu",
+    ],
     tags: [
       "orchestration",
     ],
@@ -1116,7 +1177,9 @@ export const manifestModules: ManifestModuleMetadata[] = [
     description: "ACFS update command wrapper",
     category: "acfs",
     phase: 10,
-    dependencies: [],
+    dependencies: [
+      "users.ubuntu",
+    ],
     tags: [
       "orchestration",
     ],
@@ -1130,6 +1193,7 @@ export const manifestModules: ManifestModuleMetadata[] = [
     phase: 10,
     dependencies: [
       "acfs.update",
+      "users.ubuntu",
     ],
     tags: [
       "orchestration",
@@ -1143,7 +1207,9 @@ export const manifestModules: ManifestModuleMetadata[] = [
     description: "ACFS doctor command for health checks",
     category: "acfs",
     phase: 10,
-    dependencies: [],
+    dependencies: [
+      "users.ubuntu",
+    ],
     tags: [
       "orchestration",
     ],
