@@ -168,6 +168,19 @@ claude auth login
 
 ---
 
+## Team Profiles & Secret Slots
+
+If your organization uses a shared ACFS team profile (`acfs-team-profile.json`):
+
+1. **Shared Defaults, Not Credentials:** Team profiles define default module lists, shell preferences, and required service accounts—they **never** store secret values or tokens.
+2. **Secret Slots:** Each team member fills their individual credential slots on their own VPS:
+   - `secret://acfs/team/anthropic_api_key` → `claude auth login` or export `ANTHROPIC_API_KEY`
+   - `secret://acfs/team/openai_api_key` → `codex auth login` or export `OPENAI_API_KEY`
+   - `secret://acfs/team/github_token` → `gh auth login`
+3. **Safe Support Bundles:** When generating diagnostics with `acfs support-bundle`, your team profile defaults and slot statuses are included for easy troubleshooting, while all credentials and IP addresses remain strictly redacted.
+
+---
+
 ## Next
 
 Now let's learn NTM - the tool that orchestrates all these agents:

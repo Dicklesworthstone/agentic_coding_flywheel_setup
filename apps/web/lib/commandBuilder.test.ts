@@ -166,16 +166,24 @@ describe("buildInstallCommand", () => {
     expect(command).not.toContain('--ref "master"');
   });
 
-  test("appends manifest-backed module selectors for profile previews", () => {
+  test("appends manifest-backed module profile for profile previews", () => {
     const command = buildInstallCommand("vibe", null, "ubuntu", {
       profile: "cloud-only",
     });
 
+    expect(command).toContain('--profile "cloud-only"');
+    expect(command).not.toContain("db.postgres18");
+  });
+
+  test("appends explicit module selectors when specific only or skip modules are provided", () => {
+    const command = buildInstallCommand("vibe", null, "ubuntu", {
+      onlyModules: ["cloud.wrangler", "cloud.supabase"],
+      skipModules: ["tools.vault"],
+    });
+
     expect(command).toContain('--only "cloud.wrangler"');
     expect(command).toContain('--only "cloud.supabase"');
-    expect(command).toContain('--only "cloud.vercel"');
-    expect(command).not.toContain("--profile");
-    expect(command).not.toContain("db.postgres18");
+    expect(command).toContain('--skip "tools.vault"');
   });
 
   test("refuses invalid module selectors instead of serializing them", () => {
@@ -1534,6 +1542,39 @@ describe("buildShareURL", () => {
 
       expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=linux&mode=safe");
       expect(shareURL).not.toContain("10.20.30.40");
+    } finally {
+      Object.defineProperty(globalThis, "window", {
+        value: originalWindow,
+        configurable: true,
+      });
+    }
+  });
+
+  test("includes profile parameter in share URL when not default vibe", () => {
+    const originalWindow = globalThis.window;
+
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        location: {
+          href: "https://acfs.dev/wizard/launch-onboarding",
+          origin: "https://acfs.dev",
+          pathname: "/wizard/launch-onboarding",
+        },
+      },
+      configurable: true,
+    });
+
+    try {
+      const shareURL = buildShareURL({
+        ip: "10.20.30.40",
+        os: "mac",
+        username: "ubuntu",
+        mode: "vibe",
+        ref: null,
+        moduleSelection: { profile: "minimal" },
+      });
+
+      expect(shareURL).toBe("https://acfs.dev/wizard/launch-onboarding?os=mac&mode=vibe&profile=minimal");
     } finally {
       Object.defineProperty(globalThis, "window", {
         value: originalWindow,

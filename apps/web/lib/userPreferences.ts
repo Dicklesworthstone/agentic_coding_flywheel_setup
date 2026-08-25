@@ -26,10 +26,16 @@ import {
   type WorkloadId,
 } from "./vpsProviders";
 
+import {
+  manifestSelectionProfiles,
+  type ManifestSelectionProfileId,
+} from "./generated/manifest-modules";
+
 export { isValidIP, normalizeGitRef, normalizeSSHUsername } from "./inputValidation";
 
 export type OperatingSystem = "mac" | "windows" | "linux";
 export type InstallMode = "vibe" | "safe";
+export type ModuleSelectionProfileId = ManifestSelectionProfileId;
 
 export interface VPSReadinessSelection {
   providerId: string;
@@ -44,6 +50,7 @@ const OS_KEY = "agent-flywheel-user-os";
 const VPS_IP_KEY = "agent-flywheel-vps-ip";
 const INSTALL_MODE_KEY = "agent-flywheel-install-mode";
 const SSH_USERNAME_KEY = "agent-flywheel-ssh-username";
+const MODULE_PROFILE_KEY = "agent-flywheel-module-profile";
 export const ACFS_REF_KEY = "agent-flywheel-acfs-ref";
 export const CREATE_VPS_CHECKLIST_KEY = "agent-flywheel-create-vps-checklist";
 export const VPS_READINESS_SELECTION_KEY = "agent-flywheel-vps-readiness-selection";
@@ -60,6 +67,7 @@ const OS_QUERY_KEY = "os";
 const VPS_IP_QUERY_KEY = "ip";
 const INSTALL_MODE_QUERY_KEY = "mode";
 const SSH_USERNAME_QUERY_KEY = "user";
+const MODULE_PROFILE_QUERY_KEY = "profile";
 const ACFS_REF_QUERY_KEY = "ref";
 const USER_PREFERENCES_EVENT = "acfs:user-preferences-updated";
 const WORKLOAD_IDS: readonly WorkloadId[] = ["light", "standard", "heavy"];
@@ -191,6 +199,7 @@ export const userPreferencesKeys = {
   detectedOS: ["userPreferences", "detectedOS"] as const,
   installMode: ["userPreferences", "installMode"] as const,
   sshUsername: ["userPreferences", "sshUsername"] as const,
+  moduleProfile: ["userPreferences", "moduleProfile"] as const,
   acfsRef: ["userPreferences", "acfsRef"] as const,
   createVPSChecklist: ["userPreferences", "createVPSChecklist"] as const,
   vpsReadinessSelection: ["userPreferences", "vpsReadinessSelection"] as const,
@@ -628,4 +637,50 @@ export function useACFSRef(): [string | null, (ref: string | null) => void, bool
   }, [queryClient]);
 
   return [data ?? null, setRef, status === "success"];
+}
+
+// --- Module Selection Profile ---
+
+const VALID_PROFILES = new Set(manifestSelectionProfiles.map((p) => p.id));
+
+export function getModuleProfile(): ModuleSelectionProfileId {
+  const fromQuery = getQueryParam(MODULE_PROFILE_QUERY_KEY);
+  if (fromQuery && VALID_PROFILES.has(fromQuery as ModuleSelectionProfileId)) {
+    return fromQuery as ModuleSelectionProfileId;
+  }
+  const stored = safeGetItem(MODULE_PROFILE_KEY);
+  if (stored && VALID_PROFILES.has(stored as ModuleSelectionProfileId)) {
+    return stored as ModuleSelectionProfileId;
+  }
+  return "vibe";
+}
+
+export function setModuleProfile(profile: ModuleSelectionProfileId): boolean {
+  if (!VALID_PROFILES.has(profile)) return false;
+  const storedOk = safeSetItem(MODULE_PROFILE_KEY, profile);
+  const urlOk = setQueryParam(MODULE_PROFILE_QUERY_KEY, profile === "vibe" ? null : profile);
+  if (storedOk || urlOk) {
+    emitUserPreferencesUpdate();
+  }
+  return storedOk || urlOk;
+}
+
+export function useModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleSelectionProfileId) => void, boolean] {
+  const queryClient = useQueryClient();
+  usePreferenceSync(userPreferencesKeys.moduleProfile);
+
+  const { data, status } = useQuery({
+    queryKey: userPreferencesKeys.moduleProfile,
+    queryFn: getModuleProfile,
+    staleTime: 0,
+    gcTime: Infinity,
+  });
+
+  const setProfile = useCallback((newProfile: ModuleSelectionProfileId) => {
+    if (setModuleProfile(newProfile)) {
+      queryClient.setQueryData(userPreferencesKeys.moduleProfile, getModuleProfile());
+    }
+  }, [queryClient]);
+
+  return [data ?? "vibe", setProfile, status === "success"];
 }

@@ -221,20 +221,31 @@ describe("resolveModuleSelection", () => {
 describe("buildInstallSelectorArgs", () => {
   test("serializes profile-lowered cloud-only selectors", () => {
     expect(buildInstallSelectorArgs({ profile: "cloud-only" })).toEqual([
-      "--only",
-      "\"cloud.wrangler\"",
-      "--only",
-      "\"cloud.supabase\"",
-      "--only",
-      "\"cloud.vercel\"",
+      "--profile",
+      "\"cloud-only\"",
     ]);
   });
 
   test("serializes phase profiles and expert dependency mode", () => {
     expect(buildInstallSelectorArgs({ profile: "stack-only", noDeps: true })).toEqual([
-      "--only-phase",
-      "\"9\"",
+      "--profile",
+      "\"stack-only\"",
       "--no-deps",
+    ]);
+  });
+
+  test("serializes explicit only modules and phases when no profile specified", () => {
+    expect(
+      buildInstallSelectorArgs({ onlyModules: ["cloud.wrangler", "cloud.supabase"] }),
+    ).toEqual([
+      "--only",
+      "\"cloud.wrangler\"",
+      "--only",
+      "\"cloud.supabase\"",
+    ]);
+    expect(buildInstallSelectorArgs({ onlyPhases: ["agents"] })).toEqual([
+      "--only-phase",
+      "\"7\"",
     ]);
   });
 

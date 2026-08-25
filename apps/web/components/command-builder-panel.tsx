@@ -10,6 +10,8 @@ import {
   Monitor,
   Settings2,
   ChevronDown,
+  Boxes,
+  Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, copyTextToClipboard } from "@/lib/utils";
@@ -19,12 +21,16 @@ import {
   useInstallMode,
   useSSHUsername,
   useACFSRef,
+  useModuleProfile,
   isValidIP,
   normalizeGitRef,
   normalizeSSHUsername,
   type InstallMode,
+  type ModuleSelectionProfileId,
 } from "@/lib/userPreferences";
 import { buildCommands, buildShareURL } from "@/lib/commandBuilder";
+import { resolveModuleSelection } from "@/lib/moduleSelection";
+import { manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
 
 function LocationBadge({ location }: { location: "local" | "vps" }) {
   return (
@@ -128,7 +134,7 @@ function SettingsToggle({
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-muted-foreground">{label}:</span>
-      <div className="flex rounded-lg border border-border/50 bg-muted/30 p-0.5">
+      <div className="flex flex-wrap rounded-lg border border-border/50 bg-muted/30 p-0.5">
         {options.map((opt) => (
           <button
             key={opt.value}
@@ -155,7 +161,9 @@ export function CommandBuilderPanel() {
   const [mode, setMode] = useInstallMode();
   const [username, setUsername] = useSSHUsername();
   const [ref, setRef] = useACFSRef();
+  const [profile, setProfile] = useModuleProfile();
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showPlan, setShowPlan] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const shareResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localIP, setLocalIP] = useState("");
@@ -206,6 +214,12 @@ export function CommandBuilderPanel() {
     return normalizedRefDraft;
   }, [normalizedRefDraft, refDraft]);
 
+  const moduleSelection = useMemo(() => ({ profile }), [profile]);
+
+  const plan = useMemo(() => {
+    return resolveModuleSelection(moduleSelection);
+  }, [moduleSelection]);
+
   const commands = useMemo(() => {
     if (!effectiveIP) return null;
     return buildCommands({
@@ -214,8 +228,10 @@ export function CommandBuilderPanel() {
       username: effectiveUsername,
       mode,
       ref: effectiveRef,
+      moduleSelection,
     });
-  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef]);
+  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection]);
+
   const refError = useMemo(() => {
     const value = refDraft.trim();
     if (!value || normalizedRefDraft) return null;
@@ -230,6 +246,7 @@ export function CommandBuilderPanel() {
       username: effectiveUsername,
       mode,
       ref: effectiveRef,
+      moduleSelection,
     });
     const copied = await copyTextToClipboard(url);
     if (!copied) {
@@ -243,7 +260,7 @@ export function CommandBuilderPanel() {
       setShareCopied(false);
       shareResetTimerRef.current = null;
     }, 2000);
-  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef]);
+  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection]);
 
   const handleIPChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -306,6 +323,13 @@ export function CommandBuilderPanel() {
     }
   }, [normalizedRefDraft, ref, refDraft, setRef]);
 
+  const profileOptions = useMemo(() => {
+    return manifestSelectionProfiles.map((p) => ({
+      value: p.id,
+      label: p.label,
+    }));
+  }, []);
+
   return (
     <div className="space-y-4 rounded-xl border border-border/50 bg-card/30 p-5">
       <div className="flex items-center justify-between">
@@ -355,32 +379,115 @@ export function CommandBuilderPanel() {
         </div>
       )}
 
-      {/* Mode toggle */}
-      <div className="flex flex-wrap items-center gap-4">
-        <SettingsToggle
-          label="Mode"
-          options={[
-            { value: "vibe", label: "Vibe" },
-            { value: "safe", label: "Safe" },
-          ]}
-          value={mode}
-          onChange={(v) => setMode(v as InstallMode)}
-        />
+      {/* Controls: Mode & Profile */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <SettingsToggle
+            label="Mode"
+            options={[
+              { value: "vibe", label: "Vibe" },
+              { value: "safe", label: "Safe" },
+            ]}
+            value={mode}
+            onChange={(v) => setMode(v as InstallMode)}
+          />
 
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Settings2 className="h-3 w-3" />
+            Advanced
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 transition-transform",
+                showAdvanced && "rotate-180",
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Profile Selector */}
+        <SettingsToggle
+          label="Profile"
+          options={profileOptions}
+          value={profile}
+          onChange={(v) => setProfile(v as ModuleSelectionProfileId)}
+        />
+      </div>
+
+      {/* Plan Summary Toggle & Review */}
+      <div className="rounded-lg border border-border/40 bg-muted/15 p-3">
         <button
           type="button"
-          onClick={() => setShowAdvanced(!showAdvanced)}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setShowPlan(!showPlan)}
+          className="flex w-full items-center justify-between text-xs font-medium text-foreground hover:text-primary transition-colors"
+          aria-expanded={showPlan}
         >
-          <Settings2 className="h-3 w-3" />
-          Advanced
+          <div className="flex items-center gap-1.5">
+            <Boxes className="h-3.5 w-3.5 text-primary" />
+            <span>
+              Install Plan: {plan.selectedCount} of {plan.availableCount} modules
+              {plan.availableCount > plan.selectedCount
+                ? ` (${plan.availableCount - plan.selectedCount} skipped)`
+                : ""}
+            </span>
+          </div>
           <ChevronDown
             className={cn(
-              "h-3 w-3 transition-transform",
-              showAdvanced && "rotate-180",
+              "h-3.5 w-3.5 transition-transform",
+              showPlan && "rotate-180",
             )}
           />
         </button>
+
+        {showPlan && (
+          <div className="mt-3 space-y-3 border-t border-border/30 pt-3 text-xs">
+            <div>
+              <span className="font-semibold text-muted-foreground">
+                Included Modules ({plan.included.length}):
+              </span>
+              <div className="mt-1.5 max-h-48 space-y-1 overflow-y-auto rounded-md bg-background/50 p-2 font-mono text-[11px]">
+                {plan.included.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 py-0.5"
+                  >
+                    <span className="truncate text-foreground">
+                      <span className="text-muted-foreground">[P{item.phase}]</span>{" "}
+                      {item.id}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {item.reason === "default" || item.reason === "explicitly requested"
+                        ? "included"
+                        : item.reason}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {plan.excluded.length > 0 && (
+              <div>
+                <span className="font-semibold text-muted-foreground">
+                  Skipped Modules ({plan.excluded.length}):
+                </span>
+                <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto rounded-md bg-background/30 p-2 font-mono text-[11px]">
+                  {plan.excluded.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 py-0.5 text-muted-foreground"
+                    >
+                      <span className="truncate">✕ {item.id}</span>
+                      <span className="shrink-0 text-[10px]">{item.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Advanced settings */}

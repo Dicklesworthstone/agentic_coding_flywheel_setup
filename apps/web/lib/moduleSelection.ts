@@ -354,12 +354,17 @@ export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): stri
   const normalized = normalizeSelection(input, manifestSelectionProfiles);
   const args: string[] = [];
 
-  for (const moduleId of normalized.onlyModules) {
-    args.push("--only", quoteInstallArg(moduleId));
+  if (normalized.profile && normalized.profile.id !== "full" && normalized.profile.id !== "vibe") {
+    args.push("--profile", quoteInstallArg(normalized.profile.id));
+  } else if (!normalized.profile) {
+    for (const moduleId of normalized.onlyModules) {
+      args.push("--only", quoteInstallArg(moduleId));
+    }
+    for (const phase of normalized.onlyPhases) {
+      args.push("--only-phase", quoteInstallArg(phase));
+    }
   }
-  for (const phase of normalized.onlyPhases) {
-    args.push("--only-phase", quoteInstallArg(phase));
-  }
+
   for (const moduleId of normalized.skipModules) {
     args.push("--skip", quoteInstallArg(moduleId));
   }

@@ -425,7 +425,7 @@ function hasSensitivePacketMarker(value: string): boolean {
   if (/\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})\b/.test(value)) {
     return true;
   }
-  if (/\b(?:AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,})\b/.test(value)) {
+  if (/\b(?:AIza[0-9A-Za-z_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|sbp_[0-9A-Za-z_-]{16,}|shpat_[0-9A-Za-z_-]{16,}|rk_(?:live|test)_[0-9A-Za-z_-]{16,})\b/.test(value)) {
     return true;
   }
   if (/(?:token|api[_-]?key|secret|password|private[_-]?key|cookie|session|credential|client[_-]?secret|webhook[_-]?secret|vault[_-]?token)/i.test(value)) {
