@@ -164,7 +164,7 @@ installers:
 
   sbh:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/storage_ballast_helper/main/scripts/install.sh"
-    sha256: "3dff9fdf73bd4bd453dfc3e5e87baf917f3836b2ff1b30e51082e6c99b414866"
+    sha256: "e29fd1caa1e2d46bef1bd9732bb96a2a07daaf74ffe11cd6cbc451bb3cec5ee1"
 
   slb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/simultaneous_launch_button/main/scripts/install.sh"
