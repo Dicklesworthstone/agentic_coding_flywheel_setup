@@ -334,6 +334,29 @@ test_packet_rejects_root_username_and_command_drift() {
     pass "packet_rejects_root_username_and_command_drift"
 }
 
+test_packet_refuses_raw_target_host_and_ref_mismatch() {
+    local packet invalid_packet output status
+    packet="$(valid_packet_fixture)"
+    invalid_packet="$ARTIFACT_DIR/target-host-ref-mismatch-packet.json"
+    jq '
+      .targetHost.address = "customer-vps.example.com" |
+      .provenance.sourceRef = "different-ref"
+    ' "$packet" > "$invalid_packet"
+
+    output="$(run_packet target-host-ref-mismatch --json --file "$invalid_packet")"
+    status="$(cat "$ARTIFACT_DIR/target-host-ref-mismatch.exit")"
+
+    [[ "$status" -eq 1 ]] || return 1
+    jq -e '
+      .status == "fail" and
+      any(.validation.errors[]; contains("Forbidden support-unsafe field")) and
+      any(.validation.errors[]; contains("provenance.sourceRef must match"))
+    ' <<<"$output" >/dev/null || return 1
+    [[ "$output" != *"customer-vps.example.com"* ]] || return 1
+
+    pass "packet_refuses_raw_target_host_and_ref_mismatch"
+}
+
 test_malformed_packet_fails_with_json_error() {
     local packet output status
     packet="$(write_fixture malformed-packet.json <<'JSON'
@@ -503,6 +526,7 @@ run_all_tests() {
         test_unsupported_os_fails_validation
         test_secret_values_are_refused
         test_packet_rejects_root_username_and_command_drift
+        test_packet_refuses_raw_target_host_and_ref_mismatch
         test_malformed_packet_fails_with_json_error
         test_factory_sentinel_rejects_invalid_packet_with_provider_setup_category
         test_factory_sentinel_rejects_unreachable_ssh_with_ssh_category

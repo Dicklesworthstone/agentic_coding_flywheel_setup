@@ -25,6 +25,14 @@ on:
         options:
           - vibe
           - safe
+      target_username:
+        description: "Expected non-root ACFS username"
+        default: "ubuntu"
+        required: true
+      provisioning_packet_json:
+        description: "Optional support-safe provider provisioning packet JSON; when set, packet intent replaces scalar ref/mode/OS/username inputs"
+        default: ""
+        required: false
       expect_ubuntu:
         description: "Expected Ubuntu VERSION_ID on the fresh host"
         default: "25.10"
@@ -33,8 +41,8 @@ on:
         description: "Expected Ubuntu VERSION_ID after install/resume"
         default: "25.10"
         required: true
-      allow_existing_ubuntu:
-        description: "Allow ubuntu user to exist before install"
+      allow_existing_target_user:
+        description: "Allow the target user to exist before install"
         default: false
         required: true
         type: boolean
@@ -75,6 +83,16 @@ on:
         default: "vibe"
         required: false
         type: string
+      target_username:
+        description: "Expected non-root ACFS username"
+        default: "ubuntu"
+        required: false
+        type: string
+      provisioning_packet_json:
+        description: "Optional support-safe provider provisioning packet JSON; when set, packet intent replaces scalar ref/mode/OS/username inputs"
+        default: ""
+        required: false
+        type: string
       expect_ubuntu:
         description: "Expected Ubuntu VERSION_ID on the fresh host"
         default: "25.10"
@@ -85,8 +103,8 @@ on:
         default: "25.10"
         required: false
         type: string
-      allow_existing_ubuntu:
-        description: "Allow ubuntu user to exist before install"
+      allow_existing_target_user:
+        description: "Allow the target user to exist before install"
         default: false
         required: false
         type: boolean
@@ -130,6 +148,20 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate optional provisioning packet
+        id: packet
+        env:
+          PACKET_JSON: ${{ inputs.provisioning_packet_json || github.event.client_payload.provisioning_packet_json || '' }}
+        run: |
+          if [[ -z "$PACKET_JSON" ]]; then
+            echo "path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          packet_path="$RUNNER_TEMP/acfs-provider-provisioning-packet.json"
+          printf '%s\n' "$PACKET_JSON" > "$packet_path"
+          bash scripts/lib/provisioning_packet.sh --file "$packet_path" --json
+          echo "path=$packet_path" >> "$GITHUB_OUTPUT"
 
       - name: Resolve factory backend
         id: config
@@ -216,6 +248,7 @@ jobs:
         env:
           INPUT_REF: ${{ inputs.ref || github.event.client_payload.ref || 'main' }}
           INPUT_MODE: ${{ inputs.mode || github.event.client_payload.mode || 'vibe' }}
+          INPUT_TARGET_USERNAME: ${{ inputs.target_username || github.event.client_payload.target_username || 'ubuntu' }}
           INPUT_EXPECT_UBUNTU: ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '25.10' }}
           INPUT_EXPECT_FINAL_UBUNTU: ${{ inputs.expect_final_ubuntu || github.event.client_payload.expect_final_ubuntu || '25.10' }}
           INPUT_ALLOW_INSTALL_REBOOT: ${{ inputs.allow_install_reboot || github.event.client_payload.allow_install_reboot || false }}
@@ -224,14 +257,21 @@ jobs:
         run: |
           artifacts_dir="$GITHUB_WORKSPACE/tests/artifacts/qemu-factory-e2e-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           args=(
-            --ref "$INPUT_REF"
-            --mode "$INPUT_MODE"
-            --ubuntu "$INPUT_EXPECT_UBUNTU"
             --expect-final-ubuntu "$INPUT_EXPECT_FINAL_UBUNTU"
             --install-timeout "$INPUT_TIMEOUT"
             --post-reboot-timeout "$INPUT_POST_REBOOT_TIMEOUT"
             --artifacts-dir "$artifacts_dir"
           )
+          if [[ -n "${{ steps.packet.outputs.path }}" ]]; then
+            args+=(--provisioning-packet "${{ steps.packet.outputs.path }}")
+          else
+            args+=(
+              --ref "$INPUT_REF"
+              --mode "$INPUT_MODE"
+              --target-username "$INPUT_TARGET_USERNAME"
+              --ubuntu "$INPUT_EXPECT_UBUNTU"
+            )
+          fi
           if [[ "$INPUT_ALLOW_INSTALL_REBOOT" == "true" ]]; then
             args+=(--allow-install-reboot)
           fi
@@ -244,9 +284,10 @@ jobs:
           SSH_PORT: ${{ github.event.client_payload.ssh_port || secrets.ACFS_FACTORY_SSH_PORT }}
           INPUT_REF: ${{ inputs.ref || github.event.client_payload.ref || 'main' }}
           INPUT_MODE: ${{ inputs.mode || github.event.client_payload.mode || 'vibe' }}
+          INPUT_TARGET_USERNAME: ${{ inputs.target_username || github.event.client_payload.target_username || 'ubuntu' }}
           INPUT_EXPECT_UBUNTU: ${{ inputs.expect_ubuntu || github.event.client_payload.expect_ubuntu || '25.10' }}
           INPUT_EXPECT_FINAL_UBUNTU: ${{ inputs.expect_final_ubuntu || github.event.client_payload.expect_final_ubuntu || '25.10' }}
-          INPUT_ALLOW_EXISTING_UBUNTU: ${{ inputs.allow_existing_ubuntu || github.event.client_payload.allow_existing_ubuntu || false }}
+          INPUT_ALLOW_EXISTING_TARGET_USER: ${{ inputs.allow_existing_target_user || github.event.client_payload.allow_existing_target_user || false }}
           INPUT_ALLOW_INSTALL_REBOOT: ${{ inputs.allow_install_reboot || github.event.client_payload.allow_install_reboot || false }}
           INPUT_TIMEOUT: ${{ inputs.install_timeout_seconds || github.event.client_payload.install_timeout_seconds || '14400' }}
           INPUT_POST_REBOOT_TIMEOUT: ${{ inputs.post_reboot_timeout_seconds || github.event.client_payload.post_reboot_timeout_seconds || '14400' }}
@@ -255,22 +296,29 @@ jobs:
           args=(
             --ssh-target "$SSH_TARGET"
             --ssh-key "$RUNNER_TEMP/acfs-factory-e2e/id"
-            --ref "$INPUT_REF"
-            --mode "$INPUT_MODE"
-            --expect-ubuntu "$INPUT_EXPECT_UBUNTU"
             --expect-final-ubuntu "$INPUT_EXPECT_FINAL_UBUNTU"
             --install-timeout "$INPUT_TIMEOUT"
             --post-reboot-timeout "$INPUT_POST_REBOOT_TIMEOUT"
             --artifacts-dir "$artifacts_dir"
           )
+          if [[ -n "${{ steps.packet.outputs.path }}" ]]; then
+            args+=(--provisioning-packet "${{ steps.packet.outputs.path }}")
+          else
+            args+=(
+              --ref "$INPUT_REF"
+              --mode "$INPUT_MODE"
+              --target-username "$INPUT_TARGET_USERNAME"
+              --expect-ubuntu "$INPUT_EXPECT_UBUNTU"
+            )
+          fi
           if [[ -n "${SSH_PORT:-}" ]]; then
             args+=(--ssh-port "$SSH_PORT")
           fi
           if [[ -f "$RUNNER_TEMP/acfs-factory-e2e/id.pub" ]]; then
             args+=(--public-key-file "$RUNNER_TEMP/acfs-factory-e2e/id.pub")
           fi
-          if [[ "$INPUT_ALLOW_EXISTING_UBUNTU" == "true" ]]; then
-            args+=(--allow-existing-ubuntu)
+          if [[ "$INPUT_ALLOW_EXISTING_TARGET_USER" == "true" ]]; then
+            args+=(--allow-existing-target-user)
           fi
           if [[ "$INPUT_ALLOW_INSTALL_REBOOT" == "true" ]]; then
             args+=(--allow-install-reboot)

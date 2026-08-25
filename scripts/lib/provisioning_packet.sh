@@ -293,6 +293,10 @@ provisioning_packet_validate_install_command() {
         return
     fi
 
+    if [[ "$(provisioning_packet_scalar "provenance.sourceRef")" != "$source_ref" ]]; then
+        provisioning_packet_add_error "provenance.sourceRef must match install.sourceRef."
+    fi
+
     if [[ "$command_text" =~ rm[[:space:]]+-rf|git[[:space:]]+reset|git[[:space:]]+clean ]] \
         || [[ "$command_text" =~ (^|[[:space:]])(npm|yarn|pnpm)($|[[:space:]]) ]]; then
         provisioning_packet_add_error "install.command contains a forbidden destructive or wrong-package-manager command."
@@ -368,6 +372,11 @@ provisioning_packet_scan_secret_values() {
         case "$lower_path" in
             privacy.forbiddenfieldnames.*|privacy.redactedfieldpaths.*)
                 continue
+                ;;
+            targethost.*|provider.accountid|provider.orderid|provider.projectid|provider.dashboardsession|access.sshprivatekey|access.sshprivatekeypath|access.providertoken|cloudinit.rawuserdata|cloudinit.rawrenderedtemplate|install.environment*|provenance.operatorlocalpath)
+                if [[ -n "$value" && "$lower_value" != "false" && "$lower_value" != "null" ]]; then
+                    provisioning_packet_add_error "Forbidden support-unsafe field has a value at $path_value."
+                fi
                 ;;
         esac
 
