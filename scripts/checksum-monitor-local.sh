@@ -129,12 +129,15 @@ run_clean() {
         "$@"
 }
 
+# Bun re-execs itself via PATH when running package.json scripts, so the
+# pinned Bun's own directory must be on the clean PATH here too (appended,
+# never prepended).
 run_bun_clean() {
     env -i \
         HOME="$HOME" \
         USER="${USER:-}" \
         LOGNAME="${LOGNAME:-${USER:-}}" \
-        PATH="$MONITOR_EXEC_PATH" \
+        PATH="$MONITOR_EXEC_PATH:${BUN_BIN%/*}" \
         LANG=C \
         LC_ALL=C \
         TZ=UTC \
@@ -183,7 +186,7 @@ run_bun_clean_bounded() {
         HOME="$HOME" \
         USER="${USER:-}" \
         LOGNAME="${LOGNAME:-${USER:-}}" \
-        PATH="$MONITOR_EXEC_PATH" \
+        PATH="$MONITOR_EXEC_PATH:${BUN_BIN%/*}" \
         LANG=C \
         LC_ALL=C \
         TZ=UTC \
