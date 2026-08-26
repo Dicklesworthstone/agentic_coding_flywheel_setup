@@ -3090,8 +3090,8 @@ acfs_validate_installer_checksum_report() {
     local mismatch_actual_var="$7"
     local errors_var="$8"
     local skipped_var="$9"
-    local -n current_urls="$urls_var"
-    local -n current_checksums="$checksums_var"
+    local -n policy_urls="$urls_var"
+    local -n policy_checksums="$checksums_var"
     local -n output_matches="$matches_var"
     local -n output_mismatch_expected="$mismatch_expected_var"
     local -n output_mismatch_actual="$mismatch_actual_var"
@@ -3178,7 +3178,7 @@ acfs_validate_installer_checksum_report() {
     report_total="$("$jq_bin" -r '.total' "$report_file")" || return 1
     if [[ "$report_digest" != "$checksums_digest" ]] \
         || [[ ! "$report_total" =~ ^[0-9]+$ ]] \
-        || (( report_total != ${#current_checksums[@]} )); then
+        || (( report_total != ${#policy_checksums[@]} )); then
         log_error "Checksum verification report is not bound to the current checksums policy"
         return 1
     fi
@@ -3186,8 +3186,8 @@ acfs_validate_installer_checksum_report() {
     while IFS=$'\t' read -r name url checksum; do
         [[ -n "$name" ]] || continue
         if [[ -n "${seen[$name]:-}" ]] \
-            || [[ "${current_urls[$name]:-}" != "$url" ]] \
-            || [[ "${current_checksums[$name]:-}" != "$checksum" ]]; then
+            || [[ "${policy_urls[$name]:-}" != "$url" ]] \
+            || [[ "${policy_checksums[$name]:-}" != "$checksum" ]]; then
             log_error "Checksum verification match is not bound to policy entry: $name"
             return 1
         fi
@@ -3198,8 +3198,8 @@ acfs_validate_installer_checksum_report() {
     while IFS=$'\t' read -r name url expected actual; do
         [[ -n "$name" ]] || continue
         if [[ -n "${seen[$name]:-}" ]] \
-            || [[ "${current_urls[$name]:-}" != "$url" ]] \
-            || [[ "${current_checksums[$name]:-}" != "$expected" ]]; then
+            || [[ "${policy_urls[$name]:-}" != "$url" ]] \
+            || [[ "${policy_checksums[$name]:-}" != "$expected" ]]; then
             log_error "Checksum verification mismatch is not bound to policy entry: $name"
             return 1
         fi
@@ -3210,7 +3210,7 @@ acfs_validate_installer_checksum_report() {
 
     while IFS=$'\t' read -r name url; do
         [[ -n "$name" ]] || continue
-        if [[ -n "${seen[$name]:-}" ]] || [[ "${current_urls[$name]:-}" != "$url" ]]; then
+        if [[ -n "${seen[$name]:-}" ]] || [[ "${policy_urls[$name]:-}" != "$url" ]]; then
             log_error "Checksum verification error is not bound to policy entry: $name"
             return 1
         fi
@@ -3220,7 +3220,7 @@ acfs_validate_installer_checksum_report() {
 
     while IFS=$'\t' read -r name url; do
         [[ -n "$name" ]] || continue
-        if [[ -n "${seen[$name]:-}" ]] || [[ "${current_urls[$name]:-}" != "$url" ]]; then
+        if [[ -n "${seen[$name]:-}" ]] || [[ "${policy_urls[$name]:-}" != "$url" ]]; then
             log_error "Checksum verification skip is not bound to policy entry: $name"
             return 1
         fi
@@ -3228,7 +3228,7 @@ acfs_validate_installer_checksum_report() {
         parsed_skipped["$name"]="skipped"
     done < <("$jq_bin" -r '.skipped[] | [.name, .url] | @tsv' "$report_file")
 
-    for tool in "${!current_checksums[@]}"; do
+    for tool in "${!policy_checksums[@]}"; do
         if [[ -z "${seen[$tool]:-}" ]]; then
             log_error "Checksum verification report omits policy entry: $tool"
             return 1
