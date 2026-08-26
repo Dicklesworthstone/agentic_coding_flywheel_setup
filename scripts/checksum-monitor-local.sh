@@ -151,11 +151,15 @@ run_bounded() {
 run_clean_bounded() {
     local requested_seconds="$1"
     shift
+    # The pinned Bun's directory is appended (never prepended, so system tools
+    # always win) because child scripts such as check-manifest-drift.sh resolve
+    # `bun` via PATH. $BUN_BIN and its directory are metadata-verified before
+    # any run_clean_bounded call that executes repository code.
     run_bounded "$requested_seconds" env -i \
         HOME="$HOME" \
         USER="${USER:-}" \
         LOGNAME="${LOGNAME:-${USER:-}}" \
-        PATH="$MONITOR_EXEC_PATH" \
+        PATH="$MONITOR_EXEC_PATH:${BUN_BIN%/*}" \
         LANG=C \
         LC_ALL=C \
         TZ=UTC \
