@@ -36,6 +36,14 @@ set -euo pipefail
 
 MONITOR_REPO="${ACFS_MONITOR_REPO:-$HOME/acfs-monitor}"
 STATE_DIR="${ACFS_MONITOR_STATE:-$HOME/.local/state/acfs-monitor}"
+
+# The generated-artifact contract asserts exact 755/644 modes on outputs, and
+# git materializes checkout/merge files through the process umask. A distro
+# default of 002 therefore yields 775/664 trees whose bytes are identical to
+# HEAD yet fail the mode comparison -- every file "drifts" on a perfectly
+# clean clone (issue #344). Pin the umask so everything this monitor creates
+# or merges lands group/world read-only.
+umask 022
 # System utilities are resolved only from root-owned system prefixes. Bun is
 # bound separately below because it intentionally lives under the monitor
 # owner's home directory.

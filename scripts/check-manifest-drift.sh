@@ -550,13 +550,20 @@ check_repo_mcp_config_drift() {
     for rel_path in "${REPO_MCP_CONFIG_FILES[@]}"; do
         abs_path="$REPO_ROOT/$rel_path"
 
-        if [[ ! -f "$abs_path" || -L "$abs_path" ]]; then
+        if [[ -L "$abs_path" ]]; then
             REPO_MCP_CONFIG_DRIFT_COUNT=$((REPO_MCP_CONFIG_DRIFT_COUNT + 1))
             REPO_MCP_CONFIG_DRIFT_FILES+=("$rel_path")
             if [[ "$record_drift" == "true" ]]; then
                 DRIFT_DETECTED=true
-                DRIFT_REASONS+=("Repo MCP config missing or unsafe: $rel_path")
+                DRIFT_REASONS+=("Repo MCP config unsafe (symlink): $rel_path")
             fi
+            continue
+        fi
+        if [[ ! -f "$abs_path" ]]; then
+            # These configs are machine-local and gitignored, so a fresh clone
+            # never contains them (the checksum monitor runs from one). Absence
+            # is normal; only a config that exists can drift. Treating absence
+            # as drift made the monitor fail closed on every run (issue #344).
             continue
         fi
 
