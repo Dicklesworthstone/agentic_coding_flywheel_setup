@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-08-25T01:39:48-04:00
+# checksums.yaml - Auto-generated 2026-08-26T07:00:20+00:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -20,7 +20,7 @@ installers:
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
-    sha256: "b70c22f75df4bb0cefe96fe4f4356fa8aba1be0e06ad18e8a65cc0a4af989d36"
+    sha256: "b2b3ed0ae2712e53a72d48afd5a980a7c1d346bb6e6b9fb9e4f3b20566726c2f"
 
   brenner_bot:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/brenner_bot/main/install.sh"
@@ -96,7 +96,7 @@ installers:
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "55c09241161476b727636ea9f010c020411f368091142e7924d7dc744799df03"
+    sha256: "60e096f2a6356c1f261cb11d8043b6e6929c27abe67c50fb34039c54bb883af1"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
