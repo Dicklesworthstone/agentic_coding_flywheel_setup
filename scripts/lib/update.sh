@@ -386,6 +386,8 @@ UPDATE_AGENTS=true
 UPDATE_CLOUD=true
 UPDATE_RUNTIME=true
 UPDATE_STACK=true
+UPDATE_AGENT_MAIL=true
+UPDATE_CASS=true
 UPDATE_SHELL=true
 UPDATE_SELF=true
 BOOTSTRAP_SELF_UPDATE=false
@@ -6338,16 +6340,21 @@ update_stack() {
         update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[ntm]}" "${VERSION_AFTER[ntm]}"
     fi
 
-    # MCP Agent Mail - always install/update via non-blocking installer mode,
-    # then enable the managed user service on port 8765.
-    local tool="mcp_agent_mail"
-    local url="${KNOWN_INSTALLERS[$tool]:-}"
-    local expected_sha256
-    expected_sha256="$(get_checksum "$tool")"
+    # MCP Agent Mail may be owned by a separately governed deployment. Keep its
+    # binary and service lifecycle out of a general stack refresh on request.
+    if [[ "$UPDATE_AGENT_MAIL" != "true" ]]; then
+        log_item "skip" "MCP Agent Mail" "disabled via --no-agent-mail"
+    else
+        # MCP Agent Mail - always install/update via non-blocking installer mode,
+        # then enable the managed user service on port 8765.
+        local tool="mcp_agent_mail"
+        local url="${KNOWN_INSTALLERS[$tool]:-}"
+        local expected_sha256
+        expected_sha256="$(get_checksum "$tool")"
 
-    if [[ "$DRY_RUN" == "true" ]]; then
-        log_item "skip" "MCP Agent Mail" "dry-run: verified install + service refresh"
-    elif [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            log_item "skip" "MCP Agent Mail" "dry-run: verified install + service refresh"
+        elif [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
         local tmp_install
         tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)" || tmp_install=""
         if [[ -z "$tmp_install" ]]; then
@@ -6425,8 +6432,9 @@ update_stack() {
                 log_item "fail" "MCP Agent Mail" "verification failed"
             fi
         fi
-    else
-        log_item "fail" "MCP Agent Mail" "unknown installer URL/checksum"
+        else
+            log_item "fail" "MCP Agent Mail" "unknown installer URL/checksum"
+        fi
     fi
 
     # Meta Skill (ms) - always install/update (installer is idempotent)
@@ -6456,14 +6464,21 @@ update_stack() {
     # Beads Rust (br) - local issue tracker CLI - always install/update
     run_cmd "Beads Rust" update_run_verified_installer br
 
-    # CASS - always install/update. Its upstream installer uses a lock inside
-    # TMPDIR; give it an ACFS-owned target-user temp root so stale shared
-    # /tmp or /data/tmp locks cannot make only CASS fail during `acfs update`.
-    update_run_verified_installer_with_target_tmpdir_or_existing_on_transient "CASS" cass cass cass --easy-mode --verify || true
+    # CASS and CASS Memory share state and operational ownership. Allow their
+    # paired lifecycle to be excluded without suppressing the rest of the stack.
+    if [[ "$UPDATE_CASS" == "true" ]]; then
+        # CASS - always install/update. Its upstream installer uses a lock inside
+        # TMPDIR; give it an ACFS-owned target-user temp root so stale shared
+        # /tmp or /data/tmp locks cannot make only CASS fail during `acfs update`.
+        update_run_verified_installer_with_target_tmpdir_or_existing_on_transient "CASS" cass cass cass --easy-mode --verify || true
 
-    # CASS Memory - always install/update, but do not trust installer exit 0
-    # unless the CLI is still present and versionable afterward.
-    update_run_verified_installer_or_existing_on_transient "CASS Memory" cm cm cm --easy-mode --verify || true
+        # CASS Memory - always install/update, but do not trust installer exit 0
+        # unless the CLI is still present and versionable afterward.
+        update_run_verified_installer_or_existing_on_transient "CASS Memory" cm cm cm --easy-mode --verify || true
+    else
+        log_item "skip" "CASS" "disabled via --no-cass"
+        log_item "skip" "CASS Memory" "disabled via --no-cass"
+    fi
 
     # CAAM - always install/update
     run_cmd "CAAM" update_run_verified_installer caam
@@ -7061,6 +7076,8 @@ SKIP OPTIONS (exclude categories from update):
   --no-shell         Skip shell tool updates
   --no-runtime       Skip runtime updates (Bun, Rust, uv, Go)
   --no-stack         Skip Agent Flywheel stack tool updates
+  --no-agent-mail    Skip MCP Agent Mail binary and service updates
+  --no-cass          Skip CASS and CASS Memory updates
 
 BEHAVIOR OPTIONS:
   --bootstrap-self-update
@@ -7090,6 +7107,9 @@ EXAMPLES:
 
   # Only update Agent Flywheel stack tools
   acfs-update --stack-only
+
+  # Refresh the rest of the stack while CASS and Agent Mail are managed elsewhere
+  acfs-update --stack-only --no-cass --no-agent-mail
 
   # Update everything except apt (faster)
   acfs-update --no-apt
@@ -7260,6 +7280,14 @@ main() {
                 ;;
             --no-stack)
                 UPDATE_STACK=false
+                shift
+                ;;
+            --no-agent-mail)
+                UPDATE_AGENT_MAIL=false
+                shift
+                ;;
+            --no-cass)
+                UPDATE_CASS=false
                 shift
                 ;;
             --no-self-update)

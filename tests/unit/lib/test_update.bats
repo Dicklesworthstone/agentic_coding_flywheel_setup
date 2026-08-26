@@ -1650,6 +1650,94 @@ EOF
     assert_failure
 }
 
+@test "update_stack skips independently governed Agent Mail when excluded" {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    UPDATE_STACK=true
+    UPDATE_AGENT_MAIL=false
+    UPDATE_CASS=true
+    ABORT_ON_FAILURE=false
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    declare -gA KNOWN_INSTALLERS=([mcp_agent_mail]="https://example.test/install-am.sh")
+
+    update_require_security() { return 0; }
+    get_checksum() { printf '%s\n' "abc123"; }
+    verify_checksum() {
+        : > "$HOME/mcp-agent-mail-checksum-ran"
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'exit 0'
+    }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_binary_exists() { return 1; }
+    update_run_verified_installer() { return 0; }
+    update_run_verified_installer_with_env() { return 0; }
+    update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() { return 0; }
+    update_run_verified_installer_or_existing_on_transient() { return 0; }
+    update_run_slb_verified_install() { return 0; }
+    update_run_fsfs_installer() { return 0; }
+
+    run update_stack
+    assert_success
+    [[ ! -e "$HOME/mcp-agent-mail-checksum-ran" ]]
+    run grep -F '[skip] MCP Agent Mail - disabled via --no-agent-mail' "$UPDATE_LOG_FILE"
+    assert_success
+}
+
+@test "update_stack skips the paired CASS lifecycle when excluded" {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    UPDATE_STACK=true
+    UPDATE_AGENT_MAIL=false
+    UPDATE_CASS=false
+    ABORT_ON_FAILURE=false
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+
+    update_require_security() { return 0; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_binary_exists() { return 1; }
+    update_run_verified_installer() { return 0; }
+    update_run_verified_installer_with_env() { return 0; }
+    update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() {
+        : > "$HOME/cass-installer-ran"
+        return 0
+    }
+    update_run_verified_installer_or_existing_on_transient() {
+        if [[ "${2:-}" == cm ]]; then
+            : > "$HOME/cm-installer-ran"
+        fi
+        return 0
+    }
+    update_run_slb_verified_install() { return 0; }
+    update_run_fsfs_installer() { return 0; }
+
+    run update_stack
+    assert_success
+    [[ ! -e "$HOME/cass-installer-ran" ]]
+    [[ ! -e "$HOME/cm-installer-ran" ]]
+    run grep -F '[skip] CASS - disabled via --no-cass' "$UPDATE_LOG_FILE"
+    assert_success
+    run grep -F '[skip] CASS Memory - disabled via --no-cass' "$UPDATE_LOG_FILE"
+    assert_success
+}
+
+@test "update usage documents independent Agent Mail and CASS exclusions" {
+    run usage
+    assert_success
+    assert_output --partial '--no-agent-mail'
+    assert_output --partial '--no-cass'
+}
+
 @test "update_stack honors abort-on-failure for MCP Agent Mail target-home failure" {
     QUIET=true
     VERBOSE=false
