@@ -500,16 +500,38 @@ for system_prefix in /usr/local/bin /usr/bin /bin; do
     (( (prefix_mode_value & 022) == 0 )) \
         || fail_closed "trusted system prefix is group/world writable: $system_prefix -> $prefix_real"
 done
+# Each dependency must be REACHED through one of the trusted prefixes checked
+# above (so a user-writable PATH entry can never shadow it), and must RESOLVE
+# to a root-owned, non-writable regular file inside a root-owned, non-writable
+# directory of the distro-managed tree. The resolved target is deliberately
+# not confined to the bin prefixes: Ubuntu 25.10+ ships uutils coreutils, so
+# /usr/bin/env, sha256sum, stat, ... are symlinks into
+# /usr/lib/cargo/bin/coreutils/, which is exactly as distro-managed as
+# /usr/bin. Confining the target to /usr/bin failed closed on every such host
+# (issue #344); the directory and file metadata checks below carry the actual
+# trust decision.
 for dep in bash env git gh jq curl flock sha256sum stat sort uniq awk sed tr cmp mktemp paste head id cp timeout readlink date tee mkdir hostname cat; do
     dep_path="$(command -v "$dep" 2>/dev/null || true)"
     [[ "$dep_path" == /* ]] || fail_closed "missing dependency: $dep"
+    case "$dep_path" in
+        /usr/local/bin/*|/usr/bin/*|/bin/*) ;;
+        *) fail_closed "dependency is not reached through a trusted system prefix: $dep -> $dep_path" ;;
+    esac
     dep_real="$(/usr/bin/readlink -f -- "$dep_path" 2>/dev/null || true)"
     case "$dep_real" in
-        /usr/bin/*|/usr/local/bin/*) ;;
-        *) fail_closed "dependency resolves outside trusted system prefixes: $dep -> ${dep_real:-unresolved}" ;;
+        /usr/bin/*|/usr/local/bin/*|/usr/lib/*|/usr/libexec/*) ;;
+        *) fail_closed "dependency resolves outside the distro-managed tree: $dep -> ${dep_real:-unresolved}" ;;
     esac
     [[ -f "$dep_real" && -x "$dep_real" ]] \
         || fail_closed "dependency is not a regular executable: $dep -> $dep_real"
+    dep_dir="${dep_real%/*}"
+    dep_dir_owner="$(/usr/bin/stat -c '%u' -- "$dep_dir" 2>/dev/null || true)"
+    dep_dir_mode="$(/usr/bin/stat -c '%a' -- "$dep_dir" 2>/dev/null || true)"
+    [[ "$dep_dir_owner" == "0" && "$dep_dir_mode" =~ ^[0-7]{3,4}$ ]] \
+        || fail_closed "dependency directory metadata is unsafe: $dep -> $dep_dir"
+    dep_dir_mode_value=$((8#$dep_dir_mode))
+    (( (dep_dir_mode_value & 022) == 0 )) \
+        || fail_closed "dependency directory is group/world writable: $dep -> $dep_dir"
     dep_owner="$(/usr/bin/stat -c '%u' -- "$dep_real" 2>/dev/null || true)"
     dep_mode="$(/usr/bin/stat -c '%a' -- "$dep_real" 2>/dev/null || true)"
     [[ "$dep_owner" == "0" && "$dep_mode" =~ ^[0-7]{3,4}$ ]] \
