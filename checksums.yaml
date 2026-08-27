@@ -88,7 +88,7 @@ installers:
 
   grok:
     url: "https://x.ai/cli/install.sh"
-    sha256: "43d0943123edade1383a476a4f778674877acee7c1f98a00f094c4a0f7349321"
+    sha256: "65cf570a44ef216e496dfe45efc1602b20428b4678a38bdad8bbfd21f804fb9b"
 
   jfp:
     url: "https://jeffreysprompts.com/install-cli.sh"
