@@ -27,13 +27,19 @@ import {
   Target,
   Package,
 } from "lucide-react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion } from "@/components/motion";
 import { useDrag } from "@use-gesture/react";
 import { Button } from "@/components/ui/button";
 import { Jargon } from "@/components/jargon";
 import { springs, fadeUp, staggerContainer, fadeScale } from "@/components/motion";
 import { useScrollReveal, staggerDelay } from "@/lib/hooks/useScrollReveal";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { manifestTools } from "@/lib/generated/manifest-tools";
+
+// The "N+ tools" claim is derived from the generated manifest (39 entries
+// today) and rounded down to the nearest 5 so the copy can only understate.
+const TOOL_COUNT = manifestTools.length;
+const TOOL_COUNT_LABEL = `${Math.floor(TOOL_COUNT / 5) * 5}+`;
 
 // Animated terminal lines
 const TERMINAL_LINES = [
@@ -52,11 +58,19 @@ function AnimatedTerminal() {
   // ticks while the terminal is on screen, so a 0 start left an empty
   // 280px window until the first 800ms interval fired.
   const [visibleLines, setVisibleLines] = useState(1);
-  const [cursorVisible, setCursorVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const prefersReducedMotion = useReducedMotion();
+
+  // Like a real terminal, keep the newest line in view: on narrow phones the
+  // long lines wrap and the buffer outgrows the fixed-height window, which
+  // used to hide the "✓ Setup complete!" payoff line and the cursor.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [visibleLines]);
 
   // Detect mobile to simplify animations
   useEffect(() => {
@@ -68,8 +82,10 @@ function AnimatedTerminal() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // The typing/cursor loops are pure decoration, so only tick while the
-  // terminal is actually on screen in a visible tab.
+  // The typing loop is pure decoration, so it only ticks while the terminal
+  // is actually on screen (IntersectionObserver: scrolling it out flips
+  // `inView` false) in a visible tab. The cursor blink is the CSS
+  // `.terminal-cursor` keyframe, so no JS runs for it at all.
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
@@ -101,25 +117,14 @@ function AnimatedTerminal() {
     return () => clearInterval(interval);
   }, [isActive]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    const cursorInterval = setInterval(() => {
-      setCursorVisible((prev) => !prev);
-    }, 530);
-    return () => clearInterval(cursorInterval);
-  }, [isActive]);
-
-  // On mobile or reduced motion, skip animations entirely
+  // On mobile or reduced motion, skip the per-line entrance entirely
   const skipAnimations = prefersReducedMotion || isMobile;
 
   return (
-    <motion.div
-      ref={rootRef}
-      className="terminal-window shadow-2xl"
-      initial={skipAnimations ? {} : { opacity: 0, scale: 0.95, y: 20 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={springs.smooth}
-    >
+    // Plain element, no framer: the terminal is above the fold, so it must be
+    // visible in the server HTML (LCP), and every animation in here is a
+    // compositor CSS keyframe so framer's rAF loop stays idle.
+    <div ref={rootRef} className="terminal-window shadow-2xl">
       <div className="terminal-header">
         {/* Decorative window controls - hidden from screen readers since they're non-functional */}
         <div className="terminal-dot terminal-dot-red" aria-hidden="true" />
@@ -129,70 +134,42 @@ function AnimatedTerminal() {
           ubuntu@vps ~
         </span>
       </div>
-      {/* Fixed height container to prevent layout shifts */}
-      <div className="terminal-content h-[280px] overflow-hidden">
-        {/* Use simple rendering on mobile to prevent jank */}
-        {skipAnimations ? (
-          // Static render without AnimatePresence on mobile
-          TERMINAL_LINES.slice(0, visibleLines).map((line, i) => (
-            <div key={`${line.text}-${i}`} className="terminal-line mb-2">
-              {line.type === "command" && (
-                <>
-                  <span className="terminal-prompt">$</span>
-                  <span className="terminal-command">{line.text}</span>
-                </>
-              )}
-              {line.type === "output" && (
-                <span className="terminal-output">{line.text}</span>
-              )}
-              {line.type === "success" && (
-                <span className="text-[oklch(0.72_0.19_145)]">{line.text}</span>
-              )}
-            </div>
-          ))
-        ) : (
-          // Animated render on desktop
-          <AnimatePresence mode="sync">
-            {TERMINAL_LINES.slice(0, visibleLines).map((line, i) => (
-              <motion.div
-                key={`${line.text}-${i}`}
-                className="terminal-line mb-2"
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ ...springs.snappy, delay: i * 0.05 }}
-              >
-                {line.type === "command" && (
-                  <>
-                    <span className="terminal-prompt">$</span>
-                    <span className="terminal-command">{line.text}</span>
-                  </>
-                )}
-                {line.type === "output" && (
-                  <span className="terminal-output">{line.text}</span>
-                )}
-                {line.type === "success" && (
-                  <span className="text-[oklch(0.72_0.19_145)]">{line.text}</span>
-                )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        )}
+      {/* Fixed height container to prevent layout shifts. 320px fits the
+          full 8-line loop plus cursor at the 14px desktop size (9 boxes ×
+          23.8px + 8 × 8px margins + 40px padding = 318px); below `sm` the
+          auto-scroll effect above keeps the tail visible. */}
+      <div ref={contentRef} className="terminal-content h-[280px] overflow-hidden sm:h-[320px]">
+        {TERMINAL_LINES.slice(0, visibleLines).map((line, i) => (
+          <div
+            key={`${line.text}-${i}`}
+            // Each newly typed line slides in via the `slide-in-left` CSS
+            // keyframe (desktop only); the command line is part of the
+            // SSR'd first paint, so it never animates.
+            className={`terminal-line mb-2${!skipAnimations && i > 0 ? " animate-slide-in-left" : ""}`}
+          >
+            {line.type === "command" && (
+              <>
+                <span className="terminal-prompt">$</span>
+                <span className="terminal-command">{line.text}</span>
+              </>
+            )}
+            {line.type === "output" && (
+              <span className="terminal-output">{line.text}</span>
+            )}
+            {line.type === "success" && (
+              <span className="text-[oklch(0.72_0.19_145)]">{line.text}</span>
+            )}
+          </div>
+        ))}
         {visibleLines <= TERMINAL_LINES.length && (
           <div className="terminal-line">
             <span className="terminal-prompt">$</span>
-            {skipAnimations ? (
-              <span className="terminal-cursor" style={{ opacity: cursorVisible ? 1 : 0 }} />
-            ) : (
-              <motion.span
-                className="terminal-cursor"
-                animate={{ opacity: cursorVisible ? 1 : 0 }}
-                transition={{ duration: 0.1 }}
-              />
-            )}
+            {/* Blink is the CSS `.terminal-cursor` keyframe (reduced-motion gated) */}
+            <span className="terminal-cursor" aria-hidden="true" />
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -299,7 +276,7 @@ const FEATURES = [
       <>
         Run &apos;onboard&apos; after setup for guided lessons from <Jargon term="linux">Linux</Jargon> basics to full{" "}
         <Jargon term="agentic">agentic</Jargon> workflows.{" "}
-        <Link href="/learn/welcome" className="inline-flex items-center gap-1 text-primary hover:underline">
+        <Link href="/learn/welcome" className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline">
           Preview lessons <BookOpen className="h-3 w-3" />
         </Link>
       </>
@@ -480,33 +457,45 @@ function WorkflowStepsSection() {
           </p>
         </motion.div>
 
-        {/* Horizontal scroll on mobile, wrap on desktop */}
+        {/* Horizontal scroll on mobile, wrap on desktop. The scroll container
+            is a focusable, labelled region so keyboard users can reach steps
+            5-13 with the arrow keys under 640px; the chips are a real <ol>. */}
         <div className="relative -mx-6 px-6 sm:mx-0 sm:px-0">
-          <motion.div
+          <div
             ref={scrollRef}
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            {...(bind() as any)}
+            {...bind()}
             style={{ touchAction: "pan-y" }}
-            className="flex gap-3 overflow-x-auto pb-4 sm:flex-wrap sm:justify-center sm:overflow-visible sm:pb-0 scrollbar-hide cursor-grab active:cursor-grabbing select-none"
-            variants={staggerContainer}
-            initial="hidden"
-            animate={isInView ? "visible" : "hidden"}
+            tabIndex={0}
+            role="region"
+            aria-label="Workflow steps"
+            className="overflow-x-auto rounded-xl pb-4 scrollbar-hide cursor-grab select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:cursor-grabbing sm:overflow-visible sm:pb-0"
           >
-            {WORKFLOW_STEPS.map((step, i) => (
-              <motion.div
-                key={step}
-                className="flex shrink-0 items-center gap-2 rounded-full border border-border/50 bg-card/50 px-4 py-2 text-sm transition-colors hover:border-primary/30 hover:bg-card active:scale-95"
-                variants={fadeUp}
-                transition={{ delay: staggerDelay(i, 0.05) }}
-                whileHover={{ scale: 1.05, y: -2 }}
-              >
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary">
-                  {i + 1}
-                </span>
-                <span className="whitespace-nowrap text-foreground">{step}</span>
-              </motion.div>
-            ))}
-          </motion.div>
+            <motion.ol
+              className="flex gap-3 sm:flex-wrap sm:justify-center"
+              variants={staggerContainer}
+              initial="hidden"
+              animate={isInView ? "visible" : "hidden"}
+            >
+              {WORKFLOW_STEPS.map((step, i) => (
+                <motion.li
+                  key={step}
+                  className="flex shrink-0 items-center gap-2 rounded-full border border-border/50 bg-card/50 px-4 py-2 text-sm transition-colors hover:border-primary/30 hover:bg-card active:scale-95"
+                  variants={fadeUp}
+                  transition={{ delay: staggerDelay(i, 0.05) }}
+                  whileHover={{ scale: 1.05, y: -2 }}
+                >
+                  {/* The list already conveys position; hide the visual index */}
+                  <span
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/20 text-xs font-medium text-primary"
+                    aria-hidden="true"
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="whitespace-nowrap text-foreground">{step}</span>
+                </motion.li>
+              ))}
+            </motion.ol>
+          </div>
         </div>
 
         <motion.div
@@ -574,7 +563,9 @@ function AboutSection() {
                   fill
                   sizes="(max-width: 640px) 112px, 128px"
                   className="object-cover"
-                  priority
+                  // About is the second-to-last section: no preload
+                  // competing with hero assets, lazy-load instead.
+                  loading="lazy"
                 />
               </div>
               {/* Sparkle accent */}
@@ -944,7 +935,11 @@ function ToolBadge({ name, color }: { name: string; color: string }) {
 
 export default function HomePage() {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    // `dark` island: the landing page is a dark-only composition (opaque
+    // `bg-gradient-hero`, dark-tuned oklch literals) and has no theme
+    // toggle of its own, so it must stay on the dark tokens even when the
+    // wizard's toggle stored `light` on <html>.
+    <div className="dark relative min-h-screen overflow-hidden bg-background text-foreground">
       {/* Cosmic gradient background */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-hero" />
       <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-30" />
@@ -1007,14 +1002,18 @@ export default function HomePage() {
       </nav>
 
       {/* Hero Section */}
-      <main className="relative z-10">
+      <main id="main-content" tabIndex={-1} className="relative z-10">
         <section className="mx-auto max-w-7xl px-6 pb-20 pt-12 sm:pt-20">
           <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
             {/* Left column - Text */}
             <motion.div
               className="flex flex-col justify-center"
               variants={staggerContainer}
-              initial="hidden"
+              // `initial={false}` (inherited by the fadeUp children) keeps the
+              // h1 / subtitle / CTA cluster visible in the server HTML: with
+              // initial="hidden" they shipped as inline opacity:0 and LCP
+              // waited on the client bundle + framer hydration.
+              initial={false}
               animate="visible"
             >
               {/* Badge */}
@@ -1044,7 +1043,7 @@ export default function HomePage() {
                 Transform a fresh <Jargon term="cloud-server">cloud server</Jargon> into a fully-configured{" "}
                 <Jargon term="agentic">agentic</Jargon> coding environment.{" "}
                 <Jargon term="claude-code">Claude Code</Jargon>, OpenAI <Jargon term="codex">Codex</Jargon>,{" "}
-                Google <Jargon term="antigravity-cli">Antigravity</Jargon>: all pre-configured with 35+ modern developer tools.
+                Google <Jargon term="antigravity-cli">Antigravity</Jargon>: all pre-configured with {TOOL_COUNT_LABEL} modern developer tools.
                 All totally free and <Jargon term="open-source">open-source</Jargon>.
               </motion.p>
 
@@ -1063,7 +1062,7 @@ export default function HomePage() {
                       Start the Wizard
                       <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                     </span>
-                    <span className="absolute inset-0 -z-10 bg-gradient-to-r from-primary via-[oklch(0.7_0.2_330)] to-primary opacity-0 transition-opacity group-hover:opacity-100" style={{ backgroundSize: "200% 100%", animation: "shimmer 2s linear infinite" }} />
+                    <span className="absolute inset-0 -z-10 bg-gradient-to-r from-primary via-[oklch(0.7_0.2_330)] to-primary opacity-0 transition-opacity group-hover:opacity-100 motion-safe:group-hover:[animation:shimmer_2s_linear_infinite]" style={{ backgroundSize: "200% 100%" }} />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="border-border/50 hover:bg-muted/50">
@@ -1083,7 +1082,7 @@ export default function HomePage() {
                 className="mt-10 flex flex-wrap items-center justify-center gap-4 sm:justify-start sm:gap-0 sm:divide-x sm:divide-border/50"
                 variants={fadeUp}
               >
-                <StatBadge value="35+" label="Tools Installed" />
+                <StatBadge value={TOOL_COUNT_LABEL} label="Tools Installed" />
                 <StatBadge value="3" label="AI Agents" />
                 <StatBadge value="~30m" label="Setup Time" />
               </motion.div>
@@ -1102,7 +1101,7 @@ export default function HomePage() {
                   pacman, and keeps your existing prompt.{" "}
                   <Link
                     href="/omarchy"
-                    className="inline-flex items-center gap-1 text-primary hover:underline"
+                    className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
                   >
                     See the Omarchy page
                     <ArrowRight className="h-3 w-3" />
@@ -1114,7 +1113,7 @@ export default function HomePage() {
             {/* Right column - Terminal */}
             <motion.div
               className="flex items-center justify-center lg:justify-end"
-              initial={{ opacity: 0, x: 40 }}
+              initial={false}
               animate={{ opacity: 1, x: 0 }}
               transition={{ ...springs.smooth, delay: 0.3 }}
             >
@@ -1165,13 +1164,14 @@ export default function HomePage() {
                   boxShadow: "0 0 60px -12px oklch(0.75 0.18 195 / 0.15), 0 24px 48px -12px rgba(0,0,0,0.4)",
                 }}
               >
-                {/* Animated border gradient */}
+                {/* Border gradient: the sweep animates background-position
+                    (main-thread paint every frame), so it only runs on hover
+                    instead of forever on an always-visible card. */}
                 <div
-                  className="absolute inset-0 rounded-3xl opacity-40 transition-opacity duration-500 group-hover:opacity-100"
+                  className="absolute inset-0 rounded-3xl opacity-40 transition-opacity duration-500 group-hover:opacity-100 motion-safe:group-hover:[animation:shimmer_4s_linear_infinite]"
                   style={{
                     background: "linear-gradient(135deg, oklch(0.75 0.18 195 / 0.5), oklch(0.7 0.2 330 / 0.3), oklch(0.75 0.18 195 / 0.5))",
                     backgroundSize: "200% 200%",
-                    animation: "shimmer 4s linear infinite",
                     padding: "1px",
                     WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
                     WebkitMaskComposite: "xor",
@@ -1239,13 +1239,12 @@ export default function HomePage() {
                   boxShadow: "0 0 60px -12px oklch(0.75 0.18 30 / 0.12), 0 24px 48px -12px rgba(0,0,0,0.4)",
                 }}
               >
-                {/* Animated border gradient */}
+                {/* Border gradient: hover-only sweep (see the card above) */}
                 <div
-                  className="absolute inset-0 rounded-3xl opacity-30 transition-opacity duration-500 group-hover:opacity-80"
+                  className="absolute inset-0 rounded-3xl opacity-30 transition-opacity duration-500 group-hover:opacity-80 motion-safe:group-hover:[animation:shimmer_4s_linear_infinite]"
                   style={{
                     background: "linear-gradient(135deg, oklch(0.75 0.18 30 / 0.5), oklch(0.78 0.16 75 / 0.3), oklch(0.75 0.18 30 / 0.5))",
                     backgroundSize: "200% 200%",
-                    animation: "shimmer 4s linear infinite",
                     padding: "1px",
                     WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
                     WebkitMaskComposite: "xor",
@@ -1366,19 +1365,19 @@ export default function HomePage() {
                   href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   GitHub
                 </a>
                 <Link
                   href="/learn"
-                  className="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   Learning Hub
                 </Link>
                 <Link
                   href="/tldr"
-                  className="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   TL;DR
                 </Link>
@@ -1386,7 +1385,7 @@ export default function HomePage() {
                   href="https://github.com/Dicklesworthstone/ntm"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   NTM
                 </a>
@@ -1394,7 +1393,7 @@ export default function HomePage() {
                   href="https://github.com/Dicklesworthstone/mcp_agent_mail"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  className="inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   Agent Mail
                 </a>

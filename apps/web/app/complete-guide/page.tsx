@@ -65,7 +65,7 @@ const STACK_TOOL_ROWS = COMPLETE_GUIDE_STACK_TOOLS.map((tool) => [
 export default function CompleteGuidePage() {
   return (
     <ErrorBoundary>
-      <main className="min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-hidden pb-32">
+      <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-hidden pb-32">
         <Hero />
 
         <div className="mx-auto max-w-[1000px] px-6 lg:px-12 relative mt-20">

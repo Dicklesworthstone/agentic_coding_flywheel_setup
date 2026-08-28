@@ -9,7 +9,7 @@
  * @see bd-1yfv
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   HelpCircle,
   X,
@@ -33,11 +33,21 @@ const DEFAULT_HELP: StepHelp = {
 
 interface HelpPanelProps {
   currentStep: number;
+  /**
+   * Dialog heading. Defaults to "Step N Help"; the optional bonus route
+   * (windows-terminal-setup) passes its own so the panel does not claim to
+   * be a numbered step.
+   */
+  title?: string;
 }
 
-export function HelpPanel({ currentStep }: HelpPanelProps) {
+type CopyState = "idle" | "copied" | "failed";
+
+export function HelpPanel({ currentStep, title }: HelpPanelProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const headingId = useId();
+  const dialogTitle = title ?? `Step ${currentStep} Help`;
   // Mount the dialog body only while open: the panel renders above the page
   // content, so keeping the help text permanently in the DOM (hidden inside
   // the closed <dialog>) makes it shadow text queries and selectors that
@@ -69,15 +79,20 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
   const copyDebugInfo = useCallback(async () => {
     const info = getDebugInfo(currentStep);
     const copiedOk = await copyTextToClipboard(info);
-    if (!copiedOk) {
-      return;
-    }
-    setCopied(true);
     if (copyResetTimerRef.current) {
       clearTimeout(copyResetTimerRef.current);
+      copyResetTimerRef.current = null;
     }
+    if (!copiedOk) {
+      // Clipboard blocked (strict privacy modes, some in-app webviews):
+      // say so, and keep the message until the next attempt — the debug
+      // text is rendered below so it can be selected and copied by hand.
+      setCopyState("failed");
+      return;
+    }
+    setCopyState("copied");
     copyResetTimerRef.current = setTimeout(() => {
-      setCopied(false);
+      setCopyState("idle");
       copyResetTimerRef.current = null;
     }, 2000);
   }, [currentStep]);
@@ -89,7 +104,9 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
         variant="ghost"
         size="sm"
         onClick={openDialog}
-        className="gap-1.5 text-muted-foreground hover:text-foreground"
+        // Below `sm` the label is hidden and this is an icon-only control in
+        // the mobile header, so it takes the 44px icon-button footprint there.
+        className="h-11 w-11 gap-1.5 px-0 text-muted-foreground hover:text-foreground sm:h-9 sm:w-auto sm:px-4"
         aria-label="Need help?"
       >
         <HelpCircle className="h-4 w-4" />
@@ -99,6 +116,7 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
       {/* Dialog */}
       <dialog
         ref={dialogRef}
+        aria-labelledby={headingId}
         className="m-auto w-full max-w-lg rounded-xl border border-border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/50 backdrop:backdrop-blur-sm"
         onClick={(e) => {
           // Close on backdrop click
@@ -110,9 +128,9 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
         <div className="flex max-h-[80vh] flex-col">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border/50 px-6 py-4">
-            <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <h2 id={headingId} className="flex items-center gap-2 text-lg font-semibold">
               <HelpCircle className="h-5 w-5 text-primary" />
-              Step {currentStep} Help
+              {dialogTitle}
             </h2>
             <button
               onClick={closeDialog}
@@ -162,7 +180,7 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
                       key={tip}
                       className="flex items-start gap-2 text-sm text-muted-foreground"
                     >
-                      <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-[oklch(0.75_0.15_85)]" />
+                      <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
                       {tip}
                     </li>
                   ))}
@@ -185,9 +203,9 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
                 onClick={copyDebugInfo}
                 className="gap-1.5"
               >
-                {copied ? (
+                {copyState === "copied" ? (
                   <>
-                    <Check className="h-3.5 w-3.5 text-[oklch(0.72_0.19_145)]" />
+                    <Check className="h-3.5 w-3.5 text-green" />
                     Copied
                   </>
                 ) : (
@@ -197,6 +215,23 @@ export function HelpPanel({ currentStep }: HelpPanelProps) {
                   </>
                 )}
               </Button>
+              {/* Live region: announces the outcome to screen readers and
+                  gives a visible failure path when the clipboard is blocked. */}
+              <p role="status" className={copyState === "failed" ? "mt-2 text-xs" : "sr-only"}>
+                {copyState === "copied" && (
+                  <span className="text-muted-foreground">Copied to clipboard.</span>
+                )}
+                {copyState === "failed" && (
+                  <span className="text-destructive">
+                    Copy failed — select the text and copy it manually.
+                  </span>
+                )}
+              </p>
+              {copyState === "failed" && (
+                <pre className="mt-2 max-h-40 overflow-auto rounded-md border border-border/50 bg-background px-3 py-2 font-mono text-xs text-foreground select-all">
+                  {getDebugInfo(currentStep)}
+                </pre>
+              )}
             </section>
           </div>
         </div>

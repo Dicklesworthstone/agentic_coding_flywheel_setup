@@ -59,6 +59,8 @@ function ScreenshotFigure({ file, alt, caption }: ScreenshotSpec) {
           width={1440}
           height={1000}
           unoptimized
+          loading="lazy"
+          sizes="(min-width: 640px) 50vw, 100vw"
           className="h-auto w-full"
         />
       </a>
@@ -71,7 +73,7 @@ function ScreenshotFigure({ file, alt, caption }: ScreenshotSpec) {
 }
 
 const CHECKLIST_ITEMS = [
-  { id: "ubuntu", label: "Selected Ubuntu 24.04+ (25.10 preferred)" },
+  { id: "ubuntu", label: "Selected Ubuntu (22.04 or newer; 25.10 preferred)" },
   { id: "region", label: "Picked a region close to me" },
   { id: "password", label: "Set a root password (or received one via email)" },
   { id: "created", label: "Created the VPS and waited for it to start" },
@@ -297,12 +299,18 @@ export default function CreateVPSPage() {
         className="space-y-8"
       >
         {/* Universal checklist */}
-        <div className={cn(
-          "rounded-xl border p-4 transition-colors",
-          allChecked
-            ? "border-[oklch(0.72_0.19_145/0.5)] bg-[oklch(0.72_0.19_145/0.05)]"
-            : "border-border/50 bg-card/50"
-        )} data-create-vps-checklist>
+        <div
+          className={cn(
+            "rounded-xl border p-4 transition-colors",
+            allChecked
+              ? "border-green/50 bg-green/5"
+              : "border-border/50 bg-card/50"
+          )}
+          data-create-vps-checklist
+          // Focus target for the step-validation hook (focusSelector); a plain
+          // <div> is not focusable without tabIndex.
+          tabIndex={-1}
+        >
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h2 className="flex items-center gap-2 font-semibold text-foreground">
@@ -316,7 +324,7 @@ export default function CreateVPSPage() {
             <div className={cn(
               "shrink-0 rounded-full px-3 py-1 text-xs font-medium",
               allChecked
-                ? "bg-[oklch(0.72_0.19_145/0.15)] text-[oklch(0.72_0.19_145)]"
+                ? "bg-green/15 text-green"
                 : "bg-muted text-muted-foreground"
             )}>
               {checkedItems.size} of {CHECKLIST_ITEMS.length}
@@ -326,7 +334,8 @@ export default function CreateVPSPage() {
             {CHECKLIST_ITEMS.map((item) => (
               <label
                 key={item.id}
-                className="flex cursor-pointer items-center gap-3"
+                // 44px minimum touch target around the 16px checkbox.
+                className="flex min-h-[44px] cursor-pointer items-center gap-3 py-2"
               >
                 <Checkbox
                   checked={checkedItems.has(item.id)}
@@ -368,25 +377,26 @@ export default function CreateVPSPage() {
           </div>
 
           {/* Privacy assurance card */}
-          <div className="flex gap-3 rounded-xl border border-[oklch(0.72_0.19_145/0.25)] bg-[oklch(0.72_0.19_145/0.05)] p-3 sm:p-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[oklch(0.72_0.19_145/0.15)] sm:h-9 sm:w-9">
-              <ShieldCheck className="h-4 w-4 text-[oklch(0.72_0.19_145)] sm:h-5 sm:w-5" />
+          <div className="flex gap-3 rounded-xl border border-green/25 bg-green/5 p-3 sm:p-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green/15 sm:h-9 sm:w-9">
+              <ShieldCheck className="h-4 w-4 text-green sm:h-5 sm:w-5" />
             </div>
             <div className="min-w-0 space-y-1">
-              <p className="text-[13px] font-medium leading-tight text-[oklch(0.82_0.12_145)] sm:text-sm">
+              <p className="text-[13px] font-medium leading-tight text-green sm:text-sm">
                 Your data stays on your device
               </p>
               <p className="text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">
                 This IP address is stored <strong className="text-foreground/80">in your browser&apos;s local storage</strong>.
-                If browser storage is blocked, the wizard keeps it in the page URL so the next step still works. The{" "}
+                If browser storage is blocked, the wizard keeps it in memory for this tab only — you&apos;ll be asked again after a reload. The{" "}
                 <a
                   href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-0.5 font-medium text-[oklch(0.75_0.18_195)] hover:underline"
+                  className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
                 >
                   entire codebase is open source
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                  <span className="sr-only"> (opens in new tab)</span>
                 </a>{" "}
                 so you can verify this yourself.
               </p>
@@ -396,13 +406,8 @@ export default function CreateVPSPage() {
           <form.Field
             name="ipAddress"
             validators={{
-              onChange: ({ value }) => {
-                if (!value) return undefined;
-                if (!isValidIP(value)) {
-                  return "Please enter a valid IP address (e.g., 203.0.113.42)";
-                }
-                return undefined;
-              },
+              // Errors surface on blur/submit only (not on every keystroke);
+              // the live "Valid IP address" hint is derived from the value.
               onBlur: ({ value }) => {
                 if (!value) return undefined;
                 if (!isValidIP(value)) {
@@ -422,21 +427,31 @@ export default function CreateVPSPage() {
             }}
           >
             {(field) => {
-              const hasErrors = field.state.meta.errors.length > 0;
-              const isValid = field.state.value && !hasErrors && isValidIP(field.state.value);
+              const isValid = isValidIP(field.state.value);
+              // Errors come from the blur/submit validators. Once the value is
+              // valid again the stale message is hidden immediately (without
+              // waiting for the next blur) so the field never shows "invalid"
+              // and "Valid IP address" at the same time.
+              const showError = field.state.meta.errors.length > 0 && !isValid;
               const canSubmit = allChecked && isValid && !isNavigating;
 
               return (
                 <div className="space-y-2">
+                  <label htmlFor="vps-ip-input" className="block text-sm font-medium text-foreground">
+                    IP address
+                  </label>
                   <input
+                    id="vps-ip-input"
                     data-vps-ip-input
                     type="text"
-                    inputMode="decimal"
+                    // "text" (not "decimal"): the validator accepts IPv6, which
+                    // needs ":" and hex letters the decimal keypad lacks.
+                    inputMode="text"
                     autoComplete="off"
                     autoCapitalize="none"
                     spellCheck={false}
-                    aria-labelledby="vps-ip-heading"
-                    aria-invalid={hasErrors || undefined}
+                    aria-invalid={showError || undefined}
+                    aria-describedby={showError ? "vps-ip-error" : undefined}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     onBlur={field.handleBlur}
@@ -444,20 +459,24 @@ export default function CreateVPSPage() {
                     className={cn(
                       "w-full rounded-xl border bg-background px-4 py-3 font-mono text-sm outline-none transition",
                       "focus:border-primary focus:ring-2 focus:ring-primary/20",
-                      hasErrors
+                      showError
                         ? "border-destructive focus:border-destructive focus:ring-destructive/20"
                         : "border-border/50"
                     )}
                   />
-                  {hasErrors && (
-                    <p className="flex items-center gap-1 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4" />
+                  {showError && (
+                    <p
+                      id="vps-ip-error"
+                      role="alert"
+                      className="flex items-center gap-1 text-sm text-destructive"
+                    >
+                      <AlertCircle className="h-4 w-4" aria-hidden="true" />
                       {field.state.meta.errors[0]}
                     </p>
                   )}
                   {isValid && (
-                    <p className="flex items-center gap-1 text-sm text-[oklch(0.72_0.19_145)]">
-                      <Check className="h-4 w-4" />
+                    <p className="flex items-center gap-1 text-sm text-green">
+                      <Check className="h-4 w-4" aria-hidden="true" />
                       Valid IP address
                     </p>
                   )}
@@ -478,14 +497,6 @@ export default function CreateVPSPage() {
                     </p>
                   )}
 
-                  {/* Hint when checklist is complete but IP is invalid */}
-                  {allChecked && field.state.value && !isValid && !hasErrors && (
-                    <p className="flex items-center gap-1 text-sm text-muted-foreground">
-                      <AlertCircle className="h-4 w-4" />
-                      Please enter a valid IP address to continue
-                    </p>
-                  )}
-
                   {/* Continue button - rendered inside field for access to validation state */}
                   <div className="flex justify-end pt-6">
                     <Button
@@ -503,7 +514,7 @@ export default function CreateVPSPage() {
         </div>
 
         {/* Region selection tip - prominent placement */}
-        <div className="rounded-xl border border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.05)] p-4">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
           <h3 className="font-medium text-foreground mb-2">💡 Why region matters</h3>
           <p className="text-sm text-muted-foreground">
             Closer servers = faster response times. When you type, commands reach your VPS faster.
@@ -658,9 +669,12 @@ export default function CreateVPSPage() {
             </GuideSection>
 
             <GuideTip>
-              The IP address should be 4 groups of numbers separated by periods,
-              like <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">203.0.113.42</code>.
-              Don&apos;t include any letters or extra characters!
+              Your address will be either IPv4 like{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">203.0.113.42</code>{" "}
+              (four numbers separated by periods) or IPv6 like{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">2001:db8::7</code>{" "}
+              (groups separated by colons). Copy it exactly as your provider shows it, with no
+              spaces or extra characters.
             </GuideTip>
 
             <GuideCaution>

@@ -117,6 +117,8 @@ function ScreenshotFigure({ file, alt, caption }: ScreenshotSpec) {
           width={1440}
           height={1000}
           unoptimized
+          loading="lazy"
+          sizes="(min-width: 1024px) 640px, 100vw"
           className="h-auto w-full"
         />
       </a>
@@ -177,7 +179,7 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
             <ul className="space-y-1">
               {provider.pros.map((pro, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm">
-                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-[oklch(0.72_0.19_145)]" />
+                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-green" aria-hidden="true" />
                   <span className="text-muted-foreground">{pro}</span>
                 </li>
               ))}
@@ -201,7 +203,8 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
             className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
           >
             Go to {provider.name}
-            <ExternalLink className="h-4 w-4" />
+            <ExternalLink className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only"> (opens in new tab)</span>
           </TrackedLink>
         </div>
       )}
@@ -210,7 +213,7 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
 }
 
 const SPEC_CHECKLIST = [
-  { label: "OS", value: "Ubuntu 24.x or newer" },
+  { label: "OS", value: "Ubuntu 22.04 or newer (the installer upgrades it to 25.10)" },
   { label: "CPU", value: "12-16 vCPU" },
   { label: "RAM", value: "64GB recommended (48GB workable, 32GB minimum)" },
   { label: "Storage", value: "250GB+ NVMe SSD" },
@@ -230,11 +233,11 @@ const COMFORTABLE_STATUSES = new Set<PlanStatus>(["pass"]);
 const PLAN_STATUS_COPY: Record<PlanStatus, { label: string; className: string }> = {
   pass: {
     label: "Comfortable",
-    className: "border-[oklch(0.72_0.19_145/0.35)] bg-[oklch(0.72_0.19_145/0.08)] text-[oklch(0.72_0.19_145)]",
+    className: "border-green/35 bg-green/8 text-green",
   },
   warn: {
     label: "Tight",
-    className: "border-[oklch(0.78_0.16_75/0.35)] bg-[oklch(0.78_0.16_75/0.08)] text-[oklch(0.78_0.16_75)]",
+    className: "border-amber/35 bg-amber/8 text-amber",
   },
   fail: {
     label: "Undersized",
@@ -248,11 +251,11 @@ const READINESS_STATUS_COPY: Record<
 > = {
   supported: {
     label: "Supported",
-    className: "border-[oklch(0.72_0.19_145/0.35)] bg-[oklch(0.72_0.19_145/0.08)] text-[oklch(0.72_0.19_145)]",
+    className: "border-green/35 bg-green/8 text-green",
   },
   borderline: {
     label: "Borderline",
-    className: "border-[oklch(0.78_0.16_75/0.35)] bg-[oklch(0.78_0.16_75/0.08)] text-[oklch(0.78_0.16_75)]",
+    className: "border-amber/35 bg-amber/8 text-amber",
   },
   unsupported: {
     label: "Unsupported",
@@ -365,10 +368,10 @@ function CapacityPlanner() {
         </div>
         <a
           href="#recommended-providers"
-          className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+          className="inline-flex min-h-6 items-center gap-1 text-sm font-medium text-primary hover:underline"
         >
           Compare providers
-          <ChevronDown className="h-4 w-4" />
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
         </a>
       </div>
 
@@ -401,6 +404,7 @@ function CapacityPlanner() {
                 <button
                   key={count}
                   type="button"
+                  aria-pressed={agentCount === count}
                   onClick={() => updatePlannerSelection({
                     ...plannerSelection,
                     targetAgents: count,
@@ -425,6 +429,7 @@ function CapacityPlanner() {
                 <button
                   key={profile.id}
                   type="button"
+                  aria-pressed={workloadId === profile.id}
                   onClick={() => updatePlannerSelection({
                     ...plannerSelection,
                     workloadId: profile.id,
@@ -711,7 +716,7 @@ export default function RentVPSPage() {
               Rent a <Jargon term="vps" gradientHeading>VPS</Jargon>
             </h1>
             <p className="text-sm text-muted-foreground">
-              ~5 min
+              ~10 min (+ provider account verification, sometimes hours)
             </p>
           </div>
         </div>
@@ -777,13 +782,16 @@ export default function RentVPSPage() {
       </div>
 
       {/* Honest disclaimer */}
-      <div className="relative overflow-hidden rounded-xl border border-[oklch(0.6_0.02_260/0.3)] bg-gradient-to-br from-[oklch(0.15_0.01_260)] to-[oklch(0.12_0.015_280)] p-3 sm:p-4">
+      {/* Deliberate dark island (hard-coded dark gradient): the `dark` class
+          re-scopes the theme tokens so token colours inside stay readable in
+          light mode too. */}
+      <div className="dark relative overflow-hidden rounded-xl border border-[oklch(0.6_0.02_260/0.3)] bg-gradient-to-br from-[oklch(0.15_0.01_260)] to-[oklch(0.12_0.015_280)] p-3 sm:p-4">
         {/* Subtle decorative element */}
         <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-[oklch(0.5_0.03_260/0.15)] blur-2xl" />
 
         <div className="relative flex gap-2.5 sm:gap-3">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[oklch(0.65_0.18_350/0.15)] sm:h-8 sm:w-8">
-            <Heart className="h-3.5 w-3.5 text-[oklch(0.75_0.15_350)] sm:h-4 sm:w-4" />
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-magenta/15 sm:h-8 sm:w-8">
+            <Heart className="h-3.5 w-3.5 text-magenta sm:h-4 sm:w-4" aria-hidden="true" />
           </div>
           <div className="min-w-0 space-y-1 sm:space-y-1.5">
             <p className="text-[13px] font-medium leading-tight text-[oklch(0.85_0.02_260)] sm:text-sm">
@@ -822,7 +830,7 @@ export default function RentVPSPage() {
           </GuideExplain>
 
           <GuideSection title="Why 64GB RAM?">
-            <div className="rounded-lg border border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.08)] p-4 mb-4">
+            <div className="rounded-lg border border-amber/30 bg-amber/8 p-4 mb-4">
               <p className="font-medium text-foreground mb-2">⚡ This matters a lot!</p>
               <p className="text-sm text-muted-foreground">
                 Each AI coding agent (like Claude Code) uses about 2GB of RAM when running.
@@ -875,7 +883,7 @@ export default function RentVPSPage() {
                 VPS is the right price/performance tradeoff.
               </li>
             </ul>
-            <div className="mt-4 rounded-lg border border-[oklch(0.65_0.15_220/0.3)] bg-[oklch(0.65_0.15_220/0.08)] p-3">
+            <div className="mt-4 rounded-lg border border-primary/30 bg-primary/8 p-3">
               <p className="text-sm text-muted-foreground">
                 <strong>💡 This is another reason to get 64GB:</strong> You won&apos;t always get the full
                 performance you&apos;d expect from those specs. Having headroom means your agents keep
@@ -894,7 +902,7 @@ export default function RentVPSPage() {
               <div className="rounded-lg border border-border/50 bg-card/50 p-3">
                 <p className="font-medium text-foreground">Claude Max ($200/month)</p>
                 <p className="text-sm text-muted-foreground">
-                  Unlimited Claude Code usage. For serious multi-agent workflows, consider
+                  High Claude Code usage limits. For serious multi-agent workflows, consider
                   2 accounts ($400/month) to maximize parallel capacity.
                 </p>
               </div>
@@ -920,7 +928,7 @@ export default function RentVPSPage() {
                 </p>
               </div>
             </div>
-            <div className="mt-4 rounded-lg border border-[oklch(0.65_0.12_30/0.3)] bg-[oklch(0.65_0.12_30/0.08)] p-3">
+            <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/8 p-3">
               <p className="text-sm text-muted-foreground">
                 <strong>⚠️ Realistic minimum investment:</strong> VPS (~$40-56/month for 64GB) + Claude Max ($200/month) + ChatGPT Pro ($200/month) = <strong>~$440-456/month</strong>.
                 The $20/month Claude Pro tier does <em>not</em> have enough capacity for agentic workflows; you&apos;ll
@@ -948,7 +956,7 @@ export default function RentVPSPage() {
                 Great EU and US data centers. Typically activates within minutes.
               </li>
             </ul>
-            <div className="mt-4 rounded-lg border border-[oklch(0.65_0.15_220/0.3)] bg-[oklch(0.65_0.15_220/0.08)] p-3">
+            <div className="mt-4 rounded-lg border border-primary/30 bg-primary/8 p-3">
               <p className="text-sm text-muted-foreground">
                 <strong>💡 About pricing:</strong> All prices shown are <strong>month-to-month with no commitment</strong>.
                 Both providers offer 5-20% discounts if you prepay for 6-12 months, but we recommend starting
@@ -963,6 +971,7 @@ export default function RentVPSPage() {
                 Click on &quot;Contabo&quot; above, or go to{" "}
                 <TrackedLink href="https://contabo.com/en-us/vps/" trackingId="contabo-guide-link" className="text-primary underline">
                   contabo.com/en-us/vps
+                  <span className="sr-only"> (opens in new tab)</span>
                 </TrackedLink>
                 <ScreenshotFigure
                   file="contabo_us_01_main.png"
@@ -1027,6 +1036,7 @@ export default function RentVPSPage() {
                 Click on &quot;OVH&quot; above, or go to{" "}
                 <TrackedLink href="https://us.ovhcloud.com/vps/" trackingId="ovh-guide-link" className="text-primary underline">
                   us.ovhcloud.com/vps
+                  <span className="sr-only"> (opens in new tab)</span>
                 </TrackedLink>
                 <ScreenshotFigure
                   file="ovh_us_01_main.png"

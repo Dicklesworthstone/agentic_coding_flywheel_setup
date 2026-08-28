@@ -1,74 +1,115 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 import { Copy, Check, Terminal } from "lucide-react";
-import { cn, copyTextToClipboard } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import {
+  COPY_FAILURE_MESSAGE,
+  COPY_SUCCESS_MESSAGE,
+  useCopyFeedback,
+  type CopyFeedbackState,
+  type CopyOptions,
+} from "@/lib/hooks/useCopyFeedback";
 
 // =============================================================================
-// COPY-TO-CLIPBOARD HOOK
+// COPY-TO-CLIPBOARD HOOK (compat wrapper over lib/hooks/useCopyFeedback)
 // =============================================================================
 
 function useCopyToClipboard(resetMs = 2000) {
-  const [copied, setCopied] = useState(false);
-  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const feedback = useCopyFeedback({ resetMs });
+  return {
+    copied: feedback.copied,
+    failed: feedback.failed,
+    state: feedback.state,
+    copy: feedback.copy,
+  } as const;
+}
 
-  useEffect(() => {
-    return () => {
-      if (resetTimerRef.current) {
-        clearTimeout(resetTimerRef.current);
-      }
-    };
-  }, []);
+// =============================================================================
+// COPY STATUS — live region shared by every copy affordance
+// =============================================================================
 
-  const copy = useCallback(
-    async (text: string) => {
-      const copiedOk = await copyTextToClipboard(text);
-      if (!copiedOk) {
-        return;
-      }
-
-      setCopied(true);
-      if (resetTimerRef.current) {
-        clearTimeout(resetTimerRef.current);
-      }
-      resetTimerRef.current = setTimeout(() => {
-        setCopied(false);
-        resetTimerRef.current = null;
-      }, resetMs);
-    },
-    [resetMs],
+/**
+ * A single always-mounted `role="status"` live region so screen readers hear
+ * "Copied to clipboard", and sighted visitors SEE the failure instruction
+ * (the button alone cannot tell them the clipboard was refused).
+ */
+function CopyStatus({
+  state,
+  className,
+}: {
+  state: CopyFeedbackState;
+  className?: string;
+}) {
+  const failed = state === "failed";
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      className={cn(
+        failed
+          ? cn("block text-xs font-medium text-destructive", className)
+          : "sr-only",
+      )}
+    >
+      {state === "copied" ? COPY_SUCCESS_MESSAGE : failed ? COPY_FAILURE_MESSAGE : ""}
+    </span>
   );
-
-  return { copied, copy } as const;
 }
 
 // =============================================================================
 // COPY BUTTON
 // =============================================================================
 
+interface CopyButtonProps {
+  text: string;
+  className?: string;
+  compact?: boolean;
+  /**
+   * Controlled mode: the parent owns `useCopyFeedback` (so it can place the
+   * status message and select the code element on failure). When omitted the
+   * button runs its own feedback state and renders its own status region.
+   */
+  state?: CopyFeedbackState;
+  onCopy?: () => void;
+  /** Element to select when the copy fails (uncontrolled mode only). */
+  selectOnFailureRef?: RefObject<HTMLElement | null>;
+}
+
 function CopyButton({
   text,
   className,
   compact = false,
-}: {
-  text: string;
-  className?: string;
-  compact?: boolean;
-}) {
-  const { copied, copy } = useCopyToClipboard();
+  state: controlledState,
+  onCopy,
+  selectOnFailureRef,
+}: CopyButtonProps) {
+  const own = useCopyToClipboard();
+  const controlled = controlledState !== undefined;
+  const state = controlled ? controlledState : own.state;
+  const copied = state === "copied";
 
-  return (
+  const handleClick = () => {
+    if (onCopy) {
+      onCopy();
+      return;
+    }
+    const options: CopyOptions = { selectOnFailure: selectOnFailureRef?.current ?? null };
+    void own.copy(text, options);
+  };
+
+  const button = (
     <button
       type="button"
-      onClick={() => copy(text)}
+      onClick={handleClick}
       aria-label={copied ? "Copied!" : "Copy to clipboard"}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-lg text-xs font-medium",
         "transition duration-200",
-        // Minimum touch target for mobile (44px when compact)
+        // Minimum touch target for mobile (44px in both variants)
         compact
           ? "min-h-[44px] min-w-[44px] justify-center p-2 text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95"
-          : "px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 active:scale-95",
+          : "min-h-11 px-3 py-2 text-white/60 hover:text-white hover:bg-white/10 active:scale-95",
         // Focus ring for keyboard navigation
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         className,
@@ -79,7 +120,7 @@ function CopyButton({
           <Check
             className={cn(
               "h-4 w-4",
-              compact ? "text-[oklch(0.72_0.19_145)]" : "text-emerald-400",
+              compact ? "text-green" : "text-emerald-400",
             )}
           />
           {!compact && <span className="text-emerald-400">Copied!</span>}
@@ -91,6 +132,17 @@ function CopyButton({
         </>
       )}
     </button>
+  );
+
+  if (controlled) {
+    return button;
+  }
+
+  return (
+    <>
+      {button}
+      <CopyStatus state={own.state} className="mt-1" />
+    </>
   );
 }
 
@@ -128,18 +180,29 @@ export function CodeBlock({
   children,
 }: CodeBlockProps) {
   const displayCode = code.trim();
+  const codeRef = useRef<HTMLElement | null>(null);
+  const { state, copy } = useCopyFeedback();
+  const handleCopy = () => {
+    void copy(displayCode, { selectOnFailure: codeRef.current });
+  };
 
   if (variant === "compact") {
     return (
-      <div className={cn("group relative inline-flex w-full", className)}>
-        <code className="block w-full overflow-x-auto rounded-lg bg-muted px-3 py-2 pr-10 font-mono text-sm">
+      <div className={cn("group relative w-full", className)}>
+        <code
+          ref={codeRef}
+          className="block w-full overflow-x-auto rounded-lg bg-muted px-3 py-2 pr-12 font-mono text-sm"
+        >
           {children ?? displayCode}
         </code>
         {copyable && (
-          <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity">
-            <CopyButton text={displayCode} compact />
+          // Hidden until hover, but touch devices never hover: reveal there
+          // unconditionally (same rule as the terminal header button).
+          <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
+            <CopyButton text={displayCode} compact state={state} onCopy={handleCopy} />
           </div>
         )}
+        {copyable && <CopyStatus state={state} className="mt-1" />}
       </div>
     );
   }
@@ -158,7 +221,7 @@ export function CodeBlock({
       <div className="absolute inset-0 bg-noise opacity-[0.03] pointer-events-none mix-blend-overlay" />
 
       {/* Terminal header */}
-      <div className="relative z-10 flex items-center justify-between px-4 py-3 border-b border-white/10 bg-[#1a1b1e]/80 backdrop-blur-md">
+      <div className="relative z-10 flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#1a1b1e]/80 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-[#ff5f56] shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]" />
@@ -176,7 +239,14 @@ export function CodeBlock({
         </div>
         {/* Hidden until hover, but a keyboard user must be able to see what
             they focused: reveal on focus-visible and on touch (no hover). */}
-        {copyable && <CopyButton text={displayCode} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity bg-white/10 border border-white/5 text-white hover:bg-white/20" />}
+        {copyable && (
+          <CopyButton
+            text={displayCode}
+            state={state}
+            onCopy={handleCopy}
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity bg-white/10 border border-white/5 text-white hover:bg-white/20"
+          />
+        )}
       </div>
 
       {/* Code content (focusable so long lines can be panned by keyboard) */}
@@ -187,7 +257,10 @@ export function CodeBlock({
         {/* overflow-visible: the focusable wrapper above is the one scroll
             region; globals.css otherwise makes every <pre> scroll on its own,
             nesting a second, non-focusable scroller. */}
-        <pre className="overflow-visible font-mono text-[0.85rem] leading-[1.7] selection:bg-cyan-900/40 selection:text-white">
+        <pre
+          ref={codeRef as RefObject<HTMLPreElement | null>}
+          className="overflow-visible font-mono text-[0.85rem] leading-[1.7] selection:bg-cyan-900/40 selection:text-white"
+        >
           {lines.map((line, i) => (
             <div
               key={i}
@@ -218,11 +291,20 @@ export function CodeBlock({
           ))}
         </pre>
       </div>
+
+      {/* Visible only on failure; announced on success. Lives on the dark
+          island so it stays readable in both themes. */}
+      {copyable && (
+        <CopyStatus
+          state={state}
+          className="relative z-10 border-t border-white/10 px-5 py-2 text-red-300"
+        />
+      )}
     </div>
   );
 }
 
 // =============================================================================
-// RE-EXPORT CopyButton for use in custom layouts
+// RE-EXPORT CopyButton / CopyStatus for use in custom layouts
 // =============================================================================
-export { CopyButton, useCopyToClipboard };
+export { CopyButton, CopyStatus, useCopyToClipboard };

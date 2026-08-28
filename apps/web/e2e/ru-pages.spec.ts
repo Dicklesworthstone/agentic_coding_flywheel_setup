@@ -217,11 +217,12 @@ test.describe.serial("RU Website Pages", () => {
       await page.waitForLoadState("networkidle");
 
       // Find RU in the flywheel visualization - it should exist
-      const ruElement = page.getByText(/\bRU\b|Repo Updater/i).first();
+      // Desktop-only badges precede the visible ones in DOM order on phones; assert a visible instance.
+      const ruElement = page.getByText(/\bRU\b|Repo Updater/i).filter({ visible: true }).first();
       await expect(ruElement).toBeVisible({ timeout: 5000 });
       await ruElement.click();
       // After clicking, some detail should appear
-      await expect(page.getByText(/sync|multi.*repo/i).first()).toBeVisible();
+      await expect(page.getByText(/sync|multi.*repo/i).filter({ visible: true }).first()).toBeVisible();
     });
   });
 
@@ -234,7 +235,8 @@ test.describe.serial("RU Website Pages", () => {
       const synergyText = page.getByText(
         /multi.*repo.*orchestra|repo.*coordination/i
       );
-      await expect(synergyText.first()).toBeVisible();
+      // The same copy exists in the mobile carousel (hidden on desktop); assert a visible instance.
+      await expect(synergyText.filter({ visible: true }).first()).toBeVisible();
     });
   });
 });

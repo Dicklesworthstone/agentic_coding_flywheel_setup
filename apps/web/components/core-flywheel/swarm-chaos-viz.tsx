@@ -289,7 +289,7 @@ function TaskBox({
       )}
       {isConflicted && (
         <motion.span
-          className="absolute -top-2 -right-2 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] font-black text-white"
+          className="absolute -top-2 -right-2 rounded-full bg-red-500 px-1.5 py-0.5 text-[11px] font-black text-white"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 400, damping: 15 }}
@@ -299,7 +299,7 @@ function TaskBox({
       )}
       {isBlocked && (
         <motion.span
-          className="absolute -top-2 -right-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-[9px] font-black text-white"
+          className="absolute -top-2 -right-2 rounded-full bg-orange-500 px-1.5 py-0.5 text-[11px] font-black text-white"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 400, damping: 15 }}
@@ -368,7 +368,7 @@ function DependencyArrows({ reducedMotion }: { reducedMotion: boolean }) {
       {arrows.map((arrow) => (
         <motion.span
           key={`${arrow.from}-${arrow.to}`}
-          className="text-[9px] font-mono text-emerald-500/40"
+          className="text-[11px] font-mono text-emerald-400/80"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: reducedMotion ? 0 : 0.5 }}
@@ -457,7 +457,7 @@ function SimPanel({
 
       {/* Agents row */}
       <div className="mb-4">
-        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
           Agents
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -468,7 +468,7 @@ function SimPanel({
                 taskIndex={agent.targetTask}
                 reducedMotion={reducedMotion}
               />
-              <span className="ml-5 text-[9px] text-white/25 truncate">
+              <span className="ml-5 text-[11px] text-white/25 truncate">
                 {agent.status}
               </span>
             </div>
@@ -478,7 +478,7 @@ function SimPanel({
 
       {/* Tasks row */}
       <div className="mb-4">
-        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/20 mb-2">
           Tasks
         </p>
         <div className="grid grid-cols-3 gap-2">
@@ -594,7 +594,7 @@ export function SwarmChaosViz() {
 
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-4">
-        <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]/80 flex items-center gap-3">
+        <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3">
           <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
           Interactive Comparison
         </div>

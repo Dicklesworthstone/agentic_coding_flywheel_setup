@@ -495,7 +495,7 @@ function CenterHub({ size }: { size: number }) {
       <div
         className="absolute inset-2 rounded-full"
         style={{
-          background: "conic-gradient(from 0deg, transparent, hsl(var(--primary) / 0.3), transparent, hsl(var(--primary) / 0.2), transparent)",
+          background: "conic-gradient(from 0deg, transparent, color-mix(in oklch, var(--primary) 30%, transparent), transparent, color-mix(in oklch, var(--primary) 20%, transparent), transparent)",
           animation: "spin 8s linear infinite",
         }}
       />
@@ -1207,14 +1207,9 @@ function StatsBadge({ toolCount }: { toolCount: number }) {
           <span className="text-sm font-bold text-foreground">{flywheelDescription.metrics.totalStars}</span>
           <span className="text-xs text-muted-foreground">stars</span>
         </div>
-        <div className="h-5 w-px bg-primary/30" />
-        <div className="flex items-center gap-1.5">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500 shadow-sm" style={{ boxShadow: "0 0 8px rgba(34,197,94,0.5)" }} />
-          </span>
-          <span className="text-xs font-medium text-green-400">Active</span>
-        </div>
+        {/* No "Active" status dot here: nothing on this page probes anything,
+            so a pulsing live indicator would be an asserted claim. The badge
+            only shows the two counts that are derived from lib/flywheel. */}
       </div>
     </div>
   );
@@ -1242,6 +1237,24 @@ function DesktopVisualization({
   const { primary, secondary } = useMemo(() => classifyTools(tools), [tools]);
   const activeToolId = selectedToolId || hoveredToolId;
   const center = DESKTOP_CONFIG.containerSize / 2;
+
+  // The ring is laid out in fixed 640px coordinates. Between the lg breakpoint
+  // and ~1130px the left grid track is narrower than that, so scale the whole
+  // ring down to fit its column instead of overflowing into the detail panel.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      const width = frame.clientWidth;
+      setScale(width > 0 ? Math.min(1, width / DESKTOP_CONFIG.containerSize) : 1);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
 
   const positions = useMemo(() => {
     const pos: Record<string, { x: number; y: number }> = {};
@@ -1282,9 +1295,14 @@ function DesktopVisualization({
   );
 
   return (
+    <div ref={frameRef} className="relative mx-auto aspect-square w-full max-w-[640px]">
     <div
-      className="relative mx-auto"
-      style={{ width: DESKTOP_CONFIG.containerSize, height: DESKTOP_CONFIG.containerSize }}
+      className="absolute left-0 top-0 origin-top-left"
+      style={{
+        width: DESKTOP_CONFIG.containerSize,
+        height: DESKTOP_CONFIG.containerSize,
+        transform: scale === 1 ? undefined : `scale(${scale})`,
+      }}
     >
       {/* Ambient background glow */}
       <div
@@ -1302,9 +1320,9 @@ function DesktopVisualization({
         <defs>
           {/* Ambient glow for center */}
           <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.15" />
-            <stop offset="70%" stopColor="hsl(var(--primary))" stopOpacity="0.05" />
-            <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.15" />
+            <stop offset="70%" stopColor="var(--primary)" stopOpacity="0.05" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
           </radialGradient>
         </defs>
 
@@ -1442,6 +1460,7 @@ function DesktopVisualization({
           index={index}
         />
       ))}
+    </div>
     </div>
   );
 }
@@ -1625,8 +1644,8 @@ export default function FlywheelVisualization() {
       </div>
 
       {/* Desktop layout */}
-      <div className="hidden lg:grid lg:grid-cols-[1fr,400px] xl:grid-cols-[1fr,440px] gap-10">
-        <div className="flex flex-col items-center justify-center">
+      <div className="hidden lg:grid lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_440px] gap-10">
+        <div className="flex min-w-0 flex-col items-center justify-center">
           <DesktopVisualization
             tools={uniqueTools}
             selectedToolId={selectedToolId}

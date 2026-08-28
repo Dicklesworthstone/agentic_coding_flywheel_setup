@@ -123,7 +123,7 @@ export function PlanEvolutionStudio() {
 
       <div className="relative z-10 flex flex-col gap-6 border-b border-white/[0.04] bg-white/[0.01] p-6 sm:p-8 backdrop-blur-md lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]/80 flex items-center gap-2 mb-2">
+          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-2 mb-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
             Interactive Studio
           </div>
@@ -153,7 +153,7 @@ export function PlanEvolutionStudio() {
               value={refinementRound}
               onChange={(event) => setRefinementRound(Number(event.target.value))}
               aria-label="Refinement round"
-              className="h-2 w-full cursor-ew-resize appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#0A0D14] [&::-webkit-slider-thumb]:bg-[#FF5500] [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,85,0,0.6)] hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform relative z-10"
+              className="h-2 w-full cursor-ew-resize appearance-none rounded-full bg-white/10 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#0A0D14] [&::-webkit-slider-thumb]:bg-[#FF5500] [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,85,0,0.6)] hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform relative z-10"
               style={{
                 background: `linear-gradient(to right, rgba(255,85,0,0.5) ${(refinementRound / 4) * 100}%, rgba(255,255,255,0.05) ${(refinementRound / 4) * 100}%)`
               }}
@@ -248,7 +248,7 @@ export function PlanEvolutionStudio() {
                 </div>
               </div>
               <div className="rounded-xl border border-[#FF5500]/20 bg-[#FF5500]/10 px-5 py-3 text-right shadow-inner">
-                <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]/70">
+                <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]">
                   Active Inputs
                 </div>
                 <div className="mt-1 text-2xl font-black text-[#FF5500]">
@@ -311,7 +311,7 @@ export function PlanEvolutionStudio() {
 
                 <div className="mt-6 rounded-xl border border-[#FF5500]/20 bg-[#FF5500]/10 px-4 py-3 text-sm leading-relaxed text-[#FF5500] font-medium">
                   Round {refinementRound + 1}:{" "}
-                  <span className="font-light text-[#FF5500]/80">
+                  <span className="font-light text-[#FF5500]">
                     {refinementRound < 2
                       ? "The plan is still absorbing strengths and closing obvious gaps."
                       : refinementRound < 4

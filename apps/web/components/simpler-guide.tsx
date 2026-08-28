@@ -26,8 +26,8 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
       className={cn(
         "rounded-2xl border-2 border-dashed transition duration-300",
         isOpen
-          ? "border-[oklch(0.7_0.15_280)] bg-[oklch(0.7_0.15_280/0.05)]"
-          : "border-border/40 bg-muted/20 hover:border-[oklch(0.7_0.15_280/0.5)] hover:bg-[oklch(0.7_0.15_280/0.03)]",
+          ? "border-purple bg-purple/5"
+          : "border-border/40 bg-muted/20 hover:border-purple/50 hover:bg-purple/3",
         className
       )}
     >
@@ -43,8 +43,8 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
             className={cn(
               "flex h-10 w-10 items-center justify-center rounded-full transition-colors",
               isOpen
-                ? "bg-[oklch(0.7_0.15_280)] text-white"
-                : "bg-[oklch(0.7_0.15_280/0.15)] text-[oklch(0.7_0.15_280)]"
+                ? "bg-purple text-primary-foreground"
+                : "bg-purple/15 text-purple"
             )}
           >
             <HelpCircle className="h-5 w-5" />
@@ -53,7 +53,7 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
             <p
               className={cn(
                 "font-semibold transition-colors",
-                isOpen ? "text-[oklch(0.8_0.12_280)]" : "text-foreground"
+                isOpen ? "text-purple" : "text-foreground"
               )}
             >
               Make it simpler for me
@@ -70,7 +70,7 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
           <ChevronDown
             className={cn(
               "h-5 w-5 transition-colors",
-              isOpen ? "text-[oklch(0.7_0.15_280)]" : "text-muted-foreground"
+              isOpen ? "text-purple" : "text-muted-foreground"
             )}
           />
         </motion.div>
@@ -85,7 +85,7 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
             exit={{ height: 0, opacity: 0 }}
             transition={springs.smooth}
           >
-            <div className="border-t-2 border-dashed border-[oklch(0.7_0.15_280/0.3)] px-4 pb-6 pt-4">
+            <div className="border-t-2 border-dashed border-purple/30 px-4 pb-6 pt-4">
               {children}
             </div>
           </motion.div>
@@ -112,7 +112,7 @@ export function GuideSection({
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center gap-2">
-        <Icon className="h-5 w-5 shrink-0 text-[oklch(0.78_0.16_75)]" />
+        <Icon className="h-5 w-5 shrink-0 text-amber" />
         <h3 className="font-semibold text-foreground">{title}</h3>
       </div>
       <div className="text-sm leading-relaxed text-muted-foreground">{children}</div>
@@ -136,7 +136,7 @@ export function GuideStep({
 }) {
   return (
     <div className={cn("flex gap-4", className)}>
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[oklch(0.7_0.15_280)] text-sm font-bold text-white">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple text-sm font-bold text-primary-foreground">
         {number}
       </div>
       <div className="min-w-0 flex-1 space-y-2 pt-1">
@@ -159,7 +159,7 @@ export function GuideCheck({
 }) {
   return (
     <div className={cn("flex items-start gap-2", className)}>
-      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[oklch(0.72_0.19_145)]" />
+      <Check className="mt-0.5 h-4 w-4 shrink-0 text-green" />
       <span className="text-sm text-muted-foreground">{children}</span>
     </div>
   );
@@ -180,11 +180,11 @@ export function GuideExplain({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.08)] p-4",
+        "overflow-hidden rounded-xl border border-primary/30 bg-primary/8 p-4",
         className
       )}
     >
-      <p className="mb-2 font-medium text-[oklch(0.85_0.12_195)]">
+      <p className="mb-2 font-medium text-primary">
         What is &quot;{term}&quot;?
       </p>
       <div className="text-sm leading-relaxed text-muted-foreground">{children}</div>
@@ -239,9 +239,11 @@ export function DirectDownloadButton({
       size="lg"
       className={cn(
         "group h-auto flex-col gap-1 py-4",
-        "bg-gradient-to-r from-[oklch(0.72_0.19_145)] to-[oklch(0.65_0.2_160)]",
-        "hover:from-[oklch(0.68_0.2_145)] hover:to-[oklch(0.60_0.22_160)]",
-        "shadow-lg shadow-[oklch(0.72_0.19_145/0.3)]",
+        // Green via the theme token so the label (primary-foreground: dark on
+        // the dark theme's bright green, white on the light theme's deep
+        // green) stays readable in both themes.
+        "bg-green text-primary-foreground hover:bg-green/90 active:bg-green/85",
+        "shadow-lg shadow-green/30",
         className
       )}
       onClick={handleClick}
@@ -270,11 +272,11 @@ export function GuideCaution({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.08)] p-4",
+        "overflow-hidden rounded-xl border border-amber/30 bg-amber/8 p-4",
         className
       )}
     >
-      <p className="mb-2 flex items-center gap-2 font-medium text-[oklch(0.88_0.12_75)]">
+      <p className="mb-2 flex items-center gap-2 font-medium text-amber">
         <span className="text-lg">⚠️</span> Important
       </p>
       <div className="text-sm leading-relaxed text-muted-foreground">{children}</div>
@@ -295,11 +297,11 @@ export function GuideTip({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.08)] p-4",
+        "overflow-hidden rounded-xl border border-green/30 bg-green/8 p-4",
         className
       )}
     >
-      <p className="mb-2 flex items-center gap-2 font-medium text-[oklch(0.82_0.12_145)]">
+      <p className="mb-2 flex items-center gap-2 font-medium text-green">
         <span className="text-lg">💡</span> Tip
       </p>
       <div className="text-sm leading-relaxed text-muted-foreground">{children}</div>

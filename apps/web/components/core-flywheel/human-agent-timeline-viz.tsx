@@ -280,9 +280,9 @@ function DetailCard({
             {actorLabel(stage.actor)}
           </span>
         </div>
-        <h5 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none drop-shadow-md">
+        <h4 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-none drop-shadow-md">
           {stage.label}
-        </h5>
+        </h4>
       </div>
 
       {/* Info grid */}
@@ -759,7 +759,7 @@ export function HumanAgentTimelineViz() {
                   onClick={() => handleSelect(index)}
                   aria-label={`Go to stage ${index + 1}: ${stage.label}`}
                   title={`${index + 1}. ${stage.label}`}
-                  className="p-2"
+                  className="inline-flex min-h-6 min-w-6 items-center justify-center p-2"
                 >
                   <motion.div
                     className="rounded-full"

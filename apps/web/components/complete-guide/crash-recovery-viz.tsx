@@ -346,7 +346,7 @@ export function CrashRecoveryViz() {
 
         {/* Event log */}
         <div className="border-t lg:border-t-0 lg:border-l border-white/[0.04] p-5 sm:p-6 bg-black/20">
-          <div className="text-[10px] font-bold text-[#FF5500]/60 uppercase tracking-[0.2em] mb-3">Event Log</div>
+          <div className="text-[11px] font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3">Event Log</div>
           <div className="space-y-2" role="log" aria-live="polite">
             <AnimatePresence mode="popLayout" initial={false}>
               {log.map((entry, i) => (

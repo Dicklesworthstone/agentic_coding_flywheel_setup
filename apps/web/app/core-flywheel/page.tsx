@@ -29,7 +29,7 @@ import { HumanAgentTimelineViz } from "@/components/core-flywheel/human-agent-ti
 export default function CoreFlywheelPage() {
   return (
     <ErrorBoundary>
-      <main className="min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-hidden pb-40">
+      <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-hidden pb-40">
         <Hero />
 
         {/* Floating quick-nav for desktop */}
@@ -733,7 +733,7 @@ function HelperCard({
         </div>
 
         <div>
-          <div className="text-[0.6rem] font-bold uppercase tracking-[0.2em] opacity-50 group-hover:opacity-70 transition-opacity duration-500" style={{ color }}>
+          <div className="text-[0.6rem] font-bold uppercase tracking-[0.2em]" style={{ color }}>
             {fullName}
           </div>
           <h3 className="text-2xl font-black text-white tracking-tight mt-1">

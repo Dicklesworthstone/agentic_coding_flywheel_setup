@@ -40,7 +40,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
       {
         symptom: "I already have a terminal, do I need another one?",
         solution:
-          "If you're on Mac, the built-in Terminal.app works fine. On Windows, we recommend Windows Terminal from the Microsoft Store for a better experience.",
+          "If you're on Mac, the built-in Terminal.app works; this step recommends Ghostty or WezTerm because they're faster and handle the installer's output better. On Windows, we recommend Windows Terminal from the Microsoft Store for a better experience.",
       },
       {
         symptom: "Windows Terminal won't install from the Store",
@@ -116,7 +116,7 @@ export const STEP_HELP: Partial<Record<number, StepHelp>> = {
     ],
     tips: [
       "Copy the IP address directly from your provider's dashboard to avoid typos.",
-      "Make sure you selected Ubuntu 24.04 or newer, not Debian, when creating the VPS.",
+      "Make sure you selected Ubuntu 22.04 or newer (the installer upgrades to 25.10), not Debian, when creating the VPS.",
     ],
   },
 

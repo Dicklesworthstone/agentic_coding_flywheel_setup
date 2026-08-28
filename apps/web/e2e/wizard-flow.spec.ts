@@ -885,12 +885,19 @@ test.describe("Query Param Fallback", () => {
     await expect(page.getByText(/Windows Terminal/i).first()).toBeVisible();
   });
 
-  test("should honor ?os but refuse to import a VPS IP from a deep-link", async ({ page }) => {
+  test("should honor ?os but refuse to import a VPS IP from a deep-link and land on the next reachable step", async ({ page }) => {
+    // Privacy contract: host addresses are never imported from URL query params
+    // (lib/userPreferences.ts getVPSIP), so a fresh browser only has step 1
+    // implied by ?os. The wizard layout gate (app/wizard/layout.tsx) therefore
+    // routes a step-6 deep link to the next reachable step: step 2.
     await page.goto("/wizard/ssh-connect?os=mac&ip=192.168.1.100");
-    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
+    await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     const url = new URL(page.url());
     expect(url.searchParams.get("os")).toBe("mac");
     expect(url.searchParams.get("ip")).toBeNull();
+    expect(
+      await page.evaluate(() => window.localStorage.getItem("agent-flywheel-vps-ip")),
+    ).toBeNull();
   });
 });
 
@@ -1143,6 +1150,11 @@ test.describe("Step 9: Run Installer Page", () => {
   test("should not tell fresh root users to switch before the installer creates the user", async ({ page }) => {
     await page.goto("/wizard/run-installer");
     await page.waitForLoadState("domcontentloaded");
+    // The page renders a spinner until its preference queries resolve; wait for
+    // the real heading before taking a non-retrying body-text snapshot.
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({
+      timeout: TIMEOUTS.LOADING_SPINNER,
+    });
 
     let bodyText = (await page.locator("body").textContent()) ?? "";
     expect(bodyText).toContain("Run this command from that root session");
@@ -2049,7 +2061,7 @@ test.describe("Command Builder Panel", () => {
 
     const copyInstaller = page.getByRole("button", { name: "Copy Run installer command" });
     await copyInstaller.click();
-    await expect(copyInstaller.locator("svg.text-\\[oklch\\(0\\.72_0\\.19_145\\)\\]")).toBeVisible();
+    await expect(copyInstaller.locator("svg.text-green")).toBeVisible();
 
     await page.reload();
     await page.waitForLoadState("domcontentloaded");
@@ -2131,10 +2143,14 @@ test.describe("Command Builder Panel", () => {
     await page.goto("/wizard/launch-onboarding");
     await page.waitForLoadState("domcontentloaded");
 
-    // Should have multiple copy buttons (one for each command)
+    // Should have one copy button per command row (ssh-root, installer,
+    // ssh-user, doctor, onboard). The page renders a spinner until it hydrates
+    // and unlocks, so poll instead of taking a one-shot count() snapshot. The
+    // selector is page-wide: it also matches the "Copy command" buttons on the
+    // CommandCards below the panel, so assert a floor rather than an exact count.
     const copyButtons = page.locator('button[aria-label*="Copy"]');
-    const count = await copyButtons.count();
-    expect(count).toBeGreaterThanOrEqual(4); // ssh-root, installer, ssh-user, doctor, onboard
+    await expect(copyButtons.first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
+    await expect.poll(() => copyButtons.count()).toBeGreaterThanOrEqual(5);
   });
 
   test("should show checkmark after clicking copy button", async ({ page }) => {
@@ -2147,7 +2163,7 @@ test.describe("Command Builder Panel", () => {
 
     // Check icon should appear briefly (indicating copied state)
     // The button contains an SVG that changes from Copy to Check
-    await expect(copyBtn.locator('svg.text-\\[oklch\\(0\\.72_0\\.19_145\\)\\]')).toBeVisible();
+    await expect(copyBtn.locator('svg.text-green')).toBeVisible();
   });
 
   test("should restore non-sensitive query state and scrub a supplied IP", async ({ page }) => {
@@ -2177,6 +2193,11 @@ test.describe("Command Builder Panel", () => {
     }, secret).catch(() => {
       // A hard navigation may destroy the evaluation context before it returns.
     });
+    // The privacy guard (components/analytics-provider.tsx) answers a
+    // zone-crossing pushState with an async window.location.assign() to the
+    // scrubbed URL. waitForLoadState alone resolves on the *old* document, so
+    // wait for the new document to commit before inspecting router state.
+    await page.waitForURL(/\/wizard\/launch-onboarding/);
     await page.waitForLoadState("domcontentloaded");
 
     expect(page.url()).not.toContain(secret);

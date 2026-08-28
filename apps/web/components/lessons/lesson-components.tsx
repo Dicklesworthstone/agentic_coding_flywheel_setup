@@ -274,9 +274,15 @@ interface Step {
 
 interface StepListProps {
   steps: Step[];
+  /**
+   * Heading level for each step title. Steps normally sit directly under a
+   * <Section> (h2), so the default is h3; pass 4 when nested under an h3.
+   */
+  headingLevel?: 3 | 4;
 }
 
-export function StepList({ steps }: StepListProps) {
+export function StepList({ steps, headingLevel = 3 }: StepListProps) {
+  const StepHeading = headingLevel === 4 ? "h4" : "h3";
   return (
     <div className="relative space-y-6">
       {/* Connecting line */}
@@ -294,7 +300,7 @@ export function StepList({ steps }: StepListProps) {
             {i + 1}
           </div>
           <div className="pt-1">
-            <h4 className="font-semibold text-white">{step.title}</h4>
+            <StepHeading className="font-semibold text-white">{step.title}</StepHeading>
             {step.description && (
               <p className="mt-1 text-white/50 text-sm">{step.description}</p>
             )}

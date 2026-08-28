@@ -3,6 +3,7 @@
 import { type ReactNode, type HTMLAttributes, type AnchorHTMLAttributes, type TableHTMLAttributes, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
 import { Check, Copy } from "lucide-react";
 import { useState, useCallback, useRef, useEffect } from "react";
+import { copyTextToClipboard } from "@/lib/utils";
 
 /**
  * ReactMarkdown passes AST-related props (node, siblingCount, index, etc.) to custom components.
@@ -134,7 +135,8 @@ function InlineCode({ children, ...props }: MarkdownProps) {
 // Pre component - wrapper for code blocks with copy button
 function Pre({ children, ...props }: MarkdownProps) {
   const safeProps = sanitizeProps(props) as HTMLAttributes<HTMLPreElement>;
-  const [copied, setCopied] = useState(false);
+  // "copied" is only entered after the clipboard write resolves true (P54).
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cleanup timeout on unmount
@@ -160,36 +162,57 @@ function Pre({ children, ...props }: MarkdownProps) {
     };
 
     const text = extractText(children);
-    if (text) {
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        // Clear any existing timeout
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-        }
-        timeoutRef.current = setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Clipboard API not available or permission denied - fail silently
-        console.warn("Failed to copy to clipboard");
-      }
+    if (!text) return;
+
+    // copyTextToClipboard tries the async API, then a DOM fallback, and
+    // returns false when neither worked — never claim success before that.
+    const ok = await copyTextToClipboard(text);
+    setCopyState(ok ? "copied" : "failed");
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
     }
+    timeoutRef.current = setTimeout(() => setCopyState("idle"), ok ? 2000 : 5000);
   }, [children]);
 
   return (
     <div className="group relative my-6">
       {/* Copy button */}
       <button
+        type="button"
         onClick={handleCopy}
-        className="absolute right-3 top-3 z-10 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-opacity p-1.5 rounded-md bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        aria-label="Copy code"
+        className={`absolute right-3 top-3 z-10 flex items-center gap-1.5 transition-opacity p-1.5 rounded-md bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+          copyState === "idle"
+            ? "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+            : "opacity-100"
+        }`}
+        aria-label={copyState === "copied" ? "Copied" : "Copy code"}
       >
-        {copied ? (
-          <Check className="h-3.5 w-3.5 text-[oklch(0.72_0.19_145)]" />
+        {copyState === "copied" ? (
+          <>
+            <Check className="h-3.5 w-3.5 text-[oklch(0.72_0.19_145)]" aria-hidden="true" />
+            <span className="text-xs font-medium text-foreground">Copied</span>
+          </>
         ) : (
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className="h-3.5 w-3.5" aria-hidden="true" />
         )}
       </button>
+      {/* Always-mounted status region: announces success, and shows the
+          failure state visibly so the reader knows to copy by hand. */}
+      <div
+        role="status"
+        aria-live="polite"
+        className={
+          copyState === "failed"
+            ? "mb-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200"
+            : "sr-only"
+        }
+      >
+        {copyState === "copied"
+          ? "Copied to clipboard"
+          : copyState === "failed"
+            ? "Copy failed — select and copy manually"
+            : ""}
+      </div>
       <pre
         {...safeProps}
         className="rounded-xl border border-border/50 bg-muted/50 p-4 overflow-x-auto"

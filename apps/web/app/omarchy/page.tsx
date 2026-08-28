@@ -378,12 +378,12 @@ function SectionHeading({ eyebrow, title }: { eyebrow?: string; title: string })
 }
 
 const footerLink =
-  "rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60";
+  "inline-flex min-h-6 items-center rounded-sm underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60";
 
 export default function OmarchyPage() {
   return (
     <div className="relative min-h-screen overflow-x-clip bg-background">
-      <main>
+      <main id="main-content" tabIndex={-1}>
         {/* ============================= HERO ============================= */}
         {/* Fixed min-height + absolutely-positioned canvas: zero layout shift.
             Always dark, regardless of site theme — see TN above. */}
@@ -431,7 +431,7 @@ export default function OmarchyPage() {
                 href={GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-[#a9b1d6] transition-colors hover:bg-white/5 hover:text-[#c0caf5] sm:h-auto sm:w-auto sm:rounded-none sm:bg-transparent sm:hover:bg-transparent"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-[#a9b1d6] transition-colors hover:bg-white/5 hover:text-[#c0caf5] sm:h-auto sm:min-h-6 sm:w-auto sm:rounded-none sm:bg-transparent sm:hover:bg-transparent"
                 aria-label="GitHub"
               >
                 <GitBranch className="h-5 w-5 sm:hidden" />
@@ -439,7 +439,7 @@ export default function OmarchyPage() {
               </a>
               <Link
                 href="/learn"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-[#a9b1d6] transition-colors hover:bg-white/5 hover:text-[#c0caf5] sm:h-auto sm:w-auto sm:gap-1 sm:rounded-none sm:bg-transparent sm:hover:bg-transparent"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-[#a9b1d6] transition-colors hover:bg-white/5 hover:text-[#c0caf5] sm:h-auto sm:min-h-6 sm:w-auto sm:gap-1 sm:rounded-none sm:bg-transparent sm:hover:bg-transparent"
                 aria-label="Learn"
               >
                 <BookOpen className="h-5 w-5 sm:h-4 sm:w-4" />
@@ -447,7 +447,7 @@ export default function OmarchyPage() {
               </Link>
               <Link
                 href="/tldr"
-                className="flex h-11 w-11 items-center justify-center rounded-lg text-[#a9b1d6] transition-colors hover:bg-white/5 hover:text-[#c0caf5] sm:h-auto sm:w-auto sm:gap-1 sm:rounded-none sm:bg-transparent sm:hover:bg-transparent"
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-[#a9b1d6] transition-colors hover:bg-white/5 hover:text-[#c0caf5] sm:h-auto sm:min-h-6 sm:w-auto sm:gap-1 sm:rounded-none sm:bg-transparent sm:hover:bg-transparent"
                 aria-label="TL;DR"
               >
                 <Zap className="h-5 w-5 sm:h-4 sm:w-4" />
@@ -634,7 +634,7 @@ export default function OmarchyPage() {
                     acfs doctor
                   </span>
                 </div>
-                <div className="overflow-x-auto p-5 font-mono text-xs leading-6 text-[#c0caf5] sm:text-sm">
+                <div tabIndex={0} role="region" aria-label="acfs doctor output" className="overflow-x-auto p-5 font-mono text-xs leading-6 text-[#c0caf5] sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                   <p className="mb-2 text-[#a9b1d6]/70">
                     <span className="select-none text-[#9ece6a]">$ </span>acfs doctor
                   </p>
@@ -648,7 +648,7 @@ export default function OmarchyPage() {
                         )}
                         <span className={line.status === "skip" ? "text-[#a9b1d6]/70" : ""}>{line.label}</span>
                         {line.note ? (
-                          <span className="basis-full pl-[4.5rem] text-[11px] italic text-[#a9b1d6]/50">
+                          <span className="basis-full pl-[4.5rem] text-xs italic text-[#a9b1d6]/75">
                             Note: {line.note}
                           </span>
                         ) : null}
@@ -657,7 +657,7 @@ export default function OmarchyPage() {
                   </ul>
                   <p className="mt-3 text-[#a9b1d6]/70">
                     Summary: <span className="text-[#9ece6a]">8 passed</span>, 0 warnings, 0 failed,{" "}
-                    <span className="text-[#a9b1d6]/50">4 skipped</span>
+                    <span className="text-[#a9b1d6]/75">4 skipped</span>
                   </p>
                 </div>
               </div>
@@ -814,7 +814,7 @@ export default function OmarchyPage() {
               transition={springs.smooth}
             >
               Want the long version of each one?{" "}
-              <Link href="/tldr" className="inline-flex items-center gap-1 text-primary hover:underline">
+              <Link href="/tldr" className="inline-flex min-h-6 items-center gap-1 text-primary underline underline-offset-4 decoration-primary/50 hover:decoration-primary">
                 Read the TL;DR
                 <ArrowRight className="h-3 w-3" />
               </Link>
@@ -909,7 +909,7 @@ export default function OmarchyPage() {
                   href="https://jeffreyemanuel.com/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-primary hover:underline"
+                  className="inline-flex min-h-6 items-center text-primary hover:underline"
                 >
                   Jeffrey Emanuel
                 </a>

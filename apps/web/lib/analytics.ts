@@ -849,11 +849,17 @@ function detectPlatform(): string {
   return 'unknown';
 }
 
+// Per-page-load guard: a document gets exactly one session_start_enhanced,
+// even if the tracker component remounts (provider swaps, boundary resets).
+let sessionStartTracked = false;
+
 /**
  * Track session start with device info, UTM parameters, and referrer
  */
 export const trackSessionStart = (): void => {
   if (typeof window === 'undefined') return;
+  if (sessionStartTracked) return;
+  sessionStartTracked = true;
 
   const screenWidth = window.screen.width;
   const screenHeight = window.screen.height;

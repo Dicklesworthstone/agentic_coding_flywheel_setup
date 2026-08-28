@@ -78,7 +78,8 @@ test.describe.serial("DCG Website Pages", () => {
       await page.goto("/learn/dcg");
       await page.waitForLoadState("networkidle");
 
-      const title = page.getByText(/dcg/i).first();
+      // The lesson sidebar (hidden on phones) lists "DCG" before the lesson body; assert a visible instance.
+      const title = page.getByText(/dcg/i).filter({ visible: true }).first();
       await expect(title).toBeVisible();
     });
   });
@@ -190,7 +191,8 @@ test.describe.serial("DCG Website Pages", () => {
       await page.waitForLoadState("networkidle");
 
       // Find and click link to DCG
-      const dcgLink = page.getByRole("link", { name: /DCG/i }).first();
+      // Locked lesson cards are aria-disabled links by design; navigate through an enabled one.
+      const dcgLink = page.locator('a[href*="dcg"]:not([aria-disabled="true"])').first();
       if (await dcgLink.isVisible()) {
         await dcgLink.click();
         await page.waitForLoadState("networkidle");

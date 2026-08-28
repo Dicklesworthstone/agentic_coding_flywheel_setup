@@ -340,7 +340,8 @@ test.describe.serial("Learning Hub", () => {
     await page.keyboard.press("j");
     await page.keyboard.press("j");
 
-    const continueLink = page.locator('a[href="/learn/ssh-basics"]').first();
+    // The hub renders responsive duplicates of this link (one hidden per breakpoint); use the visible one.
+    const continueLink = page.locator('a[href="/learn/ssh-basics"]').filter({ visible: true }).first();
     await continueLink.focus();
     await page.keyboard.press("Enter");
 

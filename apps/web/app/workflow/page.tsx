@@ -104,7 +104,9 @@ function CollapsibleSection({
           </motion.div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg font-semibold tracking-tight">{title}</span>
+              {/* Real heading so the eight phase containers appear in the
+                  document outline (h1 → h2 lifecycle → h3 phase → h4 step). */}
+              <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
               {badge && (
                 <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/20 text-primary">
                   {badge}
@@ -519,7 +521,7 @@ export default function WorkflowPage() {
   const prefersReducedMotion = useReducedMotion();
 
   return (
-    <div role="main" className="dark relative min-h-screen bg-background text-foreground overflow-hidden">
+    <div role="main" id="main-content" tabIndex={-1} className="dark relative min-h-screen bg-background text-foreground overflow-hidden">
       {/* Background effects */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-hero opacity-50" />
       <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-20" />
@@ -531,7 +533,7 @@ export default function WorkflowPage() {
         <div className="mx-auto max-w-5xl px-4 py-6">
           <Link
             href="/wizard/launch-onboarding"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6 group"
+            className="inline-flex min-h-6 items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6 group"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
             Back to Part One
@@ -695,7 +697,7 @@ export default function WorkflowPage() {
           <div className="space-y-2">
             <WorkflowStep number={1} title="Start with Your Primary AI" color="bg-amber-500">
               <p>
-                Open <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">ChatGPT 5.2 Pro</a> and
+                Open <a href="https://chatgpt.com" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary hover:underline">ChatGPT 5.2 Pro</a> and
                 describe your project in detail. Be thorough about what you want to build, user experience, and technical requirements.
                 Ask it to create a comprehensive implementation plan.
               </p>
@@ -704,8 +706,8 @@ export default function WorkflowPage() {
             <WorkflowStep number={2} title="Get Competing Plans" color="bg-amber-500">
               <p>
                 Give the same prompt to{" "}
-                <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Claude Opus 4.5</a> and{" "}
-                <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Gemini 3 with Deep Think</a>.
+                <a href="https://claude.ai" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary hover:underline">Claude Opus 4.5</a> and{" "}
+                <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary hover:underline">Gemini 3 with Deep Think</a>.
                 Each model produces different insights: GPT-5.2 excels at system design, Claude Opus 4.5 at code quality, Gemini 3 at creative features.
               </p>
             </WorkflowStep>

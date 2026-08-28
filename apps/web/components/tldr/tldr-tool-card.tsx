@@ -5,6 +5,8 @@ import { useRef, useState, useCallback, useMemo } from "react";
 import { motion, useReducedMotion } from "@/components/motion";
 import {
   ArrowUpRight,
+  Check,
+  Copy,
   Star,
   ExternalLink,
   Box,
@@ -48,6 +50,11 @@ import {
   Save,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  COPY_FAILURE_MESSAGE,
+  COPY_SUCCESS_MESSAGE,
+  useCopyFeedback,
+} from "@/lib/hooks/useCopyFeedback";
 import { formatStarCount, formatStarCountFull } from "@/lib/format-stars";
 import { getColorDefinition } from "@/lib/colors";
 import type { TldrFlywheelTool } from "@/lib/tldr-content";
@@ -208,6 +215,8 @@ export function TldrToolCard({
   allTools,
 }: TldrToolCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
+  const exampleRef = useRef<HTMLElement>(null);
+  const copyExample = useCopyFeedback();
   const [spotlightOpacity, setSpotlightOpacity] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
   const isTouchDevice = useMemo(
@@ -380,16 +389,51 @@ export function TldrToolCard({
               {tool.whatItDoes}
             </p>
 
-            {/* Representative command (from the manifest) */}
+            {/* Representative command (from the manifest). The README calls
+                this a copyable example, so it has a real copy button: the
+                confirmation only appears after the clipboard write resolves,
+                and a failure shows a visible instruction instead of nothing. */}
             {tool.commandExample && (
-              <div
-                className="mt-3 flex items-center gap-2 overflow-x-auto rounded-lg bg-black/30 px-3 py-2 ring-1 ring-inset ring-white/10 outline-none focus-visible:ring-primary/60"
-                tabIndex={0}
-              >
-                <Terminal className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-                <code className="whitespace-nowrap font-mono text-xs text-primary">
-                  {tool.commandExample}
-                </code>
+              <div className="mt-3">
+                <div className="flex items-center gap-1 rounded-lg bg-black/30 pr-1 ring-1 ring-inset ring-white/10">
+                  <div
+                    className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60"
+                    tabIndex={0}
+                    role="region"
+                    aria-label={`${tool.name} example command`}
+                  >
+                    <Terminal className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                    <code ref={exampleRef} className="whitespace-nowrap font-mono text-xs text-primary">
+                      {tool.commandExample}
+                    </code>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!tool.commandExample) return;
+                      void copyExample.copy(tool.commandExample, { selectOnFailure: exampleRef.current });
+                    }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition duration-200 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                    aria-label={copyExample.copied ? "Copied" : `Copy ${tool.name} example command`}
+                  >
+                    {copyExample.copied ? (
+                      <Check className="h-3.5 w-3.5 text-success" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={cn(
+                    "mt-1 text-[11px] leading-snug",
+                    copyExample.failed ? "text-amber-400" : "text-success",
+                    copyExample.state === "idle" && "sr-only"
+                  )}
+                >
+                  {copyExample.copied ? COPY_SUCCESS_MESSAGE : copyExample.failed ? COPY_FAILURE_MESSAGE : ""}
+                </p>
               </div>
             )}
           </div>

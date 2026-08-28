@@ -1171,7 +1171,9 @@ The Learning Hub provides interactive lessons with progress tracking:
 | 6 | Agent Commands | 10 min | Claude, Codex, Antigravity usage |
 | 7 | NTM Command Center | 8 min | Session orchestration |
 | 8 | NTM Prompt Palette | 6 min | Quick command access |
-| 9 | The Flywheel Loop | 8 min | How all 10 tools work together |
+| 9 | The Flywheel Loop | 10 min | How all 10 tools work together |
+
+These are the core lessons; the hub ships 65 lessons in total (the core track plus per-tool deep dives such as UBS, Agent Mail, CASS, Beads, SLB, RCH and the case studies below), all defined in `apps/web/lib/lessons.ts`.
 
 **Features:**
 - Progress tracking in localStorage
@@ -1226,12 +1228,17 @@ Plan (Beads) ──> Coordinate (Agent Mail) ──> Execute (NTM + Agents)
 
 **Workflow Scenarios:**
 
-| Scenario | Description | Time |
-|----------|-------------|------|
-| Daily Parallel Progress | 3+ projects moving simultaneously | 3+ hours |
-| Agents Reviewing Agents | Cross-review before merging | 30 min |
-| Memory-Augmented Debugging | Past solutions for current bugs | 15 min |
-| Coordinated Feature Dev | Multiple agents, one feature | 2+ hours |
+| Scenario | Description | Timeframe |
+|----------|-------------|-----------|
+| Daily Parallel Progress | Keep several projects moving at once, even without the mental bandwidth for all of them | 3+ hours of autonomous work |
+| Agents Reviewing Agents | Agents review each other's work before it becomes a problem | Continuous improvement loop |
+| 5,500 Lines to 347 Beads | Turn a massive planning document into a dependency-tracked task graph | ~1 day for a complex feature |
+| Fresh Eyes Code Review | Agents re-investigate code from a fresh perspective to find what humans miss | Continuous |
+| Multi-Repo Morning Sync | Start the day with every repo synced and agents spawned across the fleet | < 10 minutes to full productivity |
+| Bulk AI Commit Automation | `ru agent-sweep` commits dirty repos with AI-written messages | 30 min – 2 hours depending on repo count |
+| Resource-Protected Agent Swarm | Run heavy agents without the workstation freezing (SRPS keeps priorities in check) | Hours of unattended work |
+
+The scenarios are defined in `apps/web/lib/flywheel.ts`; the page renders whatever that file contains.
 
 ### Tool Catalog (TL;DR page)
 
@@ -1262,24 +1269,22 @@ CLI instruction cards with:
 - Expandable explanations
 
 **Jargon Component (Responsive Technical Terms):**
-A sophisticated tooltip system that adapts to device capabilities:
+A tooltip system (`apps/web/components/jargon.tsx`) that adapts to the pointer type:
 
 *Desktop behavior:*
-- Hover reveals floating tooltip with term definition
-- Radix UI Tooltip for accessible ARIA-compliant overlays
+- Hover or keyboard focus reveals a floating definition card, rendered through a portal so it escapes stacking contexts
 - Viewport-aware positioning (auto-flips when near edges)
-- 200ms hover delay prevents tooltip spam
+- A short close delay so the pointer can travel into the card
 
 *Mobile behavior:*
-- Tap opens bottom sheet drawer (Vaul library)
-- Full definition visible without tiny tap targets
-- Swipe-to-dismiss gesture support
-- Snap points for partial/full expansion
+- Tap opens a bottom sheet (`apps/web/components/ui/bottom-sheet.tsx`, framer-motion) with the full definition
+- Swipe-to-dismiss from the handle, Escape and backdrop dismissal, focus returned to the term
+- Body scroll locked while open and restored on close
 
 *Visual features:*
-- Gradient underline indicates tappable term
-- Each term gets unique gradient based on slug hash
-- Consistent color scheme with OKLCH tokens
+- Dotted primary-colored underline marks a term as interactive
+- Reduced-motion users get fades instead of slides
+- Colors come from the OKLCH design tokens
 
 *Content structure per term:*
 ```typescript

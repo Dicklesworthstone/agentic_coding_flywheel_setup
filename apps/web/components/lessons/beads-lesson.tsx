@@ -1231,6 +1231,8 @@ function InteractiveDependencyGraph() {
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
             className="w-full h-auto"
             style={{ minHeight: 250 }}
+            role="group"
+            aria-label="Bead dependency graph. Each bead is a button: press Enter to claim a ready bead or close one in progress."
           >
             <defs>
               {/* Arrowhead markers */}
@@ -1278,7 +1280,7 @@ function InteractiveDependencyGraph() {
               >
                 <path
                   d="M 0 0 L 10 5 L 0 10 z"
-                  fill="hsl(var(--primary))"
+                  fill="var(--primary)"
                 />
               </marker>
               <marker
@@ -1335,7 +1337,7 @@ function InteractiveDependencyGraph() {
                 const arrowColor = isCritical
                   ? "#fbbf24"
                   : edgeStatus === "ready"
-                    ? "hsl(var(--primary))"
+                    ? "var(--primary)"
                     : beadStatusColor(src.status).stroke;
                 const markerId = isCritical
                   ? "bead-arrow-critical"
@@ -1388,7 +1390,7 @@ function InteractiveDependencyGraph() {
 
               // Determine node visual state
               const nodeStroke = ready
-                ? "hsl(var(--primary))"
+                ? "var(--primary)"
                 : sc.stroke;
               const nodeStrokeOpacity =
                 bead.status === "open" && !ready ? 0.25 : 0.7;
@@ -1399,12 +1401,40 @@ function InteractiveDependencyGraph() {
                   ? "2 3"
                   : "none";
 
+              const statusLabel =
+                bead.status === "closed"
+                  ? "closed"
+                  : bead.status === "in_progress"
+                    ? "in progress"
+                    : ready
+                      ? "ready"
+                      : "blocked";
+              const actionHint =
+                bead.status === "open" && ready
+                  ? ". Press Enter to claim"
+                  : bead.status === "in_progress"
+                    ? ". Press Enter to close"
+                    : "";
+
               return (
                 <g
                   key={bead.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${bead.id}: ${bead.title}, ${pi.label}, ${statusLabel}${actionHint}`}
+                  aria-disabled={!isClickable}
                   onClick={() => handleNodeClick(bead.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleNodeClick(bead.id);
+                    }
+                  }}
+                  onFocus={() => setHoveredId(bead.id)}
+                  onBlur={() => setHoveredId(null)}
                   onMouseEnter={() => setHoveredId(bead.id)}
                   onMouseLeave={() => setHoveredId(null)}
+                  className="outline-none"
                   style={{
                     cursor: isClickable ? "pointer" : "default",
                   }}
@@ -1418,7 +1448,7 @@ function InteractiveDependencyGraph() {
                       height={NODE_H + 6}
                       rx={14}
                       fill="none"
-                      stroke="hsl(var(--primary))"
+                      stroke="var(--primary)"
                       strokeOpacity={0.3}
                       filter="url(#bead-glow-ready)"
                     >
@@ -1529,7 +1559,7 @@ function InteractiveDependencyGraph() {
                       <g transform="translate(-5,-5)">
                         <polygon
                           points="3,1.5 8.5,5 3,8.5"
-                          fill="hsl(var(--primary))"
+                          fill="var(--primary)"
                           fillOpacity={0.8}
                         />
                       </g>
@@ -1677,7 +1707,7 @@ function InteractiveDependencyGraph() {
                     width={5}
                     height={barH}
                     rx={2}
-                    fill={ready ? "hsl(var(--primary))" : sc.fill}
+                    fill={ready ? "var(--primary)" : sc.fill}
                     fillOpacity={0.5}
                   />
                   {imp > 0 && (
@@ -1701,7 +1731,7 @@ function InteractiveDependencyGraph() {
               {(
                 [
                   ["closed", "#22c55e", "Closed"],
-                  ["ready", "hsl(var(--primary))", "Ready"],
+                  ["ready", "var(--primary)", "Ready"],
                   ["in_progress", "#f59e0b", "In Progress"],
                   ["blocked", "#6b7280", "Blocked"],
                 ] as const

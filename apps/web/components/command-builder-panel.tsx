@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Terminal,
   Link2,
@@ -13,7 +13,9 @@ import {
   Boxes,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn, copyTextToClipboard } from "@/lib/utils";
+import { CopyStatus } from "@/components/ui/code-block";
+import { cn } from "@/lib/utils";
+import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
 import {
   useVPSIP,
   useUserOS,
@@ -37,7 +39,7 @@ function LocationBadge({ location }: { location: "local" | "vps" }) {
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium uppercase tracking-wider",
         location === "vps"
-          ? "bg-[oklch(0.72_0.19_145/0.15)] text-[oklch(0.72_0.19_145)]"
+          ? "bg-green/15 text-green"
           : "bg-primary/15 text-primary",
       )}
     >
@@ -62,31 +64,13 @@ function CommandRow({
   command: string;
   runLocation: "local" | "vps";
 }) {
-  const [copied, setCopied] = useState(false);
-  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { state: copyState, copy } = useCopyFeedback();
+  const copied = copyState === "copied";
+  const codeRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (copyResetTimerRef.current) {
-        clearTimeout(copyResetTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = useCallback(async () => {
-    const copiedOk = await copyTextToClipboard(command);
-    if (!copiedOk) {
-      return;
-    }
-    setCopied(true);
-    if (copyResetTimerRef.current) {
-      clearTimeout(copyResetTimerRef.current);
-    }
-    copyResetTimerRef.current = setTimeout(() => {
-      setCopied(false);
-      copyResetTimerRef.current = null;
-    }, 2000);
-  }, [command]);
+  const handleCopy = useCallback(() => {
+    void copy(command, { selectOnFailure: codeRef.current });
+  }, [command, copy]);
 
   return (
     <div className="group rounded-lg border border-border/50 bg-card/50 p-3 transition-colors hover:border-border">
@@ -98,23 +82,32 @@ function CommandRow({
         <span className="text-xs text-muted-foreground">{description}</span>
       </div>
       <div className="flex items-center gap-2">
-        <code className="flex-1 overflow-x-auto rounded-md bg-muted/60 px-3 py-2 font-mono text-sm text-foreground">
+        {/* Focusable scroll region so keyboard users can pan a long command
+            (WCAG 2.1.1); the sibling copy button is the default 44px icon size. */}
+        <code
+          ref={codeRef}
+          tabIndex={0}
+          role="region"
+          aria-label={`${label} command`}
+          className="flex-1 overflow-x-auto rounded-md bg-muted/60 px-3 py-2 font-mono text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
           {command}
         </code>
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 shrink-0"
+          className="shrink-0"
           onClick={handleCopy}
           aria-label={`Copy ${label} command`}
         >
           {copied ? (
-            <Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" />
+            <Check className="h-4 w-4 text-green" />
           ) : (
             <Copy className="h-4 w-4 text-muted-foreground" />
           )}
         </Button>
       </div>
+      <CopyStatus state={copyState} className="mt-2" />
     </div>
   );
 }
@@ -145,7 +138,7 @@ function SettingsToggle({
             onClick={() => onChange(opt.value)}
             aria-pressed={value === opt.value}
             className={cn(
-              "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+              "min-h-11 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
               value === opt.value
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
@@ -160,7 +153,7 @@ function SettingsToggle({
 }
 
 export function CommandBuilderPanel() {
-  const [vpsIP] = useVPSIP();
+  const [vpsIP, setVPSIP] = useVPSIP();
   const [os] = useUserOS();
   const [mode, setMode] = useInstallMode();
   const [username, setUsername] = useSSHUsername();
@@ -168,20 +161,18 @@ export function CommandBuilderPanel() {
   const [profile, setProfile] = useModuleProfile();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
-  const [shareCopied, setShareCopied] = useState(false);
-  const shareResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { state: shareCopyState, copy: copyShareLink } = useCopyFeedback();
+  const shareCopied = shareCopyState === "copied";
   const [localIP, setLocalIP] = useState("");
   const [ipError, setIpError] = useState<string | null>(null);
   const [usernameDraft, setUsernameDraft] = useState(username);
   const [refDraft, setRefDraft] = useState(ref ?? "");
-
-  useEffect(() => {
-    return () => {
-      if (shareResetTimerRef.current) {
-        clearTimeout(shareResetTimerRef.current);
-      }
-    };
-  }, []);
+  const panelId = useId();
+  const advancedPanelId = `${panelId}-advanced`;
+  const planPanelId = `${panelId}-plan`;
+  const ipErrorId = `${panelId}-ip-error`;
+  const usernameErrorId = `${panelId}-user-error`;
+  const refErrorId = `${panelId}-ref-error`;
 
   useEffect(() => {
     setUsernameDraft(username);
@@ -242,7 +233,7 @@ export function CommandBuilderPanel() {
     return "Invalid git ref format. Command generation falls back to main.";
   }, [normalizedRefDraft, refDraft]);
 
-  const handleShare = useCallback(async () => {
+  const handleShare = useCallback(() => {
     if (!effectiveIP) return;
     const url = buildShareURL({
       ip: effectiveIP,
@@ -252,19 +243,8 @@ export function CommandBuilderPanel() {
       ref: effectiveRef,
       moduleSelection,
     });
-    const copied = await copyTextToClipboard(url);
-    if (!copied) {
-      return;
-    }
-    setShareCopied(true);
-    if (shareResetTimerRef.current) {
-      clearTimeout(shareResetTimerRef.current);
-    }
-    shareResetTimerRef.current = setTimeout(() => {
-      setShareCopied(false);
-      shareResetTimerRef.current = null;
-    }, 2000);
-  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection]);
+    void copyShareLink(url);
+  }, [copyShareLink, effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection]);
 
   const handleIPChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -278,6 +258,16 @@ export function CommandBuilderPanel() {
     },
     [],
   );
+
+  // Persist a valid inline IP so the rest of the page (which reads the stored
+  // VPS IP) stops saying YOUR_VPS_IP. Committed on blur/Enter rather than per
+  // keystroke: "203.0.113.4" is a valid IP halfway through typing
+  // "203.0.113.42", and persisting it would lock in the wrong host.
+  const commitLocalIP = useCallback(() => {
+    if (localIP && isValidIP(localIP)) {
+      setVPSIP(localIP);
+    }
+  }, [localIP, setVPSIP]);
 
   const handleUsernameChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -339,19 +329,21 @@ export function CommandBuilderPanel() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Terminal className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold text-foreground">
+          {/* h2: the panel is mounted directly under the page's h1 on
+              launch-onboarding, so an h3 here skipped a level. */}
+          <h2 className="text-sm font-semibold text-foreground">
             Your Commands
-          </h3>
+          </h2>
         </div>
         {effectiveIP && (
           <Button
             variant="ghost"
             size="sm"
             onClick={handleShare}
-            className="h-7 gap-1.5 text-xs text-muted-foreground"
+            className="gap-1.5 text-xs text-muted-foreground"
           >
             {shareCopied ? (
-              <Check className="h-3 w-3 text-[oklch(0.72_0.19_145)]" />
+              <Check className="h-3 w-3 text-green" />
             ) : (
               <Link2 className="h-3 w-3" />
             )}
@@ -359,6 +351,7 @@ export function CommandBuilderPanel() {
           </Button>
         )}
       </div>
+      <CopyStatus state={shareCopyState} />
 
       {/* IP input (only if no IP stored from wizard) */}
       {!vpsIP && (
@@ -369,16 +362,27 @@ export function CommandBuilderPanel() {
           <input
             id="cb-ip"
             type="text"
+            autoComplete="off"
             value={localIP}
             onChange={handleIPChange}
+            onBlur={commitLocalIP}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.currentTarget.blur();
+              }
+            }}
             placeholder="203.0.113.42"
+            aria-invalid={ipError ? "true" : "false"}
+            aria-describedby={ipError ? ipErrorId : undefined}
             className={cn(
               "mt-1 w-full rounded-lg border bg-muted/40 px-3 py-2 font-mono text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40",
               ipError ? "border-destructive" : "border-border/50",
             )}
           />
           {ipError && (
-            <p className="mt-1 text-xs text-destructive">{ipError}</p>
+            <p id={ipErrorId} role="alert" className="mt-1 text-xs text-destructive">
+              {ipError}
+            </p>
           )}
         </div>
       )}
@@ -399,7 +403,9 @@ export function CommandBuilderPanel() {
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            aria-expanded={showAdvanced}
+            aria-controls={advancedPanelId}
+            className="flex items-center gap-1 rounded-md px-2 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <Settings2 className="h-3 w-3" />
             Advanced
@@ -426,8 +432,9 @@ export function CommandBuilderPanel() {
         <button
           type="button"
           onClick={() => setShowPlan(!showPlan)}
-          className="flex w-full items-center justify-between text-xs font-medium text-foreground hover:text-primary transition-colors"
+          className="flex w-full items-center justify-between rounded-md px-2 py-2 text-xs font-medium text-foreground hover:text-primary transition-colors"
           aria-expanded={showPlan}
+          aria-controls={planPanelId}
         >
           <div className="flex items-center gap-1.5">
             <Boxes className="h-3.5 w-3.5 text-primary" />
@@ -447,12 +454,12 @@ export function CommandBuilderPanel() {
         </button>
 
         {showPlan && (
-          <div className="mt-3 space-y-3 border-t border-border/30 pt-3 text-xs">
+          <div id={planPanelId} className="mt-3 space-y-3 border-t border-border/30 pt-3 text-xs">
             <div>
               <span className="font-semibold text-muted-foreground">
                 Included Modules ({plan.included.length}):
               </span>
-              <div className="mt-1.5 max-h-48 space-y-1 overflow-y-auto rounded-md bg-background/50 p-2 font-mono text-[11px]">
+              <div className="mt-1.5 max-h-48 space-y-1 overflow-y-auto rounded-md bg-background/50 p-2 font-mono text-xs">
                 {plan.included.map((item) => (
                   <div
                     key={item.id}
@@ -462,7 +469,7 @@ export function CommandBuilderPanel() {
                       <span className="text-muted-foreground">[P{item.phase}]</span>{" "}
                       {item.id}
                     </span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {item.reason === "default" || item.reason === "explicitly requested"
                         ? "included"
                         : item.reason}
@@ -477,14 +484,14 @@ export function CommandBuilderPanel() {
                 <span className="font-semibold text-muted-foreground">
                   Skipped Modules ({plan.excluded.length}):
                 </span>
-                <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto rounded-md bg-background/30 p-2 font-mono text-[11px]">
+                <div className="mt-1.5 max-h-32 space-y-1 overflow-y-auto rounded-md bg-background/30 p-2 font-mono text-xs">
                   {plan.excluded.map((item) => (
                     <div
                       key={item.id}
                       className="flex items-center justify-between gap-2 py-0.5 text-muted-foreground"
                     >
                       <span className="truncate">✕ {item.id}</span>
-                      <span className="shrink-0 text-[10px]">{item.reason}</span>
+                      <span className="shrink-0 text-xs">{item.reason}</span>
                     </div>
                   ))}
                 </div>
@@ -496,7 +503,7 @@ export function CommandBuilderPanel() {
 
       {/* Advanced settings */}
       {showAdvanced && (
-        <div className="space-y-3 rounded-lg border border-border/30 bg-muted/20 p-3">
+        <div id={advancedPanelId} className="space-y-3 rounded-lg border border-border/30 bg-muted/20 p-3">
           <div>
             <label className="text-xs text-muted-foreground" htmlFor="cb-user">
               SSH username
@@ -514,19 +521,22 @@ export function CommandBuilderPanel() {
               }}
               placeholder="ubuntu"
               aria-invalid={usernameError ? "true" : "false"}
+              aria-describedby={usernameError ? usernameErrorId : undefined}
               className={cn(
                 "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40",
                 usernameError ? "border-destructive" : "border-border/50",
               )}
             />
             {usernameError && (
-              <p className="mt-1 text-xs text-destructive">{usernameError}</p>
+              <p id={usernameErrorId} role="alert" className="mt-1 text-xs text-destructive">
+                {usernameError}
+              </p>
             )}
           </div>
           <div>
             <label className="text-xs text-muted-foreground" htmlFor="cb-ref">
               Pin to git ref{" "}
-              <span className="text-muted-foreground/50">(optional)</span>
+              <span className="text-muted-foreground">(optional)</span>
             </label>
             <input
               id="cb-ref"
@@ -541,13 +551,16 @@ export function CommandBuilderPanel() {
               }}
               placeholder="main"
               aria-invalid={refError ? "true" : "false"}
+              aria-describedby={refError ? refErrorId : undefined}
               className={cn(
                 "mt-1 w-full rounded-md border bg-muted/40 px-3 py-1.5 font-mono text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40",
                 refError ? "border-destructive" : "border-border/50",
               )}
             />
             {refError && (
-              <p className="mt-1 text-xs text-destructive">{refError}</p>
+              <p id={refErrorId} role="alert" className="mt-1 text-xs text-destructive">
+                {refError}
+              </p>
             )}
           </div>
         </div>

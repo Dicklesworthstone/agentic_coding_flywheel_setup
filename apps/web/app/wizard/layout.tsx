@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Terminal, Home, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { useDrag } from "@use-gesture/react";
 import { Button } from "@/components/ui/button";
 import { Stepper, StepperMobile } from "@/components/stepper";
 import { HelpPanel } from "@/components/wizard/HelpPanel";
@@ -20,7 +21,7 @@ import {
   type WizardForwardNavRegistry,
 } from "@/lib/wizardSteps";
 import { useStepValidation } from "@/lib/hooks/useStepValidation";
-import { getUserOS, getVPSIP } from "@/lib/userPreferences";
+import { getUserOS, getVPSIP, useUserOS } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
 
 export default function WizardLayout({
@@ -40,11 +41,19 @@ export default function WizardLayout({
   }, [currentSlug]);
   const hideSharedStepChrome = isBonusRoute;
 
-  const prevStep = WIZARD_STEPS.find((s) => s.id === currentStep - 1);
+  // Linux users skip step 2 (they already have a terminal), so from step 3
+  // the previous step is 1. Deriving it from step ids alone sent Back to
+  // install-terminal, which immediately bounced forward again — a dead
+  // control. useUserOS is the SSR-safe (query-backed) read of the same
+  // preference the forward skip below checks with getUserOS().
+  const [userOS] = useUserOS();
+  const prevStepId =
+    currentStep === 3 && userOS === "linux" ? 1 : currentStep - 1;
+  const prevStep = WIZARD_STEPS.find((s) => s.id === prevStepId);
   const nextStep = WIZARD_STEPS.find((s) => s.id === currentStep + 1);
   const [completedSteps, markCompletedStep] = useCompletedSteps();
 
-  const { validate, validationErrors, clearErrors } = useStepValidation();
+  const { validate, showErrors, validationErrors, clearErrors } = useStepValidation();
 
   // The current step page registers its own forward action here (see
   // useWizardForwardNav). The mobile dock's "Next" delegates to it so the
@@ -62,11 +71,13 @@ export default function WizardLayout({
   useEffect(() => {
     if (hideSharedStepChrome) return;
 
-    // Deep links can carry wizard state in query params. Treat that state as
-    // completing the step that produces it, so a shared link doesn't bounce to
-    // step 1 on a fresh browser with no stored progress: a known OS implies
-    // step 1 (os-selection), and a known valid VPS IP implies steps 1-5 (the
-    // IP is entered on create-vps, step 5).
+    // Treat known preferences as completing the step that produces them, so a
+    // returning visitor (or a `?os=` deep link) is not bounced to step 1 when
+    // the completed-steps list is empty: a known OS implies step 1
+    // (os-selection), and a stored valid VPS IP implies steps 1-5 (the IP is
+    // entered on create-vps, step 5). The IP is never imported from a `?ip=`
+    // query parameter (lib/userPreferences.ts scrubs it for privacy), so an
+    // OS-known / IP-missing deep link lands on the next reachable step.
     const impliedComplete = new Set(getCompletedSteps());
     if (getUserOS() !== null) {
       impliedComplete.add(1);
@@ -90,23 +101,38 @@ export default function WizardLayout({
       const step = WIZARD_STEPS.find((s) => s.id === stepId);
       if (!step) return;
 
-      // Validate the current step before allowing forward navigation.
-      // Backward navigation is always allowed (don't block exploration).
-      if (stepId > currentStep) {
-        const result = validate(currentStep);
-        if (!result.valid) return;
-      }
-
       // Advancing to the immediate next step completes the current one: the
       // mobile Next button has no other way to record progress, and without
       // this the canAccessWizardStep gate below silently rejects the click.
-      let reachableSteps = completedSteps;
-      if (stepId === currentStep + 1) {
-        markCompletedStep(currentStep);
-        reachableSteps = [...completedSteps, currentStep];
+      const isImmediateNext = stepId === currentStep + 1;
+      const reachableSteps = isImmediateNext
+        ? [...completedSteps, currentStep]
+        : completedSteps;
+
+      if (stepId > currentStep) {
+        // Locked sidebar steps stay clickable (aria-disabled, not disabled)
+        // so a click can explain the gate instead of doing nothing.
+        if (!canAccessWizardStep(reachableSteps, stepId)) {
+          // Count the current step as in progress so the message names the
+          // first step that is still out of reach, not the page they're on.
+          const nextReachable = getNextReachableWizardStep([...completedSteps, currentStep]);
+          showErrors([
+            `Finish the steps in order — step ${nextReachable.id} (${nextReachable.title}) is next.`,
+          ]);
+          return;
+        }
+
+        // Validate the current step before allowing forward navigation.
+        // Backward navigation is always allowed (don't block exploration).
+        const result = validate(currentStep);
+        if (!result.valid) return;
+      } else if (!canAccessWizardStep(reachableSteps, stepId)) {
+        return;
       }
 
-      if (!canAccessWizardStep(reachableSteps, stepId)) return;
+      if (isImmediateNext) {
+        markCompletedStep(currentStep);
+      }
 
       clearErrors();
 
@@ -124,11 +150,12 @@ export default function WizardLayout({
 
       router.push(withCurrentSearch(`/wizard/${step.slug}`));
     },
-    [router, currentStep, validate, clearErrors, completedSteps, markCompletedStep]
+    [router, currentStep, validate, showErrors, clearErrors, completedSteps, markCompletedStep]
   );
 
   const progress = (currentStep / WIZARD_STEPS.length) * 100;
   const showDockNext = Boolean(nextStep) && !hideSharedStepChrome;
+  const dockNextBlocked = Boolean(forwardAction?.disabled) || Boolean(forwardAction?.loading);
   const handleDockNext = useCallback(() => {
     if (forwardAction) {
       forwardAction.onContinue();
@@ -136,6 +163,35 @@ export default function WizardLayout({
     }
     if (nextStep) handleStepClick(nextStep.id);
   }, [forwardAction, nextStep, handleStepClick]);
+
+  // "Swipe to navigate" (the hint in StepperMobile) is bound to the whole
+  // fixed dock — progress strip and Back/Next row — not just the 60px strip.
+  // Swipe-forward runs the same registered forward action as the dock
+  // "Next", and honors its disabled/loading state, so there is exactly one
+  // forward behavior per step regardless of the control used.
+  const bindDockSwipe = useDrag(
+    ({ direction: [dx], velocity: [vx], active, movement: [mx] }) => {
+      // Only trigger on release with sufficient velocity or distance
+      if (active || (Math.abs(vx) <= 0.3 && Math.abs(mx) <= 50)) return;
+      if (dx > 0) {
+        // Swipe right = go back
+        if (prevStep) handleStepClick(prevStep.id);
+      } else if (dx < 0) {
+        // Swipe left = go forward
+        if (showDockNext && !dockNextBlocked) handleDockNext();
+      }
+    },
+    {
+      enabled: !hideSharedStepChrome,
+      axis: "x",
+      filterTaps: true,
+      threshold: 10,
+      // Prevent the gesture library from calling preventDefault() on touch
+      // events, which breaks native scrolling and tap handling on Mobile Safari
+      preventScrollAxis: "y",
+      pointer: { touch: true },
+    }
+  );
 
   return (
     <WizardForwardNavContext.Provider value={forwardNavRegistry}>
@@ -147,7 +203,7 @@ export default function WizardLayout({
       {/* Desktop layout with sidebar */}
       <div className="relative mx-auto flex max-w-7xl">
         {/* Stepper sidebar - hidden on mobile */}
-        <aside className="sticky top-0 hidden h-screen w-72 shrink-0 border-r border-border/50 bg-sidebar/80 backdrop-blur-sm md:block">
+        <aside className="sticky top-0 hidden h-dvh w-72 shrink-0 border-r border-border/50 bg-sidebar/80 backdrop-blur-sm md:block">
           <div className="flex h-full flex-col">
             {/* Logo */}
             <div className="flex items-center gap-3 border-b border-border/50 px-6 py-5">
@@ -170,7 +226,7 @@ export default function WizardLayout({
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full bg-gradient-to-r from-primary to-[oklch(0.7_0.2_330)] transition-[width] duration-500"
+                    className="h-full bg-gradient-to-r from-primary to-magenta transition-[width] duration-500"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -208,9 +264,16 @@ export default function WizardLayout({
           </div>
         </aside>
 
-        {/* Main content */}
-        <main className="flex-1 pb-36 md:pb-8">
-          {/* Mobile header */}
+        {/* Main content. Bottom padding on phones must clear the fixed dock
+            (progress strip + label + 48px buttons + safe-area inset ≈ 168px
+            on notched iPhones), otherwise the last control sits under it. */}
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 pb-[calc(10.5rem+env(safe-area-inset-bottom))] md:pb-8"
+        >
+          {/* Mobile header. The logo link is the Home control; a second
+              icon-only Home link next to it was a duplicate at 32px. */}
           <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border/50 bg-background/80 px-4 py-3 backdrop-blur-sm md:hidden">
             <Link href="/" className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/20">
@@ -219,15 +282,11 @@ export default function WizardLayout({
               <span className="font-mono text-sm font-bold">Agent Flywheel</span>
             </Link>
             <div className="flex items-center gap-1.5">
-              <HelpPanel currentStep={currentStep} />
+              <HelpPanel
+                currentStep={currentStep}
+                title={hideSharedStepChrome ? "Optional guide help" : undefined}
+              />
               <ThemeToggle />
-              <Link
-                href="/"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                aria-label="Home"
-              >
-                <Home className="h-4 w-4" />
-              </Link>
               <div className="text-xs text-muted-foreground">
                 {hideSharedStepChrome ? (
                   <span>Optional</span>
@@ -268,7 +327,10 @@ export default function WizardLayout({
                       <span>Step {currentStep} of {WIZARD_STEPS.length}</span>
                     </div>
                   )}
-                  <HelpPanel currentStep={currentStep} />
+                  <HelpPanel
+                    currentStep={currentStep}
+                    title={hideSharedStepChrome ? "Optional guide help" : undefined}
+                  />
                 </div>
               </div>
 
@@ -310,10 +372,19 @@ export default function WizardLayout({
         </main>
       </div>
 
-      {/* Mobile stepper - shown only on mobile */}
+      {/* Mobile dock - shown only on mobile. The swipe gesture is bound to
+          the progress strip, not the whole dock: with the gesture on the
+          container, touch taps on the Back/Next buttons were consumed by the
+          gesture layer and never became clicks (Mobile Chrome e2e). */}
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/50 bg-background/95 px-4 pt-4 backdrop-blur-md bottom-nav-safe md:hidden">
         {!hideSharedStepChrome && (
-          <StepperMobile currentStep={currentStep} onStepClick={handleStepClick} />
+          <div
+            {...bindDockSwipe()}
+            className="select-none"
+            style={{ touchAction: "pan-x pan-y" }}
+          >
+            <StepperMobile currentStep={currentStep} />
+          </div>
         )}
 
         {/* Mobile navigation - 48px buttons for proper touch targets.
@@ -336,7 +407,7 @@ export default function WizardLayout({
             <Button
               size="lg"
               onClick={handleDockNext}
-              disabled={Boolean(forwardAction?.disabled) || Boolean(forwardAction?.loading)}
+              disabled={dockNextBlocked}
               className="flex-1"
             >
               {forwardAction?.loading ? "Loading..." : "Next"}

@@ -54,14 +54,14 @@ const TIER_META: Record<
     title: "Essential (Do these now)",
     description: "Two accounts you need to start your first project.",
     icon: <Shield className="h-5 w-5" />,
-    accentClass: "bg-[oklch(0.72_0.19_145/0.2)] text-[oklch(0.72_0.19_145)]",
+    accentClass: "bg-green/20 text-green",
     defaultOpen: true,
   },
   recommended: {
     title: "Recommended (After your first project)",
     description: "Add more AI agents when you want extra coverage.",
     icon: <Bot className="h-5 w-5" />,
-    accentClass: "bg-[oklch(0.75_0.18_195/0.18)] text-[oklch(0.75_0.18_195)]",
+    accentClass: "bg-primary/20 text-primary",
     defaultOpen: false,
   },
   optional: {
@@ -95,97 +95,97 @@ function ServiceCard({ service, isChecked, onToggle }: ServiceCardProps) {
     <div
       className={`group rounded-xl border p-4 transition ${
         isChecked
-          ? "border-[oklch(0.72_0.19_145/0.5)] bg-[oklch(0.72_0.19_145/0.05)]"
+          ? "border-green/50 bg-green/5"
           : "border-border/50 bg-card/50 hover:border-primary/30"
       }`}
     >
-      <div className="flex items-start gap-3">
-        <div className="mt-1 flex flex-col items-center gap-1">
-          <Checkbox
-            id={checkboxId}
-            checked={isChecked}
-            onCheckedChange={onToggle}
-          />
-          <label
-            htmlFor={checkboxId}
-            className="text-xs text-muted-foreground"
-          >
-            {checkboxLabel}
-          </label>
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-foreground">
-              {service.name}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              by {service.provider}
-            </span>
-            {service.requiresSubscription && (
-              <div
-                className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-500"
-                title={service.subscriptionNote ?? "Paid plan required"}
-              >
-                <DollarSign className="h-3 w-3" />
-                {service.subscriptionNote ?? "Paid plan required"}
-              </div>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {service.shortDescription}
-          </p>
+      {/* Checkbox + service name share one label, so the whole header row
+          (min 44px tall) toggles the box instead of a detached 16px target. */}
+      <label
+        htmlFor={checkboxId}
+        className="flex min-h-11 cursor-pointer items-center gap-3 py-1"
+      >
+        <Checkbox
+          id={checkboxId}
+          checked={isChecked}
+          onCheckedChange={onToggle}
+        />
+        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-semibold text-foreground">
+            {service.name}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            by {service.provider}
+          </span>
           {service.requiresSubscription && (
-            <p className="text-xs text-[oklch(0.78_0.16_75)]">
-              Paid plan needed to actually use this service on your VPS.
-            </p>
-          )}
-          <p className="text-xs text-muted-foreground/80">
-            {service.whyNeeded}
-          </p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {service.supportsGoogleSso && (
-              <TrackedLink
-                href={service.googleSsoUrl || service.signupUrl}
-                trackingId={`service-google-sso-${service.id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.1)] px-2.5 py-1.5 text-xs font-medium text-[oklch(0.72_0.19_145)] transition-colors hover:bg-[oklch(0.72_0.19_145/0.2)]"
-              >
-                <Sparkles className="h-3 w-3" />
-                Sign up with Google
-                <ExternalLink className="h-2.5 w-2.5" />
-              </TrackedLink>
-            )}
-            <TrackedLink
-              href={service.signupUrl}
-              trackingId={`service-signup-${service.id}`}
-              className="inline-flex items-center gap-1 rounded-lg border border-border/50 bg-card/50 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-amber/10 px-2 py-0.5 text-xs font-medium text-amber"
+              title={service.subscriptionNote ?? "Paid plan required"}
             >
-              {service.supportsGoogleSso ? "Other signup options" : "Sign up"}
-              <ExternalLink className="h-2.5 w-2.5" />
-            </TrackedLink>
-            <TrackedLink
-              href={service.docsUrl}
-              trackingId={`service-docs-${service.id}`}
-              className="inline-flex items-center gap-1 px-1.5 py-1.5 text-xs text-muted-foreground hover:text-foreground"
-            >
-              Docs
-              <ExternalLink className="h-2.5 w-2.5" />
-            </TrackedLink>
-          </div>
-          {/* Post-install command preview */}
-          {service.postInstallCommand && (
-            <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-              <Terminal className="h-3 w-3 shrink-0" />
-              <span>
-                After install:{" "}
-                <code className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-                  {service.postInstallCommand}
-                </code>
-              </span>
-            </div>
+              <DollarSign className="h-3 w-3" />
+              {service.subscriptionNote ?? "Paid plan required"}
+            </span>
           )}
-        </div>
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {checkboxLabel}
+        </span>
         {isChecked && (
-          <Check className="h-5 w-5 shrink-0 text-[oklch(0.72_0.19_145)]" />
+          <Check className="h-5 w-5 shrink-0 text-green" />
+        )}
+      </label>
+      <div className="min-w-0 space-y-2 pl-7">
+        <p className="text-sm text-muted-foreground">
+          {service.shortDescription}
+        </p>
+        {service.requiresSubscription && (
+          <p className="text-xs text-amber">
+            Paid plan needed to actually use this service on your VPS.
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground/80">
+          {service.whyNeeded}
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {service.supportsGoogleSso && (
+            <TrackedLink
+              href={service.googleSsoUrl || service.signupUrl}
+              trackingId={`service-google-sso-${service.id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-green/30 bg-green/10 px-2.5 py-2.5 text-xs font-medium text-green transition-colors hover:bg-green/20"
+            >
+              <Sparkles className="h-3 w-3" />
+              Sign up with Google
+              <ExternalLink className="h-2.5 w-2.5" />
+            </TrackedLink>
+          )}
+          <TrackedLink
+            href={service.signupUrl}
+            trackingId={`service-signup-${service.id}`}
+            className="inline-flex items-center gap-1 rounded-lg border border-border/50 bg-card/50 px-2.5 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+          >
+            {service.supportsGoogleSso ? "Other signup options" : "Sign up"}
+            <ExternalLink className="h-2.5 w-2.5" />
+          </TrackedLink>
+          <TrackedLink
+            href={service.docsUrl}
+            trackingId={`service-docs-${service.id}`}
+            className="inline-flex items-center gap-1 px-1.5 py-2.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Docs
+            <ExternalLink className="h-2.5 w-2.5" />
+          </TrackedLink>
+        </div>
+        {/* Post-install command preview */}
+        {service.postInstallCommand && (
+          <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+            <Terminal className="h-3 w-3 shrink-0" />
+            <span>
+              After install:{" "}
+              <code className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                {service.postInstallCommand}
+              </code>
+            </span>
+          </div>
         )}
       </div>
     </div>
@@ -357,7 +357,7 @@ export default function AccountsPage() {
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
           <div
-            className="h-full bg-[oklch(0.72_0.19_145)] transition-[width]"
+            className="h-full bg-green transition-[width]"
             style={{
               width: `${
                 essentialServices.length > 0

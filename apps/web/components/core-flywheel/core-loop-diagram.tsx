@@ -432,9 +432,9 @@ function DetailCard({ stage }: { stage: Stage }) {
           />
           Stage Detail
         </div>
-        <h5 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-none drop-shadow-md">
+        <h4 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-none drop-shadow-md">
           {stage.label}
-        </h5>
+        </h4>
         <p className="mt-1 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
           {stage.description}
         </p>
@@ -750,7 +750,7 @@ export function CoreLoopDiagram() {
       {/* Header */}
       <div className="relative z-10 border-b border-white/[0.04] pb-10 flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="max-w-xl">
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]/80 flex items-center gap-3 mb-4">
+          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] flex items-center gap-3 mb-4">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
             Core Loop
           </div>
@@ -971,7 +971,7 @@ export function CoreLoopDiagram() {
                 onClick={() => handleStageSelect(index)}
                 aria-label={`Go to stage: ${stage.label}`}
                 title={`${index + 1}. ${stage.label}`}
-                className="p-2 group/dot"
+                className="inline-flex min-h-6 min-w-6 items-center justify-center p-2 group/dot"
               >
                 <motion.div
                   className="rounded-full transition-[width,background-color,box-shadow] duration-300"

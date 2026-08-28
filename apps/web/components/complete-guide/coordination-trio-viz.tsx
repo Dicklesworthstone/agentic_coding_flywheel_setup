@@ -71,7 +71,7 @@ export function CoordinationTrioViz() {
     <div ref={ref} className={EXHIBIT_PANEL_CLASS}>
       <div className="flex flex-col gap-10 border-b border-white/[0.03] pb-12 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <div className="text-[0.65rem] font-black uppercase tracking-[0.4em] text-violet-400 opacity-60 flex items-center gap-3">
+          <div className="text-[0.65rem] font-black uppercase tracking-[0.4em] text-violet-400 flex items-center gap-3">
             <div className="w-8 h-px bg-violet-400/30" />
             Coordination Logic
           </div>
@@ -218,7 +218,7 @@ export function CoordinationTrioViz() {
                 { l: "bv", t: "The graph-theory compass for triage.", c: "text-[#FFBD2E]" }
               ].map((item, i) => (
                 <div key={i} className="flex flex-col gap-1">
-                  <span className={`text-[0.7rem] font-bold tracking-wide ${item.c} opacity-80`}>{item.l}</span>
+                  <span className={`text-[0.7rem] font-bold tracking-wide ${item.c} `}>{item.l}</span>
                   <p className="text-sm text-zinc-400 font-extralight leading-relaxed">{item.t}</p>
                 </div>
               ))}
@@ -274,7 +274,7 @@ export function CoordinationTrioViz() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="p-10 rounded-[2.5rem] bg-[#0a0c10] border border-white/[0.05] shadow-inner"
               >
-                <span className="text-[0.6rem] font-black text-primary/60 uppercase tracking-[0.5em] block mb-6">System Architecture</span>
+                <span className="text-[0.6rem] font-black text-primary/80 uppercase tracking-[0.5em] block mb-6">System Architecture</span>
                 <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">
                   The trio is not three nice-to-have tools. It is one operating
                   system split into memory, communication, and leverage

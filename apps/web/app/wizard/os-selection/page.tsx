@@ -82,7 +82,7 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
       >
         {icon}
         {selected && (
-          <Sparkles className="absolute -right-1 -top-1 h-5 w-5 text-[oklch(0.78_0.16_75)] animate-pulse" />
+          <Sparkles className="absolute -right-1 -top-1 h-5 w-5 text-amber animate-pulse" />
         )}
       </div>
 
@@ -222,7 +222,7 @@ export default function OSSelectionPage() {
         <p className="text-sm text-muted-foreground">
           <span className="font-medium text-foreground">Tip:</span>{" "}
           {hasDetection ? (
-            <>We guessed your OS from your browser. If that&apos;s wrong, pick the other option. Otherwise just hit Continue.</>
+            <>We guessed your OS from your browser. If that&apos;s wrong, pick the right one. Otherwise just hit Continue.</>
           ) : (
             <>If you&apos;re on a phone/tablet, pick the computer you&apos;ll use for the next steps (Mac, Windows, or Linux).</>
           )}
@@ -279,7 +279,7 @@ export default function OSSelectionPage() {
             {hasDetection ? (
               <>
                 We tried to detect your computer type automatically. If it looks right, you can just click
-                &quot;Continue&quot;. If it looks wrong, click the other option first.
+                &quot;Continue&quot;. If it looks wrong, click the right one first.
               </>
             ) : (
               <>
@@ -295,22 +295,15 @@ export default function OSSelectionPage() {
       <div className="flex justify-end pt-4">
         <Button
           onClick={handleContinue}
-          disabled={!selectedOS || isNavigating}
+          disabled={!selectedOS}
+          loading={isNavigating}
+          loadingText="Loading…"
           size="lg"
           className="group"
           disableMotion
         >
-          {isNavigating ? (
-            <>
-              <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-              Loading...
-            </>
-          ) : (
-            <>
-              Continue
-              <ChevronRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </>
-          )}
+          Continue
+          <ChevronRight className="ml-1 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </Button>
       </div>
     </div>

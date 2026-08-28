@@ -392,7 +392,7 @@ export function BeadComparisonViz() {
       {/* HEADER */}
       <div className="relative z-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between mb-8 sm:mb-10">
         <div>
-          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]/70 mb-2 flex items-center gap-2">
+          <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
             Interactive Comparison
           </div>

@@ -24,12 +24,23 @@ import {
 const INSTALL_SCRIPT_BASE_URL =
   "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup";
 const DEFAULT_INSTALL_REF = "main";
-const SSH_KEY_PATH_UNIX = "~/.ssh/acfs_ed25519";
-// Use %USERPROFILE% rather than PowerShell's $HOME: the Windows Terminal profile
-// `commandline` context (and cmd.exe) does not expand $HOME before launching ssh,
-// so the key path would be passed literally and OpenSSH would fall back to
-// password auth (#302). %USERPROFILE% is expanded by Windows in these contexts.
-const SSH_KEY_PATH_WINDOWS = "%USERPROFILE%\\.ssh\\acfs_ed25519";
+export const SSH_KEY_PATH_UNIX = "~/.ssh/acfs_ed25519";
+export const SSH_PUBLIC_KEY_PATH_UNIX = `${SSH_KEY_PATH_UNIX}.pub`;
+// Two Windows spellings of the same key path, because the two places we show
+// it are parsed by different programs:
+//
+//   - Interactive PowerShell (the wizard tells Windows users to use Windows
+//     Terminal, whose default shell is PowerShell): `$HOME\.ssh\...` is
+//     expanded by PowerShell before ssh.exe sees it. `%USERPROFILE%` is
+//     cmd.exe syntax and PowerShell passes it LITERALLY, so ssh reports
+//     "no such identity" and silently falls back to password auth. This
+//     matches app/wizard/generate-ssh-key's existing `$HOME\.ssh\...` usage.
+//   - Windows Terminal profile `commandline` JSON: that string is launched by
+//     Windows without a shell, so `$HOME` is never expanded there, but
+//     `%USERPROFILE%` is (#302). Use the PROFILE constant ONLY for that JSON.
+export const SSH_KEY_PATH_WINDOWS_POWERSHELL = "$HOME\\.ssh\\acfs_ed25519";
+export const SSH_PUBLIC_KEY_PATH_WINDOWS_POWERSHELL = `${SSH_KEY_PATH_WINDOWS_POWERSHELL}.pub`;
+export const SSH_KEY_PATH_WINDOWS_TERMINAL_PROFILE = "%USERPROFILE%\\.ssh\\acfs_ed25519";
 const SAFE_SSH_HOST_PLACEHOLDERS = new Set([
   "YOUR_VPS_IP",
   "YOUR_VPS_IPV4",
@@ -52,6 +63,13 @@ export interface GeneratedCommand {
   command: string;
   windowsCommand?: string;
   runLocation: "local" | "vps";
+  /**
+   * Installer entry only: `true` when the command is prefixed with
+   * `TARGET_USER="<user>"` because the SSH username is not the default
+   * `ubuntu`. Lets explanatory copy (run-installer's technical breakdown)
+   * mention the prefix exactly when it is present.
+   */
+  usesTargetUserPrefix?: boolean;
 }
 
 export const HANDOFF_RUNBOOK_SCHEMA = "acfs.handoff-runbook.v1";
@@ -424,8 +442,82 @@ function sshKeyPath(): string {
 }
 
 function sshKeyPathWindows(): string {
-  // Match the rest of the wizard's PowerShell-safe examples.
-  return SSH_KEY_PATH_WINDOWS;
+  // Interactive PowerShell spelling. The Windows Terminal profile JSON is the
+  // only consumer of the %USERPROFILE% form; see buildWindowsTerminalProfileSshCommand.
+  return SSH_KEY_PATH_WINDOWS_POWERSHELL;
+}
+
+export interface SshKeyLoginCommands {
+  /** POSIX shells (macOS Terminal, Linux, WSL). */
+  command: string;
+  /** Interactive PowerShell in Windows Terminal. */
+  windowsCommand: string;
+}
+
+/**
+ * Key-based `ssh -i … user@host` login, in the two spellings the wizard shows
+ * for typing into a terminal. Use this instead of hand-rolling
+ * `ssh -i %USERPROFILE%\…` on wizard pages: that form only works inside the
+ * Windows Terminal profile JSON (see buildWindowsTerminalProfileSshCommand).
+ */
+export function buildSshKeyLoginCommands(
+  username: string,
+  host: string,
+  extraArgs: string = "",
+): SshKeyLoginCommands {
+  const target = formatSshTarget(username, host);
+  const args = extraArgs.trim() ? ` ${extraArgs.trim()}` : "";
+  return {
+    command: `ssh -i ${SSH_KEY_PATH_UNIX}${args} ${target}`,
+    windowsCommand: `ssh -i ${SSH_KEY_PATH_WINDOWS_POWERSHELL}${args} ${target}`,
+  };
+}
+
+/**
+ * The `commandline` value for a Windows Terminal profile. Windows launches
+ * this string without a shell, so `$HOME` would never be expanded here; only
+ * `%USERPROFILE%` is (#302). Never show this string as something to type.
+ */
+export function buildWindowsTerminalProfileSshCommand(username: string, host: string): string {
+  return `ssh -i ${SSH_KEY_PATH_WINDOWS_TERMINAL_PROFILE} ${formatSshTarget(username, host)}`;
+}
+
+/**
+ * PowerShell-safe remote script that installs the piped-in public key.
+ *
+ * Constraints (why this is not the bash script with different quoting):
+ *   - The whole remote script is wrapped in PowerShell SINGLE quotes, which
+ *     PowerShell never interpolates, so `$…` is safe from PowerShell — but a
+ *     single quote inside would have to be doubled, so the script uses none.
+ *   - Windows PowerShell 5.1 (still the default shell in Windows Terminal on
+ *     many machines) does NOT escape embedded double quotes when it hands an
+ *     argument to a native executable, so `"$acfs_pubkey"` would reach the
+ *     VPS as an unquoted `$acfs_pubkey` and word-split the key. PowerShell
+ *     7.3+ escapes them correctly. A script with NO double quotes behaves the
+ *     same under both, so the key is staged in a temp file and compared with
+ *     `grep -Fxf` instead of being held in a quoted variable.
+ *   - PowerShell pipes to native commands with CRLF line endings, so the
+ *     first step strips `\r`. `\\r` / `\\n` reach the remote shell as `\r` /
+ *     `\n`, which `tr` and `printf` interpret.
+ */
+function buildKeyRepairRemoteScriptForPowerShell(
+  sshDir: string,
+  authorizedKeys: string,
+  ownerSteps: string[],
+): string {
+  return [
+    "acfs_key=$(mktemp)",
+    "&& tr -d \\\\r | grep -m 1 . > $acfs_key",
+    "&& test -s $acfs_key",
+    `&& test ! -L ${sshDir}`,
+    ...ownerSteps,
+    `&& test ! -L ${authorizedKeys}`,
+    `&& touch ${authorizedKeys}`,
+    `&& chmod 600 ${authorizedKeys}`,
+    `&& { [ ! -s ${authorizedKeys} ] || tail -c 1 ${authorizedKeys} | od -An -t u1 | grep -qw 10 || printf \\\\n >> ${authorizedKeys}; }`,
+    `&& { grep -qxFf $acfs_key ${authorizedKeys} || cat $acfs_key >> ${authorizedKeys}; }`,
+    "&& rm -f $acfs_key",
+  ].join(" ");
 }
 
 export function formatSshHost(host: string): string {
@@ -470,6 +562,72 @@ export function buildRootKeyRepairCommand(username: string, host: string): strin
   ].join(" ");
 }
 
+/**
+ * PowerShell variant of buildRootKeyRepairCommand (type into Windows Terminal).
+ */
+export function buildRootKeyRepairCommandWindows(username: string, host: string): string {
+  const safeUsername = normalizeSSHUsername(username) ?? "ubuntu";
+  const rootTarget = formatSshTarget("root", host);
+  const targetHome = safeUsername === "root" ? "/root" : `/home/${safeUsername}`;
+  const sshDir = `${targetHome}/.ssh`;
+  const authorizedKeys = `${sshDir}/authorized_keys`;
+  const remoteScript = buildKeyRepairRemoteScriptForPowerShell(sshDir, authorizedKeys, [
+    `&& install -d -m 700 -o ${safeUsername} -g ${safeUsername} ${sshDir}`,
+  ]);
+
+  return `Get-Content ${SSH_PUBLIC_KEY_PATH_WINDOWS_POWERSHELL} | ssh ${rootTarget} '${remoteScript} && chown ${safeUsername}:${safeUsername} ${authorizedKeys} && chmod 600 ${authorizedKeys}'`;
+}
+
+/**
+ * PowerShell variant of buildUserKeyRepairCommand (type into Windows Terminal).
+ */
+export function buildUserKeyRepairCommandWindows(username: string, host: string): string {
+  const safeUsername = normalizeSSHUsername(username) ?? "ubuntu";
+  const userTarget = formatSshTarget(safeUsername, host);
+  const sshDir = "~/.ssh";
+  const authorizedKeys = `${sshDir}/authorized_keys`;
+  const remoteScript = buildKeyRepairRemoteScriptForPowerShell(sshDir, authorizedKeys, [
+    `&& install -d -m 700 ${sshDir}`,
+    `&& chmod 700 ${sshDir}`,
+  ]);
+
+  return `Get-Content ${SSH_PUBLIC_KEY_PATH_WINDOWS_POWERSHELL} | ssh ${userTarget} '${remoteScript}'`;
+}
+
+export interface KeyRepairCommand {
+  /** POSIX shell form (bash/zsh on macOS, Linux, WSL). */
+  command: string;
+  /** PowerShell form for Windows Terminal. */
+  windowsCommand: string;
+  runLocation: "local";
+}
+
+export interface KeyRepairCommands {
+  /** Copy the key through the configured user (no root needed). */
+  user: KeyRepairCommand;
+  /** Copy the key through root when the user login itself is broken. */
+  root: KeyRepairCommand;
+}
+
+/**
+ * Both key-repair commands in both shell dialects, shaped so a page can spread
+ * them straight into `<CommandCard {...repair.user} />`.
+ */
+export function buildKeyRepairCommands(username: string, host: string): KeyRepairCommands {
+  return {
+    user: {
+      command: buildUserKeyRepairCommand(username, host),
+      windowsCommand: buildUserKeyRepairCommandWindows(username, host),
+      runLocation: "local",
+    },
+    root: {
+      command: buildRootKeyRepairCommand(username, host),
+      windowsCommand: buildRootKeyRepairCommandWindows(username, host),
+      runLocation: "local",
+    },
+  };
+}
+
 export function buildUserKeyRepairCommand(username: string, host: string): string {
   const safeUsername = normalizeSSHUsername(username) ?? "ubuntu";
   const userTarget = formatSshTarget(safeUsername, host);
@@ -500,22 +658,59 @@ function normalizeCommandUsername(username: string | null | undefined): string {
   return normalizeInstallUsername(username) ?? "ubuntu";
 }
 
+export interface InstallCommandDetails {
+  /** The exact one-liner (identical to buildInstallCommand's return value). */
+  command: string;
+  mode: InstallMode;
+  /** Ref baked into the installer URL (`main` when nothing valid was pinned). */
+  installRef: string;
+  /** `true` when `--ref "<ref>"` is appended. */
+  pinned: boolean;
+  /** The `TARGET_USER` value, or `null` when the default `ubuntu` applies. */
+  targetUser: string | null;
+  /** `true` when the command carries the `TARGET_USER="<user>"` env prefix. */
+  usesTargetUserPrefix: boolean;
+  /** Module-selection flags appended after `--mode`. */
+  selectorArgs: string[];
+}
+
+/**
+ * Same as buildInstallCommand, plus the facts explanatory copy needs
+ * (run-installer's technical breakdown) without re-parsing the string.
+ */
+export function buildInstallCommandDetails(
+  mode: InstallMode,
+  ref: string | null,
+  username?: string | null,
+  moduleSelection?: ModuleSelectionInput,
+): InstallCommandDetails {
+  const safeRef = normalizeGitRef(ref);
+  const safeUsername = normalizeInstallUsername(username);
+  const installRef = safeRef ?? DEFAULT_INSTALL_REF;
+  const userEnv = safeUsername ? `TARGET_USER="${safeUsername}" ` : "";
+  const refArg = safeRef ? ` --ref "${safeRef}"` : "";
+  const selectorArgs = buildInstallSelectorArgs(moduleSelection);
+  const selectorArgSuffix = selectorArgs.length > 0 ? ` ${selectorArgs.join(" ")}` : "";
+  const installerUrl = `${INSTALL_SCRIPT_BASE_URL}/${installRef}/install.sh`;
+
+  return {
+    command: `curl -fsSL "${installerUrl}" | ${userEnv}bash -s -- --yes --mode ${mode}${refArg}${selectorArgSuffix}`,
+    mode,
+    installRef,
+    pinned: safeRef !== null,
+    targetUser: safeUsername,
+    usesTargetUserPrefix: safeUsername !== null,
+    selectorArgs,
+  };
+}
+
 export function buildInstallCommand(
   mode: InstallMode,
   ref: string | null,
   username?: string | null,
   moduleSelection?: ModuleSelectionInput,
 ): string {
-  const safeRef = normalizeGitRef(ref);
-  const safeUsername = normalizeInstallUsername(username);
-  const installRef = safeRef ?? DEFAULT_INSTALL_REF;
-  const userEnv = safeUsername ? `TARGET_USER="${safeUsername}" ` : "";
-  const refArg = safeRef ? ` --ref "${safeRef}"` : "";
-  const selectorArgs = buildInstallSelectorArgs(moduleSelection).join(" ");
-  const selectorArgSuffix = selectorArgs ? ` ${selectorArgs}` : "";
-  const installerUrl = `${INSTALL_SCRIPT_BASE_URL}/${installRef}/install.sh`;
-
-  return `curl -fsSL "${installerUrl}" | ${userEnv}bash -s -- --yes --mode ${mode}${refArg}${selectorArgSuffix}`;
+  return buildInstallCommandDetails(mode, ref, username, moduleSelection).command;
 }
 
 /**
@@ -543,12 +738,14 @@ export function buildCommands(inputs: CommandBuilderInputs): GeneratedCommand[] 
   });
 
   // 2. Installer
+  const installer = buildInstallCommandDetails(mode, ref, safeUsername, inputs.moduleSelection);
   commands.push({
     id: "installer",
     label: "Run installer",
     description: `Install ACFS in ${mode} mode${safeRef ? ` pinned to ${safeRef}` : ""}`,
-    command: buildInstallCommand(mode, ref, safeUsername, inputs.moduleSelection),
+    command: installer.command,
     runLocation: "vps",
+    usesTargetUserPrefix: installer.usesTargetUserPrefix,
   });
 
   // 3. SSH as configured user (post-install, key-based)
@@ -1838,7 +2035,7 @@ export function buildHandoffRunbook(inputs: CommandBuilderInputs): HandoffRunboo
   const installCommand = buildInstallCommand(inputs.mode, safeRef, targetUsername, inputs.moduleSelection);
   const rootLoginCommand = `ssh root@${redactedHost}`;
   const postInstallLoginCommand = `ssh -i ${SSH_KEY_PATH_UNIX} ${targetUsername}@${redactedHost}`;
-  const postInstallLoginCommandWindows = `ssh -i ${SSH_KEY_PATH_WINDOWS} ${targetUsername}@${redactedHost}`;
+  const postInstallLoginCommandWindows = `ssh -i ${SSH_KEY_PATH_WINDOWS_POWERSHELL} ${targetUsername}@${redactedHost}`;
   const userKeyRepairCommand = buildUserKeyRepairCommand(targetUsername, redactedHost);
   const rootKeyRepairCommand = buildRootKeyRepairCommand(targetUsername, redactedHost);
 
@@ -1874,7 +2071,7 @@ export function buildHandoffRunbook(inputs: CommandBuilderInputs): HandoffRunboo
     },
     ssh: {
       keyPathUnix: SSH_KEY_PATH_UNIX,
-      keyPathWindows: SSH_KEY_PATH_WINDOWS,
+      keyPathWindows: SSH_KEY_PATH_WINDOWS_POWERSHELL,
       rootLoginCommand,
       postInstallLoginCommand,
       postInstallLoginCommandWindows,

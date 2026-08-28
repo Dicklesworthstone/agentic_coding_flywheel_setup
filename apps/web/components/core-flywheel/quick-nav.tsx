@@ -189,7 +189,7 @@ export function QuickNav() {
                               : "text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.03]"
                           }`}
                         >
-                          <span className="block text-[0.55rem] font-mono opacity-50 mb-0.5">{item.number}</span>
+                          <span className="block text-[0.55rem] font-mono mb-0.5">{item.number}</span>
                           {item.label}
                         </button>
                       );

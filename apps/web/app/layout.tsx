@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     template: "%s | Agent Flywheel",
   },
   description:
-    "Transform a fresh cloud server into a fully-configured agentic coding environment in ~30 minutes. Claude Code, OpenAI Codex, Google Antigravity: all pre-configured with 30+ modern developer tools. Free & open-source.",
+    "Transform a fresh cloud server into a fully-configured agentic coding environment in ~30 minutes. Claude Code, OpenAI Codex, Google Antigravity: all pre-configured with 35+ modern developer tools. Free & open-source.",
   keywords: [
     "VPS setup",
     "AI coding",
@@ -96,6 +96,12 @@ export default function RootLayout({
       <body
         className={`${jetbrainsMono.variable} ${instrumentSans.variable} font-sans antialiased`}
       >
+        {/* Bypass block (WCAG 2.4.1): every route's landmark carries
+            id="main-content", so keyboard users skip the wizard sidebar,
+            sticky headers and nav on the first Tab. */}
+        <a href="#main-content" className="skip-link">
+          Skip to main content
+        </a>
         {/* Noise texture overlay */}
         <div className="pointer-events-none fixed inset-0 z-50 bg-noise" />
         <QueryProvider>

@@ -338,9 +338,9 @@ function DetailPanel({
           />
           Active Stage
         </div>
-        <h5 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-none">
+        <h4 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-none">
           {stage.label}
-        </h5>
+        </h4>
       </div>
 
       {/* Detail cards */}

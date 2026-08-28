@@ -45,10 +45,16 @@ function TerminalCard({ name, description, href }: TerminalCardProps) {
       )}
     >
       <div>
-        <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{name}</p>
+        <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
+          {name}
+          <span className="sr-only"> (opens in new tab)</span>
+        </p>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
-      <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+      <ExternalLink
+        className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors"
+        aria-hidden="true"
+      />
     </TrackedLink>
   );
 }
@@ -64,6 +70,7 @@ function MacContent() {
         <p className="text-muted-foreground">
           Install <strong className="text-foreground">Ghostty</strong> or <strong className="text-foreground">WezTerm</strong>. Either
           is a great choice. Open it once after installing to make sure it works.
+          (The built-in Terminal.app works too; Ghostty and WezTerm are just nicer.)
         </p>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -209,9 +216,9 @@ function TerminalBasicsSection({ os }: { os: "mac" | "windows" | "linux" }) {
         </p>
         <OutputPreview title="Common prompts look like:">
           <div className="space-y-1">
-            <p><span className="text-[oklch(0.72_0.19_145)]">yourname@computer:~$</span> <span className="animate-pulse">_</span></p>
-            <p><span className="text-[oklch(0.72_0.19_145)]">%</span> <span className="animate-pulse">_</span></p>
-            {os === "windows" && <p><span className="text-[oklch(0.72_0.19_145)]">PS C:\Users\You&gt;</span> <span className="animate-pulse">_</span></p>}
+            <p><span className="text-green">yourname@computer:~$</span> <span className="animate-pulse">_</span></p>
+            <p><span className="text-green">%</span> <span className="animate-pulse">_</span></p>
+            {os === "windows" && <p><span className="text-green">PS C:\Users\You&gt;</span> <span className="animate-pulse">_</span></p>}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
             The <strong>$</strong>, <strong>%</strong>, or <strong>&gt;</strong> symbol means
@@ -266,7 +273,7 @@ function TerminalBasicsSection({ os }: { os: "mac" | "windows" | "linux" }) {
           persistKey="first-command-echo"
         />
         <OutputPreview title="You should see:">
-          <p className="text-[oklch(0.72_0.19_145)]">hello</p>
+          <p className="text-green">hello</p>
           <p className="mt-2 text-xs text-muted-foreground">
             If you see &quot;hello&quot; printed below your command, your terminal is working!
           </p>
@@ -294,7 +301,7 @@ function WindowsContent() {
         <TerminalCard
           name="Windows Terminal"
           description="Microsoft Store (free)"
-          href="ms-windows-store://pdp/?ProductId=9N0DX20HK701"
+          href="https://apps.microsoft.com/detail/9n0dx20hk701"
         />
       </div>
 
@@ -427,12 +434,14 @@ export default function InstallTerminalPage() {
   // Redirect if no OS selected or if Linux (Linux users skip this step)
   useEffect(() => {
     if (!ready) return;
+    // Prerequisite/skip redirects use replace() so the page never becomes a
+    // history entry (Back would otherwise bounce straight forward again).
     if (os === null) {
-      router.push(withCurrentSearch("/wizard/os-selection"));
+      router.replace(withCurrentSearch("/wizard/os-selection"));
     } else if (os === "linux") {
       // Linux users already have a terminal - skip to SSH key generation
       markStepComplete(2);
-      router.push(withCurrentSearch("/wizard/generate-ssh-key"));
+      router.replace(withCurrentSearch("/wizard/generate-ssh-key"));
     }
   }, [ready, os, router]);
 

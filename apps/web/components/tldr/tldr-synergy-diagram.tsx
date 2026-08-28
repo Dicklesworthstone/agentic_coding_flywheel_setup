@@ -173,29 +173,29 @@ export function TldrSynergyDiagram({
           <defs>
             {/* Center glow gradient */}
             <radialGradient id="tldr-centerGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.3" />
-              <stop offset="60%" stopColor="hsl(var(--primary))" stopOpacity="0.1" />
-              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.3" />
+              <stop offset="60%" stopColor="var(--primary)" stopOpacity="0.1" />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
             </radialGradient>
 
             {/* Ambient outer glow */}
             <radialGradient id="tldr-ambientGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.08" />
-              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
             </radialGradient>
 
             {/* Line gradient */}
             <linearGradient id="tldr-lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.5" />
-              <stop offset="50%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.5" />
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.5" />
+              <stop offset="50%" stopColor="var(--primary)" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.5" />
             </linearGradient>
 
             {/* Highlighted line gradient */}
             <linearGradient id="tldr-lineGradientHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.8" />
               <stop offset="50%" stopColor="#fff" stopOpacity="0.9" />
-              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.8" />
             </linearGradient>
 
             {/* Tool-specific gradients */}
@@ -245,7 +245,7 @@ export function TldrSynergyDiagram({
             cy={DIAGRAM_CONFIG.center}
             r={DIAGRAM_CONFIG.innerRadius}
             fill="none"
-            stroke="hsl(var(--primary) / 0.15)"
+            stroke="color-mix(in oklch, var(--primary) 15%, transparent)"
             strokeWidth="1.5"
             strokeDasharray="6 8"
           />
@@ -254,7 +254,7 @@ export function TldrSynergyDiagram({
             cy={DIAGRAM_CONFIG.center}
             r={DIAGRAM_CONFIG.outerRadius}
             fill="none"
-            stroke="hsl(var(--primary) / 0.08)"
+            stroke="color-mix(in oklch, var(--primary) 8%, transparent)"
             strokeWidth="1"
             strokeDasharray="4 10"
           />
@@ -336,7 +336,7 @@ export function TldrSynergyDiagram({
               cy={DIAGRAM_CONFIG.center}
               r={DIAGRAM_CONFIG.centerRadius + 4}
               fill="none"
-              stroke="hsl(var(--primary) / 0.2)"
+              stroke="color-mix(in oklch, var(--primary) 20%, transparent)"
               strokeWidth="1"
               style={{
                 animation: reducedMotion ? "none" : "tldr-pulse-ring 3s ease-in-out infinite",
@@ -347,8 +347,8 @@ export function TldrSynergyDiagram({
               cx={DIAGRAM_CONFIG.center}
               cy={DIAGRAM_CONFIG.center}
               r={DIAGRAM_CONFIG.centerRadius}
-              fill="hsl(var(--card))"
-              stroke="hsl(var(--primary) / 0.4)"
+              fill="var(--card)"
+              stroke="color-mix(in oklch, var(--primary) 40%, transparent)"
               strokeWidth="2"
               filter="url(#tldr-glow)"
             />
@@ -357,7 +357,7 @@ export function TldrSynergyDiagram({
               cx={DIAGRAM_CONFIG.center}
               cy={DIAGRAM_CONFIG.center}
               r={DIAGRAM_CONFIG.centerRadius - 6}
-              fill="hsl(var(--primary) / 0.1)"
+              fill="color-mix(in oklch, var(--primary) 10%, transparent)"
             />
             <text
               x={DIAGRAM_CONFIG.center}
@@ -432,8 +432,8 @@ export function TldrSynergyDiagram({
                   cx={pos.x}
                   cy={pos.y}
                   r={nodeRadius}
-                  fill="hsl(var(--card))"
-                  stroke={isHovered ? color.from : "hsl(var(--border) / 0.5)"}
+                  fill="var(--card)"
+                  stroke={isHovered ? color.from : "color-mix(in oklch, var(--border) 50%, transparent)"}
                   strokeWidth={isHovered ? 2 : 1}
                   style={{
                     filter: isHovered ? `drop-shadow(0 4px 12px ${color.from}40)` : "drop-shadow(0 2px 4px rgba(0,0,0,0.2))",
@@ -530,8 +530,8 @@ export function TldrSynergyDiagram({
                   cx={pos.x}
                   cy={pos.y}
                   r={nodeRadius}
-                  fill="hsl(var(--card))"
-                  stroke={isHovered ? color.from : "hsl(var(--border) / 0.4)"}
+                  fill="var(--card)"
+                  stroke={isHovered ? color.from : "color-mix(in oklch, var(--border) 40%, transparent)"}
                   strokeWidth={isHovered ? 1.5 : 1}
                   style={{
                     filter: isHovered ? `drop-shadow(0 3px 10px ${color.from}30)` : "drop-shadow(0 1px 3px rgba(0,0,0,0.15))",

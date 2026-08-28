@@ -150,10 +150,11 @@ export default function SSHConnectPage() {
   // Redirect if missing required data (after hydration)
   useEffect(() => {
     if (!ready) return;
+    // Prerequisite redirects use replace() so Back does not land here again.
     if (vpsIP === null) {
-      router.push(withCurrentSearch("/wizard/create-vps"));
+      router.replace(withCurrentSearch("/wizard/create-vps"));
     } else if (os === null) {
-      router.push(withCurrentSearch("/wizard/os-selection"));
+      router.replace(withCurrentSearch("/wizard/os-selection"));
     }
   }, [ready, vpsIP, os, router]);
 
@@ -213,7 +214,7 @@ export default function SSHConnectPage() {
       {/* IP confirmation */}
       <AlertCard variant="info" icon={Terminal}>
         Connecting to:{" "}
-        <code className="ml-1 rounded bg-[oklch(0.75_0.18_195/0.15)] px-2 py-0.5 font-mono font-bold text-[oklch(0.85_0.12_195)]">{vpsIP}</code>
+        <code className="ml-1 rounded bg-primary/15 px-2 py-0.5 font-mono font-bold text-primary">{vpsIP}</code>
       </AlertCard>
 
       {/* CRITICAL: Password distinction warning */}
@@ -225,7 +226,7 @@ export default function SSHConnectPage() {
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
             <li>
-              <span className="text-[oklch(0.72_0.19_145)]">✓ Correct:</span>{" "}
+              <span className="text-green">✓ Correct:</span>{" "}
               <strong>VPS root password</strong> — the password you set when creating this specific VPS,
               or the one your provider emailed you
             </li>
@@ -262,9 +263,9 @@ export default function SSHConnectPage() {
         </p>
         <OutputPreview title="You'll see something like:">
           <div className="space-y-1">
-            <p className="text-amber-400">The authenticity of host &apos;{sshHost} ({vpsIP})&apos; can&apos;t be established.</p>
+            <p className="text-amber">The authenticity of host &apos;{sshHost} ({vpsIP})&apos; can&apos;t be established.</p>
             <p className="text-muted-foreground">ED25519 key fingerprint is SHA256:xYz123abc456def...</p>
-            <p className="text-amber-400">Are you sure you want to continue connecting (yes/no/[fingerprint])?</p>
+            <p className="text-amber">Are you sure you want to continue connecting (yes/no/[fingerprint])?</p>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
             This looks alarming, but it&apos;s just SSH confirming you want to trust this new server.
@@ -321,7 +322,7 @@ export default function SSHConnectPage() {
 
       {/* Success indicator */}
       <OutputPreview title="You're connected when you see:">
-        <p className="text-[oklch(0.72_0.19_145)]">
+        <p className="text-green">
           root@vps:~# <span className="animate-pulse">_</span>
         </p>
         <p className="mt-2 text-muted-foreground">
@@ -345,7 +346,7 @@ export default function SSHConnectPage() {
           runLocation="vps"
         />
         <OutputPreview title="You should see something like:">
-          <p className="text-[oklch(0.72_0.19_145)]">vps-12345</p>
+          <p className="text-green">vps-12345</p>
           <p className="mt-2 text-xs text-muted-foreground">
             (Your VPS hostname — not your laptop&apos;s name like &quot;MacBook-Pro&quot; or &quot;DESKTOP-ABC123&quot;)
           </p>

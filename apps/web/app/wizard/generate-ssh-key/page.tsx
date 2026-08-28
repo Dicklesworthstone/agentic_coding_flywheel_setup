@@ -98,7 +98,8 @@ export default function GenerateSSHKeyPage() {
   useEffect(() => {
     if (!ready) return;
     if (os === null) {
-      router.push(withCurrentSearch("/wizard/os-selection"));
+      // Prerequisite redirect: replace() so Back does not land here again.
+      router.replace(withCurrentSearch("/wizard/os-selection"));
     }
   }, [ready, os, router]);
 
@@ -170,12 +171,12 @@ export default function GenerateSSHKeyPage() {
       </AlertCard>
 
       {/* Privacy assurance */}
-      <div className="flex gap-3 rounded-xl border border-[oklch(0.72_0.19_145/0.25)] bg-[oklch(0.72_0.19_145/0.05)] p-3 sm:p-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[oklch(0.72_0.19_145/0.15)] sm:h-9 sm:w-9">
-          <ShieldCheck className="h-4 w-4 text-[oklch(0.72_0.19_145)] sm:h-5 sm:w-5" />
+      <div className="flex gap-3 rounded-xl border border-green/25 bg-green/5 p-3 sm:p-4">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green/15 sm:h-9 sm:w-9">
+          <ShieldCheck className="h-4 w-4 text-green sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0 space-y-1">
-          <p className="text-[13px] font-medium leading-tight text-[oklch(0.82_0.12_145)] sm:text-sm">
+          <p className="text-[13px] font-medium leading-tight text-green sm:text-sm">
             Your keys never leave your computer
           </p>
           <p className="text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">
@@ -185,10 +186,11 @@ export default function GenerateSSHKeyPage() {
               href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-0.5 font-medium text-[oklch(0.75_0.18_195)] hover:underline"
+              className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
             >
               entire codebase is open source
-              <ExternalLink className="h-3 w-3" />
+              <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              <span className="sr-only"> (opens in new tab)</span>
             </a>.
           </p>
         </div>
@@ -336,8 +338,8 @@ export default function GenerateSSHKeyPage() {
                   <div>
                     <p className="mb-2 font-medium text-foreground">If this is your first run</p>
                     <OutputPreview title="You will see:">
-                      <p className="text-[oklch(0.72_0.19_145)]">Your identification has been saved in /Users/you/.ssh/acfs_ed25519</p>
-                      <p className="text-[oklch(0.72_0.19_145)]">Your public key has been saved in /Users/you/.ssh/acfs_ed25519.pub</p>
+                      <p className="text-green">Your identification has been saved in /Users/you/.ssh/acfs_ed25519</p>
+                      <p className="text-green">Your public key has been saved in /Users/you/.ssh/acfs_ed25519.pub</p>
                     </OutputPreview>
                     <p className="mt-2 text-sm text-muted-foreground">
                       The new key was created without asking you where to save it or what passphrase to use.
@@ -353,7 +355,7 @@ export default function GenerateSSHKeyPage() {
                   <div>
                     <p className="mb-2 font-medium text-foreground">If you already ran this before</p>
                     <OutputPreview title="You may see little or no output">
-                      <p className="text-[oklch(0.72_0.19_145)]">The command rebuilds acfs_ed25519.pub from your existing private key.</p>
+                      <p className="text-green">The command rebuilds acfs_ed25519.pub from your existing private key.</p>
                     </OutputPreview>
                     <p className="mt-2 text-sm text-muted-foreground">
                       It should not ask whether to overwrite your existing key.
@@ -372,8 +374,8 @@ export default function GenerateSSHKeyPage() {
                 When a new key is created, you&apos;ll see a confirmation:
                 <div className="mt-3">
                   <OutputPreview title="You will see something like:">
-                    <p className="text-[oklch(0.72_0.19_145)]">Your identification has been saved in /Users/you/.ssh/acfs_ed25519</p>
-                    <p className="text-[oklch(0.72_0.19_145)]">Your public key has been saved in /Users/you/.ssh/acfs_ed25519.pub</p>
+                    <p className="text-green">Your identification has been saved in /Users/you/.ssh/acfs_ed25519</p>
+                    <p className="text-green">Your public key has been saved in /Users/you/.ssh/acfs_ed25519.pub</p>
                     <p className="mt-2 text-muted-foreground">The key fingerprint is:</p>
                     <p className="text-muted-foreground">SHA256:xYz123abc... acfs</p>
                     <p className="mt-2 text-muted-foreground">The key&apos;s randomart image is:</p>
@@ -391,7 +393,7 @@ export default function GenerateSSHKeyPage() {
                   </OutputPreview>
                 </div>
                 <p className="mt-3 text-sm">
-                  <strong className="text-[oklch(0.72_0.19_145)]">The randomart pattern means it worked!</strong> You now have SSH keys.
+                  <strong className="text-green">The randomart pattern means it worked!</strong> You now have SSH keys.
                 </p>
               </GuideStep>
             </div>

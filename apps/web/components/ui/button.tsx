@@ -189,7 +189,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         >
           {showShimmer && (
             <span className="pointer-events-none absolute inset-0 z-0">
-              <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+              <span className="absolute inset-0 animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/15 to-transparent" />
             </span>
           )}
           {showProgress && (
@@ -223,7 +223,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {showShimmer && (
           <span className="pointer-events-none absolute inset-0 z-0">
-            <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+            <span className="absolute inset-0 animate-shimmer-sweep bg-gradient-to-r from-transparent via-white/15 to-transparent" />
           </span>
         )}
         {showProgress && (

@@ -41,6 +41,15 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Semantic accents exposed as utilities (text-green, bg-amber, …). They
+     resolve through the theme tokens below, so a surface that also renders
+     in the light theme gets the darker light-mode values instead of the
+     arbitrary `text-[oklch(…)]` literals that only ever worked on dark. */
+  --color-cyan: var(--cyan);
+  --color-amber: var(--amber);
+  --color-magenta: var(--magenta);
+  --color-green: var(--green);
+  --color-purple: var(--purple);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -245,6 +254,13 @@
   --border: oklch(0.9 0.01 260);
   --input: oklch(0.92 0.01 260);
   --ring: oklch(0.55 0.2 195);
+  /* Semantic accents re-tuned for a near-white ground: the dark-theme
+     values (L 0.72–0.78) sit at ~2:1 on white; these reach ≥5:1 as text. */
+  --cyan: oklch(0.55 0.2 195);
+  --amber: oklch(0.5 0.15 75);
+  --magenta: oklch(0.5 0.2 330);
+  --green: oklch(0.45 0.17 145);
+  --purple: oklch(0.45 0.18 290);
 }
 
 /* A dark island nested inside the light theme (the `dark` wrappers on the
@@ -315,21 +331,57 @@
     }
   }
 
-  /* Custom scrollbar for dark theme */
+  /* Custom scrollbar, token-driven so it follows the active theme (the
+     previous literal dark values painted dark scrollbars on light pages). */
   ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   ::-webkit-scrollbar-track {
-    background: oklch(0.14 0.02 260);
+    background: var(--muted);
   }
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.3 0.02 260);
+    background: color-mix(in oklch, var(--muted-foreground) 45%, var(--muted));
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.4 0.02 260);
+    background: color-mix(in oklch, var(--muted-foreground) 70%, var(--muted));
   }
+}
+
+/* Skip link (WCAG 2.4.1): the first focusable element on every page. Hidden
+   until keyboard focus lands on it, then pinned above the wizard sidebar,
+   the sticky mobile header and the noise overlay. */
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 100;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+  font-size: 0.875rem;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(calc(-100% - 1.5rem));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.skip-link:focus-visible {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+
+/* The landmark the skip link jumps to receives programmatic focus; a page-wide
+   focus ring around <main> is noise, the moved caret/reading position is the
+   signal. */
+#main-content:focus-visible {
+  outline: none;
 }
 
 /* ============================================
@@ -371,6 +423,19 @@
   }
   100% {
     background-position: 200% 0;
+  }
+}
+
+/* A highlight bar that sweeps across its parent. The Button shimmer overlay
+   started life as `-translate-x-full` + `animate-shimmer`, but `shimmer`
+   animates background-position, so the bar stayed parked off-canvas
+   (invisible) while still animating; this keyframe moves the bar itself. */
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
   }
 }
 
@@ -425,14 +490,16 @@
   }
 }
 
+/* Breathing glow. Animating box-shadow directly repaints the element every
+   frame for as long as it is on screen (the wizard's active step indicator
+   ran this for the life of every wizard page), so the shadow lives on a
+   pseudo-element and only its opacity animates — compositor-only work. */
 @keyframes glow-pulse {
   0%, 100% {
-    box-shadow: 0 0 20px oklch(0.75 0.18 195 / 0.3),
-                0 0 40px oklch(0.75 0.18 195 / 0.1);
+    opacity: 0.55;
   }
   50% {
-    box-shadow: 0 0 30px oklch(0.75 0.18 195 / 0.5),
-                0 0 60px oklch(0.75 0.18 195 / 0.2);
+    opacity: 1;
   }
 }
 
@@ -484,6 +551,10 @@
   background-size: 200% 100%;
 }
 
+.animate-shimmer-sweep {
+  animation: shimmer-sweep 2.4s ease-in-out infinite;
+}
+
 .animate-slide-up {
   animation: slide-up 0.5s ease-out forwards;
 }
@@ -497,7 +568,19 @@
 }
 
 .animate-glow-pulse {
+  position: relative;
+}
+
+.animate-glow-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 30px oklch(0.75 0.18 195 / 0.5),
+              0 0 60px oklch(0.75 0.18 195 / 0.2);
   animation: glow-pulse 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .animate-border-glow {
@@ -767,7 +850,7 @@
 
 /* Card hover effects */
 .card-hover {
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .card-hover:hover {
@@ -949,14 +1032,44 @@
   min-height: 48px;
 }
 
-/* Hide scrollbar but keep functionality */
-.scrollbar-hide {
+/* Hide scrollbar but keep functionality. `scrollbar-none` is the name the
+   Learning Hub uses (a Tailwind-plugin habit); without a definition those
+   seven call sites compiled to nothing. */
+.scrollbar-hide,
+.scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.scrollbar-hide::-webkit-scrollbar {
+.scrollbar-hide::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
   display: none;
+}
+
+/* ============================================
+   AA text floor for long-form dark bodies
+   ============================================
+   The guides and the 65 lesson bodies reach for `text-white/20…/45` and
+   zinc/slate-500 for secondary text on near-black. Measured on those
+   grounds (#020408–#0a0204) `text-white/50` is the lowest alpha that clears
+   WCAG 4.5:1 for text; /40 lands at ≈3.5:1 and /20 at ≈1.7:1. The ~1,000
+   call sites are being converted by hand (bd-hsncl, bd-64cg3); until every
+   file is touched, this scoped rule keeps secondary text readable. It only
+   affects `color`, so decorative borders/backgrounds keep their alpha. */
+.text-aa-floor :is(
+  .text-white\/20,
+  .text-white\/25,
+  .text-white\/30,
+  .text-white\/35,
+  .text-white\/40,
+  .text-white\/45,
+  .text-white\/50
+) {
+  color: color-mix(in oklab, var(--color-white) 58%, transparent);
+}
+
+.text-aa-floor :is(.text-zinc-500, .text-zinc-600, .text-slate-500, .text-neutral-500, .text-gray-500) {
+  color: var(--color-zinc-400);
 }
 
 /* Scroll fade indicators */
@@ -1001,9 +1114,11 @@
   }
 }
 
-/* Focus visible styles */
+/* Focus visible styles. `--ring` is the theme's focus colour: the dark-pole
+   cyan on dark, and a deeper cyan on the light theme where the bright value
+   only reached ~2:1 against the near-white background (WCAG 2.4.11 needs 3:1). */
 :focus-visible {
-  outline: 2px solid oklch(0.75 0.18 195);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -1097,13 +1212,15 @@
 /* ============================================
    Global Selection
    ============================================ */
+/* Selection keeps the theme's foreground: forcing white made selected text
+   unreadable on the light theme (white on a pale cyan wash). */
 ::selection {
   background-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
-  color: var(--color-white, #ffffff);
+  color: var(--foreground);
 }
 ::-moz-selection {
   background-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
-  color: var(--color-white, #ffffff);
+  color: var(--foreground);
 }
 
 /* ============================================

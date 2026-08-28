@@ -8,39 +8,55 @@
  * @see bd-2gys for the full spec
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { validateStep, type ValidationResult } from "../wizardSteps";
 
 const VALID: ValidationResult = { valid: true, errors: [] };
-// Long enough to read twice; the field is also scrolled into view and
-// focused, and its inline hint stays until the problem is fixed.
-const ERROR_DISPLAY_MS = 10000;
+
+const FOCUSABLE_DESCENDANT =
+  'input:not([disabled]), button:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Scroll a validation target into view and move focus to it. The target may
+ * be a plain wrapper `<div>` with no tabIndex (focus() is then a no-op), so
+ * fall back to its first focusable descendant — the checkbox or input the
+ * person actually needs to fix.
+ */
+function scrollAndFocus(selector: string): void {
+  const el = document.querySelector(selector);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  if (el instanceof HTMLElement) {
+    el.focus({ preventScroll: true });
+    if (document.activeElement === el) return;
+  }
+  const inner = el.querySelector<HTMLElement>(FOCUSABLE_DESCENDANT);
+  inner?.focus({ preventScroll: true });
+}
 
 /**
  * Hook that provides step validation for the wizard layout.
  *
  * Returns:
  * - `validate(stepId)` — run validation, scroll to target on failure, returns result
- * - `validationErrors` — current error messages (auto-cleared after timeout)
+ * - `showErrors(messages)` — surface arbitrary messages in the same banner
+ *   (e.g. "finish the steps in order" for a locked sidebar step)
+ * - `validationErrors` — current error messages. They persist until the
+ *   route changes, a later validation passes, or `clearErrors()` runs — no
+ *   auto-dismiss timer, so the text cannot vanish before it has been read.
  * - `clearErrors()` — manually dismiss errors
  */
 export function useStepValidation() {
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const cancelPendingClear = useCallback(() => {
-    if (clearTimerRef.current !== null) {
-      clearTimeout(clearTimerRef.current);
-      clearTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => cancelPendingClear, [cancelPendingClear]);
 
   const clearErrors = useCallback(() => {
-    cancelPendingClear();
     setValidationErrors([]);
-  }, [cancelPendingClear]);
+  }, []);
+
+  const showErrors = useCallback((messages: string[]) => {
+    setValidationErrors(messages);
+  }, []);
 
   const validate = useCallback(
     (stepId: number): ValidationResult => {
@@ -51,29 +67,17 @@ export function useStepValidation() {
         return VALID;
       }
 
-      cancelPendingClear();
       setValidationErrors(result.errors);
-
-      // Auto-dismiss after timeout. Cancel any older timer first so stale
-      // timeouts cannot clear a newer validation error.
-      clearTimerRef.current = setTimeout(() => {
-        clearTimerRef.current = null;
-        setValidationErrors([]);
-      }, ERROR_DISPLAY_MS);
 
       // Scroll to and focus the relevant element
       if (result.focusSelector) {
-        const el = document.querySelector(result.focusSelector);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-          if (el instanceof HTMLElement) el.focus();
-        }
+        scrollAndFocus(result.focusSelector);
       }
 
       return result;
     },
-    [cancelPendingClear, clearErrors],
+    [clearErrors],
   );
 
-  return { validate, validationErrors, clearErrors } as const;
+  return { validate, showErrors, validationErrors, clearErrors } as const;
 }

@@ -51,7 +51,9 @@ export function ContextHorizonViz() {
               max="100"
               value={scale}
               onChange={(e) => setScale(parseInt(e.target.value, 10))}
-              className="w-full h-2 rounded-full appearance-none cursor-ew-resize [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#FFBD2E] [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,189,46,0.8)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#020408] [&::-webkit-slider-thumb]:transition-transform hover:[&::-webkit-slider-thumb]:scale-110 relative z-10"
+              aria-label="Scale from prototype to production"
+              aria-valuetext={`${scale} percent of the way from prototype to production`}
+              className="w-full h-2 rounded-full appearance-none cursor-ew-resize [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#FFBD2E] [&::-webkit-slider-thumb]:shadow-[0_0_15px_rgba(255,189,46,0.8)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#020408] [&::-webkit-slider-thumb]:transition-transform hover:[&::-webkit-slider-thumb]:scale-110 relative z-10"
               style={{
                 background: `linear-gradient(to right, rgba(255,189,46,0.6) ${scale}%, rgba(255,255,255,0.05) ${scale}%)`
               }}

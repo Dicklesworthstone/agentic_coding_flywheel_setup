@@ -7,7 +7,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CommandCard } from "@/components/command-card";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
-import { buildRootKeyRepairCommand, buildUserKeyRepairCommand, formatSshTarget } from "@/lib/commandBuilder";
+import {
+  SSH_KEY_PATH_WINDOWS_POWERSHELL,
+  buildKeyRepairCommands,
+  buildSshKeyLoginCommands,
+} from "@/lib/commandBuilder";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
@@ -39,7 +43,8 @@ export default function ReconnectUbuntuPage() {
   useEffect(() => {
     if (!ready) return;
     if (vpsIP === null) {
-      router.push(withCurrentSearch("/wizard/create-vps"));
+      // replace, not push: a redirect must not leave a Back-button loop.
+      router.replace(withCurrentSearch("/wizard/create-vps"));
     }
   }, [ready, vpsIP, router]);
 
@@ -68,12 +73,13 @@ export default function ReconnectUbuntuPage() {
   }
 
   const effectiveUsername = sshUsername.trim() || "ubuntu";
-  const userTarget = formatSshTarget(effectiveUsername, vpsIP);
   const userPrompt = `${effectiveUsername}@`;
-  const sshCommand = `ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`;
-  const sshCommandWindows = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`;
-  const userKeyRepairCommand = buildUserKeyRepairCommand(effectiveUsername, vpsIP);
-  const rootKeyRepairCommand = buildRootKeyRepairCommand(effectiveUsername, vpsIP);
+  // Both shell dialects come from the command builder: the Windows form is
+  // the PowerShell spelling ($HOME), never the %USERPROFILE% form that only
+  // works inside a Windows Terminal profile.
+  const { command: sshCommand, windowsCommand: sshCommandWindows } =
+    buildSshKeyLoginCommands(effectiveUsername, vpsIP);
+  const keyRepair = buildKeyRepairCommands(effectiveUsername, vpsIP);
 
   return (
     <div className="space-y-8">
@@ -99,9 +105,9 @@ export default function ReconnectUbuntuPage() {
       </div>
 
       {/* Already ubuntu? */}
-      <div className="rounded-xl border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.08)] p-4">
+      <div className="rounded-xl border border-green/30 bg-green/8 p-4">
         <div className="flex items-start gap-3">
-          <Check className="mt-0.5 h-5 w-5 text-[oklch(0.72_0.19_145)]" />
+          <Check className="mt-0.5 h-5 w-5 text-green" />
           <div>
             <p className="font-medium text-foreground">Already connected as {effectiveUsername}?</p>
             <p className="text-sm text-muted-foreground">
@@ -112,6 +118,7 @@ export default function ReconnectUbuntuPage() {
               size="sm"
               className="mt-2"
               onClick={handleSkip}
+              disabled={isNavigating}
             >
               Skip, I&apos;m already {effectiveUsername}
             </Button>
@@ -145,7 +152,7 @@ export default function ReconnectUbuntuPage() {
               </code>{" "}
               part — or on Windows{" "}
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-                -i %USERPROFILE%\.ssh\acfs_ed25519
+                -i {SSH_KEY_PATH_WINDOWS_POWERSHELL}
               </code>
               ) instead of a password. The installer set this up for you.
             </p>
@@ -181,14 +188,14 @@ export default function ReconnectUbuntuPage() {
               <p className="mt-3 font-medium text-foreground">
                 If you can still sign in as {effectiveUsername}, copy your key into that account first:
               </p>
-              <CommandCard command={userKeyRepairCommand} runLocation="local" className="mt-2" />
+              <CommandCard {...keyRepair.user} className="mt-2" />
               <p className="mt-2 text-xs text-muted-foreground">
                 This uses the {effectiveUsername} account and does not ask for the VPS root password.
               </p>
               <p className="mt-3 font-medium text-foreground">
                 If that cannot connect, use the root fallback:
               </p>
-              <CommandCard command={rootKeyRepairCommand} runLocation="local" className="mt-2" />
+              <CommandCard {...keyRepair.root} className="mt-2" />
               <p className="mt-2 text-xs text-muted-foreground">
                 This asks for the VPS root password once. Then retry the SSH command above.
               </p>
@@ -200,11 +207,11 @@ export default function ReconnectUbuntuPage() {
       {/* Verification */}
       <OutputPreview title="You'll know it worked when:">
         <ul className="space-y-1 text-sm">
-          <li className="text-[oklch(0.72_0.19_145)]">
+          <li className="text-green">
             • Your prompt shows <code className="text-muted-foreground">{userPrompt}</code> (not <code className="text-muted-foreground">root@</code>)
           </li>
-          <li className="text-[oklch(0.72_0.19_145)]">• You see the colorful powerlevel10k prompt</li>
-          <li className="text-[oklch(0.72_0.19_145)]">• The shell feels more responsive</li>
+          <li className="text-green">• You see the colorful powerlevel10k prompt</li>
+          <li className="text-green">• The shell feels more responsive</li>
         </ul>
       </OutputPreview>
 

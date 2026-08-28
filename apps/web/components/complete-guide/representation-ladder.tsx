@@ -200,7 +200,7 @@ export function RepresentationLadder() {
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="p-10 rounded-[2.5rem] bg-white/[0.01] border border-white/[0.03] shadow-inner"
             >
-              <span className="text-[0.6rem] font-black text-[#FF5500]/60 uppercase tracking-[0.5em] block mb-6">Strategic Takeaway</span>
+              <span className="text-[0.6rem] font-black text-[#FF5500] uppercase tracking-[0.5em] block mb-6">Strategic Takeaway</span>
               <p className="text-[1.1rem] leading-relaxed text-zinc-300 font-extralight italic">
                 {bugLevel === null &&
                   "Planning earns its keep because it is the cheapest layer for global reasoning. Press 'Inject' on any layer to visualize the cost cascade."}

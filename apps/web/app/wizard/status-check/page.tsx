@@ -105,8 +105,6 @@ function getAuthCommandDescription(service: Service): string {
       return "Authenticate Codex with device auth";
     case "antigravity-cli":
       return "Open Antigravity and complete Google auth";
-    case "gemini-cli":
-      return "Legacy Gemini CLI auth";
     case "vercel":
       return "Start Vercel's device login flow";
     case "supabase":
@@ -119,12 +117,19 @@ function getAuthCommandDescription(service: Service): string {
 }
 
 function getAuthCheckboxLabel(service: Service): string {
+  if (service.id === "cloudflare") {
+    // Cloudflare's "command" opens ~/.zshrc in an editor; there is no login.
+    return "Optional: I added my token to ~/.zshrc";
+  }
   return service.tier === "essential"
     ? "Recommended: I logged in to this tool"
     : "Optional: I logged in to this tool";
 }
 
 function getAuthCompletedLabel(service: Service): string {
+  if (service.id === "cloudflare") {
+    return "Optional token added to ~/.zshrc";
+  }
   return service.tier === "essential"
     ? "Recommended login completed"
     : "Optional login completed";
@@ -149,9 +154,9 @@ export default function StatusCheckPage() {
   const effectiveSSHUsername = sshUsername.trim() || "ubuntu";
   const reconnectTarget = formatSshTarget(effectiveSSHUsername, effectiveVpsIP);
   const reconnectCommand = `ssh -i ~/.ssh/acfs_ed25519 ${reconnectTarget}`;
-  const reconnectWindowsCommand = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${reconnectTarget}`;
+  const reconnectWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 ${reconnectTarget}`;
   const codexTunnelCommand = `ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
-  const codexTunnelWindowsCommand = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
+  const codexTunnelWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
   const reinstallCommand = buildInstallCommand(
     installModeLoaded ? installMode : "vibe",
     acfsRefLoaded ? acfsRef : null,
@@ -295,14 +300,14 @@ export default function StatusCheckPage() {
       </div>
 
       {/* Expected output */}
-      <OutputPreview title="Expected output">
+      <OutputPreview title="Expected output (example)">
         <div className="space-y-1 font-mono text-xs">
           <p className="text-muted-foreground">Agent Flywheel Doctor - System Health Check</p>
           <p className="text-muted-foreground">{"=".repeat(32)}</p>
-          <p className="text-[oklch(0.72_0.19_145)]">✔ Shell: zsh with oh-my-zsh</p>
-          <p className="text-[oklch(0.72_0.19_145)]">✔ Languages: bun, uv, rust, go</p>
-          <p className="text-[oklch(0.72_0.19_145)]">✔ Tools: <Jargon term="tmux">tmux</Jargon>, <Jargon term="ripgrep">ripgrep</Jargon>, <Jargon term="lazygit">lazygit</Jargon></p>
-          <p className="text-[oklch(0.72_0.19_145)]">✔ Agents: claude-code, codex, agy</p>
+          <p className="text-green">✔ Shell: zsh with oh-my-zsh</p>
+          <p className="text-green">✔ Languages: bun, uv, rust, go</p>
+          <p className="text-green">✔ Tools: <Jargon term="tmux">tmux</Jargon>, <Jargon term="ripgrep">ripgrep</Jargon>, <Jargon term="lazygit">lazygit</Jargon></p>
+          <p className="text-green">✔ Agents: claude-code, codex, agy</p>
           <p className="mt-2 text-foreground">All checks passed!</p>
         </div>
       </OutputPreview>
@@ -368,7 +373,7 @@ export default function StatusCheckPage() {
             </p>
             <p className="text-sm font-medium">Option 1: Device Auth (Recommended)</p>
             <ol className="list-decimal list-inside space-y-1 text-sm pl-2">
-              <li>Go to <a href="https://chatgpt.com/settings/security" target="_blank" rel="noopener noreferrer" className="text-primary underline">ChatGPT Settings → Security</a></li>
+              <li>Go to <a href="https://chatgpt.com/settings/security" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary underline">ChatGPT Settings → Security</a></li>
               <li>Enable &quot;Device code login&quot; (may be in beta)</li>
               <li>Then run: <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">codex login --device-auth</code></li>
             </ol>
@@ -397,7 +402,7 @@ export default function StatusCheckPage() {
             </p>
             <p className="text-sm font-medium">Solution: Use API Token</p>
             <ol className="list-decimal list-inside space-y-1 text-sm pl-2">
-              <li>Go to <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" className="text-primary underline">Cloudflare → API Tokens</a></li>
+              <li>Go to <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary underline">Cloudflare → API Tokens</a></li>
               <li>Create a token with the permissions you need (e.g., Workers, Pages)</li>
               <li>Add to your <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">~/.zshrc</code>:</li>
             </ol>
@@ -419,7 +424,7 @@ export default function StatusCheckPage() {
             <div className="text-sm space-y-2">
               <p className="font-medium">Supabase:</p>
               <ol className="list-decimal list-inside space-y-1 pl-2 text-sm">
-                <li>Go to <a href="https://supabase.com/dashboard/account/tokens" target="_blank" rel="noopener noreferrer" className="text-primary underline">Supabase → Access Tokens</a></li>
+                <li>Go to <a href="https://supabase.com/dashboard/account/tokens" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary underline">Supabase → Access Tokens</a></li>
                 <li>Create a token, then add to <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">~/.zshrc</code>:</li>
               </ol>
               <CodeBlock code={`export SUPABASE_ACCESS_TOKEN="your-token-here"`} language="bash" />
@@ -533,7 +538,7 @@ export default function StatusCheckPage() {
                 You&apos;ll see a list with checkmarks (✔) or X marks (✘):
                 <ul className="mt-2 space-y-1">
                   <li>
-                    <span className="text-[oklch(0.72_0.19_145)]">✔ Green checkmarks</span> = Working correctly!
+                    <span className="text-green">✔ Green checkmarks</span> = Working correctly!
                   </li>
                   <li>
                     <span className="text-destructive">✘ Red X marks</span> = Something needs attention

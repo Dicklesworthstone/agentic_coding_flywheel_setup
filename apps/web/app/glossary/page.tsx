@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, ChevronDown, Home, Search, Terminal, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -145,7 +145,18 @@ export default function GlossaryPage() {
     setCategory("all");
   }, []);
 
+  // The hash handler below reads the current filters through refs so that it
+  // can stay subscribed to hash changes only. Re-running it on every query
+  // keystroke used to wipe the query and scroll the page mid-word.
+  const queryRef = useRef(query);
+  const categoryRef = useRef(category);
+  useEffect(() => {
+    queryRef.current = query;
+    categoryRef.current = category;
+  }, [query, category]);
+
   // If the user lands on /glossary#some-key, scroll to it and open the entry.
+  // Runs on mount and on `hashchange` only, never on filter changes.
   useEffect(() => {
     const openByKey = (key: string): boolean => {
       const target = document.getElementById(key);
@@ -181,7 +192,10 @@ export default function GlossaryPage() {
       const keyExists = entries.some((entry) => entry.key === key);
       if (!keyExists) return;
 
-      const needsFilterReset = query.length > 0 || category !== "all";
+      // The entry exists but the current filters hide it. Only a hash
+      // navigation reaches this point, so clearing the filters is what the
+      // visitor asked for; a keystroke can never trigger it.
+      const needsFilterReset = queryRef.current.length > 0 || categoryRef.current !== "all";
       if (!needsFilterReset) return;
 
       setQuery("");
@@ -198,10 +212,10 @@ export default function GlossaryPage() {
     openFromHash();
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
-  }, [entries, query, category]);
+  }, [entries]);
 
   return (
-    <div role="main" className="relative min-h-screen bg-background">
+    <div role="main" id="main-content" tabIndex={-1} className="relative min-h-screen bg-background">
       {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
       <div className="pointer-events-none fixed inset-0 bg-grid-pattern opacity-20" />
@@ -211,14 +225,14 @@ export default function GlossaryPage() {
         <div className="mb-8 flex items-center justify-between">
           <Link
             href="/"
-            className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex min-h-6 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
           >
             <Home className="h-4 w-4" />
             <span className="text-sm">Home</span>
           </Link>
           <Link
             href="/wizard/os-selection"
-            className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex min-h-6 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
           >
             <Terminal className="h-4 w-4" />
             <span className="text-sm">Setup Wizard</span>
@@ -385,7 +399,7 @@ export default function GlossaryPage() {
                           <Link
                             key={key}
                             href={`/glossary#${encodeURIComponent(key)}`}
-                            className="rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                            className="inline-flex min-h-6 items-center rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs font-medium text-muted-foreground hover:border-primary/40 hover:text-foreground"
                           >
                             {key}
                           </Link>
@@ -399,7 +413,7 @@ export default function GlossaryPage() {
                       <Link
                         href={entry.learnMore.href}
                         className={cn(
-                          "text-sm font-medium text-primary underline-offset-4 hover:underline",
+                          "inline-flex min-h-6 items-center text-sm font-medium text-primary underline-offset-4 hover:underline",
                           "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
                         )}
                       >

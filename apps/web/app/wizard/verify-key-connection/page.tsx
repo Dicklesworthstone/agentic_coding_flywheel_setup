@@ -7,7 +7,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CommandCard } from "@/components/command-card";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
-import { buildRootKeyRepairCommand, buildUserKeyRepairCommand, formatSshTarget } from "@/lib/commandBuilder";
+import { buildKeyRepairCommands, buildSshKeyLoginCommands } from "@/lib/commandBuilder";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
@@ -40,7 +40,8 @@ export default function VerifyKeyConnectionPage() {
   useEffect(() => {
     if (!ready) return;
     if (vpsIP === null) {
-      router.push(withCurrentSearch("/wizard/create-vps"));
+      // replace, not push: a redirect must not leave a Back-button loop.
+      router.replace(withCurrentSearch("/wizard/create-vps"));
     }
   }, [ready, vpsIP, router]);
 
@@ -62,12 +63,13 @@ export default function VerifyKeyConnectionPage() {
   }
 
   const effectiveUsername = sshUsername.trim() || "ubuntu";
-  const userTarget = formatSshTarget(effectiveUsername, vpsIP);
   const userPrompt = `${effectiveUsername}@`;
-  const sshKeyCommand = `ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`;
-  const sshKeyCommandWindows = `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`;
-  const userKeyRepairCommand = buildUserKeyRepairCommand(effectiveUsername, vpsIP);
-  const rootKeyRepairCommand = buildRootKeyRepairCommand(effectiveUsername, vpsIP);
+  // Both shell dialects come from the command builder: the Windows form is
+  // the PowerShell spelling ($HOME), never the %USERPROFILE% form that only
+  // works inside a Windows Terminal profile.
+  const { command: sshKeyCommand, windowsCommand: sshKeyCommandWindows } =
+    buildSshKeyLoginCommands(effectiveUsername, vpsIP);
+  const keyRepair = buildKeyRepairCommands(effectiveUsername, vpsIP);
 
   return (
     <div className="space-y-8">
@@ -123,18 +125,18 @@ export default function VerifyKeyConnectionPage() {
       {/* Success indicator */}
       <OutputPreview title="Success looks like:">
         <div className="space-y-2 text-sm">
-          <p className="text-[oklch(0.72_0.19_145)]">• You were not asked for a password</p>
-          <p className="text-[oklch(0.72_0.19_145)]">• Your prompt shows: {userPrompt}vps:~$</p>
+          <p className="text-green">• You were not asked for a password</p>
+          <p className="text-green">• Your prompt shows: {userPrompt}vps:~$</p>
         </div>
       </OutputPreview>
 
       {/* Windows Terminal tip */}
-      <div className="rounded-xl border border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.08)] p-4">
+      <div className="rounded-xl border border-primary/30 bg-primary/8 p-4">
         <Link
           href={withCurrentSearch("/wizard/windows-terminal-setup?from=verify-key-connection")}
           className="flex items-start gap-3"
         >
-          <Terminal className="mt-0.5 h-5 w-5 text-[oklch(0.75_0.18_195)]" />
+          <Terminal className="mt-0.5 h-5 w-5 text-primary" />
           <div>
             <p className="font-medium text-foreground">
               Windows User? Set up one-click VPS access
@@ -155,14 +157,14 @@ export default function VerifyKeyConnectionPage() {
               <p>
                 If you can still sign in as {effectiveUsername}, copy your local ACFS public key into that account:
               </p>
-              <CommandCard command={userKeyRepairCommand} runLocation="local" />
+              <CommandCard {...keyRepair.user} />
               <p className="text-xs text-muted-foreground">
                 This uses the {effectiveUsername} account and does not ask for the VPS root password.
               </p>
               <p className="pt-2">
                 If that cannot connect, use the root fallback:
               </p>
-              <CommandCard command={rootKeyRepairCommand} runLocation="local" />
+              <CommandCard {...keyRepair.root} />
               <p className="text-xs text-muted-foreground">
                 This asks for the VPS root password once. ACFS skips exact duplicate public key lines on reruns.
               </p>

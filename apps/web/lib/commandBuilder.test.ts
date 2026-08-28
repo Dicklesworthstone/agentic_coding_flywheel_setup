@@ -1,10 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, statSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildRootKeyRepairCommand,
+  buildRootKeyRepairCommandWindows,
   buildUserKeyRepairCommand,
+  buildUserKeyRepairCommandWindows,
+  buildKeyRepairCommands,
+  buildSshKeyLoginCommands,
+  buildWindowsTerminalProfileSshCommand,
   buildCommands,
   buildHandoffRunbook,
   buildInstallCommand,
+  buildInstallCommandDetails,
   buildTeamProfile,
   buildTeamProfileImportDiff,
   buildShareURL,
@@ -126,6 +135,219 @@ describe("buildUserKeyRepairCommand", () => {
   });
 });
 
+/**
+ * Extract the remote script from a PowerShell repair command. The script is
+ * the single-quoted argument to ssh; there must be exactly one such string.
+ */
+function remoteScriptOf(windowsCommand: string): string {
+  const parts = windowsCommand.split("'");
+  expect(parts).toHaveLength(3);
+  return parts[1]!;
+}
+
+function runRemoteScriptLocally(
+  script: string,
+  home: string,
+  stdin: string,
+): { exitCode: number; stderr: string } {
+  const result = Bun.spawnSync({
+    cmd: ["bash", "-c", script],
+    env: { ...process.env, HOME: home },
+    stdin: new TextEncoder().encode(stdin),
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  return {
+    exitCode: result.exitCode,
+    stderr: new TextDecoder().decode(result.stderr),
+  };
+}
+
+describe("buildUserKeyRepairCommandWindows", () => {
+  const publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyMaterialForTests acfs";
+
+  test("pipes the key from PowerShell without any double quotes or escapes", () => {
+    const command = buildUserKeyRepairCommandWindows("dev-user", "203.0.113.42");
+
+    expect(command.startsWith("Get-Content $HOME\\.ssh\\acfs_ed25519.pub | ssh dev-user@203.0.113.42 '")).toBe(true);
+    expect(command.endsWith("'")).toBe(true);
+    // Windows PowerShell 5.1 strips embedded double quotes when calling a
+    // native exe, and `\"` is not an escape in PowerShell, so neither may appear.
+    expect(command).not.toContain('"');
+    expect(command).not.toContain("%USERPROFILE%");
+    expect(command).not.toContain("$acfs_pubkey");
+    expect(command).not.toContain("sudo");
+    expect(command).not.toContain("ssh root@");
+
+    const remoteScript = remoteScriptOf(command);
+    expect(remoteScript).toContain("tr -d \\\\r");
+    expect(remoteScript).toContain("test ! -L ~/.ssh");
+    expect(remoteScript).toContain("install -d -m 700 ~/.ssh");
+    expect(remoteScript).toContain("grep -qxFf $acfs_key ~/.ssh/authorized_keys");
+    expect(remoteScript).toContain("cat $acfs_key >> ~/.ssh/authorized_keys");
+  });
+
+  test("remote script appends the key once, strips CRLF, and is idempotent", () => {
+    const home = mkdtempSync(join(tmpdir(), "acfs-key-repair-"));
+    try {
+      const script = remoteScriptOf(buildUserKeyRepairCommandWindows("ubuntu", "203.0.113.42"));
+      const authorizedKeys = join(home, ".ssh", "authorized_keys");
+
+      // PowerShell pipes to native commands with CRLF line endings.
+      const first = runRemoteScriptLocally(script, home, `${publicKey}\r\n`);
+      expect(first.stderr).toBe("");
+      expect(first.exitCode).toBe(0);
+      expect(readFileSync(authorizedKeys, "utf8")).toBe(`${publicKey}\n`);
+      expect(statSync(join(home, ".ssh")).mode & 0o777).toBe(0o700);
+      expect(statSync(authorizedKeys).mode & 0o777).toBe(0o600);
+
+      const second = runRemoteScriptLocally(script, home, `${publicKey}\r\n`);
+      expect(second.exitCode).toBe(0);
+      expect(readFileSync(authorizedKeys, "utf8")).toBe(`${publicKey}\n`);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("remote script repairs a missing trailing newline before appending", () => {
+    const home = mkdtempSync(join(tmpdir(), "acfs-key-repair-"));
+    try {
+      mkdirSync(join(home, ".ssh"), { mode: 0o700 });
+      const authorizedKeys = join(home, ".ssh", "authorized_keys");
+      writeFileSync(authorizedKeys, "ssh-ed25519 AAAAExistingKey other", { mode: 0o600 });
+
+      const script = remoteScriptOf(buildUserKeyRepairCommandWindows("ubuntu", "203.0.113.42"));
+      const result = runRemoteScriptLocally(script, home, `${publicKey}\n`);
+
+      expect(result.exitCode).toBe(0);
+      expect(readFileSync(authorizedKeys, "utf8")).toBe(
+        `ssh-ed25519 AAAAExistingKey other\n${publicKey}\n`,
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("remote script fails closed on empty input instead of appending a blank line", () => {
+    const home = mkdtempSync(join(tmpdir(), "acfs-key-repair-"));
+    try {
+      const script = remoteScriptOf(buildUserKeyRepairCommandWindows("ubuntu", "203.0.113.42"));
+      const result = runRemoteScriptLocally(script, home, "\r\n");
+
+      expect(result.exitCode).not.toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("falls back to ubuntu for usernames the installer would reject", () => {
+    const command = buildUserKeyRepairCommandWindows("Bad User", "2001:db8::42");
+
+    expect(command).toContain("ssh ubuntu@[2001:db8::42] '");
+    expect(command).not.toContain("Bad User");
+  });
+});
+
+describe("buildRootKeyRepairCommandWindows", () => {
+  test("copies the key through root into the target user's home without quotes", () => {
+    const command = buildRootKeyRepairCommandWindows("dev-user", "203.0.113.42");
+
+    expect(command.startsWith("Get-Content $HOME\\.ssh\\acfs_ed25519.pub | ssh root@203.0.113.42 '")).toBe(true);
+    expect(command.endsWith("'")).toBe(true);
+    expect(command).not.toContain('"');
+    expect(command).not.toContain("%USERPROFILE%");
+    expect(command).not.toContain("$acfs_pubkey");
+
+    const remoteScript = remoteScriptOf(command);
+    expect(remoteScript).toContain("test ! -L /home/dev-user/.ssh");
+    expect(remoteScript).toContain("install -d -m 700 -o dev-user -g dev-user /home/dev-user/.ssh");
+    expect(remoteScript).toContain("grep -qxFf $acfs_key /home/dev-user/.ssh/authorized_keys");
+    expect(remoteScript).toContain("cat $acfs_key >> /home/dev-user/.ssh/authorized_keys");
+    expect(remoteScript).toContain("chown dev-user:dev-user /home/dev-user/.ssh/authorized_keys");
+    expect(remoteScript).toContain("chmod 600 /home/dev-user/.ssh/authorized_keys");
+  });
+
+  test("treats root as the bootstrap account, not the ACFS target user", () => {
+    const command = buildRootKeyRepairCommandWindows("root", "203.0.113.42");
+
+    expect(command).toContain("ssh root@203.0.113.42 '");
+    expect(command).toContain("/home/ubuntu/.ssh/authorized_keys");
+    expect(command).not.toContain("/root/.ssh/authorized_keys");
+  });
+});
+
+describe("buildKeyRepairCommands", () => {
+  test("pairs every repair command with its PowerShell variant", () => {
+    const repair = buildKeyRepairCommands("dev-user", "203.0.113.42");
+
+    expect(repair.user.command).toBe(buildUserKeyRepairCommand("dev-user", "203.0.113.42"));
+    expect(repair.user.windowsCommand).toBe(buildUserKeyRepairCommandWindows("dev-user", "203.0.113.42"));
+    expect(repair.root.command).toBe(buildRootKeyRepairCommand("dev-user", "203.0.113.42"));
+    expect(repair.root.windowsCommand).toBe(buildRootKeyRepairCommandWindows("dev-user", "203.0.113.42"));
+    expect(repair.user.runLocation).toBe("local");
+    expect(repair.root.runLocation).toBe("local");
+  });
+});
+
+describe("buildSshKeyLoginCommands", () => {
+  test("uses ~ for POSIX shells and $HOME for interactive PowerShell", () => {
+    const login = buildSshKeyLoginCommands("dev-user", "203.0.113.42");
+
+    expect(login.command).toBe("ssh -i ~/.ssh/acfs_ed25519 dev-user@203.0.113.42");
+    expect(login.windowsCommand).toBe("ssh -i $HOME\\.ssh\\acfs_ed25519 dev-user@203.0.113.42");
+    expect(login.windowsCommand).not.toContain("%USERPROFILE%");
+  });
+
+  test("threads extra ssh arguments (port forwards) into both variants", () => {
+    const login = buildSshKeyLoginCommands("ubuntu", "2001:db8::42", "-L 1455:localhost:1455");
+
+    expect(login.command).toBe("ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]");
+    expect(login.windowsCommand).toBe("ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ubuntu@[2001:db8::42]");
+  });
+
+  test("does not serialize shell metacharacters", () => {
+    const login = buildSshKeyLoginCommands("bad user;sudo", "203.0.113.42; touch /tmp/x");
+
+    expect(login.command).toBe("ssh -i ~/.ssh/acfs_ed25519 ubuntu@YOUR_VPS_IP");
+    expect(login.windowsCommand).not.toContain(";");
+  });
+});
+
+describe("buildWindowsTerminalProfileSshCommand", () => {
+  test("keeps %USERPROFILE% only for the Windows Terminal profile commandline", () => {
+    const commandline = buildWindowsTerminalProfileSshCommand("dev-user", "203.0.113.42");
+
+    expect(commandline).toBe("ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 dev-user@203.0.113.42");
+    expect(commandline).not.toContain("$HOME");
+  });
+});
+
+describe("buildInstallCommandDetails", () => {
+  test("reports the TARGET_USER prefix and pin state alongside the exact command", () => {
+    const details = buildInstallCommandDetails("safe", "v1.2.3", "admin", { profile: "stack-only" });
+
+    expect(details.command).toBe(buildInstallCommand("safe", "v1.2.3", "admin", { profile: "stack-only" }));
+    expect(details.command).toContain('TARGET_USER="admin"');
+    expect(details.usesTargetUserPrefix).toBe(true);
+    expect(details.targetUser).toBe("admin");
+    expect(details.pinned).toBe(true);
+    expect(details.installRef).toBe("v1.2.3");
+    expect(details.mode).toBe("safe");
+    expect(details.selectorArgs).toEqual(["--profile", '"stack-only"']);
+  });
+
+  test("reports no prefix for the default ubuntu user and no pin for main", () => {
+    const details = buildInstallCommandDetails("vibe", null, "ubuntu");
+
+    expect(details.command).toBe(buildInstallCommand("vibe", null, "ubuntu"));
+    expect(details.usesTargetUserPrefix).toBe(false);
+    expect(details.targetUser).toBeNull();
+    expect(details.pinned).toBe(false);
+    expect(details.installRef).toBe("main");
+    expect(details.selectorArgs).toEqual([]);
+  });
+});
+
 describe("buildInstallCommand", () => {
   test("omits TARGET_USER for the default ubuntu user", () => {
     const command = buildInstallCommand("vibe", null, "ubuntu");
@@ -210,7 +432,26 @@ describe("buildCommands", () => {
 
     expect(installer?.command).toContain('TARGET_USER="admin"');
     expect(sshUser?.command).toContain("admin@10.20.30.40");
-    expect(sshUser?.windowsCommand).toBe("ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 admin@10.20.30.40");
+    // Typed into interactive PowerShell: $HOME is expanded there, %USERPROFILE%
+    // is cmd.exe syntax and would be passed literally (no such identity).
+    expect(sshUser?.windowsCommand).toBe("ssh -i $HOME\\.ssh\\acfs_ed25519 admin@10.20.30.40");
+    expect(sshUser?.windowsCommand).not.toContain("%USERPROFILE%");
+    expect(installer?.usesTargetUserPrefix).toBe(true);
+  });
+
+  test("flags the installer entry without a TARGET_USER prefix for the default user", () => {
+    const commands = buildCommands({
+      ip: "10.20.30.40",
+      os: "mac",
+      username: "ubuntu",
+      mode: "vibe",
+      ref: null,
+    });
+
+    const installer = commands.find((command) => command.id === "installer");
+
+    expect(installer?.command).not.toContain("TARGET_USER=");
+    expect(installer?.usesTargetUserPrefix).toBe(false);
   });
 
   test("falls back to ubuntu when the username input is invalid", () => {

@@ -16,6 +16,7 @@ import {
   validateStep,
 } from "@/lib/wizardSteps";
 import { trackConversion } from "@/lib/analytics";
+import { TOTAL_LESSONS } from "@/lib/lessons";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import {
@@ -173,12 +174,12 @@ export default function LaunchOnboardingStep() {
       {/* Celebration header */}
       <div className="space-y-4 text-center">
         <div className="flex justify-center">
-          <div className="relative rounded-full bg-[oklch(0.72_0.19_145/0.2)] p-4 shadow-lg shadow-[oklch(0.72_0.19_145/0.3)]">
-            <PartyPopper className="h-12 w-12 text-[oklch(0.72_0.19_145)]" />
-            <Sparkles className="absolute -right-1 -top-1 h-6 w-6 text-[oklch(0.78_0.16_75)] animate-pulse" />
+          <div className="relative rounded-full bg-green/20 p-4 shadow-lg shadow-green/30">
+            <PartyPopper className="h-12 w-12 text-green" />
+            <Sparkles className="absolute -right-1 -top-1 h-6 w-6 text-amber animate-pulse" />
           </div>
         </div>
-        <h1 className="bg-gradient-to-r from-[oklch(0.72_0.19_145)] via-primary to-[oklch(0.7_0.2_330)] bg-clip-text text-3xl font-bold tracking-tight text-transparent">
+        <h1 className="bg-gradient-to-r from-green via-primary to-magenta bg-clip-text text-3xl font-bold tracking-tight text-transparent">
           Congratulations! You&apos;re all set up!
         </h1>
         <p className="text-lg text-muted-foreground">
@@ -207,10 +208,10 @@ export default function LaunchOnboardingStep() {
       <CommandBuilderPanel />
 
       {/* Important: Authenticate the AI tools you plan to use */}
-      <Card className="border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.08)] p-6">
+      <Card className="border-amber/30 bg-amber/8 p-6">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <Sparkles className="h-6 w-6 text-[oklch(0.78_0.16_75)]" />
+            <Sparkles className="h-6 w-6 text-amber" />
             <h2 className="text-xl font-semibold">First: Authenticate the AI tools you plan to use</h2>
           </div>
           <p className="text-muted-foreground">
@@ -219,7 +220,7 @@ export default function LaunchOnboardingStep() {
           </p>
           <div className="space-y-3">
             <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[oklch(0.78_0.16_75)] text-[oklch(0.15_0.02_75)] font-bold text-sm">1</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">1</div>
               <div className="space-y-3">
                 <p className="font-medium">Claude Code</p>
                 <CommandCard
@@ -228,8 +229,8 @@ export default function LaunchOnboardingStep() {
                   runLocation="vps"
                 />
                 {/* Detailed OAuth flow explanation */}
-                <div className="rounded-lg border border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.05)] p-3 text-sm space-y-2">
-                  <p className="font-medium text-[oklch(0.78_0.16_75)]">How the authentication works:</p>
+                <div className="rounded-lg border border-amber/30 bg-amber/5 p-3 text-sm space-y-2">
+                  <p className="font-medium text-amber">How the authentication works:</p>
                   <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                     <li>The terminal shows a URL like <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">https://claude.ai/oauth/...</code></li>
                     <li><strong className="text-foreground">Copy that URL</strong> and paste it into your web browser (on your laptop)</li>
@@ -244,7 +245,7 @@ export default function LaunchOnboardingStep() {
               </div>
             </div>
             <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[oklch(0.78_0.16_75)] text-[oklch(0.15_0.02_75)] font-bold text-sm">2</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">2</div>
               <div>
                 <p className="font-medium">Codex CLI (if using OpenAI)</p>
                 <CommandCard
@@ -255,7 +256,7 @@ export default function LaunchOnboardingStep() {
               </div>
             </div>
             <div className="flex gap-3">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[oklch(0.78_0.16_75)] text-[oklch(0.15_0.02_75)] font-bold text-sm">3</div>
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold text-sm">3</div>
               <div>
                 <p className="font-medium">Antigravity CLI (optional)</p>
                 <CommandCard
@@ -283,15 +284,22 @@ export default function LaunchOnboardingStep() {
             <h2 className="text-xl font-semibold">Continue Your Learning Journey</h2>
           </div>
           <p className="text-muted-foreground">
-            Master your new environment with 9 guided lessons covering Linux basics,
+            Master your new environment with {TOTAL_LESSONS} guided lessons covering Linux basics,
             tmux sessions, AI agents, and advanced workflows.
           </p>
-          <Link href="/learn" onClick={() => trackConversion('learning_hub_started')}>
-            <Button size="lg" className="w-full sm:w-auto">
-              <BookOpen className="mr-2 h-4 w-4" />
-              Start Learning Hub
-            </Button>
-          </Link>
+          {/* A real <button> that navigates (like every wizard CTA) rather than a
+              <button> nested inside an <a>, which is invalid HTML and two tab stops. */}
+          <Button
+            size="lg"
+            className="w-full sm:w-auto"
+            onClick={() => {
+              trackConversion("learning_hub_started");
+              router.push("/learn");
+            }}
+          >
+            <BookOpen className="mr-2 h-4 w-4" />
+            Start Learning Hub
+          </Button>
           <div className="flex items-center gap-2 pt-2 text-sm text-muted-foreground">
             <Terminal className="h-4 w-4" />
             <span>
@@ -304,10 +312,10 @@ export default function LaunchOnboardingStep() {
       </Card>
 
       {/* Your Daily Workflow - Key pattern for ongoing use */}
-      <Card className="border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.05)] p-6">
+      <Card className="border-amber/30 bg-amber/5 p-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <RefreshCw className="h-5 w-5 text-[oklch(0.78_0.16_75)]" />
+            <RefreshCw className="h-5 w-5 text-amber" />
             <h2 className="text-xl font-semibold">Your Daily Workflow</h2>
           </div>
           <p className="text-muted-foreground">
@@ -317,14 +325,14 @@ export default function LaunchOnboardingStep() {
 
         <div className="mt-6 space-y-6">
           <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[oklch(0.78_0.16_75)] text-[oklch(0.15_0.02_75)] font-bold">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold">
               1
             </div>
             <div className="space-y-2">
               <h3 className="font-medium">Connect to your VPS</h3>
               <CommandCard
                 command={`ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`}
-                windowsCommand={`ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`}
+                windowsCommand={`ssh -i $HOME\\.ssh\\acfs_ed25519 ${userTarget}`}
                 runLocation="local"
               />
               <p className="text-sm text-muted-foreground">Open your terminal and SSH in.</p>
@@ -332,7 +340,7 @@ export default function LaunchOnboardingStep() {
           </div>
 
           <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[oklch(0.78_0.16_75)] text-[oklch(0.15_0.02_75)] font-bold">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold">
               2
             </div>
             <div className="space-y-2">
@@ -352,7 +360,7 @@ export default function LaunchOnboardingStep() {
           </div>
 
           <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[oklch(0.78_0.16_75)] text-[oklch(0.15_0.02_75)] font-bold">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold">
               3
             </div>
             <div className="space-y-2">
@@ -362,7 +370,7 @@ export default function LaunchOnboardingStep() {
           </div>
 
           <div className="flex gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[oklch(0.78_0.16_75)] text-[oklch(0.15_0.02_75)] font-bold">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber text-background font-bold">
               4
             </div>
             <div className="space-y-2">
@@ -389,7 +397,7 @@ export default function LaunchOnboardingStep() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-lg border border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.1)] p-4 text-center">
+        <div className="mt-6 rounded-lg border border-amber/30 bg-amber/10 p-4 text-center">
           <p className="text-sm font-medium">
             💡 <strong>Remember:</strong> Connect → Session → Code → Detach
           </p>
@@ -397,10 +405,10 @@ export default function LaunchOnboardingStep() {
       </Card>
 
       {/* Starting a New Project - How to begin real work */}
-      <Card className="border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.05)] p-6">
+      <Card className="border-primary/30 bg-primary/5 p-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <FolderPlus className="h-5 w-5 text-[oklch(0.75_0.18_195)]" />
+            <FolderPlus className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Starting a New Project</h2>
           </div>
           <p className="text-muted-foreground">
@@ -441,9 +449,9 @@ export default function LaunchOnboardingStep() {
       </Card>
 
       {/* Finding Your Way Around - Filesystem orientation */}
-      <Card className="border-[oklch(0.7_0.2_330/0.3)] bg-[oklch(0.7_0.2_330/0.05)] p-6">
+      <Card className="border-magenta/30 bg-magenta/5 p-6">
         <div className="flex items-center gap-2 mb-4">
-          <FolderOpen className="h-5 w-5 text-[oklch(0.7_0.2_330)]" />
+          <FolderOpen className="h-5 w-5 text-magenta" />
           <h2 className="text-xl font-semibold">Finding Your Way Around</h2>
         </div>
 
@@ -499,7 +507,7 @@ export default function LaunchOnboardingStep() {
       <Card className="border-primary/30 bg-primary/5 p-6">
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-[oklch(0.78_0.16_75)]" />
+            <Sparkles className="h-5 w-5 text-amber" />
             <h2 className="text-xl font-semibold">Your First 5 Minutes</h2>
           </div>
           <p className="text-muted-foreground">
@@ -579,7 +587,7 @@ export default function LaunchOnboardingStep() {
           </div>
         </div>
 
-        <div className="mt-6 rounded-lg border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.1)] p-4 text-center">
+        <div className="mt-6 rounded-lg border border-green/30 bg-green/10 p-4 text-center">
           <p className="text-lg font-medium">
             🎉 Congratulations! You just used AI to write and run code!
           </p>
@@ -587,9 +595,9 @@ export default function LaunchOnboardingStep() {
       </Card>
 
       {/* Getting Back In */}
-      <Card className="border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.05)] p-6">
+      <Card className="border-primary/30 bg-primary/5 p-6">
         <div className="flex items-center gap-3 mb-4">
-          <Terminal className="h-6 w-6 text-[oklch(0.75_0.18_195)]" />
+          <Terminal className="h-6 w-6 text-primary" />
           <h2 className="text-xl font-semibold">Getting Back In</h2>
         </div>
 
@@ -609,7 +617,7 @@ export default function LaunchOnboardingStep() {
             <h3 className="font-medium">2. Connect to your VPS</h3>
             <CommandCard
               command={`ssh -i ~/.ssh/acfs_ed25519 ${userTarget}`}
-              windowsCommand={`ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${userTarget}`}
+              windowsCommand={`ssh -i $HOME\\.ssh\\acfs_ed25519 ${userTarget}`}
               runLocation="local"
             />
           </div>
@@ -626,10 +634,10 @@ export default function LaunchOnboardingStep() {
 
         {/* SSH Config tip */}
         <details className="mt-6 group">
-          <summary className="cursor-pointer font-medium text-[oklch(0.75_0.18_195)] hover:text-[oklch(0.65_0.18_195)] transition-colors rounded outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <summary className="cursor-pointer font-medium text-primary hover:text-primary/80 transition-colors rounded outline-none focus-visible:ring-2 focus-visible:ring-ring">
             💡 Pro tip: Set up SSH config for easier access
           </summary>
-          <div className="mt-4 space-y-4 pl-6 border-l-2 border-[oklch(0.75_0.18_195/0.3)]">
+          <div className="mt-4 space-y-4 pl-6 border-l-2 border-primary/30">
             <p className="text-sm text-muted-foreground">
               Add this to your local <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">~/.ssh/config</code> file:
             </p>
@@ -641,12 +649,12 @@ export default function LaunchOnboardingStep() {
         </details>
 
         {/* Windows Terminal tip */}
-        <div className="mt-6 rounded-lg border border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.1)] p-4">
+        <div className="mt-6 rounded-lg border border-primary/30 bg-primary/10 p-4">
           <Link
             href={withCurrentSearch("/wizard/windows-terminal-setup?from=launch-onboarding")}
             className="flex items-start gap-3"
           >
-            <Terminal className="mt-0.5 h-5 w-5 text-[oklch(0.75_0.18_195)]" />
+            <Terminal className="mt-0.5 h-5 w-5 text-primary" />
             <div>
               <p className="font-medium text-foreground">
                 Windows User? Set up one-click VPS access
@@ -737,7 +745,7 @@ export default function LaunchOnboardingStep() {
                     href="https://cursor.com"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                    className="inline-flex min-h-6 items-center gap-1 font-medium text-primary hover:underline"
                   >
                     cursor.com
                     <ExternalLink className="h-3 w-3" />
@@ -777,7 +785,7 @@ export default function LaunchOnboardingStep() {
                   href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                  className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
                 >
                   Agent Flywheel GitHub Repository
                   <ExternalLink className="h-3 w-3" />
@@ -788,7 +796,7 @@ export default function LaunchOnboardingStep() {
                   href="https://docs.anthropic.com/claude-code"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                  className="inline-flex min-h-6 items-center gap-1 text-primary hover:underline"
                 >
                   Claude Code Documentation
                   <ExternalLink className="h-3 w-3" />
@@ -918,10 +926,10 @@ export default function LaunchOnboardingStep() {
       </SimplerGuide>
 
       {/* Continue to Part Two */}
-      <Card className="border-2 border-[oklch(0.7_0.2_330/0.3)] bg-gradient-to-r from-[oklch(0.7_0.2_330/0.05)] to-[oklch(0.75_0.18_195/0.05)] p-6">
+      <Card className="border-2 border-magenta/30 bg-gradient-to-r from-magenta/5 to-primary/5 p-6">
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <Sparkles className="h-6 w-6 text-[oklch(0.7_0.2_330)]" />
+            <Sparkles className="h-6 w-6 text-magenta" />
             <h2 className="text-xl font-semibold">Ready for the Advanced Workflow?</h2>
           </div>
           <p className="text-muted-foreground">
@@ -932,18 +940,18 @@ export default function LaunchOnboardingStep() {
             that build features while you sleep.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href="/learn" onClick={() => trackConversion('learning_hub_started')}>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto">
+            <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
+              <Link href="/learn" onClick={() => trackConversion("learning_hub_started")}>
                 <BookOpen className="mr-2 h-4 w-4" />
                 Start with Basics
-              </Button>
-            </Link>
-            <Link href="/workflow">
-              <Button size="lg" className="w-full sm:w-auto">
+              </Link>
+            </Button>
+            <Button asChild size="lg" className="w-full sm:w-auto">
+              <Link href="/workflow">
                 Skip to Advanced
                 <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </div>
         </div>
       </Card>

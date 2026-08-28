@@ -634,8 +634,9 @@ Don't commit ephemeral files. Use /effort max."`}
         </div>
 
         <div className="mt-8">
-          <h4 className="text-lg font-semibold text-white mb-4">Key Lessons</h4>
+          <h3 className="text-lg font-semibold text-white mb-4">Key Lessons</h3>
           <StepList
+            headingLevel={4}
             steps={[
               {
                 title: "Planning is 80% of the work",

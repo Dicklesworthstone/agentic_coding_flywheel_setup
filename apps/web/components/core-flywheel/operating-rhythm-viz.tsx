@@ -519,7 +519,7 @@ export function OperatingRhythmViz() {
 
       {/* ---- HEADER ---- */}
       <div className="relative z-10 mb-8 sm:mb-10">
-        <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500]/70 mb-2 flex items-center gap-2">
+        <div className="text-[0.65rem] font-bold uppercase tracking-widest text-[#FF5500] mb-2 flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
           Operating Rhythm
         </div>
@@ -773,7 +773,7 @@ export function OperatingRhythmViz() {
           className={cn(
             "text-[0.6rem] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border transition-colors duration-300",
             autoPlay
-              ? "border-[#FF5500]/20 text-[#FF5500]/60 bg-[#FF5500]/[0.05] hover:bg-[#FF5500]/[0.1]"
+              ? "border-[#FF5500]/20 text-[#FF5500] bg-[#FF5500]/[0.05] hover:bg-[#FF5500]/[0.1]"
               : "border-white/[0.06] text-white/20 bg-white/[0.02] hover:bg-white/[0.04]",
           )}
         >

@@ -1,275 +1,106 @@
 "use client";
 
-import { WelcomeLesson } from "./welcome-lesson";
-import { LinuxBasicsLesson } from "./linux-basics-lesson";
-import { SSHBasicsLesson } from "./ssh-basics-lesson";
-import { TmuxBasicsLesson } from "./tmux-basics-lesson";
-import { GitBasicsLesson } from "./git-basics-lesson";
-import { GithubCliLesson } from "./github-cli-lesson";
-import { AgentsLoginLesson } from "./agents-login-lesson";
-import { NtmCoreLesson } from "./ntm-core-lesson";
-import { NtmPaletteLesson } from "./ntm-palette-lesson";
-import { FlywheelLoopLesson } from "./flywheel-loop-lesson";
-import { KeepingUpdatedLesson } from "./keeping-updated-lesson";
-import { UbsLesson } from "./ubs-lesson";
-import { AgentMailLesson } from "./agent-mail-lesson";
-import { CassLesson } from "./cass-lesson";
-import { CmLesson } from "./cm-lesson";
-import { BeadsLesson } from "./beads-lesson";
-import { SafetyToolsLesson } from "./safety-tools-lesson";
-import { DcgLesson } from "./dcg-lesson";
-import { PromptEngineeringLesson } from "./prompt-engineering-lesson";
-import { RealWorldCaseStudyLesson } from "./real-world-case-study-lesson";
-import { SlbCaseStudyLesson } from "./slb-case-study-lesson";
-import { RuLesson } from "./ru-lesson";
-import { MsLesson } from "./ms-lesson";
-import { AprLesson } from "./apr-lesson";
-import { JfpLesson } from "./jfp-lesson";
-import { PtLesson } from "./pt-lesson";
-import { XfLesson } from "./xf-lesson";
-import { SrpsLesson } from "./srps-lesson";
-import { RchLesson } from "./rch-lesson";
-import { WaLesson } from "./wa-lesson";
-import { BrennerLesson } from "./brenner-lesson";
-import { GiilLesson } from "./giil-lesson";
-import { S2pLesson } from "./s2p-lesson";
-import { FsfsLesson } from "./fsfs-lesson";
-import { SbhLesson } from "./sbh-lesson";
-import { CasrLesson } from "./casr-lesson";
-import { DsrLesson } from "./dsr-lesson";
-import { AsbLesson } from "./asb-lesson";
-import { PcrLesson } from "./pcr-lesson";
-import { CsctfLesson } from "./csctf-lesson";
-import { TruLesson } from "./tru-lesson";
-import { MdwbLesson } from "./mdwb-lesson";
-import { RanoLesson } from "./rano-lesson";
-import { CautLesson } from "./caut-lesson";
-import { AadcLesson } from "./aadc-lesson";
-import { RustProxyLesson } from "./rust-proxy-lesson";
-import { BvLesson } from "./bv-lesson";
-import { CaamLesson } from "./caam-lesson";
-import { SwarmCoordinationLesson } from "./swarm-coordination-lesson";
-import { DebuggingAgentsLesson } from "./debugging-agents-lesson";
-import { ContextMasteryLesson } from "./context-mastery-lesson";
-import { CiCdLesson } from "./ci-cd-lesson";
-import { ProjectBootstrapLesson } from "./project-bootstrap-lesson";
-import { AstGrepLesson } from "./ast-grep-lesson";
-import { AgentsMdLesson } from "./agents-md-lesson";
-import { ModernCliLesson } from "./modern-cli-lesson";
-import { TailscaleLesson } from "./tailscale-lesson";
-import { LangRuntimesLesson } from "./lang-runtimes-lesson";
-import { CloudInfraLesson } from "./cloud-infra-lesson";
-import { SecurityLayersLesson } from "./security-layers-lesson";
-import { AcfsDoctorLesson } from "./acfs-doctor-lesson";
-import { EeLesson } from "./ee-lesson";
-import { FmdLesson } from "./fmd-lesson";
-import { PiLesson } from "./pi-lesson";
-import { PfrLesson } from "./pfr-lesson";
+import dynamic from "next/dynamic";
+import type { ComponentType, ReactNode } from "react";
+import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
 
-// Render the lesson content for a given slug.
-// This intentionally uses a static switch so ESLint can guarantee components are not created during render.
-export function renderLessonComponent(slug: string): React.ReactNode | null {
-  switch (slug) {
-    case "welcome":
-      return <WelcomeLesson />;
-    case "linux-basics":
-      return <LinuxBasicsLesson />;
-    case "ssh-basics":
-      return <SSHBasicsLesson />;
-    case "tmux-basics":
-      return <TmuxBasicsLesson />;
-    case "git-basics":
-      return <GitBasicsLesson />;
-    case "github-cli":
-      return <GithubCliLesson />;
-    case "agent-commands":
-      return <AgentsLoginLesson />;
-    case "ntm-core":
-      return <NtmCoreLesson />;
-    case "ntm-palette":
-      return <NtmPaletteLesson />;
-    case "flywheel-loop":
-      return <FlywheelLoopLesson />;
-    case "keeping-updated":
-      return <KeepingUpdatedLesson />;
-    case "ubs":
-      return <UbsLesson />;
-    case "agent-mail":
-      return <AgentMailLesson />;
-    case "cass":
-      return <CassLesson />;
-    case "cm":
-      return <CmLesson />;
-    case "beads":
-      return <BeadsLesson />;
-    case "safety-tools":
-      return <SafetyToolsLesson />;
-    case "dcg":
-      return <DcgLesson />;
-    case "prompt-engineering":
-      return <PromptEngineeringLesson />;
-    case "real-world-case-study":
-      return <RealWorldCaseStudyLesson />;
-    case "slb-case-study":
-      return <SlbCaseStudyLesson />;
-    case "ru":
-      return <RuLesson />;
-    case "ms":
-      return <MsLesson />;
-    case "apr":
-      return <AprLesson />;
-    case "jfp":
-      return <JfpLesson />;
-    case "pt":
-      return <PtLesson />;
-    case "xf":
-      return <XfLesson />;
-    case "srps":
-      return <SrpsLesson />;
-    case "rch":
-      return <RchLesson />;
-    case "wa":
-      return <WaLesson />;
-    case "brenner":
-      return <BrennerLesson />;
-    case "giil":
-      return <GiilLesson />;
-    case "s2p":
-      return <S2pLesson />;
-    case "fsfs":
-      return <FsfsLesson />;
-    case "sbh":
-      return <SbhLesson />;
-    case "casr":
-      return <CasrLesson />;
-    case "dsr":
-      return <DsrLesson />;
-    case "asb":
-      return <AsbLesson />;
-    case "pcr":
-      return <PcrLesson />;
-    case "csctf":
-      return <CsctfLesson />;
-    case "tru":
-      return <TruLesson />;
-    case "mdwb":
-      return <MdwbLesson />;
-    case "rano":
-      return <RanoLesson />;
-    case "caut":
-      return <CautLesson />;
-    case "aadc":
-      return <AadcLesson />;
-    case "rust-proxy":
-      return <RustProxyLesson />;
-    case "bv":
-      return <BvLesson />;
-    case "caam":
-      return <CaamLesson />;
-    case "swarm-coordination":
-      return <SwarmCoordinationLesson />;
-    case "debugging-agents":
-      return <DebuggingAgentsLesson />;
-    case "context-mastery":
-      return <ContextMasteryLesson />;
-    case "ci-cd":
-      return <CiCdLesson />;
-    case "project-bootstrap":
-      return <ProjectBootstrapLesson />;
-    case "ast-grep":
-      return <AstGrepLesson />;
-    case "agents-md":
-      return <AgentsMdLesson />;
-    case "modern-cli":
-      return <ModernCliLesson />;
-    case "tailscale":
-      return <TailscaleLesson />;
-    case "lang-runtimes":
-      return <LangRuntimesLesson />;
-    case "cloud-infra":
-      return <CloudInfraLesson />;
-    case "security-layers":
-      return <SecurityLayersLesson />;
-    case "acfs-doctor":
-      return <AcfsDoctorLesson />;
-    case "ee":
-      return <EeLesson />;
-    case "fmd":
-      return <FmdLesson />;
-    case "pi":
-      return <PiLesson />;
-    case "pfr":
-      return <PfrLesson />;
-    default:
-      return null;
-  }
+// Shared lightweight fallback shown while a lesson chunk streams in on
+// client-side navigation. SSR still renders the real lesson, so this only
+// appears between route transitions.
+function LessonLoading() {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Loading lesson"
+      className="space-y-8"
+    >
+      <Skeleton className="h-8 w-2/3 bg-white/[0.06]" />
+      <SkeletonText lines={3} className="[&>*]:bg-white/[0.05]" />
+      <Skeleton className="h-40 w-full rounded-2xl bg-white/[0.04]" />
+      <SkeletonText lines={2} className="[&>*]:bg-white/[0.05]" />
+    </div>
+  );
 }
 
-// Export all lesson components
-export {
-  WelcomeLesson,
-  LinuxBasicsLesson,
-  SSHBasicsLesson,
-  TmuxBasicsLesson,
-  GitBasicsLesson,
-  GithubCliLesson,
-  AgentsLoginLesson,
-  NtmCoreLesson,
-  NtmPaletteLesson,
-  FlywheelLoopLesson,
-  KeepingUpdatedLesson,
-  UbsLesson,
-  AgentMailLesson,
-  CassLesson,
-  CmLesson,
-  BeadsLesson,
-  SafetyToolsLesson,
-  DcgLesson,
-  PromptEngineeringLesson,
-  RealWorldCaseStudyLesson,
-  SlbCaseStudyLesson,
-  RuLesson,
-  MsLesson,
-  AprLesson,
-  JfpLesson,
-  PtLesson,
-  XfLesson,
-  SrpsLesson,
-  RchLesson,
-  WaLesson,
-  BrennerLesson,
-  GiilLesson,
-  S2pLesson,
-  FsfsLesson,
-  SbhLesson,
-  CasrLesson,
-  DsrLesson,
-  AsbLesson,
-  PcrLesson,
-  CsctfLesson,
-  TruLesson,
-  MdwbLesson,
-  RanoLesson,
-  CautLesson,
-  AadcLesson,
-  RustProxyLesson,
-  BvLesson,
-  CaamLesson,
-  SwarmCoordinationLesson,
-  DebuggingAgentsLesson,
-  ContextMasteryLesson,
-  CiCdLesson,
-  ProjectBootstrapLesson,
-  AstGrepLesson,
-  AgentsMdLesson,
-  ModernCliLesson,
-  TailscaleLesson,
-  LangRuntimesLesson,
-  CloudInfraLesson,
-  SecurityLayersLesson,
-  AcfsDoctorLesson,
-  EeLesson,
-  FmdLesson,
-  PiLesson,
-  PfrLesson,
-};
+// Each lesson is code-split into its own chunk via next/dynamic (SSR stays on).
+// Keeping the map at module scope means no component is created during render,
+// which is what the previous static switch guaranteed. The `loading` option is
+// repeated inline because next/dynamic requires an object literal there.
+const LESSON_COMPONENTS = new Map<string, ComponentType>([
+  ["welcome", dynamic(() => import("./welcome-lesson").then((m) => ({ default: m.WelcomeLesson })), { loading: LessonLoading })],
+  ["linux-basics", dynamic(() => import("./linux-basics-lesson").then((m) => ({ default: m.LinuxBasicsLesson })), { loading: LessonLoading })],
+  ["ssh-basics", dynamic(() => import("./ssh-basics-lesson").then((m) => ({ default: m.SSHBasicsLesson })), { loading: LessonLoading })],
+  ["tmux-basics", dynamic(() => import("./tmux-basics-lesson").then((m) => ({ default: m.TmuxBasicsLesson })), { loading: LessonLoading })],
+  ["git-basics", dynamic(() => import("./git-basics-lesson").then((m) => ({ default: m.GitBasicsLesson })), { loading: LessonLoading })],
+  ["github-cli", dynamic(() => import("./github-cli-lesson").then((m) => ({ default: m.GithubCliLesson })), { loading: LessonLoading })],
+  ["agent-commands", dynamic(() => import("./agents-login-lesson").then((m) => ({ default: m.AgentsLoginLesson })), { loading: LessonLoading })],
+  ["ntm-core", dynamic(() => import("./ntm-core-lesson").then((m) => ({ default: m.NtmCoreLesson })), { loading: LessonLoading })],
+  ["ntm-palette", dynamic(() => import("./ntm-palette-lesson").then((m) => ({ default: m.NtmPaletteLesson })), { loading: LessonLoading })],
+  ["flywheel-loop", dynamic(() => import("./flywheel-loop-lesson").then((m) => ({ default: m.FlywheelLoopLesson })), { loading: LessonLoading })],
+  ["keeping-updated", dynamic(() => import("./keeping-updated-lesson").then((m) => ({ default: m.KeepingUpdatedLesson })), { loading: LessonLoading })],
+  ["ubs", dynamic(() => import("./ubs-lesson").then((m) => ({ default: m.UbsLesson })), { loading: LessonLoading })],
+  ["agent-mail", dynamic(() => import("./agent-mail-lesson").then((m) => ({ default: m.AgentMailLesson })), { loading: LessonLoading })],
+  ["cass", dynamic(() => import("./cass-lesson").then((m) => ({ default: m.CassLesson })), { loading: LessonLoading })],
+  ["cm", dynamic(() => import("./cm-lesson").then((m) => ({ default: m.CmLesson })), { loading: LessonLoading })],
+  ["beads", dynamic(() => import("./beads-lesson").then((m) => ({ default: m.BeadsLesson })), { loading: LessonLoading })],
+  ["safety-tools", dynamic(() => import("./safety-tools-lesson").then((m) => ({ default: m.SafetyToolsLesson })), { loading: LessonLoading })],
+  ["dcg", dynamic(() => import("./dcg-lesson").then((m) => ({ default: m.DcgLesson })), { loading: LessonLoading })],
+  ["prompt-engineering", dynamic(() => import("./prompt-engineering-lesson").then((m) => ({ default: m.PromptEngineeringLesson })), { loading: LessonLoading })],
+  ["real-world-case-study", dynamic(() => import("./real-world-case-study-lesson").then((m) => ({ default: m.RealWorldCaseStudyLesson })), { loading: LessonLoading })],
+  ["slb-case-study", dynamic(() => import("./slb-case-study-lesson").then((m) => ({ default: m.SlbCaseStudyLesson })), { loading: LessonLoading })],
+  ["ru", dynamic(() => import("./ru-lesson").then((m) => ({ default: m.RuLesson })), { loading: LessonLoading })],
+  ["ms", dynamic(() => import("./ms-lesson").then((m) => ({ default: m.MsLesson })), { loading: LessonLoading })],
+  ["apr", dynamic(() => import("./apr-lesson").then((m) => ({ default: m.AprLesson })), { loading: LessonLoading })],
+  ["jfp", dynamic(() => import("./jfp-lesson").then((m) => ({ default: m.JfpLesson })), { loading: LessonLoading })],
+  ["pt", dynamic(() => import("./pt-lesson").then((m) => ({ default: m.PtLesson })), { loading: LessonLoading })],
+  ["xf", dynamic(() => import("./xf-lesson").then((m) => ({ default: m.XfLesson })), { loading: LessonLoading })],
+  ["srps", dynamic(() => import("./srps-lesson").then((m) => ({ default: m.SrpsLesson })), { loading: LessonLoading })],
+  ["rch", dynamic(() => import("./rch-lesson").then((m) => ({ default: m.RchLesson })), { loading: LessonLoading })],
+  ["wa", dynamic(() => import("./wa-lesson").then((m) => ({ default: m.WaLesson })), { loading: LessonLoading })],
+  ["brenner", dynamic(() => import("./brenner-lesson").then((m) => ({ default: m.BrennerLesson })), { loading: LessonLoading })],
+  ["giil", dynamic(() => import("./giil-lesson").then((m) => ({ default: m.GiilLesson })), { loading: LessonLoading })],
+  ["s2p", dynamic(() => import("./s2p-lesson").then((m) => ({ default: m.S2pLesson })), { loading: LessonLoading })],
+  ["fsfs", dynamic(() => import("./fsfs-lesson").then((m) => ({ default: m.FsfsLesson })), { loading: LessonLoading })],
+  ["sbh", dynamic(() => import("./sbh-lesson").then((m) => ({ default: m.SbhLesson })), { loading: LessonLoading })],
+  ["casr", dynamic(() => import("./casr-lesson").then((m) => ({ default: m.CasrLesson })), { loading: LessonLoading })],
+  ["dsr", dynamic(() => import("./dsr-lesson").then((m) => ({ default: m.DsrLesson })), { loading: LessonLoading })],
+  ["asb", dynamic(() => import("./asb-lesson").then((m) => ({ default: m.AsbLesson })), { loading: LessonLoading })],
+  ["pcr", dynamic(() => import("./pcr-lesson").then((m) => ({ default: m.PcrLesson })), { loading: LessonLoading })],
+  ["csctf", dynamic(() => import("./csctf-lesson").then((m) => ({ default: m.CsctfLesson })), { loading: LessonLoading })],
+  ["tru", dynamic(() => import("./tru-lesson").then((m) => ({ default: m.TruLesson })), { loading: LessonLoading })],
+  ["mdwb", dynamic(() => import("./mdwb-lesson").then((m) => ({ default: m.MdwbLesson })), { loading: LessonLoading })],
+  ["rano", dynamic(() => import("./rano-lesson").then((m) => ({ default: m.RanoLesson })), { loading: LessonLoading })],
+  ["caut", dynamic(() => import("./caut-lesson").then((m) => ({ default: m.CautLesson })), { loading: LessonLoading })],
+  ["aadc", dynamic(() => import("./aadc-lesson").then((m) => ({ default: m.AadcLesson })), { loading: LessonLoading })],
+  ["rust-proxy", dynamic(() => import("./rust-proxy-lesson").then((m) => ({ default: m.RustProxyLesson })), { loading: LessonLoading })],
+  ["bv", dynamic(() => import("./bv-lesson").then((m) => ({ default: m.BvLesson })), { loading: LessonLoading })],
+  ["caam", dynamic(() => import("./caam-lesson").then((m) => ({ default: m.CaamLesson })), { loading: LessonLoading })],
+  ["swarm-coordination", dynamic(() => import("./swarm-coordination-lesson").then((m) => ({ default: m.SwarmCoordinationLesson })), { loading: LessonLoading })],
+  ["debugging-agents", dynamic(() => import("./debugging-agents-lesson").then((m) => ({ default: m.DebuggingAgentsLesson })), { loading: LessonLoading })],
+  ["context-mastery", dynamic(() => import("./context-mastery-lesson").then((m) => ({ default: m.ContextMasteryLesson })), { loading: LessonLoading })],
+  ["ci-cd", dynamic(() => import("./ci-cd-lesson").then((m) => ({ default: m.CiCdLesson })), { loading: LessonLoading })],
+  ["project-bootstrap", dynamic(() => import("./project-bootstrap-lesson").then((m) => ({ default: m.ProjectBootstrapLesson })), { loading: LessonLoading })],
+  ["ast-grep", dynamic(() => import("./ast-grep-lesson").then((m) => ({ default: m.AstGrepLesson })), { loading: LessonLoading })],
+  ["agents-md", dynamic(() => import("./agents-md-lesson").then((m) => ({ default: m.AgentsMdLesson })), { loading: LessonLoading })],
+  ["modern-cli", dynamic(() => import("./modern-cli-lesson").then((m) => ({ default: m.ModernCliLesson })), { loading: LessonLoading })],
+  ["tailscale", dynamic(() => import("./tailscale-lesson").then((m) => ({ default: m.TailscaleLesson })), { loading: LessonLoading })],
+  ["lang-runtimes", dynamic(() => import("./lang-runtimes-lesson").then((m) => ({ default: m.LangRuntimesLesson })), { loading: LessonLoading })],
+  ["cloud-infra", dynamic(() => import("./cloud-infra-lesson").then((m) => ({ default: m.CloudInfraLesson })), { loading: LessonLoading })],
+  ["security-layers", dynamic(() => import("./security-layers-lesson").then((m) => ({ default: m.SecurityLayersLesson })), { loading: LessonLoading })],
+  ["acfs-doctor", dynamic(() => import("./acfs-doctor-lesson").then((m) => ({ default: m.AcfsDoctorLesson })), { loading: LessonLoading })],
+  ["ee", dynamic(() => import("./ee-lesson").then((m) => ({ default: m.EeLesson })), { loading: LessonLoading })],
+  ["fmd", dynamic(() => import("./fmd-lesson").then((m) => ({ default: m.FmdLesson })), { loading: LessonLoading })],
+  ["pi", dynamic(() => import("./pi-lesson").then((m) => ({ default: m.PiLesson })), { loading: LessonLoading })],
+  ["pfr", dynamic(() => import("./pfr-lesson").then((m) => ({ default: m.PfrLesson })), { loading: LessonLoading })],
+]);
+
+// Render the lesson content for a given slug. Returns null for unknown slugs.
+export function renderLessonComponent(slug: string): ReactNode | null {
+  const LessonComponent = LESSON_COMPONENTS.get(slug);
+  if (!LessonComponent) {
+    return null;
+  }
+  return <LessonComponent />;
+}

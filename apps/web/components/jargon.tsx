@@ -5,6 +5,7 @@ import {
   useCallback,
   useRef,
   useEffect,
+  useId,
   useLayoutEffect,
   type CSSProperties,
   type ReactNode,
@@ -50,6 +51,7 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
   const tooltipRef = useRef<HTMLDivElement>(null);
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const prefersReducedMotion = useReducedMotion();
+  const hintId = useId();
 
   const termKey = term.toLowerCase().replace(/[\s_]+/g, "-");
   const jargonData = getJargon(termKey);
@@ -169,8 +171,14 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
         onMouseLeave={handleMouseLeave}
         onFocus={handleFocus}
         onBlur={handleBlur}
+        data-testid="jargon-term"
         className={cn(
           "relative inline cursor-help [color:inherit]",
+          // Vertical padding grows the hit area to >=24px without touching
+          // line layout (vertical padding/margins on an inline box never
+          // move neighbouring lines); the negative margin keeps any
+          // ancestor `inline-flex`/`block` math unchanged as well.
+          "py-1 -my-1",
           // Subtle dotted underline - very gentle visual hint
           "decoration-[1.5px] underline underline-offset-[3px]",
           "decoration-primary/30 decoration-dotted",
@@ -183,11 +191,20 @@ export function Jargon({ term, children, className, gradientHeading }: JargonPro
           gradientHeading && "bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-transparent",
           className
         )}
-        aria-label={`Learn about ${jargonData.term}`}
+        // The visible term is the accessible name (so an <h1> containing a
+        // Jargon still reads "Rent a VPS", not "Rent a Learn about VPS");
+        // the description carries the affordance instead.
+        aria-describedby={hintId}
         aria-expanded={isOpen}
       >
         {displayText}
       </button>
+      {/* Description source for aria-describedby. `hidden` keeps it out of
+          the surrounding heading/paragraph text while still being readable
+          through the reference (accname allows hidden describedby targets). */}
+      <span id={hintId} hidden>
+        Show definition
+      </span>
 
       {/* Desktop Tooltip - rendered via portal to escape stacking contexts */}
       {canUsePortal && createPortal(

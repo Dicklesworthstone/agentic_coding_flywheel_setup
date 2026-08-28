@@ -986,7 +986,7 @@ function InteractiveBugScanner() {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr,1px,1fr] min-h-[420px]">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1px_1fr] min-h-[420px]">
         {/* Left Panel: File Scanner + Code */}
         <div className="relative p-4 overflow-hidden">
           {/* File scanning visualization */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sparkles,
@@ -30,7 +30,7 @@ import {
   useWizardForwardNav,
 } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { withCurrentSearch } from "@/lib/utils";
+import { copyTextToClipboard, withCurrentSearch } from "@/lib/utils";
 import {
   buildHandoffRunbook,
   buildInstallCommand,
@@ -103,16 +103,40 @@ const DEFAULT_VPS_READINESS_SELECTION: VPSReadinessSelection = {
 
 const VERIFIED_INSTALLER_CACHE_PATH = "/var/cache/acfs-installer-cache";
 
-function downloadTextFile(filename: string, contents: string, mimeType: string) {
-  const blob = new Blob([contents], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+/**
+ * Trigger a client-side download. Returns false when the browser could not
+ * start one (no DOM, blocked navigation, etc.) so the caller can fall back to
+ * copying the text. Object URLs are revoked on a timer: Safari and older
+ * Firefox cancel a download whose URL is revoked before the navigation begins.
+ */
+function downloadTextFile(filename: string, contents: string, mimeType: string): boolean {
+  if (typeof document === "undefined") return false;
+  try {
+    const link = document.createElement("a");
+    link.download = filename;
+    link.rel = "noopener";
+    const canUseObjectUrl =
+      typeof URL !== "undefined" && typeof URL.createObjectURL === "function";
+    let objectUrl: string | null = null;
+    if (canUseObjectUrl) {
+      objectUrl = URL.createObjectURL(new Blob([contents], { type: mimeType }));
+      link.href = objectUrl;
+    } else {
+      // Older WebViews / some privacy modes have no object URLs; a data: URL
+      // still downloads (or opens) the text.
+      link.href = `data:${mimeType};charset=utf-8,${encodeURIComponent(contents)}`;
+    }
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (objectUrl) {
+      const url = objectUrl;
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export default function RunInstallerPage() {
@@ -126,11 +150,15 @@ export default function RunInstallerPage() {
   const [vpsReadinessSelection, , vpsReadinessSelectionLoaded] = useVPSReadinessSelection();
   const [pinEditorOpen, setPinEditorOpen] = useState(false);
   const [refDraftOverride, setRefDraftOverride] = useState<string | null>(null);
+  // Transient "Saved <file>" / "Download failed" message for the handoff buttons.
+  const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
+  const downloadStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usePinnedRef = pinEditorOpen || pinnedRef !== null;
   const refDraft = pinEditorOpen
     ? (refDraftOverride ?? pinnedRef ?? "main")
     : (pinnedRef ?? "main");
   const safePinnedRef = useMemo(() => normalizeGitRef(refDraft), [refDraft]);
+  const hasRefError = Boolean(refDraft.trim()) && !safePinnedRef;
   const ready =
     userOSLoaded &&
     installModeLoaded &&
@@ -263,9 +291,43 @@ export default function RunInstallerPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/reconnect-ubuntu"));
   }, [router, markComplete]);
+  useEffect(() => {
+    return () => {
+      if (downloadStatusTimerRef.current) {
+        clearTimeout(downloadStatusTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Downloads a handoff artifact and announces the outcome in the role="status"
+  // line under the buttons. When the browser cannot start a download, the text
+  // is copied to the clipboard instead so nothing is silently lost.
+  const saveArtifact = useCallback(
+    async (filename: string, contents: string, mimeType: string) => {
+      const downloaded = downloadTextFile(filename, contents, mimeType);
+      let message: string;
+      if (downloaded) {
+        message = `Saved ${filename}`;
+      } else {
+        const copied = await copyTextToClipboard(contents);
+        message = copied
+          ? `Download failed — copied the contents of ${filename} to your clipboard instead`
+          : `Download failed — copy the text instead (${filename})`;
+      }
+      setDownloadStatus(message);
+      if (downloadStatusTimerRef.current) {
+        clearTimeout(downloadStatusTimerRef.current);
+      }
+      downloadStatusTimerRef.current = setTimeout(() => {
+        setDownloadStatus(null);
+        downloadStatusTimerRef.current = null;
+      }, 6000);
+    },
+    [],
+  );
   const handleRunbookDownload = useCallback((format: "json" | "markdown") => {
     if (format === "json") {
-      downloadTextFile(
+      void saveArtifact(
         "acfs-handoff-runbook.json",
         serializeHandoffRunbookJson(handoffRunbook),
         "application/json",
@@ -273,22 +335,22 @@ export default function RunInstallerPage() {
       return;
     }
 
-    downloadTextFile(
+    void saveArtifact(
       "acfs-handoff-runbook.md",
       formatHandoffRunbookMarkdown(handoffRunbook),
       "text/markdown",
     );
-  }, [handoffRunbook]);
+  }, [handoffRunbook, saveArtifact]);
   const handleProviderPacketDownload = useCallback(() => {
-    downloadTextFile(
+    void saveArtifact(
       "acfs-provider-provisioning-packet.json",
       serializeProviderProvisioningPacketJson(providerProvisioningPacket),
       "application/json",
     );
-  }, [providerProvisioningPacket]);
+  }, [providerProvisioningPacket, saveArtifact]);
   const handleTeamProfileDownload = useCallback((format: "json" | "markdown") => {
     if (format === "json") {
-      downloadTextFile(
+      void saveArtifact(
         "acfs-team-profile.json",
         serializeTeamProfileJson(teamProfile),
         "application/json",
@@ -296,12 +358,12 @@ export default function RunInstallerPage() {
       return;
     }
 
-    downloadTextFile(
+    void saveArtifact(
       "acfs-team-profile-review.md",
       formatTeamProfileReviewMarkdown(teamProfile),
       "text/markdown",
     );
-  }, [teamProfile]);
+  }, [teamProfile, saveArtifact]);
 
   useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
 
@@ -318,16 +380,16 @@ export default function RunInstallerPage() {
       {/* Header with sparkle */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/30 to-[oklch(0.7_0.2_330/0.3)] shadow-lg shadow-primary/20">
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/30 to-magenta/30 shadow-lg shadow-primary/20">
             <Rocket className="h-6 w-6 text-primary" />
-            <Sparkles className="absolute -right-1 -top-1 h-4 w-4 text-[oklch(0.78_0.16_75)] animate-pulse" />
+            <Sparkles className="absolute -right-1 -top-1 h-4 w-4 text-amber animate-pulse" />
           </div>
           <div>
-            <h1 className="bg-gradient-to-r from-primary via-foreground to-[oklch(0.7_0.2_330)] bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
+            <h1 className="bg-gradient-to-r from-primary via-foreground to-magenta bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
               Run the Agent Flywheel installer
             </h1>
             <p className="text-sm text-muted-foreground">
-              ~15 min
+              15–25 min (+30–60 min per Ubuntu upgrade hop)
             </p>
           </div>
         </div>
@@ -393,7 +455,11 @@ export default function RunInstallerPage() {
 
         {/* Pinned ref toggle (bd-31ps.8.2) */}
         <div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
-          <div className="flex items-start gap-3">
+          {/* The whole row is the label so the 16px box gets a 44px tap target. */}
+          <label
+            htmlFor="pin-ref"
+            className="flex min-h-11 cursor-pointer items-start gap-3 py-2"
+          >
             <Checkbox
               id="pin-ref"
               checked={usePinnedRef}
@@ -402,19 +468,16 @@ export default function RunInstallerPage() {
               }
               className="mt-0.5"
             />
-            <div className="flex-1 space-y-1">
-              <label
-                htmlFor="pin-ref"
-                className="flex items-center gap-2 text-sm font-medium cursor-pointer"
-              >
+            <span className="flex-1 space-y-1">
+              <span className="flex items-center gap-2 text-sm font-medium">
                 <Pin className="h-4 w-4 text-muted-foreground" />
                 Pin to specific version
-              </label>
-              <p className="text-xs text-muted-foreground">
+              </span>
+              <span className="block text-xs text-muted-foreground">
                 Use a specific commit or tag for reproducible installs across multiple machines.
-              </p>
-            </div>
-          </div>
+              </span>
+            </span>
+          </label>
 
           {usePinnedRef && (
             <div className="ml-7 space-y-2">
@@ -425,9 +488,11 @@ export default function RunInstallerPage() {
                   onChange={(e) => handlePinnedRefChange(e.target.value)}
                   placeholder="main, v1.0.0, or commit SHA"
                   aria-label="Git ref to pin the installer to"
+                  aria-invalid={hasRefError || undefined}
+                  aria-describedby={hasRefError ? "pin-ref-error" : undefined}
                   autoComplete="off"
                   spellCheck={false}
-                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary aria-invalid:border-destructive aria-invalid:ring-destructive/30"
                 />
               </div>
               <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -438,8 +503,8 @@ export default function RunInstallerPage() {
                   or a full SHA for exact reproducibility.
                 </span>
               </div>
-              {refDraft.trim() && !safePinnedRef && (
-                <p className="text-xs text-[oklch(0.72_0.19_145)]">
+              {hasRefError && (
+                <p id="pin-ref-error" role="alert" className="text-xs text-destructive">
                   Invalid ref format. Allowed characters: letters, numbers, <code className="rounded bg-muted px-1 py-0.5">.</code>,
                   <code className="rounded bg-muted px-1 py-0.5">_</code>, <code className="rounded bg-muted px-1 py-0.5">-</code>,
                   and <code className="rounded bg-muted px-1 py-0.5">/</code>. Falling back to <code className="rounded bg-muted px-1 py-0.5">main</code>.
@@ -479,7 +544,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleRunbookDownload("json")}
-              aria-label="Download JSON handoff runbook"
+              aria-label="Runbook JSON — download JSON handoff runbook"
             >
               <FileJson className="h-4 w-4" />
               Runbook JSON
@@ -489,7 +554,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleRunbookDownload("markdown")}
-              aria-label="Download Markdown handoff runbook"
+              aria-label="Runbook Markdown — download Markdown handoff runbook"
             >
               <FileText className="h-4 w-4" />
               Runbook Markdown
@@ -499,7 +564,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={handleProviderPacketDownload}
-              aria-label="Download provider provisioning packet"
+              aria-label="Provider Packet — download the provider provisioning packet as JSON"
             >
               <FileJson className="h-4 w-4" />
               Provider Packet
@@ -509,7 +574,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleTeamProfileDownload("json")}
-              aria-label="Download redacted team profile JSON"
+              aria-label="Team Profile — download the redacted team profile as JSON"
             >
               <FileJson className="h-4 w-4" />
               Team Profile
@@ -519,12 +584,20 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleTeamProfileDownload("markdown")}
-              aria-label="Download team profile review"
+              aria-label="Profile Review — download the team profile review as Markdown"
             >
               <FileText className="h-4 w-4" />
               Profile Review
             </Button>
           </div>
+          {/* Always rendered so the live region exists before its first message. */}
+          <p
+            role="status"
+            aria-live="polite"
+            className={downloadStatus ? "text-xs font-medium text-foreground" : "sr-only"}
+          >
+            {downloadStatus ?? ""}
+          </p>
           <p className="text-xs text-muted-foreground">
             Host addresses and provider credentials are redacted; keep the real values in your provider console or password manager.
           </p>
@@ -550,12 +623,12 @@ export default function RunInstallerPage() {
       </AlertCard>
 
       {/* Transparency & trust */}
-      <div className="flex gap-3 rounded-xl border border-[oklch(0.72_0.19_145/0.25)] bg-[oklch(0.72_0.19_145/0.05)] p-3 sm:p-4">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[oklch(0.72_0.19_145/0.15)] sm:h-9 sm:w-9">
-          <ShieldCheck className="h-4 w-4 text-[oklch(0.72_0.19_145)] sm:h-5 sm:w-5" />
+      <div className="flex gap-3 rounded-xl border border-green/25 bg-green/5 p-3 sm:p-4">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green/15 sm:h-9 sm:w-9">
+          <ShieldCheck className="h-4 w-4 text-green sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0 space-y-2">
-          <p className="text-[13px] font-medium leading-tight text-[oklch(0.82_0.12_145)] sm:text-sm">
+          <p className="text-[13px] font-medium leading-tight text-green sm:text-sm">
             Fully transparent &amp; open source
           </p>
           <p className="text-[12px] leading-relaxed text-muted-foreground sm:text-[13px]">
@@ -566,7 +639,7 @@ export default function RunInstallerPage() {
             <TrackedLink
               href={`https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/blob/${effectiveSourceRef}/install.sh`}
               trackingId="install-sh-source"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.1)] px-2.5 py-1.5 text-xs font-medium text-[oklch(0.75_0.18_195)] transition-colors hover:bg-[oklch(0.75_0.18_195/0.2)]"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
             >
               <Code className="h-3 w-3" />
               View install.sh source
@@ -587,7 +660,10 @@ export default function RunInstallerPage() {
       {/* Time estimate */}
       <div className="flex items-center gap-2 text-muted-foreground">
         <Clock className="h-5 w-5" />
-        <span>Takes about 10-15 minutes depending on your VPS speed</span>
+        <span>
+          Takes 15–25 minutes on a current Ubuntu; if your VPS started on an older Ubuntu the
+          installer upgrades it first (30–60 minutes per version hop, with reboots)
+        </span>
       </div>
 
       {/* Command breakdown for curious users */}
@@ -598,7 +674,7 @@ export default function RunInstallerPage() {
           </p>
           <div className="space-y-4 font-mono text-xs">
             <div>
-              <code className="text-[oklch(0.75_0.18_195)]">curl -fsSL &quot;https://...&quot;</code>
+              <code className="text-primary">curl -fsSL &quot;https://...&quot;</code>
               <p className="mt-1 font-sans text-muted-foreground">
                 Downloads the script from GitHub.{" "}
                 <code className="text-foreground/80">-f</code> = fail on HTTP errors,{" "}
@@ -608,26 +684,26 @@ export default function RunInstallerPage() {
               </p>
             </div>
             <div>
-              <code className="text-[oklch(0.75_0.18_195)]">| bash</code>
+              <code className="text-primary">| bash</code>
               <p className="mt-1 font-sans text-muted-foreground">
                 Pipes the downloaded script to bash (the shell) to run it.
               </p>
             </div>
             <div>
-              <code className="text-[oklch(0.75_0.18_195)]">-s -- --yes</code>
+              <code className="text-primary">-s -- --yes</code>
               <p className="mt-1 font-sans text-muted-foreground">
                 Passes <code className="text-foreground/80">--yes</code> to the script, meaning &quot;don&apos;t ask for confirmation, just install.&quot;
               </p>
             </div>
             <div>
-              <code className="text-[oklch(0.75_0.18_195)]">--mode {installMode}</code>
+              <code className="text-primary">--mode {installMode}</code>
               <p className="mt-1 font-sans text-muted-foreground">
                 Tells the installer which mode to use based on your wizard selection.
               </p>
             </div>
             {usePinnedRef && safePinnedRef && (
               <div>
-                <code className="text-[oklch(0.75_0.18_195)]">--ref &quot;{safePinnedRef}&quot;</code>
+                <code className="text-primary">--ref &quot;{safePinnedRef}&quot;</code>
                 <p className="mt-1 font-sans text-muted-foreground">
                   Keeps downloaded installer files pinned to <code className="text-foreground/80">{safePinnedRef}</code>.
                 </p>
@@ -653,29 +729,39 @@ export default function RunInstallerPage() {
           </p>
 
           <div className="space-y-3">
-            <div>
+            <div className="space-y-2">
               <p className="font-semibold text-foreground">1. Build cache on your local/connected machine:</p>
-              <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
-                acfs installer-cache build --arch x86_64 --ubuntu-version {effectiveTargetUbuntuVersion} --output /tmp/acfs-cache
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <CommandCard
+                command={`acfs installer-cache build --arch x86_64 --ubuntu-version ${effectiveTargetUbuntuVersion} --output /tmp/acfs-cache`}
+                description="Build the verified installer cache"
+                runLocation="local"
+              />
+              <p className="text-xs text-muted-foreground">
                 If your VPS uses ARM64, replace <code className="rounded bg-muted px-1 py-0.5">x86_64</code> with <code className="rounded bg-muted px-1 py-0.5">aarch64</code>.
               </p>
             </div>
 
-            <div>
+            <div className="space-y-2">
               <p className="font-semibold text-foreground">2. Transfer cache to your VPS via SCP:</p>
-              <div className="mt-1 space-y-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
-                <div>ssh {cacheTransferTarget} &apos;install -d -m 700 {VERIFIED_INSTALLER_CACHE_PATH}&apos;</div>
-                <div>scp -r /tmp/acfs-cache/acfs-installer-cache/. {cacheTransferTarget}:{VERIFIED_INSTALLER_CACHE_PATH}/</div>
-              </div>
+              <CommandCard
+                command={`ssh ${cacheTransferTarget} 'install -d -m 700 ${VERIFIED_INSTALLER_CACHE_PATH}'`}
+                description="Create the cache directory on the VPS"
+                runLocation="local"
+              />
+              <CommandCard
+                command={`scp -r /tmp/acfs-cache/acfs-installer-cache/. ${cacheTransferTarget}:${VERIFIED_INSTALLER_CACHE_PATH}/`}
+                description="Copy the cache to the VPS"
+                runLocation="local"
+              />
             </div>
 
-            <div>
+            <div className="space-y-2">
               <p className="font-semibold text-foreground">3. Run installer with cache flag on VPS:</p>
-              <div className="mt-1 rounded-lg bg-black/30 p-2.5 font-mono text-xs text-primary">
-                {cachedInstallCommand}
-              </div>
+              <CommandCard
+                command={cachedInstallCommand}
+                description="Installer one-liner using the local cache"
+                runLocation="vps"
+              />
             </div>
           </div>
 
@@ -704,7 +790,7 @@ export default function RunInstallerPage() {
               <ul className="space-y-1 text-sm text-muted-foreground">
                 {group.items.map((item, i) => (
                   <li key={i} className="flex items-center gap-2">
-                    <Check className="h-3 w-3 text-[oklch(0.72_0.19_145)]" />
+                    <Check className="h-3 w-3 text-green" />
                     {item}
                   </li>
                 ))}
@@ -734,9 +820,9 @@ export default function RunInstallerPage() {
         <div className="space-y-2 text-sm">
           <p>You&apos;ll see lots of text scrolling by. Here&apos;s what to look for:</p>
           <ul className="list-inside list-disc space-y-1">
-            <li><span className="text-[oklch(0.72_0.19_145)] font-medium">✔ Green checkmarks</span> = Step completed successfully</li>
-            <li><span className="text-[oklch(0.78_0.16_75)] font-medium">⚠ Yellow warnings</span> = Non-critical issue, installer continues</li>
-            <li><span className="text-[oklch(0.65_0.22_25)] font-medium">✖ Red X</span> = Something failed, but installer will retry or skip</li>
+            <li><span className="text-green font-medium">✔ Green checkmarks</span> = Step completed successfully</li>
+            <li><span className="text-amber font-medium">⚠ Yellow warnings</span> = Non-critical issue, installer continues</li>
+            <li><span className="text-destructive font-medium">✖ Red X</span> = Something failed, but installer will retry or skip</li>
           </ul>
           <p className="text-muted-foreground">
             Just wait for the final &quot;Installation complete&quot; message. If you see errors,
@@ -746,8 +832,8 @@ export default function RunInstallerPage() {
       </AlertCard>
 
       {/* Success signs */}
-      <OutputPreview title="You'll know it's done when you see:">
-        <p className="text-[oklch(0.72_0.19_145)]">✔ Agent Flywheel installation complete!</p>
+      <OutputPreview title="Expected output (example)">
+        <p className="text-green">✔ Agent Flywheel installation complete!</p>
         <p className="text-muted-foreground">
           Please reconnect as: {reconnectCommand}
         </p>
@@ -796,16 +882,18 @@ export default function RunInstallerPage() {
                 You&apos;ll see lots of text scrolling by. This is normal!
               </GuideStep>
 
-              <GuideStep number={4} title="Wait patiently (10-15 minutes)">
+              <GuideStep number={4} title="Wait patiently (15–25 minutes)">
                 The installation takes time because it&apos;s downloading and installing
-                many tools. You&apos;ll see progress messages scroll by:
+                many tools. If your VPS started on an older Ubuntu, the installer upgrades it
+                first, which adds 30–60 minutes per version hop and reboots the VPS.
+                You&apos;ll see progress messages scroll by:
                 <OutputPreview title="What you'll see" className="mt-3">
-                  <p className="text-[oklch(0.72_0.19_145)]">[1/8] Installing zsh + oh-my-zsh...</p>
-                  <p className="text-[oklch(0.72_0.19_145)]">[2/8] Installing bun...</p>
-                  <p className="text-[oklch(0.72_0.19_145)]">[3/8] Installing development tools...</p>
+                  <p className="text-green">[1/8] Installing zsh + oh-my-zsh...</p>
+                  <p className="text-green">[2/8] Installing bun...</p>
+                  <p className="text-green">[3/8] Installing development tools...</p>
                   <p className="text-muted-foreground">... lots of download output ...</p>
-                  <p className="text-[oklch(0.72_0.19_145)]">[8/8] Installing AI coding agents...</p>
-                  <p className="text-[oklch(0.72_0.19_145)] font-medium mt-1">✔ Agent Flywheel installation complete!</p>
+                  <p className="text-green">[8/8] Installing AI coding agents...</p>
+                  <p className="text-green font-medium mt-1">✔ Agent Flywheel installation complete!</p>
                 </OutputPreview>
                 <p className="mt-3">
                   <strong>Don&apos;t close the terminal!</strong> Let it run until you see
@@ -872,9 +960,14 @@ export default function RunInstallerPage() {
               </li>
             </ul>
             <GuideTip className="mt-4">
-              The entire installation rarely takes more than 20 minutes. If it&apos;s been
-              30+ minutes with no progress at all, SSH back in and check if the script
-              is still running. If not, just run the install command again.
+              If your VPS started on an older Ubuntu, the installer upgrades it first — that
+              phase alone takes 30–60 minutes and reboots the VPS; do not re-run during it.
+              To check whether it is still working, SSH back in and run{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">tail -f ~/.acfs/logs/install-*.log</code>{" "}
+              (or{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">/var/lib/acfs/check_status.sh</code>{" "}
+              during an upgrade). Re-run the same install command only once the log has
+              stopped for 10+ minutes; it resumes from the last completed phase.
             </GuideTip>
           </GuideSection>
         </div>

@@ -640,15 +640,15 @@ export default function CommandReferencePage() {
   const hasAnyResults = filteredCommands.length > 0;
 
   return (
-    <main className="min-h-screen bg-black relative overflow-x-hidden">
+    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-hidden">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Large primary orb */}
-        <div className="absolute w-[700px] h-[700px] bg-primary/10 blur-[180px] rounded-full -top-48 left-1/4 animate-float" />
+        <div className="absolute w-[700px] h-[700px] bg-primary/10 blur-[180px] rounded-full -top-48 left-1/4 hidden sm:block sm:animate-float" />
         {/* Secondary orb */}
-        <div className="absolute w-[500px] h-[500px] bg-violet-500/10 blur-[150px] rounded-full top-1/2 -right-32 animate-float" style={{ animationDelay: "2s" }} />
+        <div className="absolute w-[500px] h-[500px] bg-violet-500/10 blur-[150px] rounded-full top-1/2 -right-32 hidden sm:block sm:animate-float" style={{ animationDelay: "2s" }} />
         {/* Tertiary orb */}
-        <div className="absolute w-[400px] h-[400px] bg-emerald-500/8 blur-[120px] rounded-full bottom-0 left-0 animate-float" style={{ animationDelay: "4s" }} />
+        <div className="absolute w-[400px] h-[400px] bg-emerald-500/8 blur-[120px] rounded-full bottom-0 left-0 hidden sm:block sm:animate-float" style={{ animationDelay: "4s" }} />
         {/* Grid */}
         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:80px_80px]" />
       </div>

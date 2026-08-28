@@ -456,7 +456,7 @@ const ISSUES: Omit<TroubleshootingIssue, "searchable">[] = [
           "Delete the line containing your VPS IP",
           "Save and try connecting again",
         ],
-        command: "notepad %USERPROFILE%\\.ssh\\known_hosts",
+        command: "notepad $HOME\\.ssh\\known_hosts",
       },
     ],
     prevention: "This warning is a security feature. Only remove old keys if you know why the key changed (e.g., VPS reinstall).",
@@ -651,8 +651,11 @@ function IssueCard({ issue, isOpen, onToggle }: { issue: TroubleshootingIssue; i
             <span
               className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
               style={{
-                borderColor: `${categoryMeta.color}40`,
-                backgroundColor: `${categoryMeta.color}10`,
+                // The category colours are oklch() strings, so hex-alpha
+                // suffixes would produce an invalid colour that the browser
+                // drops. color-mix() keeps the tint valid.
+                borderColor: `color-mix(in oklch, ${categoryMeta.color} 25%, transparent)`,
+                backgroundColor: `color-mix(in oklch, ${categoryMeta.color} 6%, transparent)`,
                 color: categoryMeta.color,
               }}
             >
@@ -775,7 +778,7 @@ export default function TroubleshootingPage() {
   }, [category, normalizedQuery]);
 
   return (
-    <div role="main" className="relative min-h-screen bg-background">
+    <div role="main" id="main-content" tabIndex={-1} className="relative min-h-screen bg-background">
       {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
       <div className="pointer-events-none fixed inset-0 bg-grid-pattern opacity-20" />
@@ -785,14 +788,14 @@ export default function TroubleshootingPage() {
         <div className="mb-8 flex items-center justify-between">
           <Link
             href="/"
-            className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex min-h-6 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
             <span className="text-sm">Home</span>
           </Link>
           <Link
             href="/wizard/os-selection"
-            className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex min-h-6 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
           >
             <Terminal className="h-4 w-4" />
             <span className="text-sm">Setup Wizard</span>
@@ -890,7 +893,7 @@ export default function TroubleshootingPage() {
                 <button
                   type="button"
                   onClick={() => { setSearchQuery(""); setCategory("all"); }}
-                  className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
+                  className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
                 >
                   clear all filters
                 </button>
@@ -912,7 +915,7 @@ export default function TroubleshootingPage() {
                 <span className="text-primary">•</span>
                 <span>
                   Check the{" "}
-                  <Link href="/glossary" className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
+                  <Link href="/glossary" className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
                     Glossary
                   </Link>{" "}
                   for unfamiliar terms
@@ -926,7 +929,7 @@ export default function TroubleshootingPage() {
                     href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
+                    className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
                   >
                     GitHub Issues
                   </a>{" "}
@@ -937,7 +940,7 @@ export default function TroubleshootingPage() {
                 <span className="text-primary">•</span>
                 <span>
                   Review the{" "}
-                  <Link href="/learn" className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
+                  <Link href="/learn" className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
                     Learning Hub
                   </Link>{" "}
                   for guided tutorials

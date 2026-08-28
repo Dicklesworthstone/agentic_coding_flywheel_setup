@@ -55,7 +55,7 @@ export default function CopyCommand({
           <span className="mr-2 shrink-0 select-none text-[#9ece6a]" aria-hidden="true">
             $
           </span>
-          <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap">{command}</code>
+          <code tabIndex={0} role="region" aria-label="Install command" className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9ece6a]/60">{command}</code>
         </div>
         <Button
           type="button"

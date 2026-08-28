@@ -1,10 +1,15 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { QueryClient, type Query } from "@tanstack/react-query";
+import {
+  PersistQueryClientProvider,
+  type PersistQueryClientOptions,
+} from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { wizardStepsKeys } from "../lib/wizardSteps";
+
+const PERSIST_KEY = "acfs-query-cache";
 
 function makeQueryClient() {
   return new QueryClient({
@@ -22,80 +27,73 @@ function makeQueryClient() {
   });
 }
 
+/**
+ * Build the persister exactly once per QueryProvider instance.
+ *
+ * `createSyncStoragePersister` with `storage: undefined` returns a no-op
+ * persister (persist/restore/remove are all noops), so the same provider
+ * element type can be rendered on the server, during hydration, and in
+ * browsers where localStorage throws (private mode, storage quota, blocked
+ * third-party contexts). Swapping `QueryClientProvider` for
+ * `PersistQueryClientProvider` after mount — the previous approach —
+ * changed the element type at the root of the tree, which made React
+ * unmount and recreate every descendant one tick after hydration (refs
+ * reset, every effect ran twice, entrance animations replayed, and the
+ * analytics `config` + session_start fired twice).
+ */
+function makePersister() {
+  if (typeof window === "undefined") {
+    return createSyncStoragePersister({ storage: undefined, key: PERSIST_KEY });
+  }
+  try {
+    // Probe localStorage availability first (private browsing, restrictions)
+    const testKey = "__acfs_test__";
+    window.localStorage.setItem(testKey, "test");
+    window.localStorage.removeItem(testKey);
+    return createSyncStoragePersister({
+      storage: window.localStorage,
+      key: PERSIST_KEY,
+    });
+  } catch {
+    // localStorage unavailable (private browsing, quota exceeded, etc.)
+    // Fall back to the in-memory-only cache - app will still work
+    console.warn(
+      "[ACFS] localStorage unavailable, running without query persistence"
+    );
+    return createSyncStoragePersister({ storage: undefined, key: PERSIST_KEY });
+  }
+}
+
+function shouldDehydrateQuery(query: Query): boolean {
+  const queryKey = query.queryKey;
+  // Exclude wizard steps (manually persisted to separate key)
+  if (
+    queryKey[0] === wizardStepsKeys.completedSteps[0] &&
+    queryKey[1] === wizardStepsKeys.completedSteps[1]
+  ) {
+    return false;
+  }
+  // Exclude all user preferences (each preference has its own
+  // canonical localStorage key — double-persisting in the query
+  // cache would cause stale flashes on page reload)
+  if (queryKey[0] === "userPreferences") {
+    return false;
+  }
+  return true;
+}
+
 export function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => makeQueryClient());
-  const [persister, setPersister] = useState<ReturnType<typeof createSyncStoragePersister> | null>(null);
+  // Stable identity: PersistQueryClientProvider re-runs its restore effect
+  // whenever the options object changes, so build it once.
+  const [persistOptions] = useState<Omit<PersistQueryClientOptions, "queryClient">>(() => ({
+    persister: makePersister(),
+    dehydrateOptions: { shouldDehydrateQuery },
+  }));
 
-  // Create persister only after mount to avoid hydration mismatch
-  // Server and client both render QueryClientProvider initially,
-  // then we upgrade to PersistQueryClientProvider on client after mount
-  useEffect(() => {
-    // Guard against localStorage being unavailable (private browsing, restrictions)
-    try {
-      // Test localStorage availability first
-      const testKey = "__acfs_test__";
-      window.localStorage.setItem(testKey, "test");
-      window.localStorage.removeItem(testKey);
-
-      const storagePersister = createSyncStoragePersister({
-        storage: window.localStorage,
-        key: "acfs-query-cache",
-      });
-
-      // Defer state update to avoid setState-in-effect lint violations.
-      let cancelled = false;
-      Promise.resolve().then(() => {
-        if (!cancelled) setPersister(storagePersister);
-      });
-
-      return () => {
-        cancelled = true;
-      };
-    } catch {
-      // localStorage unavailable (private browsing, quota exceeded, etc.)
-      // Silently fall back to non-persisted state - app will still work
-      console.warn(
-        "[ACFS] localStorage unavailable, running without query persistence"
-      );
-    }
-  }, []);
-
-  // Always render PersistQueryClientProvider once we have a persister,
-  // but start with QueryClientProvider for SSR/hydration consistency
-  if (persister) {
-    return (
-      <PersistQueryClientProvider
-        client={queryClient}
-        persistOptions={{
-          persister,
-          dehydrateOptions: {
-            shouldDehydrateQuery: (query) => {
-              const queryKey = query.queryKey;
-              // Exclude wizard steps (manually persisted to separate key)
-              if (
-                queryKey[0] === wizardStepsKeys.completedSteps[0] &&
-                queryKey[1] === wizardStepsKeys.completedSteps[1]
-              ) {
-                return false;
-              }
-              // Exclude all user preferences (each preference has its own
-              // canonical localStorage key — double-persisting in the query
-              // cache would cause stale flashes on page reload)
-              if (queryKey[0] === "userPreferences") {
-                return false;
-              }
-              return true;
-            },
-          },
-        }}
-      >
-        {children}
-      </PersistQueryClientProvider>
-    );
-  }
-
-  // Initial render (SSR + first client render before useEffect)
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+      {children}
+    </PersistQueryClientProvider>
   );
 }

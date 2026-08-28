@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import Link from "next/link";
 import { Check, Copy, Terminal } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { cn, copyTextToClipboard } from "@/lib/utils";
+import { CopyStatus } from "@/components/ui/code-block";
+import { cn } from "@/lib/utils";
+import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
 import type { CommandRef } from "@/lib/commands";
 
 interface CommandRefCardProps {
@@ -14,31 +16,13 @@ interface CommandRefCardProps {
 }
 
 export function CommandRefCard({ command, categoryLabel }: CommandRefCardProps) {
-  const [copied, setCopied] = useState(false);
-  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { state: copyState, copy } = useCopyFeedback();
+  const copied = copyState === "copied";
+  const codeRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (copyResetTimerRef.current) {
-        clearTimeout(copyResetTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = useCallback(async () => {
-    const copiedOk = await copyTextToClipboard(command.example);
-    if (!copiedOk) {
-      return;
-    }
-    setCopied(true);
-    if (copyResetTimerRef.current) {
-      clearTimeout(copyResetTimerRef.current);
-    }
-    copyResetTimerRef.current = setTimeout(() => {
-      setCopied(false);
-      copyResetTimerRef.current = null;
-    }, 2000);
-  }, [command.example]);
+  const handleCopy = useCallback(() => {
+    void copy(command.example, { selectOnFailure: codeRef.current });
+  }, [command.example, copy]);
 
   return (
     <Card
@@ -77,8 +61,7 @@ export function CommandRefCard({ command, categoryLabel }: CommandRefCardProps) 
             size="icon"
             className={cn(
               "h-9 w-9 shrink-0",
-              copied &&
-                "bg-[oklch(0.72_0.19_145/0.1)] text-[oklch(0.72_0.19_145)]"
+              copied && "bg-green/10 text-green"
             )}
             onClick={handleCopy}
             aria-label={copied ? "Copied!" : "Copy command"}
@@ -93,7 +76,10 @@ export function CommandRefCard({ command, categoryLabel }: CommandRefCardProps) 
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <code className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-sm text-foreground">
+          <code
+            ref={codeRef}
+            className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2 text-sm text-foreground"
+          >
             {command.example}
           </code>
           {command.docsUrl ? (
@@ -105,6 +91,7 @@ export function CommandRefCard({ command, categoryLabel }: CommandRefCardProps) 
             </Link>
           ) : null}
         </div>
+        <CopyStatus state={copyState} />
       </div>
     </Card>
   );

@@ -85,7 +85,7 @@ function ProviderMobileCard({
         <TrackedLink
           href={provider.url}
           trackingId={`vps-compare-${provider.id}`}
-          className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+          className="inline-flex min-h-6 items-center gap-1 font-medium text-primary hover:underline"
         >
           Visit site
           <ExternalLink className="h-3.5 w-3.5" />
@@ -113,6 +113,7 @@ export function VPSComparison() {
           <button
             type="button"
             onClick={() => setTier("recommended")}
+            aria-pressed={tier === "recommended"}
             className={cn(
               "rounded-md px-3 py-1 font-medium transition-colors",
               tier === "recommended"
@@ -125,6 +126,7 @@ export function VPSComparison() {
           <button
             type="button"
             onClick={() => setTier("budget")}
+            aria-pressed={tier === "budget"}
             className={cn(
               "rounded-md px-3 py-1 font-medium transition-colors",
               tier === "budget"
@@ -137,8 +139,12 @@ export function VPSComparison() {
         </div>
       </div>
 
-      {/* Desktop table — hidden on mobile */}
-      <div className="hidden overflow-hidden rounded-xl border border-border/50 sm:block">
+      {/* Desktop table — hidden on mobile. Eight columns do not fit between
+          ~640px and ~900px, so the outer wrapper scrolls horizontally instead
+          of clipping the Price/Activation/Link columns; the inner wrapper
+          keeps the rounded border. */}
+      <div className="hidden overflow-x-auto sm:block">
+        <div className="min-w-[44rem] overflow-hidden rounded-xl border border-border/50">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border/50 bg-muted/30">
@@ -230,6 +236,7 @@ export function VPSComparison() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Mobile cards — hidden on desktop */}

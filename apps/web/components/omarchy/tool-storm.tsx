@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { Timer } from "three";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -433,7 +434,9 @@ export default function ToolStorm({ className }: { className?: string }) {
     let lastPointerX = 0;
     const mouse = { x: 0, y: 0 };
     let scrollDive = 0;
-    const clock = new THREE.Clock();
+    // THREE.Clock is deprecated (r176+, warns on construction); Timer is the
+    // replacement. It needs one update() per frame before getDelta() is read.
+    const timer = new Timer();
     const projHelper = new THREE.Vector3();
 
     // Adaptive quality: if the average FPS sags early, drop internal resolution
@@ -442,7 +445,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     let qualityDegraded = false;
 
     const applyFrame = (dt: number) => {
-      const t = clock.elapsedTime;
+      const t = timer.getElapsed();
       particleUniforms.uTime.value = t;
 
       // Rigid slow precession + flick inertia; the shader handles shear
@@ -480,9 +483,10 @@ export default function ToolStorm({ className }: { className?: string }) {
       composer.render();
     };
 
-    const loop = () => {
+    const loop = (timestamp?: number) => {
       raf = requestAnimationFrame(loop);
-      const dt = Math.min(clock.getDelta(), 0.05);
+      timer.update(timestamp);
+      const dt = Math.min(timer.getDelta(), 0.05);
       applyFrame(dt);
 
       // Warmup FPS probe → degrade resolution once if this GPU struggles
@@ -506,7 +510,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     const start = () => {
       if (running || prefersReducedMotion) return;
       running = true;
-      clock.getDelta(); // swallow the pause gap
+      timer.update(); // swallow the pause gap so the first frame's delta is small
       loop();
     };
     const stop = () => {
@@ -597,7 +601,12 @@ export default function ToolStorm({ className }: { className?: string }) {
     );
     observer.observe(container);
 
-    const onResize = () => {
+    // Coalesce resize events into one layout pass per frame: composer.setSize
+    // reallocates the bloom render targets, which is far too expensive to do
+    // on every event of a window drag.
+    let resizeRaf = 0;
+    const applyResize = () => {
+      resizeRaf = 0;
       const width = container.clientWidth;
       const height = Math.max(container.clientHeight, 1);
       camera.aspect = width / height;
@@ -605,6 +614,10 @@ export default function ToolStorm({ className }: { className?: string }) {
       renderer.setSize(width, height);
       composer.setSize(width, height);
       if (prefersReducedMotion) composer.render();
+    };
+    const onResize = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(applyResize);
     };
     window.addEventListener("resize", onResize, { signal });
 
@@ -628,6 +641,7 @@ export default function ToolStorm({ className }: { className?: string }) {
     // --- Teardown ----------------------------------------------------------------
     return () => {
       stop();
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       observer.disconnect();
       controller.abort();
       for (const d of disposables) d.dispose();

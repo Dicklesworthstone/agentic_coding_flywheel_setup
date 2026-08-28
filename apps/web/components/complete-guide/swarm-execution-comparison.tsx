@@ -326,15 +326,15 @@ function ScenarioPanel({
 
         <div className="flex gap-2 shrink-0">
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-[8px] sm:text-[9px] uppercase tracking-[0.15em] text-white/40">conflicts</div>
+            <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">conflicts</div>
             <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">{frame.metrics.conflicts}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-[8px] sm:text-[9px] uppercase tracking-[0.15em] text-white/40">idle burn</div>
+            <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">idle burn</div>
             <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">{frame.metrics.idleBurn}</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1.5 min-w-[60px] sm:min-w-[70px] flex flex-col items-center justify-center">
-            <div className="text-[8px] sm:text-[9px] uppercase tracking-[0.15em] text-white/40">completed</div>
+            <div className="text-[11px] uppercase tracking-[0.15em] text-white/40">completed</div>
             <div className="mt-0.5 text-sm sm:text-base font-black text-white leading-none">{frame.metrics.completed}</div>
           </div>
         </div>
@@ -363,19 +363,19 @@ function ScenarioPanel({
                 style={{ width: `${agentFrame.progress}%` }}
               />
               <div className="relative z-10 flex items-center gap-2 sm:gap-3">
-                <div className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-slate-950/70 text-[9px] sm:text-[10px] font-black text-white">
+                <div className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-slate-950/70 text-[11px] font-black text-white">
                   {agent.id}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] sm:text-xs font-semibold text-white truncate max-w-[60px] sm:max-w-none">{agent.role}</span>
                     {agentFrame.target && (
-                      <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-[8px] sm:text-[9px] font-semibold uppercase tracking-[0.18em] text-white/70 whitespace-nowrap">
+                      <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/70 whitespace-nowrap">
                         {agentFrame.target}
                       </span>
                     )}
                   </div>
-                  <div className="mt-0.5 text-[9px] sm:text-[10px] text-white/75 truncate pr-2">{agentFrame.status}</div>
+                  <div className="mt-0.5 text-[11px] text-white/75 truncate pr-2">{agentFrame.status}</div>
                 </div>
                 <div className="text-[11px] sm:text-xs font-black tabular-nums text-white shrink-0 pr-1">
                   {agentFrame.progress}%
@@ -396,7 +396,7 @@ function ScenarioPanel({
             )}
           >
             <div className="flex items-center justify-between gap-1.5">
-              <span className="font-mono text-[9px] sm:text-[10px] text-white/72 truncate">{bead.id}</span>
+              <span className="font-mono text-[11px] text-white/72 truncate">{bead.id}</span>
               {bead.tone === "contested" ? (
                 <AlertTriangle className="h-3 w-3 text-[#FF5500] shrink-0" />
               ) : bead.tone === "done" ? (
@@ -405,7 +405,7 @@ function ScenarioPanel({
                 <div className="h-1.5 w-1.5 rounded-full bg-white/35 shrink-0" />
               )}
             </div>
-            <div className="mt-1.5 text-[8px] sm:text-[9px] uppercase tracking-[0.18em] text-white/35 truncate">
+            <div className="mt-1.5 text-[11px] uppercase tracking-[0.18em] text-white/35 truncate">
               {bead.owner ? `owner ${bead.owner}` : "frontier"}
             </div>
             <div className="mt-0.5 text-[10px] sm:text-xs text-white/72 truncate pr-1">{bead.note}</div>

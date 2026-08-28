@@ -141,7 +141,7 @@ export function ConvergenceDetector() {
                 onChange={(event) => updateSignal(index, Number(event.target.value))}
                 aria-label={signal.label}
                 aria-valuetext={`${(values[index] * 100).toFixed(0)} percent`}
-                className="mt-5 h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-800 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white/70 [&::-webkit-slider-thumb]:[background-color:var(--thumb-color)] [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white/70 [&::-moz-range-thumb]:[background-color:var(--thumb-color)]"
+                className="mt-5 h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-800 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white/70 [&::-webkit-slider-thumb]:[background-color:var(--thumb-color)] [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white/70 [&::-moz-range-thumb]:[background-color:var(--thumb-color)]"
                 style={{
                   background: `linear-gradient(to right, ${signal.color} ${values[index] * 100}%, #1e293b ${values[index] * 100}%)`,
                   ...({ "--thumb-color": signal.color } as React.CSSProperties),

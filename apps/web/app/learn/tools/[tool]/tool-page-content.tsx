@@ -133,7 +133,7 @@ interface ToolPageContentProps {
 
 export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
   return (
-    <main className="min-h-screen bg-black relative overflow-x-hidden">
+    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-hidden">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         <FloatingOrb
@@ -166,7 +166,7 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
         >
           <Link
             href="/learn"
-            className="group flex items-center gap-2 text-white/50 transition-colors hover:text-white"
+            className="group flex min-h-6 items-center gap-2 text-white/50 transition-colors hover:text-white"
           >
             <ArrowLeft
               className="h-4 w-4 transition-transform group-hover:-translate-x-1"
@@ -176,7 +176,7 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
           </Link>
           <Link
             href="/"
-            className="group flex items-center gap-2 text-white/50 transition-colors hover:text-white"
+            className="group flex min-h-6 items-center gap-2 text-white/50 transition-colors hover:text-white"
           >
             <Home className="h-4 w-4" aria-hidden="true" />
             <span className="text-sm font-medium">Home</span>
@@ -376,7 +376,7 @@ dcg doctor`}
         >
           <Link
             href="/learn/commands"
-            className="group flex items-center gap-2 text-white/50 transition-colors hover:text-primary"
+            className="group flex min-h-6 items-center gap-2 text-white/50 transition-colors hover:text-primary"
           >
             <span className="text-sm">See all commands in the Command Reference</span>
             <ChevronRight

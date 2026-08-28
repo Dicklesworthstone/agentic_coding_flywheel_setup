@@ -113,7 +113,7 @@ export default function SecurityDocsPage() {
         </div>
 
         <div className="text-sm text-muted-foreground">
-          <Link href="/" className="text-primary hover:underline">Home</Link>
+          <Link href="/" className="inline-flex min-h-6 items-center text-primary hover:underline">Home</Link>
           <span className="px-2">/</span>
           <span className="text-foreground/80">Docs</span>
           <span className="px-2">/</span>
@@ -287,22 +287,34 @@ export default function SecurityDocsPage() {
           {CHECKLIST_ITEMS.map((item) => {
             const isChecked = checked.has(item.id);
             return (
-              <div key={item.id} className="flex items-start gap-3">
-                <Checkbox checked={isChecked} onCheckedChange={() => toggle(item.id)} className="mt-0.5" />
-                <div className="min-w-0">
-                  <div className="text-sm text-foreground/90">{item.label}</div>
-                  {item.href && (
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      {linkHost(item.href)}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
+              <div key={item.id}>
+                {/* The whole row is the toggle target and names the checkbox.
+                    The external link stays outside the label: nested
+                    interactive content inside a <label> is invalid. */}
+                <label
+                  htmlFor={`security-check-${item.id}`}
+                  className="flex min-h-11 cursor-pointer items-start gap-3 py-2"
+                >
+                  <Checkbox
+                    id={`security-check-${item.id}`}
+                    checked={isChecked}
+                    onCheckedChange={() => toggle(item.id)}
+                    aria-label={item.label}
+                    className="mt-0.5 border-muted-foreground/60"
+                  />
+                  <span className="min-w-0 text-sm text-foreground/90">{item.label}</span>
+                </label>
+                {item.href && (
+                  <a
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-7 inline-flex min-h-6 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {linkHost(item.href)}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
             );
           })}

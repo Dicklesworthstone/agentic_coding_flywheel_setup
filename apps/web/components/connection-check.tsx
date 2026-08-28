@@ -38,19 +38,22 @@ export function ConnectionCheck({
   const sshCommand = useIdentityFile
     ? `ssh -i ~/.ssh/acfs_ed25519 ${sshTarget}`
     : `ssh ${sshTarget}`;
+  // PowerShell expands `$HOME`; `%USERPROFILE%` is cmd.exe syntax that
+  // PowerShell passes through literally (ssh then reports "no such identity"
+  // and falls back to password auth). Matches the generate-ssh-key step.
   const windowsSshCommand = useIdentityFile
-    ? `ssh -i %USERPROFILE%\\.ssh\\acfs_ed25519 ${sshTarget}`
+    ? `ssh -i $HOME\\.ssh\\acfs_ed25519 ${sshTarget}`
     : `ssh ${sshTarget}`;
 
   return (
     <div className={cn("space-y-4", className)}>
       {/* Main Warning */}
-      <div className="rounded-xl border-2 border-[oklch(0.65_0.22_25/0.4)] bg-[oklch(0.65_0.22_25/0.08)] p-4">
+      <div className="rounded-xl border-2 border-destructive/40 bg-destructive/8 p-4">
         <div className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-[oklch(0.65_0.22_25)]" />
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
           <div className="space-y-3">
             <div>
-              <p className="font-semibold text-[oklch(0.85_0.15_25)]">
+              <p className="font-semibold text-destructive">
                 STOP! Are you connected to your VPS?
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
@@ -62,28 +65,31 @@ export function ConnectionCheck({
             {/* Visual comparison */}
             <div className="grid gap-3 sm:grid-cols-2">
               {/* Wrong - Local */}
-              <div className="rounded-lg border border-[oklch(0.65_0.22_25/0.3)] bg-[oklch(0.65_0.22_25/0.05)] p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-[oklch(0.65_0.22_25)]">
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-destructive">
                   <Monitor className="h-4 w-4" />
                   <span>Wrong - You&apos;re on your laptop</span>
                 </div>
-                <div className="mt-2 rounded bg-[oklch(0.12_0.01_260)] px-3 py-2 font-mono text-xs">
+                {/* Terminal mock-ups stay dark in both themes; the `dark`
+                    island makes the nested tokens resolve to the dark palette
+                    instead of light-mode foreground on a near-black box. */}
+                <div className="dark mt-2 rounded bg-[oklch(0.12_0.01_260)] px-3 py-2 font-mono text-xs text-foreground">
                   <span className="text-muted-foreground">C:\Users\YourName&gt;</span>
                   <span className="animate-pulse"> _</span>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  or: <code className="text-foreground/70">YourMac:~ yourname$</code>
+                  or: <code className="text-foreground/70">yourname@YourMac ~ %</code>
                 </p>
               </div>
 
               {/* Right - VPS */}
-              <div className="rounded-lg border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.05)] p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-[oklch(0.72_0.19_145)]">
+              <div className="rounded-lg border border-green/30 bg-green/5 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-green">
                   <Server className="h-4 w-4" />
                   <span>Correct - You&apos;re on the VPS</span>
                 </div>
-                <div className="mt-2 rounded bg-[oklch(0.12_0.01_260)] px-3 py-2 font-mono text-xs">
-                  <span className="text-[oklch(0.72_0.19_145)]">{sshUser}@vps:~{promptSuffix}</span>
+                <div className="dark mt-2 rounded bg-[oklch(0.12_0.01_260)] px-3 py-2 font-mono text-xs text-foreground">
+                  <span className="text-green">{sshUser}@vps:~{promptSuffix}</span>
                   <span className="animate-pulse"> _</span>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
@@ -120,9 +126,9 @@ export function ConnectionCheck({
  */
 export function TwoComputersExplainer({ className }: { className?: string }) {
   return (
-    <div className={cn("rounded-xl border border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.05)] p-4", className)}>
+    <div className={cn("rounded-xl border border-primary/30 bg-primary/5 p-4", className)}>
       <div className="flex items-start gap-3">
-        <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-[oklch(0.75_0.18_195)]" />
+        <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
         <div className="space-y-3">
           <p className="font-semibold text-foreground">
             Understanding: You have TWO computers
@@ -131,13 +137,13 @@ export function TwoComputersExplainer({ className }: { className?: string }) {
           <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-4">
             {/* Your Computer */}
             <div className="flex-1 rounded-lg border border-border/50 bg-card/50 p-3 text-center">
-              <Monitor className="mx-auto h-8 w-8 text-[oklch(0.78_0.16_75)]" />
+              <Monitor className="mx-auto h-8 w-8 text-amber" />
               <p className="mt-2 font-medium">Your Computer</p>
               <p className="text-xs text-muted-foreground">
                 (laptop/desktop)
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Windows or Mac
+                Windows, Mac, or Linux
               </p>
             </div>
 
@@ -148,8 +154,8 @@ export function TwoComputersExplainer({ className }: { className?: string }) {
             </div>
 
             {/* VPS */}
-            <div className="flex-1 rounded-lg border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.05)] p-3 text-center">
-              <Server className="mx-auto h-8 w-8 text-[oklch(0.72_0.19_145)]" />
+            <div className="flex-1 rounded-lg border border-green/30 bg-green/5 p-3 text-center">
+              <Server className="mx-auto h-8 w-8 text-green" />
               <p className="mt-2 font-medium">Your VPS</p>
               <p className="text-xs text-muted-foreground">
                 (remote server)
@@ -193,22 +199,26 @@ export function WhereAmICheck({ className }: { className?: string }) {
           </p>
 
           <div className="space-y-3">
-            <div className="rounded-lg border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.05)] p-3">
-              <p className="font-medium text-[oklch(0.72_0.19_145)]">You ARE connected to your VPS if you see:</p>
+            <div className="rounded-lg border border-green/30 bg-green/5 p-3">
+              <p className="font-medium text-green">You ARE connected to your VPS if you see:</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
                 <li><code className="text-foreground">ubuntu@...</code> or <code className="text-foreground">root@...</code></li>
-                <li>The prompt ends with <code className="text-foreground">$</code> or <code className="text-foreground">#</code></li>
+                <li>
+                  The name after the <code className="text-foreground">@</code> is your VPS&apos;s hostname — run{" "}
+                  <code className="text-foreground">hostname</code> to check; it should not be your laptop&apos;s name
+                </li>
                 <li>A colorful prompt (if you ran the installer already)</li>
               </ul>
             </div>
 
-            <div className="rounded-lg border border-[oklch(0.65_0.22_25/0.3)] bg-[oklch(0.65_0.22_25/0.05)] p-3">
-              <p className="font-medium text-[oklch(0.65_0.22_25)]">You are NOT connected (still on your laptop) if you see:</p>
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+              <p className="font-medium text-destructive">You are NOT connected (still on your laptop) if you see:</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
                 <li><code className="text-foreground">C:\Users\YourName&gt;</code> (Windows Command Prompt)</li>
                 <li><code className="text-foreground">PS C:\Users\YourName&gt;</code> (PowerShell)</li>
-                <li><code className="text-foreground">YourMac:~ yourname$</code> (Mac Terminal)</li>
-                <li>Any mention of your laptop&apos;s name or your Windows/Mac username</li>
+                <li><code className="text-foreground">yourname@YourMac ~ %</code> (Mac Terminal)</li>
+                <li><code className="text-foreground">yourname@laptop:~$</code> (Linux laptop — a <code className="text-foreground">$</code> alone does not mean you&apos;re on the VPS)</li>
+                <li>Any mention of your laptop&apos;s name or your Windows/Mac/Linux username</li>
               </ul>
             </div>
           </div>

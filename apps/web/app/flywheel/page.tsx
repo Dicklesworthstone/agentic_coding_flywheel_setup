@@ -789,7 +789,7 @@ export default function FlywheelPage() {
       </nav>
 
       {/* Main content */}
-      <main>
+      <main id="main-content" tabIndex={-1}>
         <HeroSection />
 
         {/* Interactive Flywheel Visualization */}

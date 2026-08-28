@@ -47,7 +47,8 @@ function WindowsTerminalSetupContent() {
   useEffect(() => {
     if (!ready) return;
     if (vpsIP === null) {
-      router.push(withCurrentSearch("/wizard/create-vps"));
+      // Prerequisite redirect: replace() so Back does not land here again.
+      router.replace(withCurrentSearch("/wizard/create-vps"));
     }
   }, [ready, vpsIP, router]);
 
@@ -132,8 +133,8 @@ function WindowsTerminalSetupContent() {
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[oklch(0.75_0.18_195/0.2)]">
-            <Terminal className="h-5 w-5 text-[oklch(0.75_0.18_195)]" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20">
+            <Terminal className="h-5 w-5 text-primary" />
           </div>
           <div>
             <h1 className="bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
@@ -239,7 +240,7 @@ function WindowsTerminalSetupContent() {
                   aria-label={copied ? "Copied" : "Copy command line"}
                 >
                   {copied ? (
-                    <Check className="h-4 w-4 text-[oklch(0.72_0.19_145)]" />
+                    <Check className="h-4 w-4 text-green" />
                   ) : (
                     <Copy className="h-4 w-4" />
                   )}
@@ -288,8 +289,8 @@ function WindowsTerminalSetupContent() {
       <OutputPreview title="When you click your new profile:">
         <div className="space-y-1 font-mono text-xs">
           <p className="text-muted-foreground">Connecting to {ubuntuTarget}...</p>
-          <p className="text-[oklch(0.72_0.19_145)]">Welcome to Ubuntu 25.10</p>
-          <p className="text-[oklch(0.72_0.19_145)]">{effectiveUsername}@vps:~$</p>
+          <p className="text-green">Welcome to Ubuntu 25.10</p>
+          <p className="text-green">{effectiveUsername}@vps:~$</p>
         </div>
       </OutputPreview>
 
@@ -325,7 +326,8 @@ function WindowsTerminalSetupContent() {
               className="inline-flex items-center gap-1 text-primary hover:underline"
             >
               Microsoft Store
-              <ExternalLink className="h-3 w-3" />
+              <ExternalLink className="h-3 w-3" aria-hidden="true" />
+              <span className="sr-only"> (opens in new tab)</span>
             </a>
             .
           </GuideExplain>

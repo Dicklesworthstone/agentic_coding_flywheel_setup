@@ -83,14 +83,18 @@ function LessonCard({
   index,
   isSelected,
   prefersReducedMotion,
+  lockHint,
 }: {
   lesson: (typeof LESSONS)[0];
   status: LessonStatus;
   index: number;
   isSelected?: boolean;
   prefersReducedMotion?: boolean;
+  /** Why the card is locked (e.g. "Complete Welcome first"); shown and announced. */
+  lockHint?: string;
 }) {
   const isAccessible = status !== "locked";
+  const lockHintId = `lesson-${lesson.slug}-lock-hint`;
 
   const cardContent = (
     <motion.div
@@ -181,6 +185,17 @@ function LessonCard({
           <span>{lesson.duration}</span>
         </div>
 
+        {/* Lock reason: visible to everyone, referenced via aria-describedby */}
+        {!isAccessible && lockHint && (
+          <p
+            id={lockHintId}
+            className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground/80"
+          >
+            <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span>{lockHint}</span>
+          </p>
+        )}
+
         {/* Hover arrow */}
         {isAccessible && (
           <ChevronRight className="absolute bottom-4 right-4 h-5 w-5 text-primary/40 opacity-0 transition duration-300 group-hover:translate-x-1 group-hover:text-primary group-hover:opacity-100 group-focus-within:translate-x-1 group-focus-within:text-primary group-focus-within:opacity-100" />
@@ -193,7 +208,22 @@ function LessonCard({
     return <Link href={`/learn/${lesson.slug}`} className="block h-full">{cardContent}</Link>;
   }
 
-  return cardContent;
+  // Locked: still in the tab order so keyboard and screen-reader users can
+  // discover the lesson and hear why it is unavailable (mirrors the sidebar's
+  // aria-disabled pattern and the Quick Reference lockHint pattern below).
+  return (
+    <Link
+      href={`/learn/${lesson.slug}`}
+      aria-disabled="true"
+      aria-describedby={lockHint ? lockHintId : undefined}
+      onClick={(event) => {
+        event.preventDefault();
+      }}
+      className="block h-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+    >
+      {cardContent}
+    </Link>
+  );
 }
 
 export default function LearnDashboard() {
@@ -296,7 +326,7 @@ export default function LearnDashboard() {
   }, [handleKeyDown]);
 
   return (
-    <main className="relative min-h-screen bg-black">
+    <main id="main-content" tabIndex={-1} className="text-aa-floor relative min-h-screen bg-black">
       {/* Ambient background effects */}
       <div className="pointer-events-none fixed inset-0">
         {/* Primary glow - top left */}
@@ -523,6 +553,13 @@ export default function LearnDashboard() {
                     // locked card.
                     isSelected={accessibleIndex >= 0 && accessibleIndex === effectiveSelectedIndex}
                     prefersReducedMotion={prefersReducedMotion}
+                    lockHint={
+                      status === "locked"
+                        ? nextLesson
+                          ? `Complete ${nextLesson.title} first`
+                          : "Complete the earlier lessons first"
+                        : undefined
+                    }
                   />
                 );
               })}
@@ -627,7 +664,7 @@ export default function LearnDashboard() {
         >
           <p>
             Need to set up your VPS first?{" "}
-            <Link href="/wizard/os-selection" className="text-primary underline decoration-primary/40 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-primary">
+            <Link href="/wizard/os-selection" className="inline-flex min-h-6 items-center text-primary underline decoration-primary/40 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-primary">
               Start the setup wizard →
             </Link>
           </p>

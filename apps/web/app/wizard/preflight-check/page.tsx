@@ -215,10 +215,10 @@ export default function PreflightCheckPage() {
         <div className="space-y-1 font-mono text-xs">
           <p className="text-muted-foreground">ACFS Pre-Flight Check</p>
           <p className="text-muted-foreground">---------------------</p>
-          <p className="text-[oklch(0.72_0.19_145)]">[✓] Operating System: Ubuntu 25.10 (or 24.04 before upgrade)</p>
-          <p className="text-[oklch(0.72_0.19_145)]">[✓] Architecture: x86_64</p>
-          <p className="text-[oklch(0.72_0.19_145)]">[✓] Disk Space: 45GB free</p>
-          <p className="text-[oklch(0.78_0.16_75)]">[!] Warning: Cannot reach https://claude.ai</p>
+          <p className="text-green">[✓] Operating System: Ubuntu 25.10 (or 24.04 before upgrade)</p>
+          <p className="text-green">[✓] Architecture: x86_64</p>
+          <p className="text-green">[✓] Disk Space: 45GB free</p>
+          <p className="text-amber">[!] Warning: Cannot reach https://claude.ai</p>
           <p className="text-muted-foreground">Result: 0 errors, 1 warning</p>
         </div>
       </OutputPreview>
@@ -227,7 +227,7 @@ export default function PreflightCheckPage() {
       <div className="rounded-xl border border-border/50 bg-card/50 p-4">
         <h3 className="mb-3 font-semibold">Before you continue</h3>
         <div className="space-y-3 text-sm">
-          <label className="flex cursor-pointer items-start gap-3">
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2">
             <Checkbox
               checked={ackPassed}
               onCheckedChange={(checked) => {
@@ -240,7 +240,7 @@ export default function PreflightCheckPage() {
               Pre-flight passed (all green, or only warnings)
             </span>
           </label>
-          <label className="flex cursor-pointer items-start gap-3">
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 py-2">
             <Checkbox
               checked={ackFailed}
               onCheckedChange={(checked) => {
@@ -278,17 +278,25 @@ export default function PreflightCheckPage() {
       </AlertCard>
 
       {/* Actions */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Button
-          onClick={handleContinue}
-          className="bg-primary text-primary-foreground"
-          disabled={!canContinue || isNavigating}
-        >
-          Continue to installer
-        </Button>
-        <Button variant="outline" onClick={handleSkip} disabled={isNavigating}>
-          Skip pre-flight (advanced)
-        </Button>
+      <div className="space-y-2">
+        {!canContinue && (
+          <p id="preflight-continue-hint" className="text-sm text-muted-foreground">
+            Tick one of the two boxes above to continue.
+          </p>
+        )}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Button
+            onClick={handleContinue}
+            className="bg-primary text-primary-foreground"
+            disabled={!canContinue || isNavigating}
+            aria-describedby={!canContinue ? "preflight-continue-hint" : undefined}
+          >
+            Continue to installer
+          </Button>
+          <Button variant="outline" onClick={handleSkip} disabled={isNavigating}>
+            Skip pre-flight (advanced)
+          </Button>
+        </div>
       </div>
 
       {/* Beginner Guide */}

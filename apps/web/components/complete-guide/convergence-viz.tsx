@@ -132,7 +132,7 @@ export function ConvergenceViz() {
                     value={values[idx]}
                     onChange={(e) => updateSignal(idx, Number(e.target.value))}
                     aria-label={signal.label}
-                    className="w-full h-2 rounded-full appearance-none cursor-ew-resize [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--thumb-color)] [&::-webkit-slider-thumb]:shadow-[0_0_15px_var(--thumb-color)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#0A0D14] hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform relative z-10"
+                    className="w-full h-2 rounded-full appearance-none cursor-ew-resize [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--thumb-color)] [&::-webkit-slider-thumb]:shadow-[0_0_15px_var(--thumb-color)] [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-[#0A0D14] hover:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform relative z-10"
                     style={{
                       background: `linear-gradient(to right, ${signal.color} ${values[idx] * 100}%, rgba(255,255,255,0.05) ${values[idx] * 100}%)`,
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any

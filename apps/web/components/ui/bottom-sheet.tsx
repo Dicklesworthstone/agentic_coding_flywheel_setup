@@ -17,6 +17,16 @@ const getServerSnapshot = () => false;
 // Spring config matching our motion module's smooth spring
 const smoothSpring = { type: "spring" as const, stiffness: 200, damping: 25 };
 
+// Elements that can receive keyboard focus inside the sheet (focus trap)
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
 interface BottomSheetProps {
   /** Whether the sheet is open */
   open: boolean;
@@ -26,7 +36,11 @@ interface BottomSheetProps {
   title: string;
   /** Content to render inside the sheet */
   children: React.ReactNode;
-  /** Maximum height (default: 80vh) */
+  /**
+   * Maximum height. When omitted the sheet uses `80dvh` with an `80vh`
+   * fallback for browsers without dynamic-viewport units (iOS Safari's
+   * toolbar otherwise pushes the handle and close button under the URL bar).
+   */
   maxHeight?: string;
   /** Whether to show the drag handle */
   showHandle?: boolean;
@@ -49,6 +63,7 @@ interface BottomSheetProps {
  * - Safe area padding for notched devices
  * - Reduced motion fallback (opacity instead of slide)
  * - 44px close button touch target
+ * - Tab focus contained inside the sheet while open (Escape closes)
  * - ARIA attributes for accessibility
  */
 export function BottomSheet({
@@ -56,7 +71,7 @@ export function BottomSheet({
   onClose,
   title,
   children,
-  maxHeight = "80vh",
+  maxHeight,
   showHandle = true,
   closeOnBackdrop = true,
   swipeable = true,
@@ -132,6 +147,40 @@ export function BottomSheet({
     [onClose]
   );
 
+  // Contain Tab focus inside the dialog while it is open. The backdrop is
+  // not `inert`, so without this a keyboard user tabs straight out of the
+  // sheet into the page behind it. Escape (handled above) is the way out.
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab") return;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+
+    const focusable = Array.from(
+      sheet.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
+    ).filter((el) => el.getAttribute("aria-hidden") !== "true");
+
+    if (focusable.length === 0) {
+      // Nothing to move to: keep focus on the sheet itself
+      e.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    const activeInsideSheet = active instanceof Node && sheet.contains(active);
+
+    if (e.shiftKey) {
+      if (active === first || active === sheet || !activeInsideSheet) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !activeInsideSheet) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
+
   // Don't render on server (portal requires document.body)
   if (!isClient) return null;
 
@@ -160,9 +209,13 @@ export function BottomSheet({
             drag={swipeable && !prefersReducedMotion ? "y" : false}
             dragControls={dragControls}
             dragListener={!showHandle}
-            dragConstraints={{ top: 0 }}
+            // `bottom: 0` matters: framer only springs back to constraints
+            // that exist, so without it a sub-threshold swipe released into
+            // free downward inertia and left the sheet displaced.
+            dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.5 }}
             onDragEnd={handleDragEnd}
+            onKeyDown={handleKeyDown}
             initial={prefersReducedMotion ? { opacity: 0 } : { y: "100%" }}
             animate={prefersReducedMotion ? { opacity: 1 } : { y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { y: "100%" }}
@@ -171,17 +224,23 @@ export function BottomSheet({
               "fixed inset-x-0 bottom-0 z-50 flex flex-col",
               "rounded-t-3xl border-t border-border/50",
               "bg-card/98 shadow-2xl backdrop-blur-xl",
+              // Legacy + dynamic viewport pair: 80vh everywhere, upgraded to
+              // 80dvh where the unit is supported. An explicit `maxHeight`
+              // prop (inline style) overrides both.
+              !maxHeight && "max-h-[80vh] supports-[height:80dvh]:max-h-[80dvh]",
               className
             )}
-            style={{ maxHeight }}
+            style={maxHeight ? { maxHeight } : undefined}
           >
-            {/* Drag handle */}
+            {/* Drag handle: the whole header strip (56px, the band the close
+                button sits in) is the drag surface, not just the 4px bar.
+                Content below keeps native scrolling. */}
             {showHandle && (
               <div
                 className={cn(
-                  "flex shrink-0 justify-center pb-1 pt-3",
+                  "flex min-h-14 shrink-0 justify-center pt-3",
                   swipeable && !prefersReducedMotion
-                    ? "cursor-grab active:cursor-grabbing"
+                    ? "cursor-grab touch-none active:cursor-grabbing"
                     : "cursor-default"
                 )}
                 onPointerDown={(e) => {

@@ -2,7 +2,6 @@
 
 import { useCallback } from "react";
 import { Check, Circle } from "lucide-react";
-import { useDrag } from "@use-gesture/react";
 import { cn } from "@/lib/utils";
 import {
   WIZARD_STEPS,
@@ -40,19 +39,31 @@ function StepItem({
   onClick,
 }: StepItemProps) {
   const showCompletedState = isCompleted && !isActive;
+  const state = isActive
+    ? "current step"
+    : showCompletedState
+      ? "completed"
+      : isClickable
+        ? "available"
+        : "locked";
 
   return (
+    // Locked steps use aria-disabled rather than `disabled` so they stay in
+    // the Tab order (a keyboard user can still discover the 10 steps ahead)
+    // and still fire onClick — the layout answers a locked click with a
+    // "finish the steps in order" banner instead of silently ignoring it.
     <button
       type="button"
-      onClick={isClickable ? onClick : undefined}
-      disabled={!isClickable}
+      onClick={onClick}
+      aria-disabled={!isClickable || undefined}
       className={cn(
         "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition duration-200",
         isActive && "bg-primary/10 shadow-sm",
         isClickable && !isActive && "hover:bg-muted/50",
-        !isClickable && "cursor-not-allowed opacity-40"
+        !isClickable && "cursor-not-allowed opacity-60"
       )}
       aria-current={isActive ? "step" : undefined}
+      aria-label={`Step ${step.id}: ${step.title}, ${state}`}
     >
       {/* Connection line to next step */}
       {showConnector && (
@@ -63,7 +74,7 @@ function StepItem({
       <div
         className={cn(
           "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition duration-300",
-          showCompletedState && "bg-[oklch(0.72_0.19_145)] text-[oklch(0.15_0.02_145)] shadow-sm shadow-[oklch(0.72_0.19_145/0.3)]",
+          showCompletedState && "bg-green text-primary-foreground shadow-sm shadow-green/30",
           isActive && "bg-primary text-primary-foreground shadow-sm shadow-primary/30 animate-glow-pulse",
           !isActive && !showCompletedState && "bg-muted text-muted-foreground"
         )}
@@ -93,7 +104,7 @@ function StepItem({
           <div className="mt-0.5 text-xs text-primary">In progress</div>
         )}
         {showCompletedState && (
-          <div className="mt-0.5 text-xs text-[oklch(0.72_0.19_145)]">Complete</div>
+          <div className="mt-0.5 text-xs text-green">Complete</div>
         )}
       </div>
 
@@ -160,54 +171,24 @@ export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
 }
 
 /**
- * Mobile-friendly bottom navigation version of the stepper.
- * Shows a compact progress bar with touch-friendly dots (44px targets).
- * Supports swipe gestures to navigate between steps.
+ * Mobile-friendly bottom navigation version of the stepper: a segmented
+ * progress track plus the current step's title and a swipe hint.
+ *
+ * Purely presentational. The swipe gesture it advertises is bound by the
+ * wizard layout to the whole fixed dock (this strip plus the Back/Next row),
+ * where swipe-forward runs the same registered forward action as "Next".
  */
 export function StepperMobile({
   currentStep,
-  onStepClick,
   className,
-}: StepperProps) {
+}: Pick<StepperProps, "currentStep" | "className">) {
   const [completedSteps] = useCompletedSteps();
   const prefersReducedMotion = useReducedMotion();
 
   const currentStepData = WIZARD_STEPS.find((s) => s.id === currentStep);
-  const highestCompleted = getHighestContiguousCompletedStep(completedSteps);
-
-  // Swipe gesture handler
-  const bind = useDrag(
-    ({ direction: [dx], velocity: [vx], active, movement: [mx] }) => {
-      // Only trigger on release with sufficient velocity or distance
-      if (!active && (Math.abs(vx) > 0.3 || Math.abs(mx) > 50)) {
-        if (dx > 0 && currentStep > 1) {
-          // Swipe right = go back
-          const prevStep = currentStep - 1;
-          if (completedSteps.includes(prevStep) || prevStep <= highestCompleted + 1) {
-            onStepClick?.(prevStep);
-          }
-        } else if (dx < 0 && currentStep < WIZARD_STEPS.length) {
-          // Swipe left = go forward
-          const nextStep = currentStep + 1;
-          if (completedSteps.includes(nextStep) || nextStep <= highestCompleted + 1) {
-            onStepClick?.(nextStep);
-          }
-        }
-      }
-    },
-    {
-      axis: "x",
-      filterTaps: true,
-      threshold: 10,
-      // Prevent the gesture library from calling preventDefault() on touch
-      // events, which breaks native scrolling and tap handling on Mobile Safari
-      preventScrollAxis: "y",
-      pointer: { touch: true },
-    }
-  );
 
   return (
-    <div {...bind()} className={cn("select-none", className)} style={{ touchAction: "pan-x pan-y" }}>
+    <div className={className}>
       {/* Segmented progress track: one segment per step. Thirteen 44px
           tap targets cannot fit in a phone-width dock (steps 10-13 were
           clipped off-screen), so on mobile the track is purely visual and
@@ -229,12 +210,12 @@ export function StepperMobile({
               key={step.id}
               className={cn(
                 "h-full flex-1 overflow-hidden rounded-full transition-colors duration-300",
-                showCompletedState ? "bg-[oklch(0.72_0.19_145)]" : "bg-muted"
+                showCompletedState ? "bg-green" : "bg-muted"
               )}
             >
               {isActive && (
                 <motion.div
-                  className="h-full w-full bg-gradient-to-r from-primary via-[oklch(0.7_0.2_330)] to-primary"
+                  className="h-full w-full bg-gradient-to-r from-primary via-magenta to-primary"
                   initial={prefersReducedMotion ? false : { scaleX: 0, originX: 0 }}
                   animate={{ scaleX: 1 }}
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}

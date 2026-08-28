@@ -127,7 +127,7 @@ export function GuideSection({
             <div className="flex-1 min-w-0">
               {title.startsWith('Phase ') ? (
                 <div className="flex flex-col gap-2">
-                  <span className="text-[#FF5500]/80 font-mono text-[0.65rem] sm:text-[0.75rem] uppercase tracking-[0.3em] font-bold flex items-center gap-3">
+                  <span className="text-[#FF5500] font-mono text-[0.75rem] uppercase tracking-[0.3em] font-bold flex items-center gap-3">
                     <span className="w-8 h-px bg-[#FF5500]/40" />
                     {title.split(':')[0]}
                   </span>
@@ -335,7 +335,7 @@ export function PromptBlock({
                   <Lightbulb className="h-3 w-3 text-[#FF5500]" />
                 </div>
                 <div>
-                  <span className="text-[0.65rem] font-bold text-[#FF5500]/50 uppercase tracking-widest block mb-1">Psychology</span>
+                  <span className="text-[0.65rem] font-bold text-[#FF5500] uppercase tracking-widest block mb-1">Psychology</span>
                   <p className="text-[0.9rem] text-zinc-400 font-light leading-relaxed italic">{whyItWorks}</p>
                 </div>
               </div>
@@ -368,7 +368,7 @@ export function DataTable({
             <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
             
             <div className="relative z-10 flex flex-col h-full">
-              <div className="text-[0.65rem] font-bold text-[#FF5500]/80 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+              <div className="text-[0.65rem] font-bold text-[#FF5500] uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.6)]" />
                 {headers[0]}
               </div>
@@ -753,7 +753,7 @@ export function OperatorCard({
               <Zap className="h-3 w-3" />
             </span>
             <div>
-              <span className="text-[#FF5500]/80 font-bold uppercase tracking-widest text-[0.65rem] block mb-1">Trigger</span>
+              <span className="text-[#FF5500] font-bold uppercase tracking-widest text-[0.65rem] block mb-1">Trigger</span>
               <span className="text-zinc-300 text-sm sm:text-[0.95rem] leading-relaxed font-light">{trigger}</span>
             </div>
           </div>

@@ -286,9 +286,9 @@ export function FlywheelDiagram() {
                   <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: currentStage.color }} />
                   Focused Context
                 </div>
-                <h5 className="text-4xl sm:text-5xl font-black text-white tracking-tight leading-none drop-shadow-md">
+                <h4 className="text-4xl sm:text-5xl font-black text-white tracking-tight leading-none drop-shadow-md">
                   {currentStage.label}
-                </h5>
+                </h4>
                 <p className="mt-2 text-[1.1rem] leading-relaxed text-zinc-300 font-light">
                   {currentStage.effect}
                 </p>

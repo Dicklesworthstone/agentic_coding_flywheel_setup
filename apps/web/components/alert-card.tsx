@@ -36,39 +36,37 @@ const variantStyles: Record<
   AlertVariant,
   { container: string; icon: string; title: string; defaultIcon: LucideIcon }
 > = {
+  // Colours go through the theme tokens (text-green, border-amber/30, …) so
+  // the light theme gets its re-tuned, darker accents instead of the dark-only
+  // oklch literals that sat at ~1.5:1 on a white card.
   info: {
-    container:
-      "border-[oklch(0.75_0.18_195/0.3)] bg-[oklch(0.75_0.18_195/0.08)]",
-    icon: "text-[oklch(0.75_0.18_195)]",
-    title: "text-[oklch(0.85_0.12_195)]",
+    container: "border-primary/30 bg-primary/10",
+    icon: "text-primary",
+    title: "text-primary",
     defaultIcon: Info,
   },
   success: {
-    container:
-      "border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.08)]",
-    icon: "text-[oklch(0.72_0.19_145)]",
-    title: "text-[oklch(0.82_0.12_145)]",
+    container: "border-green/30 bg-green/10",
+    icon: "text-green",
+    title: "text-green",
     defaultIcon: CheckCircle2,
   },
   warning: {
-    container:
-      "border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.08)]",
-    icon: "text-[oklch(0.78_0.16_75)]",
-    title: "text-[oklch(0.88_0.12_75)]",
+    container: "border-amber/30 bg-amber/10",
+    icon: "text-amber",
+    title: "text-amber",
     defaultIcon: AlertTriangle,
   },
   error: {
-    container:
-      "border-[oklch(0.65_0.22_25/0.3)] bg-[oklch(0.65_0.22_25/0.08)]",
-    icon: "text-[oklch(0.65_0.22_25)]",
-    title: "text-[oklch(0.75_0.15_25)]",
+    container: "border-destructive/30 bg-destructive/10",
+    icon: "text-destructive",
+    title: "text-destructive",
     defaultIcon: AlertCircle,
   },
   tip: {
-    container:
-      "border-[oklch(0.7_0.2_330/0.3)] bg-[oklch(0.7_0.2_330/0.08)]",
-    icon: "text-[oklch(0.7_0.2_330)]",
-    title: "text-[oklch(0.8_0.15_330)]",
+    container: "border-magenta/30 bg-magenta/10",
+    icon: "text-magenta",
+    title: "text-magenta",
     defaultIcon: Info,
   },
   magic: {
@@ -198,20 +196,25 @@ export function OutputPreview({
   return (
     <div
       className={cn(
-        "rounded-xl border border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.08)] p-4 backdrop-blur-sm",
+        "rounded-xl border border-green/30 bg-green/10 p-4 backdrop-blur-sm",
         className
       )}
     >
       {title && (
         <div className="mb-3 flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-[oklch(0.72_0.19_145)]" />
-          <span className="font-medium text-[oklch(0.82_0.12_145)]">
+          <CheckCircle2 className="h-5 w-5 text-green" />
+          <span className="font-medium text-green">
             {title}
           </span>
         </div>
       )}
+      {/* The terminal box is a deliberate dark island: it keeps its near-black
+          background in the light theme, so it opts into the `dark` token set
+          (globals.css `.light .dark`) and re-resolves `color`; otherwise the
+          token-coloured children (text-muted-foreground / text-foreground)
+          would render light-theme dark text on a dark box. */}
       <div
-        className="overflow-x-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="dark overflow-x-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         tabIndex={0}
       >
         {children}

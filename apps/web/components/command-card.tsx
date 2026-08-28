@@ -6,9 +6,11 @@ import { Check, Copy, Terminal, CheckCircle2, Server, Monitor } from "lucide-rea
 import { motion, AnimatePresence } from "@/components/motion";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { cn, safeGetItem, safeSetItem, copyTextToClipboard } from "@/lib/utils";
+import { CopyStatus } from "@/components/ui/code-block";
+import { cn, safeGetItem, safeSetItem } from "@/lib/utils";
 import { useDetectedOS, useUserOS } from "@/lib/userPreferences";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { useCopyFeedback } from "@/lib/hooks/useCopyFeedback";
 import { springs } from "@/components/motion";
 import { commandCopyAnalyticsProperties, trackInteraction } from "@/lib/analytics";
 
@@ -87,14 +89,14 @@ function setCompletionInStorage(key: string, completed: boolean): void {
 function LocationBadge({ location }: { location: "vps" | "local" }) {
   if (location === "vps") {
     return (
-      <div className="inline-flex items-center gap-1.5 rounded-md border border-[oklch(0.72_0.19_195/0.3)] bg-[oklch(0.72_0.19_195/0.12)] px-2 py-1 text-xs font-medium text-[oklch(0.72_0.19_195)]">
+      <div className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
         <Server className="h-3 w-3" aria-hidden="true" />
         <span>Run on VPS</span>
       </div>
     );
   }
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-md border border-[oklch(0.78_0.16_75/0.3)] bg-[oklch(0.78_0.16_75/0.12)] px-2 py-1 text-xs font-medium text-[oklch(0.78_0.16_75)]">
+    <div className="inline-flex items-center gap-1.5 rounded-md border border-amber/30 bg-amber/10 px-2 py-1 text-xs font-medium text-amber">
       <Monitor className="h-3 w-3" aria-hidden="true" />
       <span>Run on your computer</span>
     </div>
@@ -114,9 +116,13 @@ export function CommandCard({
   runLocation,
   className,
 }: CommandCardProps) {
-  const [copied, setCopied] = useState(false);
-  const [copyAnimation, setCopyAnimation] = useState(false);
-  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { state: copyState, copy } = useCopyFeedback();
+  const copied = copyState === "copied";
+  // The shimmer starts on click (while the clipboard write is pending) and
+  // stays until the "copied" confirmation resets; a failed copy ends it.
+  const [copyPending, setCopyPending] = useState(false);
+  const copyAnimation = copyPending || copied;
+  const codeRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
 
   const [storedOS] = useUserOS();
@@ -169,14 +175,6 @@ export function CommandCard({
     };
   }, [completionKey, queryClient]);
 
-  useEffect(() => {
-    return () => {
-      if (copyResetTimerRef.current) {
-        clearTimeout(copyResetTimerRef.current);
-      }
-    };
-  }, []);
-
   const completionMutation = useMutation({
     mutationFn: async (isChecked: boolean) => {
       if (completionKey) {
@@ -201,33 +199,20 @@ export function CommandCard({
     return command;
   })();
 
-  const scheduleCopyReset = useCallback(() => {
-    if (copyResetTimerRef.current) {
-      clearTimeout(copyResetTimerRef.current);
-    }
-    copyResetTimerRef.current = setTimeout(() => {
-      setCopied(false);
-      setCopyAnimation(false);
-      copyResetTimerRef.current = null;
-    }, 2000);
-  }, []);
-
   const handleCopy = useCallback(async () => {
-    setCopyAnimation(true);
-    const copiedOk = await copyTextToClipboard(displayCommand);
+    setCopyPending(true);
+    const copiedOk = await copy(displayCommand, { selectOnFailure: codeRef.current });
+    setCopyPending(false);
     if (!copiedOk) {
-      setCopyAnimation(false);
       return;
     }
-    setCopied(true);
     // Track copy event for analytics
     trackInteraction("copy", persistKey || "command-card", "command", {
       ...commandCopyAnalyticsProperties(displayCommand),
       run_location: runLocation,
       os,
     });
-    scheduleCopyReset();
-  }, [displayCommand, persistKey, runLocation, os, scheduleCopyReset]);
+  }, [copy, displayCommand, persistKey, runLocation, os]);
 
   const { mutate: setCompletion } = completionMutation;
   const handleCheckboxChange = useCallback(
@@ -241,8 +226,11 @@ export function CommandCard({
   return (
     <div
       className={cn(
-        "group overflow-hidden rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300",
-        completed && "border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.05)]",
+        // No backdrop-blur here: the card's bg-card/50 sits over an opaque
+        // page, and launch-onboarding mounts ~30 of these (one compositor
+        // layer each on mobile) for no visible gain.
+        "group overflow-hidden rounded-xl border border-border/50 bg-card/50 transition duration-300",
+        completed && "border-green/30 bg-green/5",
         !completed && "hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5",
         className
       )}
@@ -275,7 +263,7 @@ export function CommandCard({
             role="region"
             aria-label="Command text"
           >
-            <code className="whitespace-nowrap font-mono text-sm text-foreground">
+            <code ref={codeRef} className="whitespace-nowrap font-mono text-sm text-foreground">
               {displayCommand}
             </code>
           </div>
@@ -296,7 +284,7 @@ export function CommandCard({
             size="icon"
             className={cn(
               "h-[52px] w-14 rounded-none border-l border-border/30",
-              copied && "bg-[oklch(0.72_0.19_145/0.1)] text-[oklch(0.72_0.19_145)]"
+              copied && "bg-green/10 text-green"
             )}
             onClick={handleCopy}
             aria-label={copied ? "Copied!" : "Copy command"}
@@ -342,6 +330,10 @@ export function CommandCard({
         </AnimatePresence>
       </div>
 
+      {/* Announces "Copied to clipboard"; visible only when the clipboard
+          refused the write (the command text is then already selected). */}
+      <CopyStatus state={copyState} className="border-t border-border/30 px-4 py-2" />
+
       {/* Checkbox area. The whole row is the label so the 16px box gets a
           full-width, 44px-tall tap target on phones. */}
       {showCheckbox && (
@@ -350,7 +342,7 @@ export function CommandCard({
           className={cn(
             "flex min-h-[44px] cursor-pointer items-center gap-3 border-t border-border/30 px-4 py-3 text-sm transition-colors",
             completed
-              ? "bg-[oklch(0.72_0.19_145/0.05)] text-[oklch(0.72_0.19_145)]"
+              ? "bg-green/5 text-green"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
@@ -360,7 +352,7 @@ export function CommandCard({
             onCheckedChange={handleCheckboxChange}
             className={cn(
               "transition",
-              completed && "border-[oklch(0.72_0.19_145)] bg-[oklch(0.72_0.19_145)] text-[oklch(0.15_0.02_145)]"
+              completed && "border-green bg-green text-background"
             )}
           />
           {completed ? (
@@ -389,61 +381,47 @@ export function CodeBlock({
   language?: string;
   className?: string;
 }) {
-  const [copied, setCopied] = useState(false);
-  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (copyResetTimerRef.current) {
-        clearTimeout(copyResetTimerRef.current);
-      }
-    };
-  }, []);
-
-  const scheduleCopyReset = useCallback(() => {
-    if (copyResetTimerRef.current) {
-      clearTimeout(copyResetTimerRef.current);
-    }
-    copyResetTimerRef.current = setTimeout(() => {
-      setCopied(false);
-      copyResetTimerRef.current = null;
-    }, 2000);
-  }, []);
+  const { state: copyState, copy } = useCopyFeedback();
+  const copied = copyState === "copied";
+  const codeRef = useRef<HTMLElement | null>(null);
 
   const handleCopy = useCallback(async () => {
-    const copiedOk = await copyTextToClipboard(code);
+    const copiedOk = await copy(code, { selectOnFailure: codeRef.current });
     if (!copiedOk) {
       return;
     }
-    setCopied(true);
     // Track copy event for analytics
     trackInteraction("copy", `code-block-${language}`, "code-block", {
       code_length: code.length,
       language,
     });
-    scheduleCopyReset();
-  }, [code, language, scheduleCopyReset]);
+  }, [code, copy, language]);
 
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border border-border/50 bg-[oklch(0.08_0.015_260)]",
+        // Deliberate dark island: keeps its near-black background in the
+        // light theme, so it opts into the `dark` token set (globals.css
+        // `.light .dark`) and re-resolves `color`; otherwise the header's
+        // text-muted-foreground and the code's text-foreground would be
+        // light-theme dark text on a dark box.
+        "dark group relative overflow-hidden rounded-xl border border-border/50 bg-[oklch(0.08_0.015_260)] text-foreground",
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border/30 bg-muted/20 px-4 py-2">
+      <div className="flex items-center justify-between border-b border-border/30 bg-muted/20 px-4 py-1">
         <span className="font-mono text-xs text-muted-foreground">{language}</span>
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+          className="h-11 gap-1.5 px-3 text-xs text-muted-foreground hover:text-foreground"
           onClick={handleCopy}
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 text-[oklch(0.72_0.19_145)]" />
-              <span className="text-[oklch(0.72_0.19_145)]">Copied</span>
+              <Check className="h-3 w-3 text-green" />
+              <span className="text-green">Copied</span>
             </>
           ) : (
             <>
@@ -459,10 +437,12 @@ export function CodeBlock({
         className="overflow-x-auto p-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         tabIndex={0}
       >
-        <code className="font-mono text-sm leading-relaxed text-foreground">
+        <code ref={codeRef} className="font-mono text-sm leading-relaxed text-foreground">
           {code}
         </code>
       </pre>
+
+      <CopyStatus state={copyState} className="border-t border-border/30 px-4 py-2" />
     </div>
   );
 }
