@@ -763,9 +763,9 @@ export default function FlywheelPage() {
       <nav className="relative z-20 mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:py-6">
         <div className="flex items-center gap-4">
           <Button asChild variant="ghost" size="default" className="h-11 text-muted-foreground hover:text-foreground">
-            <Link href="/">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
+            <Link href="/" aria-label="Back to home">
+              <ArrowLeft className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Back</span>
             </Link>
           </Button>
         </div>
@@ -773,12 +773,13 @@ export default function FlywheelPage() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20 lg:h-9 lg:w-9">
             <Terminal className="h-4 w-4 text-primary lg:h-5 lg:w-5" />
           </div>
-          <span className="font-mono text-base font-bold tracking-tight lg:text-lg">Agent Flywheel</span>
+          <span className="whitespace-nowrap font-mono text-base font-bold tracking-tight lg:text-lg">Agent Flywheel</span>
         </div>
         <div className="flex items-center gap-4">
           <Button asChild size="default" variant="outline" className="h-11 border-primary/30 hover:bg-primary/10">
             <Link href="/wizard/os-selection">
-              Get Started
+              <span className="hidden sm:inline">Get Started</span>
+              <span className="sm:hidden">Start</span>
               <ChevronRight className="ml-1 h-4 w-4" />
             </Link>
           </Button>

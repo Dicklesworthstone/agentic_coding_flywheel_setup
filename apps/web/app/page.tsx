@@ -961,9 +961,9 @@ export default function HomePage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20">
             <Terminal className="h-5 w-5 text-primary" />
           </div>
-          <span className="font-mono text-lg font-bold tracking-tight">Agent Flywheel</span>
+          <span className="whitespace-nowrap font-mono text-base font-bold tracking-tight sm:text-lg">Agent Flywheel</span>
         </div>
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-1 sm:gap-4">
           {/* Mobile: icon-only buttons with 44px touch targets (Apple HIG) */}
           <a
             href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup"
@@ -991,10 +991,12 @@ export default function HomePage() {
             <Zap className="h-5 w-5 sm:h-4 sm:w-4" />
             <span className="hidden text-sm sm:inline">TL;DR</span>
           </Link>
-          <Button asChild size="sm" variant="outline" className="border-primary/30 hover:bg-primary/10">
+          {/* Hidden on phones: the hero's "Start the Wizard" CTA is already
+              above the fold there, and the header cannot fit brand + three
+              44px icon targets + a button at 320-390px without wrapping. */}
+          <Button asChild size="sm" variant="outline" className="hidden border-primary/30 hover:bg-primary/10 sm:inline-flex">
             <Link href="/wizard/os-selection">
-              <span className="hidden sm:inline">Get Started</span>
-              <span className="sm:hidden">Start</span>
+              Get Started
               <ChevronRight className="ml-1 h-4 w-4" />
             </Link>
           </Button>

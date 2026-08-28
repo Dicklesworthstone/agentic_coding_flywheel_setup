@@ -177,7 +177,7 @@ export default function WizardLayout({
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 pb-52 md:pb-8">
+        <main className="flex-1 pb-36 md:pb-8">
           {/* Mobile header */}
           <div className="sticky top-0 z-20 flex items-center justify-between border-b border-border/50 bg-background/80 px-4 py-3 backdrop-blur-sm md:hidden">
             <Link href="/" className="flex items-center gap-2">

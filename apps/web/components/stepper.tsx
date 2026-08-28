@@ -173,7 +173,6 @@ export function StepperMobile({
   const prefersReducedMotion = useReducedMotion();
 
   const currentStepData = WIZARD_STEPS.find((s) => s.id === currentStep);
-  const progress = (currentStep / WIZARD_STEPS.length) * 100;
   const highestCompleted = getHighestContiguousCompletedStep(completedSteps);
 
   // Swipe gesture handler
@@ -209,113 +208,60 @@ export function StepperMobile({
 
   return (
     <div {...bind()} className={cn("select-none", className)} style={{ touchAction: "pan-x pan-y" }}>
-      {/* Progress bar with animated gradient */}
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <motion.div
-          className="h-full bg-gradient-to-r from-primary via-[oklch(0.7_0.2_330)] to-primary"
-          initial={false}
-          animate={{ width: `${progress}%` }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          style={{ backgroundSize: "200% 100%" }}
-        />
-      </div>
-
-      {/* Touch-friendly step dots - 44px minimum touch targets */}
-      <div className="mt-3 flex items-center justify-center">
+      {/* Segmented progress track: one segment per step. Thirteen 44px
+          tap targets cannot fit in a phone-width dock (steps 10-13 were
+          clipped off-screen), so on mobile the track is purely visual and
+          navigation is Back/Next, swipe, or the desktop sidebar. */}
+      <div
+        className="flex h-1.5 w-full gap-1"
+        role="progressbar"
+        aria-valuemin={1}
+        aria-valuemax={WIZARD_STEPS.length}
+        aria-valuenow={currentStep}
+        aria-valuetext={`Step ${currentStep} of ${WIZARD_STEPS.length}`}
+      >
         {WIZARD_STEPS.map((step) => {
           const isActive = step.id === currentStep;
-          const isCompleted = completedSteps.includes(step.id);
-          const showCompletedState = isCompleted && !isActive;
-          // Must match canAccessWizardStep — see the desktop branch above.
-          const isClickable = step.id <= highestCompleted + 1;
-
+          const showCompletedState = completedSteps.includes(step.id) && !isActive;
           return (
-            <motion.button
+            <div
               key={step.id}
-              type="button"
-              onClick={isClickable && onStepClick ? () => onStepClick(step.id) : undefined}
-              disabled={!isClickable}
               className={cn(
-                "relative flex items-center justify-center touch-target",
-                isClickable && "cursor-pointer",
-                !isClickable && "cursor-not-allowed opacity-50"
+                "h-full flex-1 overflow-hidden rounded-full transition-colors duration-300",
+                showCompletedState ? "bg-[oklch(0.72_0.19_145)]" : "bg-muted"
               )}
-              style={{ minWidth: 44, minHeight: 44 }}
-              aria-label={`Go to step ${step.id}: ${step.title}`}
-              aria-current={isActive ? "step" : undefined}
-              whileTap={isClickable ? { scale: 0.9 } : undefined}
             >
-              {/* The visible dot */}
-              <motion.div
-                className={cn(
-                  "rounded-full transition-colors",
-                  showCompletedState && "bg-[oklch(0.72_0.19_145)]",
-                  isActive && "bg-primary",
-                  !isActive && !showCompletedState && "bg-muted-foreground/30"
-                )}
-                initial={false}
-                animate={{
-                  width: isActive ? 14 : 10,
-                  height: isActive ? 14 : 10,
-                }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-              />
-
-              {/* Active step pulse ring (respects reduced motion) */}
-              {isActive && !prefersReducedMotion && (
+              {isActive && (
                 <motion.div
-                  className="absolute rounded-full border-2 border-primary/50"
-                  initial={{ width: 14, height: 14, opacity: 0.8 }}
-                  animate={{
-                    width: [14, 28, 14],
-                    height: [14, 28, 14],
-                    opacity: [0.8, 0, 0.8],
-                  }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }}
+                  className="h-full w-full bg-gradient-to-r from-primary via-[oklch(0.7_0.2_330)] to-primary"
+                  initial={prefersReducedMotion ? false : { scaleX: 0, originX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 />
               )}
-
-              {/* Completed checkmark overlay */}
-              {showCompletedState && (
-                <motion.div
-                  className="absolute flex items-center justify-center"
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 500, damping: 25 }}
-                >
-                  <Check
-                    className="h-2.5 w-2.5 text-[oklch(0.15_0.02_145)]"
-                    strokeWidth={3}
-                  />
-                </motion.div>
-              )}
-            </motion.button>
+            </div>
           );
         })}
       </div>
 
-      {/* Current step label and swipe hint */}
+      {/* Current step label, step count, and swipe hint on one line */}
       {currentStepData && (
-        <div className="mt-2 text-center">
+        <p className="mt-2.5 flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
           <motion.span
             key={currentStepData.id}
-            className="text-sm font-medium text-foreground"
+            className="truncate text-sm font-medium text-foreground"
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 25 }}
           >
             {currentStepData.title}
           </motion.span>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Step {currentStep} of {WIZARD_STEPS.length}
+          <span className="shrink-0 whitespace-nowrap">
+            {currentStep}/{WIZARD_STEPS.length}
             <span className="mx-1.5 opacity-50">|</span>
             <span className="opacity-70">Swipe to navigate</span>
-          </p>
-        </div>
+          </span>
+        </p>
       )}
     </div>
   );
