@@ -51,6 +51,8 @@ function AnimatedTerminal() {
   const [visibleLines, setVisibleLines] = useState(0);
   const [cursorVisible, setCursorVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [isActive, setIsActive] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const prefersReducedMotion = useReducedMotion();
 
   // Detect mobile to simplify animations
@@ -63,7 +65,27 @@ function AnimatedTerminal() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
+  // The typing/cursor loops are pure decoration, so only tick while the
+  // terminal is actually on screen in a visible tab.
   useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    let inView = false;
+    const update = () => setIsActive(inView && document.visibilityState === "visible");
+    const observer = new IntersectionObserver(([entry]) => {
+      inView = entry.isIntersecting;
+      update();
+    });
+    observer.observe(el);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isActive) return;
     const interval = setInterval(() => {
       setVisibleLines((prev) => {
         if (prev >= TERMINAL_LINES.length) {
@@ -74,20 +96,22 @@ function AnimatedTerminal() {
     }, 800);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isActive]);
 
   useEffect(() => {
+    if (!isActive) return;
     const cursorInterval = setInterval(() => {
       setCursorVisible((prev) => !prev);
     }, 530);
     return () => clearInterval(cursorInterval);
-  }, []);
+  }, [isActive]);
 
   // On mobile or reduced motion, skip animations entirely
   const skipAnimations = prefersReducedMotion || isMobile;
 
   return (
     <motion.div
+      ref={rootRef}
       className="terminal-window shadow-2xl"
       initial={skipAnimations ? {} : { opacity: 0, scale: 0.95, y: 20 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}

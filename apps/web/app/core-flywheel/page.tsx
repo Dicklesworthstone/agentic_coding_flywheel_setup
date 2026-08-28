@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Sparkles, Rocket, ArrowRight, Shield, Bug, Search, ChevronDown } from "lucide-react";
 
@@ -201,11 +202,11 @@ export default function CoreFlywheelPage() {
             <SubSection title="Escalation Ladder">
               <P>When something feels wrong, use the smallest escalation that actually fits the problem:</P>
               <BulletList items={[
-                <><strong>Local code confusion</strong> — stay in code space and resolve it there</>,
-                <><strong>Weak or underspecified bead</strong> — step back into bead space and rewrite the bead</>,
-                <><strong>Wrong graph</strong> — fix the dependencies or add the missing bead</>,
-                <><strong>Missing plan work</strong> — step back into plan space and revise the markdown plan</>,
-                <><strong>Degraded agent</strong> — restart it with a fresh session</>,
+                <Fragment key="code"><strong>Local code confusion</strong> — stay in code space and resolve it there</Fragment>,
+                <Fragment key="bead"><strong>Weak or underspecified bead</strong> — step back into bead space and rewrite the bead</Fragment>,
+                <Fragment key="graph"><strong>Wrong graph</strong> — fix the dependencies or add the missing bead</Fragment>,
+                <Fragment key="plan"><strong>Missing plan work</strong> — step back into plan space and revise the markdown plan</Fragment>,
+                <Fragment key="agent"><strong>Degraded agent</strong> — restart it with a fresh session</Fragment>,
               ]} />
             </SubSection>
           </GuideSection>
@@ -340,10 +341,10 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
               <P>Now you are the operator. On roughly a 10-15 minute cadence, check on the swarm:</P>
 
               <NumberedList items={[
-                <>Run <code>bv --robot-triage</code> and check whether the top recommendation still makes sense.</>,
+                <Fragment key="triage">Run <code>bv --robot-triage</code> and check whether the top recommendation still makes sense.</Fragment>,
                 "Glance through Agent Mail threads — are agents making progress or stuck?",
                 "Look for beads stuck in in_progress without movement.",
-                <>If an agent seems confused after compaction, send: &quot;Reread AGENTS.md so it&apos;s still fresh in your mind.&quot;</>,
+                <Fragment key="reread">If an agent seems confused after compaction, send: &quot;Reread AGENTS.md so it&apos;s still fresh in your mind.&quot;</Fragment>,
                 "If an agent is truly degraded, kill it and start a fresh one.",
               ]} />
 
@@ -376,12 +377,12 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
 
             <SubSection title="What You Do">
               <BulletList items={[
-                <><strong>Create the plan and beads</strong> — this is where most of your time and thinking goes</>,
-                <><strong>Write a good AGENTS.md</strong> — this is the operating manual that makes everything else work</>,
-                <><strong>Launch agents with marching orders</strong> — the same generic prompt every time</>,
-                <><strong>Keep the bead graph honest</strong> — notice when a missing task or dependency must be added</>,
-                <><strong>Restart or redirect agents</strong> when they drift, get loopy, or lose context</>,
-                <><strong>Ask the hard question</strong> periodically (see below)</>,
+                <Fragment key="plan"><strong>Create the plan and beads</strong> — this is where most of your time and thinking goes</Fragment>,
+                <Fragment key="agents-md"><strong>Write a good AGENTS.md</strong> — this is the operating manual that makes everything else work</Fragment>,
+                <Fragment key="launch"><strong>Launch agents with marching orders</strong> — the same generic prompt every time</Fragment>,
+                <Fragment key="graph"><strong>Keep the bead graph honest</strong> — notice when a missing task or dependency must be added</Fragment>,
+                <Fragment key="restart"><strong>Restart or redirect agents</strong> when they drift, get loopy, or lose context</Fragment>,
+                <Fragment key="question"><strong>Ask the hard question</strong> periodically (see below)</Fragment>,
               ]} />
             </SubSection>
 
@@ -458,10 +459,10 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
             <P>At some point, the workflow stops feeling like extra ceremony and starts feeling like a <Hl>calmer control surface</Hl>:</P>
 
             <BulletList items={[
-              <><strong>Less duplicated work</strong>, because agents manage ownership and reservations automatically</>,
-              <><strong>Less &quot;what should I do next?&quot; drift</strong>, because bv keeps answering that question for the agents</>,
-              <><strong>Easier restart after context loss</strong>, because the work lives in beads and threads instead of only in chat history</>,
-              <><strong>Easier handoff</strong>, because any agent can read the bead, read the thread, and continue</>,
+              <Fragment key="dup"><strong>Less duplicated work</strong>, because agents manage ownership and reservations automatically</Fragment>,
+              <Fragment key="drift"><strong>Less &quot;what should I do next?&quot; drift</strong>, because bv keeps answering that question for the agents</Fragment>,
+              <Fragment key="restart"><strong>Easier restart after context loss</strong>, because the work lives in beads and threads instead of only in chat history</Fragment>,
+              <Fragment key="handoff"><strong>Easier handoff</strong>, because any agent can read the bead, read the thread, and continue</Fragment>,
             ]} />
 
             <P>That operator feeling is a good sign. It usually means the artifacts are carrying the work instead of your short-term memory.</P>
@@ -557,7 +558,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 "Synthesize them into one strong plan.",
                 "Tell an agent to create beads from the plan with dependencies.",
                 "Polish the beads 4-6 times with fresh review passes.",
-                <>Run <code>bv --robot-triage</code> to verify the graph makes sense.</>,
+                <Fragment key="triage">Run <code>bv --robot-triage</code> to verify the graph makes sense.</Fragment>,
                 "Launch 2-4 agents with the standard marching orders.",
                 "Tend the swarm. Check every 10-15 minutes.",
               ]} />
@@ -579,7 +580,7 @@ When you're not sure what to do next, use the bv tool mentioned in AGENTS.md to 
                 "Pick one real repo",
                 "Write one serious markdown plan",
                 "Tell an agent to create two real beads with one dependency",
-                <>Run <code>bv --robot-next</code> and check that the recommendation makes sense</>,
+                <Fragment key="next">Run <code>bv --robot-next</code> and check that the recommendation makes sense</Fragment>,
                 "Launch a second agent with the marching orders and watch them coordinate",
               ]} />
               <P>Those five steps are enough to make the core loop stop feeling theoretical.</P>

@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Sparkles, Rocket } from "lucide-react";
 
@@ -81,15 +82,15 @@ export default function CompleteGuidePage() {
             <P>It starts with you. You have an idea for a piece of software. Maybe a web app, maybe a CLI tool, maybe a complex system. Instead of opening an editor and starting to code, you do something that feels counterintuitive: you spend the vast majority of your time planning.</P>
 
             <NumberedList items={[
-              <><strong>You explain what you want to build</strong> to a frontier planning model such as {COMPLETE_GUIDE_MODELS.primaryPlanner} in {COMPLETE_GUIDE_MODELS.primaryPlannerSurface}. Your concept, your goals, the user workflows, why it matters. The model produces an initial markdown plan: a comprehensive design document for the entire system.</>,
-              <><strong>You ask competing models to create their own plans.</strong> {COMPLETE_GUIDE_MODELS.claudePlanner}, {COMPLETE_GUIDE_MODELS.googlePlanner}, and {COMPLETE_GUIDE_MODELS.xaiPlanner} each independently design the same project. They come up with surprisingly different approaches, each with unique strengths and blind spots.</>,
-              <><strong>You synthesize the best ideas from all plans into one.</strong> {COMPLETE_GUIDE_MODELS.primaryPlanner} analyzes the competing plans and produces a &quot;best of all worlds&quot; hybrid that blends the strongest ideas from every model into a single superior document.</>,
-              <><strong>You iterate relentlessly.</strong> Round after round of refinement, each time in a fresh conversation, until the suggestions become incremental. Plans created this way routinely reach 3,000 to 6,000+ lines. They are not slop. They are the result of countless iterations and feedback from many frontier models.</>,
-              <><strong>You convert the plan into beads.</strong> Beads are self-contained work units (like Jira or Linear tasks, but optimized for use by coding agents). Each bead carries its own context, reasoning, dependencies, and test obligations. A complex plan might produce 200-500 beads with a full dependency graph.</>,
-              <><strong>You polish the beads obsessively.</strong> &quot;Check your beads N times, implement once,&quot; where N is as many as you can stomach. Each polishing round finds things the previous round missed: duplicates, missing dependencies, incomplete context. You run this 4-6+ times until convergence.</>,
-              <><strong>You launch a swarm of agents.</strong> Claude Code, Codex, and Antigravity CLI sessions running in parallel, all in the same codebase. They coordinate through Agent Mail, choose work intelligently using bv&apos;s graph-theory routing, and execute beads systematically.</>,
-              <><strong>You tend the swarm, not the code.</strong> The human checks for stuck beads, rescues agents after context compaction, sends review prompts, and ensures flow quality. You are the clockwork deity. You designed the machine, set it running, and now you manage it.</>,
-              <><strong>Agents review, test, and harden.</strong> Self-review with fresh eyes, cross-agent review, random code exploration, testing coverage, UI/UX polish. Rounds and rounds until reviews come back clean.</>,
+              <Fragment key="explain-build"><strong>You explain what you want to build</strong> to a frontier planning model such as {COMPLETE_GUIDE_MODELS.primaryPlanner} in {COMPLETE_GUIDE_MODELS.primaryPlannerSurface}. Your concept, your goals, the user workflows, why it matters. The model produces an initial markdown plan: a comprehensive design document for the entire system.</Fragment>,
+              <Fragment key="competing-plans"><strong>You ask competing models to create their own plans.</strong> {COMPLETE_GUIDE_MODELS.claudePlanner}, {COMPLETE_GUIDE_MODELS.googlePlanner}, and {COMPLETE_GUIDE_MODELS.xaiPlanner} each independently design the same project. They come up with surprisingly different approaches, each with unique strengths and blind spots.</Fragment>,
+              <Fragment key="synthesize-plans"><strong>You synthesize the best ideas from all plans into one.</strong> {COMPLETE_GUIDE_MODELS.primaryPlanner} analyzes the competing plans and produces a &quot;best of all worlds&quot; hybrid that blends the strongest ideas from every model into a single superior document.</Fragment>,
+              <Fragment key="iterate-relentlessly"><strong>You iterate relentlessly.</strong> Round after round of refinement, each time in a fresh conversation, until the suggestions become incremental. Plans created this way routinely reach 3,000 to 6,000+ lines. They are not slop. They are the result of countless iterations and feedback from many frontier models.</Fragment>,
+              <Fragment key="convert-to-beads"><strong>You convert the plan into beads.</strong> Beads are self-contained work units (like Jira or Linear tasks, but optimized for use by coding agents). Each bead carries its own context, reasoning, dependencies, and test obligations. A complex plan might produce 200-500 beads with a full dependency graph.</Fragment>,
+              <Fragment key="polish-beads"><strong>You polish the beads obsessively.</strong> &quot;Check your beads N times, implement once,&quot; where N is as many as you can stomach. Each polishing round finds things the previous round missed: duplicates, missing dependencies, incomplete context. You run this 4-6+ times until convergence.</Fragment>,
+              <Fragment key="launch-swarm"><strong>You launch a swarm of agents.</strong> Claude Code, Codex, and Antigravity CLI sessions running in parallel, all in the same codebase. They coordinate through Agent Mail, choose work intelligently using bv&apos;s graph-theory routing, and execute beads systematically.</Fragment>,
+              <Fragment key="tend-swarm"><strong>You tend the swarm, not the code.</strong> The human checks for stuck beads, rescues agents after context compaction, sends review prompts, and ensures flow quality. You are the clockwork deity. You designed the machine, set it running, and now you manage it.</Fragment>,
+              <Fragment key="review-test-harden"><strong>Agents review, test, and harden.</strong> Self-review with fresh eyes, cross-agent review, random code exploration, testing coverage, UI/UX polish. Rounds and rounds until reviews come back clean.</Fragment>,
             ]} />
 
             <P>That is the whole movie. For the CASS Memory System, this process turned a 5,500-line markdown plan into 347 beads. Twenty-five agents produced 11,000 lines of working, tested code with 204 commits in about five hours. You can see the <a href="https://github.com/Dicklesworthstone/cass_memory_system/blob/main/docs/planning/PLAN_FOR_CASS_MEMORY_SYSTEM.md" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">actual plan</a>, the <a href="https://dicklesworthstone.github.io/cass-memory-system-agent-mailbox-viewer/viewer/" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">actual agent mail messages</a>, and the <a href="https://dicklesworthstone.github.io/beads_for_cass_memory_system/" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">actual beads</a> for yourself.</P>
@@ -351,11 +352,11 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               <BlockQuote>It works better if most of the decision making is made ahead of time during the planning phases and then is embedded in the beads.</BlockQuote>
 
               <BulletList items={[
-                <><strong>Self-contained:</strong> Beads must be so detailed that you never need to refer back to the original markdown plan. Every piece of context, reasoning, and intent should be embedded.</>,
-                <><strong>Rich content:</strong> Beads can and should contain long descriptions with embedded markdown. They don&apos;t need to be short bullet-point entries. You can embed snippets of markdown inside the beads and they often do; JSONL is just how they serialize.</>,
-                <><strong>Complete coverage:</strong> Everything from the markdown plan must be embedded into the beads. Lose nothing in the conversion.</>,
-                <><strong>Explicit dependencies:</strong> The dependency graph must be correct; this is what enables bv to compute the optimal execution order.</>,
-                <><strong>Include testing:</strong> Beads should include comprehensive unit tests and e2e test scripts with great, detailed logging.</>,
+                <Fragment key="self-contained"><strong>Self-contained:</strong> Beads must be so detailed that you never need to refer back to the original markdown plan. Every piece of context, reasoning, and intent should be embedded.</Fragment>,
+                <Fragment key="rich-content"><strong>Rich content:</strong> Beads can and should contain long descriptions with embedded markdown. They don&apos;t need to be short bullet-point entries. You can embed snippets of markdown inside the beads and they often do; JSONL is just how they serialize.</Fragment>,
+                <Fragment key="complete-coverage"><strong>Complete coverage:</strong> Everything from the markdown plan must be embedded into the beads. Lose nothing in the conversion.</Fragment>,
+                <Fragment key="explicit-dependencies"><strong>Explicit dependencies:</strong> The dependency graph must be correct; this is what enables bv to compute the optimal execution order.</Fragment>,
+                <Fragment key="include-testing"><strong>Include testing:</strong> Beads should include comprehensive unit tests and e2e test scripts with great, detailed logging.</Fragment>,
               ]} />
 
               <TipBox variant="info">
@@ -367,9 +368,9 @@ For each proposed change, give me your detailed analysis and rationale/justifica
               <P>To make this concrete, imagine a small internal web app called &quot;Atlas Notes&quot; for uploading and searching team notes. Instead of one vague task like &quot;build Atlas Notes,&quot; the plan becomes many self-contained beads:</P>
 
               <BulletList items={[
-                <><strong>br-101 Upload and Parse Pipeline:</strong> Describes accepted file formats, frontmatter parsing expectations, where failures are logged, what happens on malformed input, and which unit and e2e tests prove the pipeline works.</>,
-                <><strong>br-102 Search Index and Query UX:</strong> Carries the search behavior, indexing rules, latency expectations, filter semantics, empty-state UX, and test coverage for keyword/tag/date combinations.</>,
-                <><strong>br-103 Ingestion Failure Dashboard:</strong> Includes the admin workflow, permission boundaries, retry logic, logging expectations, and the exact reasons this dashboard matters for operational trust.</>,
+                <Fragment key="br-101"><strong>br-101 Upload and Parse Pipeline:</strong> Describes accepted file formats, frontmatter parsing expectations, where failures are logged, what happens on malformed input, and which unit and e2e tests prove the pipeline works.</Fragment>,
+                <Fragment key="br-102"><strong>br-102 Search Index and Query UX:</strong> Carries the search behavior, indexing rules, latency expectations, filter semantics, empty-state UX, and test coverage for keyword/tag/date combinations.</Fragment>,
+                <Fragment key="br-103"><strong>br-103 Ingestion Failure Dashboard:</strong> Includes the admin workflow, permission boundaries, retry logic, logging expectations, and the exact reasons this dashboard matters for operational trust.</Fragment>,
               ]} />
 
               <P>The titles are not the important part. What matters is that each bead is rich enough that a fresh agent can open it and immediately understand what correct implementation looks like, why it matters, and how to verify it.</P>
@@ -482,12 +483,12 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
             <P>The full planning pipeline (Phases 1-5) is for new projects built from scratch. For existing projects that need new features, the <strong>Idea-Wizard</strong> is a formalized 6-phase pipeline:</P>
 
             <NumberedList items={[
-              <><strong>Ground in reality.</strong> Read AGENTS.md and list all existing beads (<code>br list --json</code>). This prevents creating duplicates.</>,
-              <><strong>Generate 30, winnow to 5.</strong> The agent brainstorms 30 ideas for improvements, then self-selects the best 5 with justification.</>,
-              <><strong>Expand to 15.</strong> Prompt: &quot;ok and your next best 10 and why.&quot; The agent produces ideas 6-15, checking each against existing beads for novelty.</>,
-              <><strong>Human review.</strong> You review the 15 ideas and select which to pursue.</>,
-              <><strong>Turn into beads.</strong> Selected ideas become beads with full descriptions, dependencies, and priority levels.</>,
-              <><strong>Refine 4-5 times.</strong> The same polishing loop as above. Single-pass beads are never optimal.</>,
+              <Fragment key="ground-in-reality"><strong>Ground in reality.</strong> Read AGENTS.md and list all existing beads (<code>br list --json</code>). This prevents creating duplicates.</Fragment>,
+              <Fragment key="generate-30-winnow-5"><strong>Generate 30, winnow to 5.</strong> The agent brainstorms 30 ideas for improvements, then self-selects the best 5 with justification.</Fragment>,
+              <Fragment key="expand-to-15"><strong>Expand to 15.</strong> Prompt: &quot;ok and your next best 10 and why.&quot; The agent produces ideas 6-15, checking each against existing beads for novelty.</Fragment>,
+              <Fragment key="human-review"><strong>Human review.</strong> You review the 15 ideas and select which to pursue.</Fragment>,
+              <Fragment key="turn-into-beads"><strong>Turn into beads.</strong> Selected ideas become beads with full descriptions, dependencies, and priority levels.</Fragment>,
+              <Fragment key="refine-4-5-times"><strong>Refine 4-5 times.</strong> The same polishing loop as above. Single-pass beads are never optimal.</Fragment>,
             ]} />
 
             <PromptBlock
@@ -628,11 +629,11 @@ Also, make sure that as part of these beads, we include comprehensive unit tests
               <P>Building your own agent coordination from scratch is full of footguns that Agent Mail was designed to sidestep:</P>
 
               <BulletList items={[
-                <><strong>No broadcast-to-all default.</strong> Agents are lazy and will only use broadcast mode, spamming every agent with mostly irrelevant information. It&apos;s like if your email system defaulted to reply-all every time. That burns precious context.</>,
-                <><strong>Good MCP ergonomics.</strong> It takes a huge amount of careful iteration to get the API surface right so agents use it reliably without wasting tokens.</>,
-                <><strong>No git worktrees.</strong> Worktrees demolish development velocity and create reconciliation debt when agents diverge. Working in one shared space surfaces conflicts immediately. All agents commit directly to <code>main</code>.</>,
-                <><strong>Advisory file reservations.</strong> Agents call dibs temporarily on files, but it&apos;s not rigidly enforced, and reservations expire. Agents can reclaim files that haven&apos;t been touched recently. Rigid locks held by dead agents block everyone else. Advisory reservations with TTL expiry degrade gracefully.</>,
-                <><strong>Semi-persistent identity.</strong> Agent Mail generates whimsical names like &quot;ScarletCave&quot; and &quot;CoralBadger&quot; — meaningful enough for coordination, disposable enough that losing one doesn&apos;t corrupt the system. No agent&apos;s identity is load-bearing.</>,
+                <Fragment key="no-broadcast-default"><strong>No broadcast-to-all default.</strong> Agents are lazy and will only use broadcast mode, spamming every agent with mostly irrelevant information. It&apos;s like if your email system defaulted to reply-all every time. That burns precious context.</Fragment>,
+                <Fragment key="mcp-ergonomics"><strong>Good MCP ergonomics.</strong> It takes a huge amount of careful iteration to get the API surface right so agents use it reliably without wasting tokens.</Fragment>,
+                <Fragment key="no-worktrees"><strong>No git worktrees.</strong> Worktrees demolish development velocity and create reconciliation debt when agents diverge. Working in one shared space surfaces conflicts immediately. All agents commit directly to <code>main</code>.</Fragment>,
+                <Fragment key="advisory-reservations"><strong>Advisory file reservations.</strong> Agents call dibs temporarily on files, but it&apos;s not rigidly enforced, and reservations expire. Agents can reclaim files that haven&apos;t been touched recently. Rigid locks held by dead agents block everyone else. Advisory reservations with TTL expiry degrade gracefully.</Fragment>,
+                <Fragment key="semi-persistent-identity"><strong>Semi-persistent identity.</strong> Agent Mail generates whimsical names like &quot;ScarletCave&quot; and &quot;CoralBadger&quot; — meaningful enough for coordination, disposable enough that losing one doesn&apos;t corrupt the system. No agent&apos;s identity is load-bearing.</Fragment>,
               ]} />
 
               <P>Before editing files, agents reserve them via Agent Mail:</P>
@@ -705,14 +706,14 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`} />
               <P>Every AGENTS.md should include these core rules:</P>
 
               <NumberedList items={[
-                <><strong>Rule 0, The Override Prerogative:</strong> The human&apos;s instructions override everything.</>,
-                <><strong>Rule 1, No File Deletion:</strong> Never delete files without explicit permission.</>,
-                <><strong>No destructive git commands:</strong> <code>git reset --hard</code>, <code>git clean -fd</code>, <code>rm -rf</code> are absolutely forbidden.</>,
-                <><strong>Branch policy:</strong> All work happens on <code>main</code>, never <code>master</code>.</>,
-                <><strong>No script-based code changes:</strong> Always make code changes manually.</>,
-                <><strong>No file proliferation:</strong> No <code>mainV2.rs</code> or <code>main_improved.rs</code> variants.</>,
-                <><strong>Compiler checks after changes:</strong> Always verify no errors were introduced.</>,
-                <><strong>Multi-agent awareness:</strong> Never stash, revert, or overwrite other agents&apos; changes.</>,
+                <Fragment key="rule-0-override"><strong>Rule 0, The Override Prerogative:</strong> The human&apos;s instructions override everything.</Fragment>,
+                <Fragment key="rule-1-no-deletion"><strong>Rule 1, No File Deletion:</strong> Never delete files without explicit permission.</Fragment>,
+                <Fragment key="no-destructive-git"><strong>No destructive git commands:</strong> <code>git reset --hard</code>, <code>git clean -fd</code>, <code>rm -rf</code> are absolutely forbidden.</Fragment>,
+                <Fragment key="branch-policy"><strong>Branch policy:</strong> All work happens on <code>main</code>, never <code>master</code>.</Fragment>,
+                <Fragment key="no-script-changes"><strong>No script-based code changes:</strong> Always make code changes manually.</Fragment>,
+                <Fragment key="no-file-proliferation"><strong>No file proliferation:</strong> No <code>mainV2.rs</code> or <code>main_improved.rs</code> variants.</Fragment>,
+                <Fragment key="compiler-checks"><strong>Compiler checks after changes:</strong> Always verify no errors were introduced.</Fragment>,
+                <Fragment key="multi-agent-awareness"><strong>Multi-agent awareness:</strong> Never stash, revert, or overwrite other agents&apos; changes.</Fragment>,
               ]} />
 
               <P>More content in AGENTS.md means more frequent compactions, but it saves time and avoids mistakes by giving agents all the context upfront. This tradeoff is worth making.</P>
@@ -779,9 +780,9 @@ bv --robot-triage --robot-triage-by-label    # Group by domain`} />
               <P>This confuses people when they first see the prompt library. The prompts say things like &quot;check over each bead super carefully&quot; rather than &quot;check over each bead in the authentication module for SQL injection risks.&quot; That generality is the point. The specificity lives in three places the agent already has access to:</P>
 
               <NumberedList items={[
-                <><strong>The beads themselves</strong> contain detailed descriptions, context, and rationale embedded during the plan-to-bead conversion.</>,
-                <><strong>AGENTS.md</strong> contains project-specific rules, conventions, and tool documentation.</>,
-                <><strong>The codebase</strong> contains the actual implementation context.</>,
+                <Fragment key="beads-themselves"><strong>The beads themselves</strong> contain detailed descriptions, context, and rationale embedded during the plan-to-bead conversion.</Fragment>,
+                <Fragment key="agents-md"><strong>AGENTS.md</strong> contains project-specific rules, conventions, and tool documentation.</Fragment>,
+                <Fragment key="codebase"><strong>The codebase</strong> contains the actual implementation context.</Fragment>,
               ]} />
 
               <P>The prompts are the reusable scaffolding that directs the agent&apos;s attention. The beads and AGENTS.md supply the project-specific substance. This separation means you can use the exact same prompt library across every project without modification. The prompt &quot;reread AGENTS.md so it&apos;s still fresh in your mind&quot; followed by &quot;use bv to find the most impactful bead to work on next&quot; works identically whether you are building a CLI tool, a web app, or a protocol library, because the specifics come from the project&apos;s own artifacts, not from the prompt.</P>
@@ -833,7 +834,7 @@ acfs swarm simulate`} />
               "Run agents in separate tabs using WezTerm and its built-in mux, often across remote machines",
               "Trigger your most common prompts from a Stream Deck with the prompts preconfigured",
               "Keep a large prompt file open in Zed and paste rarer prompts manually",
-              <>In Claude Code, use the project-specific <code>Ctrl-r</code> prompt history search when you want to recall something you used recently</>,
+              <Fragment key="ctrl-r-history">In Claude Code, use the project-specific <code>Ctrl-r</code> prompt history search when you want to recall something you used recently</Fragment>,
             ]} />
 
             <P>There is no single correct operator interface. NTM is one good cockpit. WezTerm tabs plus mux is another. <a href="https://github.com/Dicklesworthstone/frankenterm" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">FrankenTerm</a>, built on WezTerm, is aimed explicitly at this style of multi-agent workflow. The important thing is that you can launch agents, get prompts into them quickly, monitor them, and keep the coordination layer (AGENTS.md, Agent Mail, beads, bv) intact.</P>
@@ -841,9 +842,9 @@ acfs swarm simulate`} />
             <P>For concrete setup notes on these operator environments:</P>
 
             <BulletList items={[
-              <><a href="https://github.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts#wezterm-persistent-remote-sessions" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">WezTerm persistent remote sessions</a>: its native mux supports persistent remote sessions that survive disconnects, sleep, or reboot while preserving native scrollback and text selection</>,
-              <><a href="https://github.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts#ghostty-terminfo-for-remote-machines" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">Ghostty terminfo for remote machines</a>: Ghostty is a good terminal frontend in its own right, whether used directly or paired with another mux such as Zellij</>,
-              <><a href="https://github.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts?tab=readme-ov-file#host-aware-color-themes" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">Host-aware color themes for Ghostty and WezTerm</a>: different color schemes per host make it visually obvious which machine you are connected to</>,
+              <Fragment key="wezterm-sessions"><a href="https://github.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts#wezterm-persistent-remote-sessions" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">WezTerm persistent remote sessions</a>: its native mux supports persistent remote sessions that survive disconnects, sleep, or reboot while preserving native scrollback and text selection</Fragment>,
+              <Fragment key="ghostty-terminfo"><a href="https://github.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts#ghostty-terminfo-for-remote-machines" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">Ghostty terminfo for remote machines</a>: Ghostty is a good terminal frontend in its own right, whether used directly or paired with another mux such as Zellij</Fragment>,
+              <Fragment key="host-aware-themes"><a href="https://github.com/Dicklesworthstone/misc_coding_agent_tips_and_scripts?tab=readme-ov-file#host-aware-color-themes" target="_blank" rel="noopener noreferrer" className="text-[#FF5500] hover:text-[#FFBD2E] underline underline-offset-4 decoration-[#FF5500]/30 hover:decoration-[#FFBD2E]/50 transition-colors">Host-aware color themes for Ghostty and WezTerm</a>: different color schemes per host make it visually obvious which machine you are connected to</Fragment>,
             ]} />
 
             <P>Give each agent these marching orders:</P>
@@ -871,7 +872,7 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
                 "You send the marching-orders prompt to each agent (staggered, not all at once).",
                 "Each agent reads AGENTS.md and the repo docs, inspects the codebase, and joins Agent Mail.",
                 "Each agent checks who else is active, acknowledges waiting messages, and learns the bead-thread naming conventions.",
-                <>Each agent uses <code>bv --robot-triage</code> and <code>br ready --json</code> to choose a bead.</>,
+                <Fragment key="choose-bead">Each agent uses <code>bv --robot-triage</code> and <code>br ready --json</code> to choose a bead.</Fragment>,
                 "Before editing, the agent reserves the relevant file surface and announces the claim in the matching br-### thread.",
                 "Only then does the agent start coding, reviewing, or testing.",
               ]} />
@@ -919,12 +920,12 @@ When a Rust build or test is needed, offload it with rch (for example, rch exec 
               <P>On roughly a 10-30 minute cadence:</P>
 
               <NumberedList items={[
-                <><strong>Check bead progress.</strong> Use <code>br list --status in_progress --json</code> or <code>bv --robot-triage</code>. Are agents making steady progress? Are any beads stuck?</>,
-                <><strong>Handle compactions.</strong> When you see an agent acting confused, send: &quot;Reread AGENTS.md so it&apos;s still fresh in your mind.&quot; This is the single most common intervention. It takes 5 seconds.</>,
-                <><strong>Run periodic reviews.</strong> Pick an agent and send the &quot;fresh eyes&quot; review prompt. This catches bugs before they compound.</>,
-                <><strong>Manage rate limits.</strong> When an agent gets rate-limited, switch its account with <code>caam activate claude backup-2</code> or start a new agent.</>,
-                <><strong>Commit periodically.</strong> Every 1-2 hours, designate one agent for the organized commit prompt.</>,
-                <><strong>Handle surprises.</strong> Create new beads for unanticipated issues, or if it&apos;s plan-level, update the plan and create new beads.</>,
+                <Fragment key="check-progress"><strong>Check bead progress.</strong> Use <code>br list --status in_progress --json</code> or <code>bv --robot-triage</code>. Are agents making steady progress? Are any beads stuck?</Fragment>,
+                <Fragment key="handle-compactions"><strong>Handle compactions.</strong> When you see an agent acting confused, send: &quot;Reread AGENTS.md so it&apos;s still fresh in your mind.&quot; This is the single most common intervention. It takes 5 seconds.</Fragment>,
+                <Fragment key="periodic-reviews"><strong>Run periodic reviews.</strong> Pick an agent and send the &quot;fresh eyes&quot; review prompt. This catches bugs before they compound.</Fragment>,
+                <Fragment key="rate-limits"><strong>Manage rate limits.</strong> When an agent gets rate-limited, switch its account with <code>caam activate claude backup-2</code> or start a new agent.</Fragment>,
+                <Fragment key="commit-periodically"><strong>Commit periodically.</strong> Every 1-2 hours, designate one agent for the organized commit prompt.</Fragment>,
+                <Fragment key="handle-surprises"><strong>Handle surprises.</strong> Create new beads for unanticipated issues, or if it&apos;s plan-level, update the plan and create new beads.</Fragment>,
               ]} />
 
               <BlockQuote>YOU are the bottleneck. Be the clockwork deity to your agent swarms: design a beautiful and intricate machine, set it running, and then move on to the next project. By the time you come back to the first one, you should have huge chunks of work already done and ready.</BlockQuote>
@@ -995,10 +996,10 @@ caam activate claude backup-2   # Switch instantly`} />
             <P>Each review should answer four questions:</P>
 
             <NumberedList items={[
-              <><strong>Is the implementation correct?</strong> Does it do what the bead description says it should?</>,
-              <><strong>Are there edge cases?</strong> Empty inputs, concurrent access, error paths, boundary conditions.</>,
-              <><strong>Are there similar issues elsewhere?</strong> If you find a bug, search for the same pattern in other files.</>,
-              <><strong>Should the approach be different?</strong> Sometimes the implementation is correct but there is a simpler or more robust way.</>,
+              <Fragment key="implementation-correct"><strong>Is the implementation correct?</strong> Does it do what the bead description says it should?</Fragment>,
+              <Fragment key="edge-cases"><strong>Are there edge cases?</strong> Empty inputs, concurrent access, error paths, boundary conditions.</Fragment>,
+              <Fragment key="similar-issues-elsewhere"><strong>Are there similar issues elsewhere?</strong> If you find a bug, search for the same pattern in other files.</Fragment>,
+              <Fragment key="different-approach"><strong>Should the approach be different?</strong> Sometimes the implementation is correct but there is a simpler or more robust way.</Fragment>,
             ]} />
 
             <P>When reviews come back clean, have them move on to the next bead:</P>
@@ -1162,12 +1163,12 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
               <P>When ending a work session, agents must complete every step. Work is NOT complete until <code>git push</code> succeeds. Unpushed work is stranded locally and invisible to every other agent.</P>
 
               <NumberedList items={[
-                <><strong>File issues for remaining work.</strong> Create beads for anything that needs follow-up.</>,
-                <><strong>Run quality gates.</strong> Tests, linters, builds (if code changed).</>,
-                <><strong>Update issue status.</strong> Close finished work, update in-progress items.</>,
-                <><strong>Sync beads.</strong> <code>br sync --flush-only</code> to export to JSONL, then <code>git add .beads/</code>.</>,
-                <><strong>Commit and push.</strong> <code>git pull --rebase &amp;&amp; git add &lt;files&gt; &amp;&amp; git commit &amp;&amp; git push</code>.</>,
-                <><strong>Verify.</strong> <code>git status</code> must show &quot;up to date with origin.&quot;</>,
+                <Fragment key="file-issues"><strong>File issues for remaining work.</strong> Create beads for anything that needs follow-up.</Fragment>,
+                <Fragment key="quality-gates"><strong>Run quality gates.</strong> Tests, linters, builds (if code changed).</Fragment>,
+                <Fragment key="issue-status"><strong>Update issue status.</strong> Close finished work, update in-progress items.</Fragment>,
+                <Fragment key="sync-beads"><strong>Sync beads.</strong> <code>br sync --flush-only</code> to export to JSONL, then <code>git add .beads/</code>.</Fragment>,
+                <Fragment key="commit-push"><strong>Commit and push.</strong> <code>git pull --rebase &amp;&amp; git add &lt;files&gt; &amp;&amp; git commit &amp;&amp; git push</code>.</Fragment>,
+                <Fragment key="verify"><strong>Verify.</strong> <code>git status</code> must show &quot;up to date with origin.&quot;</Fragment>,
               ]} />
 
               <P>For the Atlas Notes example, &quot;done for now&quot; would not mean &quot;the upload page appears.&quot; It would mean: the upload, parse, search, and admin-review workflows all work end to end; the key beads are closed and remaining polish ideas exist as new beads; tests cover the critical user journeys and known failure paths; UBS and compiler/lint checks are clean; commits and pushes are complete; and the next session can restart from beads, AGENTS.md, and Agent Mail threads rather than from human memory.</P>
@@ -1236,11 +1237,11 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
               <P>For beginners who find the full system overwhelming:</P>
 
               <NumberedList items={[
-                <><strong>Start with:</strong> Agent Mail + Beads (br) + Beads Viewer (bv) — this core trio captures most of the value</>,
-                <><strong>Then add:</strong> UBS for bug hunting</>,
-                <><strong>Then add:</strong> DCG for destructive command protection</>,
-                <><strong>Then add:</strong> CASS for session history</>,
-                <><strong>Then add:</strong> CM (CASS Memory) for codifying lessons into procedural memory</>,
+                <Fragment key="start-core-trio"><strong>Start with:</strong> Agent Mail + Beads (br) + Beads Viewer (bv) — this core trio captures most of the value</Fragment>,
+                <Fragment key="add-ubs"><strong>Then add:</strong> UBS for bug hunting</Fragment>,
+                <Fragment key="add-dcg"><strong>Then add:</strong> DCG for destructive command protection</Fragment>,
+                <Fragment key="add-cass"><strong>Then add:</strong> CASS for session history</Fragment>,
+                <Fragment key="add-cm"><strong>Then add:</strong> CM (CASS Memory) for codifying lessons into procedural memory</Fragment>,
               ]} />
 
               <TipBox variant="warning">
@@ -1262,20 +1263,20 @@ And you can't do this sort of thing using regex or a script, you MUST manually r
 
             <SubSection title="Patterns That Work">
               <BulletList items={[
-                <><strong>The &quot;30 to 5 to 15&quot; funnel:</strong> When generating ideas, having agents brainstorm 30 then winnow to 5 produces much better results than asking for 5 directly. The winnowing forces critical evaluation.</>,
-                <><strong>Parallel subagents for bulk bead operations:</strong> Creating dozens of beads is faster when dispatched to parallel subagents, each handling a subset.</>,
-                <><strong>Staggered agent starts:</strong> Starting agents 30-60 seconds apart avoids the thundering herd problem.</>,
-                <><strong>One agent for git operations:</strong> Designating one agent to handle all commits prevents merge conflicts and produces coherent commit messages.</>,
+                <Fragment key="funnel"><strong>The &quot;30 to 5 to 15&quot; funnel:</strong> When generating ideas, having agents brainstorm 30 then winnow to 5 produces much better results than asking for 5 directly. The winnowing forces critical evaluation.</Fragment>,
+                <Fragment key="parallel-subagents"><strong>Parallel subagents for bulk bead operations:</strong> Creating dozens of beads is faster when dispatched to parallel subagents, each handling a subset.</Fragment>,
+                <Fragment key="staggered-starts"><strong>Staggered agent starts:</strong> Starting agents 30-60 seconds apart avoids the thundering herd problem.</Fragment>,
+                <Fragment key="one-git-agent"><strong>One agent for git operations:</strong> Designating one agent to handle all commits prevents merge conflicts and produces coherent commit messages.</Fragment>,
               ]} />
             </SubSection>
 
             <SubSection title="Anti-Patterns to Avoid">
               <BulletList items={[
-                <><strong>Single-pass beads:</strong> First-draft beads are never optimal. Always do 4-5 polishing passes minimum.</>,
-                <><strong>Skipping plan-to-bead validation:</strong> Not cross-referencing beads against the plan leads to missing features discovered only during implementation.</>,
-                <><strong>Communication purgatory:</strong> Agents spending more time messaging each other than coding. Be proactive about starting work.</>,
-                <><strong>Holding reservations too long:</strong> File reservations with long TTLs block other agents unnecessarily. Reserve, edit, commit, release.</>,
-                <><strong>Not re-reading AGENTS.md after compaction:</strong> Context compaction loses nuances. The re-read is mandatory, not optional.</>,
+                <Fragment key="single-pass-beads"><strong>Single-pass beads:</strong> First-draft beads are never optimal. Always do 4-5 polishing passes minimum.</Fragment>,
+                <Fragment key="skipping-validation"><strong>Skipping plan-to-bead validation:</strong> Not cross-referencing beads against the plan leads to missing features discovered only during implementation.</Fragment>,
+                <Fragment key="communication-purgatory"><strong>Communication purgatory:</strong> Agents spending more time messaging each other than coding. Be proactive about starting work.</Fragment>,
+                <Fragment key="long-reservations"><strong>Holding reservations too long:</strong> File reservations with long TTLs block other agents unnecessarily. Reserve, edit, commit, release.</Fragment>,
+                <Fragment key="no-reread-agents-md"><strong>Not re-reading AGENTS.md after compaction:</strong> Context compaction loses nuances. The re-read is mandatory, not optional.</Fragment>,
               ]} />
             </SubSection>
 
@@ -1352,10 +1353,10 @@ alias gmi='agy-locked'  # legacy shortcut now launches agy`} />
             <P>It behaves like a flywheel rather than a checklist because each cycle makes the next one better:</P>
 
             <BulletList items={[
-              <><strong>Planning quality compounds</strong> because you keep reusing prompts, patterns, and reasoning structures that CASS proves actually worked.</>,
-              <><strong>Execution quality compounds</strong> because better beads make swarm behavior more deterministic and less dependent on human improvisation.</>,
-              <><strong>Tool quality compounds</strong> because agents use the tools, complain about them, and then help improve them.</>,
-              <><strong>Memory compounds</strong> because the results of one swarm, captured by CASS session search, become training data, rituals, and infrastructure for the next one.</>,
+              <Fragment key="planning-compounds"><strong>Planning quality compounds</strong> because you keep reusing prompts, patterns, and reasoning structures that CASS proves actually worked.</Fragment>,
+              <Fragment key="execution-compounds"><strong>Execution quality compounds</strong> because better beads make swarm behavior more deterministic and less dependent on human improvisation.</Fragment>,
+              <Fragment key="tool-compounds"><strong>Tool quality compounds</strong> because agents use the tools, complain about them, and then help improve them.</Fragment>,
+              <Fragment key="memory-compounds"><strong>Memory compounds</strong> because the results of one swarm, captured by CASS session search, become training data, rituals, and infrastructure for the next one.</Fragment>,
             ]} />
 
             <SubSection title="How the Compounding Actually Works">
@@ -1436,15 +1437,15 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
 
             <SubSection title="The Kernel: 9 Invariants">
               <NumberedList items={[
-                <><strong>Global reasoning belongs in plan space.</strong> Do the hardest architectural and product reasoning while the whole project still fits in context.</>,
-                <><strong>The markdown plan must be comprehensive before coding starts.</strong> Skeleton-first coding throws away the main advantage of frontier models.</>,
-                <><strong>Plan-to-beads is a distinct translation problem.</strong> A good plan does not automatically produce a good bead graph.</>,
-                <><strong>Beads are the execution substrate.</strong> Once good enough, they should carry enough context that agents no longer need the full plan.</>,
-                <><strong>Convergence matters more than first drafts.</strong> Plans and beads both improve through repeated polishing until changes become small and corrective.</>,
-                <><strong>Swarm agents are fungible.</strong> Coordination must live in artifacts and tools, not in special agents or unstated knowledge.</>,
-                <><strong>Coordination must survive crashes and compaction.</strong> AGENTS.md, Agent Mail, bead state, and robot modes exist to keep work moving when sessions die.</>,
-                <><strong>Session history is part of the system.</strong> Repeated prompts, failures, and recoveries should be mined via CASS and folded back into tools, skills, and validators.</>,
-                <><strong>Implementation is not the finish line.</strong> Review, testing, UBS, and feedback-to-infrastructure loops are part of the core method.</>,
+                <Fragment key="global-reasoning"><strong>Global reasoning belongs in plan space.</strong> Do the hardest architectural and product reasoning while the whole project still fits in context.</Fragment>,
+                <Fragment key="comprehensive-plan"><strong>The markdown plan must be comprehensive before coding starts.</strong> Skeleton-first coding throws away the main advantage of frontier models.</Fragment>,
+                <Fragment key="plan-to-beads-translation"><strong>Plan-to-beads is a distinct translation problem.</strong> A good plan does not automatically produce a good bead graph.</Fragment>,
+                <Fragment key="execution-substrate"><strong>Beads are the execution substrate.</strong> Once good enough, they should carry enough context that agents no longer need the full plan.</Fragment>,
+                <Fragment key="convergence"><strong>Convergence matters more than first drafts.</strong> Plans and beads both improve through repeated polishing until changes become small and corrective.</Fragment>,
+                <Fragment key="fungible-agents"><strong>Swarm agents are fungible.</strong> Coordination must live in artifacts and tools, not in special agents or unstated knowledge.</Fragment>,
+                <Fragment key="survive-crashes"><strong>Coordination must survive crashes and compaction.</strong> AGENTS.md, Agent Mail, bead state, and robot modes exist to keep work moving when sessions die.</Fragment>,
+                <Fragment key="session-history"><strong>Session history is part of the system.</strong> Repeated prompts, failures, and recoveries should be mined via CASS and folded back into tools, skills, and validators.</Fragment>,
+                <Fragment key="not-finish-line"><strong>Implementation is not the finish line.</strong> Review, testing, UBS, and feedback-to-infrastructure loops are part of the core method.</Fragment>,
               ]} />
             </SubSection>
 
@@ -1496,11 +1497,11 @@ Then rewrite the skill to fix every issue you found. Make the happy path obvious
 
             <SubSection title="How to Actually Do This (Step by Step)">
               <NumberedList items={[
-                <><strong>Build the baseline.</strong> Create a tool. Create a skill for it using <code>sc</code> (skill creator). The first version of the skill will be imperfect. Ship it anyway.</>,
-                <><strong>Let agents use it in real work.</strong> Do not test in isolation. Deploy the tool and skill into actual project work where agents are implementing beads, running reviews, doing real tasks. CASS automatically logs every session.</>,
-                <><strong>Mine the sessions.</strong> After 10+ sessions of real usage, search CASS for sessions where agents invoked the tool.</>,
-                <><strong>Feed findings into a rewrite.</strong> Give the session analysis to a fresh agent along with the current skill file. Ask it to rewrite the skill to fix every issue.</>,
-                <><strong>Repeat.</strong> The revised skill produces better sessions, which give you better data for the next revision. After 3-4 cycles, the skill is dramatically more reliable than the original.</>,
+                <Fragment key="build-baseline"><strong>Build the baseline.</strong> Create a tool. Create a skill for it using <code>sc</code> (skill creator). The first version of the skill will be imperfect. Ship it anyway.</Fragment>,
+                <Fragment key="real-work"><strong>Let agents use it in real work.</strong> Do not test in isolation. Deploy the tool and skill into actual project work where agents are implementing beads, running reviews, doing real tasks. CASS automatically logs every session.</Fragment>,
+                <Fragment key="mine-sessions"><strong>Mine the sessions.</strong> After 10+ sessions of real usage, search CASS for sessions where agents invoked the tool.</Fragment>,
+                <Fragment key="feed-rewrite"><strong>Feed findings into a rewrite.</strong> Give the session analysis to a fresh agent along with the current skill file. Ask it to rewrite the skill to fix every issue.</Fragment>,
+                <Fragment key="repeat"><strong>Repeat.</strong> The revised skill produces better sessions, which give you better data for the next revision. After 3-4 cycles, the skill is dramatically more reliable than the original.</Fragment>,
               ]} />
 
               <CodeBlock language="bash" code={`# Step 3: Mine sessions for patterns
@@ -1509,10 +1510,10 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`} 
               <P>What to look for in the results:</P>
 
               <BulletList items={[
-                <><strong>Clarifying questions:</strong> where agents asked &quot;do you mean X or Y?&quot; means the skill was ambiguous</>,
-                <><strong>Repeated mistakes across different agents:</strong> a systematic gap in the skill&apos;s instructions</>,
-                <><strong>Creative workarounds:</strong> agents inventing their own approach means the skill is missing a useful pattern</>,
-                <><strong>Outright failures:</strong> the skill directed agents to do something wrong or impossible</>,
+                <Fragment key="clarifying-questions"><strong>Clarifying questions:</strong> where agents asked &quot;do you mean X or Y?&quot; means the skill was ambiguous</Fragment>,
+                <Fragment key="repeated-mistakes"><strong>Repeated mistakes across different agents:</strong> a systematic gap in the skill&apos;s instructions</Fragment>,
+                <Fragment key="creative-workarounds"><strong>Creative workarounds:</strong> agents inventing their own approach means the skill is missing a useful pattern</Fragment>,
+                <Fragment key="outright-failures"><strong>Outright failures:</strong> the skill directed agents to do something wrong or impossible</Fragment>,
               ]} />
 
               <P>The key insight is that the rewriting step itself can be a skill. You can write a meta-skill whose entire purpose is: take a skill file + CASS session data as input, produce a better skill file as output. Then the meta-skill can also be refined using its own session data, which is the self-referential property that makes the whole system accelerate.</P>
@@ -1531,10 +1532,10 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`} 
               <IllustrativeDisclosure />
 
               <NumberedList items={[
-                <><strong>Layer 1: Feedback forms after tool use (start here, no infrastructure needed).</strong> After an agent finishes using a tool, ask it to fill out a structured feedback survey. Feed that to another agent working on the tool itself. This requires nothing beyond two agent sessions and produces immediate improvements.</>,
-                <><strong>Layer 2: CASS-powered skill refinement (requires session logging).</strong> Instead of relying on one agent&apos;s opinion, mine session logs to find systematic patterns across many agents. An agent using a tool for the first time might blame itself for a confusing flag; when you see 15 agents all struggling with the same flag, you know the flag is the problem.</>,
-                <><strong>Layer 3: Skills that generate work (the system proposes its own improvements).</strong> The idea-wizard skill examines a project and generates improvement ideas. The optimization skill finds performance bottlenecks. These skills create new beads, which agents implement, which improve the tools, which make the skills more effective. The human&apos;s role shifts from directing specific work to curating which generated ideas are worth pursuing.</>,
-                <><strong>Layer 4: Skills bundled with tool installers (the skill improves before the user ever sees it).</strong> Every tool you ship includes a pre-optimized Claude Code skill baked into its installer. The skill was refined through multiple CASS cycles before shipping. When a new user installs the tool, their agents immediately benefit from all the refinement work done across every previous user&apos;s sessions.</>,
+                <Fragment key="layer-1-feedback-forms"><strong>Layer 1: Feedback forms after tool use (start here, no infrastructure needed).</strong> After an agent finishes using a tool, ask it to fill out a structured feedback survey. Feed that to another agent working on the tool itself. This requires nothing beyond two agent sessions and produces immediate improvements.</Fragment>,
+                <Fragment key="layer-2-cass-refinement"><strong>Layer 2: CASS-powered skill refinement (requires session logging).</strong> Instead of relying on one agent&apos;s opinion, mine session logs to find systematic patterns across many agents. An agent using a tool for the first time might blame itself for a confusing flag; when you see 15 agents all struggling with the same flag, you know the flag is the problem.</Fragment>,
+                <Fragment key="layer-3-generate-work"><strong>Layer 3: Skills that generate work (the system proposes its own improvements).</strong> The idea-wizard skill examines a project and generates improvement ideas. The optimization skill finds performance bottlenecks. These skills create new beads, which agents implement, which improve the tools, which make the skills more effective. The human&apos;s role shifts from directing specific work to curating which generated ideas are worth pursuing.</Fragment>,
+                <Fragment key="layer-4-bundled-skills"><strong>Layer 4: Skills bundled with tool installers (the skill improves before the user ever sees it).</strong> Every tool you ship includes a pre-optimized Claude Code skill baked into its installer. The skill was refined through multiple CASS cycles before shipping. When a new user installs the tool, their agents immediately benefit from all the refinement work done across every previous user&apos;s sessions.</Fragment>,
               ]} />
 
               <BlockQuote>I&apos;m going to start having my tool installers always add a highly optimized skill. It makes a massive difference.</BlockQuote>
@@ -1556,8 +1557,8 @@ cass search "tool_name" --workspace /data/projects/PROJECT --json --limit 100`} 
               <P>Skills are the mechanism for asking the right questions. Consider the difference:</P>
 
               <BulletList items={[
-                <><strong>Without a skill:</strong> &quot;Optimize this function.&quot; The agent applies generic improvements like caching, loop unrolling, or reducing allocations. Useful but shallow.</>,
-                <><strong>With an extreme-optimization skill:</strong> The skill directs the agent to systematically consider cache-oblivious data structures, SIMD vectorization opportunities, branch-free arithmetic, van Emde Boas layout, fractional cascading, and carry-less multiplication, then benchmark before and after each change. The agent draws on deep knowledge it would not volunteer unprompted.</>,
+                <Fragment key="without-skill"><strong>Without a skill:</strong> &quot;Optimize this function.&quot; The agent applies generic improvements like caching, loop unrolling, or reducing allocations. Useful but shallow.</Fragment>,
+                <Fragment key="with-skill"><strong>With an extreme-optimization skill:</strong> The skill directs the agent to systematically consider cache-oblivious data structures, SIMD vectorization opportunities, branch-free arithmetic, van Emde Boas layout, fractional cascading, and carry-less multiplication, then benchmark before and after each change. The agent draws on deep knowledge it would not volunteer unprompted.</Fragment>,
               ]} />
 
               <P>The skill acts as a key that unlocks specific rooms in the model&apos;s knowledge base. Without the key, the model defaults to common patterns. With it, the model reaches into the long tail of techniques that most human developers have never encountered.</P>
@@ -1675,10 +1676,10 @@ Output (required): a revised reusable artifact plus a short note describing the 
 
             <SubSection title="Common Problems from Real Deployments">
               <BulletList items={[
-                <><strong>Agent Mail CLI availability:</strong> Sometimes the binary is not at the expected path; agents fall back to REST API calls.</>,
-                <><strong>Context window exhaustion:</strong> Agents typically manage 2-3 polishing passes before needing a fresh session.</>,
-                <><strong>Duplicate beads at scale:</strong> Large bead sets (100+) develop duplicates; dedicated dedup passes are necessary.</>,
-                <><strong>Plan-bead gap:</strong> The synthesis step sometimes stalls between plan revision and bead creation; always explicitly transition.</>,
+                <Fragment key="agent-mail-cli"><strong>Agent Mail CLI availability:</strong> Sometimes the binary is not at the expected path; agents fall back to REST API calls.</Fragment>,
+                <Fragment key="context-exhaustion"><strong>Context window exhaustion:</strong> Agents typically manage 2-3 polishing passes before needing a fresh session.</Fragment>,
+                <Fragment key="duplicate-beads"><strong>Duplicate beads at scale:</strong> Large bead sets (100+) develop duplicates; dedicated dedup passes are necessary.</Fragment>,
+                <Fragment key="plan-bead-gap"><strong>Plan-bead gap:</strong> The synthesis step sometimes stalls between plan revision and bead creation; always explicitly transition.</Fragment>,
               ]} />
             </SubSection>
 

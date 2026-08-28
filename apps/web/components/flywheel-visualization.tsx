@@ -165,9 +165,12 @@ function getCirclePosition(
   startAngle: number = -Math.PI / 2
 ) {
   const angle = startAngle + (index / total) * 2 * Math.PI;
+  // Math.cos/Math.sin can differ in the last bit between JS engines (server
+  // render vs browser), which makes every derived SVG coordinate mismatch on
+  // hydration. Round to sub-pixel precision so both sides emit identical text.
   return {
-    x: center + Math.cos(angle) * radius,
-    y: center + Math.sin(angle) * radius,
+    x: Math.round((center + Math.cos(angle) * radius) * 1000) / 1000,
+    y: Math.round((center + Math.sin(angle) * radius) * 1000) / 1000,
   };
 }
 
