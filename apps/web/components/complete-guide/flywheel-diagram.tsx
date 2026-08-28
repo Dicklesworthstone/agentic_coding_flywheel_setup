@@ -62,9 +62,9 @@ export function FlywheelDiagram() {
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)]" />
             Interactive Visualization
           </div>
-          <h4 className="text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl leading-[1.15] drop-shadow-lg">
+          <h3 className="text-3xl font-black tracking-tight text-white sm:text-4xl lg:text-5xl leading-[1.15] drop-shadow-lg">
             Why the flywheel compounds instead of spinning in place
-          </h4>
+          </h3>
           <p className="mt-6 text-[1.1rem] leading-relaxed text-zinc-400 font-light">
             Step through the loop. The same project gets faster and safer
             because every completed cycle upgrades the artifacts feeding the next one. 

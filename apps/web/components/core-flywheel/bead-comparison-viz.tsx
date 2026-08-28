@@ -400,9 +400,9 @@ export function BeadComparisonViz() {
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FF5500]/10 text-[#FF5500] border border-[#FF5500]/20 shadow-inner">
               <GitBranch className="h-4 w-4" />
             </span>
-            <h4 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
               Weak vs. Strong Artifacts
-            </h4>
+            </h3>
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
             A weak artifact names a topic. A strong one carries scope,

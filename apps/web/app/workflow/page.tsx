@@ -519,9 +519,7 @@ export default function WorkflowPage() {
   const prefersReducedMotion = useReducedMotion();
 
   return (
-    {/* `dark`: this page uses white text on its own dark surfaces, so it
-        keeps the dark tokens even when the wizard's light theme is active. */}
-    <div role="main" className="dark relative min-h-screen bg-background overflow-hidden">
+    <div role="main" className="dark relative min-h-screen bg-background text-foreground overflow-hidden">
       {/* Background effects */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-hero opacity-50" />
       <div className="pointer-events-none absolute inset-0 bg-grid-pattern opacity-20" />

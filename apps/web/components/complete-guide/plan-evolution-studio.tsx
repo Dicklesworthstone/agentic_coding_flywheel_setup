@@ -138,13 +138,14 @@ export function PlanEvolutionStudio() {
           </p>
         </div>
 
-        <label className="block rounded-2xl border border-white/[0.05] bg-[#0A0D14] px-5 py-4 shadow-inner min-w-[280px]">
+        <label htmlFor="plan-refinement-round" className="block rounded-2xl border border-white/[0.05] bg-[#0A0D14] px-5 py-4 shadow-inner min-w-[280px]">
           <div className="flex items-center justify-between gap-6 text-[0.65rem] font-bold uppercase tracking-widest text-white/40">
             <span>Refinement round</span>
             <span className="text-white/80">{PLAN_REFINEMENT_LABELS[refinementRound]}</span>
           </div>
           <div className="relative mt-4 group/slider">
             <input
+              id="plan-refinement-round"
               type="range"
               min={0}
               max={4}

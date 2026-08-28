@@ -247,6 +247,14 @@
   --ring: oklch(0.55 0.2 195);
 }
 
+/* A dark island nested inside the light theme (the `dark` wrappers on the
+   Learning Hub, guide, catalog, and workflow surfaces) redefines the tokens,
+   but `color` was already resolved on <body> from the light token and
+   inherits as a plain color, so the island must re-resolve it. */
+.light .dark {
+  color: var(--foreground);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

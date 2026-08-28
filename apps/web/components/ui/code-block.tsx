@@ -184,7 +184,10 @@ export function CodeBlock({
         className="relative z-10 p-5 overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/60"
         tabIndex={0}
       >
-        <pre className="font-mono text-[0.85rem] leading-[1.7] selection:bg-cyan-900/40 selection:text-white">
+        {/* overflow-visible: the focusable wrapper above is the one scroll
+            region; globals.css otherwise makes every <pre> scroll on its own,
+            nesting a second, non-focusable scroller. */}
+        <pre className="overflow-visible font-mono text-[0.85rem] leading-[1.7] selection:bg-cyan-900/40 selection:text-white">
           {lines.map((line, i) => (
             <div
               key={i}

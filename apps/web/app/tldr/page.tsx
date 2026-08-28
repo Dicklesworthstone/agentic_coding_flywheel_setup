@@ -119,23 +119,35 @@ function FooterCTA({ id }: { id?: string }) {
         </p>
         <div className="mt-6 flex flex-col items-center gap-4 md:mt-8">
           <div className="group relative w-full max-w-6xl">
-            <div className="overflow-x-auto rounded-xl bg-card/80 ring-1 ring-border/50 transition duration-200 hover:ring-primary/30">
-              <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-4">
-                <code className="flex-1 whitespace-nowrap font-mono text-xs text-primary sm:text-sm md:text-base">
+            {/* The command scrolls inside its own box; the copy button sits
+                outside that scroll region so it never overlaps the text or
+                scrolls away on phones. */}
+            <div className="flex items-center gap-2 rounded-xl bg-card/80 pr-2 ring-1 ring-border/50 transition duration-200 hover:ring-primary/30 sm:gap-3 sm:pr-3">
+              <div
+                className="min-w-0 flex-1 overflow-x-auto px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 sm:py-4"
+                tabIndex={0}
+                role="region"
+                aria-label="Install command"
+              >
+                {/* No `block` class here: globals.css turns `code.block` into
+                    its own scroll container, which would nest a second,
+                    non-focusable scroller inside this region. */}
+                <code className="whitespace-nowrap font-mono text-xs text-primary sm:text-sm md:text-base">
                   {INSTALL_COMMAND}
                 </code>
-                <button
-                  onClick={handleCopy}
-                  className="flex-shrink-0 rounded-lg bg-secondary p-2 text-muted-foreground transition duration-200 hover:bg-primary hover:text-white active:scale-95 sm:p-2.5"
-                  aria-label={copied ? "Copied!" : "Copy to clipboard"}
-                >
-                  {copied ? (
-                    <Check className="h-4 w-4 text-success sm:h-5 sm:w-5" />
-                  ) : (
-                    <Copy className="h-4 w-4 sm:h-5 sm:w-5" />
-                  )}
-                </button>
               </div>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground transition duration-200 hover:bg-primary hover:text-white active:scale-95"
+                aria-label={copied ? "Copied!" : "Copy install command"}
+              >
+                {copied ? (
+                  <Check className="h-4 w-4 text-success sm:h-5 sm:w-5" />
+                ) : (
+                  <Copy className="h-4 w-4 sm:h-5 sm:w-5" />
+                )}
+              </button>
             </div>
             {copied && (
               <div className="absolute -top-10 left-1/2 -translate-x-1/2 rounded-lg bg-success px-3 py-1.5 text-xs font-medium text-white shadow-lg">

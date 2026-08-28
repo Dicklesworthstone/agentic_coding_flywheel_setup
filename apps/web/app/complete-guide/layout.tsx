@@ -31,5 +31,5 @@ export default function CompleteGuideLayout({
 }) {
   // Dark-only editorial surface (#020408 background, white text): keep the
   // dark tokens even when the wizard's light theme is active.
-  return <div className="dark contents">{children}</div>;
+  return <div className="dark bg-background text-foreground">{children}</div>;
 }

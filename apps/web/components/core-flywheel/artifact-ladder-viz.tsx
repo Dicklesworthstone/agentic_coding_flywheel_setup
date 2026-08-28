@@ -598,9 +598,9 @@ export function ArtifactLadderViz() {
             <div className="w-8 h-px bg-[#FF5500]/30" />
             Artifact Progression
           </div>
-          <h4 className="mt-6 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl leading-[1.1]">
+          <h3 className="mt-6 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl leading-[1.1]">
             What you produce at each stage
-          </h4>
+          </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight">
             An idea becomes a plan, a plan becomes beads, beads become
             finished code. Click any stage to see the artifact, what it

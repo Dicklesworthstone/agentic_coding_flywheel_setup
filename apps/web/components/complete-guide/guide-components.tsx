@@ -302,7 +302,10 @@ export function PromptBlock({
 
       {/* Prompt body */}
       <div className="relative z-10 p-6 sm:p-8">
-        <div className="text-[0.95rem] sm:text-[1.05rem] text-zinc-300 whitespace-pre-wrap font-mono font-normal leading-[1.7] overflow-x-auto scrollbar-hide selection:bg-[#FF5500]/20 selection:text-white">
+        <div
+          className="text-[0.95rem] sm:text-[1.05rem] text-zinc-300 whitespace-pre-wrap font-mono font-normal leading-[1.7] overflow-x-auto scrollbar-hide selection:bg-[#FF5500]/20 selection:text-white outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
+          tabIndex={0}
+        >
           {renderHighlightedPrompt(prompt)}
         </div>
       </div>
@@ -396,7 +399,10 @@ export function DataTable({
   return (
     <div className="relative group my-16">
       <div className="absolute -inset-0.5 bg-gradient-to-r from-[#FF5500]/20 via-violet-500/10 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none" />
-      <div className="relative overflow-x-auto rounded-[2rem] border border-white/[0.05] bg-[#05070a] shadow-2xl transition duration-500 group-hover:border-[#FF5500]/30">
+      <div
+        className="relative overflow-x-auto rounded-[2rem] border border-white/[0.05] bg-[#05070a] shadow-2xl transition duration-500 group-hover:border-[#FF5500]/30 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FF5500]/60"
+        tabIndex={0}
+      >
         <table className="w-full text-sm min-w-[600px] border-collapse">
           <thead>
             <tr className="border-b border-white/[0.08] bg-white/[0.02]">

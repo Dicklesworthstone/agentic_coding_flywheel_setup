@@ -399,6 +399,20 @@ export function TldrSynergyDiagram({
                 }}
                 onMouseEnter={() => setHoveredNode(tool.id)}
                 onMouseLeave={() => setHoveredNode(null)}
+                // Tap and keyboard parity for the hover highlight
+                onClick={() => setHoveredNode(isHovered ? null : tool.id)}
+                onFocus={() => setHoveredNode(tool.id)}
+                onBlur={() => setHoveredNode(null)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setHoveredNode(isHovered ? null : tool.id);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-pressed={isHovered}
+                aria-label={`Show connections for ${tool.shortName}`}
                 style={{ cursor: "pointer" }}
               >
                 {/* Glow effect on hover */}
@@ -484,6 +498,19 @@ export function TldrSynergyDiagram({
                 }}
                 onMouseEnter={() => setHoveredNode(tool.id)}
                 onMouseLeave={() => setHoveredNode(null)}
+                onClick={() => setHoveredNode(isHovered ? null : tool.id)}
+                onFocus={() => setHoveredNode(tool.id)}
+                onBlur={() => setHoveredNode(null)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setHoveredNode(isHovered ? null : tool.id);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-pressed={isHovered}
+                aria-label={`Show connections for ${tool.shortName}`}
                 style={{ cursor: "pointer" }}
               >
                 {/* Glow effect on hover */}
@@ -566,7 +593,7 @@ export function TldrSynergyDiagram({
                 Showing connections for {[...primary, ...secondary].find(t => t.id === hoveredNode)?.shortName ?? hoveredNode}
               </span>
             ) : (
-              "Hover over tools to see connections"
+              "Tap or hover a tool to see its connections"
             )}
           </p>
         </motion.div>

@@ -48,7 +48,10 @@ const TERMINAL_LINES = [
 ];
 
 function AnimatedTerminal() {
-  const [visibleLines, setVisibleLines] = useState(0);
+  // Start with the command line visible: on phones the typing loop only
+  // ticks while the terminal is on screen, so a 0 start left an empty
+  // 280px window until the first 800ms interval fired.
+  const [visibleLines, setVisibleLines] = useState(1);
   const [cursorVisible, setCursorVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [isActive, setIsActive] = useState(false);
@@ -373,7 +376,7 @@ function FlywheelSection() {
             The <Jargon term="agentic">Agentic</Jargon> Coding <Jargon term="flywheel">Flywheel</Jargon>
           </h2>
           <p className="mx-auto max-w-2xl text-muted-foreground">
-            Twenty interconnected tools that transform multi-<Jargon term="ai-agents">agent</Jargon> workflows.
+            An ecosystem of interconnected tools, the ten core ones below, that transform multi-<Jargon term="ai-agents">agent</Jargon> workflows.
             Each tool enhances the others.
           </p>
         </motion.div>
@@ -1019,7 +1022,7 @@ export default function HomePage() {
                 className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm text-primary"
                 variants={fadeUp}
               >
-                <Sparkles className="h-4 w-4" />
+                <Clock className="h-4 w-4" />
                 <span>Zero to agentic coding in 30 minutes</span>
               </motion.div>
 
@@ -1179,16 +1182,16 @@ export default function HomePage() {
                 {/* Inner card */}
                 <div className="relative rounded-[23px] bg-gradient-to-br from-card via-card/95 to-card px-8 py-10 sm:px-12 sm:py-14">
                   <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-primary">
-                    <Sparkles className="h-3.5 w-3.5" />
+                    <BookOpen className="h-3.5 w-3.5" />
                     Featured Guide
                   </div>
 
-                  <h3
+                  <h2
                     className="mb-4 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl"
                     style={{ letterSpacing: "-0.025em" }}
                   >
                     <span className="text-gradient-cosmic">The Flywheel Methodology</span>
-                  </h3>
+                  </h2>
 
                   <p className="mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
                     The definitive guide to planning-first agentic development: decompose complex projects into beads,
@@ -1198,11 +1201,11 @@ export default function HomePage() {
                   <div className="mb-8 flex flex-wrap gap-x-6 gap-y-3 text-sm">
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Clock className="h-4 w-4 text-primary/60" />
-                      <span>25 in-depth sections</span>
+                      <span>12 in-depth sections</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Cpu className="h-4 w-4 text-primary/60" />
-                      <span>9 interactive visualizations</span>
+                      <span>11 interactive visualizations</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Zap className="h-4 w-4 text-primary/60" />
@@ -1263,7 +1266,7 @@ export default function HomePage() {
                     Start Here
                   </motion.div>
 
-                  <motion.h3
+                  <motion.h2
                     className="mb-4 text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl"
                     style={{ letterSpacing: "-0.025em" }}
                     initial={{ opacity: 0, y: 10 }}
@@ -1272,7 +1275,7 @@ export default function HomePage() {
                     transition={{ ...springs.smooth, delay: 0.15 }}
                   >
                     <span className="bg-gradient-to-r from-[#FF5500] to-[#FFBD2E] bg-clip-text text-transparent">The Core Flywheel</span>
-                  </motion.h3>
+                  </motion.h2>
 
                   <motion.p
                     className="mb-8 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
@@ -1297,7 +1300,7 @@ export default function HomePage() {
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Cpu className="h-4 w-4 text-[#FF5500]/60" />
-                      <span>4 interactive visualizations</span>
+                      <span>6 interactive visualizations</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Clock className="h-4 w-4 text-[#FF5500]/60" />

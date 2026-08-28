@@ -33,7 +33,7 @@ export function ContextHorizonViz() {
             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/20 text-amber-400">
               <BrainCircuit className="h-3.5 w-3.5" />
             </span>
-            <h4 className="text-sm font-semibold text-white/90">Interactive: The Context Horizon</h4>
+            <h3 className="text-sm font-semibold text-white/90">Interactive: The Context Horizon</h3>
           </div>
           <p className="text-xs text-white/50">Why reasoning in plan-space dominates reasoning in code-space as projects scale.</p>
         </div>

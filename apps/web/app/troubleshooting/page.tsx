@@ -890,7 +890,7 @@ export default function TroubleshootingPage() {
                 <button
                   type="button"
                   onClick={() => { setSearchQuery(""); setCategory("all"); }}
-                  className="text-primary hover:underline"
+                  className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
                 >
                   clear all filters
                 </button>
@@ -912,7 +912,7 @@ export default function TroubleshootingPage() {
                 <span className="text-primary">•</span>
                 <span>
                   Check the{" "}
-                  <Link href="/glossary" className="text-primary hover:underline">
+                  <Link href="/glossary" className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
                     Glossary
                   </Link>{" "}
                   for unfamiliar terms
@@ -926,7 +926,7 @@ export default function TroubleshootingPage() {
                     href="https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup/issues"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary hover:underline"
+                    className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary"
                   >
                     GitHub Issues
                   </a>{" "}
@@ -937,7 +937,7 @@ export default function TroubleshootingPage() {
                 <span className="text-primary">•</span>
                 <span>
                   Review the{" "}
-                  <Link href="/learn" className="text-primary hover:underline">
+                  <Link href="/learn" className="text-primary underline decoration-primary/40 underline-offset-4 hover:decoration-primary">
                     Learning Hub
                   </Link>{" "}
                   for guided tutorials

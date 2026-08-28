@@ -75,9 +75,9 @@ export function CoordinationTrioViz() {
             <div className="w-8 h-px bg-violet-400/30" />
             Coordination Logic
           </div>
-          <h4 className="mt-6 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl leading-[1.1]">
+          <h3 className="mt-6 text-3xl font-black tracking-[-0.04em] text-white sm:text-4xl lg:text-5xl leading-[1.1]">
             Beads, Agent Mail, and bv are a single machine
-          </h4>
+          </h3>
           <p className="mt-8 text-[1.1rem] leading-relaxed text-zinc-400 font-extralight opacity-80">
             Hover or tap to inspect each piece. Click again to remove it and
             watch the system lose a capability it cannot replace. 

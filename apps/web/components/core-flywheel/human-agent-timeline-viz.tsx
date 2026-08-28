@@ -680,9 +680,9 @@ export function HumanAgentTimelineViz() {
               <span className="w-1.5 h-1.5 rounded-full bg-[#a78bfa] animate-pulse shadow-[0_0_8px_rgba(167,139,250,0.8)]" />
               Interactive Exhibit
             </div>
-            <h4 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-[1.15] drop-shadow-lg">
+            <h3 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-[1.15] drop-shadow-lg">
               Who Does What in the Core Loop
-            </h4>
+            </h3>
             <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
               You design the system and tend the swarm.{" "}
               <span className="text-white/60">

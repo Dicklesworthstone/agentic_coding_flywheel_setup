@@ -299,7 +299,7 @@ export function CrashRecoveryViz() {
               >
                 {/* Agent name + status dot */}
                 <div className="flex items-center gap-2 mb-3">
-                  <div
+                  <div // slop-ok(S25-pulse-dot): pulses only while the simulated agent is alive; it stops when the crash hits
                     className={`h-3 w-3 rounded-full shrink-0 ${agent.alive && !rm ? "animate-pulse" : ""}`}
                     style={{
                       backgroundColor: agent.alive ? agent.color : "#666",

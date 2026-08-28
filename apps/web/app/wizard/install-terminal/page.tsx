@@ -45,7 +45,7 @@ function TerminalCard({ name, description, href }: TerminalCardProps) {
       )}
     >
       <div>
-        <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">{name}</h3>
+        <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{name}</p>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />

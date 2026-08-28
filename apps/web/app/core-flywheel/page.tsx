@@ -736,9 +736,9 @@ function HelperCard({
           <div className="text-[0.6rem] font-bold uppercase tracking-[0.2em] opacity-50 group-hover:opacity-70 transition-opacity duration-500" style={{ color }}>
             {fullName}
           </div>
-          <h4 className="text-2xl font-black text-white tracking-tight mt-1">
+          <h3 className="text-2xl font-black text-white tracking-tight mt-1">
             {name}
-          </h4>
+          </h3>
         </div>
 
         <p className="text-[0.95rem] text-zinc-400 font-light leading-relaxed flex-1">

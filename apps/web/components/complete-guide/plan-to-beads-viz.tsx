@@ -233,9 +233,9 @@ export function PlanToBeadsViz() {
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)]" />
             Interactive Exhibit
           </div>
-          <h4 className="text-xl font-black tracking-tight text-white sm:text-2xl">
+          <h3 className="text-xl font-black tracking-tight text-white sm:text-2xl">
             A plan is only useful once it becomes executable memory
-          </h4>
+          </h3>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 font-light">
             Pick a concept from the plan, then compare what survives into a thin
             bead versus a context-rich bead. The gap is the source of most

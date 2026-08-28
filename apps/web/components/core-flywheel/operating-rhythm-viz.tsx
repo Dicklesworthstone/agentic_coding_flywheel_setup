@@ -523,9 +523,9 @@ export function OperatingRhythmViz() {
           <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
           Operating Rhythm
         </div>
-        <h4 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+        <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
           From plan to production in five steps
-        </h4>
+        </h3>
         <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
           Steps 3-5 repeat for every bead. You stop thinking about the process after the second cycle.
         </p>

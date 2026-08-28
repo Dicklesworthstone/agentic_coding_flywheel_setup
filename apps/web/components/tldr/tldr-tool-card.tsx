@@ -382,7 +382,10 @@ export function TldrToolCard({
 
             {/* Representative command (from the manifest) */}
             {tool.commandExample && (
-              <div className="mt-3 flex items-center gap-2 overflow-x-auto rounded-lg bg-black/30 px-3 py-2 ring-1 ring-inset ring-white/10">
+              <div
+                className="mt-3 flex items-center gap-2 overflow-x-auto rounded-lg bg-black/30 px-3 py-2 ring-1 ring-inset ring-white/10 outline-none focus-visible:ring-primary/60"
+                tabIndex={0}
+              >
                 <Terminal className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                 <code className="whitespace-nowrap font-mono text-xs text-primary">
                   {tool.commandExample}
@@ -442,7 +445,10 @@ export function TldrToolCard({
                     Synergies
                     <span className="h-px flex-1 bg-gradient-to-l from-border to-transparent" />
                   </h4>
-                  <div className="grid gap-1.5 sm:gap-2 sm:grid-cols-2">
+                  {/* minmax(0,1fr) lets a pill shrink below its text width so
+                      the description truncates instead of the pill overflowing
+                      the card on phones. */}
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-1.5 sm:grid-cols-[repeat(2,minmax(0,1fr))] sm:gap-2">
                     {tool.synergies.map((synergy) => (
                       <SynergyPill
                         key={synergy.toolId}

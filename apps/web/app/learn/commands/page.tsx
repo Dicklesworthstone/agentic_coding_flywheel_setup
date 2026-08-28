@@ -568,7 +568,7 @@ function CategoryCard({
                   <div className="flex items-center gap-4 shrink-0">
                     <Link
                       href={`#${anchorId}`}
-                      className="inline-flex min-h-[24px] items-center text-xs text-white/50 hover:text-white/70 transition-colors font-mono"
+                      className="inline-flex min-h-[24px] min-w-[24px] items-center text-xs text-white/50 hover:text-white/70 transition-colors font-mono"
                     >
                       #{anchorId}
                     </Link>

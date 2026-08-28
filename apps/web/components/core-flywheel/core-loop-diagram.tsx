@@ -754,9 +754,9 @@ export function CoreLoopDiagram() {
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF5500] animate-pulse shadow-[0_0_8px_rgba(255,85,0,0.8)]" />
             Core Loop
           </div>
-          <h4 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-[1.15] drop-shadow-lg">
+          <h3 className="text-3xl font-black tracking-tight text-white sm:text-4xl leading-[1.15] drop-shadow-lg">
             Six stages, one loop, compounding leverage
-          </h4>
+          </h3>
           <p className="mt-4 text-[1.05rem] leading-relaxed text-zinc-400 font-light">
             Each closed bead reshapes the graph. The next agent gets a
             better map. Click any stage to see the details.

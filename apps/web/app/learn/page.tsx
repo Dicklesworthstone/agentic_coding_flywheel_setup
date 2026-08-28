@@ -627,7 +627,7 @@ export default function LearnDashboard() {
         >
           <p>
             Need to set up your VPS first?{" "}
-            <Link href="/wizard/os-selection" className="text-primary transition-colors hover:text-primary/80 hover:underline">
+            <Link href="/wizard/os-selection" className="text-primary underline decoration-primary/40 underline-offset-4 transition-colors hover:text-primary/80 hover:decoration-primary">
               Start the setup wizard →
             </Link>
           </p>

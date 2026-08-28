@@ -88,7 +88,7 @@ export function ConvergenceViz() {
             <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#FFBD2E]/10 text-[#FFBD2E] border border-[#FFBD2E]/20 shadow-inner">
               <Radar className="h-4 w-4" />
             </span>
-            <h4 className="text-xl sm:text-2xl font-black text-white tracking-tight">Convergence Detection</h4>
+            <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">Convergence Detection</h3>
           </div>
           <p className="mt-2 text-sm text-zinc-400 font-light max-w-xl">
             Drag the sliders or pick a preset to see how beads tighten into a stable state before implementation begins.
