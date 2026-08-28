@@ -570,7 +570,9 @@ function ToolCard({ tool, index }: { tool: FlywheelTool; index: number }) {
                 : tool.installCommand}
             </code>
             <button
+              type="button"
               onClick={copyInstall}
+              aria-label={copied ? "Copied" : `Copy install command for ${tool.name}`}
               className="shrink-0 flex items-center justify-center min-w-[44px] min-h-[44px] -my-2 rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               {copied ? <Check className="h-4 w-4 text-primary" /> : <Copy className="h-4 w-4" />}

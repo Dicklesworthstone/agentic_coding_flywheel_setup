@@ -19,7 +19,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCard } from "@/components/alert-card";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useCheckedServices } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
@@ -288,6 +288,9 @@ export default function AccountsPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/preflight-check"));
   }, [router, markComplete]);
+
+  // Dock "Next" = Continue; "Skip for now" stays an explicit inline choice.
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
 
   const tieredServices: Record<ServiceTier, Service[]> = {
     essential: getServicesByTier("essential").sort(sortByOrder),

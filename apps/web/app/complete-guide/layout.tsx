@@ -29,5 +29,7 @@ export default function CompleteGuideLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  // Dark-only editorial surface (#020408 background, white text): keep the
+  // dark tokens even when the wizard's light theme is active.
+  return <div className="dark contents">{children}</div>;
 }

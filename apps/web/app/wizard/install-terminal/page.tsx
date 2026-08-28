@@ -10,7 +10,7 @@ import { AlertCard } from "@/components/alert-card";
 import { OutputPreview } from "@/components/alert-card";
 import { TrackedLink } from "@/components/tracked-link";
 import { cn } from "@/lib/utils";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useUserOS } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
@@ -442,6 +442,8 @@ export default function InstallTerminalPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/generate-ssh-key"));
   }, [router, os, markComplete]);
+
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
 
   // Show loading state while detecting OS or during SSR
   if (!ready || !os) {

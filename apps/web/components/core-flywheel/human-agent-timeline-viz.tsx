@@ -759,7 +759,7 @@ export function HumanAgentTimelineViz() {
                   onClick={() => handleSelect(index)}
                   aria-label={`Go to stage ${index + 1}: ${stage.label}`}
                   title={`${index + 1}. ${stage.label}`}
-                  className="p-1"
+                  className="p-2"
                 >
                   <motion.div
                     className="rounded-full"

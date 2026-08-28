@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Terminal, Home, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Stepper, StepperMobile } from "@/components/stepper";
@@ -10,11 +10,14 @@ import { HelpPanel } from "@/components/wizard/HelpPanel";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   WIZARD_STEPS,
+  WizardForwardNavContext,
   canAccessWizardStep,
   getCompletedSteps,
   getNextReachableWizardStep,
   getStepBySlug,
   useCompletedSteps,
+  type WizardForwardAction,
+  type WizardForwardNavRegistry,
 } from "@/lib/wizardSteps";
 import { useStepValidation } from "@/lib/hooks/useStepValidation";
 import { getUserOS, getVPSIP } from "@/lib/userPreferences";
@@ -42,6 +45,15 @@ export default function WizardLayout({
   const [completedSteps, markCompletedStep] = useCompletedSteps();
 
   const { validate, validationErrors, clearErrors } = useStepValidation();
+
+  // The current step page registers its own forward action here (see
+  // useWizardForwardNav). The mobile dock's "Next" delegates to it so the
+  // dock and the page's inline Continue are one behavior, not two.
+  const [forwardAction, setForwardAction] = useState<WizardForwardAction | null>(null);
+  const forwardNavRegistry = useMemo<WizardForwardNavRegistry>(
+    () => ({ register: setForwardAction }),
+    []
+  );
 
   useEffect(() => {
     clearErrors();
@@ -116,10 +128,17 @@ export default function WizardLayout({
   );
 
   const progress = (currentStep / WIZARD_STEPS.length) * 100;
-  const usesPageLevelNavigation =
-    currentStep === 5 || currentStep === 12 || hideSharedStepChrome;
+  const showDockNext = Boolean(nextStep) && !hideSharedStepChrome;
+  const handleDockNext = useCallback(() => {
+    if (forwardAction) {
+      forwardAction.onContinue();
+      return;
+    }
+    if (nextStep) handleStepClick(nextStep.id);
+  }, [forwardAction, nextStep, handleStepClick]);
 
   return (
+    <WizardForwardNavContext.Provider value={forwardNavRegistry}>
     <div className="relative min-h-screen overflow-x-hidden bg-background">
       {/* Subtle background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
@@ -271,10 +290,11 @@ export default function WizardLayout({
               {/* Page content */}
               <div className="animate-scale-in">{children}</div>
 
-              {/* Navigation buttons (desktop) */}
-              {!hideSharedStepChrome && (
-                <div className="mt-12 hidden items-center justify-between md:flex">
-                {prevStep ? (
+              {/* Back link (desktop). Forward navigation belongs to the
+                  page's own contextual Continue button, which sits directly
+                  above this row; a second "Next" here competed with it. */}
+              {!hideSharedStepChrome && prevStep && (
+                <div className="mt-12 hidden items-center md:flex">
                   <Button
                     variant="ghost"
                     onClick={() => handleStepClick(prevStep.id)}
@@ -283,18 +303,6 @@ export default function WizardLayout({
                     <ChevronLeft className="mr-1 h-4 w-4" />
                     {prevStep.title}
                   </Button>
-                ) : (
-                  <div />
-                )}
-                {nextStep && !usesPageLevelNavigation && (
-                  <Button
-                    onClick={() => handleStepClick(nextStep.id)}
-                    className="bg-primary text-primary-foreground"
-                  >
-                    {nextStep.title}
-                    <ChevronRight className="ml-1 h-4 w-4" />
-                  </Button>
-                )}
                 </div>
               )}
             </div>
@@ -308,7 +316,10 @@ export default function WizardLayout({
           <StepperMobile currentStep={currentStep} onStepClick={handleStepClick} />
         )}
 
-        {/* Mobile navigation - 48px buttons for proper touch targets */}
+        {/* Mobile navigation - 48px buttons for proper touch targets.
+            "Next" runs the page's registered forward action (validation,
+            analytics, special routing included); it only falls back to the
+            plain step advance for pages that register nothing. */}
         {!hideSharedStepChrome && (
           <div className="mt-4 flex items-center gap-3">
           <Button
@@ -316,19 +327,19 @@ export default function WizardLayout({
             size="lg"
             onClick={() => prevStep && handleStepClick(prevStep.id)}
             disabled={!prevStep}
-            className={usesPageLevelNavigation ? "w-full" : "flex-1"}
+            className={showDockNext ? "flex-1" : "w-full"}
           >
             <ChevronLeft className="mr-1 h-5 w-5" />
             Back
           </Button>
-          {nextStep && !usesPageLevelNavigation && (
+          {showDockNext && (
             <Button
               size="lg"
-              onClick={() => nextStep && handleStepClick(nextStep.id)}
-              disabled={!nextStep}
+              onClick={handleDockNext}
+              disabled={Boolean(forwardAction?.disabled) || Boolean(forwardAction?.loading)}
               className="flex-1"
             >
-              Next
+              {forwardAction?.loading ? "Loading..." : "Next"}
               <ChevronRight className="ml-1 h-5 w-5" />
             </Button>
           )}
@@ -336,5 +347,6 @@ export default function WizardLayout({
         )}
       </div>
     </div>
+    </WizardForwardNavContext.Provider>
   );
 }

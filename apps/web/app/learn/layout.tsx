@@ -16,5 +16,8 @@ export default function LearnLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  // The Learning Hub is a dark-only surface (hardcoded black + white/NN
+  // text). The `dark` wrapper re-applies the dark tokens so a visitor who
+  // chose the light theme in the wizard does not get dark headings on black.
+  return <div className="dark contents">{children}</div>;
 }

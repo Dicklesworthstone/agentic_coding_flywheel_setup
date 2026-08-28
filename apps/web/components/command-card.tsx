@@ -266,9 +266,15 @@ export function CommandCard({
           <Terminal className="h-4 w-4 text-primary" />
         </div>
 
-        {/* Command text with scroll fade indicators */}
+        {/* Command text with scroll fade indicators. The scroller is
+            focusable so keyboard users can pan a long command (WCAG 2.1.1). */}
         <div className="relative flex-1 overflow-hidden">
-          <div className="flex items-center overflow-x-auto px-4 py-3 scrollbar-hide">
+          <div
+            className="flex items-center overflow-x-auto px-4 py-3 scrollbar-hide outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            tabIndex={0}
+            role="region"
+            aria-label="Command text"
+          >
             <code className="whitespace-nowrap font-mono text-sm text-foreground">
               {displayCommand}
             </code>
@@ -336,12 +342,16 @@ export function CommandCard({
         </AnimatePresence>
       </div>
 
-      {/* Checkbox area */}
+      {/* Checkbox area. The whole row is the label so the 16px box gets a
+          full-width, 44px-tall tap target on phones. */}
       {showCheckbox && (
-        <div
+        <label
+          htmlFor={persistKey || "command-completed"}
           className={cn(
-            "flex items-center gap-3 border-t border-border/30 px-4 py-3 transition-colors",
-            completed && "bg-[oklch(0.72_0.19_145/0.05)]"
+            "flex min-h-[44px] cursor-pointer items-center gap-3 border-t border-border/30 px-4 py-3 text-sm transition-colors",
+            completed
+              ? "bg-[oklch(0.72_0.19_145/0.05)] text-[oklch(0.72_0.19_145)]"
+              : "text-muted-foreground hover:text-foreground"
           )}
         >
           <Checkbox
@@ -353,23 +363,15 @@ export function CommandCard({
               completed && "border-[oklch(0.72_0.19_145)] bg-[oklch(0.72_0.19_145)] text-[oklch(0.15_0.02_145)]"
             )}
           />
-          <label
-            htmlFor={persistKey || "command-completed"}
-            className={cn(
-              "flex cursor-pointer items-center gap-2 text-sm transition-colors",
-              completed ? "text-[oklch(0.72_0.19_145)]" : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {completed ? (
-              <>
-                <CheckCircle2 className="h-4 w-4" />
-                <span>{completedLabel}</span>
-              </>
-            ) : (
-              <span>{checkboxLabel}</span>
-            )}
-          </label>
-        </div>
+          {completed ? (
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{completedLabel}</span>
+            </span>
+          ) : (
+            <span>{checkboxLabel}</span>
+          )}
+        </label>
       )}
     </div>
   );
@@ -452,8 +454,11 @@ export function CodeBlock({
         </Button>
       </div>
 
-      {/* Code content */}
-      <pre className="overflow-x-auto p-4">
+      {/* Code content (focusable so long lines can be panned by keyboard) */}
+      <pre
+        className="overflow-x-auto p-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        tabIndex={0}
+      >
         <code className="font-mono text-sm leading-relaxed text-foreground">
           {code}
         </code>

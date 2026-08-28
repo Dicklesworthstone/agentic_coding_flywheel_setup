@@ -12,7 +12,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { validateStep, type ValidationResult } from "../wizardSteps";
 
 const VALID: ValidationResult = { valid: true, errors: [] };
-const ERROR_DISPLAY_MS = 4000;
+// Long enough to read twice; the field is also scrolled into view and
+// focused, and its inline hint stays until the problem is fixed.
+const ERROR_DISPLAY_MS = 10000;
 
 /**
  * Hook that provides step validation for the wizard layout.

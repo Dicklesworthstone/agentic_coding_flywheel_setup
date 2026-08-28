@@ -16,5 +16,7 @@ export default function FlywheelLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
+  // Dark-only surface: keep dark tokens even when the wizard's light theme
+  // is active (the tool visualization uses white text on black).
+  return <div className="dark contents">{children}</div>;
 }

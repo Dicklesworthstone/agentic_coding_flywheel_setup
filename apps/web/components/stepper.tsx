@@ -215,6 +215,7 @@ export function StepperMobile({
       <div
         className="flex h-1.5 w-full gap-1"
         role="progressbar"
+        aria-label="Wizard progress"
         aria-valuemin={1}
         aria-valuemax={WIZARD_STEPS.length}
         aria-valuenow={currentStep}

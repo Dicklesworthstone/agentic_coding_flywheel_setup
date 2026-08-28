@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CommandCard } from "@/components/command-card";
 import { CodeBlock } from "@/components/ui/code-block";
 import { AlertCard, DetailsSection, OutputPreview } from "@/components/alert-card";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useUserOS, type OperatingSystem } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
@@ -108,6 +108,8 @@ export default function GenerateSSHKeyPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/rent-vps"));
   }, [router, markComplete]);
+
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
 
   if (!ready || !os) {
     return (

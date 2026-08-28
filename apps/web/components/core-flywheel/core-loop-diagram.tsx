@@ -971,7 +971,7 @@ export function CoreLoopDiagram() {
                 onClick={() => handleStageSelect(index)}
                 aria-label={`Go to stage: ${stage.label}`}
                 title={`${index + 1}. ${stage.label}`}
-                className="p-1 group/dot"
+                className="p-2 group/dot"
               >
                 <motion.div
                   className="rounded-full transition-[width,background-color,box-shadow] duration-300"

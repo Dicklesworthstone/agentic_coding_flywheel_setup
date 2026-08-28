@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { useForm } from "@tanstack/react-form";
+import { useForm, useStore } from "@tanstack/react-form";
 import { Check, AlertCircle, Server, ChevronDown, HardDrive, ShieldCheck, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import {
   CREATE_VPS_REQUIRED_CHECKLIST_ITEMS,
@@ -227,6 +227,18 @@ export default function CreateVPSPage() {
       setIsNavigating(true);
       router.push(withCurrentSearch("/wizard/ssh-connect"));
     },
+  });
+
+  // The mobile dock's "Next" submits this form, with the same gate as the
+  // inline "Continue to SSH" button (checklist complete + valid IP).
+  const ipAddress = useStore(form.store, (state) => state.values.ipAddress);
+  const submitForm = useCallback(() => {
+    void form.handleSubmit();
+  }, [form]);
+  useWizardForwardNav({
+    onContinue: submitForm,
+    disabled: !allChecked || !isValidIP(ipAddress.trim()) || isNavigating,
+    loading: isNavigating,
   });
 
   // Track if we've synced the stored IP to avoid overwriting user edits

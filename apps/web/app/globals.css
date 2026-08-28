@@ -50,8 +50,15 @@
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
-/* Dark theme is PRIMARY for this developer-focused tool */
-:root {
+/* Dark theme is PRIMARY for this developer-focused tool.
+   `.dark` is listed alongside `:root` so a dark-only surface (the Learning
+   Hub, the long-form guides, the TL;DR catalog) can wrap itself in a `dark`
+   element and keep its dark tokens even when the visitor picked the light
+   theme in the wizard; those pages hardcode black and white/NN text, so
+   inheriting the light tokens there makes their headings disappear. */
+:root,
+.dark {
+  color-scheme: dark;
   --radius: 0.75rem;
 
   /* Deep space palette */
@@ -68,6 +75,11 @@
   /* Electric cyan primary */
   --primary: oklch(0.75 0.18 195);
   --primary-foreground: oklch(0.13 0.02 260);
+  /* sRGB triplet of --primary for `rgba(var(--primary-rgb), a)` glows and
+     shadows in the Learning Hub and guide visualizations. Without this
+     definition every one of those declarations was invalid and silently
+     dropped. Keep in sync with --primary. */
+  --primary-rgb: 0, 207, 209;
 
   /* Muted backgrounds */
   --secondary: oklch(0.18 0.02 260);
@@ -212,6 +224,7 @@
 
 /* Light mode fallback (less common for this tool) */
 .light {
+  color-scheme: light;
   --background: oklch(0.98 0.005 260);
   --foreground: oklch(0.15 0.02 260);
   --card: oklch(1 0 0);
@@ -220,6 +233,7 @@
   --popover-foreground: oklch(0.15 0.02 260);
   --primary: oklch(0.55 0.2 195);
   --primary-foreground: oklch(1 0 0);
+  --primary-rgb: 0, 144, 149;
   --secondary: oklch(0.94 0.01 260);
   --secondary-foreground: oklch(0.2 0.02 260);
   --muted: oklch(0.94 0.01 260);

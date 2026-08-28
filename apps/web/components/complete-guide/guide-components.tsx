@@ -289,9 +289,11 @@ export function PromptBlock({
           <span className="ml-2 text-[0.7rem] font-bold text-white/50 tracking-wider uppercase">{title}</span>
         </div>
         <motion.button
+          type="button"
           whileTap={{ scale: 0.95 }}
           onClick={handleCopy}
-          className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-[0.7rem] font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
+          aria-label={copied ? "Copied" : `Copy prompt: ${title}`}
+          className="flex min-h-[44px] items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-[0.7rem] font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
         >
           {copied ? <Check className="h-3.5 w-3.5 text-[#FF5500]" /> : <Copy className="h-3.5 w-3.5" />}
           <span className="hidden sm:inline">{copied ? "Copied" : "Copy"}</span>

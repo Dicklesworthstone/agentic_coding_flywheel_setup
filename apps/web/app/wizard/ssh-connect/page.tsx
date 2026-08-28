@@ -10,7 +10,7 @@ import { TwoComputersExplainer } from "@/components/connection-check";
 import { formatSshHost, formatSshTarget } from "@/lib/commandBuilder";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useVPSIP, useUserOS } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
@@ -164,6 +164,8 @@ export default function SSHConnectPage() {
     router.push(withCurrentSearch("/wizard/accounts"));
   }, [router, markComplete]);
 
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+
   if (!ready || !vpsIP || !os) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -215,7 +217,7 @@ export default function SSHConnectPage() {
       </AlertCard>
 
       {/* CRITICAL: Password distinction warning */}
-      <AlertCard variant="warning" title="⚠️ Which password to use">
+      <AlertCard variant="warning" title="Which password to use">
         <div className="space-y-2">
           <p>
             You&apos;ll need the <strong className="text-foreground">VPS root password</strong> — this is{" "}
@@ -268,7 +270,7 @@ export default function SSHConnectPage() {
             This looks alarming, but it&apos;s just SSH confirming you want to trust this new server.
           </p>
         </OutputPreview>
-        <AlertCard variant="success" title="✓ Type 'yes' and press Enter">
+        <AlertCard variant="success" title="Type 'yes' and press Enter">
           This is safe! You&apos;re telling SSH to remember this server. Type the full word{" "}
           <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">yes</code> (not just &quot;y&quot;), then press Enter.
         </AlertCard>

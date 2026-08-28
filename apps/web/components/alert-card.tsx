@@ -210,7 +210,10 @@ export function OutputPreview({
           </span>
         </div>
       )}
-      <div className="overflow-x-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm">
+      <div
+        className="overflow-x-auto rounded-lg bg-[oklch(0.08_0.015_260)] p-3 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        tabIndex={0}
+      >
         {children}
       </div>
     </div>

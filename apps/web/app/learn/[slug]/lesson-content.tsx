@@ -638,9 +638,9 @@ export function LessonContent({ lesson }: Props) {
                         </div>
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-xl font-bold text-white mb-2">
+                        <h2 className="text-xl font-bold text-white mb-2">
                           New to ACFS?
-                        </h3>
+                        </h2>
                         <p className="text-white/50 mb-6 leading-relaxed">
                           Complete the setup wizard first to get the most from these lessons.
                         </p>
@@ -830,9 +830,10 @@ export function LessonContent({ lesson }: Props) {
               className="h-14 w-14 shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 transition duration-300 hover:scale-105"
               disabled={!accessiblePrevLesson}
               asChild={!!accessiblePrevLesson}
+              aria-label="Previous lesson"
             >
               {accessiblePrevLesson ? (
-                <Link href={`/learn/${accessiblePrevLesson.slug}`} aria-label="Previous">
+                <Link href={`/learn/${accessiblePrevLesson.slug}`} aria-label="Previous lesson">
                   <ChevronLeft className="h-6 w-6" />
                 </Link>
               ) : (
@@ -871,9 +872,10 @@ export function LessonContent({ lesson }: Props) {
               className="h-14 w-14 shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 transition duration-300 hover:scale-105"
               disabled={!accessibleNextLesson}
               asChild={!!accessibleNextLesson}
+              aria-label="Next lesson"
             >
               {accessibleNextLesson ? (
-                <Link href={`/learn/${accessibleNextLesson.slug}`} aria-label="Next">
+                <Link href={`/learn/${accessibleNextLesson.slug}`} aria-label="Next lesson">
                   <ChevronRight className="h-6 w-6" />
                 </Link>
               ) : (

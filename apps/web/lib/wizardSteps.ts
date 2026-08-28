@@ -8,7 +8,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect } from "react";
+import { createContext, useCallback, useContext, useEffect } from "react";
 import {
   safeGetJSON,
   safeGetItem,
@@ -491,4 +491,48 @@ export function markStepComplete(stepId: number): number[] {
     }
   }
   return newSteps;
+}
+
+// --- Shared forward navigation -------------------------------------------
+//
+// Every wizard step renders its own contextual forward button ("I'm
+// connected, continue", "Continue to SSH", ...). The wizard layout also owns
+// a fixed mobile dock with a thumb-reachable "Next". Without coordination the
+// two were independent code paths: the dock advanced the step without the
+// page's validation, analytics, or special routing (e.g. the Linux terminal
+// skip), and the desktop layout stacked a second forward button directly
+// under the page's own. A page registers its forward action here and the
+// dock's "Next" delegates to it, so each step has exactly one forward
+// behavior no matter which control the visitor presses.
+
+export interface WizardForwardAction {
+  /** Runs when the dock's shared "Next" control is pressed. */
+  onContinue: () => void;
+  /** Disable the shared control (selection missing, checklist incomplete). */
+  disabled?: boolean;
+  /** Mirror the page button's busy state while navigation is in flight. */
+  loading?: boolean;
+}
+
+export interface WizardForwardNavRegistry {
+  register: (action: WizardForwardAction | null) => void;
+}
+
+export const WizardForwardNavContext =
+  createContext<WizardForwardNavRegistry | null>(null);
+
+/**
+ * Register this step's forward action with the wizard layout. Call it once
+ * per page, after the handler is defined and before any early return, so the
+ * hook order stays stable across loading states.
+ */
+export function useWizardForwardNav(action: WizardForwardAction): void {
+  const registry = useContext(WizardForwardNavContext);
+  const { onContinue, disabled = false, loading = false } = action;
+
+  useEffect(() => {
+    if (!registry) return;
+    registry.register({ onContinue, disabled, loading });
+    return () => registry.register(null);
+  }, [registry, onContinue, disabled, loading]);
 }

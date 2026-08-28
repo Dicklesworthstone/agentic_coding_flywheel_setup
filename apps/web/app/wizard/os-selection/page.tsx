@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Apple, Monitor, Sparkles, Laptop, ChevronRight, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import {
   SimplerGuide,
@@ -152,6 +152,13 @@ export default function OSSelectionPage() {
       }
     }
   }, [selectedOS, router, markComplete, setStoredOS]);
+
+  // The mobile dock's "Next" runs this same handler (Linux skip included).
+  useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: !selectedOS || isNavigating,
+    loading: isNavigating,
+  });
 
   return (
     <div className="space-y-8">

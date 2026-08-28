@@ -32,7 +32,7 @@ import {
   type PlanStatus,
   type VPSReadinessStatus,
 } from "@/lib/vpsProviders";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { withCurrentSearch } from "@/lib/utils";
 import {
@@ -392,7 +392,7 @@ function CapacityPlanner() {
                 ...plannerSelection,
                 targetAgents: Number(event.target.value),
               })}
-              className="h-2 w-full cursor-pointer accent-primary"
+              className="h-6 w-full cursor-pointer accent-primary"
               aria-label="Target agent count"
             />
             <div className="grid grid-cols-5 gap-2" aria-label="Agent count presets">
@@ -694,6 +694,8 @@ export default function RentVPSPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/create-vps"));
   }, [router, markComplete, expandedProvider]);
+
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
 
   return (
     <div className="space-y-8">

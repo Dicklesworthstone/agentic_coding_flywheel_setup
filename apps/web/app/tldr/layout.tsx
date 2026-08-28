@@ -14,5 +14,7 @@ export default function TldrLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  // Dark-only surface: keep dark tokens even when the wizard's light theme
+  // is active (the catalog cards and hero use white text on black).
+  return <div className="dark contents">{children}</div>;
 }

@@ -27,6 +27,7 @@ import {
   getCompletedSteps,
   getNextReachableWizardStep,
   markStepComplete,
+  useWizardForwardNav,
 } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { withCurrentSearch } from "@/lib/utils";
@@ -302,6 +303,8 @@ export default function RunInstallerPage() {
     );
   }, [teamProfile]);
 
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+
   if (!ready || vpsIP === null) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -421,6 +424,9 @@ export default function RunInstallerPage() {
                   value={refDraft}
                   onChange={(e) => handlePinnedRefChange(e.target.value)}
                   placeholder="main, v1.0.0, or commit SHA"
+                  aria-label="Git ref to pin the installer to"
+                  autoComplete="off"
+                  spellCheck={false}
                   className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
@@ -465,7 +471,9 @@ export default function RunInstallerPage() {
             Download local artifacts with the exact installer command, redacted SSH recovery commands,
             provider readiness choices, team profile defaults, and support-bundle reference.
           </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          {/* Three columns max: five columns in the 672px wizard column
+              truncated every label ("Runbook J", "Team Prof"). */}
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <Button
               type="button"
               variant="outline"
@@ -692,7 +700,7 @@ export default function RunInstallerPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {WHAT_IT_INSTALLS.map((group) => (
             <div key={group.category}>
-              <h4 className="mb-2 font-medium text-foreground">{group.category}</h4>
+              <h3 className="mb-2 font-medium text-foreground">{group.category}</h3>
               <ul className="space-y-1 text-sm text-muted-foreground">
                 {group.items.map((item, i) => (
                   <li key={i} className="flex items-center gap-2">

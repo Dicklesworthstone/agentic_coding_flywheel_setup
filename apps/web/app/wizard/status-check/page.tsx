@@ -28,6 +28,7 @@ import {
   getCompletedSteps,
   getNextReachableWizardStep,
   markStepComplete,
+  useWizardForwardNav,
   validateStep,
 } from "@/lib/wizardSteps";
 import {
@@ -191,6 +192,12 @@ export default function StatusCheckPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/launch-onboarding"));
   }, [router, markComplete]);
+
+  useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating || !doctorConfirmed,
+    loading: isNavigating,
+  });
 
   // Compute auth services once, not on every category iteration
   const authServices = getAuthServices();

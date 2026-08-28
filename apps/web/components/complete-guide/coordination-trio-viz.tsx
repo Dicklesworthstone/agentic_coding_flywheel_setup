@@ -130,6 +130,9 @@ export function CoordinationTrioViz() {
                     stroke={isDisabled ? "#ef4444" : isHovered ? "white" : "white"}
                     strokeWidth={isHovered ? 2 : 1}
                     strokeDasharray={isDisabled ? "4 4" : isHovered ? "0" : "2 6"}
+                    // Start at the resting value; without it framer warns
+                    // "animate strokeOpacity from undefined" and skips the tween.
+                    initial={{ strokeOpacity: 0.1 }}
                     animate={{
                       strokeOpacity: isDisabled ? 0.1 : hoveredTool ? (isHovered ? 0.8 : 0.05) : 0.1,
                     }}

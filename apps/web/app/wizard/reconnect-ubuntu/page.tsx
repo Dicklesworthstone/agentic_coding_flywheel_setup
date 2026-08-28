@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CommandCard } from "@/components/command-card";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
 import { buildRootKeyRepairCommand, buildUserKeyRepairCommand, formatSshTarget } from "@/lib/commandBuilder";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
 import {
@@ -56,6 +56,8 @@ export default function ReconnectUbuntuPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/verify-key-connection"));
   }, [router, markComplete]);
+
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
 
   if (!ready || !vpsIP) {
     return (

@@ -9,7 +9,7 @@ import { CommandCard } from "@/components/command-card";
 import { AlertCard, OutputPreview, DetailsSection } from "@/components/alert-card";
 import { ConnectionCheck } from "@/components/connection-check";
 import { formatSshTarget } from "@/lib/commandBuilder";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { normalizeGitRef, useACFSRef, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
@@ -115,6 +115,13 @@ export default function PreflightCheckPage() {
   const handleSkip = useCallback(() => {
     goNext();
   }, [goNext]);
+
+  // Dock "Next" mirrors "Continue to installer"; the advanced skip stays inline.
+  useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: !canContinue || isNavigating,
+    loading: isNavigating,
+  });
 
   if (!ready) {
     return (

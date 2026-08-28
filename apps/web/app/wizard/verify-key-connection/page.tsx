@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { CommandCard } from "@/components/command-card";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
 import { buildRootKeyRepairCommand, buildUserKeyRepairCommand, formatSshTarget } from "@/lib/commandBuilder";
-import { markStepComplete } from "@/lib/wizardSteps";
+import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
@@ -50,6 +50,8 @@ export default function VerifyKeyConnectionPage() {
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/status-check"));
   }, [router, markComplete]);
+
+  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
 
   if (!ready || !vpsIP) {
     return (

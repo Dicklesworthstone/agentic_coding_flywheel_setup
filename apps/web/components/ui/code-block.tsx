@@ -136,7 +136,7 @@ export function CodeBlock({
           {children ?? displayCode}
         </code>
         {copyable && (
-          <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 transition-opacity">
             <CopyButton text={displayCode} compact />
           </div>
         )}
@@ -174,11 +174,16 @@ export function CodeBlock({
             </div>
           )}
         </div>
-        {copyable && <CopyButton text={displayCode} className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 border border-white/5 text-white hover:bg-white/20" />}
+        {/* Hidden until hover, but a keyboard user must be able to see what
+            they focused: reveal on focus-visible and on touch (no hover). */}
+        {copyable && <CopyButton text={displayCode} className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity bg-white/10 border border-white/5 text-white hover:bg-white/20" />}
       </div>
 
-      {/* Code content */}
-      <div className="relative z-10 p-5 overflow-x-auto">
+      {/* Code content (focusable so long lines can be panned by keyboard) */}
+      <div
+        className="relative z-10 p-5 overflow-x-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/60"
+        tabIndex={0}
+      >
         <pre className="font-mono text-[0.85rem] leading-[1.7] selection:bg-cyan-900/40 selection:text-white">
           {lines.map((line, i) => (
             <div
