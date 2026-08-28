@@ -133,7 +133,7 @@ interface ToolPageContentProps {
 
 export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
   return (
-    <div className="min-h-screen bg-black relative overflow-x-hidden">
+    <main className="min-h-screen bg-black relative overflow-x-hidden">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         <FloatingOrb
@@ -398,6 +398,6 @@ dcg doctor`}
           }
         }
       `}</style>
-    </div>
+    </main>
   );
 }

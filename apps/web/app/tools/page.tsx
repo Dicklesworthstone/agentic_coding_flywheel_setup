@@ -482,7 +482,7 @@ export default function ToolsPage() {
 
   return (
     <ErrorBoundary>
-      <main className="min-h-screen overflow-x-hidden">
+      <main className="dark min-h-screen overflow-x-hidden">
         {/* Hero */}
         <ToolsHero toolCount={manifestTools.length} />
 

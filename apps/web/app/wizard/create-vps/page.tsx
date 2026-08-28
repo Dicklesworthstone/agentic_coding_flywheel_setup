@@ -359,7 +359,7 @@ export default function CreateVPSPage() {
         {/* IP Address input - placed prominently after checklist */}
         <div className="space-y-4">
           <div className="space-y-2">
-            <h2 className="font-semibold text-foreground">Your VPS IP address</h2>
+            <h2 id="vps-ip-heading" className="font-semibold text-foreground">Your VPS IP address</h2>
             <p className="text-sm text-muted-foreground">
               Enter the IP address of your new VPS. You&apos;ll find this in your
               provider&apos;s control panel after the VPS is created.
@@ -430,6 +430,12 @@ export default function CreateVPSPage() {
                   <input
                     data-vps-ip-input
                     type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    aria-labelledby="vps-ip-heading"
+                    aria-invalid={hasErrors || undefined}
                     value={field.state.value}
                     onChange={(e) => field.handleChange(e.target.value)}
                     onBlur={field.handleBlur}

@@ -201,7 +201,7 @@ export default function GlossaryPage() {
   }, [entries, query, category]);
 
   return (
-    <div className="relative min-h-screen bg-background">
+    <div role="main" className="relative min-h-screen bg-background">
       {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
       <div className="pointer-events-none fixed inset-0 bg-grid-pattern opacity-20" />
