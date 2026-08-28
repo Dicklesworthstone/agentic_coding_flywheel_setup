@@ -16,7 +16,7 @@ installers:
 
   atuin:
     url: "https://github.com/atuinsh/atuin/releases/latest/download/atuin-installer.sh"
-    sha256: "e3fef338202d4070ff740e7456908067df85042e4eec328c0595551d78724e03"
+    sha256: "52f095bedbab4288147567f7ad2b8b1cbe856eeffbae8ec20758a7bb50f2d466"
 
   br:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_rust/main/install.sh"
@@ -120,7 +120,7 @@ installers:
 
   omp:
     url: "https://omp.sh/install.sh"
-    sha256: "1b9a74f608a430977892c972ed071f3fc46bf6d09bbf81c8827a655beaa73df7"
+    sha256: "3b0e54e890586ef86e699c58be90db97e2406e1f04730feaadebd22f64d29a17"
 
   opencode:
     url: "https://opencode.ai/install"
@@ -136,7 +136,7 @@ installers:
 
   pi:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/pi_agent_rust/main/install.sh"
-    sha256: "6cd29b72c81a53ec9d503cf5e88fb0b9b9e20b66db4be457a162a168d24ad669"
+    sha256: "d8321a88913fec73316ef572f51b1d16d303dc3b92513cbeddbfde56e6ee7923"
 
   pt:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/process_triage/main/install.sh"
@@ -184,7 +184,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "504511fbbbd811aeaba6738abc79408956b6c7da0ca35437b3dcc24a41efc111"
+    sha256: "92e8554321e2bde08c9b1445dae47a65360f885274f31df51cdc2f9faa84e001"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
