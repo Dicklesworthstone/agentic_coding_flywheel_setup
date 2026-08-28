@@ -135,7 +135,7 @@ function ServiceCard({ service, isChecked, onToggle }: ServiceCardProps) {
             {service.shortDescription}
           </p>
           {service.requiresSubscription && (
-            <p className="text-xs text-amber-600/80">
+            <p className="text-xs text-[oklch(0.78_0.16_75)]">
               Paid plan needed to actually use this service on your VPS.
             </p>
           )}
@@ -173,7 +173,7 @@ function ServiceCard({ service, isChecked, onToggle }: ServiceCardProps) {
           </div>
           {/* Post-install command preview */}
           {service.postInstallCommand && (
-            <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground/70">
+            <div className="flex items-center gap-2 pt-2 text-xs text-muted-foreground">
               <Terminal className="h-3 w-3 shrink-0" />
               <span>
                 After install:{" "}

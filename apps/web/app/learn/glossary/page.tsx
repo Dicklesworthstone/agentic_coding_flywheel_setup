@@ -154,15 +154,17 @@ function TermCard({ term }: { term: JargonTerm }) {
             </div>
             <Link
               href={`#${anchorId}`}
-              className="text-xs text-white/50 hover:text-white/70 transition-colors font-mono shrink-0"
+              className="inline-flex min-h-[24px] items-center text-xs text-white/50 hover:text-white/70 transition-colors font-mono shrink-0"
             >
               #{anchorId}
             </Link>
           </div>
 
           <button
+            type="button"
             onClick={() => setIsOpen(!isOpen)}
-            className="mt-4 flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+            aria-expanded={isOpen}
+            className="mt-4 flex min-h-[24px] items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
           >
             {isOpen ? (
               <>
@@ -271,7 +273,7 @@ export default function GlossaryPage() {
   }, [filteredTerms]);
 
   return (
-    <div className="min-h-screen bg-black relative overflow-x-hidden">
+    <main className="min-h-screen bg-black relative overflow-x-hidden">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Large primary orb */}
@@ -472,6 +474,6 @@ export default function GlossaryPage() {
         {/* Footer spacer */}
         <div className="h-20" />
       </div>
-    </div>
+    </main>
   );
 }

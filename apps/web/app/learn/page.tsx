@@ -109,7 +109,7 @@ function LessonCard({
               ? "border-primary/50 bg-primary/10"
               : status === "reference"
                 ? "border-white/[0.08] bg-white/[0.02]"
-                : "border-white/[0.06] bg-white/[0.02] opacity-60"
+                : "border-white/[0.06] bg-white/[0.02]"
         } ${isAccessible ? "cursor-pointer hover:border-primary/60 hover:bg-white/[0.06]" : "cursor-not-allowed"} ${
           isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-black" : ""
         } backdrop-blur-xl`}
@@ -136,13 +136,13 @@ function LessonCard({
               <Check className="h-4 w-4 text-white" />
             </motion.div>
           ) : status === "current" ? (
-            <motion.div
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/40"
-              animate={prefersReducedMotion ? undefined : { scale: [1, 1.15, 1] }}
-              transition={prefersReducedMotion ? undefined : { duration: 2, repeat: Infinity }}
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/40 ${
+                prefersReducedMotion ? "" : "animate-badge-pulse"
+              }`}
             >
               <Play className="h-3.5 w-3.5 text-primary-foreground" />
-            </motion.div>
+            </div>
           ) : status === "reference" ? (
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.06] backdrop-blur">
               <BookOpen className="h-3.5 w-3.5 text-muted-foreground/70" />
@@ -160,14 +160,14 @@ function LessonCard({
             ? "bg-[oklch(0.72_0.19_145/0.2)] text-[oklch(0.72_0.19_145)]"
             : status === "current"
               ? "bg-primary/20 text-primary shadow-lg shadow-primary/20"
-              : "bg-white/[0.04] text-muted-foreground/60"
+              : "bg-white/[0.04] text-muted-foreground/80"
         } group-hover:bg-primary/20 group-hover:text-primary`}>
           {lesson.id + 1}
         </div>
 
         {/* Title */}
         <h3
-          className={`mb-2 text-lg font-semibold transition-colors ${status === "locked" ? "text-muted-foreground/60" : "text-foreground group-hover:text-primary"}`}
+          className={`mb-2 text-lg font-semibold transition-colors ${status === "locked" ? "text-muted-foreground" : "text-foreground group-hover:text-primary"}`}
         >
           {lesson.title}
         </h3>
@@ -176,7 +176,7 @@ function LessonCard({
         <p className="mb-4 text-sm leading-relaxed text-muted-foreground/80">{lesson.description}</p>
 
         {/* Duration with icon */}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/60">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80">
           <Clock className="h-3.5 w-3.5" />
           <span>{lesson.duration}</span>
         </div>
@@ -296,7 +296,7 @@ export default function LearnDashboard() {
   }, [handleKeyDown]);
 
   return (
-    <div className="relative min-h-screen bg-black">
+    <main className="relative min-h-screen bg-black">
       {/* Ambient background effects */}
       <div className="pointer-events-none fixed inset-0">
         {/* Primary glow - top left */}
@@ -317,6 +317,7 @@ export default function LearnDashboard() {
         >
           <Link
             href="/"
+            aria-label="Home"
             className="group flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04] backdrop-blur transition-colors group-hover:bg-white/[0.08]">
@@ -326,7 +327,7 @@ export default function LearnDashboard() {
           </Link>
 
           <div className="flex items-center gap-3 sm:gap-4">
-            <span className="hidden text-xs text-muted-foreground/60 lg:block">
+            <span className="hidden text-xs text-muted-foreground/80 lg:block">
               <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs">j</kbd>
               /
               <kbd className="rounded border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs">k</kbd>
@@ -453,7 +454,7 @@ export default function LearnDashboard() {
                   >
                     {hasLoaded ? `${completedLessons.length}/${TOTAL_LESSONS}` : "--"}
                   </motion.div>
-                  <div className="text-sm text-muted-foreground/60">lessons complete</div>
+                  <div className="text-sm text-muted-foreground/80">lessons complete</div>
                 </div>
               </div>
             </div>
@@ -517,7 +518,10 @@ export default function LearnDashboard() {
                     lesson={lesson}
                     status={status}
                     index={index}
-                    isSelected={accessibleIndex === effectiveSelectedIndex}
+                    // Locked lessons have accessibleIndex -1, which used to
+                    // match the "nothing selected" sentinel and ring every
+                    // locked card.
+                    isSelected={accessibleIndex >= 0 && accessibleIndex === effectiveSelectedIndex}
                     prefersReducedMotion={prefersReducedMotion}
                   />
                 );
@@ -575,7 +579,7 @@ export default function LearnDashboard() {
                       <div className="font-medium transition-colors group-hover:text-primary">{item.title}</div>
                       <div
                         id={isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined}
-                        className="truncate text-sm text-muted-foreground/60"
+                        className="truncate text-sm text-muted-foreground/80"
                       >
                         {isLockedReference ? lockHint : item.desc}
                       </div>
@@ -616,7 +620,7 @@ export default function LearnDashboard() {
 
         {/* Footer */}
         <motion.footer
-          className="mt-10 pb-28 text-center text-sm text-muted-foreground/60 sm:pb-0 lg:mt-14"
+          className="mt-10 pb-28 text-center text-sm text-muted-foreground/80 sm:pb-0 lg:mt-14"
           initial={prefersReducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.8 }}
@@ -655,6 +659,6 @@ export default function LearnDashboard() {
           </div>
         </motion.div>
       )}
-    </div>
+    </main>
   );
 }

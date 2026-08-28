@@ -500,6 +500,22 @@
   animation: confetti-fall 3s ease-out forwards;
 }
 
+/* Gentle attention pulse for a small status badge. A CSS transform animation
+   runs on the compositor; the framer-motion version it replaces kept a
+   requestAnimationFrame loop alive for as long as the page was open. */
+@keyframes badge-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.animate-badge-pulse {
+  animation: badge-pulse 2s ease-in-out infinite;
+}
+
 /* Scanline sweep effect for terminal blocks */
 @keyframes scanline-sweep {
   0% {

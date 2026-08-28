@@ -166,6 +166,7 @@ export function CoordinationTrioViz() {
                   onClick={() => {
                     setDisabledTool(disabledTool === tool.id ? null : tool.id);
                   }}
+                  initial={false}
                   animate={{ opacity: isDisabled ? 0.2 : isConnected ? 1 : 0.1 }}
                   className="cursor-crosshair outline-none"
                 >

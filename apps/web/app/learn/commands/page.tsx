@@ -568,14 +568,14 @@ function CategoryCard({
                   <div className="flex items-center gap-4 shrink-0">
                     <Link
                       href={`#${anchorId}`}
-                      className="text-xs text-white/50 hover:text-white/70 transition-colors font-mono"
+                      className="inline-flex min-h-[24px] items-center text-xs text-white/50 hover:text-white/70 transition-colors font-mono"
                     >
                       #{anchorId}
                     </Link>
                     {cmd.learnMoreHref && (
                       <Link
                         href={cmd.learnMoreHref}
-                        className="group/link flex items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                        className="group/link flex min-h-[24px] items-center gap-1 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                       >
                         <span>Docs</span>
                         <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover/link:translate-x-0.5" />
@@ -640,7 +640,7 @@ export default function CommandReferencePage() {
   const hasAnyResults = filteredCommands.length > 0;
 
   return (
-    <div className="min-h-screen bg-black relative overflow-x-hidden">
+    <main className="min-h-screen bg-black relative overflow-x-hidden">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Large primary orb */}
@@ -806,6 +806,6 @@ export default function CommandReferencePage() {
         {/* Footer spacer */}
         <div className="h-20" />
       </div>
-    </div>
+    </main>
   );
 }
