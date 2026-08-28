@@ -576,7 +576,7 @@ export default function OmarchyPage() {
             {FEATURES.map((feature, index) => (
               <motion.div
                 key={feature.title}
-                className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary/30"
+                className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30"
                 variants={fadeUp}
                 transition={{ ...springs.snappy, delay: staggerDelay(index, 0.08) }}
               >

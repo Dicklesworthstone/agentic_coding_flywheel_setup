@@ -111,7 +111,7 @@ export function FeatureCard({
   return (
     <motion.div
       whileHover={{ y: -4, scale: 1.02 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl transition-all duration-500 hover:border-white/[0.15] hover:bg-white/[0.04]"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl transition duration-500 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
       {/* Gradient overlay on hover */}
       <div
@@ -241,13 +241,13 @@ export function CommandList({ commands }: CommandListProps) {
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.1 }}
-          className="group flex items-center gap-4 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+          className="group flex items-center gap-4 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
         >
           <button
             type="button"
             onClick={() => handleCopy(cmd.command, i)}
             aria-label="Copy command"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/40 border border-white/[0.08] font-mono text-sm text-emerald-400 transition-all duration-300 hover:bg-black/60 hover:border-emerald-500/30"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/40 border border-white/[0.08] font-mono text-sm text-emerald-400 transition duration-300 hover:bg-black/60 hover:border-emerald-500/30"
           >
             <span className="text-white/50">$</span>
             <span>{cmd.command}</span>

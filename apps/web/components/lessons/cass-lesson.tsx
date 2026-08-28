@@ -348,7 +348,7 @@ function UseCaseCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.15]"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.15]"
     >
       {/* Gradient overlay on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-red-500/5 via-transparent to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -386,7 +386,7 @@ function SearchPattern({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
-      className="group space-y-3 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
+      className="group space-y-3 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
     >
       <div>
         <h4 className="font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
@@ -1157,7 +1157,7 @@ function InteractiveSessionSearch() {
                   key={s.id}
                   onClick={() => runSearch(i)}
                   disabled={searching}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition ${
                     i === activeScenarioIdx
                       ? "bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/10"
                       : "bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.12]"
@@ -1363,7 +1363,7 @@ function InteractiveSessionSearch() {
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
                       activeTab === tab.key
                         ? "bg-primary/15 text-primary border border-primary/20"
                         : "text-white/40 hover:text-white/60"
@@ -1406,7 +1406,7 @@ function InteractiveSessionSearch() {
                             damping: 25,
                             delay: i * 0.08,
                           }}
-                          className={`relative rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15] border-l-2 ${colors.border}`}
+                          className={`relative rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15] border-l-2 ${colors.border}`}
                         >
                           <div className="p-4 space-y-3">
                             {/* Header row */}
@@ -1995,7 +1995,7 @@ function BestPractice({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-primary/20 bg-primary/5 backdrop-blur-xl transition-all duration-300 hover:border-primary/40 hover:bg-primary/10"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-primary/20 bg-primary/5 backdrop-blur-xl transition duration-300 hover:border-primary/40 hover:bg-primary/10"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-shadow">
         <Sparkles className="h-5 w-5" />

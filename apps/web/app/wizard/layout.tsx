@@ -97,6 +97,19 @@ export default function WizardLayout({
       if (!canAccessWizardStep(reachableSteps, stepId)) return;
 
       clearErrors();
+
+      // Linux users already have a terminal, so the shared Next button must
+      // make the same jump the OS-selection page's own Continue makes:
+      // skip step 2 and record it as done so the step gate stays consistent.
+      if (currentStep === 1 && stepId === 2 && getUserOS() === "linux") {
+        markCompletedStep(2);
+        const sshKeyStep = WIZARD_STEPS.find((s) => s.id === 3);
+        if (sshKeyStep) {
+          router.push(withCurrentSearch(`/wizard/${sshKeyStep.slug}`));
+          return;
+        }
+      }
+
       router.push(withCurrentSearch(`/wizard/${step.slug}`));
     },
     [router, currentStep, validate, clearErrors, completedSteps, markCompletedStep]
@@ -138,7 +151,7 @@ export default function WizardLayout({
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full bg-gradient-to-r from-primary to-[oklch(0.7_0.2_330)] transition-all duration-500"
+                    className="h-full bg-gradient-to-r from-primary to-[oklch(0.7_0.2_330)] transition-[width] duration-500"
                     style={{ width: `${progress}%` }}
                   />
                 </div>

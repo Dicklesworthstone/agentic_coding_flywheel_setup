@@ -367,7 +367,7 @@ function ProblemCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-center gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+      className="group flex items-center gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-400 group-hover:bg-red-500/30 transition-colors">
         ✗
@@ -404,7 +404,7 @@ function ConceptCard({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group relative space-y-4 p-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.12]"
+      className="group relative space-y-4 p-6 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.12]"
     >
       {/* Subtle gradient overlay on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -440,7 +440,7 @@ function PatternCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4, scale: 1.01 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.15]"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.15]"
     >
       {/* Gradient overlay on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -843,7 +843,7 @@ function ThreadViewer({
           </div>
           <button
             onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/50 hover:text-white hover:bg-white/[0.08] transition-all"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/50 hover:text-white hover:bg-white/[0.08] transition"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -1049,7 +1049,7 @@ function AgentInboxCard({
                     exit={{ opacity: 0, scale: 0.9 }}
                     transition={springSmooth}
                     onClick={() => onMessageClick(msg)}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/[0.12] transition-all text-left group/msg cursor-pointer"
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/[0.12] transition text-left group/msg cursor-pointer"
                   >
                     {isSender ? (
                       <Send className="h-3 w-3 text-white/30 shrink-0" />
@@ -1537,7 +1537,7 @@ function InteractiveCoordinationSim() {
               whileTap={{ scale: 0.95 }}
               onClick={resetSim}
               disabled={currentStep < 0}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-white/[0.1] bg-white/[0.04] text-white/60 text-sm font-medium backdrop-blur-xl transition-all hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-white/[0.1] bg-white/[0.04] text-white/60 text-sm font-medium backdrop-blur-xl transition hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Reset
@@ -1548,7 +1548,7 @@ function InteractiveCoordinationSim() {
               whileTap={{ scale: 0.95 }}
               onClick={goPrev}
               disabled={currentStep < 0}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/[0.1] bg-white/[0.04] text-white/60 text-sm font-medium backdrop-blur-xl transition-all hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/[0.1] bg-white/[0.04] text-white/60 text-sm font-medium backdrop-blur-xl transition hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-4 w-4" />
               Prev
@@ -1558,7 +1558,7 @@ function InteractiveCoordinationSim() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={togglePlay}
-              className={`flex items-center gap-1.5 px-6 py-2.5 rounded-xl border text-sm font-semibold backdrop-blur-xl transition-all ${
+              className={`flex items-center gap-1.5 px-6 py-2.5 rounded-xl border text-sm font-semibold backdrop-blur-xl transition ${
                 isPlaying
                   ? "border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
                   : "border-primary/40 bg-primary/15 text-primary hover:bg-primary/25"
@@ -1582,7 +1582,7 @@ function InteractiveCoordinationSim() {
               whileTap={{ scale: 0.95 }}
               onClick={goNext}
               disabled={currentStep >= totalSteps - 1}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/[0.1] bg-white/[0.04] text-white/60 text-sm font-medium backdrop-blur-xl transition-all hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border border-white/[0.1] bg-white/[0.04] text-white/60 text-sm font-medium backdrop-blur-xl transition hover:border-white/[0.2] hover:bg-white/[0.08] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Next
               <ChevronRight className="h-4 w-4" />
@@ -1619,7 +1619,7 @@ function BestPractice({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition-all duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:shadow-emerald-500/20 transition-shadow">
         <CheckCircle className="h-5 w-5" />
@@ -1641,7 +1641,7 @@ function FunctionRow({ name, purpose }: { name: string; purpose: string }) {
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-4 p-4 transition-all duration-200 hover:bg-white/[0.02]"
+      className="group flex items-center gap-4 p-4 transition duration-200 hover:bg-white/[0.02]"
     >
       <code className="text-sm text-primary font-mono font-medium px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 group-hover:bg-primary/15 transition-colors">
         {name}

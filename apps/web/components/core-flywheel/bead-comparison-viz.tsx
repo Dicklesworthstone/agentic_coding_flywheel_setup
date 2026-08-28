@@ -437,7 +437,7 @@ export function BeadComparisonViz() {
                 {/* #2: Icon is h-4 w-4 on active, h-3.5 w-3.5 otherwise */}
                 <FileText
                   className={cn(
-                    "relative z-10 transition-all duration-300",
+                    "relative z-10 transition-[width,height] duration-300",
                     activeTab === tab ? "h-4 w-4" : "h-3.5 w-3.5",
                   )}
                 />

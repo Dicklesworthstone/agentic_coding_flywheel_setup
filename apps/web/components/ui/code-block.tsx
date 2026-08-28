@@ -64,7 +64,7 @@ function CopyButton({
       aria-label={copied ? "Copied!" : "Copy to clipboard"}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-lg text-xs font-medium",
-        "transition-all duration-200",
+        "transition duration-200",
         // Minimum touch target for mobile (44px when compact)
         compact
           ? "min-h-[44px] min-w-[44px] justify-center p-2 text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95"
@@ -150,7 +150,7 @@ export function CodeBlock({
   return (
     <div
       className={cn(
-        "group relative rounded-xl border border-white/10 bg-[#09090b] overflow-hidden shadow-2xl transition-all duration-500 hover:border-white/20 hover:shadow-[0_0_30px_-5px_rgba(34,211,238,0.15)] ring-1 ring-inset ring-white/5",
+        "group relative rounded-xl border border-white/10 bg-[#09090b] overflow-hidden shadow-2xl transition duration-500 hover:border-white/20 hover:shadow-[0_0_30px_-5px_rgba(34,211,238,0.15)] ring-1 ring-inset ring-white/5",
         className,
       )}
     >

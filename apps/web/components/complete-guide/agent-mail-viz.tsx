@@ -48,7 +48,7 @@ export function AgentMailViz() {
           </div>
           <div className="flex items-center gap-3">
             <span className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-xl transition-all duration-500 shadow-inner",
+              "flex h-8 w-8 items-center justify-center rounded-xl transition duration-500 shadow-inner",
               mode === "broadcast" ? "bg-[#FF5F56]/10 text-[#FF5F56] border border-[#FF5F56]/20" : "bg-[#FF5500]/10 text-[#FF5500] border border-[#FF5500]/20"
             )}>
               <Mail className="h-4 w-4" />
@@ -67,7 +67,7 @@ export function AgentMailViz() {
           <button 
             onClick={() => setMode("broadcast")}
             className={cn(
-              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition-all duration-500 flex items-center gap-2",
+              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition duration-500 flex items-center gap-2",
               mode === "broadcast" ? "bg-[#FF5F56]/10 text-[#FF5F56] shadow-sm border border-[#FF5F56]/20" : "text-white/40 hover:text-white/80 border border-transparent"
             )}
           >
@@ -77,7 +77,7 @@ export function AgentMailViz() {
           <button 
             onClick={() => setMode("agentmail")}
             className={cn(
-              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition-all duration-500 flex items-center gap-2",
+              "px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold tracking-wide transition duration-500 flex items-center gap-2",
               mode === "agentmail" ? "bg-[#FF5500]/10 text-[#FF5500] shadow-sm border border-[#FF5500]/20" : "text-white/40 hover:text-white/80 border border-transparent"
             )}
           >

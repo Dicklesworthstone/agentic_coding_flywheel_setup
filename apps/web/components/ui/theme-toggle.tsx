@@ -34,7 +34,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
       className={cn(
         // 44px touch target for Apple HIG compliance
         "flex h-11 w-11 items-center justify-center rounded-xl",
-        "text-muted-foreground transition-all duration-200",
+        "text-muted-foreground transition duration-200",
         "hover:bg-muted hover:text-foreground hover:scale-105",
         "active:scale-95",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",

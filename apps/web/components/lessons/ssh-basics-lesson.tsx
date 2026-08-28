@@ -713,7 +713,7 @@ function ScenarioConnect() {
       <div className="flex justify-center">
         <button
           onClick={replay}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition-all duration-300"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition duration-300"
         >
           <RefreshCw className="h-3 w-3" /> Replay
         </button>
@@ -846,7 +846,7 @@ function ScenarioKeyAuth() {
       <div className="flex justify-center">
         <button
           onClick={replay}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition-all duration-300"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition duration-300"
         >
           <RefreshCw className="h-3 w-3" /> Replay
         </button>
@@ -1121,7 +1121,7 @@ function ScenarioReconnect() {
       <div className="flex justify-center">
         <button
           onClick={replay}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition-all duration-300"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/[0.03] border border-white/[0.08] text-white/50 hover:border-white/[0.15] hover:text-white/70 transition duration-300"
         >
           <RefreshCw className="h-3 w-3" /> Replay
         </button>
@@ -1150,7 +1150,7 @@ function InteractiveSSHTunnel() {
             <button
               key={key}
               onClick={() => { setScenario(key); setShowUnencrypted(false); }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 border whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition duration-300 border whitespace-nowrap ${
                 active
                   ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400"
                   : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60"
@@ -1166,7 +1166,7 @@ function InteractiveSSHTunnel() {
         {scenario === "connect" && (
           <button
             onClick={() => setShowUnencrypted((v) => !v)}
-            className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 border whitespace-nowrap ${
+            className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition duration-300 border whitespace-nowrap ${
               showUnencrypted
                 ? "bg-red-500/15 border-red-500/40 text-red-400"
                 : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:border-white/[0.12] hover:text-white/60"
@@ -1327,11 +1327,11 @@ function StageCard({
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4, scale: 1.02 }}
       transition={{ delay: 0.2 + number * 0.1 }}
-      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
     >
       <div className="relative">
         <div className="flex items-center gap-3 mb-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white text-sm font-bold group-hover:bg-white/20 group-hover:scale-110 transition-all duration-300">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white text-sm font-bold group-hover:bg-white/20 group-hover:scale-110 transition duration-300">
             {number}
           </div>
           <div>
@@ -1340,7 +1340,7 @@ function StageCard({
           </div>
         </div>
         <p className="text-sm text-white/60 mb-4 group-hover:text-white/70 transition-colors">{description}</p>
-        <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.06] text-xs font-mono text-white/80 overflow-x-auto group-hover:border-primary/20 group-hover:bg-black/40 transition-all duration-300">
+        <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.06] text-xs font-mono text-white/80 overflow-x-auto group-hover:border-primary/20 group-hover:bg-black/40 transition duration-300">
           {code}
         </code>
       </div>
@@ -1361,9 +1361,9 @@ function CommandPart({
   return (
     <motion.div
       whileHover={{ x: 4, scale: 1.02 }}
-      className="group flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
+      className="group flex items-center gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] transition duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
     >
-      <code className="px-2 py-1 rounded bg-primary/10 border border-primary/20 text-xs font-mono text-primary group-hover:bg-primary/20 group-hover:border-primary/40 transition-all duration-300">
+      <code className="px-2 py-1 rounded bg-primary/10 border border-primary/20 text-xs font-mono text-primary group-hover:bg-primary/20 group-hover:border-primary/40 transition duration-300">
         {label}
       </code>
       <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">{description}</span>
@@ -1399,10 +1399,10 @@ function QuizCards() {
           animate={{ opacity: 1, x: 0 }}
           whileHover={{ x: 4, scale: 1.01 }}
           transition={{ delay: i * 0.1 }}
-          className="group relative rounded-xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
+          className="group relative rounded-xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl transition duration-300 hover:border-primary/30 hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
         >
           <div className="flex items-start gap-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold group-hover:bg-primary/20 group-hover:scale-110 transition-all duration-300">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-bold group-hover:bg-primary/20 group-hover:scale-110 transition duration-300">
               {i + 1}
             </div>
             <div className="flex-1">

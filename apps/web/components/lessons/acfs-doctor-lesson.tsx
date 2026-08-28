@@ -350,7 +350,7 @@ function ChecklistItem({
   const badgeClass = colorMap[frequency] || colorMap.Daily;
 
   return (
-    <div className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]">
+    <div className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]">
       <div className="flex items-center gap-3 shrink-0">
         <CheckCircle2 className="h-5 w-5 text-white/30 group-hover:text-emerald-400 transition-colors" />
         <span

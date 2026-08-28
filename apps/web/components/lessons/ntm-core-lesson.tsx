@@ -1137,7 +1137,7 @@ function InteractiveNtmOrchestrator() {
           type="button"
           onClick={goPrev}
           disabled={step === 0}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition-all hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Previous step"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -1146,7 +1146,7 @@ function InteractiveNtmOrchestrator() {
         <button
           type="button"
           onClick={togglePlay}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary transition-all hover:bg-primary/20"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary transition hover:bg-primary/20"
           aria-label={playing ? "Pause" : "Play"}
         >
           {playing ? (
@@ -1160,7 +1160,7 @@ function InteractiveNtmOrchestrator() {
           type="button"
           onClick={goNext}
           disabled={step >= TOTAL_STEPS - 1}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition-all hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Next step"
         >
           <ChevronRight className="h-4 w-4" />
@@ -1174,7 +1174,7 @@ function InteractiveNtmOrchestrator() {
             key={i}
             type="button"
             onClick={() => goToStep(i)}
-            className={`h-2 rounded-full transition-all duration-300 ${
+            className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
               i === step
                 ? "w-6 bg-primary"
                 : i < step
@@ -1351,10 +1351,10 @@ function CommandSection({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group space-y-4 p-4 -mx-4 rounded-xl transition-all duration-300 hover:bg-white/[0.02]"
+      className="group space-y-4 p-4 -mx-4 rounded-xl transition duration-300 hover:bg-white/[0.02]"
     >
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition">
           {icon}
         </div>
         <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
@@ -1381,7 +1381,7 @@ function SessionComponent({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ scale: 1.02, x: 2 }}
-      className={`group flex items-center gap-3 p-3 rounded-xl bg-gradient-to-br ${color} bg-opacity-10 border border-white/[0.08] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group flex items-center gap-3 p-3 rounded-xl bg-gradient-to-br ${color} bg-opacity-10 border border-white/[0.08] backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
       <div className={`h-2 w-2 rounded-full bg-gradient-to-br ${color} group-hover:scale-125 transition-transform`} />
       <span className="text-sm text-white/70 group-hover:text-white/90 transition-colors">{label}</span>
@@ -1412,9 +1412,9 @@ function WorkflowSteps() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.1 }}
           whileHover={{ x: 6, scale: 1.01 }}
-          className="group relative flex items-center gap-4 pl-2 py-1 rounded-lg transition-all duration-300"
+          className="group relative flex items-center gap-4 pl-2 py-1 rounded-lg transition duration-300"
         >
-          <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-white text-sm font-bold shadow-lg shadow-primary/30 group-hover:shadow-xl group-hover:shadow-primary/40 group-hover:scale-110 transition-all">
+          <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-violet-500 text-white text-sm font-bold shadow-lg shadow-primary/30 group-hover:shadow-xl group-hover:shadow-primary/40 group-hover:scale-110 transition">
             {i + 1}
           </div>
           <span className="text-white/70 group-hover:text-white/90 transition-colors">{step}</span>
@@ -1433,7 +1433,7 @@ function AgentRatioCard() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]"
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]"
     >
       <h4 className="font-bold text-white mb-4">Why this ratio?</h4>
       <div className="space-y-3">
@@ -1476,10 +1476,10 @@ function RatioItem({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-4 p-2 -mx-2 rounded-lg transition-all duration-300 hover:bg-white/[0.02]"
+      className="group flex items-center gap-4 p-2 -mx-2 rounded-lg transition duration-300 hover:bg-white/[0.02]"
     >
       <div
-        className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${color} text-white font-bold text-sm shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all`}
+        className={`flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br ${color} text-white font-bold text-sm shadow-lg group-hover:shadow-xl group-hover:scale-110 transition`}
       >
         {count}
       </div>

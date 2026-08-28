@@ -339,7 +339,7 @@ function CompactionSimulatorImpl() {
             whileHover={phase === "empty" || phase === "full" ? { scale: 1.02 } : {}}
             whileTap={phase === "empty" || phase === "full" ? { scale: 0.98 } : {}}
             transition={{ type: "spring", stiffness: 200, damping: 25 }}
-            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-300 ${
+            className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border transition duration-300 ${
               pcrEnabled
                 ? "border-emerald-500/30 bg-emerald-500/10"
                 : "border-red-500/30 bg-red-500/10"

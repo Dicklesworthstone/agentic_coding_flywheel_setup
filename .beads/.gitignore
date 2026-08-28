@@ -48,3 +48,5 @@ sync_base.jsonl
 
 # bv (beads viewer) lock file
 .bv.lock
+.write.lock
+*.tmp

@@ -174,11 +174,11 @@ export const animations = {
  */
 export const cardStyles = {
   /** Base card with glass effect */
-  base: "overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300",
+  base: "overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300",
   /** Hoverable card */
-  hoverable: "overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:border-primary/30",
+  hoverable: "overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300 hover:border-primary/30",
   /** Feature card with glow */
-  feature: "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary/30",
+  feature: "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30",
 } as const;
 
 // =============================================================================
@@ -244,7 +244,7 @@ export const badges = {
   /** Primary badge (rounded-full) */
   primary: "inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm text-primary",
   /** Subtle badge */
-  subtle: "inline-flex items-center rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-sm font-medium transition-all hover:scale-105 hover:border-primary/30",
+  subtle: "inline-flex items-center rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-sm font-medium transition hover:scale-105 hover:border-primary/30",
 } as const;
 
 // =============================================================================
@@ -362,9 +362,9 @@ export const motionVariants = {
  */
 export const transitions = {
   /** Standard all-properties transition */
-  all: "transition-all duration-300",
+  all: "transition duration-300",
   /** Fast all-properties transition */
-  fast: "transition-all duration-150",
+  fast: "transition duration-150",
   /** Opacity transition */
   opacity: "transition-opacity duration-300",
   /** Transform transition */

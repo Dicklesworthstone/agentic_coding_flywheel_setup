@@ -52,7 +52,7 @@ function RelatedToolCard({ toolId }: { toolId: ToolId }) {
       <motion.div
         whileHover={{ y: -2, scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
-        className="group relative flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 backdrop-blur-md transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.06]"
+        className="group relative flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 backdrop-blur-md transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.06]"
         style={{
           boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
         }}
@@ -255,7 +255,7 @@ export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
                   href={doc.docsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group/btn relative flex w-full items-center justify-center gap-3 rounded-xl bg-white/10 border border-white/10 py-4 px-6 font-semibold text-white transition-all duration-300 hover:bg-white/15 hover:border-white/20 hover:shadow-lg"
+                  className="group/btn relative flex w-full items-center justify-center gap-3 rounded-xl bg-white/10 border border-white/10 py-4 px-6 font-semibold text-white transition duration-300 hover:bg-white/15 hover:border-white/20 hover:shadow-lg"
                   style={{
                     boxShadow: `0 4px 30px rgba(0,0,0,0.3)`,
                   }}

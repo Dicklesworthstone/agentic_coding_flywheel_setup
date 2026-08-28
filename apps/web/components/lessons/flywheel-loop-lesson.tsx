@@ -844,11 +844,11 @@ function ToolCard({
         animate: { opacity: 1, x: 0 },
         transition: { delay: number * 0.05 },
         whileHover: { x: 4, scale: 1.01 },
-        className: `group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]`,
+        className: `group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]`,
       }}
     >
       <div className="flex items-start gap-4">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white shadow-lg group-hover:bg-white/20 group-hover:shadow-xl group-hover:scale-110 transition-all duration-300">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white shadow-lg group-hover:bg-white/20 group-hover:shadow-xl group-hover:scale-110 transition duration-300">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
@@ -908,7 +908,7 @@ function FlywheelEffectList() {
             transition: { delay: i * 0.1 },
             whileHover: { x: 6, scale: 1.01 },
             className:
-              "group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]",
+              "group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]",
           }}
         >
           <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
@@ -939,7 +939,7 @@ function HelpCard({
         initial: { opacity: 0, y: 10 },
         animate: { opacity: 1, y: 0 },
         whileHover: { y: -4, scale: 1.02 },
-        className: `group relative rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-4 backdrop-blur-xl text-center transition-all duration-300 hover:border-white/[0.15]`,
+        className: `group relative rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-4 backdrop-blur-xl text-center transition duration-300 hover:border-white/[0.15]`,
       }}
     >
       <code className="block px-3 py-2 rounded-lg bg-black/30 border border-white/[0.08] text-sm font-mono text-primary mb-2 group-hover:bg-black/40 transition-colors">
@@ -1205,7 +1205,7 @@ function MiniTerminal({
         {commands.map((cmd, i) => (
           <div
             key={`${stageName}-${i}`}
-            className="flex items-start gap-2 transition-all duration-300"
+            className="flex items-start gap-2 transition duration-300"
             style={{
               opacity: i < visibleLines ? 1 : 0,
               transform: i < visibleLines ? "translateX(0)" : "translateX(-8px)",
@@ -1408,7 +1408,7 @@ function FlywheelTabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition duration-200 ${
         isActive
           ? "bg-white/[0.08] text-white border border-white/[0.12]"
           : "text-white/40 hover:text-white/60 hover:bg-white/[0.04] border border-transparent"
@@ -1652,14 +1652,14 @@ function InteractiveFlywheelCycle() {
     >
       {/* Multi-layer background glow */}
       <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl pointer-events-none transition-all duration-1000"
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full blur-3xl pointer-events-none transition duration-1000"
         style={{
           backgroundColor: lerpHexColor("#6366f1", "#f97316", warmth),
           opacity: 0.06 + warmth * 0.06,
         }}
       />
       <div
-        className="absolute top-1/3 left-1/3 w-64 h-64 rounded-full blur-3xl pointer-events-none transition-all duration-1000"
+        className="absolute top-1/3 left-1/3 w-64 h-64 rounded-full blur-3xl pointer-events-none transition duration-1000"
         style={{
           backgroundColor: lerpHexColor("#3b82f6", "#ec4899", warmth),
           opacity: 0.04 + warmth * 0.03,
@@ -1689,14 +1689,14 @@ function InteractiveFlywheelCycle() {
             <button
               type="button"
               onClick={handleReset}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/50 text-xs font-medium hover:bg-white/[0.06] hover:text-white/70 transition-all duration-200"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/50 text-xs font-medium hover:bg-white/[0.06] hover:text-white/70 transition duration-200"
             >
               <RefreshCw className="h-3 w-3" /> Reset
             </button>
             <button
               type="button"
               onClick={handleTogglePlay}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/70 text-xs font-medium hover:bg-white/[0.08] hover:text-white/90 transition-all duration-200"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] text-white/70 text-xs font-medium hover:bg-white/[0.08] hover:text-white/90 transition duration-200"
             >
               {isPlaying ? (
                 <>
@@ -2235,7 +2235,7 @@ function InteractiveFlywheelCycle() {
                           delay: i * 0.04,
                         },
                         onClick: () => handleStageClick(i),
-                        className: `flex items-center gap-3 p-3 rounded-xl border text-left transition-all duration-200 ${
+                        className: `flex items-center gap-3 p-3 rounded-xl border text-left transition duration-200 ${
                           isActive
                             ? "border-white/[0.15] bg-white/[0.05]"
                             : "border-white/[0.06] bg-white/[0.01] hover:bg-white/[0.03]"

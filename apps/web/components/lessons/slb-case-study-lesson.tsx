@@ -469,7 +469,7 @@ function IdeaCard() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-amber-500/50"
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-amber-500/50"
     >
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-500">
@@ -511,7 +511,7 @@ function TimelineCard() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       whileHover={{ y: -2 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]"
+      className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]"
     >
       <h4 className="font-bold text-white mb-4 flex items-center gap-2">
         <Clock className="h-5 w-5 text-primary" />
@@ -526,9 +526,9 @@ function TimelineCard() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: i * 0.1 }}
             whileHover={{ x: 6 }}
-            className="group flex items-center gap-4 p-2 -mx-2 rounded-lg transition-all duration-300 hover:bg-white/[0.02]"
+            className="group flex items-center gap-4 p-2 -mx-2 rounded-lg transition duration-300 hover:bg-white/[0.02]"
           >
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20 group-hover:bg-primary/30 group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/20 group-hover:bg-primary/30 group-hover:shadow-lg group-hover:shadow-primary/20 transition">
               <step.icon className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1 flex items-center gap-3">
@@ -562,7 +562,7 @@ function FeedbackCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
       <div className="flex items-center gap-2 mb-2">
         <Bot className="h-4 w-4 text-white/80 group-hover:scale-110 transition-transform" />
@@ -582,7 +582,7 @@ function BeadsResultCard() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-sky-500/50"
+      className="group relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-sky-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <LayoutDashboard className="h-5 w-5 text-sky-400" />
@@ -656,7 +656,7 @@ function RiskTierCard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.1 }}
           whileHover={{ y: -2, scale: 1.02 }}
-          className={`group rounded-xl border ${tier.border} bg-gradient-to-br ${tier.color} p-4 backdrop-blur-xl transition-all duration-300 hover:border-opacity-80`}
+          className={`group rounded-xl border ${tier.border} bg-gradient-to-br ${tier.color} p-4 backdrop-blur-xl transition duration-300 hover:border-opacity-80`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="font-bold text-white text-sm">{tier.name}</span>
@@ -680,7 +680,7 @@ function ResultsCard() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-emerald-500/50"
+      className="group relative rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-emerald-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <CheckCircle2 className="h-5 w-5 text-emerald-400" />
@@ -722,7 +722,7 @@ function ComparisonCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
       <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">{title}</h4>
       <ul className="space-y-2">
@@ -1160,7 +1160,7 @@ function InteractiveBuildTimeline() {
               <button
                 key={s.id}
                 onClick={() => handleScenarioChange(i)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition-all duration-200 border ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-mono transition duration-200 border ${
                   isSelected
                     ? `${rc.borderColor} ${rc.bgColor} ${rc.color}`
                     : "border-white/[0.06] bg-white/[0.01] text-white/50 hover:text-white/70 hover:border-white/[0.12]"
@@ -1396,7 +1396,7 @@ function InteractiveBuildTimeline() {
           <div className="flex items-center gap-2">
             <button
               onClick={resetSimulation}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs font-mono text-white/50 hover:text-white/80 hover:border-white/[0.15] transition-all duration-200"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] bg-white/[0.02] text-xs font-mono text-white/50 hover:text-white/80 hover:border-white/[0.15] transition duration-200"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -1404,7 +1404,7 @@ function InteractiveBuildTimeline() {
             <button
               onClick={startSimulation}
               disabled={phase !== "idle"}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg border text-xs font-mono font-bold transition-all duration-200 ${
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg border text-xs font-mono font-bold transition duration-200 ${
                 phase !== "idle"
                   ? "border-white/[0.06] bg-white/[0.01] text-white/30 cursor-not-allowed"
                   : `${riskConfig.borderColor} ${riskConfig.bgColor} ${riskConfig.color} hover:brightness-125`

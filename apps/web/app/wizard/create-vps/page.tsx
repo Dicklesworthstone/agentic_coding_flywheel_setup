@@ -96,7 +96,7 @@ function ProviderGuide({
 }: ProviderGuideProps) {
   return (
     <div className={cn(
-      "rounded-xl border transition-all duration-200",
+      "rounded-xl border transition duration-200",
       isExpanded
         ? "border-primary/30 bg-card/80"
         : "border-border/50 bg-card/50"
@@ -323,7 +323,7 @@ export default function CreateVPSPage() {
                 />
                 <span
                   className={cn(
-                    "text-sm transition-all",
+                    "text-sm transition",
                     checkedItems.has(item.id)
                       ? "text-muted-foreground line-through"
                       : "text-foreground"
@@ -423,7 +423,7 @@ export default function CreateVPSPage() {
                     onBlur={field.handleBlur}
                     placeholder="e.g., 203.0.113.42"
                     className={cn(
-                      "w-full rounded-xl border bg-background px-4 py-3 font-mono text-sm outline-none transition-all",
+                      "w-full rounded-xl border bg-background px-4 py-3 font-mono text-sm outline-none transition",
                       "focus:border-primary focus:ring-2 focus:ring-primary/20",
                       hasErrors
                         ? "border-destructive focus:border-destructive focus:ring-destructive/20"

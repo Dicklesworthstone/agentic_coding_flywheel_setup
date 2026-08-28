@@ -142,7 +142,7 @@ function StageNode({
         delay: reducedMotion ? 0 : index * 0.1,
       }}
       className={cn(
-        "group/node relative flex items-center gap-4 rounded-2xl border p-4 text-left transition-all duration-500 w-full min-h-[56px] hover:scale-[1.02]",
+        "group/node relative flex items-center gap-4 rounded-2xl border p-4 text-left transition duration-500 w-full min-h-[56px] hover:scale-[1.02]",
         isActive
           ? "border-white/[0.08] bg-white/[0.03] shadow-[0_0_30px_var(--node-glow)]"
           : isPast
@@ -159,7 +159,7 @@ function StageNode({
       <div className="relative shrink-0">
         <motion.div
           className={cn(
-            "flex h-11 w-11 items-center justify-center rounded-xl border transition-all duration-500",
+            "flex h-11 w-11 items-center justify-center rounded-xl border transition duration-500",
             isActive
               ? "border-transparent"
               : "border-white/[0.06] bg-white/[0.02]",
@@ -224,7 +224,7 @@ function StageNode({
       {/* Arrow indicator */}
       <ChevronRight
         className={cn(
-          "ml-auto h-4 w-4 shrink-0 transition-all duration-500",
+          "ml-auto h-4 w-4 shrink-0 transition duration-500",
           isActive
             ? "text-white/60 translate-x-0 opacity-100"
             : "text-white/10 -translate-x-1 opacity-0 group-hover/node:translate-x-0 group-hover/node:opacity-100",
@@ -258,7 +258,7 @@ function ConnectorLine({
         transition={{ delay: reducedMotion ? 0 : index * 0.1 + 0.15 }}
       >
         <div
-          className="absolute inset-0 transition-all duration-700"
+          className="absolute inset-0 transition duration-700"
           style={{
             background:
               isActive || isPast
@@ -613,7 +613,7 @@ export function ArtifactLadderViz() {
             type="button"
             onClick={toggleAutoPlay}
             className={cn(
-              "group flex items-center gap-3 px-6 py-3 rounded-2xl border transition-all duration-500",
+              "group flex items-center gap-3 px-6 py-3 rounded-2xl border transition duration-500",
               autoPlay
                 ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
                 : "border-white/10 bg-white/[0.02] text-white/40 hover:bg-white/[0.04] hover:text-white/60",
@@ -621,7 +621,7 @@ export function ArtifactLadderViz() {
           >
             <div
               className={cn(
-                "w-2 h-2 rounded-full transition-all duration-500",
+                "w-2 h-2 rounded-full transition duration-500",
                 autoPlay
                   ? "bg-[#FF5500] shadow-[0_0_8px_rgba(255,85,0,0.8)] animate-pulse"
                   : "bg-white/20",

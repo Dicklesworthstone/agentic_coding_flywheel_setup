@@ -614,7 +614,7 @@ function InteractiveDcgDemo() {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${
                 activeTab === tab.key
                   ? "bg-white/[0.08] text-white shadow-sm"
                   : "text-white/40 hover:text-white/60"

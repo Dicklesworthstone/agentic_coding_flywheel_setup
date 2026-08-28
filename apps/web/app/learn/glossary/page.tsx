@@ -102,7 +102,7 @@ function CategoryChip({
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.97 }}
       transition={springs.snappy}
-      className={`min-h-[44px] rounded-full border px-5 py-2.5 text-sm font-medium transition-all duration-300 ${
+      className={`min-h-[44px] rounded-full border px-5 py-2.5 text-sm font-medium transition duration-300 ${
         isSelected
           ? "border-primary/50 bg-gradient-to-r from-primary/20 to-violet-500/20 text-white shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]"
           : "border-white/[0.08] bg-white/[0.03] text-white/60 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/80"
@@ -127,7 +127,7 @@ function TermCard({ term }: { term: JargonTerm }) {
     >
       <div
         id={anchorId}
-        className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl scroll-mt-28 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+        className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl scroll-mt-28 transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
       >
         {/* Hover gradient */}
         {categoryMeta && (
@@ -216,7 +216,7 @@ function TermCard({ term }: { term: JargonTerm }) {
                         <Link
                           key={related}
                           href={`#${relatedAnchor}`}
-                          className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-white/60 transition-all duration-300 hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+                          className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-white/60 transition duration-300 hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
                         >
                           {related}
                         </Link>
@@ -294,19 +294,19 @@ export default function GlossaryPage() {
         >
           <Link
             href="/learn"
-            className="group flex items-center gap-3 text-white/50 transition-all duration-300 hover:text-white"
+            className="group flex items-center gap-3 text-white/50 transition duration-300 hover:text-white"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition-all duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
               <ArrowLeft className="h-4 w-4" />
             </div>
             <span className="text-sm font-medium">Learning Hub</span>
           </Link>
           <Link
             href="/"
-            className="group flex items-center gap-3 text-white/50 transition-all duration-300 hover:text-white"
+            className="group flex items-center gap-3 text-white/50 transition duration-300 hover:text-white"
           >
             <span className="text-sm font-medium">Home</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition-all duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
               <Home className="h-4 w-4" />
             </div>
           </Link>
@@ -363,7 +363,7 @@ export default function GlossaryPage() {
                 placeholder="Search terms..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-4 pl-14 pr-5 text-white placeholder:text-white/50 backdrop-blur-xl transition-all duration-300 focus:border-primary/50 focus:bg-white/[0.05] focus:outline-none focus:shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)]"
+                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-4 pl-14 pr-5 text-white placeholder:text-white/50 backdrop-blur-xl transition duration-300 focus:border-primary/50 focus:bg-white/[0.05] focus:outline-none focus:shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)]"
               />
             </div>
           </div>
@@ -451,7 +451,7 @@ export default function GlossaryPage() {
                       setSearchQuery("");
                       setCategory("all");
                     }}
-                    className="rounded-full bg-gradient-to-r from-primary/20 to-violet-500/20 border border-primary/30 px-6 py-3 text-sm font-medium text-white transition-all duration-300 hover:from-primary/30 hover:to-violet-500/30 hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.3)]"
+                    className="rounded-full bg-gradient-to-r from-primary/20 to-violet-500/20 border border-primary/30 px-6 py-3 text-sm font-medium text-white transition duration-300 hover:from-primary/30 hover:to-violet-500/30 hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.3)]"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     transition={springs.snappy}

@@ -894,7 +894,7 @@ function InteractiveDiagramFixerImpl() {
                     damping: 25,
                     delay: i * 0.05,
                   }}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition-all duration-300 ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-medium transition duration-300 ${
                     issueResolved
                       ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-400/70 line-through"
                       : "border-white/[0.08] bg-white/[0.02] text-white/50"

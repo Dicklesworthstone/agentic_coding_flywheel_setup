@@ -74,7 +74,7 @@ export function ConvergenceViz() {
   const rotationSpeed = (1 - score) * 10 + 2; // Fast when chaotic, slow when converged
 
   return (
-    <div ref={ref} className="my-12 rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl transition-all duration-500 hover:border-primary/20 overflow-hidden relative group/viz">
+    <div ref={ref} className="my-12 rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl transition duration-500 hover:border-primary/20 overflow-hidden relative group/viz">
       <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
       
       {/* HEADER */}
@@ -102,7 +102,7 @@ export function ConvergenceViz() {
             <button
               key={preset.label}
               onClick={() => setValues([...preset.vals])}
-              className="rounded-xl border border-transparent px-3 py-1.5 text-xs font-bold transition-all duration-300 hover:bg-white/[0.06] hover:text-white/90 text-white/50 active:scale-95 hover:border-white/10"
+              className="rounded-xl border border-transparent px-3 py-1.5 text-xs font-bold transition duration-300 hover:bg-white/[0.06] hover:text-white/90 text-white/50 active:scale-95 hover:border-white/10"
             >
               {preset.label}
             </button>

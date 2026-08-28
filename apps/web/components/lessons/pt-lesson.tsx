@@ -733,7 +733,7 @@ function InteractiveProcessTriageDashboard() {
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.9 }}
                 transition={SPRING}
-                className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-all ${
+                className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition ${
                   i === step
                     ? 'bg-primary/20 border border-primary/30 text-primary'
                     : 'bg-white/[0.02] border border-white/[0.06] text-white/30 hover:text-white/50 hover:border-white/[0.12]'

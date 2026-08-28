@@ -623,7 +623,7 @@ function InteractiveMemoryPipeline() {
           </div>
           <button
             onClick={toggleAutoPlay}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 hover:scale-105"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition duration-200 hover:scale-105"
             style={{
               borderColor: isAutoPlaying ? "rgba(251,191,36,0.3)" : "rgba(255,255,255,0.1)",
               backgroundColor: isAutoPlaying ? "rgba(251,191,36,0.1)" : "rgba(255,255,255,0.03)",
@@ -720,7 +720,7 @@ function MemorySessionArchive({
               className="w-full text-left group"
             >
               <div
-                className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition-all duration-200"
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl border transition duration-200"
                 style={{
                   borderColor: isSelected
                     ? `${session.color}40`
@@ -1140,7 +1140,7 @@ function MemoryContextQuery({
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.97 }}
               onClick={() => onQueryClick(example)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all duration-200"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition duration-200"
               style={{
                 borderColor: isActive ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.06)",
                 backgroundColor: isActive ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.02)",
@@ -1193,7 +1193,7 @@ function OnboardingSteps() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: i * 0.1 }}
           whileHover={{ x: 4, scale: 1.01 }}
-          className="group flex items-start gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+          className="group flex items-start gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white text-sm font-bold shadow-lg shadow-primary/20 group-hover:shadow-xl group-hover:shadow-primary/30 transition-shadow">
             {i + 1}
@@ -1225,7 +1225,7 @@ function ProtocolStep({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold text-lg shadow-lg shadow-primary/20 group-hover:shadow-xl group-hover:shadow-primary/30 transition-shadow">
         {number}
@@ -1255,7 +1255,7 @@ function CategoryCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -4, scale: 1.03 }}
-      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${color} p-5 backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.2]`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${color} p-5 backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.2]`}
     >
       {/* Decorative glow */}
       <div className="absolute -top-8 -right-8 w-24 h-24 bg-white/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -1281,7 +1281,7 @@ function BestPractice({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition-all duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:shadow-emerald-500/20 transition-shadow">
         <Lightbulb className="h-5 w-5" />

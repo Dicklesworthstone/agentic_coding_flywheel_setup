@@ -348,7 +348,7 @@ function OutputExplainer({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
+      className="group flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] backdrop-blur-xl transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04]"
     >
       <code className={`font-mono text-sm font-medium ${color}`}>{pattern}</code>
       <span className="text-white/50 group-hover:text-white/70 transition-colors">
@@ -382,7 +382,7 @@ function SeverityCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`group relative rounded-2xl border ${border} bg-gradient-to-br ${color} p-6 backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.2]`}
+      className={`group relative rounded-2xl border ${border} bg-gradient-to-br ${color} p-6 backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.2]`}
     >
       {/* Decorative glow */}
       <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -956,7 +956,7 @@ function InteractiveBugScanner() {
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             transition={springs.snappy}
-            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
               i === scenarioIdx
                 ? "bg-primary/20 text-primary border border-primary/30"
                 : "bg-white/[0.03] text-white/40 border border-white/[0.06] hover:text-white/60 hover:bg-white/[0.06]"
@@ -1018,7 +1018,7 @@ function InteractiveBugScanner() {
                   initial={{ opacity: 0, x: -12 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ ...springs.smooth, delay: i * 0.06 }}
-                  className={`relative group rounded-lg border p-2.5 transition-all ${
+                  className={`relative group rounded-lg border p-2.5 transition ${
                     isActive
                       ? "border-primary/40 bg-primary/5"
                       : hasIssues
@@ -1397,7 +1397,7 @@ function InteractiveBugScanner() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             transition={springs.smooth}
                             onClick={() => inspectFinding(finding.id)}
-                            className={`w-full text-left rounded-xl border transition-all ${
+                            className={`w-full text-left rounded-xl border transition ${
                               isSelected
                                 ? `${styles.border} ${styles.bg} ring-1 ${styles.border}`
                                 : "border-white/[0.08] bg-white/[0.02] hover:border-white/[0.12] hover:bg-white/[0.04]"
@@ -1528,7 +1528,7 @@ function InteractiveBugScanner() {
                           ...springs.smooth,
                           delay: i * 0.08,
                         }}
-                        className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${
+                        className={`flex items-center gap-3 p-2.5 rounded-lg border transition ${
                           isCurrent
                             ? "border-primary/40 bg-primary/10"
                             : isComplete

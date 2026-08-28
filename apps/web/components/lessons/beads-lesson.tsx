@@ -360,7 +360,7 @@ function TypeRow({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-3 p-2 rounded-lg transition-all duration-200 hover:bg-white/[0.04]"
+      className="group flex items-center gap-3 p-2 rounded-lg transition duration-200 hover:bg-white/[0.04]"
     >
       <code className={`text-sm font-mono font-medium px-2 py-1 rounded bg-white/5 ${color}`}>{type}</code>
       <span className="text-sm text-white/50 group-hover:text-white/70 transition-colors">{description}</span>
@@ -387,7 +387,7 @@ function PriorityRow({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-3 p-2 rounded-lg transition-all duration-200 hover:bg-white/[0.04]"
+      className="group flex items-center gap-3 p-2 rounded-lg transition duration-200 hover:bg-white/[0.04]"
     >
       <span className={`text-sm font-mono font-bold w-6 text-center ${color}`}>{priority}</span>
       <span className={`text-sm font-medium ${color}`}>{label}</span>
@@ -416,7 +416,7 @@ function RobotCommand({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className={`group relative rounded-2xl border ${primary ? "border-primary/30 bg-primary/5" : "border-white/[0.08] bg-white/[0.02]"} p-5 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group relative rounded-2xl border ${primary ? "border-primary/30 bg-primary/5" : "border-white/[0.08] bg-white/[0.02]"} p-5 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]`}
     >
       {/* Subtle glow on hover */}
       <div className={`absolute inset-0 ${primary ? "bg-primary/5" : "bg-white/[0.02]"} opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
@@ -429,7 +429,7 @@ function RobotCommand({
         {output.map((field) => (
           <span
             key={field}
-            className="px-2 py-1 rounded bg-white/[0.05] text-xs text-white/50 font-mono group-hover:bg-white/[0.08] group-hover:text-white/70 transition-all"
+            className="px-2 py-1 rounded bg-white/[0.05] text-xs text-white/50 font-mono group-hover:bg-white/[0.08] group-hover:text-white/70 transition"
           >
             {field}
           </span>
@@ -1039,7 +1039,7 @@ function InteractiveDependencyGraph() {
           <div className="flex-1" />
           <button
             onClick={handleAutoPlay}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition duration-200 ${
               isAutoPlaying
                 ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
                 : "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
@@ -1070,7 +1070,7 @@ function InteractiveDependencyGraph() {
                   damping: 25,
                   delay: i * 0.05,
                 }}
-                className={`relative flex-shrink-0 flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl text-center transition-all duration-300 min-w-[100px] ${
+                className={`relative flex-shrink-0 flex flex-col items-center gap-1.5 px-3 py-2 rounded-xl text-center transition duration-300 min-w-[100px] ${
                   isActive
                     ? "bg-primary/15 border border-primary/40"
                     : isPast
@@ -1210,7 +1210,7 @@ function InteractiveDependencyGraph() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowCriticalPath((v) => !v)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition duration-200 ${
                   showCriticalPath
                     ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
                     : "border-white/[0.1] bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white/80"
@@ -1220,7 +1220,7 @@ function InteractiveDependencyGraph() {
               </button>
               <button
                 onClick={handleReset}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.1] bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white/80 transition-all duration-200"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.1] bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white/80 transition duration-200"
               >
                 <RotateCcw className="h-3 w-3" /> Reset
               </button>
@@ -1364,7 +1364,7 @@ function InteractiveDependencyGraph() {
                           : 0.4
                     }
                     markerEnd={`url(#${markerId})`}
-                    className="transition-all duration-300"
+                    className="transition-[stroke,stroke-width,stroke-opacity] duration-300"
                   />
                 );
               })
@@ -1826,7 +1826,7 @@ function InteractiveDependencyGraph() {
                           onMouseLeave={() =>
                             setHoveredId(null)
                           }
-                          className={`w-full text-left px-3 py-2 rounded-lg border transition-all duration-200 ${
+                          className={`w-full text-left px-3 py-2 rounded-lg border transition duration-200 ${
                             activeId === bead.id
                               ? "border-primary/40 bg-primary/10"
                               : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]"
@@ -2191,7 +2191,7 @@ function MetricCard({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-primary/30"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl overflow-hidden transition duration-500 hover:border-primary/30"
     >
       {/* Gradient overlay on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-violet-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -2223,7 +2223,7 @@ function BestPractice({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition-all duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:shadow-emerald-500/20 transition-shadow">
         <CheckCircle className="h-5 w-5" />

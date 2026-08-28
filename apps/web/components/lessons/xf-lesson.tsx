@@ -688,7 +688,7 @@ function InteractiveArchiveSearch() {
             <button
               key={sc.id}
               onClick={() => runScenario(sc.id)}
-              className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition-all text-left ${
+              className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-medium transition text-left ${
                 activeScenario === sc.id
                   ? 'bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/5'
                   : 'bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.15] hover:bg-white/[0.04]'
@@ -1025,7 +1025,7 @@ function InteractiveArchiveSearch() {
                     damping: 25,
                     delay: i * RESULT_REVEAL_DELAY / 1000,
                   }}
-                  className="rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden hover:border-white/[0.15] transition-all duration-300 group"
+                  className="rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden hover:border-white/[0.15] transition duration-300 group"
                 >
                   <div className="p-4 space-y-3">
                     {/* Card header */}

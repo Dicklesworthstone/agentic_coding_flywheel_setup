@@ -1250,7 +1250,7 @@ function InteractiveSwarmOrchestrator() {
           type="button"
           onClick={goPrev}
           disabled={step === 0}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition-all hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Previous step"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -1259,7 +1259,7 @@ function InteractiveSwarmOrchestrator() {
         <button
           type="button"
           onClick={togglePlay}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary transition-all hover:bg-primary/20"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary transition hover:bg-primary/20"
           aria-label={playing ? 'Pause' : 'Play'}
         >
           {playing ? (
@@ -1273,7 +1273,7 @@ function InteractiveSwarmOrchestrator() {
           type="button"
           onClick={goNext}
           disabled={step >= totalSteps - 1}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition-all hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Next step"
         >
           <ChevronRight className="h-4 w-4" />
@@ -1290,7 +1290,7 @@ function InteractiveSwarmOrchestrator() {
               setPlaying(false);
               setStep(i);
             }}
-            className={`h-2 rounded-full transition-all duration-300 ${
+            className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
               i === step
                 ? 'w-6 bg-primary'
                 : i < step

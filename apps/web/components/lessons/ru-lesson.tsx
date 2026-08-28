@@ -789,7 +789,7 @@ function InteractiveRepoSync() {
                 }
               }}
               disabled={isRunning}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-200 ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition duration-200 ${
                 activeScenario === s.id
                   ? 'bg-white/[0.1] text-white border border-white/[0.15] shadow-sm shadow-white/5'
                   : 'text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.04]'
@@ -846,7 +846,7 @@ function InteractiveRepoSync() {
               {workerSlots.map((slot, i) => (
                 <motion.div
                   key={i}
-                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition-all duration-300 ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono transition duration-300 ${
                     slot
                       ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
                       : 'bg-white/[0.03] text-white/20 border border-white/[0.06]'

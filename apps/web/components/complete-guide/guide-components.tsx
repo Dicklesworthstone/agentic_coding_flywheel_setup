@@ -112,14 +112,14 @@ export function GuideSection({
       <div className="relative mb-16 group">
         <div className="flex flex-col sm:flex-row sm:items-start gap-5 sm:gap-6">
           {typeof number === "string" && number !== "" && (
-            <div className="flex h-12 w-12 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-[1rem] bg-gradient-to-b from-[#FF5500]/10 to-transparent border border-[#FF5500]/20 font-mono text-2xl sm:text-3xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_16px_-4px_rgba(0,0,0,0.5)] transition-all duration-500 group-hover:bg-[#FF5500]/20 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
+            <div className="flex h-12 w-12 sm:h-16 sm:w-16 shrink-0 items-center justify-center rounded-[1rem] bg-gradient-to-b from-[#FF5500]/10 to-transparent border border-[#FF5500]/20 font-mono text-2xl sm:text-3xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_16px_-4px_rgba(0,0,0,0.5)] transition duration-500 group-hover:bg-[#FF5500]/20 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
               <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">{number}</span>
             </div>
           )}
 
           <div className="flex flex-1 min-w-0 items-start gap-4 sm:gap-5">
             {icon && (
-              <div className="mt-1 sm:mt-2 flex h-10 w-10 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-[0.85rem] border border-[#FF5500]/20 bg-[#05070a] text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-500 group-hover:border-[#FF5500]/40 group-hover:bg-[#FF5500]/10 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.25)] group-hover:scale-105">
+              <div className="mt-1 sm:mt-2 flex h-10 w-10 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-[0.85rem] border border-[#FF5500]/20 bg-[#05070a] text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-500 group-hover:border-[#FF5500]/40 group-hover:bg-[#FF5500]/10 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.25)] group-hover:scale-105">
                 {icon}
               </div>
             )}
@@ -173,7 +173,7 @@ export function SubSection({
     <div className="mt-20 first:mt-12 group/sub relative">
       <div className="absolute -left-4 sm:-left-8 top-1.5 bottom-0 w-[3px] bg-white/[0.02] group-hover/sub:bg-[#FF5500]/20 transition-colors duration-500 hidden sm:block rounded-full" />
       <h3 className="text-2xl sm:text-3xl font-bold text-white mb-8 flex items-center gap-4 tracking-tight relative">
-        <div className="absolute -left-4 sm:-left-8 top-1/2 -translate-y-1/2 w-[3px] h-0 bg-[#FF5500] transition-all duration-500 group-hover/sub:h-full hidden sm:block shadow-[0_0_10px_rgba(255,85,0,0.6)] rounded-full" />
+        <div className="absolute -left-4 sm:-left-8 top-1/2 -translate-y-1/2 w-[3px] h-0 bg-[#FF5500] transition-[height] duration-500 group-hover/sub:h-full hidden sm:block shadow-[0_0_10px_rgba(255,85,0,0.6)] rounded-full" />
         {title}
       </h3>
       <div className="space-y-6 sm:space-y-8">{children}</div>
@@ -275,7 +275,7 @@ export function PromptBlock({
   }, [prompt]);
 
   return (
-    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition-all duration-500 hover:border-[#FF5500]/30 my-12 shadow-xl">
+    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition duration-500 hover:border-[#FF5500]/30 my-12 shadow-xl">
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       
       {/* Top bar — refined metal */}
@@ -291,7 +291,7 @@ export function PromptBlock({
         <motion.button
           whileTap={{ scale: 0.95 }}
           onClick={handleCopy}
-          className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-[0.7rem] font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition-all duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
+          className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-1.5 text-[0.7rem] font-medium text-white/60 hover:bg-white/10 hover:text-white border border-white/[0.04] transition duration-200 hover:border-[#FF5500]/30 hover:text-[#FF5500]"
         >
           {copied ? <Check className="h-3.5 w-3.5 text-[#FF5500]" /> : <Copy className="h-3.5 w-3.5" />}
           <span className="hidden sm:inline">{copied ? "Copied" : "Copy"}</span>
@@ -358,7 +358,7 @@ export function DataTable({
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-6 my-12 relative z-10">
         {rows.map((row, ri) => (
-          <div key={ri} className="flex flex-col p-6 sm:p-8 rounded-[2rem] bg-[#05070A] border border-white/[0.04] shadow-2xl relative group/card hover:border-[#FF5500]/30 transition-all duration-500 hover:-translate-y-2 overflow-hidden">
+          <div key={ri} className="flex flex-col p-6 sm:p-8 rounded-[2rem] bg-[#05070A] border border-white/[0.04] shadow-2xl relative group/card hover:border-[#FF5500]/30 transition duration-500 hover:-translate-y-2 overflow-hidden">
             <div className="absolute inset-0 noise-overlay opacity-[0.02] mix-blend-overlay pointer-events-none" />
             <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 pointer-events-none" />
             
@@ -394,7 +394,7 @@ export function DataTable({
   return (
     <div className="relative group my-16">
       <div className="absolute -inset-0.5 bg-gradient-to-r from-[#FF5500]/20 via-violet-500/10 to-transparent rounded-[2rem] blur-xl opacity-0 group-hover:opacity-50 transition-opacity duration-700 pointer-events-none" />
-      <div className="relative overflow-x-auto rounded-[2rem] border border-white/[0.05] bg-[#05070a] shadow-2xl transition-all duration-500 group-hover:border-[#FF5500]/30">
+      <div className="relative overflow-x-auto rounded-[2rem] border border-white/[0.05] bg-[#05070a] shadow-2xl transition duration-500 group-hover:border-[#FF5500]/30">
         <table className="w-full text-sm min-w-[600px] border-collapse">
           <thead>
             <tr className="border-b border-white/[0.08] bg-white/[0.02]">
@@ -446,14 +446,14 @@ export function PhaseCard({
 }) {
   return (
     <div
-      className="group relative rounded-3xl bg-[#05070a] p-8 sm:p-12 overflow-hidden transition-all duration-700 hover:-translate-y-2 border border-white/[0.04] hover:border-[#FF5500]/30 shadow-2xl"
+      className="group relative rounded-3xl bg-[#05070a] p-8 sm:p-12 overflow-hidden transition duration-700 hover:-translate-y-2 border border-white/[0.04] hover:border-[#FF5500]/30 shadow-2xl"
     >
       {/* Background layer */}
       <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br ${gradient} transition-opacity duration-1000 pointer-events-none mix-blend-screen`} />
       
       <div className="relative z-10 flex flex-col gap-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/5 font-mono text-2xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-700 group-hover:scale-110 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/[0.02] border border-white/5 font-mono text-2xl font-black text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-700 group-hover:scale-110 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_30px_rgba(255,85,0,0.3)]">
             {phase}
           </div>
           <div className="h-px flex-1 bg-gradient-to-r from-white/[0.08] to-transparent hidden sm:block" />
@@ -532,7 +532,7 @@ export function TipBox({
 // =============================================================================
 export function ToolPill({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded border border-white/10 bg-white/[0.04] text-[#FF5500] text-[0.8rem] font-medium tracking-wide shadow-sm hover:border-[#FF5500]/40 hover:bg-[#FF5500]/5 transition-all cursor-help relative -top-px">
+    <span className="inline-flex items-center px-2.5 py-0.5 rounded border border-white/10 bg-white/[0.04] text-[#FF5500] text-[0.8rem] font-medium tracking-wide shadow-sm hover:border-[#FF5500]/40 hover:bg-[#FF5500]/5 transition cursor-help relative -top-px">
       {children}
     </span>
   );
@@ -588,7 +588,7 @@ export function NumberedList({ items }: { items: (string | ReactNode)[] }) {
     <ol className="space-y-4 sm:space-y-5 my-8">
       {items.map((item, i) => (
         <li key={i} className="flex items-start gap-4 sm:gap-5 group">
-          <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.03] border border-white/10 text-xs sm:text-sm font-bold text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-300 group-hover:border-[#FF5500]/40 group-hover:bg-[#FF5500]/5 group-hover:shadow-[0_0_15px_rgba(255,85,0,0.2)] group-hover:-translate-y-0.5">
+          <span className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.03] border border-white/10 text-xs sm:text-sm font-bold text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] transition duration-300 group-hover:border-[#FF5500]/40 group-hover:bg-[#FF5500]/5 group-hover:shadow-[0_0_15px_rgba(255,85,0,0.2)] group-hover:-translate-y-0.5">
             {i + 1}
           </span>
           <span className="text-zinc-300 text-[1.05rem] sm:text-[1.1rem] leading-[1.7] font-light pt-0.5 group-hover:text-zinc-100 transition-colors duration-300">{item}</span>
@@ -624,7 +624,7 @@ export function StatCard({
   sublabel?: string;
 }) {
   return (
-    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 text-center overflow-hidden transition-all duration-500 hover:-translate-y-1 hover:border-[#FF5500]/30 shadow-xl">
+    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 text-center overflow-hidden transition duration-500 hover:-translate-y-1 hover:border-[#FF5500]/30 shadow-xl">
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-b from-[#FF5500]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       <div className="relative z-10 text-3xl sm:text-5xl font-black bg-gradient-to-br from-white via-[#FF5500] to-violet-400 bg-clip-text text-transparent tracking-tighter drop-shadow-md group-hover:scale-105 transition-transform duration-500">
@@ -655,7 +655,7 @@ export function PrincipleCard({
 
   return (
     <div
-      className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition-all duration-500 hover:border-[#FF5500]/30 hover:-translate-y-1 my-6 shadow-xl"
+      className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] overflow-hidden transition duration-500 hover:border-[#FF5500]/30 hover:-translate-y-1 my-6 shadow-xl"
     >
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       
@@ -671,14 +671,14 @@ export function PrincipleCard({
         aria-expanded={open}
         disabled={!hasContent}
       >
-        <div className="mt-0.5 sm:mt-0 flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.03] border border-white/10 font-mono text-sm sm:text-base font-bold text-[#FF5500] group-hover:scale-105 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.2)] transition-all duration-500">
+        <div className="mt-0.5 sm:mt-0 flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.03] border border-white/10 font-mono text-sm sm:text-base font-bold text-[#FF5500] group-hover:scale-105 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.2)] transition duration-500">
           <span className="bg-gradient-to-br from-white to-[#FF5500]/80 bg-clip-text text-transparent">{number}</span>
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-bold text-white text-lg sm:text-xl leading-tight tracking-tight group-hover:text-[#FF5500] transition-colors duration-300 pr-4">{title}</h4>
         </div>
         {hasContent && (
-          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-white/[0.03] border border-white/[0.05] group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/20 transition-all duration-300 shrink-0 self-center">
+          <div className="flex items-center justify-center h-8 w-8 rounded-full bg-white/[0.03] border border-white/[0.05] group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/20 transition duration-300 shrink-0 self-center">
             <ChevronDown className={`h-4 w-4 text-zinc-400 group-hover:text-[#FF5500] transition-transform duration-500 ${open ? "rotate-180" : ""}`} />
           </div>
         )}
@@ -721,7 +721,7 @@ export function OperatorCard({
   children?: ReactNode;
 }) {
   return (
-    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 transition-all duration-500 hover:border-[#FF5500]/40 hover:-translate-y-1 my-8 overflow-hidden shadow-xl">
+    <div className="group relative rounded-2xl border border-white/[0.06] bg-[#0A0D14] p-6 sm:p-8 transition duration-500 hover:border-[#FF5500]/40 hover:-translate-y-1 my-8 overflow-hidden shadow-xl">
       <div className="absolute inset-0 noise-overlay opacity-[0.03] mix-blend-overlay pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-br from-[#FF5500]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
       
@@ -729,7 +729,7 @@ export function OperatorCard({
       <div className="absolute -top-24 -right-24 h-48 w-48 rounded-full bg-[#FF5500]/10 blur-[60px] opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
       <div className="relative z-10 flex flex-col sm:flex-row items-start gap-5 sm:gap-6">
-        <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-[#FF5500]/[0.05] border border-[#FF5500]/20 font-mono text-sm sm:text-base font-bold text-[#FF5500] group-hover:scale-105 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.2)] transition-all duration-500">
+        <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-[#FF5500]/[0.05] border border-[#FF5500]/20 font-mono text-sm sm:text-base font-bold text-[#FF5500] group-hover:scale-105 group-hover:bg-[#FF5500]/10 group-hover:border-[#FF5500]/40 group-hover:shadow-[0_0_20px_rgba(255,85,0,0.2)] transition duration-500">
           <span>{number}</span>
         </div>
         <div className="min-w-0 flex-1">

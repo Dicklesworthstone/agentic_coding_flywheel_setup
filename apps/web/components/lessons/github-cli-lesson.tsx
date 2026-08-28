@@ -537,7 +537,7 @@ function BestPractice({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition-all duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:shadow-emerald-500/20 transition-shadow">
         <CheckCircle className="h-5 w-5" />
@@ -899,7 +899,7 @@ function InteractiveGitHubWorkflow() {
             type="button"
             onClick={goPrev}
             disabled={activeStage <= 0}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl text-white/60 transition-all hover:border-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl text-white/60 transition hover:border-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -907,7 +907,7 @@ function InteractiveGitHubWorkflow() {
           <button
             type="button"
             onClick={togglePlay}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary transition-all hover:bg-primary/20"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/30 bg-primary/10 text-primary transition hover:bg-primary/20"
           >
             {isPlaying ? (
               <Pause className="h-4 w-4" />
@@ -920,7 +920,7 @@ function InteractiveGitHubWorkflow() {
             type="button"
             onClick={goNext}
             disabled={activeStage >= totalStages - 1}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl text-white/60 transition-all hover:border-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl text-white/60 transition hover:border-white/20 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -937,7 +937,7 @@ function InteractiveGitHubWorkflow() {
                 setActiveStage(i);
                 setIsPlaying(false);
               }}
-              className={`h-2 rounded-full transition-all duration-300 ${
+              className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
                 i === activeStage
                   ? "w-6 bg-primary"
                   : i < activeStage
@@ -1067,7 +1067,7 @@ function PRTimeline({
                     scale: isActive ? 1.15 : 1,
                   }}
                   transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                  className={`relative flex h-8 w-8 items-center justify-center rounded-full border-2 transition-all duration-300 cursor-pointer ${
+                  className={`relative flex h-8 w-8 items-center justify-center rounded-full border-2 transition duration-300 cursor-pointer ${
                     isActive
                       ? `${colorMap[stage.color]} shadow-lg`
                       : isCompleted

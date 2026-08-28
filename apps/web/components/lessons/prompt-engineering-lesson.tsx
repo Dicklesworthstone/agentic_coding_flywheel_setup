@@ -558,7 +558,7 @@ function IntensityExample({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-4 p-4 rounded-xl border border-primary/20 bg-primary/5 transition-all duration-300 hover:border-primary/40"
+      className="group flex items-center gap-4 p-4 rounded-xl border border-primary/20 bg-primary/5 transition duration-300 hover:border-primary/40"
     >
       <code className="text-primary font-mono font-medium">&quot;{phrase}&quot;</code>
       <span className="text-white/60">→</span>
@@ -583,7 +583,7 @@ function ScopeCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`group rounded-2xl border p-5 backdrop-blur-xl transition-all duration-300 ${
+      className={`group rounded-2xl border p-5 backdrop-blur-xl transition duration-300 ${
         isExpand
           ? "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40"
           : "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40"
@@ -618,7 +618,7 @@ function VerificationQuestion({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 transition-all duration-300 hover:border-amber-500/40"
+      className="group flex items-start gap-4 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 transition duration-300 hover:border-amber-500/40"
     >
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-400">
         ?
@@ -648,7 +648,7 @@ function FreshEyesCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5 backdrop-blur-xl transition-all duration-300 hover:border-violet-500/40"
+      className="group rounded-2xl border border-violet-500/20 bg-violet-500/5 p-5 backdrop-blur-xl transition duration-300 hover:border-violet-500/40"
     >
       <div className="flex items-center gap-3 mb-3">
         <Eye className="h-5 w-5 text-violet-400" />
@@ -675,7 +675,7 @@ function TemporalConcept({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-4 p-3 rounded-lg border border-white/[0.08] bg-white/[0.02] transition-all duration-300 hover:border-white/[0.15]"
+      className="group flex items-center gap-4 p-3 rounded-lg border border-white/[0.08] bg-white/[0.02] transition duration-300 hover:border-white/[0.15]"
     >
       <Clock className="h-4 w-4 text-primary shrink-0" />
       <span className="font-medium text-white">{concept}</span>
@@ -700,7 +700,7 @@ function PrincipleCard({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-4 p-3 rounded-lg border border-blue-500/20 bg-blue-500/5 transition-all duration-300 hover:border-blue-500/40"
+      className="group flex items-center gap-4 p-3 rounded-lg border border-blue-500/20 bg-blue-500/5 transition duration-300 hover:border-blue-500/40"
     >
       <Layers className="h-4 w-4 text-blue-400 shrink-0" />
       <span className="font-medium text-blue-300">{principle}</span>
@@ -1100,7 +1100,7 @@ function InteractivePromptLab() {
                 whileHover={{ scale: 1.04 }}
                 whileTap={{ scale: 0.97 }}
                 transition={springs.snappy}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition-all duration-200 ${
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium border transition duration-200 ${
                   isActive && isEnabled
                     ? `${t.borderColor} ${t.bgColor} ${t.color} ring-1 ring-white/10`
                     : isEnabled
@@ -1606,7 +1606,7 @@ function AnatomyPanel({
                   x: 0,
                 }}
                 transition={{ delay: idx * 0.05, ...springs.smooth }}
-                className={`flex items-center gap-3 rounded-lg p-2.5 border transition-all duration-200 ${
+                className={`flex items-center gap-3 rounded-lg p-2.5 border transition duration-200 ${
                   isEnabled
                     ? `${t.borderColor} ${t.bgColor}`
                     : "border-white/[0.04] bg-white/[0.01]"
@@ -1844,7 +1844,7 @@ function QuickRefItem({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group grid grid-cols-3 gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] transition-all duration-300 hover:border-primary/30"
+      className="group grid grid-cols-3 gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] transition duration-300 hover:border-primary/30"
     >
       <div>
         <span className="text-xs text-white/60 uppercase">Pattern</span>

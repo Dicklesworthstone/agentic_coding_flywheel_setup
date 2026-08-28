@@ -119,14 +119,14 @@ function FooterCTA({ id }: { id?: string }) {
         </p>
         <div className="mt-6 flex flex-col items-center gap-4 md:mt-8">
           <div className="group relative w-full max-w-6xl">
-            <div className="overflow-x-auto rounded-xl bg-card/80 ring-1 ring-border/50 transition-all duration-200 hover:ring-primary/30">
+            <div className="overflow-x-auto rounded-xl bg-card/80 ring-1 ring-border/50 transition duration-200 hover:ring-primary/30">
               <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6 sm:py-4">
                 <code className="flex-1 whitespace-nowrap font-mono text-xs text-primary sm:text-sm md:text-base">
                   {INSTALL_COMMAND}
                 </code>
                 <button
                   onClick={handleCopy}
-                  className="flex-shrink-0 rounded-lg bg-secondary p-2 text-muted-foreground transition-all duration-200 hover:bg-primary hover:text-white active:scale-95 sm:p-2.5"
+                  className="flex-shrink-0 rounded-lg bg-secondary p-2 text-muted-foreground transition duration-200 hover:bg-primary hover:text-white active:scale-95 sm:p-2.5"
                   aria-label={copied ? "Copied!" : "Copy to clipboard"}
                 >
                   {copied ? (

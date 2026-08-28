@@ -24,7 +24,7 @@ export function SimplerGuide({ children, className }: SimplerGuideProps) {
   return (
     <div
       className={cn(
-        "rounded-2xl border-2 border-dashed transition-all duration-300",
+        "rounded-2xl border-2 border-dashed transition duration-300",
         isOpen
           ? "border-[oklch(0.7_0.15_280)] bg-[oklch(0.7_0.15_280/0.05)]"
           : "border-border/40 bg-muted/20 hover:border-[oklch(0.7_0.15_280/0.5)] hover:bg-[oklch(0.7_0.15_280/0.03)]",

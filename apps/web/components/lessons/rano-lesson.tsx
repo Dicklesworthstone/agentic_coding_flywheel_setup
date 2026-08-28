@@ -922,7 +922,7 @@ function InteractiveTrafficMonitor() {
                 setStepIndex(i);
                 setPackets([]);
               }}
-              className={`h-1.5 rounded-full transition-all ${
+              className={`h-1.5 rounded-full transition-[width,background-color] ${
                 i === stepIndex ? 'w-6 bg-blue-400' : i < stepIndex ? 'w-3 bg-white/20' : 'w-3 bg-white/[0.08]'
               }`}
             />

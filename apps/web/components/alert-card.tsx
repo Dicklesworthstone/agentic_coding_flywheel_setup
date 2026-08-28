@@ -121,7 +121,7 @@ export function AlertCard({
       {!dismissed && (
         <m.div
           className={cn(
-            "relative rounded-xl border p-4 backdrop-blur-sm transition-all",
+            "relative rounded-xl border p-4 backdrop-blur-sm transition",
             styles.container,
             className
           )}
@@ -234,7 +234,7 @@ export function DetailsSection({
   return (
     <details
       className={cn(
-        "group rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all",
+        "group rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm transition",
         "hover:border-primary/20",
         className
       )}

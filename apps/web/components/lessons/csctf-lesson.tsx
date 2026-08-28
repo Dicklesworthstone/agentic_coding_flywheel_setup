@@ -473,7 +473,7 @@ function ChatBubble({
         {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
       </div>
       <div
-        className={`relative rounded-xl px-3 py-2 max-w-[85%] text-[10px] leading-relaxed transition-all duration-300 ${
+        className={`relative rounded-xl px-3 py-2 max-w-[85%] text-[10px] leading-relaxed transition duration-300 ${
           isUser
             ? 'bg-white/[0.06] border border-white/[0.08] text-white/70'
             : 'border text-white/80'

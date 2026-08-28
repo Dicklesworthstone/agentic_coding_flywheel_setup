@@ -93,7 +93,7 @@ function ServiceCard({ service, isChecked, onToggle }: ServiceCardProps) {
 
   return (
     <div
-      className={`group rounded-xl border p-4 transition-all ${
+      className={`group rounded-xl border p-4 transition ${
         isChecked
           ? "border-[oklch(0.72_0.19_145/0.5)] bg-[oklch(0.72_0.19_145/0.05)]"
           : "border-border/50 bg-card/50 hover:border-primary/30"
@@ -354,7 +354,7 @@ export default function AccountsPage() {
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
           <div
-            className="h-full bg-[oklch(0.72_0.19_145)] transition-all"
+            className="h-full bg-[oklch(0.72_0.19_145)] transition-[width]"
             style={{
               width: `${
                 essentialServices.length > 0

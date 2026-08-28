@@ -150,7 +150,7 @@ function ToolCard({ tool, index }: ToolCardProps) {
         className={cn(
           "relative h-full overflow-hidden rounded-xl",
           "border border-border/50 bg-card/50 backdrop-blur-sm",
-          "transition-all duration-300",
+          "transition duration-300",
           "hover:border-border hover:bg-card/70 hover:shadow-lg"
         )}
       >
@@ -212,7 +212,7 @@ function ToolCard({ tool, index }: ToolCardProps) {
                 href={tool.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/5 text-muted-foreground ring-1 ring-white/10 transition-all hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-ring outline-none"
+                className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/5 text-muted-foreground ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white focus-visible:ring-2 focus-visible:ring-ring outline-none"
                 aria-label={`View ${tool.displayName} on GitHub`}
               >
                 <ExternalLink className="h-4 w-4" />
@@ -290,7 +290,7 @@ function CategoryFilter({ categories, selected, onSelect }: CategoryFilterProps)
       <button
         onClick={() => onSelect(null)}
         className={cn(
-          "rounded-full px-4 py-2 text-sm font-medium transition-all",
+          "rounded-full px-4 py-2 text-sm font-medium transition",
           selected === null
             ? "bg-primary text-white"
             : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
@@ -303,7 +303,7 @@ function CategoryFilter({ categories, selected, onSelect }: CategoryFilterProps)
           key={category}
           onClick={() => onSelect(category)}
           className={cn(
-            "rounded-full px-4 py-2 text-sm font-medium transition-all",
+            "rounded-full px-4 py-2 text-sm font-medium transition",
             selected === category
               ? "bg-primary text-white"
               : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
@@ -340,7 +340,7 @@ function SearchInput({ value, onChange }: SearchInputProps) {
           "border border-border/50 backdrop-blur-sm",
           "placeholder:text-muted-foreground",
           "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
-          "transition-all duration-200"
+          "transition duration-200"
         )}
       />
       {value && (

@@ -1000,7 +1000,7 @@ function InteractiveSessionHandoffImpl() {
               <button
                 key={i}
                 onClick={() => goToStep(i)}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
+                className={`h-1.5 rounded-full transition-[width,background-color] duration-300 ${
                   i === currentStep
                     ? 'w-6 bg-violet-400'
                     : i < currentStep

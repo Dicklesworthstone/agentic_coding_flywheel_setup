@@ -785,7 +785,7 @@ function PhaseCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]"
     >
       <div className="flex items-center gap-4 mb-4">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold">
@@ -818,7 +818,7 @@ function ModelCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group rounded-xl border border-white/[0.08] bg-gradient-to-br ${color} p-4 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
       <div className="flex items-center gap-2 mb-2">
         <Bot className="h-4 w-4 text-white/80 group-hover:scale-110 transition-transform" />
@@ -838,7 +838,7 @@ function SynthesisResultCard() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-purple-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-violet-500/50"
+      className="group relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 to-purple-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-violet-500/50"
     >
       <h4 className="font-bold text-white mb-3 flex items-center gap-2">
         <FileText className="h-5 w-5 text-violet-400" />
@@ -874,7 +874,7 @@ function BeadsTransformationCard() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-sky-500/50"
+      className="group relative rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 to-blue-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-sky-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <LayoutDashboard className="h-5 w-5 text-sky-400" />
@@ -913,7 +913,7 @@ function SwarmSetupCard() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-amber-500/50"
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-amber-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <Users className="h-5 w-5 text-amber-400" />
@@ -962,7 +962,7 @@ function CommitStatsCard() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 to-pink-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-rose-500/50"
+      className="group relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 to-pink-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-rose-500/50"
     >
       <div className="flex items-center gap-3 mb-4">
         <GitBranch className="h-5 w-5 text-rose-400" />
@@ -1037,7 +1037,7 @@ function PlanSectionCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: number * 0.03 }}
       whileHover={{ y: -2, scale: 1.02 }}
-      className="group relative rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 backdrop-blur-xl transition-all duration-300 hover:border-violet-500/30 hover:bg-violet-500/5"
+      className="group relative rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 backdrop-blur-xl transition duration-300 hover:border-violet-500/30 hover:bg-violet-500/5"
     >
       <div className="flex items-center gap-3 mb-2">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-500/20 text-violet-400 text-xs font-bold group-hover:bg-violet-500/30 transition-colors">
@@ -1074,7 +1074,7 @@ function PlanPatternCard({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className={`group relative rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group relative rounded-xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
       <h5 className="font-semibold text-white mb-2 group-hover:text-white/90 transition-colors">
         {title}
@@ -1101,7 +1101,7 @@ function InnovationCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -2, scale: 1.02 }}
-      className="group relative rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5 backdrop-blur-xl transition-all duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
+      className="group relative rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5 backdrop-blur-xl transition duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
     >
       <div className="flex items-center gap-2 mb-2">
         <Lightbulb className="h-4 w-4 text-emerald-400 group-hover:scale-110 transition-transform" />
@@ -1713,7 +1713,7 @@ function InteractiveSwarmTimeline() {
             <button
               key={evt.id}
               onClick={() => handleEventClick(evt.id)}
-              className={`absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full border-2 transition-all duration-200 ${
+              className={`absolute top-1/2 -translate-y-1/2 h-3 w-3 rounded-full border-2 transition duration-200 ${
                 activeEventId === evt.id
                   ? "border-white bg-primary scale-125 z-10"
                   : evt.minuteOffset <= playheadMin
@@ -1739,7 +1739,7 @@ function InteractiveSwarmTimeline() {
           <button
             key={tab.key}
             onClick={() => setActiveView(tab.key)}
-            className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
+            className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium transition duration-200 ${
               activeView === tab.key
                 ? "bg-primary/20 text-primary border border-primary/30"
                 : "text-white/40 hover:text-white/60 hover:bg-white/[0.04] border border-transparent"
@@ -1880,7 +1880,7 @@ function SwarmTimelineView({
           >
             <button
               onClick={() => onEventClick(evt.id)}
-              className={`w-full text-left rounded-xl border p-4 transition-all duration-200 ${
+              className={`w-full text-left rounded-xl border p-4 transition duration-200 ${
                 isActive
                   ? `bg-gradient-to-br ${styles.gradient} border-white/[0.15] ring-1 ${styles.ring}`
                   : "border-white/[0.06] bg-white/[0.01] hover:border-white/[0.12] hover:bg-white/[0.03]"
@@ -2100,7 +2100,7 @@ function GanttChartView({
                         animate={{ scaleX: 1 }}
                         transition={{ type: "spring", stiffness: 150, damping: 20, delay: 0.1 + segIdx * 0.05 }}
                         style={{ left: `${left}%`, width: `${width}%`, originX: 0 }}
-                        className={`absolute top-0.5 bottom-0.5 rounded-sm overflow-hidden group cursor-pointer transition-all duration-200 ${
+                        className={`absolute top-0.5 bottom-0.5 rounded-sm overflow-hidden group cursor-pointer transition duration-200 ${
                           isHovered ? "z-20 ring-1 ring-white/30" : ""
                         }`}
                         onMouseEnter={() => setHoveredSegment({ agentId: row.agentId, segIdx })}
@@ -2264,7 +2264,7 @@ function AgentActivityView({ playheadMin }: { playheadMin: number }) {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ type: "spring", stiffness: 200, damping: 25, delay: idx * 0.04 }}
-                  className={`rounded-xl border p-3 transition-all duration-300 cursor-pointer ${
+                  className={`rounded-xl border p-3 transition duration-300 cursor-pointer ${
                     isActive
                       ? `${ag.borderColor} ${ag.bgColor}`
                       : isExpanded
@@ -2539,7 +2539,7 @@ function ConflictResolutionView({ playheadMin }: { playheadMin: number }) {
           initial={{ opacity: 0, x: -12 }}
           animate={{ opacity: step.reached ? 1 : 0.25, x: 0 }}
           transition={{ type: "spring", stiffness: 200, damping: 25, delay: i * 0.1 }}
-          className={`rounded-xl border p-4 transition-all duration-300 ${
+          className={`rounded-xl border p-4 transition duration-300 ${
             step.reached ? `${step.borderColor} ${step.bgColor}` : "border-white/[0.04] bg-white/[0.01]"
           }`}
         >

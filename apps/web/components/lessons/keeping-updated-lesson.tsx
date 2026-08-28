@@ -305,7 +305,7 @@ function UpdateBenefitsCard() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2 }}
-      className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-emerald-500/30"
+      className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-emerald-500/30"
     >
       <h4 className="font-bold text-white mb-4">Keeping things updated means:</h4>
       <div className="space-y-3">
@@ -323,7 +323,7 @@ function BenefitRow({ icon, text }: { icon: React.ReactNode; text: string }) {
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group flex items-center gap-3 p-2 -mx-2 rounded-lg transition-all duration-300 hover:bg-white/[0.02]"
+      className="group flex items-center gap-3 p-2 -mx-2 rounded-lg transition duration-300 hover:bg-white/[0.02]"
     >
       <div className="text-emerald-400 h-5 w-5 group-hover:scale-110 transition-transform">{icon}</div>
       <span className="text-white/70 group-hover:text-white/90 transition-colors">{text}</span>
@@ -348,7 +348,7 @@ function UpdateItem({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ scale: 1.02, y: -2 }}
-      className="group flex items-center gap-3 p-3 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+      className="group flex items-center gap-3 p-3 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
       <div className="text-primary group-hover:scale-110 transition-transform">{icon}</div>
       <div>
@@ -376,7 +376,7 @@ function UpdatePattern({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group space-y-3 p-4 -mx-4 rounded-xl transition-all duration-300 hover:bg-white/[0.02]"
+      className="group space-y-3 p-4 -mx-4 rounded-xl transition duration-300 hover:bg-white/[0.02]"
     >
       <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
       <p className="text-white/60">{description}</p>
@@ -402,7 +402,7 @@ function TroubleshootingCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl transition-all duration-300 hover:border-amber-500/50"
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl transition duration-300 hover:border-amber-500/50"
     >
       <h4 className="font-bold text-amber-400 mb-2">{title}</h4>
       <p className="text-white/60 mb-4">{description}</p>
@@ -469,9 +469,9 @@ function FrequencyItem({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 6, scale: 1.01 }}
-      className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+      className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition-all">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/20 group-hover:shadow-lg group-hover:shadow-primary/20 transition">
         <Clock className="h-5 w-5" />
       </div>
       <div>
@@ -536,7 +536,7 @@ function CompletionItem({ text }: { text: string }) {
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ scale: 1.02, x: 2 }}
-      className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.08]"
+      className="group flex items-center gap-3 p-3 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.08]"
     >
       <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 group-hover:scale-110 transition-transform" />
       <span className="text-white/80 text-sm group-hover:text-white transition-colors">{text}</span>
@@ -971,7 +971,7 @@ function InteractiveUpdatePipeline() {
                 }
               }}
               disabled={isRunning}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 border ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition duration-200 border ${
                 activeScenario === i
                   ? "border-primary/40 bg-primary/10 text-primary"
                   : "border-white/[0.06] bg-white/[0.02] text-white/50 hover:text-white/70 hover:border-white/[0.12]"
@@ -1006,7 +1006,7 @@ function InteractiveUpdatePipeline() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowGraph(!showGraph)}
-            className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/[0.06] bg-white/[0.02] text-xs text-white/40 hover:text-white/60 hover:border-white/[0.12] transition-all"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-white/[0.06] bg-white/[0.02] text-xs text-white/40 hover:text-white/60 hover:border-white/[0.12] transition"
           >
             <Package className="h-3 w-3" />
             {showGraph ? "Grid" : "Graph"}
@@ -1229,7 +1229,7 @@ function RepoGrid({
             whileHover={{ scale: 1.04, y: -2 }}
             whileTap={{ scale: 0.97 }}
             onClick={() => onSelectRepo(isSelected ? null : repo.id)}
-            className={`relative flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all duration-200 ${statusColor.bg} ${
+            className={`relative flex flex-col items-center gap-1.5 p-3 rounded-xl border transition duration-200 ${statusColor.bg} ${
               isSelected ? "border-primary/40 ring-1 ring-primary/20" : statusColor.border
             }`}
           >

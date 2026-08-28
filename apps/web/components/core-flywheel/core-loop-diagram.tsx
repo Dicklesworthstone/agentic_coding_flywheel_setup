@@ -387,7 +387,7 @@ function StageNode({
         x={pos.x}
         y={pos.y + (isActive ? 50 : 40)}
         textAnchor="middle"
-        className={`text-[11px] font-black uppercase tracking-[0.15em] transition-all duration-300 ${
+        className={`text-[11px] font-black uppercase tracking-[0.15em] transition duration-300 ${
           isActive ? "fill-white" : "fill-white/30"
         }`}
       >
@@ -516,7 +516,7 @@ function MobileStageList({
             key={stage.id}
             type="button"
             onClick={() => onSelect(index)}
-            className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border transition-all duration-300 text-left ${
+            className={`relative flex items-center gap-4 px-5 py-4 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left ${
               isActive
                 ? "border-white/[0.08] bg-white/[0.04]"
                 : "border-white/[0.03] bg-white/[0.01] hover:bg-white/[0.03]"
@@ -546,7 +546,7 @@ function MobileStageList({
             }
           >
             <div
-              className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-300 ${
+              className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl transition duration-300 ${
                 isActive ? "shadow-lg" : ""
               }`}
               style={{
@@ -767,7 +767,7 @@ export function CoreLoopDiagram() {
         <button
           type="button"
           onClick={() => setAutoTour((cur) => !cur)}
-          className={`group shrink-0 flex items-center gap-3 px-5 py-2.5 rounded-xl border transition-all duration-500 ease-out hover:scale-[1.02] active:scale-[0.98] ${
+          className={`group shrink-0 flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 ease-out hover:scale-[1.02] active:scale-[0.98] ${
             autoTour
               ? "border-[#FF5500]/30 bg-[#FF5500]/10 text-[#FF5500] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:border-[#FF5500]/50 hover:bg-[#FF5500]/15"
               : "border-white/10 bg-white/[0.02] text-white/40 hover:bg-white/[0.05] hover:border-white/15 hover:text-white/60"
@@ -974,7 +974,7 @@ export function CoreLoopDiagram() {
                 className="p-1 group/dot"
               >
                 <motion.div
-                  className="rounded-full transition-all duration-300"
+                  className="rounded-full transition-[width,background-color,box-shadow] duration-300"
                   style={{
                     width: index === activeIndex ? 20 : 8,
                     height: 8,

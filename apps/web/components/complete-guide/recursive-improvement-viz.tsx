@@ -128,7 +128,7 @@ export function RecursiveImprovementViz() {
             >
               <span className="relative z-10 flex items-center gap-2">
                 <span
-                  className="flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-black transition-all"
+                  className="flex h-5 w-5 items-center justify-center rounded-md text-[10px] font-black transition"
                   style={{
                     backgroundColor: i === activeLayer ? `${l.color}20` : "transparent",
                     color: i === activeLayer ? l.color : "inherit",
@@ -162,7 +162,7 @@ export function RecursiveImprovementViz() {
             onClick={goPrev}
             disabled={activeLayer === 0}
             aria-label="Previous layer"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-400 disabled:opacity-30 active:scale-95 transition-all min-h-[44px] min-w-[44px]"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-400 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px]"
           >
             &larr;
           </button>
@@ -174,7 +174,7 @@ export function RecursiveImprovementViz() {
             onClick={goNext}
             disabled={activeLayer === LAYERS.length - 1}
             aria-label="Next layer"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-400 disabled:opacity-30 active:scale-95 transition-all min-h-[44px] min-w-[44px]"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-zinc-400 disabled:opacity-30 active:scale-95 transition min-h-[44px] min-w-[44px]"
           >
             &rarr;
           </button>
@@ -189,7 +189,7 @@ export function RecursiveImprovementViz() {
               className="p-2 -m-1"
             >
               <div
-                className="h-2.5 w-2.5 rounded-full transition-all"
+                className="h-2.5 w-2.5 rounded-full transition"
                 style={{
                   backgroundColor: i === activeLayer ? l.color : "rgba(255,255,255,0.15)",
                   boxShadow: i === activeLayer ? `0 0 8px ${l.color}60` : "none",

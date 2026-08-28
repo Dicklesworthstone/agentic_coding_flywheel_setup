@@ -251,7 +251,7 @@ export function PlanToBeadsViz() {
               aria-pressed={mode === nextMode}
               onClick={() => setMode(nextMode)}
               className={cn(
-                "min-h-[44px] rounded-xl px-5 py-2 text-xs font-bold transition-all duration-500",
+                "min-h-[44px] rounded-xl px-5 py-2 text-xs font-bold transition duration-500",
                 mode === nextMode
                   ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]"
                   : "text-white/40 hover:bg-white/[0.03] hover:text-white/80",
@@ -290,7 +290,7 @@ export function PlanToBeadsViz() {
                       delay: reducedMotion ? 0 : index * 0.06,
                     }}
                     className={cn(
-                      "w-full rounded-xl border p-4 text-left transition-all duration-300 relative overflow-hidden group/btn",
+                      "w-full rounded-xl border p-4 text-left transition duration-300 relative overflow-hidden group/btn",
                       isSelected
                         ? "border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.1)]"
                         : "border-white/[0.04] bg-white/[0.01] hover:border-white/[0.1] hover:bg-white/[0.03]",
@@ -390,7 +390,7 @@ export function PlanToBeadsViz() {
                       delay: reducedMotion ? 0 : index * 0.08,
                     }}
                     className={cn(
-                      "rounded-xl border p-5 transition-all duration-500",
+                      "rounded-xl border p-5 transition duration-500",
                       isHighlighted
                         ? "border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary-rgb),0.1)]"
                         : "border-white/[0.04] bg-white/[0.01]",

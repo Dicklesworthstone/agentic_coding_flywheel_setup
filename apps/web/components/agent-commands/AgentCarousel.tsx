@@ -129,7 +129,7 @@ export function AgentCarousel({
               onClick={() => onIndexChange(index)}
               aria-label={`Go to ${agent.name}`}
               className={cn(
-                "relative h-2.5 rounded-full transition-all duration-300",
+                "relative h-2.5 rounded-full transition-[width] duration-300",
                 "min-w-[44px] min-h-[44px] flex items-center justify-center", // Touch target
                 isActive ? "w-8" : "w-2.5"
               )}

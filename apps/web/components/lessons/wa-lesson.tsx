@@ -1033,7 +1033,7 @@ function InteractiveTerminalObserver() {
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition ${
                 activeTab === tab.key
                   ? 'bg-white/[0.08] text-white shadow-sm'
                   : 'text-white/40 hover:text-white/60 hover:bg-white/[0.03]'
@@ -1200,7 +1200,7 @@ function InteractiveTerminalObserver() {
           type="button"
           onClick={goPrev}
           disabled={scenarioIdx === 0}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition-all hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Previous scenario"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -1209,7 +1209,7 @@ function InteractiveTerminalObserver() {
         <button
           type="button"
           onClick={togglePlay}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary transition-all hover:bg-primary/20"
+          className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary transition hover:bg-primary/20"
           aria-label={playing ? 'Pause' : 'Play'}
         >
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
@@ -1219,7 +1219,7 @@ function InteractiveTerminalObserver() {
           type="button"
           onClick={goNext}
           disabled={scenarioIdx >= totalScenarios - 1}
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition-all hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.02] text-white/60 transition hover:bg-white/[0.06] hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Next scenario"
         >
           <ChevronRight className="h-4 w-4" />
@@ -1236,7 +1236,7 @@ function InteractiveTerminalObserver() {
               setPlaying(false);
               setScenarioIdx(i);
             }}
-            className={`h-2 rounded-full transition-all duration-300 ${
+            className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
               i === scenarioIdx
                 ? 'w-6 bg-primary'
                 : i < scenarioIdx

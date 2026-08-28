@@ -240,7 +240,7 @@ export function CrashRecoveryViz() {
           </div>
           <button
             onClick={reset}
-            className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold text-zinc-300 hover:bg-white/[0.08] hover:border-[#FF5500]/30 active:scale-95 transition-all min-h-[44px]"
+            className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold text-zinc-300 hover:bg-white/[0.08] hover:border-[#FF5500]/30 active:scale-95 transition min-h-[44px]"
           >
             Reset Swarm
           </button>

@@ -86,7 +86,7 @@ export function FlywheelDiagram() {
                     setCycleDepth(index);
                     setAutoTour(false);
                   }}
-                  className={`px-5 py-2 text-[0.65rem] font-black uppercase tracking-widest rounded-xl transition-all duration-500 ${
+                  className={`px-5 py-2 text-[0.65rem] font-black uppercase tracking-widest rounded-xl transition duration-500 ${
                     cycleDepth === index
                       ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary-rgb),0.4)]"
                       : "text-white/40 hover:text-white/80 hover:bg-white/[0.03]"
@@ -100,7 +100,7 @@ export function FlywheelDiagram() {
           <button
             type="button"
             onClick={() => setAutoTour((current) => !current)}
-            className={`group flex items-center gap-3 px-5 py-2.5 rounded-xl border transition-all duration-500 ${
+            className={`group flex items-center gap-3 px-5 py-2.5 rounded-xl border transition duration-500 ${
               autoTour
                 ? "border-primary/30 bg-primary/10 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
                 : "border-white/10 bg-white/[0.02] text-white/40 hover:bg-white/[0.04]"
@@ -261,7 +261,7 @@ export function FlywheelDiagram() {
                     x={stage.x} 
                     y={stage.y - 24} 
                     textAnchor="middle" 
-                    className={`text-[12px] font-black uppercase tracking-widest transition-all duration-500 ${isActive ? "fill-white" : "fill-white/30"}`}
+                    className={`text-[12px] font-black uppercase tracking-widest transition duration-500 ${isActive ? "fill-white" : "fill-white/30"}`}
                   >
                     {stage.label}
                   </text>

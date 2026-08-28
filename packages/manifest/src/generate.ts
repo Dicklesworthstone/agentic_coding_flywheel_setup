@@ -39,9 +39,7 @@ import {
   type InstallerChecksumEntry,
 } from './validate.js';
 import {
-  getModuleCategory,
   resolveModuleCategory,
-  getModulesByCategory,
   sortModulesByInstallOrder,
   toGeneratedFunctionName,
 } from './utils.js';

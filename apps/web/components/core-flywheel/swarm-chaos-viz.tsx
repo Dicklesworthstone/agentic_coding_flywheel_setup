@@ -685,7 +685,7 @@ export function SwarmChaosViz() {
           type="button"
           onClick={play}
           disabled={isPlaying}
-          className="flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-bold text-white transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           style={{ background: "#FF5500" }}
         >
           <Play size={14} />
@@ -694,7 +694,7 @@ export function SwarmChaosViz() {
         <button
           type="button"
           onClick={reset}
-          className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-6 py-2.5 text-sm font-medium text-slate-300 transition-all hover:bg-white/[0.05] hover:border-white/15"
+          className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.02] px-6 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/[0.05] hover:border-white/15"
         >
           <RotateCcw size={14} />
           Reset

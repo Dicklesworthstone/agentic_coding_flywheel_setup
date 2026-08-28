@@ -659,7 +659,7 @@ function InteractiveResearchPipeline() {
         <div className="ml-auto flex items-center gap-3">
           <button
             onClick={() => setShowEvidenceBoard(!showEvidenceBoard)}
-            className={`text-xs px-2 py-1 rounded border transition-all cursor-pointer ${
+            className={`text-xs px-2 py-1 rounded border transition cursor-pointer ${
               showEvidenceBoard
                 ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
                 : "border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70"
@@ -670,7 +670,7 @@ function InteractiveResearchPipeline() {
           </button>
           <button
             onClick={() => setIsAutoPlaying(!isAutoPlaying)}
-            className={`text-xs px-2 py-1 rounded border transition-all cursor-pointer ${
+            className={`text-xs px-2 py-1 rounded border transition cursor-pointer ${
               isAutoPlaying
                 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                 : "border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70"
@@ -804,7 +804,7 @@ function PhaseTimeline({
               onClick={() => onPhaseClick(i)}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.97 }}
-              className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-all cursor-pointer text-xs font-medium whitespace-nowrap ${
+              className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg border transition cursor-pointer text-xs font-medium whitespace-nowrap ${
                 isActive
                   ? `${phase.borderColor} ${phase.bgColor} ${phase.textColor}`
                   : isPast

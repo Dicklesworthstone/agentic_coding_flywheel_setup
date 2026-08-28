@@ -204,7 +204,7 @@ interface FeatureCardProps {
 function FeatureCard({ icon, title, description, gradient, index }: FeatureCardProps) {
   return (
     <motion.div
-      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary/30 active:scale-[0.98] active:bg-card/70"
+      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30 active:scale-[0.98] active:bg-card/70"
       variants={fadeUp}
       whileHover={{ y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }}
       transition={{ ...springs.snappy, delay: staggerDelay(index, 0.08) }}
@@ -706,7 +706,7 @@ function WhyVPSSection() {
           {WHY_VPS_ITEMS.map((item, i) => (
             <motion.div
               key={item.title}
-              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary/30"
+              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30"
               variants={fadeUp}
               transition={{ delay: staggerDelay(i, 0.1) }}
               whileHover={{ y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }}
@@ -868,7 +868,7 @@ function WhatDoesThisCostSection() {
 
         <motion.div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-10" variants={staggerContainer} initial="hidden" animate={isInView ? "visible" : "hidden"}>
           {PRICING_ITEMS.map((item, i) => (
-            <motion.div key={item.name} className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition-all duration-300 hover:border-primary/30" variants={fadeUp} transition={{ delay: staggerDelay(i, 0.1) }} whileHover={{ y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }}>
+            <motion.div key={item.name} className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-6 backdrop-blur-sm transition duration-300 hover:border-primary/30" variants={fadeUp} transition={{ delay: staggerDelay(i, 0.1) }} whileHover={{ y: -4, boxShadow: "0 20px 40px -12px oklch(0.75 0.18 195 / 0.15)" }}>
               <motion.div className={`pointer-events-none absolute -right-20 -top-20 h-40 w-40 rounded-full bg-gradient-to-br ${item.gradient} blur-3xl opacity-0 group-hover:opacity-20 transition-opacity`} />
               <div className="relative">
                 <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${item.gradient}`}>
@@ -931,7 +931,7 @@ function StatBadge({ value, label }: { value: string; label: string }) {
 function ToolBadge({ name, color }: { name: string; color: string }) {
   return (
     <span
-      className="inline-flex items-center rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-sm font-medium transition-all hover:scale-105 hover:border-primary/30"
+      className="inline-flex items-center rounded-full border border-border/50 bg-card/50 px-3 py-1.5 text-sm font-medium transition hover:scale-105 hover:border-primary/30"
       style={{ color }}
     >
       {name}
@@ -1210,7 +1210,7 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="inline-flex items-center gap-3 rounded-xl bg-primary px-7 py-3.5 text-base font-bold text-primary-foreground shadow-lg transition-all duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_195/0.5)] group-hover:scale-[1.03]">
+                  <div className="inline-flex items-center gap-3 rounded-xl bg-primary px-7 py-3.5 text-base font-bold text-primary-foreground shadow-lg transition duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_195/0.5)] group-hover:scale-[1.03]">
                     <BookOpen className="h-5 w-5" />
                     Read the Flywheel Guide
                     <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1.5" />
@@ -1306,7 +1306,7 @@ export default function HomePage() {
                   </motion.div>
 
                   <motion.div
-                    className="inline-flex items-center gap-3 rounded-xl bg-[#FF5500] px-7 py-3.5 text-base font-bold text-black shadow-lg transition-all duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_30/0.5)] group-hover:scale-[1.03]"
+                    className="inline-flex items-center gap-3 rounded-xl bg-[#FF5500] px-7 py-3.5 text-base font-bold text-black shadow-lg transition duration-300 group-hover:shadow-[0_0_40px_-8px_oklch(0.75_0.18_30/0.5)] group-hover:scale-[1.03]"
                     initial={{ opacity: 0, y: 10 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}

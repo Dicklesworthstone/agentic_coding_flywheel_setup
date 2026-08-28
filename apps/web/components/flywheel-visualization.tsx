@@ -252,7 +252,7 @@ function ConnectionLine({
 
   return (
     <g
-      className="transition-all duration-500 ease-out"
+      className="transition duration-500 ease-out"
       style={{ opacity: isHighlighted ? 1 : 0.25 }}
     >
       <defs>
@@ -361,7 +361,7 @@ function DesktopToolNode({
 
   return (
     <div
-      className="absolute transition-all duration-500 ease-out"
+      className="absolute transition duration-500 ease-out"
       style={{
         left: position.x - size / 2,
         top: position.y - size / 2,
@@ -383,7 +383,7 @@ function DesktopToolNode({
         aria-pressed={isSelected}
         className={cn(
           "group relative flex h-full w-full flex-col items-center justify-center gap-1.5 rounded-2xl border p-2",
-          "transition-all duration-300 ease-out outline-none",
+          "transition duration-300 ease-out outline-none",
           "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           isSelected
             ? "border-white/60 bg-white/20 shadow-2xl"
@@ -615,7 +615,7 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
           </div>
           <button
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-all hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition hover:bg-muted hover:text-foreground hover:scale-105 active:scale-95"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -669,7 +669,7 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
               <button
                 onClick={copyInstallCommand}
                 className={cn(
-                  "shrink-0 rounded-lg p-2 transition-all",
+                  "shrink-0 rounded-lg p-2 transition",
                   copied
                     ? "bg-primary/20 text-primary"
                     : "text-muted-foreground hover:bg-white/10 hover:text-foreground"
@@ -688,7 +688,7 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
             asChild
             size="sm"
             className={cn(
-              "h-11 bg-gradient-to-r text-white shadow-lg hover:opacity-90 hover:shadow-xl transition-all hover:-translate-y-0.5",
+              "h-11 bg-gradient-to-r text-white shadow-lg hover:opacity-90 hover:shadow-xl transition hover:-translate-y-0.5",
               tool.color
             )}
             style={{ boxShadow: `0 4px 20px ${color}40` }}
@@ -699,7 +699,7 @@ function ToolDetailPanel({ tool, onClose }: ToolDetailPanelProps) {
             </a>
           </Button>
           {tool.demoUrl && (
-            <Button asChild size="sm" variant="outline" className="h-11 hover:-translate-y-0.5 transition-all">
+            <Button asChild size="sm" variant="outline" className="h-11 hover:-translate-y-0.5 transition">
               <a href={tool.demoUrl} target="_blank" rel="noopener noreferrer">
                 Try Demo
                 <ChevronRight className="ml-1 h-4 w-4" />
@@ -801,7 +801,7 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
     <button
       onClick={onSelect}
       className={cn(
-        "relative flex h-full min-w-[280px] max-w-[280px] flex-col rounded-2xl border p-5 text-left transition-all duration-300 snap-center",
+        "relative flex h-full min-w-[280px] max-w-[280px] flex-col rounded-2xl border p-5 text-left transition duration-300 snap-center",
         "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
         "active:scale-[0.98]", // Touch feedback
         isActive
@@ -875,7 +875,7 @@ function MobileToolCard({ tool, isActive, onSelect }: MobileToolCardProps) {
       <div className="relative z-10 mt-auto pt-4 flex items-center justify-between border-t border-border/30">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{tool.language}</span>
         <div className={cn(
-          "flex items-center gap-1 text-xs font-medium transition-all",
+          "flex items-center gap-1 text-xs font-medium transition",
           isActive ? "text-primary translate-x-1" : "text-muted-foreground"
         )}>
           <span>Details</span>
@@ -1084,7 +1084,7 @@ function MobileBottomSheet({ tool, onClose }: MobileBottomSheetProps) {
                 <button
                   onClick={copyInstallCommand}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-xl p-4 font-mono text-xs text-left transition-all active:scale-[0.98]",
+                    "flex w-full items-center gap-3 rounded-xl p-4 font-mono text-xs text-left transition active:scale-[0.98]",
                     copied ? "bg-primary/20 border-primary/30" : "bg-black/30 border-border/30",
                     "border"
                   )}
@@ -1508,7 +1508,7 @@ function MobileVisualization({ tools, selectedToolId, onSelectTool }: MobileVisu
         onClick={() => scroll("left")}
         disabled={!canScrollLeft}
         className={cn(
-          "absolute left-2 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-card/95 border border-border/50 backdrop-blur-md shadow-xl transition-all active:scale-95",
+          "absolute left-2 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-card/95 border border-border/50 backdrop-blur-md shadow-xl transition active:scale-95",
           canScrollLeft ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         style={{ boxShadow: canScrollLeft ? "0 4px 20px rgba(0,0,0,0.3)" : "none" }}
@@ -1520,7 +1520,7 @@ function MobileVisualization({ tools, selectedToolId, onSelectTool }: MobileVisu
         onClick={() => scroll("right")}
         disabled={!canScrollRight}
         className={cn(
-          "absolute right-2 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-card/95 border border-border/50 backdrop-blur-md shadow-xl transition-all active:scale-95",
+          "absolute right-2 top-1/2 z-20 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-card/95 border border-border/50 backdrop-blur-md shadow-xl transition active:scale-95",
           canScrollRight ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         style={{ boxShadow: canScrollRight ? "0 4px 20px rgba(0,0,0,0.3)" : "none" }}

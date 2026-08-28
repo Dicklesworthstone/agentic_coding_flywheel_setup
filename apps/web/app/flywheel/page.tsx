@@ -159,7 +159,7 @@ function WorkflowCard({ scenario, index }: { scenario: WorkflowScenario; index: 
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
+      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
       style={{ animationDelay: `${0.1 + index * 0.1}s`, animationFillMode: "forwards" }}
     >
       <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-primary/10 blur-3xl opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
@@ -318,7 +318,7 @@ function PromptCard({ prompt, index }: { prompt: AgentPrompt; index: number }) {
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
+      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
       style={{ animationDelay: `${0.1 + index * 0.05}s`, animationFillMode: "forwards" }}
     >
       <div className="p-5">
@@ -435,7 +435,7 @@ function SynergySection() {
           {synergyExplanations.map((synergy, index) => (
             <div
               key={synergy.title}
-              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-5 backdrop-blur-sm transition-all duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
+              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-5 backdrop-blur-sm transition duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
               style={{ animationDelay: `${0.1 + index * 0.1}s`, animationFillMode: "forwards" }}
             >
               {/* Tools involved */}
@@ -512,7 +512,7 @@ function ToolCard({ tool, index }: { tool: FlywheelTool; index: number }) {
 
   return (
     <div
-      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300 hover:border-primary/30 card-hover opacity-0 animate-slide-up"
+      className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300 hover:border-primary/30 card-hover opacity-0 animate-slide-up"
       style={{ animationDelay: `${0.1 + index * 0.05}s`, animationFillMode: "forwards" }}
     >
       <div
@@ -685,7 +685,7 @@ function PhilosophySection() {
           {items.map((item, index) => (
             <div
               key={item.title}
-              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-5 backdrop-blur-sm transition-all duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
+              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card/50 p-5 backdrop-blur-sm transition duration-300 hover:border-primary/30 opacity-0 animate-slide-up"
               style={{ animationDelay: `${0.1 + index * 0.1}s`, animationFillMode: "forwards" }}
             >
               <div

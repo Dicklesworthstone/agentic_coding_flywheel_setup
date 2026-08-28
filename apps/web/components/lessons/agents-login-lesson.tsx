@@ -337,7 +337,7 @@ function AgentInfoCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.15]"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.15]"
     >
       {/* Gradient overlay on hover */}
       <div
@@ -389,7 +389,7 @@ function AliasCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-white/[0.15]`}
     >
       <div className="flex items-center gap-3 mb-4">
         <code className="px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-lg font-mono font-bold text-primary">
@@ -435,7 +435,7 @@ function LoginStep({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-6 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]`}
     >
       <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">{agent}</h4>
       <div className="mb-3 rounded-xl bg-black/30 border border-white/[0.06] overflow-hidden group-hover:bg-black/40 transition-colors">
@@ -458,7 +458,7 @@ function CodexLoginSection() {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15]"
+      className="group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-emerald-500/10 to-teal-500/10 p-6 backdrop-blur-xl transition duration-300 hover:border-white/[0.15]"
     >
       <h4 className="font-bold text-white mb-3 group-hover:text-primary transition-colors">
         Codex CLI
@@ -1337,7 +1337,7 @@ function InteractiveAgentComparison() {
             }}
             whileHover={{ scale: 1.3 }}
             transition={springs.snappy}
-            className={`h-2 rounded-full transition-all duration-300 ${
+            className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
               i === scenarioIndex
                 ? "w-6 bg-primary"
                 : "w-2 bg-white/20 hover:bg-white/40"
@@ -1523,7 +1523,7 @@ function OpenAIAccountWarning() {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -2, scale: 1.01 }}
-      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition-all duration-300 hover:border-amber-500/50"
+      className="group relative rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-orange-500/10 p-6 backdrop-blur-xl overflow-hidden transition duration-300 hover:border-amber-500/50"
     >
       <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/20 rounded-full blur-3xl" />
 

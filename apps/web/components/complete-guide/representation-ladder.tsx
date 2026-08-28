@@ -66,7 +66,7 @@ export function RepresentationLadder() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={handleReset}
-              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-[0.7rem] font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition-all duration-500"
+              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-[0.7rem] font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition duration-500"
             >
               <Repeat className="h-3 w-3" />
               Reset Simulation
@@ -96,7 +96,7 @@ export function RepresentationLadder() {
               >
                 <div className="flex-1 w-full">
                   <div
-                    className="relative rounded-3xl border transition-all duration-700 overflow-hidden h-full min-h-[90px]"
+                    className="relative rounded-3xl border transition duration-700 overflow-hidden h-full min-h-[90px]"
                     style={{
                       borderColor: isBugSource
                         ? '#FF5500'
@@ -143,7 +143,7 @@ export function RepresentationLadder() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => handleBugClick(index)}
-                        className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-white/5 bg-white/[0.02] text-[0.65rem] font-black uppercase tracking-[0.1em] text-white/40 hover:bg-[#FF5500]/10 hover:border-[#FF5500]/20 hover:text-[#FF5500] transition-all duration-500"
+                        className="w-full flex items-center justify-center gap-3 px-5 py-3 rounded-2xl border border-white/5 bg-white/[0.02] text-[0.65rem] font-black uppercase tracking-[0.1em] text-white/40 hover:bg-[#FF5500]/10 hover:border-[#FF5500]/20 hover:text-[#FF5500] transition duration-500"
                       >
                         <Bug className="h-3.5 w-3.5" />
                         Inject Leak

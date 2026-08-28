@@ -43,7 +43,7 @@ export function CommandRefCard({ command, categoryLabel }: CommandRefCardProps) 
   return (
     <Card
       id={command.name}
-      className="group relative overflow-hidden border-border/50 bg-card/50 p-5 backdrop-blur-sm transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
+      className="group relative overflow-hidden border-border/50 bg-card/50 p-5 backdrop-blur-sm transition hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
     >
       <div className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-4">

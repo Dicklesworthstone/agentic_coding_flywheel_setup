@@ -233,7 +233,7 @@ function PromptCard({
   return (
     <motion.div
       className={cn(
-        "rounded-xl border transition-all overflow-hidden",
+        "rounded-xl border transition overflow-hidden",
         isExpanded
           ? "border-primary/40 bg-card/80 shadow-lg shadow-primary/5"
           : "border-border/50 bg-background/50 hover:border-primary/30 hover:shadow-md"

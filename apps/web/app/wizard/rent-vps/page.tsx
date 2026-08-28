@@ -136,7 +136,7 @@ interface ProviderCardProps {
 function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
   return (
     <div className={cn(
-      "overflow-hidden rounded-xl border transition-all duration-200",
+      "overflow-hidden rounded-xl border transition duration-200",
       isExpanded
         ? "border-primary/30 bg-card/80 shadow-md"
         : "border-border/50 bg-card/50 hover:border-primary/20"

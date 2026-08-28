@@ -91,7 +91,7 @@ export function CoordinationTrioViz() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => setDisabledTool(null)}
-              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-[0.7rem] font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition-all duration-500"
+              className="flex items-center gap-3 px-6 py-3 rounded-2xl border border-white/10 bg-white/[0.02] text-[0.7rem] font-black uppercase tracking-[0.2em] text-white/60 hover:text-white transition duration-500"
             >
               <Repeat className="h-3 w-3" />
               Restore Machine
@@ -194,7 +194,7 @@ export function CoordinationTrioViz() {
                     x={tool.x}
                     y={tool.y - 25}
                     textAnchor="middle"
-                    className={`text-[12px] font-black uppercase tracking-[0.2em] transition-all duration-500 ${isHovered ? "fill-white" : "fill-white/20"}`}
+                    className={`text-[12px] font-black uppercase tracking-[0.2em] transition duration-500 ${isHovered ? "fill-white" : "fill-white/20"}`}
                   >
                     {tool.label}
                   </text>

@@ -123,7 +123,7 @@ export function QuickNav() {
                     type="button"
                     onClick={() => handleClick(item.id)}
                     title={`${item.number}. ${item.label}`}
-                    className="group relative flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-300 w-full text-left"
+                    className="group relative flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition duration-300 w-full text-left"
                   >
                     {isActive && (
                       <motion.div
@@ -133,7 +133,7 @@ export function QuickNav() {
                       />
                     )}
                     <div
-                      className="relative z-10 w-1.5 h-1.5 rounded-full transition-all duration-300 shrink-0"
+                      className="relative z-10 w-1.5 h-1.5 rounded-full transition duration-300 shrink-0"
                       style={{
                         backgroundColor: isActive ? "#FF5500" : "rgba(255,255,255,0.15)",
                         boxShadow: isActive ? "0 0 8px rgba(255,85,0,0.6)" : "none",
@@ -183,7 +183,7 @@ export function QuickNav() {
                           key={item.id}
                           type="button"
                           onClick={() => handleClick(item.id)}
-                          className={`px-3 py-2.5 rounded-xl text-[0.65rem] font-bold tracking-wide transition-all duration-300 text-left ${
+                          className={`px-3 py-2.5 rounded-xl text-[0.65rem] font-bold tracking-wide transition duration-300 text-left ${
                             isActive
                               ? "bg-[#FF5500]/10 text-[#FF5500] border border-[#FF5500]/20"
                               : "text-white/40 hover:text-white/60 border border-transparent hover:bg-white/[0.03]"
@@ -229,7 +229,7 @@ export function QuickNav() {
                 {NAV_ITEMS.map((item, i) => (
                   <div
                     key={item.id}
-                    className="w-1.5 h-1.5 rounded-full transition-all duration-300"
+                    className="w-1.5 h-1.5 rounded-full transition duration-300"
                     style={{
                       backgroundColor: i === activeIndex
                         ? "#FF5500"

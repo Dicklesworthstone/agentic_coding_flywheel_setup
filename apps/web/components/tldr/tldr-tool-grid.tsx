@@ -48,7 +48,7 @@ const ToolSearchBar = memo(function ToolSearchBar({
         {/* Glass morphism search container */}
         <div
           className={cn(
-            "relative rounded-2xl border bg-card/50 backdrop-blur-md transition-all duration-300",
+            "relative rounded-2xl border bg-card/50 backdrop-blur-md transition duration-300",
             isFocused
               ? "border-primary/50 bg-card/70"
               : "border-border/50 hover:border-border"
@@ -103,7 +103,7 @@ const ToolSearchBar = memo(function ToolSearchBar({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   onClick={() => onQueryChange("")}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground ring-1 ring-white/10 transition-all duration-200 hover:bg-white/10 hover:text-white hover:ring-white/20"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground ring-1 ring-white/10 transition duration-200 hover:bg-white/10 hover:text-white hover:ring-white/20"
                   aria-label="Clear search"
                 >
                   <X className="h-4 w-4" />
@@ -193,7 +193,7 @@ const EmptySearchState = memo(function EmptySearchState({
       </p>
       <button
         onClick={onClear}
-        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary/10 px-5 py-2.5 text-sm font-medium text-primary ring-1 ring-primary/20 transition-all duration-200 hover:bg-primary/20 hover:ring-primary/30"
+        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary/10 px-5 py-2.5 text-sm font-medium text-primary ring-1 ring-primary/20 transition duration-200 hover:bg-primary/20 hover:ring-primary/30"
       >
         <X className="h-4 w-4" />
         Clear search

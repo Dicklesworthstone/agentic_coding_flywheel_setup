@@ -61,7 +61,7 @@ export function FloatingHUD({
       <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-4">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="group relative flex items-center gap-4 rounded-full bg-black/80 backdrop-blur-xl border border-white/10 px-6 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.05)] hover:border-[#FF5500]/50 transition-all duration-500"
+          className="group relative flex items-center gap-4 rounded-full bg-black/80 backdrop-blur-xl border border-white/10 px-6 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.05)] hover:border-[#FF5500]/50 transition duration-500"
         >
           <div className="absolute inset-0 rounded-full bg-gradient-to-r from-transparent via-[#FF5500]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
           
@@ -77,7 +77,7 @@ export function FloatingHUD({
                 cy="12"
               />
               <circle
-                className="text-[#FF5500] transition-all duration-150 ease-out"
+                className="text-[#FF5500] transition-[stroke-dashoffset] duration-150 ease-out"
                 strokeWidth="2"
                 strokeDasharray={62.8}
                 strokeDashoffset={62.8 - (62.8 * progress) / 100}

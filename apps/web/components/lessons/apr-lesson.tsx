@@ -881,7 +881,7 @@ function IterationNav({
             }}
           >
             <div
-              className="h-2 w-2 rounded-full flex-shrink-0 transition-all duration-300"
+              className="h-2 w-2 rounded-full flex-shrink-0 transition duration-300"
               style={{
                 backgroundColor: iter.color,
                 transform: isCurrent ? 'scale(1.3)' : 'scale(1)',

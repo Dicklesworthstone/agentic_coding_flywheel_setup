@@ -80,7 +80,7 @@ export function QuickAccessBar() {
               onClick={(e) => handleCopy(command, e)}
               className={cn(
                 "group relative flex flex-1 flex-col items-center gap-1.5 rounded-xl p-3",
-                "min-h-[64px] transition-all duration-300",
+                "min-h-[64px] transition duration-300",
                 isCopied
                   ? "bg-emerald-500/20 border border-emerald-500/30"
                   : "bg-white/[0.02] border border-white/[0.06] active:bg-white/[0.05]"

@@ -199,7 +199,7 @@ export function SwarmExecutionViz() {
                   <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                     <div 
                       className={cn(
-                        "h-full rounded-full transition-all duration-300",
+                        "h-full rounded-full transition-[width,background-color] duration-300",
                         mode === "herd" && state === "finished" ? "bg-red-500" : "bg-primary"
                       )}
                       style={{ width: `${agentProgress[i]}%` }}

@@ -97,7 +97,7 @@ export function ContextHorizonViz() {
         <div className="relative flex flex-col items-center justify-end h-full z-10 w-28 sm:w-40">
           <motion.div 
             className={cn(
-              "w-full rounded-t-2xl relative overflow-hidden flex items-end justify-center pb-6 transition-all duration-500 border-t border-l border-r backdrop-blur-sm",
+              "w-full rounded-t-2xl relative overflow-hidden flex items-end justify-center pb-6 transition duration-500 border-t border-l border-r backdrop-blur-sm",
               isCodeBlowingHorizon 
                 ? "bg-gradient-to-t from-[#FF5F56]/10 to-[#FF5F56]/5 border-[#FF5F56]/40 shadow-[0_0_50px_rgba(255,95,86,0.25)]" 
                 : "bg-gradient-to-t from-[#FF5500]/10 to-[#FF5500]/5 border-[#FF5500]/30 shadow-[0_0_40px_rgba(34,211,238,0.15)]"
@@ -123,7 +123,7 @@ export function ContextHorizonViz() {
             </AnimatePresence>
             
             <FileCode2 className={cn(
-              "h-10 w-10 relative z-10 transition-all duration-500 opacity-90",
+              "h-10 w-10 relative z-10 transition duration-500 opacity-90",
               isCodeBlowingHorizon ? "text-[#FF5F56] drop-shadow-[0_0_10px_rgba(255,95,86,0.5)]" : "text-[#FF5500] drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]"
             )} />
           </motion.div>

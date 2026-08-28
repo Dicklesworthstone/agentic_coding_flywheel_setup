@@ -129,7 +129,7 @@ function LessonSidebar({
                 {/* Shadow */}
                 <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-md translate-y-2" />
                 {/* Icon container */}
-                <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 via-primary/20 to-violet-500/20 border border-white/20 shadow-2xl shadow-primary/20 transition-all duration-500 group-hover:scale-110 group-hover:shadow-primary/40">
+                <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/30 via-primary/20 to-violet-500/20 border border-white/20 shadow-2xl shadow-primary/20 transition duration-500 group-hover:scale-110 group-hover:shadow-primary/40">
                   <GraduationCap className="h-7 w-7 text-white drop-shadow-lg" />
                 </div>
               </div>
@@ -168,12 +168,12 @@ function LessonSidebar({
                   <div className="absolute inset-0 bg-white/[0.06]" />
                   {/* Glow layer */}
                   <div
-                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-violet-500 to-emerald-400 blur-sm opacity-70 transition-all duration-1000"
+                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-violet-500 to-emerald-400 blur-sm opacity-70 transition-[width] duration-1000"
                     style={{ width: `${progressPercent}%` }}
                   />
                   {/* Fill */}
                   <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-violet-500 to-emerald-400 transition-all duration-1000"
+                    className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-primary via-violet-500 to-emerald-400 transition-[width] duration-1000"
                     style={{ width: `${progressPercent}%` }}
                   />
                   {/* Shimmer */}
@@ -181,7 +181,7 @@ function LessonSidebar({
                   {/* Leading glow dot */}
                   {progressPercent > 0 && progressPercent < 100 && (
                     <div
-                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-[0_0_15px_5px_rgba(255,255,255,0.8)] animate-pulse transition-all duration-1000"
+                      className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-[0_0_15px_5px_rgba(255,255,255,0.8)] animate-pulse transition-[left] duration-1000"
                       style={{ left: `calc(${progressPercent}% - 8px)` }}
                     />
                   )}
@@ -213,7 +213,7 @@ function LessonSidebar({
                       href={isAccessible ? `/learn/${lesson.slug}` : "#"}
                       aria-disabled={!isAccessible}
                       tabIndex={isAccessible ? 0 : -1}
-                      className={`group relative flex items-center gap-4 rounded-xl px-4 py-4 transition-all duration-500 ${
+                      className={`group relative flex items-center gap-4 rounded-xl px-4 py-4 transition duration-500 ${
                         isCurrent
                           ? "bg-gradient-to-r from-primary/20 via-primary/10 to-transparent shadow-[inset_0_0_30px_rgba(var(--primary-rgb),0.1)]"
                           : isAccessible
@@ -238,7 +238,7 @@ function LessonSidebar({
                         )}
 
                         <div
-                          className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold border-2 transition-all duration-500 ${
+                          className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold border-2 transition duration-500 ${
                             isCompleted
                               ? "bg-gradient-to-br from-emerald-400 to-emerald-600 border-emerald-400/50 text-white shadow-[0_0_20px_rgba(16,185,129,0.5)]"
                               : isCurrent
@@ -256,7 +256,7 @@ function LessonSidebar({
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
-                        <span className={`block truncate text-sm font-medium transition-all duration-300 ${
+                        <span className={`block truncate text-sm font-medium transition duration-300 ${
                           isCurrent
                             ? "text-white"
                             : isCompleted
@@ -289,9 +289,9 @@ function LessonSidebar({
           <div className="p-6 border-t border-white/[0.05]">
             <Link
               href="/"
-              className="group flex items-center gap-4 text-sm text-white/60 transition-all duration-500 hover:text-white/90"
+              className="group flex items-center gap-4 text-sm text-white/60 transition duration-500 hover:text-white/90"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.08] transition-all duration-500 group-hover:scale-110 group-hover:bg-white/[0.08] group-hover:border-white/20">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.08] transition duration-500 group-hover:scale-110 group-hover:bg-white/[0.08] group-hover:border-white/20">
                 <Home className="h-5 w-5 transition-transform duration-500 group-hover:-translate-y-0.5" />
               </div>
               <span className="font-medium">Back to Home</span>
@@ -477,14 +477,14 @@ export function LessonContent({ lesson }: Props) {
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link
                 href={`/learn/${nextAvailableLesson?.slug ?? lesson.slug}`}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 px-5 py-3 font-semibold text-white transition-all duration-300 hover:bg-primary/25"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 px-5 py-3 font-semibold text-white transition duration-300 hover:bg-primary/25"
               >
                 Go to Current Lesson
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/learn"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 font-semibold text-white/80 transition-all duration-300 hover:bg-white/[0.08] hover:text-white"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-3 font-semibold text-white/80 transition duration-300 hover:bg-white/[0.08] hover:text-white"
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back to Learning Hub
@@ -517,18 +517,18 @@ export function LessonContent({ lesson }: Props) {
         <div className="h-full bg-black/80 backdrop-blur-sm" />
         {/* Glow track */}
         <div
-          className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-violet-500 to-emerald-400 blur-sm opacity-80 transition-all duration-200"
+          className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-violet-500 to-emerald-400 blur-sm opacity-80 transition-[width] duration-200"
           style={{ width: `${readingProgress}%` }}
         />
         {/* Main bar */}
         <div
-          className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-violet-500 to-emerald-400 transition-all duration-200"
+          className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary via-violet-500 to-emerald-400 transition-[width] duration-200"
           style={{ width: `${readingProgress}%` }}
         />
         {/* Leading glow */}
         {readingProgress > 0 && readingProgress < 100 && (
           <div
-            className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-white rounded-full shadow-[0_0_20px_10px_rgba(255,255,255,0.9)] transition-all duration-200"
+            className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-white rounded-full shadow-[0_0_20px_10px_rgba(255,255,255,0.9)] transition-[left] duration-200"
             style={{ left: `calc(${readingProgress}% - 10px)` }}
           />
         )}
@@ -558,9 +558,9 @@ export function LessonContent({ lesson }: Props) {
               <div className="relative flex items-center justify-between px-5 py-4">
                 <Link
                   href="/learn"
-                  className="group flex items-center gap-3 text-white/60 transition-all duration-300 hover:text-white"
+                  className="group flex items-center gap-3 text-white/60 transition duration-300 hover:text-white"
                 >
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition-all duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
                     <ArrowLeft className="h-4 w-4" />
                   </div>
                   <span className="text-sm font-medium">Back</span>
@@ -586,7 +586,7 @@ export function LessonContent({ lesson }: Props) {
 
                 {/* Meta badges */}
                 <div className="flex flex-wrap items-center gap-3 mb-8">
-                  <div className="group flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-primary/20 to-violet-500/20 border border-primary/30 shadow-[0_0_30px_-5px_rgba(var(--primary-rgb),0.3)] transition-all duration-500 hover:scale-105 hover:shadow-[0_0_40px_-5px_rgba(var(--primary-rgb),0.5)]">
+                  <div className="group flex items-center gap-2.5 px-4 py-2 rounded-full bg-gradient-to-r from-primary/20 to-violet-500/20 border border-primary/30 shadow-[0_0_30px_-5px_rgba(var(--primary-rgb),0.3)] transition duration-500 hover:scale-105 hover:shadow-[0_0_40px_-5px_rgba(var(--primary-rgb),0.5)]">
                     <BookOpen className="h-4 w-4 text-primary" />
                     <span className="text-sm font-semibold text-white">Lesson {lesson.id + 1}</span>
                   </div>
@@ -646,7 +646,7 @@ export function LessonContent({ lesson }: Props) {
                         </p>
                         <Link
                           href={`/wizard/${wizardStepSlug}`}
-                          className="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-400/30 text-amber-300 font-semibold transition-all duration-300 hover:from-amber-500/30 hover:to-orange-500/30 hover:scale-105 hover:shadow-[0_0_30px_rgba(245,158,11,0.3)]"
+                          className="inline-flex items-center gap-3 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-400/30 text-amber-300 font-semibold transition duration-300 hover:from-amber-500/30 hover:to-orange-500/30 hover:scale-105 hover:shadow-[0_0_30px_rgba(245,158,11,0.3)]"
                         >
                           <span>Go to {wizardStepTitle}</span>
                           <ArrowRight className="h-5 w-5" />
@@ -676,7 +676,7 @@ export function LessonContent({ lesson }: Props) {
               {/* Jaw-dropping completion card */}
               <div className="mt-28 relative group">
                 {/* Multi-layer glow */}
-                <div className={`absolute -inset-2 rounded-[28px] transition-all duration-700 ${
+                <div className={`absolute -inset-2 rounded-[28px] transition duration-700 ${
                   isCompleted
                     ? "bg-gradient-to-r from-emerald-500/40 via-emerald-400/30 to-emerald-500/40 blur-2xl opacity-100"
                     : "bg-gradient-to-r from-primary/40 via-violet-500/30 to-primary/40 blur-2xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -700,7 +700,7 @@ export function LessonContent({ lesson }: Props) {
                             ? "bg-gradient-to-br from-emerald-400 to-emerald-600 opacity-60"
                             : "bg-gradient-to-br from-primary to-violet-500 opacity-50 group-hover:opacity-80"
                         }`} />
-                        <div className={`relative flex h-16 w-16 items-center justify-center rounded-2xl border-2 transition-all duration-500 ${
+                        <div className={`relative flex h-16 w-16 items-center justify-center rounded-2xl border-2 transition duration-500 ${
                           isCompleted
                             ? "bg-gradient-to-br from-emerald-400/20 to-emerald-600/20 border-emerald-400/50 shadow-[0_0_40px_rgba(16,185,129,0.5)]"
                             : "bg-gradient-to-br from-primary/20 to-violet-500/20 border-primary/50 shadow-[0_0_40px_rgba(var(--primary-rgb),0.3)] group-hover:shadow-[0_0_50px_rgba(var(--primary-rgb),0.5)]"
@@ -738,7 +738,7 @@ export function LessonContent({ lesson }: Props) {
                       }}
                       disabled={isMarkingComplete || (isCompleted && !accessibleNextLesson)}
                       size="lg"
-                      className={`shrink-0 h-14 px-8 text-lg font-semibold rounded-xl transition-all duration-500 ${
+                      className={`shrink-0 h-14 px-8 text-lg font-semibold rounded-xl transition duration-500 ${
                         isCompleted
                           ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 shadow-[0_0_40px_rgba(16,185,129,0.5)] hover:shadow-[0_0_50px_rgba(16,185,129,0.7)] hover:scale-105"
                           : "bg-gradient-to-r from-primary to-violet-500 hover:from-primary/90 hover:to-violet-400 shadow-[0_0_40px_rgba(var(--primary-rgb),0.4)] hover:shadow-[0_0_50px_rgba(var(--primary-rgb),0.6)] hover:scale-105"
@@ -772,12 +772,12 @@ export function LessonContent({ lesson }: Props) {
                 {accessiblePrevLesson ? (
                   <Link
                     href={`/learn/${accessiblePrevLesson.slug}`}
-                    className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 transition-all duration-500 hover:bg-white/[0.05] hover:border-white/20 hover:shadow-[0_0_40px_rgba(255,255,255,0.05)] hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background outline-none"
+                    className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 transition duration-500 hover:bg-white/[0.05] hover:border-white/20 hover:shadow-[0_0_40px_rgba(255,255,255,0.05)] hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background outline-none"
                   >
                     <div className="absolute inset-0 bg-gradient-to-r from-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-500" />
                     <div className="relative flex items-center gap-5">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition-all duration-500 group-hover:scale-110 group-hover:bg-white/[0.1] group-hover:border-white/20">
-                        <ChevronLeft className="h-6 w-6 text-white/60 transition-all duration-500 group-hover:text-white group-hover:-translate-x-1" />
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-500 group-hover:scale-110 group-hover:bg-white/[0.1] group-hover:border-white/20">
+                        <ChevronLeft className="h-6 w-6 text-white/60 transition duration-500 group-hover:text-white group-hover:-translate-x-1" />
                       </div>
                       <div>
                         <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">Previous</div>
@@ -791,7 +791,7 @@ export function LessonContent({ lesson }: Props) {
                 {accessibleNextLesson ? (
                   <Link
                     href={`/learn/${accessibleNextLesson.slug}`}
-                    className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 transition-all duration-500 hover:bg-white/[0.05] hover:border-white/20 hover:shadow-[0_0_40px_rgba(255,255,255,0.05)] hover:-translate-y-1 text-right focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background outline-none"
+                    className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 transition duration-500 hover:bg-white/[0.05] hover:border-white/20 hover:shadow-[0_0_40px_rgba(255,255,255,0.05)] hover:-translate-y-1 text-right focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background outline-none"
                   >
                     <div className="absolute inset-0 bg-gradient-to-l from-white/[0.05] to-transparent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-500" />
                     <div className="relative flex items-center justify-end gap-5">
@@ -799,8 +799,8 @@ export function LessonContent({ lesson }: Props) {
                         <div className="text-xs text-white/50 mb-1 uppercase tracking-wider font-medium">Next</div>
                         <div className="text-lg font-semibold text-white/80 transition-colors group-hover:text-white">{accessibleNextLesson.title}</div>
                       </div>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition-all duration-500 group-hover:scale-110 group-hover:bg-white/[0.1] group-hover:border-white/20">
-                        <ChevronRight className="h-6 w-6 text-white/60 transition-all duration-500 group-hover:text-white group-hover:translate-x-1" />
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-500 group-hover:scale-110 group-hover:bg-white/[0.1] group-hover:border-white/20">
+                        <ChevronRight className="h-6 w-6 text-white/60 transition duration-500 group-hover:text-white group-hover:translate-x-1" />
                       </div>
                     </div>
                   </Link>
@@ -827,7 +827,7 @@ export function LessonContent({ lesson }: Props) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-14 w-14 shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 transition-all duration-300 hover:scale-105"
+              className="h-14 w-14 shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 transition duration-300 hover:scale-105"
               disabled={!accessiblePrevLesson}
               asChild={!!accessiblePrevLesson}
             >
@@ -841,7 +841,7 @@ export function LessonContent({ lesson }: Props) {
             </Button>
 
             <Button
-              className={`h-14 flex-1 rounded-2xl text-lg font-semibold transition-all duration-500 ${
+              className={`h-14 flex-1 rounded-2xl text-lg font-semibold transition duration-500 ${
                 isCompleted
                   ? "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.5)]"
                   : "bg-gradient-to-r from-primary to-violet-500 hover:from-primary/90 hover:to-violet-400 shadow-[0_0_30px_rgba(var(--primary-rgb),0.5)]"
@@ -868,7 +868,7 @@ export function LessonContent({ lesson }: Props) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-14 w-14 shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 transition-all duration-300 hover:scale-105"
+              className="h-14 w-14 shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.08] hover:border-white/20 transition duration-300 hover:scale-105"
               disabled={!accessibleNextLesson}
               asChild={!!accessibleNextLesson}
             >

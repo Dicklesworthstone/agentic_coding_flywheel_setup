@@ -40,7 +40,7 @@ function TerminalCard({ name, description, href }: TerminalCardProps) {
       href={href}
       trackingId={trackingId}
       className={cn(
-        "group relative flex items-center justify-between rounded-xl border p-4 transition-all duration-200",
+        "group relative flex items-center justify-between rounded-xl border p-4 transition duration-200",
         "border-border/50 bg-card/50 hover:border-primary/30 hover:bg-card/80 hover:shadow-md"
       )}
     >

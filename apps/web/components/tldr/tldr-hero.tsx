@@ -45,7 +45,7 @@ function AnimatedStat({
       className="group relative text-center"
     >
       {/* Glassmorphism card */}
-      <div className="relative rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-sm transition-all duration-300 hover:border-white/20 hover:bg-white/10 sm:px-6 sm:py-4">
+      <div className="relative rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-sm transition duration-300 hover:border-white/20 hover:bg-white/10 sm:px-6 sm:py-4">
         {/* Subtle glow on hover */}
         <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-b from-primary/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 

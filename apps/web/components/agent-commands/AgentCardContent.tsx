@@ -81,7 +81,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                   }}
                   className={cn(
                     "flex flex-1 items-center justify-center gap-2 px-4 py-3",
-                    "text-sm font-medium transition-all duration-300",
+                    "text-sm font-medium transition-[border-bottom-width,border-color,color,background-color] duration-300",
                     "min-h-[48px]", // Touch target
                     activeTab === tab.id
                       ? "border-b-2 border-primary text-white bg-white/[0.02]"
@@ -134,7 +134,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                       {agent.tips.map((tip, i) => (
                         <motion.li
                           key={i}
-                          className="group/tip flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
+                          className="group/tip flex items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 transition duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
                           initial={reducedMotion ? {} : { opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           whileHover={reducedMotion ? {} : { x: 4, scale: 1.01 }}
@@ -177,7 +177,7 @@ export function AgentCardContent({ agent, isExpanded }: AgentCardContentProps) {
                           onClick={() => handleCopy(alias)}
                           className={cn(
                             "group/alias flex items-center justify-between gap-3 rounded-xl border p-4",
-                            "min-h-[56px] transition-all duration-300",
+                            "min-h-[56px] transition duration-300",
                             copiedAlias === alias
                               ? "border-emerald-500/50 bg-emerald-500/10"
                               : "border-white/[0.06] bg-white/[0.02] hover:border-primary/40 hover:bg-white/[0.04]"

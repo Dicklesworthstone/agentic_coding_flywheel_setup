@@ -488,7 +488,7 @@ function CategoryChip({
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.97 }}
       transition={springs.stiff}
-      className={`rounded-full border px-5 py-2.5 text-sm font-medium transition-all duration-300 ${
+      className={`rounded-full border px-5 py-2.5 text-sm font-medium transition duration-300 ${
         isSelected
           ? "border-primary/50 bg-gradient-to-r from-primary/20 to-violet-500/20 text-white shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]"
           : "border-white/[0.08] bg-white/[0.03] text-white/60 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/80"
@@ -520,7 +520,7 @@ function CategoryCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ ...springs.smooth, delay: staggerDelay(index, 0.08) }}
     >
-      <div className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-500 hover:border-white/[0.15] hover:bg-white/[0.04]">
+      <div className="group relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-500 hover:border-white/[0.15] hover:bg-white/[0.04]">
         {/* Gradient glow on hover */}
         <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
 
@@ -531,7 +531,7 @@ function CategoryCard({
             <div className="relative shrink-0">
               <div className={`absolute inset-0 bg-gradient-to-br ${gradient} rounded-xl blur-xl opacity-50 group-hover:opacity-80 transition-opacity duration-500 scale-110`} />
               <motion.div
-                className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.08] border border-white/[0.12] text-white transition-all duration-300 group-hover:scale-110"
+                className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-white/[0.08] border border-white/[0.12] text-white transition duration-300 group-hover:scale-110"
                 whileHover={{ rotate: 5 }}
                 transition={springs.stiff}
               >
@@ -663,19 +663,19 @@ export default function CommandReferencePage() {
         >
           <Link
             href="/learn"
-            className="group flex items-center gap-3 text-white/50 transition-all duration-300 hover:text-white"
+            className="group flex items-center gap-3 text-white/50 transition duration-300 hover:text-white"
           >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition-all duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
               <ArrowLeft className="h-4 w-4" />
             </div>
             <span className="text-sm font-medium">Learning Hub</span>
           </Link>
           <Link
             href="/"
-            className="group flex items-center gap-3 text-white/50 transition-all duration-300 hover:text-white"
+            className="group flex items-center gap-3 text-white/50 transition duration-300 hover:text-white"
           >
             <span className="text-sm font-medium">Home</span>
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition-all duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.05] border border-white/[0.08] transition duration-300 group-hover:scale-110 group-hover:bg-white/[0.1]">
               <Home className="h-4 w-4" />
             </div>
           </Link>
@@ -734,7 +734,7 @@ export default function CommandReferencePage() {
                 aria-label="Search commands"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-4 pl-14 pr-5 text-white placeholder:text-white/50 backdrop-blur-xl transition-all duration-300 focus:border-primary/50 focus:bg-white/[0.05] focus:outline-none focus:shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)]"
+                className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-4 pl-14 pr-5 text-white placeholder:text-white/50 backdrop-blur-xl transition duration-300 focus:border-primary/50 focus:bg-white/[0.05] focus:outline-none focus:shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)]"
               />
             </div>
           </div>

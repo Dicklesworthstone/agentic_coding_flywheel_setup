@@ -34,7 +34,7 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
     <button
       type="button"
       className={cn(
-        "group relative flex w-full flex-col items-center gap-4 rounded-2xl border p-8 text-center transition-all duration-300",
+        "group relative flex w-full flex-col items-center gap-4 rounded-2xl border p-8 text-center transition duration-300",
         selected
           ? "border-primary bg-primary/10 shadow-lg shadow-primary/10"
           : "border-border/50 bg-card/50 hover:border-primary/30 hover:bg-card/80 hover:shadow-md"
@@ -54,7 +54,7 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
       {/* Detected badge */}
       {detected && (
         <div className={cn(
-          "absolute -top-2 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-xs font-medium transition-all",
+          "absolute -top-2 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 text-xs font-medium transition",
           selected
             ? "bg-primary text-primary-foreground"
             : "bg-primary/20 text-primary"
@@ -74,7 +74,7 @@ function OSCard({ icon, title, description, selected, detected, onClick }: OSCar
       {/* Icon */}
       <div
         className={cn(
-          "relative flex h-20 w-20 items-center justify-center rounded-2xl transition-all duration-300",
+          "relative flex h-20 w-20 items-center justify-center rounded-2xl transition duration-300",
           selected
             ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30"
             : "bg-muted text-muted-foreground group-hover:bg-muted/80 group-hover:text-foreground"

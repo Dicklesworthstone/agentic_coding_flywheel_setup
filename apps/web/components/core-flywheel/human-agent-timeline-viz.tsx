@@ -520,7 +520,7 @@ function MobileTimeline({
             key={stage.id}
             type="button"
             onClick={() => onSelect(index)}
-            className={`relative flex items-center gap-4 px-5 py-3.5 rounded-2xl border transition-all duration-300 text-left ${
+            className={`relative flex items-center gap-4 px-5 py-3.5 rounded-2xl border transition-[border-left-width,border-color,background-color,box-shadow] duration-300 text-left ${
               isActive
                 ? "border-white/[0.08] bg-white/[0.04]"
                 : "border-white/[0.03] bg-white/[0.01] hover:bg-white/[0.03]"
@@ -551,7 +551,7 @@ function MobileTimeline({
           >
             {/* Node icon */}
             <div
-              className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition-all duration-300 ${
+              className={`relative z-10 flex items-center justify-center w-10 h-10 rounded-xl shrink-0 transition duration-300 ${
                 isActive ? "shadow-lg" : ""
               }`}
               style={{
@@ -793,7 +793,7 @@ export function HumanAgentTimelineViz() {
               type="button"
               onClick={advance}
               disabled={activeIndex >= STAGE_COUNT - 1}
-              className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-xl px-5 py-2.5 text-sm font-bold text-white transition hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
               style={{
                 background:
                   currentStage.actor === "agent"
@@ -806,7 +806,7 @@ export function HumanAgentTimelineViz() {
             <button
               type="button"
               onClick={reset}
-              className="rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-300 transition-all hover:bg-white/5 hover:scale-[1.02] active:scale-[0.98]"
+              className="rounded-xl border px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:scale-[1.02] active:scale-[0.98]"
               style={{ borderColor: "#1e293b" }}
             >
               Reset

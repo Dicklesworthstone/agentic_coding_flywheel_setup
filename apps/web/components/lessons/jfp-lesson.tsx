@@ -599,7 +599,7 @@ function PromptEvolutionTab() {
             <button
               key={pe.id}
               onClick={() => { setSelectedIdx(i); setActiveVersion(0); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                 selectedIdx === i
                   ? 'bg-primary/20 text-primary border border-primary/30'
                   : 'bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60 hover:border-white/[0.12]'
@@ -633,7 +633,7 @@ function PromptEvolutionTab() {
               <div key={v.version} className="flex items-center gap-2">
                 <button
                   onClick={() => setActiveVersion(vi)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
                     activeVersion === vi
                       ? 'bg-primary/20 text-primary border border-primary/30 shadow-lg shadow-primary/10'
                       : 'bg-white/[0.02] text-white/30 border border-white/[0.08] hover:text-white/50'
@@ -727,7 +727,7 @@ function VagueVsPreciseTab() {
             <button
               key={i}
               onClick={() => setSelectedIdx(i)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                 selectedIdx === i
                   ? 'bg-primary/20 text-primary border border-primary/30'
                   : 'bg-white/[0.02] text-white/40 border border-white/[0.08] hover:text-white/60'
@@ -947,7 +947,7 @@ function TemplateBuilderTab() {
                 onDragOver={(e: React.DragEvent) => handleDragOver(e, section.id)}
                 onDrop={handleDrop}
                 onDragEnd={handleDragEnd}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all cursor-grab active:cursor-grabbing ${
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition cursor-grab active:cursor-grabbing ${
                   isDragging
                     ? 'border-primary/40 bg-primary/10 opacity-50'
                     : isEnabled
@@ -958,7 +958,7 @@ function TemplateBuilderTab() {
                 <Grip className="h-3.5 w-3.5 text-white/20 shrink-0" />
                 <button
                   onClick={() => toggleSection(section.id)}
-                  className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-all ${
+                  className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 transition ${
                     isEnabled
                       ? 'bg-primary/20 border-primary/40 text-primary'
                       : 'border-white/20 text-transparent'
@@ -1111,7 +1111,7 @@ function AgentTerminalTab() {
         <button
           onClick={startSimulation}
           disabled={isRunning}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
             isRunning
               ? 'bg-white/[0.04] text-white/30 border border-white/[0.06] cursor-wait'
               : 'bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20'
@@ -1220,7 +1220,7 @@ function InteractivePromptGallery() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all flex-1 justify-center ${
+              className={`relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition flex-1 justify-center ${
                 activeTab === tab.id
                   ? 'text-primary'
                   : 'text-white/40 hover:text-white/60'

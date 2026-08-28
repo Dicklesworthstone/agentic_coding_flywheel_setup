@@ -750,7 +750,7 @@ function InteractiveGraphTriage() {
                       whileHover={{ scale: 1.04 }}
                       whileTap={{ scale: 0.96 }}
                       transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-                      className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition-all ${
+                      className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
                         isActive
                           ? 'border border-violet-500/40 bg-violet-500/15 text-violet-300 shadow-lg shadow-violet-500/10'
                           : 'border border-white/[0.06] bg-white/[0.02] text-white/40 hover:text-white/60 hover:bg-white/[0.04]'
@@ -1511,7 +1511,7 @@ function MetricBadge({ label, value, maxVal, isInteger }: { label: string; value
       </div>
       <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
         <div
-          className="h-full bg-gradient-to-r from-violet-500/60 to-violet-400/40 rounded-full transition-all"
+          className="h-full bg-gradient-to-r from-violet-500/60 to-violet-400/40 rounded-full transition-[width]"
           style={{ width: `${pct}%` }}
         />
       </div>

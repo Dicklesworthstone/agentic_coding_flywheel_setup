@@ -193,7 +193,7 @@ function AgentCard({
   return (
     <motion.div
       whileHover={{ y: -4, scale: 1.03 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.15]"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.15]"
     >
       {/* Gradient background on hover */}
       <div
@@ -587,7 +587,7 @@ function InteractiveArchitecture() {
           {revealedLayers < archLayers.length && (
             <button
               onClick={handleRevealAll}
-              className="px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition-all duration-300"
+              className="px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition duration-300"
             >
               Reveal All
             </button>
@@ -651,7 +651,7 @@ function InteractiveArchitecture() {
                               onClick={() => handleComponentClick(comp.id)}
                               whileHover={{ scale: 1.04, y: -2 }}
                               whileTap={{ scale: 0.97 }}
-                              className={`relative flex flex-col items-center gap-1 p-2.5 rounded-lg border transition-all duration-300 text-center cursor-pointer ${
+                              className={`relative flex flex-col items-center gap-1 p-2.5 rounded-lg border transition duration-300 text-center cursor-pointer ${
                                 isSelected
                                   ? "border-primary/50 bg-primary/10 shadow-lg shadow-primary/5"
                                   : isHighlighted
@@ -831,7 +831,7 @@ function InteractiveArchitecture() {
                             <button
                               key={depId}
                               onClick={() => handleComponentClick(depId)}
-                              className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-[10px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition-all duration-200 cursor-pointer"
+                              className="px-2 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-[10px] text-white/50 hover:text-white/80 hover:bg-white/[0.08] transition duration-200 cursor-pointer"
                             >
                               {dep?.shortName ?? depId}
                             </button>

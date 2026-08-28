@@ -657,13 +657,13 @@ function Hero() {
         <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
           <a
             href="#core-loop"
-            className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl bg-[#FF5500] px-8 py-4 text-sm font-black text-black uppercase tracking-widest transition-all duration-300 hover:bg-[#FFBD2E] hover:shadow-[0_0_40px_rgba(255,189,46,0.4)] hover:-translate-y-1 active:scale-95"
+            className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl bg-[#FF5500] px-8 py-4 text-sm font-black text-black uppercase tracking-widest transition duration-300 hover:bg-[#FFBD2E] hover:shadow-[0_0_40px_rgba(255,189,46,0.4)] hover:-translate-y-1 active:scale-95"
           >
             Start Learning
           </a>
           <a
             href="/complete-guide"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.02] px-8 py-4 text-sm font-bold text-zinc-400 uppercase tracking-widest transition-all duration-300 hover:border-[#FF5500]/30 hover:text-white hover:-translate-y-1 hover:bg-white/[0.04]"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.02] px-8 py-4 text-sm font-bold text-zinc-400 uppercase tracking-widest transition duration-300 hover:border-[#FF5500]/30 hover:text-white hover:-translate-y-1 hover:bg-white/[0.04]"
           >
             Full Guide <ArrowRight className="h-4 w-4" />
           </a>
@@ -702,7 +702,7 @@ function HelperCard({
 }) {
   return (
     <div
-      className="group relative flex flex-col rounded-[2rem] border border-white/[0.04] bg-[#05070A] overflow-hidden transition-all duration-500 hover:-translate-y-2 shadow-2xl"
+      className="group relative flex flex-col rounded-[2rem] border border-white/[0.04] bg-[#05070A] overflow-hidden transition duration-500 hover:-translate-y-2 shadow-2xl"
       style={{ ['--card-color' as string]: color }}
     >
       {/* Colored top accent bar */}
@@ -720,14 +720,14 @@ function HelperCard({
       <div className="relative z-10 flex flex-col h-full gap-5 p-6 sm:p-8">
         {/* Icon with glow on hover */}
         <div
-          className="flex h-12 w-12 items-center justify-center rounded-xl border transition-all duration-500 group-hover:scale-110"
+          className="flex h-12 w-12 items-center justify-center rounded-xl border transition duration-500 group-hover:scale-110"
           style={{
             borderColor: `${color}33`,
             backgroundColor: `${color}0D`,
             color: color,
           }}
         >
-          <div className="transition-all duration-500 group-hover:drop-shadow-[0_0_8px_var(--card-color)]">
+          <div className="transition duration-500 group-hover:drop-shadow-[0_0_8px_var(--card-color)]">
             {icon}
           </div>
         </div>
@@ -794,13 +794,13 @@ function FooterCTA() {
         <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row justify-center gap-3 sm:gap-4">
           <a
             href="/complete-guide"
-            className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl bg-[#FF5500] px-8 py-4 text-sm font-black text-black uppercase tracking-widest transition-all duration-300 hover:bg-[#FFBD2E] hover:shadow-[0_0_40px_rgba(255,189,46,0.4)] hover:-translate-y-1 active:scale-95"
+            className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl bg-[#FF5500] px-8 py-4 text-sm font-black text-black uppercase tracking-widest transition duration-300 hover:bg-[#FFBD2E] hover:shadow-[0_0_40px_rgba(255,189,46,0.4)] hover:-translate-y-1 active:scale-95"
           >
             Read the Full Guide
           </a>
           <a
             href="/wizard/os-selection"
-            className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.02] px-8 py-4 text-sm font-bold text-zinc-400 uppercase tracking-widest transition-all duration-300 hover:border-[#FF5500]/30 hover:text-white hover:-translate-y-1 hover:bg-white/[0.04]"
+            className="w-full sm:w-auto inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/[0.02] px-8 py-4 text-sm font-bold text-zinc-400 uppercase tracking-widest transition duration-300 hover:border-[#FF5500]/30 hover:text-white hover:-translate-y-1 hover:bg-white/[0.04]"
           >
             Install the Stack
           </a>

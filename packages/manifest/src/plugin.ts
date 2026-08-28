@@ -388,8 +388,8 @@ function inspectPluginInputStructure(
       }
       seen.add(candidate.value);
 
-      const arrayValue = Array.isArray(candidate.value);
-      if (arrayValue && candidate.value.length > MAX_PLUGIN_JSON_NODES) {
+      const arrayValue = Array.isArray(candidate.value) ? (candidate.value as unknown[]) : null;
+      if (arrayValue && arrayValue.length > MAX_PLUGIN_JSON_NODES) {
         return refuse(
           `Plugin manifest array exceeds the maximum item count of ${MAX_PLUGIN_JSON_NODES}`,
           candidate.path
@@ -437,7 +437,7 @@ function inspectPluginInputStructure(
           depth: candidate.depth + 1,
         });
       }
-      if (arrayValue && arrayItemCount !== candidate.value.length) {
+      if (arrayValue && arrayItemCount !== arrayValue.length) {
         return refuse('Plugin manifest must not contain sparse arrays', candidate.path);
       }
     }

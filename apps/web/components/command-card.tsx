@@ -241,7 +241,7 @@ export function CommandCard({
   return (
     <div
       className={cn(
-        "group overflow-hidden rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm transition-all duration-300",
+        "group overflow-hidden rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm transition duration-300",
         completed && "border-[oklch(0.72_0.19_145/0.3)] bg-[oklch(0.72_0.19_145/0.05)]",
         !completed && "hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5",
         className
@@ -349,7 +349,7 @@ export function CommandCard({
             checked={completed}
             onCheckedChange={handleCheckboxChange}
             className={cn(
-              "transition-all",
+              "transition",
               completed && "border-[oklch(0.72_0.19_145)] bg-[oklch(0.72_0.19_145)] text-[oklch(0.15_0.02_145)]"
             )}
           />

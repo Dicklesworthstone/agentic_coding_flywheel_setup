@@ -138,7 +138,7 @@ function SynergyPill({
 
   return (
     <div
-      className="group/synergy relative flex items-center gap-2 rounded-xl bg-white/5 px-2 py-1.5 ring-1 ring-white/10 transition-all duration-300 hover:bg-white/10 hover:ring-white/20 sm:px-3 sm:py-2"
+      className="group/synergy relative flex items-center gap-2 rounded-xl bg-white/5 px-2 py-1.5 ring-1 ring-white/10 transition duration-300 hover:bg-white/10 hover:ring-white/20 sm:px-3 sm:py-2"
       style={{
         boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
       }}
@@ -167,7 +167,7 @@ function SynergyPill({
           {synergy.description}
         </span>
       </div>
-      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-all duration-200 group-hover/synergy:translate-x-0.5 group-hover/synergy:opacity-100" />
+      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition duration-200 group-hover/synergy:translate-x-0.5 group-hover/synergy:opacity-100" />
     </div>
   );
 }
@@ -193,7 +193,7 @@ function FeatureItem({ feature }: { feature: string }) {
 
 function TechBadge({ tech }: { tech: string }) {
   return (
-    <span className="rounded-lg bg-white/5 px-2 py-1 text-xs font-medium text-muted-foreground ring-1 ring-white/10 transition-all duration-200 hover:bg-white/10 hover:text-foreground/80">
+    <span className="rounded-lg bg-white/5 px-2 py-1 text-xs font-medium text-muted-foreground ring-1 ring-white/10 transition duration-200 hover:bg-white/10 hover:text-foreground/80">
       {tech}
     </span>
   );
@@ -257,7 +257,7 @@ export function TldrToolCard({
         className={cn(
           "relative h-full flex flex-col overflow-hidden rounded-xl sm:rounded-2xl",
           "border border-border/50 bg-card/50 backdrop-blur-sm",
-          "transition-all duration-300",
+          "transition duration-300",
           "hover:border-border hover:bg-card/70",
           "active:scale-[0.98]"
         )}
@@ -350,7 +350,7 @@ export function TldrToolCard({
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
                 {tool.stars && (
                   <span
-                    className="relative inline-flex items-center gap-1 overflow-hidden rounded-full bg-gradient-to-r from-accent/20 via-accent/15 to-accent/20 px-2 py-1 text-xs font-bold text-accent ring-1 ring-inset ring-accent/30 transition-all duration-300 hover:ring-accent/50 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
+                    className="relative inline-flex items-center gap-1 overflow-hidden rounded-full bg-gradient-to-r from-accent/20 via-accent/15 to-accent/20 px-2 py-1 text-xs font-bold text-accent ring-1 ring-inset ring-accent/30 transition duration-300 hover:ring-accent/50 sm:gap-1.5 sm:px-3 sm:py-1.5 sm:text-xs"
                     style={{
                       boxShadow: "0 0 15px -3px rgba(251, 191, 36, 0.3)",
                     }}
@@ -367,7 +367,7 @@ export function TldrToolCard({
                   href={tool.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-muted-foreground ring-1 ring-white/10 transition-all duration-200 hover:bg-white/10 hover:text-white hover:ring-white/20 sm:h-11 sm:w-11"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 text-muted-foreground ring-1 ring-white/10 transition duration-200 hover:bg-white/10 hover:text-white hover:ring-white/20 sm:h-11 sm:w-11"
                   aria-label={`View ${tool.name} on GitHub`}
                 >
                   <ExternalLink className="h-4 w-4" />

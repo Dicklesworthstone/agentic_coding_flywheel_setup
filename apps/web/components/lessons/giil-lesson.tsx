@@ -827,7 +827,7 @@ function InteractiveCloudDownload() {
             return (
               <div key={p} className="flex items-center gap-1">
                 <div
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                  className={`h-1.5 rounded-full transition-[width,background-color] duration-300 ${
                     isPhaseComplete
                       ? 'w-8 bg-emerald-500/60'
                       : isCurrentPhase

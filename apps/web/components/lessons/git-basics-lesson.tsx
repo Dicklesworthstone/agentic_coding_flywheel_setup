@@ -698,14 +698,14 @@ function InteractiveGitFlow() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowDangerOverlay(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-mono text-red-400 transition-all hover:bg-red-500/20 hover:border-red-500/50"
+            className="flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-mono text-red-400 transition hover:bg-red-500/20 hover:border-red-500/50"
           >
             <AlertTriangle className="h-3 w-3" />
             Danger Ops
           </button>
           <button
             onClick={resetFlow}
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/50 transition-all hover:bg-white/[0.08] hover:text-white/70"
+            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/50 transition hover:bg-white/[0.08] hover:text-white/70"
           >
             <RotateCcw className="h-3 w-3" />
             Reset
@@ -854,7 +854,7 @@ function InteractiveGitFlow() {
                     </div>
                     <button
                       onClick={() => setSelectedCommit(null)}
-                      className="rounded-lg p-1 text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+                      className="rounded-lg p-1 text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -956,7 +956,7 @@ function InteractiveGitFlow() {
           <button
             onClick={goBack}
             disabled={currentStep === 0}
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-xs text-white/60 transition-all hover:bg-white/[0.08] hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-xs text-white/60 transition hover:bg-white/[0.08] hover:text-white/80 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <RotateCcw className="h-3 w-3" />
             Back
@@ -964,7 +964,7 @@ function InteractiveGitFlow() {
           <button
             onClick={advanceStep}
             disabled={currentStep === 5}
-            className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary transition-all hover:bg-primary/20 hover:border-primary/60 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/20 hover:border-primary/60 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Play className="h-3 w-3" />
             {currentStep === 5 ? "Complete" : "Next Step"}
@@ -1022,7 +1022,7 @@ function InteractiveGitFlow() {
               </div>
               <button
                 onClick={() => setShowDangerOverlay(false)}
-                className="w-full rounded-lg border border-red-500/30 bg-red-500/10 py-2 text-xs font-semibold text-red-300 transition-all hover:bg-red-500/20"
+                className="w-full rounded-lg border border-red-500/30 bg-red-500/10 py-2 text-xs font-semibold text-red-300 transition hover:bg-red-500/20"
               >
                 Understood, close
               </button>
@@ -1254,7 +1254,7 @@ function ConceptCard({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+      className="group rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
       <h4 className="font-bold text-primary text-lg">{term}</h4>
       <p className="text-white/70 mt-2">{definition}</p>
@@ -1280,7 +1280,7 @@ function IgnoreItem({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className={`group flex items-center gap-4 p-3 rounded-xl border transition-all duration-300 ${
+      className={`group flex items-center gap-4 p-3 rounded-xl border transition duration-300 ${
         critical
           ? "border-red-500/30 bg-red-500/10 hover:border-red-500/50"
           : "border-white/[0.08] bg-white/[0.02] hover:border-white/[0.15]"
@@ -1314,7 +1314,7 @@ function DangerousCommand({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group rounded-2xl border border-red-500/30 bg-red-500/5 p-5 backdrop-blur-xl transition-all duration-300 hover:border-red-500/50 hover:bg-red-500/10"
+      className="group rounded-2xl border border-red-500/30 bg-red-500/5 p-5 backdrop-blur-xl transition duration-300 hover:border-red-500/50 hover:bg-red-500/10"
     >
       <div className="flex items-center gap-3 mb-3">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500/20">
@@ -1347,7 +1347,7 @@ function BestPractice({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition-all duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 backdrop-blur-xl transition duration-300 hover:border-emerald-500/40 hover:bg-emerald-500/10"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/10 group-hover:shadow-emerald-500/20 transition-shadow">
         <CheckCircle className="h-5 w-5" />

@@ -290,7 +290,7 @@ function CommandSection({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4 }}
-      className="group space-y-4 p-4 -mx-4 rounded-xl transition-all duration-300 hover:bg-white/[0.02]"
+      className="group space-y-4 p-4 -mx-4 rounded-xl transition duration-300 hover:bg-white/[0.02]"
     >
       <h4 className="text-lg font-semibold text-white group-hover:text-primary transition-colors">{title}</h4>
       {code && <CodeBlock code={code} />}
@@ -333,7 +333,7 @@ function KeyboardShortcutGrid({ shortcuts }: { shortcuts: ShortcutItem[] }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.1 }}
           whileHover={{ y: -2, scale: 1.01 }}
-          className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+          className="group flex items-center gap-4 p-4 rounded-xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
         >
           <div className="text-primary group-hover:text-primary/80 transition-colors">{shortcut.icon}</div>
           <div className="flex-1 min-w-0">
@@ -1141,7 +1141,7 @@ function SimButton({
       whileTap={disabled ? undefined : { scale: 0.97 }}
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border backdrop-blur-xl transition-all duration-200 ${
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border backdrop-blur-xl transition duration-200 ${
         disabled
           ? "border-white/[0.05] text-white/20 bg-white/[0.02] cursor-not-allowed"
           : colorClasses

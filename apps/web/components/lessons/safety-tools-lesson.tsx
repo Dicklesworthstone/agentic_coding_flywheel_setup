@@ -645,7 +645,7 @@ function InteractiveSafetyDemo() {
           <button
             type="button"
             onClick={() => setIsProtected((p) => !p)}
-            className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-300 border ${
+            className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold transition duration-300 border ${
               isProtected
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
                 : "border-red-500/30 bg-red-500/10 text-red-400"
@@ -776,7 +776,7 @@ function InteractiveSafetyDemo() {
                   key={command.cmd}
                   type="button"
                   onClick={() => handleDcgCommand(command)}
-                  className={`group relative rounded-xl px-3 py-2 text-left text-[11px] font-mono transition-all duration-200 border ${
+                  className={`group relative rounded-xl px-3 py-2 text-left text-[11px] font-mono transition duration-200 border ${
                     command.blocked
                       ? "border-red-500/20 bg-red-500/5 hover:border-red-500/40 hover:bg-red-500/10 text-red-300/80"
                       : "border-emerald-500/20 bg-emerald-500/5 hover:border-emerald-500/40 hover:bg-emerald-500/10 text-emerald-300/80"
@@ -1070,7 +1070,7 @@ function DangerCard({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group rounded-2xl border border-red-500/20 bg-red-500/5 p-5 backdrop-blur-xl transition-all duration-300 hover:border-red-500/40 hover:bg-red-500/10"
+      className="group rounded-2xl border border-red-500/20 bg-red-500/5 p-5 backdrop-blur-xl transition duration-300 hover:border-red-500/40 hover:bg-red-500/10"
     >
       <code className="text-sm text-red-400 font-mono font-medium">{command}</code>
       <div className="flex items-start gap-3 mt-3">
@@ -1106,7 +1106,7 @@ function CaamFeature({
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-start gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
+      className="group flex items-start gap-4 p-5 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-primary/30 hover:bg-white/[0.04]"
     >
       <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20 text-primary shrink-0 shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-shadow">
         {icon}
@@ -1134,7 +1134,7 @@ function UseCase({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group flex items-center gap-4 p-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
+      className="group flex items-center gap-4 p-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04]"
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary shadow-lg shadow-primary/10 group-hover:shadow-primary/20 transition-shadow">
         <UserCheck className="h-5 w-5" />
@@ -1184,7 +1184,7 @@ function QuickRefCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${color} p-6 backdrop-blur-xl overflow-hidden transition-all duration-500 hover:border-white/[0.2]`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${color} p-6 backdrop-blur-xl overflow-hidden transition duration-500 hover:border-white/[0.2]`}
     >
       {/* Decorative glow */}
       <div className="absolute -top-8 -right-8 w-24 h-24 bg-white/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />

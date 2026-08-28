@@ -873,7 +873,7 @@ function InteractiveBackupRestoreImpl() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium whitespace-nowrap transition-all shrink-0 ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-medium whitespace-nowrap transition shrink-0 ${
                   isActive
                     ? 'bg-white/[0.1] text-white/90 border border-white/[0.15] shadow-lg shadow-white/[0.02]'
                     : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.05] hover:text-white/60'
@@ -1002,7 +1002,7 @@ function InteractiveBackupRestoreImpl() {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.05 }}
-                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all ${
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition ${
                           isDone && isIncluded
                             ? 'border-emerald-500/20 bg-emerald-500/[0.05]'
                             : isDone && !isIncluded
@@ -1060,7 +1060,7 @@ function InteractiveBackupRestoreImpl() {
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
               transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition ${
                 phase === 'running'
                   ? 'bg-white/[0.02] text-white/20 border border-white/[0.06] cursor-not-allowed'
                   : phase === 'done'
@@ -1099,7 +1099,7 @@ function InteractiveBackupRestoreImpl() {
                 onClick={() => switchScenario(scenarioIndex + 1)}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-white/[0.06] text-white/60 border border-white/[0.08] hover:bg-white/[0.1] hover:text-white/80 transition-all"
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium bg-white/[0.06] text-white/60 border border-white/[0.08] hover:bg-white/[0.1] hover:text-white/80 transition"
               >
                 Next Scenario
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -1113,7 +1113,7 @@ function InteractiveBackupRestoreImpl() {
               <button
                 key={snapshotIds[i]}
                 onClick={() => switchScenario(i)}
-                className={`h-1.5 rounded-full transition-all ${
+                className={`h-1.5 rounded-full transition-[width,background-color] ${
                   i === scenarioIndex
                     ? 'w-5 bg-white/40'
                     : 'w-1.5 bg-white/15 hover:bg-white/25'

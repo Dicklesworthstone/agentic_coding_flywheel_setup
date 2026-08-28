@@ -102,7 +102,7 @@ function LessonCard({
       className="h-full"
     >
       <div
-        className={`group relative h-full overflow-hidden rounded-2xl border p-5 transition-all duration-500 ${
+        className={`group relative h-full overflow-hidden rounded-2xl border p-5 transition duration-500 ${
           status === "completed"
             ? "border-[oklch(0.72_0.19_145/0.4)] bg-[oklch(0.72_0.19_145/0.08)]"
             : status === "current"
@@ -155,7 +155,7 @@ function LessonCard({
         </div>
 
         {/* Lesson number with glow */}
-        <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl font-mono text-sm font-bold transition-all duration-300 ${
+        <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-xl font-mono text-sm font-bold transition duration-300 ${
           status === "completed"
             ? "bg-[oklch(0.72_0.19_145/0.2)] text-[oklch(0.72_0.19_145)]"
             : status === "current"
@@ -183,7 +183,7 @@ function LessonCard({
 
         {/* Hover arrow */}
         {isAccessible && (
-          <ChevronRight className="absolute bottom-4 right-4 h-5 w-5 text-primary/40 opacity-0 transition-all duration-300 group-hover:translate-x-1 group-hover:text-primary group-hover:opacity-100 group-focus-within:translate-x-1 group-focus-within:text-primary group-focus-within:opacity-100" />
+          <ChevronRight className="absolute bottom-4 right-4 h-5 w-5 text-primary/40 opacity-0 transition duration-300 group-hover:translate-x-1 group-hover:text-primary group-hover:opacity-100 group-focus-within:translate-x-1 group-focus-within:text-primary group-focus-within:opacity-100" />
         )}
       </div>
     </motion.div>
@@ -334,7 +334,7 @@ export default function LearnDashboard() {
             </span>
             <Link
               href="/wizard/os-selection"
-              className="group flex items-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-muted-foreground backdrop-blur transition-all hover:bg-white/[0.08] hover:text-foreground"
+              className="group flex items-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-muted-foreground backdrop-blur transition hover:bg-white/[0.08] hover:text-foreground"
             >
               <Terminal className="h-4 w-4" />
               <span className="text-sm">Setup Wizard</span>
@@ -380,7 +380,7 @@ export default function LearnDashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.2 }}
         >
-          <div className="group relative mb-10 overflow-hidden rounded-2xl border border-primary/20 bg-primary/5 p-5 backdrop-blur-xl transition-all duration-500 hover:border-primary/30 sm:p-6 lg:mb-14 lg:p-8">
+          <div className="group relative mb-10 overflow-hidden rounded-2xl border border-primary/20 bg-primary/5 p-5 backdrop-blur-xl transition duration-500 hover:border-primary/30 sm:p-6 lg:mb-14 lg:p-8">
             {/* Inner glow */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-emerald-500/5" />
 
@@ -477,7 +477,9 @@ export default function LearnDashboard() {
             {/* Continue button */}
             {hasLoaded && nextLesson && (
               <motion.div
-                className="mt-5 lg:mt-6"
+                // On phones the fixed bottom bar below carries the same
+                // Continue link, so don't show two CTAs on one screen.
+                className="mt-5 hidden sm:block lg:mt-6"
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={prefersReducedMotion ? { duration: 0 } : { ...springs.smooth, delay: 0.6 }}
@@ -579,7 +581,7 @@ export default function LearnDashboard() {
                       </div>
                     </div>
                     {!isLockedReference && (
-                      <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/40 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100 group-focus-within:translate-x-0.5 group-focus-within:opacity-100" />
+                      <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground/40 opacity-0 transition group-hover:translate-x-0.5 group-hover:opacity-100 group-focus-within:translate-x-0.5 group-focus-within:opacity-100" />
                     )}
                   </>
                 );
@@ -599,7 +601,7 @@ export default function LearnDashboard() {
                     <Link
                       href={item.href}
                       aria-describedby={isLockedReference ? `${item.lessonSlug}-lock-hint` : undefined}
-                      className={`group flex items-center gap-4 rounded-xl border border-white/[0.06] bg-gradient-to-br ${item.gradient} p-4 backdrop-blur transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] ${
+                      className={`group flex items-center gap-4 rounded-xl border border-white/[0.06] bg-gradient-to-br ${item.gradient} p-4 backdrop-blur transition duration-300 hover:border-white/[0.12] hover:bg-white/[0.04] ${
                         isLockedReference ? "opacity-60 hover:opacity-80" : ""
                       }`}
                     >

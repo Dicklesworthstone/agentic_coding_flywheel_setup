@@ -509,7 +509,7 @@ function ScenarioStepper({
             className="relative"
           >
             <div
-              className={`h-2 rounded-full transition-all duration-300 ${
+              className={`h-2 rounded-full transition-[width,background-color] duration-300 ${
                 idx === activeIndex
                   ? 'w-6 bg-purple-400'
                   : 'w-2 bg-white/20 hover:bg-white/40'

@@ -320,7 +320,7 @@ function CategoryCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition-all duration-500 hover:border-white/[0.15]`}
+      className={`relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} p-5 backdrop-blur-xl transition duration-500 hover:border-white/[0.15]`}
     >
       <div className="flex items-center gap-3 mb-4">
         <div className="text-white">{icon}</div>
@@ -357,10 +357,10 @@ function UsageOption({
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       whileHover={{ x: 4, scale: 1.01 }}
-      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
+      className="group relative rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl transition duration-300 hover:border-white/[0.15] hover:bg-white/[0.04] hover:shadow-lg hover:shadow-primary/10"
     >
       <div className="flex items-center gap-4 mb-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold shadow-lg shadow-primary/20 group-hover:shadow-primary/40 group-hover:scale-110 transition-all duration-300">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-violet-500 text-white font-bold shadow-lg shadow-primary/20 group-hover:shadow-primary/40 group-hover:scale-110 transition duration-300">
           {number}
         </div>
         <h4 className="text-lg font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
@@ -399,7 +399,7 @@ function ExamplePrompt({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4, scale: 1.02 }}
-      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} overflow-hidden transition-all duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
+      className={`group relative rounded-2xl border border-white/[0.08] bg-gradient-to-br ${gradient} overflow-hidden transition duration-300 hover:border-white/[0.15] hover:shadow-lg hover:shadow-primary/10`}
     >
       <div className="p-4 border-b border-white/[0.08] bg-black/20 group-hover:bg-black/30 transition-colors">
         <h4 className="font-bold text-white group-hover:text-primary transition-colors">{title}</h4>
@@ -1103,7 +1103,7 @@ function InteractivePaletteBrowser() {
                     setActiveCategoryFilter(null);
                     setSelectedIndex(0);
                   }}
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition ${
                     activeCategoryFilter === null
                       ? "bg-white/[0.12] text-white"
                       : "bg-white/[0.04] text-white/40 hover:bg-white/[0.08] hover:text-white/60"
@@ -1120,7 +1120,7 @@ function InteractivePaletteBrowser() {
                       );
                       setSelectedIndex(0);
                     }}
-                    className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium transition-all ${
+                    className={`flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium transition ${
                       activeCategoryFilter === group.name
                         ? `${group.badgeBg} ${group.badgeText}`
                         : "bg-white/[0.04] text-white/40 hover:bg-white/[0.08] hover:text-white/60"
@@ -1212,7 +1212,7 @@ function InteractivePaletteBrowser() {
                                     selectCommand(match.command);
                                     setSelectedIndex(currentGlobalIdx);
                                   }}
-                                  className={`group/item flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-all ${
+                                  className={`group/item flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
                                     isActive
                                       ? "bg-white/[0.08] border border-white/[0.12]"
                                       : isSelected
@@ -1252,7 +1252,7 @@ function InteractivePaletteBrowser() {
                                     <KeyCombo keys={match.command.shortcut} />
                                   </div>
                                   <ChevronRight
-                                    className={`h-3.5 w-3.5 shrink-0 transition-all ${
+                                    className={`h-3.5 w-3.5 shrink-0 transition ${
                                       isActive
                                         ? "text-primary"
                                         : "text-white/15 group-hover/item:text-white/30"
@@ -1398,7 +1398,7 @@ function InteractivePaletteBrowser() {
                             whileTap={{ scale: 0.98 }}
                             transition={{ type: "spring", stiffness: 200, damping: 25 }}
                             onClick={handleSend}
-                            className="relative flex flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary/80 to-violet-500/80 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-primary/20 hover:from-primary hover:to-violet-500 transition-all overflow-hidden"
+                            className="relative flex flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary/80 to-violet-500/80 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-primary/20 hover:from-primary hover:to-violet-500 transition overflow-hidden"
                           >
                             {sent && (
                               <motion.div

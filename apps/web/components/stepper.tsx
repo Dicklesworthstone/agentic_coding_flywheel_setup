@@ -47,7 +47,7 @@ function StepItem({
       onClick={isClickable ? onClick : undefined}
       disabled={!isClickable}
       className={cn(
-        "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-200",
+        "group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition duration-200",
         isActive && "bg-primary/10 shadow-sm",
         isClickable && !isActive && "hover:bg-muted/50",
         !isClickable && "cursor-not-allowed opacity-40"
@@ -62,7 +62,7 @@ function StepItem({
       {/* Step indicator */}
       <div
         className={cn(
-          "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-all duration-300",
+          "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-medium transition duration-300",
           showCompletedState && "bg-[oklch(0.72_0.19_145)] text-[oklch(0.15_0.02_145)] shadow-sm shadow-[oklch(0.72_0.19_145/0.3)]",
           isActive && "bg-primary text-primary-foreground shadow-sm shadow-primary/30 animate-glow-pulse",
           !isActive && !showCompletedState && "bg-muted text-muted-foreground"

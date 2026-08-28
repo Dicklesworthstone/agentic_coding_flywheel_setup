@@ -7,7 +7,7 @@ import { COMPLETE_GUIDE_MODELS } from "@/lib/complete-guide";
 import { cn } from "@/lib/utils";
 
 const EXHIBIT_PANEL_CLASS =
-  "my-12 overflow-hidden rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl relative group/viz transition-all duration-500 hover:border-primary/20";
+  "my-12 overflow-hidden rounded-3xl border border-white/[0.06] bg-[#05070a] shadow-2xl relative group/viz transition duration-500 hover:border-primary/20";
 
 type PlanDimensionId =
   | "architecture"
@@ -180,7 +180,7 @@ export function PlanEvolutionStudio() {
                   delay: reducedMotion ? 0 : index * 0.06,
                 }}
                 className={cn(
-                  "rounded-2xl border p-5 text-left transition-all duration-300 relative overflow-hidden group/model",
+                  "rounded-2xl border p-5 text-left transition duration-300 relative overflow-hidden group/model",
                   enabled
                     ? "border-white/[0.08] bg-white/[0.02] shadow-lg"
                     : "border-white/[0.03] bg-transparent opacity-50 hover:opacity-80"
