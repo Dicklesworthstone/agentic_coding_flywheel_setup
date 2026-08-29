@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Brain,
   Lightbulb,
@@ -687,8 +687,11 @@ function MemorySessionArchive({
   feedingSession: string | null;
   onSessionClick: (id: string) => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Panel header */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-white/[0.06]">
         <Archive className="h-3.5 w-3.5 text-blue-400" />
@@ -707,12 +710,12 @@ function MemorySessionArchive({
               key={session.id}
               initial={{ opacity: 0, x: -12 }}
               animate={{
-                opacity: isFeeding ? [1, 0.5, 1] : 1,
-                x: isFeeding ? [0, 8, 0] : 0,
+                opacity: isFeeding && inView ? [1, 0.5, 1] : 1,
+                x: isFeeding && inView ? [0, 8, 0] : 0,
                 scale: isSelected ? 1.02 : 1,
               }}
               transition={
-                isFeeding
+                isFeeding && inView
                   ? { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
                   : { ...SPRING_CONFIG, delay: idx * 0.04 }
               }
@@ -759,8 +762,8 @@ function MemorySessionArchive({
                 )}
                 {isFeeding && (
                   <motion.div
-                    animate={{ x: [0, 4, 0] }}
-                    transition={{ duration: 0.8, repeat: Infinity }}
+                    animate={inView ? { x: [0, 4, 0] } : { x: 0 }}
+                    transition={inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
                     className="text-amber-400"
                   >
                     <Zap className="h-3 w-3" />
@@ -916,7 +919,7 @@ function MemoryAnalysisEngine({
                   )}
                 </motion.div>
                 <span
-                  className="text-[9px] font-medium"
+                  className="text-[10px] font-medium"
                   style={{
                     color: isDone || isActive
                       ? "#8b5cf6"
@@ -935,7 +938,7 @@ function MemoryAnalysisEngine({
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-[11px] text-white/30 mt-3 text-center"
+            className="text-xs text-white/30 mt-3 text-center"
           >
             Click a session or run auto-demo to see analysis
           </motion.p>
@@ -1021,7 +1024,7 @@ function MemoryRuleBank({
                         />
                       )}
 
-                      <p className="relative text-[10px] text-white/60 leading-snug">
+                      <p className="relative text-xs text-white/60 leading-snug">
                         {rule.rule}
                       </p>
 
@@ -1032,11 +1035,11 @@ function MemoryRuleBank({
                           animate={{ opacity: 1, height: "auto" }}
                           className="flex items-center gap-1 mt-1"
                         >
-                          <span className="text-[9px] text-white/25">from:</span>
+                          <span className="text-[10px] text-white/25">from:</span>
                           {rule.sourceSessions.map((sId) => (
                             <span
                               key={sId}
-                              className="text-[9px] px-1.5 py-0.5 rounded-md font-mono"
+                              className="text-[10px] px-1.5 py-0.5 rounded-md font-mono"
                               style={{
                                 backgroundColor: `${meta.color}15`,
                                 color: meta.color,
@@ -1064,7 +1067,7 @@ function MemoryRuleBank({
                               style={{ backgroundColor: meta.color }}
                             />
                           </div>
-                          <span className="text-[9px] font-mono" style={{ color: meta.color }}>
+                          <span className="text-[10px] font-mono" style={{ color: meta.color }}>
                             {Math.round(score * 100)}%
                           </span>
                         </motion.div>
@@ -1075,7 +1078,7 @@ function MemoryRuleBank({
                         <motion.span
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          className="absolute top-1 right-1 text-[8px] font-bold px-1.5 py-0.5 rounded-md"
+                          className="absolute top-1 right-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md"
                           style={{
                             backgroundColor: `${meta.color}20`,
                             color: meta.color,

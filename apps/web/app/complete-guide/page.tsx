@@ -17,6 +17,7 @@ import {
   StatCard,
   CodeBlock,
   IllustrativeDisclosure,
+  TableOfContents,
 } from "@/components/complete-guide/guide-components";
 import { PlanToBeadsViz } from "@/components/complete-guide/plan-to-beads-viz";
 import { AgentMailViz } from "@/components/complete-guide/agent-mail-viz";
@@ -62,13 +63,33 @@ const STACK_TOOL_ROWS = COMPLETE_GUIDE_STACK_TOOLS.map((tool) => [
 ]);
 
 
+// Mirrors the GuideSection ids/numbers below; the rail is the only way to
+// jump between the eleven sections of a ~30k px page without a sidebar.
+const GUIDE_SECTIONS = [
+  { id: "workflow", number: "1", label: "Workflow" },
+  { id: "philosophy", number: "2", label: "Why plan first" },
+  { id: "planning", number: "3", label: "The plan" },
+  { id: "beads", number: "4", label: "Plan → beads" },
+  { id: "polishing", number: "5", label: "Polish beads" },
+  { id: "idea-wizard", number: "", label: "Existing projects" },
+  { id: "coordination", number: "6", label: "Coordination" },
+  { id: "swarm", number: "7", label: "The swarm" },
+  { id: "review", number: "8", label: "Review & harden" },
+  { id: "toolchain", number: "9", label: "Toolchain" },
+  { id: "flywheel", number: "10", label: "Flywheel" },
+];
+
 export default function CompleteGuidePage() {
   return (
     <ErrorBoundary>
-      <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-hidden pb-32">
+      {/* overflow-x-clip (not hidden) keeps the page from scrolling sideways
+          without turning <main> into a scroll container, which would defeat
+          the sticky section rail. */}
+      <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-clip pb-32">
         <Hero />
 
         <div className="mx-auto max-w-[1000px] px-6 lg:px-12 relative mt-20">
+          <TableOfContents items={GUIDE_SECTIONS} />
 
           {/* ============================================================= */}
           {/* SECTION 1: THE COMPLETE WORKFLOW                                */}

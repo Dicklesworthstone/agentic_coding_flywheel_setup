@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Key,
   Lock,
@@ -329,7 +329,7 @@ function TunnelDefs({ encrypted }: { encrypted: boolean }) {
   );
 }
 
-function LaptopIcon({ x, y }: { x: number; y: number }) {
+function LaptopIcon({ x, y, active }: { x: number; y: number; active: boolean }) {
   return (
     <motion.g
       initial={{ opacity: 0, x: -20 }}
@@ -351,8 +351,8 @@ function LaptopIcon({ x, y }: { x: number; y: number }) {
         height="12"
         rx="1"
         fill="#60a5fa"
-        animate={{ opacity: [1, 0.15, 1] }}
-        transition={{ duration: 1.2, repeat: Infinity }}
+        animate={active ? { opacity: [1, 0.15, 1] } : { opacity: 1 }}
+        transition={active ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
       />
       {/* Label */}
       <text x={x + 40} y={y + 85} textAnchor="middle" fill="white" fontSize="12" fontWeight="500">
@@ -384,7 +384,7 @@ function CloudIcon({ x, y }: { x: number; y: number }) {
   );
 }
 
-function ServerIcon({ x, y, blinking }: { x: number; y: number; blinking?: boolean }) {
+function ServerIcon({ x, y, blinking, active }: { x: number; y: number; blinking?: boolean; active: boolean }) {
   return (
     <motion.g
       initial={{ opacity: 0, x: 20 }}
@@ -401,8 +401,8 @@ function ServerIcon({ x, y, blinking }: { x: number; y: number; blinking?: boole
             cy={y + 16 + i * 20}
             r="3"
             fill={blinking === false ? "#ef4444" : "#22d3ee"}
-            animate={{ opacity: blinking === false ? 0.3 : [0.4, 1, 0.4] }}
-            transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+            animate={{ opacity: blinking === false ? 0.3 : active ? [0.4, 1, 0.4] : 0.4 }}
+            transition={active ? { duration: 1.5, repeat: Infinity, delay: i * 0.3 } : { duration: 0.2 }}
           />
         </g>
       ))}
@@ -418,10 +418,12 @@ function EncryptedTunnel({
   encrypted,
   broken,
   establishing,
+  active,
 }: {
   encrypted: boolean;
   broken?: boolean;
   establishing?: boolean;
+  active: boolean;
 }) {
   const tunnelColor = encrypted ? "#22c55e" : "#ef4444";
   const gradId = encrypted ? "sshTunnelGrad" : "sshTunnelGradRed";
@@ -448,9 +450,15 @@ function EncryptedTunnel({
         strokeWidth="1"
         strokeOpacity={0.35}
         animate={{
-          strokeOpacity: establishing ? [0.1, 0.6, 0.1] : broken ? 0.15 : [0.25, 0.55, 0.25],
+          strokeOpacity: !active
+            ? 0.25
+            : establishing
+              ? [0.1, 0.6, 0.1]
+              : broken
+                ? 0.15
+                : [0.25, 0.55, 0.25],
         }}
-        transition={{ duration: establishing ? 0.6 : 2, repeat: Infinity }}
+        transition={active ? { duration: establishing ? 0.6 : 2, repeat: Infinity } : { duration: 0.2 }}
         filter={encrypted && !broken ? "url(#sshGlow)" : undefined}
       />
       {/* Inner data path */}
@@ -463,14 +471,14 @@ function EncryptedTunnel({
         strokeWidth="1"
         strokeDasharray="6 4"
         strokeOpacity={broken ? 0.1 : 0.3}
-        animate={{ strokeDashoffset: broken ? 0 : [0, -20] }}
-        transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+        animate={{ strokeDashoffset: broken || !active ? 0 : [0, -20] }}
+        transition={active ? { duration: 1.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
       />
       {/* Center lock icon */}
       {encrypted && !broken && (
         <motion.g
-          animate={{ opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 2.5, repeat: Infinity }}
+          animate={active ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
+          transition={active ? { duration: 2.5, repeat: Infinity } : { duration: 0.2 }}
           filter="url(#sshStrongGlow)"
         >
           <rect x="289" y="120" width="22" height="16" rx="3" fill="none" stroke="#22c55e" strokeWidth="1.2" />
@@ -479,13 +487,19 @@ function EncryptedTunnel({
         </motion.g>
       )}
       {!encrypted && !broken && (
-        <motion.g animate={{ opacity: [0.4, 0.8, 0.4] }} transition={{ duration: 1.5, repeat: Infinity }}>
+        <motion.g
+          animate={active ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 0.8 }}
+          transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
+        >
           <rect x="289" y="120" width="22" height="16" rx="3" fill="none" stroke="#ef4444" strokeWidth="1.2" opacity="0.6" />
           <path d="M293 120 V116 A7 7 0 0 1 307 116 V124" fill="none" stroke="#ef4444" strokeWidth="1.2" opacity="0.6" />
         </motion.g>
       )}
       {broken && (
-        <motion.g animate={{ opacity: [0.3, 0.7, 0.3] }} transition={{ duration: 0.8, repeat: Infinity }}>
+        <motion.g
+          animate={active ? { opacity: [0.3, 0.7, 0.3] } : { opacity: 0.7 }}
+          transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
+        >
           <line x1="290" y1="118" x2="310" y2="142" stroke="#ef4444" strokeWidth="2" opacity="0.7" />
           <line x1="310" y1="118" x2="290" y2="142" stroke="#ef4444" strokeWidth="2" opacity="0.7" />
         </motion.g>
@@ -497,9 +511,11 @@ function EncryptedTunnel({
 function DataPackets({
   packets,
   encrypted,
+  active,
 }: {
   packets: TunnelPacket[];
   encrypted: boolean;
+  active: boolean;
 }) {
   return (
     <>
@@ -526,8 +542,8 @@ function DataPackets({
           >
             {/* Packet glow */}
             <motion.circle cx={x} cy={y} r="14" fill={fillColor} opacity={0.08}
-              animate={{ r: [14, 18, 14], opacity: [0.06, 0.12, 0.06] }}
-              transition={{ duration: 1.2, repeat: Infinity }}
+              animate={active ? { r: [14, 18, 14], opacity: [0.06, 0.12, 0.06] } : { r: 14, opacity: 0.08 }}
+              transition={active ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
             />
             {/* Packet body */}
             <rect x={x - 22} y={y - 9} width="44" height="18" rx="4" fill={fillColor} opacity={0.15} />
@@ -536,13 +552,19 @@ function DataPackets({
               {displayText}
             </text>
             {showEncrypted && (
-              <motion.g animate={{ opacity: [0.4, 0.9, 0.4] }} transition={{ duration: 0.6, repeat: Infinity }}>
+              <motion.g
+                animate={active ? { opacity: [0.4, 0.9, 0.4] } : { opacity: 0.9 }}
+                transition={active ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
+              >
                 <rect x={x + 16} y={y - 7} width="8" height="7" rx="1.5" fill="none" stroke="#eab308" strokeWidth="0.7" />
                 <path d={`M${x + 18} ${y - 7} V${y - 9.5} A2.5 2.5 0 0 1 ${x + 22.5} ${y - 9.5} V${y - 7}`} fill="none" stroke="#eab308" strokeWidth="0.7" />
               </motion.g>
             )}
             {!encrypted && inTunnel && (
-              <motion.g animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 0.8, repeat: Infinity }}>
+              <motion.g
+                animate={active ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
+                transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
+              >
                 <AlertTriangle x={x + 14} y={y - 10} width={10} height={10} className="text-red-500" strokeWidth={2} />
               </motion.g>
             )}
@@ -553,7 +575,7 @@ function DataPackets({
   );
 }
 
-function StatusBadge({ connected, latencyMs, encrypted }: { connected: boolean; latencyMs: number; encrypted: boolean }) {
+function StatusBadge({ connected, latencyMs, encrypted, active }: { connected: boolean; latencyMs: number; encrypted: boolean; active: boolean }) {
   return (
     <motion.g initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}>
       <rect x="232" y="218" width="136" height="24" rx="12" fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"} opacity="0.1" />
@@ -563,8 +585,8 @@ function StatusBadge({ connected, latencyMs, encrypted }: { connected: boolean; 
         cy="230"
         r="3.5"
         fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"}
-        animate={{ opacity: connected ? [0.5, 1, 0.5] : 0.3 }}
-        transition={{ duration: 1.5, repeat: Infinity }}
+        animate={{ opacity: !connected ? 0.3 : active ? [0.5, 1, 0.5] : 1 }}
+        transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
       />
       <text x="300" y="234" textAnchor="middle" fill={connected ? (encrypted ? "#22c55e" : "#ef4444") : "#6b7280"} fontSize="9" fontWeight="600">
         {connected ? (encrypted ? `SECURED  ${latencyMs}ms` : `UNENCRYPTED  ${latencyMs}ms`) : "DISCONNECTED"}
@@ -575,7 +597,7 @@ function StatusBadge({ connected, latencyMs, encrypted }: { connected: boolean; 
 
 // --- Scenario renderers ---
 
-function ScenarioConnect() {
+function ScenarioConnect({ active }: { active: boolean }) {
   const [phase, setPhase] = useState(0); // 0=idle, 1=handshake, 2=auth, 3=established
   const [packets, setPackets] = useState<TunnelPacket[]>([]);
   const counterRef = useRef(0);
@@ -605,6 +627,7 @@ function ScenarioConnect() {
 
   // Packet animation when established
   useEffect(() => {
+    if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
         prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1)
@@ -626,7 +649,7 @@ function ScenarioConnect() {
     }, 1800);
 
     return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
-  }, []);
+  }, [active]);
 
   const phaseLabels = [
     { step: "Initiating...", detail: "Client sends hello" },
@@ -640,12 +663,12 @@ function ScenarioConnect() {
     <div className="space-y-3">
       <svg viewBox="0 0 600 260" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
-        <LaptopIcon x={20} y={85} />
+        <LaptopIcon x={20} y={85} active={active} />
         <CloudIcon x={300} y={56} />
-        <ServerIcon x={500} y={82} />
+        <ServerIcon x={500} y={82} active={active} />
 
         {phase >= 1 && (
-          <EncryptedTunnel encrypted={phase >= 3} establishing={phase < 3} />
+          <EncryptedTunnel encrypted={phase >= 3} establishing={phase < 3} active={active} />
         )}
 
         {/* Handshake animation: keys meeting in center */}
@@ -684,8 +707,8 @@ function ScenarioConnect() {
           </motion.g>
         )}
 
-        {phase >= 3 && <DataPackets packets={packets} encrypted={true} />}
-        <StatusBadge connected={phase >= 3} latencyMs={phase >= 3 ? 42 : 0} encrypted={true} />
+        {phase >= 3 && <DataPackets packets={packets} encrypted={true} active={active} />}
+        <StatusBadge connected={phase >= 3} latencyMs={phase >= 3 ? 42 : 0} encrypted={true} active={active} />
       </svg>
 
       {/* Phase stepper */}
@@ -695,8 +718,8 @@ function ScenarioConnect() {
             <div key={i} className="flex items-center gap-1.5">
               <motion.div
                 className={`h-2 w-2 rounded-full ${i <= phase ? "bg-emerald-400" : "bg-white/20"}`}
-                animate={{ scale: i === phase ? [1, 1.4, 1] : 1 }}
-                transition={{ duration: 1, repeat: i === phase ? Infinity : 0 }}
+                animate={{ scale: i === phase && active ? [1, 1.4, 1] : 1 }}
+                transition={{ duration: 1, repeat: i === phase && active ? Infinity : 0 }}
               />
               {i < phaseLabels.length - 1 && (
                 <div className={`w-6 h-px ${i < phase ? "bg-emerald-400/50" : "bg-white/10"}`} />
@@ -722,7 +745,7 @@ function ScenarioConnect() {
   );
 }
 
-function ScenarioKeyAuth() {
+function ScenarioKeyAuth({ active }: { active: boolean }) {
   const [matchPhase, setMatchPhase] = useState(0); // 0=idle, 1=comparing, 2=matched
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -747,8 +770,8 @@ function ScenarioKeyAuth() {
     <div className="space-y-3">
       <svg viewBox="0 0 600 280" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
-        <LaptopIcon x={20} y={85} />
-        <ServerIcon x={500} y={82} />
+        <LaptopIcon x={20} y={85} active={active} />
+        <ServerIcon x={500} y={82} active={active} />
 
         {/* Private key on laptop side */}
         <motion.g
@@ -813,8 +836,8 @@ function ScenarioKeyAuth() {
             filter="url(#sshStrongGlow)"
           >
             <motion.circle cx="300" cy="130" r="24" fill="#22c55e" opacity={0.15}
-              animate={{ r: [24, 35, 24], opacity: [0.15, 0.05, 0.15] }}
-              transition={{ duration: 2, repeat: Infinity }}
+              animate={active ? { r: [24, 35, 24], opacity: [0.15, 0.05, 0.15] } : { r: 24, opacity: 0.15 }}
+              transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             />
             <ShieldCheck x={288} y={118} className="text-emerald-400" width={24} height={24} strokeWidth={1.5} />
             <text x="300" y="168" textAnchor="middle" fill="#22c55e" fontSize="9" fontWeight="600">KEYS MATCHED</text>
@@ -822,7 +845,7 @@ function ScenarioKeyAuth() {
         )}
 
         {/* Tunnel appears after match */}
-        {matchPhase === 2 && <EncryptedTunnel encrypted={true} />}
+        {matchPhase === 2 && <EncryptedTunnel encrypted={true} active={active} />}
       </svg>
 
       <div className="flex items-center justify-center gap-6 text-xs">
@@ -855,11 +878,12 @@ function ScenarioKeyAuth() {
   );
 }
 
-function ScenarioPortForward() {
+function ScenarioPortForward({ active }: { active: boolean }) {
   const [packets, setPackets] = useState<TunnelPacket[]>([]);
   const counterRef = useRef(0);
 
   useEffect(() => {
+    if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
         prev.map((p) => ({ ...p, progress: p.progress + 0.015 })).filter((p) => p.progress <= 1)
@@ -880,17 +904,17 @@ function ScenarioPortForward() {
     }, 1600);
 
     return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
-  }, []);
+  }, [active]);
 
   return (
     <div className="space-y-3">
       <svg viewBox="0 0 600 290" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
-        <LaptopIcon x={20} y={85} />
+        <LaptopIcon x={20} y={85} active={active} />
         <CloudIcon x={300} y={56} />
-        <ServerIcon x={500} y={82} />
-        <EncryptedTunnel encrypted={true} />
-        <DataPackets packets={packets} encrypted={true} />
+        <ServerIcon x={500} y={82} active={active} />
+        <EncryptedTunnel encrypted={true} active={active} />
+        <DataPackets packets={packets} encrypted={true} active={active} />
 
         {/* Local port label */}
         <motion.g
@@ -907,8 +931,8 @@ function ScenarioPortForward() {
         {/* Arrow from local port into tunnel */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} transition={{ delay: 0.7 }}>
           <motion.line x1="112" y1="188" x2="148" y2="135" stroke="#f59e0b" strokeWidth="1" strokeDasharray="4 3"
-            animate={{ strokeDashoffset: [0, -14] }}
-            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            animate={active ? { strokeDashoffset: [0, -14] } : { strokeDashoffset: 0 }}
+            transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
           />
           <polygon points="146,131 152,136 146,140" fill="#f59e0b" opacity="0.6" />
         </motion.g>
@@ -928,8 +952,8 @@ function ScenarioPortForward() {
         {/* Arrow from tunnel to remote port */}
         <motion.g initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} transition={{ delay: 0.8 }}>
           <motion.line x1="452" y1="135" x2="488" y2="188" stroke="#8b5cf6" strokeWidth="1" strokeDasharray="4 3"
-            animate={{ strokeDashoffset: [0, -14] }}
-            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            animate={active ? { strokeDashoffset: [0, -14] } : { strokeDashoffset: 0 }}
+            transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
           />
           <polygon points="486,184 492,189 486,193" fill="#8b5cf6" opacity="0.6" />
         </motion.g>
@@ -946,7 +970,7 @@ function ScenarioPortForward() {
           <text x="178" y="244" fill="white" fontSize="8" fontFamily="monospace" opacity="0.7">ssh -L 5432:localhost:5432 ubuntu@vps</text>
         </motion.g>
 
-        <StatusBadge connected={true} latencyMs={38} encrypted={true} />
+        <StatusBadge connected={true} latencyMs={38} encrypted={true} active={active} />
       </svg>
 
       <div className="flex items-center justify-center gap-6 text-xs">
@@ -963,7 +987,7 @@ function ScenarioPortForward() {
   );
 }
 
-function ScenarioReconnect() {
+function ScenarioReconnect({ active }: { active: boolean }) {
   const [phase, setPhase] = useState(0); // 0=connected, 1=dropping, 2=broken, 3=reconnecting, 4=restored
   const [packets, setPackets] = useState<TunnelPacket[]>([]);
   const counterRef = useRef(0);
@@ -993,6 +1017,7 @@ function ScenarioReconnect() {
   }, [schedulePhases]);
 
   useEffect(() => {
+    if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
         prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1)
@@ -1015,7 +1040,7 @@ function ScenarioReconnect() {
     }, 1800);
 
     return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
-  }, []);
+  }, [active]);
 
   const connected = phase === 0 || phase === 4;
   const broken = phase === 2;
@@ -1033,17 +1058,18 @@ function ScenarioReconnect() {
     <div className="space-y-3">
       <svg viewBox="0 0 600 280" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={true} />
-        <LaptopIcon x={20} y={85} />
+        <LaptopIcon x={20} y={85} active={active} />
         <CloudIcon x={300} y={56} />
-        <ServerIcon x={500} y={82} blinking={connected} />
+        <ServerIcon x={500} y={82} blinking={connected} active={active} />
 
         <EncryptedTunnel
           encrypted={true}
           broken={broken || phase === 1}
           establishing={phase === 3}
+          active={active}
         />
 
-        {connected && <DataPackets packets={packets} encrypted={true} />}
+        {connected && <DataPackets packets={packets} encrypted={true} active={active} />}
 
         {/* Disconnect flash */}
         {phase === 2 && (
@@ -1059,8 +1085,8 @@ function ScenarioReconnect() {
         {/* Reconnect spinner */}
         {phase === 3 && (
           <motion.g
-            animate={{ rotate: [0, 360] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+            animate={active ? { rotate: [0, 360] } : { rotate: 0 }}
+            transition={active ? { duration: 1.5, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
             style={{ originX: "300px", originY: "130px" }}
           >
             <RefreshCw x={288} y={118} className="text-amber-400" width={24} height={24} strokeWidth={1.5} />
@@ -1096,7 +1122,7 @@ function ScenarioReconnect() {
           </motion.g>
         )}
 
-        <StatusBadge connected={connected} latencyMs={connected ? 45 : 0} encrypted={true} />
+        <StatusBadge connected={connected} latencyMs={connected ? 45 : 0} encrypted={true} active={active} />
       </svg>
 
       {/* Phase indicator */}
@@ -1106,8 +1132,8 @@ function ScenarioReconnect() {
             <div key={i} className="flex items-center gap-1">
               <motion.div
                 className={`h-2 w-2 rounded-full ${i <= phase ? s.bg : "bg-white/20"}`}
-                animate={{ scale: i === phase ? [1, 1.4, 1] : 1 }}
-                transition={{ duration: 1, repeat: i === phase ? Infinity : 0 }}
+                animate={{ scale: i === phase && active ? [1, 1.4, 1] : 1 }}
+                transition={{ duration: 1, repeat: i === phase && active ? Infinity : 0 }}
               />
               {i < stageLabels.length - 1 && (
                 <div className={`w-4 h-px ${i < phase ? "bg-white/20" : "bg-white/5"}`} />
@@ -1135,12 +1161,14 @@ function ScenarioReconnect() {
 function InteractiveSSHTunnel() {
   const [scenario, setScenario] = useState<TunnelScenario>("connect");
   const [showUnencrypted, setShowUnencrypted] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   // Unencrypted mode only applies to the connect scenario for the toggle demo
   const meta = SCENARIO_META[scenario];
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Scenario Tabs */}
       <div className="flex items-center gap-1 px-3 pt-4 pb-2 overflow-x-auto scrollbar-none">
         {(Object.keys(SCENARIO_META) as TunnelScenario[]).map((key) => {
@@ -1213,11 +1241,11 @@ function InteractiveSSHTunnel() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.25 }}
           >
-            {scenario === "connect" && !showUnencrypted && <ScenarioConnect />}
-            {scenario === "connect" && showUnencrypted && <ScenarioConnectUnencrypted />}
-            {scenario === "keyauth" && <ScenarioKeyAuth />}
-            {scenario === "portforward" && <ScenarioPortForward />}
-            {scenario === "reconnect" && <ScenarioReconnect />}
+            {scenario === "connect" && !showUnencrypted && <ScenarioConnect active={inView} />}
+            {scenario === "connect" && showUnencrypted && <ScenarioConnectUnencrypted active={inView} />}
+            {scenario === "keyauth" && <ScenarioKeyAuth active={inView} />}
+            {scenario === "portforward" && <ScenarioPortForward active={inView} />}
+            {scenario === "reconnect" && <ScenarioReconnect active={inView} />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -1234,8 +1262,8 @@ function InteractiveSSHTunnel() {
           </span>
           <motion.span
             className="inline-block w-1.5 h-3.5 bg-emerald-400/80 ml-1 align-middle"
-            animate={{ opacity: [1, 0, 1] }}
-            transition={{ duration: 1.2, repeat: Infinity }}
+            animate={inView ? { opacity: [1, 0, 1] } : { opacity: 1 }}
+            transition={inView ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
           />
         </div>
       </div>
@@ -1244,11 +1272,12 @@ function InteractiveSSHTunnel() {
 }
 
 /** Unencrypted variant of the connect scenario -- shows readable packets with red warnings */
-function ScenarioConnectUnencrypted() {
+function ScenarioConnectUnencrypted({ active }: { active: boolean }) {
   const [packets, setPackets] = useState<TunnelPacket[]>([]);
   const counterRef = useRef(0);
 
   useEffect(() => {
+    if (!active) return;
     const moveInterval = setInterval(() => {
       setPackets((prev) =>
         prev.map((p) => ({ ...p, progress: p.progress + 0.018 })).filter((p) => p.progress <= 1)
@@ -1268,17 +1297,17 @@ function ScenarioConnectUnencrypted() {
     }, 1600);
 
     return () => { clearInterval(moveInterval); clearInterval(spawnInterval); };
-  }, []);
+  }, [active]);
 
   return (
     <div className="space-y-3">
       <svg viewBox="0 0 600 260" className="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
         <TunnelDefs encrypted={false} />
-        <LaptopIcon x={20} y={85} />
+        <LaptopIcon x={20} y={85} active={active} />
         <CloudIcon x={300} y={56} />
-        <ServerIcon x={500} y={82} />
-        <EncryptedTunnel encrypted={false} />
-        <DataPackets packets={packets} encrypted={false} />
+        <ServerIcon x={500} y={82} active={active} />
+        <EncryptedTunnel encrypted={false} active={active} />
+        <DataPackets packets={packets} encrypted={false} active={active} />
 
         {/* Eavesdropper icon */}
         <motion.g
@@ -1286,18 +1315,21 @@ function ScenarioConnectUnencrypted() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6, ...SPRING_SMOOTH }}
         >
-          <motion.g animate={{ opacity: [0.4, 0.8, 0.4] }} transition={{ duration: 2, repeat: Infinity }}>
+          <motion.g
+            animate={active ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 0.8 }}
+            transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
+          >
             <Eye x={288} y={72} className="text-red-400" width={24} height={20} strokeWidth={1.5} />
             <text x="300" y="100" textAnchor="middle" fill="#ef4444" fontSize="7.5" fontWeight="600">EAVESDROPPER</text>
           </motion.g>
           {/* Line from eye to tunnel */}
           <motion.line x1="300" y1="100" x2="300" y2="110" stroke="#ef4444" strokeWidth="0.8" strokeDasharray="3 2"
-            animate={{ strokeDashoffset: [0, -10] }}
-            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            animate={active ? { strokeDashoffset: [0, -10] } : { strokeDashoffset: 0 }}
+            transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
           />
         </motion.g>
 
-        <StatusBadge connected={true} latencyMs={42} encrypted={false} />
+        <StatusBadge connected={true} latencyMs={42} encrypted={false} active={active} />
       </svg>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   Mail,
@@ -900,11 +900,13 @@ function AgentInboxCard({
   isConflictAgent,
   conflict,
   onMessageClick,
+  active,
 }: {
   agent: AgentInbox;
   isConflictAgent: boolean;
   conflict: SimState["conflict"];
   onMessageClick: (msg: MailMessage) => void;
+  active: boolean;
 }) {
   const unreadCount = agent.messages.filter((m) => !m.acknowledged && m.to === agent.id).length;
 
@@ -936,8 +938,8 @@ function AgentInboxCard({
             agent.bgAccent === 'bg-emerald-500' ? 'bg-emerald-500/10' :
             agent.bgAccent === 'bg-red-500' ? 'bg-red-500/10' : 'bg-white/10'
           }`}
-          animate={{ opacity: [0.2, 0.45, 0.2] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          animate={active ? { opacity: [0.2, 0.45, 0.2] } : { opacity: 0.2 }}
+          transition={active ? { duration: 3, repeat: Infinity, ease: "easeInOut" } : { duration: 0.2 }}
         />
       )}
 
@@ -966,7 +968,7 @@ function AgentInboxCard({
               </motion.span>
             )}
           </div>
-          <p className="text-[11px] text-white/40 truncate">{agent.task}</p>
+          <p className="text-xs text-white/40 truncate">{agent.task}</p>
         </div>
 
         {/* Online indicator */}
@@ -978,8 +980,8 @@ function AgentInboxCard({
           >
             <motion.div
               className="h-full w-full rounded-full bg-emerald-400"
-              animate={{ scale: [1, 1.8, 1], opacity: [1, 0, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
+              animate={active ? { scale: [1, 1.8, 1], opacity: [1, 0, 1] } : { scale: 1, opacity: 1 }}
+              transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             />
           </motion.div>
         )}
@@ -1056,7 +1058,7 @@ function AgentInboxCard({
                     ) : (
                       <Mail className="h-3 w-3 text-white/30 shrink-0" />
                     )}
-                    <span className="text-[11px] text-white/60 truncate flex-1 group-hover/msg:text-white/80 transition-colors">
+                    <span className="text-xs text-white/60 truncate flex-1 group-hover/msg:text-white/80 transition-colors">
                       {isSender ? `To ${getAgentNameById(msg.to)}` : `From ${getAgentNameById(msg.from)}`}:{" "}
                       {msg.subject}
                     </span>
@@ -1089,6 +1091,8 @@ function InteractiveCoordinationSim() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<MailMessage | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const totalSteps = SIM_STEP_DEFS.length;
 
@@ -1143,7 +1147,7 @@ function InteractiveCoordinationSim() {
   }, []);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-primary/8 rounded-full blur-[100px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-violet-500/8 rounded-full blur-[100px] pointer-events-none" />
@@ -1166,7 +1170,7 @@ function InteractiveCoordinationSim() {
           <motion.div
             animate={{
               boxShadow:
-                currentStep >= 0
+                currentStep >= 0 && inView
                   ? [
                       "0 0 0px rgba(168,85,247,0.2)",
                       "0 0 20px rgba(168,85,247,0.4)",
@@ -1174,7 +1178,7 @@ function InteractiveCoordinationSim() {
                     ]
                   : "0 0 0px rgba(168,85,247,0)",
             }}
-            transition={{ duration: 2, repeat: Infinity }}
+            transition={inView ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-violet-500/30 bg-violet-500/10"
           >
             <Workflow className="h-4 w-4 text-violet-400" />
@@ -1189,8 +1193,8 @@ function InteractiveCoordinationSim() {
               >
                 <motion.span
                   className="h-full w-full rounded-full bg-emerald-400"
-                  animate={{ scale: [1, 2, 1], opacity: [1, 0, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
+                  animate={inView ? { scale: [1, 2, 1], opacity: [1, 0, 1] } : { scale: 1, opacity: 1 }}
+                  transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                 />
               </motion.span>
             )}
@@ -1209,6 +1213,7 @@ function InteractiveCoordinationSim() {
                 isConflictAgent={isConflictAgent}
                 conflict={conflict}
                 onMessageClick={handleMessageClick}
+                active={inView}
               />
             );
           })}

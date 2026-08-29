@@ -23,13 +23,18 @@ import { TrackedLink } from "@/components/tracked-link";
 import { VPSComparison } from "@/components/wizard/VPSComparison";
 import { cn } from "@/lib/utils";
 import {
+  ACFS_RECOMMENDED_MIN_RAM_GB,
   VPS_PROVIDERS,
+  VPS_TOP_PICK,
   VPS_UBUNTU_IMAGE_OPTIONS,
   VPS_WORKLOAD_PROFILES,
   calculateRequiredSpecs,
+  describePlan,
   evaluateProviderPlans,
+  isBelowRamRecommendation,
   validateVPSReadiness,
   type PlanStatus,
+  type VPSPlan,
   type VPSReadinessStatus,
 } from "@/lib/vpsProviders";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
@@ -58,34 +63,61 @@ interface ProviderInfo {
   recommended?: string;
 }
 
-const PROVIDERS: ProviderInfo[] = [
-  {
-    id: "contabo",
-    name: "Contabo",
+interface ProviderProse {
+  tagline: string;
+  leadPros: string[];
+  trailingPros: string[];
+  recommendedReason: string;
+}
+
+// Hand-written selling points per provider. Plan names, specs, and prices come
+// from VPS_PROVIDERS so this page cannot drift from the data table.
+const PROVIDER_PROSE: Partial<Record<string, ProviderProse>> = {
+  contabo: {
     tagline: "Best value for high specs",
-    url: "https://contabo.com/en-us/vps/",
-    pros: [
-      "Best specs-to-price ratio on the market",
-      "Cloud VPS 50 (64GB RAM, 16 vCPU): ~$56/month (US datacenter)",
-      "Cloud VPS 40 (48GB RAM, 12 vCPU): ~$36/month (US datacenter)",
-      "Prices are month-to-month, no commitment required",
+    leadPros: ["Best specs-to-price ratio on the market"],
+    trailingPros: [
+      "Listed in EUR (24-month introductory rate); the USD figures here are approximate conversions",
+      "Month-to-month terms are available; longer terms are cheaper",
     ],
-    recommended: "Cloud VPS 50 (64GB RAM, 16 vCPU, ~$56/month US) - our top pick for serious multi-agent work",
+    recommendedReason: "our top pick for serious multi-agent work",
   },
-  {
-    id: "ovh",
-    name: "OVH",
-    tagline: "Reliable, good support",
-    url: "https://us.ovhcloud.com/vps/",
-    pros: [
-      "Great EU and US data centers with anti-DDoS included",
-      "VPS-5 (64GB RAM, 16 vCore): ~$40/month (no commitment)",
-      "VPS-4 (48GB RAM, 12 vCore): ~$26/month (no commitment)",
-      "Prices are month-to-month; longer commitments offer 5-15% discounts",
+  ovh: {
+    tagline: "Polished panel, fast activation, but small plans only",
+    leadPros: ["Great EU and US data centers with anti-DDoS included"],
+    trailingPros: [
+      "Listed prices are OVH's \"from\" price with a 12-month term; month-to-month costs more",
     ],
-    recommended: "VPS-5 (64GB RAM, 16 vCore, ~$40/month) for best multi-agent performance",
+    recommendedReason: `the largest VPS OVH sells, below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target; fine for a small swarm, otherwise pick Contabo`,
   },
-];
+};
+
+function planLine(plan: VPSPlan): string {
+  return plan.note ? `${describePlan(plan)} — ${plan.note}` : describePlan(plan);
+}
+
+const PROVIDERS: ProviderInfo[] = VPS_PROVIDERS.map((provider) => {
+  const prose = PROVIDER_PROSE[provider.id];
+  return {
+    id: provider.id,
+    name: provider.name,
+    tagline: prose?.tagline ?? provider.tagline,
+    url: provider.url,
+    pros: [
+      ...(prose?.leadPros ?? []),
+      planLine(provider.recommended),
+      planLine(provider.budget),
+      ...(prose?.trailingPros ?? []),
+    ],
+    recommended: `${describePlan(provider.recommended)} - ${prose?.recommendedReason ?? "best available plan"}`,
+  };
+});
+
+const CONTABO = VPS_PROVIDERS.find((provider) => provider.id === "contabo") ?? VPS_TOP_PICK;
+const OVH = VPS_PROVIDERS.find((provider) => provider.id === "ovh") ?? VPS_TOP_PICK;
+const VPS_MONTHLY_USD = VPS_TOP_PICK.recommended.priceUSD;
+const VPS_BUDGET_MONTHLY_USD = VPS_TOP_PICK.budget.priceUSD;
+const VPS_UPGRADE_DELTA_USD = VPS_MONTHLY_USD - VPS_BUDGET_MONTHLY_USD;
 
 type ScreenshotSpec = {
   file: string;
@@ -217,7 +249,7 @@ const SPEC_CHECKLIST = [
   { label: "CPU", value: "12-16 vCPU" },
   { label: "RAM", value: "64GB recommended (48GB workable, 32GB minimum)" },
   { label: "Storage", value: "250GB+ NVMe SSD" },
-  { label: "Price", value: "~$40-56/month for 64GB (month-to-month)" },
+  { label: "Price", value: `~$${VPS_MONTHLY_USD}/month for 64GB (approximate; see the comparison table)` },
 ];
 
 const AGENT_COUNT_PRESETS = [5, 10, 15, 25, 50];
@@ -536,6 +568,9 @@ function CapacityPlanner() {
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {entry.plan.ramGB} GB RAM, {entry.plan.vCPU} vCPU, ${entry.plan.priceUSD}/mo approx.
+                      {isBelowRamRecommendation(entry.plan) && (
+                        <span className="text-amber"> Below the {ACFS_RECOMMENDED_MIN_RAM_GB} GB recommendation.</span>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -701,7 +736,12 @@ export default function RentVPSPage() {
     router.push(withCurrentSearch("/wizard/create-vps"));
   }, [router, markComplete, expandedProvider]);
 
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating,
+    loading: isNavigating,
+    label: "I rented a VPS",
+  });
 
   return (
     <div className="space-y-8">
@@ -845,17 +885,17 @@ export default function RentVPSPage() {
                 <strong>32GB RAM:</strong> Absolute minimum. Can run 5-8 agents. Not recommended.
               </li>
               <li>
-                <strong>48GB RAM:</strong> Workable but tight. Run 10+ agents. (~$26-36/month)
+                <strong>48GB RAM:</strong> Workable but tight. Run 10+ agents. (~${VPS_BUDGET_MONTHLY_USD}/month)
               </li>
               <li>
-                <strong>64GB RAM:</strong> Just get this. Run 10-16 standard agents, or around 20 light agents, with headroom. (~$40-56/month)
+                <strong>64GB RAM:</strong> Just get this. Run 10-16 standard agents, or around 20 light agents, with headroom. (~${VPS_MONTHLY_USD}/month)
               </li>
             </ul>
             <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3">
               <p className="text-sm text-muted-foreground">
                 <strong>Just get 64GB.</strong> You&apos;re spending $400+/month on AI subscriptions, so the
-                extra $14-20/month for 64GB vs 48GB is noise. Don&apos;t bottleneck a $400+/month
-                investment to save $20. The headroom matters when you&apos;re running 15+ agents
+                extra ~${VPS_UPGRADE_DELTA_USD}/month for 64GB vs 48GB is noise. Don&apos;t bottleneck a $400+/month
+                investment to save ${VPS_UPGRADE_DELTA_USD}. The headroom matters when you&apos;re running 15+ agents
                 plus databases, build tools, and language servers.
               </p>
             </div>
@@ -920,7 +960,7 @@ export default function RentVPSPage() {
               <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <p className="font-medium text-foreground">Total for full setup:</p>
                 <p className="text-sm text-muted-foreground">
-                  VPS (~$56) + Claude Max x2 ($400) + ChatGPT Pro ($200) = <strong>~$656/month</strong>
+                  VPS (~${VPS_MONTHLY_USD}) + Claude Max x2 ($400) + ChatGPT Pro ($200) = <strong>~${VPS_MONTHLY_USD + 600}/month</strong>
                   <br /><br />
                   <em>This sounds like a lot, but compare it to hiring: a junior developer in the US
                   costs $100k+/year (~$8,300+/month). For less than 10% of that, you get AI agents
@@ -930,7 +970,7 @@ export default function RentVPSPage() {
             </div>
             <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/8 p-3">
               <p className="text-sm text-muted-foreground">
-                <strong>⚠️ Realistic minimum investment:</strong> VPS (~$40-56/month for 64GB) + Claude Max ($200/month) + ChatGPT Pro ($200/month) = <strong>~$440-456/month</strong>.
+                <strong>⚠️ Realistic minimum investment:</strong> VPS (~${VPS_MONTHLY_USD}/month for 64GB) + Claude Max ($200/month) + ChatGPT Pro ($200/month) = <strong>~${VPS_MONTHLY_USD + 400}/month</strong>.
                 The $20/month Claude Pro tier does <em>not</em> have enough capacity for agentic workflows; you&apos;ll
                 hit rate limits almost immediately. Claude Max is required for execution, and ChatGPT Pro&apos;s extended
                 thinking is essential for creating the detailed plan documents that make this approach work.
@@ -947,20 +987,21 @@ export default function RentVPSPage() {
             <ul className="space-y-3">
               <li>
                 <strong>Contabo:</strong> Our top recommendation! Best specs for the price.
-                Cloud VPS 50 (64GB RAM, ~$56/month US) is our top pick. Cloud VPS 40 (48GB RAM, ~$36/month US)
-                for budget. Interface is basic but functional. Usually activates within minutes (occasionally up to ~1 hour).
+                {" "}{describePlan(CONTABO.recommended)} is our top pick; {describePlan(CONTABO.budget)} for budget.
+                Interface is basic but functional. Usually activates within minutes (occasionally up to ~1 hour).
               </li>
               <li>
-                <strong>OVH:</strong> Great alternative with polished interface.
-                VPS-5 (64GB RAM, ~$40/month) or VPS-4 (48GB RAM, ~$26/month).
-                Great EU and US data centers. Typically activates within minutes.
+                <strong>OVH:</strong> Polished interface and fast activation, but its VPS range now tops out at
+                {" "}{describePlan(OVH.recommended)}, below the {ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target.
+                Fine for a small swarm of ~4-6 standard agents; otherwise pick Contabo.
               </li>
             </ul>
             <div className="mt-4 rounded-lg border border-primary/30 bg-primary/8 p-3">
               <p className="text-sm text-muted-foreground">
-                <strong>💡 About pricing:</strong> All prices shown are <strong>month-to-month with no commitment</strong>.
-                Both providers offer 5-20% discounts if you prepay for 6-12 months, but we recommend starting
-                monthly so you can cancel anytime. Contabo US pricing includes the ~$10/month US datacenter fee.
+                <strong>💡 About pricing:</strong> USD prices on this page are <strong>approximate</strong>.
+                Contabo lists EUR prices (its 24-month introductory rate, incl. VAT) and OVH shows a &quot;from&quot; price
+                that assumes a 12-month term, so month-to-month billing costs more. We still recommend starting
+                monthly so you can cancel anytime. US datacenters may add a location fee; the checkout page shows the final price.
               </p>
             </div>
           </GuideSection>
@@ -982,11 +1023,11 @@ export default function RentVPSPage() {
 
               <GuideStep number={2} title="Choose a plan with enough resources">
                 Look for a plan with <strong>12+ vCPU</strong> and <strong>48GB+ RAM</strong> (32GB absolute minimum).
-                NVMe storage is standard on all recommended plans. Click &quot;Configure&quot; or &quot;Order&quot;.
+                Fast SSD storage is standard on the recommended plans. Click &quot;Configure&quot; or &quot;Order&quot;.
                 <ScreenshotFigure
                   file="contabo_us_02_plans.png"
-                  alt="Contabo plans list highlighting Cloud VPS options"
-                  caption="Plans list — pick Cloud VPS 50 (64GB) or Cloud VPS 40 (48GB)."
+                  alt="Contabo plans list highlighting Cloud VPS options (older screenshot; plan names may differ)"
+                  caption={`Plans list — pick ${CONTABO.recommended.name} (${CONTABO.recommended.ramGB}GB) or ${CONTABO.budget.name} (${CONTABO.budget.ramGB}GB). Older screenshot; plan names may differ.`}
                 />
               </GuideStep>
 
@@ -1045,17 +1086,23 @@ export default function RentVPSPage() {
                 />
               </GuideStep>
 
-              <GuideStep number={2} title="Choose VPS-5 (64GB) or VPS-4 (48GB)">
-                We recommend:
+              <GuideStep number={2} title={`Choose ${OVH.recommended.name} (${OVH.recommended.ramGB}GB, the largest OVH sells)`}>
+                OVH&apos;s current VPS range tops out below the {ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target:
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li><strong>VPS-5:</strong> 64GB RAM (best for multi-agent work)</li>
-                  <li><strong>VPS-4:</strong> 48GB RAM (budget option)</li>
+                  <li>
+                    <strong>{OVH.recommended.name}:</strong> {OVH.recommended.ramGB}GB RAM, {OVH.recommended.vCPU} vCore
+                    (~${OVH.recommended.priceUSD}/month) — enough for a small swarm of ~4-6 standard agents
+                  </li>
+                  <li>
+                    <strong>{OVH.budget.name}:</strong> {OVH.budget.ramGB}GB RAM (~${OVH.budget.priceUSD}/month) — only for
+                    trying ACFS with 1-2 agents
+                  </li>
                 </ul>
-                Click &quot;Order&quot; to continue.
+                If you want the 48-64GB host this guide recommends, use Contabo instead. Otherwise click &quot;Order&quot; to continue.
                 <ScreenshotFigure
                   file="ovh_us_02_plans.png"
-                  alt="OVH plans list showing VPS-4 and VPS-5 options"
-                  caption="Plans list — select VPS-5 (64GB) or VPS-4 (48GB), then click Order."
+                  alt="OVH plans list (older screenshot; the current lineup is VPS-1 to VPS-4)"
+                  caption={`Plans list — select ${OVH.recommended.name}, then click Order. Older screenshot; the current lineup ends at ${OVH.recommended.name}.`}
                 />
               </GuideStep>
 
@@ -1129,9 +1176,10 @@ export default function RentVPSPage() {
           </GuideSection>
 
           <GuideTip>
-            <strong>TL;DR:</strong> Get Contabo <strong>Cloud VPS 50</strong> (64GB RAM, 16 vCPU, ~$56/month US).
+            <strong>TL;DR:</strong> Get Contabo <strong>{CONTABO.recommended.name}</strong> ({CONTABO.recommended.ramGB}GB RAM,
+            {" "}{CONTABO.recommended.vCPU} vCPU, ~${CONTABO.recommended.priceUSD}/month approx.).
             Don&apos;t overthink it. 64GB is the right choice when you&apos;re investing $400+/month in AI subscriptions.
-            Contabo can take up to an hour to provision (usually minutes); OVH is typically faster.
+            Contabo can take up to an hour to provision (usually minutes); OVH is faster but its plans top out at {OVH.recommended.ramGB}GB.
           </GuideTip>
 
           <GuideCaution>
@@ -1149,7 +1197,7 @@ export default function RentVPSPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
           {isNavigating ? "Loading..." : "I rented a VPS"}
         </Button>
       </div>

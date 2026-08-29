@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Terminal,
   HardDrive,
@@ -720,7 +720,7 @@ function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }
           {sizeGb.toFixed(1)} GB
         </span>
       </div>
-      <p className="text-[10px] text-white/40 mt-1.5">
+      <p className="text-xs text-white/40 mt-1.5">
         {isReleased
           ? 'Ballast released! Run sbh reclaim after cleanup.'
           : `${sizeGb.toFixed(1)} GB reserved at /var/ballast. Auto-releases at 95%.`}
@@ -738,6 +738,8 @@ function InteractiveDiskPressureImpl() {
   const [animatedMounts, setAnimatedMounts] = useState<MountPoint[]>(SCENARIOS[0].mounts);
   const animRef = useRef(0);
   const prevMountsRef = useRef<MountPoint[]>(SCENARIOS[0].mounts);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const scenario = SCENARIOS[scenarioIdx];
   const colors = COLOR_MAP[scenario.color] ?? COLOR_MAP.emerald;
@@ -803,7 +805,7 @@ function InteractiveDiskPressureImpl() {
   const isEmergency = scenario.id === 'emergency';
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-red-500/[0.02] rounded-full blur-3xl pointer-events-none" />
@@ -815,8 +817,8 @@ function InteractiveDiskPressureImpl() {
           <motion.div
             key="emergency-flash"
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.15, 0, 0.1, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
+            animate={inView ? { opacity: [0, 0.15, 0, 0.1, 0] } : { opacity: 0 }}
+            transition={inView ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             className="absolute inset-0 bg-red-500/20 rounded-3xl pointer-events-none z-10"
           />
         )}
@@ -932,7 +934,7 @@ function InteractiveDiskPressureImpl() {
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={SPRING}
-                  className={`ml-auto text-[9px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                  className={`ml-auto text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
                     overallColors.label === 'CRITICAL'
                       ? 'bg-red-500/20 text-red-400'
                       : overallColors.label === 'WARNING'
@@ -1008,15 +1010,15 @@ function InteractiveDiskPressureImpl() {
               <div className="flex items-center gap-3 pt-1 border-t border-white/[0.04]">
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-px bg-yellow-500/50" />
-                  <span className="text-[9px] text-white/30">75%</span>
+                  <span className="text-[10px] text-white/30">75%</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-px bg-red-500/50" />
-                  <span className="text-[9px] text-white/30">90%</span>
+                  <span className="text-[10px] text-white/30">90%</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-3 h-px bg-red-500/70" />
-                  <span className="text-[9px] text-white/30">95% release</span>
+                  <span className="text-[10px] text-white/30">95% release</span>
                 </div>
               </div>
             </div>

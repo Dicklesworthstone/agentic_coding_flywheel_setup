@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Github,
   KeyRound,
@@ -629,6 +629,8 @@ function InteractiveGitHubWorkflow() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [expandedPanel, setExpandedPanel] = useState<string | null>("timeline");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
 
   // CI sub-animation states
   const [ciJobStates, setCiJobStates] = useState<Record<string, "pending" | "running" | "passed">>({
@@ -767,7 +769,7 @@ function InteractiveGitHubWorkflow() {
   }, []);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.03] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={ref} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.03] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-1/4 w-80 h-80 bg-violet-500/[0.06] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-60 h-60 bg-emerald-500/[0.06] rounded-full blur-3xl pointer-events-none" />
@@ -797,6 +799,7 @@ function InteractiveGitHubWorkflow() {
           lines={terminalLines}
           currentCommand={WORKFLOW_STAGES[activeStage].command}
           stage={activeStage}
+          active={inView}
         />
 
         {/* GitHub-style PR timeline */}
@@ -828,6 +831,7 @@ function InteractiveGitHubWorkflow() {
                   stageIndex={activeStage}
                   ciJobStates={ciJobStates}
                   reviewCommentIndex={reviewCommentIndex}
+                  active={inView}
                 />
               </motion.div>
             </AnimatePresence>
@@ -856,7 +860,7 @@ function InteractiveGitHubWorkflow() {
               onToggle={() => togglePanel("pr-detail")}
               color="violet"
             >
-              <PRDetailPanel activeStage={activeStage} ciJobStates={ciJobStates} />
+              <PRDetailPanel activeStage={activeStage} ciJobStates={ciJobStates} active={inView} />
             </CollapsiblePanel>
 
             {/* Timeline panel */}
@@ -959,10 +963,12 @@ function MiniTerminal({
   lines,
   currentCommand,
   stage,
+  active,
 }: {
   lines: string[];
   currentCommand: string;
   stage: number;
+  active: boolean;
 }) {
   return (
     <div className="rounded-xl border border-white/[0.08] bg-black/50 backdrop-blur-xl overflow-hidden">
@@ -999,8 +1005,8 @@ function MiniTerminal({
             <span className="text-emerald-400 font-mono text-xs shrink-0">$</span>
             <span className="font-mono text-xs text-white/80 truncate">{currentCommand}</span>
             <motion.span
-              animate={{ opacity: [1, 0] }}
-              transition={{ duration: 0.8, repeat: Infinity, repeatType: "reverse" }}
+              animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
+              transition={active ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
               className="inline-block w-1.5 h-4 bg-white/60 shrink-0"
             />
           </motion.div>
@@ -1088,7 +1094,7 @@ function PRTimeline({
                     />
                   )}
                 </motion.div>
-                <span className={`text-[9px] font-medium transition-colors whitespace-nowrap max-w-[60px] truncate ${
+                <span className={`text-[10px] font-medium transition-colors whitespace-nowrap max-w-[60px] truncate ${
                   isActive ? "text-white/90" : "text-white/30"
                 }`}>
                   {stage.label}
@@ -1194,25 +1200,27 @@ function StageVisual({
   stageIndex,
   ciJobStates,
   reviewCommentIndex,
+  active,
 }: {
   stage: WorkflowStage;
   stageIndex: number;
   ciJobStates: Record<string, "pending" | "running" | "passed">;
   reviewCommentIndex: number;
+  active: boolean;
 }) {
   switch (stageIndex) {
     case 0:
       return <CreateBranchVisual />;
     case 1:
-      return <MakeChangesVisual />;
+      return <MakeChangesVisual active={active} />;
     case 2:
       return <CreatePRVisual />;
     case 3:
       return <CodeReviewVisual commentIndex={reviewCommentIndex} />;
     case 4:
-      return <CIPipelineVisual jobStates={ciJobStates} />;
+      return <CIPipelineVisual jobStates={ciJobStates} active={active} />;
     case 5:
-      return <MergeDeployVisual />;
+      return <MergeDeployVisual active={active} />;
     default:
       return null;
   }
@@ -1307,7 +1315,7 @@ function CreateBranchVisual() {
 }
 
 // Stage 1: Make Changes
-function MakeChangesVisual() {
+function MakeChangesVisual({ active }: { active: boolean }) {
   const files = [
     { name: "src/auth/login.ts", type: "added" as const, lines: "+84" },
     { name: "src/auth/session.ts", type: "added" as const, lines: "+127" },
@@ -1322,8 +1330,8 @@ function MakeChangesVisual() {
         <Zap className="h-4 w-4 text-violet-400" />
         <span className="text-xs font-semibold text-violet-400">Agent Working</span>
         <motion.span
-          animate={{ opacity: [0.3, 1, 0.3] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
+          animate={active ? { opacity: [0.3, 1, 0.3] } : { opacity: 1 }}
+          transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
           className="text-[10px] text-white/30"
         >
           writing code...
@@ -1368,8 +1376,8 @@ function MakeChangesVisual() {
           <span className="text-white/30">(</span>
           <span className="text-white/30">)</span>
           <motion.span
-            animate={{ opacity: [1, 0] }}
-            transition={{ duration: 0.6, repeat: Infinity, repeatType: "reverse" }}
+            animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
+            transition={active ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
             className="inline-block w-1 h-3 bg-violet-400/80"
           />
         </div>
@@ -1402,7 +1410,7 @@ function CreatePRVisual() {
         </div>
 
         <p className="text-sm font-medium text-white/90 mb-1">Add authentication module</p>
-        <p className="text-[11px] text-white/40 mb-3">Implements OAuth2 login flow with session management. Closes #42</p>
+        <p className="text-xs text-white/40 mb-3">Implements OAuth2 login flow with session management. Closes #42</p>
 
         {/* Diff stats */}
         <div className="flex items-center gap-3 mb-3">
@@ -1458,7 +1466,7 @@ function CreatePRVisual() {
               key={bg}
               className={`h-5 w-5 rounded-full ${bg} border-2 border-black/50 flex items-center justify-center`}
             >
-              <span className="text-[8px] text-white font-bold">
+              <span className="text-[10px] text-white font-bold">
                 {i === 0 ? "A" : "B"}
               </span>
             </div>
@@ -1520,16 +1528,16 @@ function CodeReviewVisual({ commentIndex }: { commentIndex: number }) {
               >
                 <div className="flex items-center gap-2 mb-1.5">
                   <div className={`h-5 w-5 rounded-full ${comment.color} flex items-center justify-center`}>
-                    <span className="text-[8px] text-white font-bold">{comment.initial}</span>
+                    <span className="text-[10px] text-white font-bold">{comment.initial}</span>
                   </div>
                   <span className="text-[10px] font-semibold text-white/60">@{comment.author}</span>
                   {comment.type === "suggestion" && (
-                    <span className="text-[9px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                    <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                       suggestion
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-white/50 leading-relaxed">{comment.text}</p>
+                <p className="text-xs text-white/50 leading-relaxed">{comment.text}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -1557,8 +1565,10 @@ function CodeReviewVisual({ commentIndex }: { commentIndex: number }) {
 // Stage 4: CI Pipeline
 function CIPipelineVisual({
   jobStates,
+  active,
 }: {
   jobStates: Record<string, "pending" | "running" | "passed">;
+  active: boolean;
 }) {
   const jobs = [
     { id: "lint", label: "Lint", icon: <AlertCircle className="h-3 w-3" />, duration: "12s" },
@@ -1607,7 +1617,7 @@ function CIPipelineVisual({
               }`}
             >
               <div className="flex items-center gap-2 mb-1.5">
-                <CIJobStatusIcon state={state} />
+                <CIJobStatusIcon state={state} active={active} />
                 <span className={`text-[10px] font-mono font-semibold ${
                   state === "passed"
                     ? "text-emerald-400"
@@ -1644,7 +1654,7 @@ function CIPipelineVisual({
                 <motion.span
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-[9px] text-white/30 mt-1 block"
+                  className="text-[10px] text-white/30 mt-1 block"
                 >
                   {job.duration}
                 </motion.span>
@@ -1657,12 +1667,12 @@ function CIPipelineVisual({
   );
 }
 
-function CIJobStatusIcon({ state }: { state: "pending" | "running" | "passed" }) {
+function CIJobStatusIcon({ state, active }: { state: "pending" | "running" | "passed"; active: boolean }) {
   if (state === "running") {
     return (
       <motion.div
-        animate={{ rotate: 360 }}
-        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+        animate={active ? { rotate: 360 } : { rotate: 0 }}
+        transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
       >
         <Loader2 className="h-3 w-3 text-cyan-400" />
       </motion.div>
@@ -1683,7 +1693,7 @@ function CIJobStatusIcon({ state }: { state: "pending" | "running" | "passed" })
 }
 
 // Stage 5: Merge & Deploy
-function MergeDeployVisual() {
+function MergeDeployVisual({ active }: { active: boolean }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-4">
       {/* Merge animation */}
@@ -1741,8 +1751,8 @@ function MergeDeployVisual() {
         <Rocket className="h-3.5 w-3.5 text-emerald-400" />
         <span className="text-[10px] font-mono text-emerald-400">Deployed to production</span>
         <motion.div
-          animate={{ scale: [1, 1.3, 1] }}
-          transition={{ duration: 2, repeat: Infinity }}
+          animate={active ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+          transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
           className="h-2 w-2 rounded-full bg-emerald-400"
         />
       </motion.div>
@@ -1867,7 +1877,7 @@ function BranchFlowVisualization({ activeStage }: { activeStage: number }) {
         }`}>
           feat/add-auth
         </span>
-        <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+        <span className={`px-1.5 py-0.5 rounded text-[10px] ${
           branchState === "merged"
             ? "bg-emerald-500/10 text-emerald-400"
             : branchState === "active"
@@ -1887,9 +1897,11 @@ function BranchFlowVisualization({ activeStage }: { activeStage: number }) {
 function PRDetailPanel({
   activeStage,
   ciJobStates,
+  active,
 }: {
   activeStage: number;
   ciJobStates: Record<string, "pending" | "running" | "passed">;
+  active: boolean;
 }) {
   const prCreated = activeStage >= 2;
   const hasReview = activeStage >= 3;
@@ -1901,7 +1913,7 @@ function PRDetailPanel({
       <div className="flex flex-col items-center justify-center py-6 text-center">
         <GitPullRequest className="h-8 w-8 text-white/10 mb-2" />
         <p className="text-[10px] text-white/30">PR not yet created</p>
-        <p className="text-[9px] text-white/20 mt-1">Advance to stage 3 to see PR details</p>
+        <p className="text-xs text-white/20 mt-1">Advance to stage 3 to see PR details</p>
       </div>
     );
   }
@@ -1912,7 +1924,7 @@ function PRDetailPanel({
       <div className="flex items-center gap-2">
         <GitPullRequest className={`h-4 w-4 ${merged ? "text-purple-400" : "text-emerald-400"}`} />
         <span className="text-xs font-semibold text-white/80">Add authentication module</span>
-        <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
           merged
             ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
             : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
@@ -1940,21 +1952,25 @@ function PRDetailPanel({
       {/* Checks summary */}
       <div className="space-y-1.5">
         <PRCheckRow
+          active={active}
           label="Review"
           status={hasReview ? "passed" : "pending"}
           detail={hasReview ? "Approved by alice" : "Awaiting review"}
         />
         <PRCheckRow
+          active={active}
           label="CI / Lint"
           status={activeStage >= 4 ? (ciJobStates["lint"] === "passed" ? "passed" : ciJobStates["lint"] === "running" ? "running" : "pending") : "pending"}
           detail={activeStage >= 4 && ciJobStates["lint"] === "passed" ? "12s" : ""}
         />
         <PRCheckRow
+          active={active}
           label="CI / Tests"
           status={activeStage >= 4 ? (ciJobStates["tests"] === "passed" ? "passed" : ciJobStates["tests"] === "running" ? "running" : "pending") : "pending"}
           detail={activeStage >= 4 && ciJobStates["tests"] === "passed" ? "48/48 passed" : ""}
         />
         <PRCheckRow
+          active={active}
           label="CI / Build"
           status={activeStage >= 4 ? (ciJobStates["build"] === "passed" ? "passed" : ciJobStates["build"] === "running" ? "running" : "pending") : "pending"}
           detail={activeStage >= 4 && ciJobStates["build"] === "passed" ? "45s" : ""}
@@ -1993,18 +2009,20 @@ function PRCheckRow({
   label,
   status,
   detail,
+  active,
 }: {
   label: string;
   status: "pending" | "running" | "passed" | "failed";
   detail: string;
+  active: boolean;
 }) {
   return (
     <div className="flex items-center gap-2 py-1">
       {status === "passed" && <CheckCircle className="h-3 w-3 text-emerald-400 shrink-0" />}
       {status === "running" && (
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          animate={active ? { rotate: 360 } : { rotate: 0 }}
+          transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
         >
           <Loader2 className="h-3 w-3 text-amber-400 shrink-0" />
         </motion.div>
@@ -2017,7 +2035,7 @@ function PRCheckRow({
         {label}
       </span>
       {detail && (
-        <span className="text-[9px] text-white/20 ml-auto">{detail}</span>
+        <span className="text-[10px] text-white/20 ml-auto">{detail}</span>
       )}
     </div>
   );
@@ -2097,8 +2115,8 @@ function ActivityFeed({ activeStage }: { activeStage: number }) {
             <span className={event.color}>{event.icon}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-white/50 leading-relaxed truncate">{event.text}</p>
-            <p className="text-[9px] text-white/20">{event.time}</p>
+            <p className="text-xs text-white/50 leading-relaxed truncate">{event.text}</p>
+            <p className="text-[10px] text-white/20">{event.time}</p>
           </div>
         </motion.div>
       ))}

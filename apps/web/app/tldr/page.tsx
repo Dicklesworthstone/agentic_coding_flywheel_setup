@@ -178,7 +178,7 @@ function FooterCTA({ id }: { id?: string }) {
 export default function TldrPage() {
   return (
     <ErrorBoundary>
-      <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-hidden">
+      <main id="main-content" tabIndex={-1} className="min-h-screen overflow-x-clip">
         {/* Hero Section */}
         <TldrHero id="tldr-hero" />
 

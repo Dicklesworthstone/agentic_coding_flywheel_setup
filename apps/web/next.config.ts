@@ -69,6 +69,14 @@ const nextConfig: NextConfig = {
         destination: "/tldr",
         permanent: true,
       },
+      {
+        // Two glossaries rendered the same 101 terms with different
+        // taxonomies; /glossary (search, category filters, #term anchors,
+        // related lesson/wizard links) is the canonical one.
+        source: "/learn/glossary",
+        destination: "/glossary",
+        permanent: true,
+      },
     ];
   },
   images: {

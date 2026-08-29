@@ -8,7 +8,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useEffect } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   safeGetJSON,
   safeGetItem,
@@ -104,6 +104,22 @@ function isCommandMarkedComplete(persistKey: string): boolean {
   );
 }
 
+/**
+ * Step 9 advances only after the visitor confirms they actually ran the
+ * installer: every later step (reconnect as ubuntu, key-based login, doctor)
+ * assumes it, so a reflexive "Installation finished" tap used to strand
+ * people three steps later with commands that could not work.
+ */
+function validateRunInstaller(): ValidationResult {
+  return isCommandMarkedComplete("run-flywheel-installer")
+    ? { valid: true, errors: [] }
+    : {
+        valid: false,
+        errors: ['Run the installer command and tick "I ran this command" before continuing'],
+        focusSelector: "#run-flywheel-installer",
+      };
+}
+
 function validateStatusCheck(): ValidationResult {
   return isCommandMarkedComplete("flywheel-doctor")
     ? { valid: true, errors: [] }
@@ -170,6 +186,7 @@ export const WIZARD_STEPS: WizardStep[] = [
     title: "Run Installer",
     description: "Paste and run the one-liner to install everything",
     slug: "run-installer",
+    validate: validateRunInstaller,
   },
   {
     id: 10,
@@ -512,7 +529,23 @@ export interface WizardForwardAction {
   disabled?: boolean;
   /** Mirror the page button's busy state while navigation is in flight. */
   loading?: boolean;
+  /**
+   * The page button's own affirmative label ("I saved my public key"). The
+   * dock shows it verbatim so the two controls read as one action, not as
+   * "Next" plus an unrelated confirmation.
+   */
+  label?: string;
+  /**
+   * The page's primary forward button, once mounted. While it is on screen
+   * the dock hides its duplicate, so phones never show two forward controls
+   * at once; when the visitor scrolls back up to read, the dock's copy takes
+   * over. Attached through the callback ref that useWizardForwardNav returns.
+   */
+  ctaElement?: HTMLElement | null;
 }
+
+/** What a page passes to useWizardForwardNav (the element is attached via the returned ref). */
+export type WizardForwardNavInput = Omit<WizardForwardAction, "ctaElement">;
 
 export interface WizardForwardNavRegistry {
   register: (action: WizardForwardAction | null) => void;
@@ -526,13 +559,22 @@ export const WizardForwardNavContext =
  * per page, after the handler is defined and before any early return, so the
  * hook order stays stable across loading states.
  */
-export function useWizardForwardNav(action: WizardForwardAction): void {
+export function useWizardForwardNav(
+  action: WizardForwardNavInput
+): (element: HTMLElement | null) => void {
   const registry = useContext(WizardForwardNavContext);
-  const { onContinue, disabled = false, loading = false } = action;
+  const { onContinue, disabled = false, loading = false, label } = action;
+  // The primary button usually mounts after the page's loading state clears,
+  // i.e. after the first registration. A callback ref (the state setter)
+  // re-registers with the element the moment it mounts or unmounts, which a
+  // `ref.current` read at render time would miss.
+  const [ctaElement, setCtaElement] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!registry) return;
-    registry.register({ onContinue, disabled, loading });
+    registry.register({ onContinue, disabled, loading, label, ctaElement });
     return () => registry.register(null);
-  }, [registry, onContinue, disabled, loading]);
+  }, [registry, onContinue, disabled, loading, label, ctaElement]);
+
+  return setCtaElement;
 }

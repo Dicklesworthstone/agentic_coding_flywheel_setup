@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   RefreshCw,
   Terminal,
@@ -374,6 +374,8 @@ function InteractiveRepoSync() {
   const [workerSlots, setWorkerSlots] = useState<(string | null)[]>([null, null, null, null]);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach((t) => clearTimeout(t));
@@ -770,7 +772,7 @@ function InteractiveRepoSync() {
   const activeCount = repos.filter((r) => r.status === 'pulling' || r.status === 'cloning' || r.status === 'ai-commit').length;
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-blue-500/8 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/6 w-48 h-48 bg-violet-500/8 rounded-full blur-3xl pointer-events-none" />
@@ -800,7 +802,7 @@ function InteractiveRepoSync() {
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-white/30 mt-1.5 px-1">
+        <p className="text-xs text-white/30 mt-1.5 px-1">
           {SCENARIOS.find((s) => s.id === activeScenario)?.description}
         </p>
       </div>
@@ -873,6 +875,7 @@ function InteractiveRepoSync() {
                 repo={repo}
                 isAiTarget={aiTargetRepo === repo.name}
                 aiTyping={aiTargetRepo === repo.name ? aiTyping : ''}
+                active={inView}
               />
             ))}
           </div>
@@ -956,8 +959,8 @@ function InteractiveRepoSync() {
             <div className="flex items-start gap-3">
               <div className="shrink-0 mt-0.5">
                 <motion.div
-                  animate={{ rotate: [0, 360] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                  animate={inView ? { rotate: [0, 360] } : { rotate: 0 }}
+                  transition={inView ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                 >
                   <Sparkles className="h-4 w-4 text-violet-400" />
                 </motion.div>
@@ -966,8 +969,8 @@ function InteractiveRepoSync() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-[11px] font-medium text-violet-300">AI Generating Commit for {aiTargetRepo}</span>
                   <motion.div
-                    animate={{ opacity: [1, 0.3, 1] }}
-                    transition={{ duration: 1, repeat: Infinity }}
+                    animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+                    transition={inView ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
                     className="w-1 h-3 bg-violet-400/60 rounded-full"
                   />
                 </div>
@@ -975,8 +978,8 @@ function InteractiveRepoSync() {
                   <span className="text-violet-400/60 mr-1">msg:</span>
                   {aiTyping}
                   <motion.span
-                    animate={{ opacity: [1, 0] }}
-                    transition={{ duration: 0.5, repeat: Infinity }}
+                    animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+                    transition={inView ? { duration: 0.5, repeat: Infinity } : { duration: 0.2 }}
                     className="inline-block w-[6px] h-[14px] bg-violet-400/80 ml-0.5 -mb-0.5"
                   />
                 </div>
@@ -1036,10 +1039,12 @@ function SyncRepoTile({
   repo,
   isAiTarget,
   aiTyping,
+  active,
 }: {
   repo: SyncRepo;
   isAiTarget: boolean;
   aiTyping: string;
+  active: boolean;
 }) {
   const statusStyles: Record<RepoSyncStatus, { border: string; bg: string; text: string; glow: string }> = {
     pending: { border: 'border-white/[0.06]', bg: 'bg-white/[0.02]', text: 'text-white/30', glow: '' },
@@ -1085,9 +1090,9 @@ function SyncRepoTile({
         {(repo.status === 'pulling' || repo.status === 'cloning') && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0.02, 0.06, 0.02] }}
+            animate={active ? { opacity: [0.02, 0.06, 0.02] } : { opacity: 0.02 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+            transition={active ? { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
             className={`absolute inset-0 ${repo.status === 'cloning' ? 'bg-blue-400' : 'bg-amber-400'} rounded-lg`}
           />
         )}
@@ -1097,9 +1102,9 @@ function SyncRepoTile({
         {repo.status === 'ai-commit' && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0.02, 0.05, 0.02] }}
+            animate={active ? { opacity: [0.02, 0.05, 0.02] } : { opacity: 0.02 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            transition={active ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
             className="absolute inset-0 bg-violet-400 rounded-lg"
           />
         )}
@@ -1131,9 +1136,9 @@ function SyncRepoTile({
           className="flex items-center gap-1 mb-1.5"
         >
           <GitBranch className="h-2.5 w-2.5 text-white/20" />
-          <span className="text-[9px] font-mono text-white/25">{repo.branch}</span>
+          <span className="text-[10px] font-mono text-white/25">{repo.branch}</span>
           {repo.changedFiles > 0 && repo.status !== 'synced' && (
-            <span className="text-[9px] font-mono text-orange-400/70 ml-auto">{repo.changedFiles}f</span>
+            <span className="text-[10px] font-mono text-orange-400/70 ml-auto">{repo.changedFiles}f</span>
           )}
         </motion.div>
       )}
@@ -1166,7 +1171,7 @@ function SyncRepoTile({
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="mt-1 text-[8px] font-mono text-violet-400/60 truncate"
+          className="mt-1 text-[10px] font-mono text-violet-400/60 truncate"
         >
           {aiTyping.slice(-20)}
         </motion.div>
@@ -1206,13 +1211,13 @@ function BranchRow({ repo }: { repo: SyncRepo }) {
         )}
       </div>
       <span className="text-[10px] font-mono text-white/40 w-14 truncate">{repo.name}</span>
-      <span className="text-[9px] font-mono text-white/20 w-10">{repo.branch}</span>
+      <span className="text-[10px] font-mono text-white/20 w-10">{repo.branch}</span>
       <div className="flex items-center gap-1 ml-auto">
         {repo.ahead > 0 && (
-          <span className="text-[9px] font-mono text-blue-400/60">+{repo.ahead}</span>
+          <span className="text-[10px] font-mono text-blue-400/60">+{repo.ahead}</span>
         )}
         {repo.behind > 0 && (
-          <span className="text-[9px] font-mono text-amber-400/60">-{repo.behind}</span>
+          <span className="text-[10px] font-mono text-amber-400/60">-{repo.behind}</span>
         )}
         {repo.commitMsg && (
           <FileText className="h-2.5 w-2.5 text-violet-400/40 ml-1" />

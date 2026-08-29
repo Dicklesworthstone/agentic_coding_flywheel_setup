@@ -110,11 +110,11 @@ of provider:
     "readinessStatus": "supported"
   },
   "size": {
-    "planName": "Cloud VPS 50",
+    "planName": "Cloud VPS 16",
     "ramGB": 64,
     "vCPU": 16,
-    "storageGB": 400,
-    "priceUSD": 56
+    "storageGB": 500,
+    "priceUSD": 43
   },
   "osImage": {
     "distribution": "ubuntu",

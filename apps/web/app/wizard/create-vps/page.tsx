@@ -20,6 +20,12 @@ import {
 } from "@/lib/userPreferences";
 import { withCurrentSearch } from "@/lib/utils";
 import {
+  ACFS_RECOMMENDED_MIN_RAM_GB,
+  VPS_PROVIDERS,
+  VPS_TOP_PICK,
+  describePlan,
+} from "@/lib/vpsProviders";
+import {
   SimplerGuide,
   GuideSection,
   GuideStep,
@@ -143,11 +149,16 @@ function ProviderGuide({
   );
 }
 
+// Plan names, specs, and prices come from VPS_PROVIDERS so these steps cannot
+// drift from the data table.
+const CONTABO = VPS_PROVIDERS.find((provider) => provider.id === "contabo") ?? VPS_TOP_PICK;
+const OVH = VPS_PROVIDERS.find((provider) => provider.id === "ovh") ?? VPS_TOP_PICK;
+
 const PROVIDER_GUIDES = [
   {
     name: "Contabo",
     steps: [
-      "Go to contabo.com/en-us/vps and select Cloud VPS 50 (64GB RAM, ~$56/month) or Cloud VPS 40 (48GB, ~$36/month)",
+      `Go to contabo.com/en-us/vps and select ${describePlan(CONTABO.recommended)} or ${describePlan(CONTABO.budget)} (USD approximate; Contabo lists EUR)`,
       'Click "Configure" and select your preferred region (US recommended for best latency)',
       'Under "Image", select Ubuntu 25.10 (or newest available; 24.04 LTS is fine too)',
       'Leave add-ons at their free/default values unless you specifically want them: no private networking, no object storage, unmanaged server, monitoring none',
@@ -166,7 +177,7 @@ const PROVIDER_GUIDES = [
   {
     name: "OVH",
     steps: [
-      'Click "Order" on VPS-5 (64GB RAM, ~$40/month) or VPS-4 (48GB, ~$26/month)',
+      `Click "Order" on ${describePlan(OVH.recommended)} - the largest VPS OVH sells, below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS target; use Contabo if you want 48-64GB`,
       'Under "Image", select Ubuntu 25.10 (or latest available)',
       "Pick the data center/region closest to you (US-East, US-West, or EU)",
       'Choose "Password" authentication (skip SSH key section for now)',
@@ -238,10 +249,11 @@ export default function CreateVPSPage() {
   const submitForm = useCallback(() => {
     void form.handleSubmit();
   }, [form]);
-  useWizardForwardNav({
+  const forwardCtaRef = useWizardForwardNav({
     onContinue: submitForm,
     disabled: !allChecked || !isValidIP(ipAddress.trim()) || isNavigating,
     loading: isNavigating,
+    label: "Continue to SSH",
   });
 
   // Track if we've synced the stored IP to avoid overwriting user edits
@@ -500,6 +512,8 @@ export default function CreateVPSPage() {
                   {/* Continue button - rendered inside field for access to validation state */}
                   <div className="flex justify-end pt-6">
                     <Button
+                      ref={forwardCtaRef}
+                      data-wizard-primary-cta
                       type="submit"
                       disabled={!canSubmit}
                       size="lg"
@@ -640,7 +654,7 @@ export default function CreateVPSPage() {
                     <li>12-16 vCPU (virtual CPUs)</li>
                     <li>48-64 GB RAM (each AI agent uses ~2GB, you want to run 10+)</li>
                     <li>250GB+ NVMe storage</li>
-                    <li>Cost: ~$40-56/month for 64GB (worth it!)</li>
+                    <li>Cost: ~${VPS_TOP_PICK.recommended.priceUSD}/month for 64GB (worth it!)</li>
                   </ul>
                   <p className="mt-2 text-xs text-muted-foreground">
                     64GB is strongly recommended. You&apos;re investing $400+/month in AI subscriptions,

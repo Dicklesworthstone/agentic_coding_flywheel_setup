@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence, springs } from "@/components/motion";
+import { motion, AnimatePresence, springs, useInView } from "@/components/motion";
 import {
   Sparkles,
   Brain,
@@ -1724,8 +1724,10 @@ function TerminalPanel({
   terminalRef: React.RefObject<HTMLDivElement | null>;
   enabledCount: number;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
   return (
-    <div className="space-y-3">
+    <div ref={ref} className="space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs text-white/40">
           Simulated agent session with {enabledCount} technique
@@ -1816,8 +1818,8 @@ function TerminalPanel({
           {isAnimating && (
             <motion.span
               initial={{ opacity: 0 }}
-              animate={{ opacity: [0.2, 1, 0.2] }}
-              transition={{ repeat: Infinity, duration: 1 }}
+              animate={inView ? { opacity: [0.2, 1, 0.2] } : { opacity: 1 }}
+              transition={inView ? { repeat: Infinity, duration: 1 } : { duration: 0.2 }}
               className="inline-block w-2 h-3.5 bg-emerald-400/60 ml-0.5"
             />
           )}

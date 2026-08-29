@@ -5,25 +5,39 @@
  *
  * Shows key specs (RAM, vCPU, storage, price) for recommended and budget
  * plans across providers. Responsive: table on desktop, stacked cards on
- * mobile.
+ * mobile. Plans below the ACFS RAM recommendation (a provider's largest plan
+ * may be) get a visible "Below N GB target" flag, and approximate prices
+ * carry the note explaining how they were derived.
  *
- * @see bd-w8fx
+ * @see bd-w8fx, bd-jspqj
  */
 
 import { useState } from "react";
-import { ExternalLink, Star, Clock } from "lucide-react";
+import { AlertTriangle, ExternalLink, Star, Clock } from "lucide-react";
 import { TrackedLink } from "@/components/tracked-link";
 import { cn } from "@/lib/utils";
 import {
+  ACFS_RECOMMENDED_MIN_RAM_GB,
   VPS_PROVIDERS,
   PRICING_LAST_UPDATED,
+  isBelowRamRecommendation,
+  type VPSPlan,
   type VPSProvider,
 } from "@/lib/vpsProviders";
 
 type PlanTier = "recommended" | "budget";
 
-function formatPrice(usd: number): string {
-  return `$${usd}/mo`;
+function formatPrice(plan: VPSPlan): string {
+  return `${plan.priceNote ? "~" : ""}$${plan.priceUSD}/mo`;
+}
+
+function BelowTargetBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-amber/35 bg-amber/8 px-2 py-0.5 text-xs font-medium text-amber">
+      <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+      Below {ACFS_RECOMMENDED_MIN_RAM_GB} GB target
+    </span>
+  );
 }
 
 function ProviderMobileCard({
@@ -54,9 +68,11 @@ function ProviderMobileCard({
           )}
         </div>
         <span className="text-lg font-bold text-foreground">
-          {formatPrice(plan.priceUSD)}
+          {formatPrice(plan)}
         </span>
       </div>
+
+      {isBelowRamRecommendation(plan) && <BelowTargetBadge />}
 
       <div className="grid grid-cols-2 gap-2 text-sm">
         <div>
@@ -92,6 +108,12 @@ function ProviderMobileCard({
         </TrackedLink>
       </div>
 
+      {plan.note && (
+        <p className="text-xs text-amber">{plan.note}</p>
+      )}
+      {plan.priceNote && (
+        <p className="text-xs text-muted-foreground">Price: {plan.priceNote}</p>
+      )}
       {provider.note && (
         <p className="text-xs text-muted-foreground">{provider.note}</p>
       )}
@@ -205,7 +227,15 @@ export function VPSComparison() {
                       {provider.bestFor}
                     </p>
                   </td>
-                  <td className="px-4 py-3 text-foreground">{plan.name}</td>
+                  <td className="px-4 py-3 text-foreground">
+                    {/* Plan/price caveats live in the notes under the table;
+                        repeating them in the cells squeezed the columns off
+                        the card at 1280px. */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span>{plan.name}</span>
+                      {isBelowRamRecommendation(plan) && <BelowTargetBadge />}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right font-mono text-foreground">
                     {plan.ramGB}GB
                   </td>
@@ -216,7 +246,7 @@ export function VPSComparison() {
                     {plan.storageGB}GB
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-semibold text-foreground">
-                    {formatPrice(plan.priceUSD)}
+                    {formatPrice(plan)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {provider.activationTime}
@@ -250,11 +280,22 @@ export function VPSComparison() {
         ))}
       </div>
 
+      {/* Provider notes (desktop; the mobile cards show them inline) */}
+      <ul className="hidden space-y-1 text-xs text-muted-foreground sm:block">
+        {VPS_PROVIDERS.filter((provider) => provider.note).map((provider) => (
+          <li key={provider.id}>
+            <span className="font-medium text-foreground">{provider.name}:</span>{" "}
+            {provider.note}
+          </li>
+        ))}
+      </ul>
+
       {/* Footer note */}
       <p className="text-xs text-muted-foreground">
-        Prices are month-to-month, no commitment.
-        Last updated {PRICING_LAST_UPDATED}. Longer commitments may offer 5-20%
-        discounts.
+        Prices are approximate list prices, last verified {PRICING_LAST_UPDATED}:
+        Contabo lists EUR (24-month introductory rate) converted to USD; OVH shows
+        a &quot;from&quot; price that assumes a 12-month term. Month-to-month billing
+        costs more.
       </p>
     </div>
   );

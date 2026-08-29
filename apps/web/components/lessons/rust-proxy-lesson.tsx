@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from "@/components/motion";
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Shield,
   Terminal,
@@ -649,12 +649,12 @@ function HeaderTree({ headers, title }: { headers: RequestHeader[]; title: strin
                     {h.value}
                   </span>
                   {h.modified && (
-                    <span className="shrink-0 px-1 py-0.5 rounded text-[8px] bg-amber-500/10 text-amber-400/60 border border-amber-500/20">
+                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400/60 border border-amber-500/20">
                       INJECTED
                     </span>
                   )}
                   {h.redacted && (
-                    <span className="shrink-0 px-1 py-0.5 rounded text-[8px] bg-red-500/10 text-red-400/60 border border-red-500/20">
+                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400/60 border border-red-500/20">
                       REDACTED
                     </span>
                   )}
@@ -692,7 +692,7 @@ function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: n
           const pct = (seg.value / maxVal) * 100;
           return (
             <div key={seg.label} className="flex items-center gap-2">
-              <span className="text-[9px] text-white/30 font-mono w-12 text-right">{seg.label}</span>
+              <span className="text-[10px] text-white/30 font-mono w-12 text-right">{seg.label}</span>
               <div className="flex-1 h-3 rounded-full bg-white/[0.04] overflow-hidden">
                 <motion.div
                   className={`h-full rounded-full ${seg.color} opacity-60`}
@@ -701,7 +701,7 @@ function LatencyWaterfall({ timing, total }: { timing: TimingBreakdown; total: n
                   transition={SPRING}
                 />
               </div>
-              <span className="text-[9px] text-white/25 font-mono w-12">
+              <span className="text-[10px] text-white/25 font-mono w-12">
                 {seg.value < 1 && seg.value > 0 ? `${seg.value}ms` : `${Math.round(seg.value)}ms`}
               </span>
             </div>
@@ -745,11 +745,11 @@ function RuleEnginePanel({ rules }: { rules: ProxyRule[] }) {
             ) : (
               <div className="h-3 w-3 rounded-full border border-white/[0.1] shrink-0" />
             )}
-            <span className={`px-1.5 py-0.5 rounded text-[8px] font-semibold uppercase border ${typeColors[rule.type] || 'text-white/40'}`}>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase border ${typeColors[rule.type] || 'text-white/40'}`}>
               {rule.type}
             </span>
             <span className="text-[10px] font-mono text-white/40 flex-1 truncate">{rule.pattern}</span>
-            <span className="text-[9px] text-white/25 truncate">{rule.action}</span>
+            <span className="text-[10px] text-white/25 truncate">{rule.action}</span>
           </motion.div>
         ))}
       </div>
@@ -759,7 +759,7 @@ function RuleEnginePanel({ rules }: { rules: ProxyRule[] }) {
 
 // --- Live Log Stream ---
 
-function LogStream({ logs }: { logs: LogEntry[] }) {
+function LogStream({ logs, active }: { logs: LogEntry[]; active: boolean }) {
   const levelColors: Record<string, string> = {
     'info': 'text-blue-400/60',
     'warn': 'text-amber-400/70',
@@ -779,8 +779,8 @@ function LogStream({ logs }: { logs: LogEntry[] }) {
       <div className="flex items-center gap-2">
         <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">Proxy Log</span>
         <motion.div
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
+          animate={active ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+          transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
           className="h-1.5 w-1.5 rounded-full bg-emerald-500"
         />
       </div>
@@ -876,6 +876,8 @@ function InteractiveTrafficInspectorImpl() {
   const [stepIndex, setStepIndex] = useState(0);
   const [activeTab, setActiveTab] = useState<DetailTab>('headers');
   const [isAnimating, setIsAnimating] = useState(true);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const scenario = SCENARIOS[stepIndex];
 
@@ -903,7 +905,7 @@ function InteractiveTrafficInspectorImpl() {
   }, [stepIndex]);
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Decorative glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/3 w-48 h-48 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
@@ -914,8 +916,8 @@ function InteractiveTrafficInspectorImpl() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <motion.div
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+              animate={inView ? { rotate: [0, 360] } : { rotate: 0 }}
+              transition={inView ? { duration: 20, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
             >
               <Activity className="h-4 w-4 text-white/40" />
             </motion.div>
@@ -923,8 +925,8 @@ function InteractiveTrafficInspectorImpl() {
               Traffic Inspector
             </span>
             <motion.div
-              animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
+              animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+              transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
               className="h-1.5 w-1.5 rounded-full bg-emerald-500"
             />
             <span className="text-[10px] text-emerald-400/60 font-medium">LIVE</span>
@@ -1000,7 +1002,7 @@ function InteractiveTrafficInspectorImpl() {
                   </span>
                   <FlowStateBadge state={scenario.flowState} />
                 </div>
-                <p className="text-[11px] text-white/40 leading-relaxed line-clamp-2">
+                <p className="text-xs text-white/40 leading-relaxed line-clamp-2">
                   {scenario.description}
                 </p>
               </motion.div>
@@ -1056,7 +1058,7 @@ function InteractiveTrafficInspectorImpl() {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <FlowDiagram scenario={scenario} animating={isAnimating} />
+            <FlowDiagram scenario={scenario} animating={isAnimating && inView} />
           </motion.div>
         </AnimatePresence>
 
@@ -1120,7 +1122,7 @@ function InteractiveTrafficInspectorImpl() {
             )}
 
             {activeTab === 'logs' && (
-              <LogStream logs={scenario.logs} />
+              <LogStream logs={scenario.logs} active={inView} />
             )}
           </motion.div>
         </AnimatePresence>
@@ -1128,7 +1130,7 @@ function InteractiveTrafficInspectorImpl() {
         {/* Tip */}
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
           <Eye className="h-3.5 w-3.5 text-white/30 shrink-0" />
-          <span className="text-[11px] text-white/40">
+          <span className="text-xs text-white/40">
             Step through 6 proxy scenarios. Each shows the full request lifecycle: flow visualization, headers, latency waterfall, rule matching, and live logs.
           </span>
         </div>

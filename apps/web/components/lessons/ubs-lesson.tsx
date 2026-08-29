@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { motion, AnimatePresence, springs } from "@/components/motion";
+import { motion, AnimatePresence, springs, useInView } from "@/components/motion";
 import {
   Bug,
   Shield,
@@ -742,6 +742,8 @@ function InteractiveBugScanner() {
   const scanIntervalRef = useRef<number | null>(null);
   const fixTimersRef = useRef<number[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const scenario = SCENARIOS[scenarioIdx];
 
@@ -946,7 +948,7 @@ function InteractiveBugScanner() {
     (phase === "results" || phase === "inspect") && hasFindings;
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Scenario Selector */}
       <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-white/[0.08] bg-white/[0.02] overflow-x-auto scrollbar-none">
         {SCENARIOS.map((sc, i) => (
@@ -1082,12 +1084,12 @@ function InteractiveBugScanner() {
                   {isActive && (
                     <motion.div
                       className="absolute inset-0 rounded-lg bg-gradient-to-r from-transparent via-primary/10 to-transparent"
-                      animate={{ x: ["-100%", "100%"] }}
-                      transition={{
-                        duration: 1.2,
-                        repeat: Infinity,
-                        ease: "linear",
-                      }}
+                      animate={inView ? { x: ["-100%", "100%"] } : { x: "-100%" }}
+                      transition={
+                        inView
+                          ? { duration: 1.2, repeat: Infinity, ease: "linear" }
+                          : { duration: 0.2 }
+                      }
                     />
                   )}
                 </motion.div>
@@ -1170,17 +1172,17 @@ function InteractiveBugScanner() {
                   <div className="flex items-center gap-3 mt-1.5">
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-red-500" />
-                      <span className="text-[9px] text-white/30">Critical</span>
+                      <span className="text-[10px] text-white/30">Critical</span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      <span className="text-[9px] text-white/30">
+                      <span className="text-[10px] text-white/30">
                         Important
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-[9px] text-white/30">
+                      <span className="text-[10px] text-white/30">
                         Contextual
                       </span>
                     </div>
@@ -1204,12 +1206,12 @@ function InteractiveBugScanner() {
                 <span className="text-white/20">
                   $ {scenario.command}
                   <motion.span
-                    animate={{ opacity: [1, 0, 1] }}
-                    transition={{
-                      duration: 1,
-                      repeat: Infinity,
-                      ease: "linear",
-                    }}
+                    animate={inView ? { opacity: [1, 0, 1] } : { opacity: 1 }}
+                    transition={
+                      inView
+                        ? { duration: 1, repeat: Infinity, ease: "linear" }
+                        : { duration: 0.2 }
+                    }
                     className="inline-block w-1.5 h-3 bg-white/40 ml-0.5 align-middle"
                   />
                 </span>
@@ -1303,12 +1305,12 @@ function InteractiveBugScanner() {
                 className="flex flex-col items-center justify-center h-full min-h-[380px] gap-4"
               >
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
+                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                  transition={
+                    inView
+                      ? { duration: 2, repeat: Infinity, ease: "linear" }
+                      : { duration: 0.2 }
+                  }
                 >
                   <Search className="h-10 w-10 text-primary" />
                 </motion.div>
@@ -1414,7 +1416,7 @@ function InteractiveBugScanner() {
                                   {finding.title}
                                 </span>
                                 <span
-                                  className={`text-[9px] px-1.5 py-0.5 rounded-full ${styles.bg} ${styles.text} font-bold uppercase tracking-wider`}
+                                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${styles.bg} ${styles.text} font-bold uppercase tracking-wider`}
                                 >
                                   {styles.label}
                                 </span>
@@ -1423,7 +1425,7 @@ function InteractiveBugScanner() {
                                   {finding.col}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-white/50 mt-1 ml-4">
+                              <p className="text-xs text-white/50 mt-1 ml-4">
                                 {finding.description}
                               </p>
                             </div>
@@ -1449,7 +1451,7 @@ function InteractiveBugScanner() {
                                 >
                                   <div className="p-2.5 space-y-2">
                                     <div>
-                                      <span className="text-[9px] text-red-400/60 uppercase tracking-wider font-bold">
+                                      <span className="text-[10px] text-red-400/60 uppercase tracking-wider font-bold">
                                         Bug
                                       </span>
                                       <pre className="mt-0.5 text-[10px] text-red-300/80 font-mono bg-red-500/5 rounded p-1.5 overflow-x-auto">
@@ -1457,7 +1459,7 @@ function InteractiveBugScanner() {
                                       </pre>
                                     </div>
                                     <div>
-                                      <span className="text-[9px] text-emerald-400/60 uppercase tracking-wider font-bold">
+                                      <span className="text-[10px] text-emerald-400/60 uppercase tracking-wider font-bold">
                                         Fix
                                       </span>
                                       <pre className="mt-0.5 text-[10px] text-emerald-300/80 font-mono bg-emerald-500/5 rounded p-1.5 overflow-x-auto">
@@ -1571,11 +1573,8 @@ function InteractiveBugScanner() {
                         {isCurrent && (
                           <motion.div
                             className="ml-auto flex items-center gap-1"
-                            animate={{ opacity: [0.4, 1, 0.4] }}
-                            transition={{
-                              duration: 1.5,
-                              repeat: Infinity,
-                            }}
+                            animate={inView ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
+                            transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                           >
                             <ChevronRight className="h-3 w-3 text-primary" />
                           </motion.div>
@@ -1641,12 +1640,16 @@ function InteractiveBugScanner() {
                 >
                   <motion.div
                     className="absolute inset-0 rounded-full bg-emerald-500/20"
-                    animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                    transition={{
-                      duration: 2,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                    }}
+                    animate={
+                      inView
+                        ? { scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }
+                        : { scale: 1, opacity: 0.5 }
+                    }
+                    transition={
+                      inView
+                        ? { duration: 2, repeat: Infinity, ease: "easeInOut" }
+                        : { duration: 0.2 }
+                    }
                   />
                   <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/20 border border-emerald-500/30">
                     <CheckCircle className="h-10 w-10 text-emerald-400" />

@@ -154,10 +154,11 @@ export default function OSSelectionPage() {
   }, [selectedOS, router, markComplete, setStoredOS]);
 
   // The mobile dock's "Next" runs this same handler (Linux skip included).
-  useWizardForwardNav({
+  const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
     disabled: !selectedOS || isNavigating,
     loading: isNavigating,
+    label: "Continue",
   });
 
   return (
@@ -294,6 +295,8 @@ export default function OSSelectionPage() {
       {/* Continue button */}
       <div className="flex justify-end pt-4">
         <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
           onClick={handleContinue}
           disabled={!selectedOS}
           loading={isNavigating}

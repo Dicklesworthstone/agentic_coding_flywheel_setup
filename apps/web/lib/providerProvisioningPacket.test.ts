@@ -126,7 +126,7 @@ describe("provider provisioning packet contract", () => {
 describe("buildProviderProvisioningPacket", () => {
   const baseInput = {
     providerId: "contabo",
-    planName: "Cloud VPS 50",
+    planName: "Cloud VPS 16",
     ubuntuVersion: "25.10",
     region: "us",
     targetAgents: 10,
@@ -199,7 +199,7 @@ describe("buildProviderProvisioningPacket", () => {
     const packet = buildProviderProvisioningPacket({
       ...baseInput,
       providerId: "ovh",
-      planName: "VPS-5",
+      planName: "VPS-4",
       ubuntuVersion: "20.04",
       region: "us-east",
     });

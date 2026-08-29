@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Bug,
   Activity,
@@ -730,7 +730,7 @@ function DivergencePanel({
               initial={{ opacity: 0 }}
               animate={{ opacity: animated ? 1 : 0.2 }}
               transition={{ ...SPRING, delay: animated ? i * 0.06 : 0 }}
-              className="text-[10px] text-white/60 leading-relaxed"
+              className="text-xs text-white/60 leading-relaxed"
             >
               {line}
             </motion.p>
@@ -750,7 +750,7 @@ function DivergencePanel({
               initial={{ opacity: 0 }}
               animate={{ opacity: animated ? 1 : 0.2 }}
               transition={{ ...SPRING, delay: animated ? i * 0.06 + 0.2 : 0 }}
-              className="text-[10px] text-white/60 leading-relaxed"
+              className="text-xs text-white/60 leading-relaxed"
             >
               {line}
             </motion.p>
@@ -782,7 +782,7 @@ function FixSuggestionsPanel({ fixes, animated }: { fixes: FixSuggestion[]; anim
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] font-medium text-white/80">{fix.label}</span>
-              <span className={`text-[9px] font-mono shrink-0 ${
+              <span className={`text-[10px] font-mono shrink-0 ${
                 fix.confidence >= 90 ? 'text-emerald-400' : fix.confidence >= 80 ? 'text-amber-400' : 'text-white/40'
               }`}>
                 {animated ? `${fix.confidence}%` : '--%'}
@@ -904,6 +904,8 @@ function InteractiveDebugDashboardImpl() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [debugPhase, setDebugPhase] = useState<'idle' | 'scanning' | 'analyzed'>('idle');
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const scenario = scenarios[activeIdx];
 
@@ -961,7 +963,7 @@ function InteractiveDebugDashboardImpl() {
   const isScanning = debugPhase === 'scanning';
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-red-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-violet-500/[0.04] rounded-full blur-3xl pointer-events-none" />
@@ -1040,8 +1042,8 @@ function InteractiveDebugDashboardImpl() {
                   <span className="text-[11px] font-semibold text-white/80">Agent State</span>
                   {isScanning && (
                     <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                      transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                       className="ml-auto"
                     >
                       <RefreshCw className="h-3 w-3 text-blue-400" />
@@ -1134,7 +1136,7 @@ function InteractiveDebugDashboardImpl() {
                       <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                       <span className="text-xs font-semibold text-emerald-300">Root Cause Identified</span>
                     </div>
-                    <p className="text-[11px] text-white/70 leading-relaxed">
+                    <p className="text-xs text-white/70 leading-relaxed">
                       {scenario.stackFrames.find((f) => f.isError)?.description ?? 'Unknown error'}
                       {' '}&#8212; {scenario.fixes[0]?.label ?? 'Manual investigation needed'} (
                       <span className="text-emerald-400 font-mono">{scenario.fixes[0]?.confidence ?? 0}% confidence</span>)
@@ -1194,8 +1196,8 @@ function InteractiveDebugDashboardImpl() {
               {isScanning ? (
                 <>
                   <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                    transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                   >
                     <Activity className="h-3.5 w-3.5" />
                   </motion.div>

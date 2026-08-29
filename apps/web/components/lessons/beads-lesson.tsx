@@ -1195,7 +1195,7 @@ function InteractiveDependencyGraph() {
       {/* ================================================================ */}
       <div className="relative flex flex-col lg:flex-row">
         {/* SVG Dependency Graph */}
-        <div className="flex-1 px-3 pb-2 min-w-0">
+        <div className="flex-1 px-3 pb-2 min-w-0 overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60" tabIndex={0} role="region" aria-label="Bead dependency graph (scrolls sideways on small screens)">
           {/* Toolbar */}
           <div className="flex items-center justify-between gap-3 px-2 py-2 flex-wrap">
             <p className="text-xs text-white/40">
@@ -1229,7 +1229,7 @@ function InteractiveDependencyGraph() {
 
           <svg
             viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-            className="w-full h-auto"
+            className="w-full h-auto min-w-[820px] lg:min-w-0"
             style={{ minHeight: 250 }}
             role="group"
             aria-label="Bead dependency graph. Each bead is a button: press Enter to claim a ready bead or close one in progress."
@@ -1872,7 +1872,7 @@ function InteractiveDependencyGraph() {
                               {bead.id}
                             </code>
                             <span
-                              className={`ml-auto text-[9px] ${ti.color}`}
+                              className={`ml-auto text-[10px] ${ti.color}`}
                             >
                               {ti.label}
                             </span>
@@ -2077,11 +2077,11 @@ function InteractiveDependencyGraph() {
                 isBeadReady(activeBead, beadMap) && (
                   <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
                     <Play className="h-3 w-3 text-primary" />
-                    <p className="text-[10px] text-primary font-medium">
+                    <p className="text-xs text-primary font-medium">
                       Click to claim and start working on this
                       bead
                     </p>
-                    <code className="ml-auto text-[9px] text-primary/60 font-mono">
+                    <code className="ml-auto text-[10px] text-primary/60 font-mono">
                       br update {activeBead.id}{" "}
                       --status=in_progress
                     </code>
@@ -2090,11 +2090,11 @@ function InteractiveDependencyGraph() {
               {activeBead.status === "in_progress" && (
                 <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <CheckCircle className="h-3 w-3 text-amber-400" />
-                  <p className="text-[10px] text-amber-400 font-medium">
+                  <p className="text-xs text-amber-400 font-medium">
                     Click to mark complete and unblock
                     downstream beads
                   </p>
-                  <code className="ml-auto text-[9px] text-amber-400/60 font-mono">
+                  <code className="ml-auto text-[10px] text-amber-400/60 font-mono">
                     br close {activeBead.id}
                   </code>
                 </div>
@@ -2164,7 +2164,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <Circle className="h-2 w-2 text-red-400/60" />
         <Circle className="h-2 w-2 text-amber-400/60" />
         <Circle className="h-2 w-2 text-emerald-400/60" />
-        <span className="ml-2 text-[9px] text-white/30 font-mono">
+        <span className="ml-2 text-[10px] text-white/30 font-mono">
           br terminal
         </span>
       </div>

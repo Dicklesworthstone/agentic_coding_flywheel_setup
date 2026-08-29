@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Terminal,
   Save,
@@ -337,9 +337,12 @@ function VpsStateDiagram({
 
   const arrowOpacity = phase === 'idle' ? 0.15 : 0.7;
   const flowDirection = isRestore ? -1 : 1;
+  const rootRef = useRef<SVGSVGElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+  const flowing = inView && phase === 'running';
 
   return (
-    <svg viewBox="0 0 480 140" className="w-full h-auto" aria-hidden="true">
+    <svg ref={rootRef} viewBox="0 0 480 140" className="w-full h-auto" aria-hidden="true">
       {/* VPS Box */}
       <motion.rect
         x={20} y={20} width={160} height={100} rx={14}
@@ -390,15 +393,15 @@ function VpsStateDiagram({
           strokeWidth={1.5}
           strokeDasharray="6 3"
           animate={{
-            strokeDashoffset: phase === 'running' ? [0, flowDirection * -36] : 0,
+            strokeDashoffset: flowing ? [0, flowDirection * -36] : 0,
           }}
-          transition={phase === 'running' ? { duration: 1.2, repeat: Infinity, ease: 'linear' } : {}}
+          transition={flowing ? { duration: 1.2, repeat: Infinity, ease: 'linear' } : {}}
         />
         <motion.polygon
           points={isRestore ? '200,65 200,75 192,70' : '278,65 278,75 286,70'}
           fill="rgba(255,255,255,0.5)"
-          animate={{ opacity: phase === 'running' ? [0.4, 1, 0.4] : arrowOpacity }}
-          transition={phase === 'running' ? { duration: 1.0, repeat: Infinity } : {}}
+          animate={{ opacity: flowing ? [0.4, 1, 0.4] : arrowOpacity }}
+          transition={flowing ? { duration: 1.0, repeat: Infinity } : {}}
         />
         <text
           x={238} y={62}
@@ -509,7 +512,7 @@ function StorageTimeline({ visible }: { visible: boolean }) {
               transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.08 }}
               className="flex items-center gap-2"
             >
-              <span className="text-[9px] text-white/30 font-mono w-20 shrink-0 text-right">
+              <span className="text-[10px] text-white/30 font-mono w-20 shrink-0 text-right">
                 {entry.label}
               </span>
               <div className="flex-1 h-5 relative">
@@ -521,13 +524,13 @@ function StorageTimeline({ visible }: { visible: boolean }) {
                   transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.08 + 0.15 }}
                 />
                 <div className="absolute inset-0 flex items-center px-2">
-                  <span className="text-[9px] font-mono text-white/50">
+                  <span className="text-[10px] font-mono text-white/50">
                     {entry.sizeMB} MB
                   </span>
                 </div>
               </div>
               {entry.tagged && (
-                <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/70 border border-emerald-500/20 font-semibold">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/70 border border-emerald-500/20 font-semibold">
                   TAG
                 </span>
               )}
@@ -537,10 +540,10 @@ function StorageTimeline({ visible }: { visible: boolean }) {
       </div>
       {/* Usage summary */}
       <div className="flex items-center justify-between px-1 pt-1">
-        <span className="text-[9px] text-white/25 font-mono">
+        <span className="text-[10px] text-white/25 font-mono">
           {TIMELINE_DATA.length} snapshots stored
         </span>
-        <span className="text-[9px] text-white/25 font-mono">
+        <span className="text-[10px] text-white/25 font-mono">
           Total: {TIMELINE_DATA.reduce((s, e) => s + e.sizeMB, 0).toFixed(1)} MB
         </span>
       </div>
@@ -575,10 +578,13 @@ function ChecksumVerification({
   visible: boolean;
   revealedCount: number;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
-    <div className="space-y-1.5">
+    <div ref={rootRef} className="space-y-1.5">
       {/* Header */}
-      <div className="grid grid-cols-[80px_1fr_1fr_50px] gap-2 text-[9px] font-mono text-white/30 px-2">
+      <div className="grid grid-cols-[80px_1fr_1fr_50px] gap-2 text-[10px] font-mono text-white/30 px-2">
         <span>Agent</span>
         <span>Backup</span>
         <span>Live</span>
@@ -601,8 +607,8 @@ function ChecksumVerification({
             <span className="text-blue-400/60 truncate">{row.backupHash}</span>
             <motion.span
               className={`truncate ${revealed ? (row.match ? 'text-emerald-400/60' : 'text-amber-400/80') : 'text-white/20'}`}
-              animate={revealed && !row.match ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
-              transition={revealed && !row.match ? { duration: 1.5, repeat: Infinity } : {}}
+              animate={inView && revealed && !row.match ? { opacity: [0.5, 1, 0.5] } : { opacity: 1 }}
+              transition={inView && revealed && !row.match ? { duration: 1.5, repeat: Infinity } : {}}
             >
               {revealed ? row.liveHash : '........'}
             </motion.span>
@@ -644,7 +650,7 @@ function RetentionChart({ visible }: { visible: boolean }) {
             transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.1 }}
             className="flex items-center gap-2"
           >
-            <span className="text-[9px] text-white/40 font-mono w-14 text-right shrink-0">
+            <span className="text-[10px] text-white/40 font-mono w-14 text-right shrink-0">
               {bar.label}
             </span>
             <div className="flex-1 h-4 bg-white/[0.02] rounded-sm relative overflow-hidden">
@@ -655,7 +661,7 @@ function RetentionChart({ visible }: { visible: boolean }) {
                 transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.1 + 0.2 }}
               />
               <div className="absolute inset-0 flex items-center justify-end px-1.5">
-                <span className="text-[8px] font-mono text-white/40">
+                <span className="text-[10px] font-mono text-white/40">
                   {bar.count}/{bar.max}
                 </span>
               </div>
@@ -679,6 +685,8 @@ function MiniTerminal({
   visibleCount: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -689,7 +697,7 @@ function MiniTerminal({
   const displayed = lines.slice(0, visibleCount);
 
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-black/40 overflow-hidden">
+    <div ref={rootRef} className="rounded-xl border border-white/[0.08] bg-black/40 overflow-hidden">
       {/* Title bar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06]">
         <div className="flex gap-1.5">
@@ -724,8 +732,8 @@ function MiniTerminal({
         {/* Blinking cursor */}
         <motion.span
           className="inline-block w-1.5 h-3 bg-emerald-400/60"
-          animate={{ opacity: [1, 0, 1] }}
-          transition={{ duration: 1, repeat: Infinity }}
+          animate={inView ? { opacity: [1, 0, 1] } : { opacity: 1 }}
+          transition={inView ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
         />
       </div>
     </div>
@@ -743,6 +751,8 @@ function InteractiveBackupRestoreImpl() {
   const [terminalVisibleCount, setTerminalVisibleCount] = useState(0);
   const [checksumRevealed, setChecksumRevealed] = useState(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
   const [snapshotIds] = useState<string[]>(() =>
     SCENARIOS.map((_, i) => `snap-${i}-${Date.now().toString(36)}`)
   );
@@ -829,7 +839,7 @@ function InteractiveBackupRestoreImpl() {
   }, [scenario.id]);
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className={`absolute top-0 left-1/4 w-64 h-64 rounded-full blur-3xl pointer-events-none transition-colors duration-700 ${
         scenarioGlowColor === 'emerald' ? 'bg-emerald-500/[0.06]' :
@@ -850,7 +860,7 @@ function InteractiveBackupRestoreImpl() {
             </div>
             <div>
               <span className="text-sm font-semibold text-white/80 block">Backup &amp; Restore Control Center</span>
-              <span className="text-[10px] text-white/30">Explore 6 scenarios step by step</span>
+              <span className="text-xs text-white/30">Explore 6 scenarios step by step</span>
             </div>
           </div>
           <button
@@ -926,7 +936,7 @@ function InteractiveBackupRestoreImpl() {
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-                className="ml-auto text-[9px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/80 border border-emerald-500/20"
+                className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400/80 border border-emerald-500/20"
               >
                 Complete
               </motion.span>
@@ -1019,9 +1029,9 @@ function InteractiveBackupRestoreImpl() {
                         }`} />
                         <div className="min-w-0 flex-1">
                           <div className={`text-[10px] font-semibold ${agent.color}`}>{agent.shortName}</div>
-                          <div className="text-[8px] text-white/30">{statusLabel}</div>
+                          <div className="text-[10px] text-white/30">{statusLabel}</div>
                         </div>
-                        <span className="text-[8px] font-mono text-white/20">{agent.sizeMB}MB</span>
+                        <span className="text-[10px] font-mono text-white/20">{agent.sizeMB}MB</span>
                       </motion.div>
                     );
                   })}
@@ -1071,8 +1081,8 @@ function InteractiveBackupRestoreImpl() {
               {phase === 'running' ? (
                 <>
                   <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                    transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                   >
                     <HardDrive className="h-4 w-4" />
                   </motion.div>
@@ -1124,7 +1134,7 @@ function InteractiveBackupRestoreImpl() {
         </div>
 
         {/* Phase hint */}
-        <div className="text-center text-[11px] text-white/25">
+        <div className="text-center text-xs text-white/25">
           {phase === 'idle' && `Click "Run Scenario" to watch ${scenario.label.toLowerCase()} in action`}
           {phase === 'running' && `Executing ${scenario.command}...`}
           {phase === 'done' && (

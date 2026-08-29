@@ -69,7 +69,7 @@ const QUICK_REFERENCE_ITEMS: QuickReferenceItem[] = [
     gradient: "from-emerald-500/10 to-emerald-500/5",
   },
   {
-    href: "/learn/glossary",
+    href: "/glossary",
     icon: Book,
     title: "Glossary",
     desc: "Definitions for all jargon terms",

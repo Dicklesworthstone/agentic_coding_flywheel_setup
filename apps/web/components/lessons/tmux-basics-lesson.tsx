@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   LayoutGrid,
   Play,
@@ -441,9 +441,10 @@ const WINDOW_CONFIGS = [
 ];
 
 /** Simulated clock for status bar */
-function useSimulatedClock() {
+function useSimulatedClock(active: boolean) {
   const [time, setTime] = useState("10:42");
   useEffect(() => {
+    if (!active) return;
     const interval = setInterval(() => {
       const d = new Date();
       setTime(
@@ -461,7 +462,7 @@ function useSimulatedClock() {
       clearInterval(interval);
       clearTimeout(t);
     };
-  }, []);
+  }, [active]);
   return time;
 }
 
@@ -492,7 +493,9 @@ function makePane(outputIndex: number): SimPane {
 const MAX_SIM_PANES = 4;
 
 function InteractiveTmuxSimulator() {
-  const time = useSimulatedClock();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+  const time = useSimulatedClock(inView);
 
   // --- state ---
   const [windows, setWindows] = useState<SimWindow[]>(() => {
@@ -624,6 +627,7 @@ function InteractiveTmuxSimulator() {
 
   return (
     <motion.div
+      ref={rootRef}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={SPRING_SMOOTH}
@@ -710,6 +714,7 @@ function InteractiveTmuxSimulator() {
                   activePaneId={activeWindow.activePaneId}
                   onSelectPane={handleSelectPane}
                   getPaneOutput={getPaneOutput}
+                  active={inView}
                 />
               </motion.div>
             )}
@@ -892,12 +897,14 @@ function SimPaneGrid({
   activePaneId,
   onSelectPane,
   getPaneOutput,
+  active,
 }: {
   panes: SimPane[];
   splits: Array<"horizontal" | "vertical">;
   activePaneId: string;
   onSelectPane: (id: string) => void;
   getPaneOutput: (pane: SimPane) => string[];
+  active: boolean;
 }) {
   // Build a simple layout: first pane takes one side, then splits apply sequentially
   // For a clean visual we use CSS grid
@@ -965,6 +972,7 @@ function SimPaneGrid({
             <SimPaneContent
               isActive={pane.id === activePaneId}
               output={getPaneOutput(pane)}
+              active={active}
             />
           </motion.div>
         ))}
@@ -980,9 +988,11 @@ function SimPaneGrid({
 function SimPaneContent({
   isActive,
   output,
+  active,
 }: {
   isActive: boolean;
   output: string[];
+  active: boolean;
 }) {
   return (
     <div className="h-full flex flex-col">
@@ -1013,12 +1023,12 @@ function SimPaneContent({
               <span className="text-blue-400/70">~</span>
               <span className="text-white/40">$ </span>
               <motion.span
-                animate={{ opacity: [1, 0] }}
-                transition={{
-                  duration: 0.8,
-                  repeat: Infinity,
-                  repeatType: "reverse",
-                }}
+                animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
+                transition={
+                  active
+                    ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" }
+                    : { duration: 0.2 }
+                }
                 className="inline-block w-1.5 h-3 bg-emerald-400/80"
               />
             </div>

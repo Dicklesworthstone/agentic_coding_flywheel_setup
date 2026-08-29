@@ -803,7 +803,7 @@ function AnimatedFlywheel() {
                 ))}
               </ul>
               {selectedIdx !== null && (
-                <p className="mt-3 text-[11px] text-white/30">
+                <p className="mt-3 text-xs text-white/30">
                   Click node again or background to deselect
                 </p>
               )}

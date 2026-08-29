@@ -283,7 +283,10 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    overflow-x: hidden;
+    /* `clip`, not `hidden`: with html already overflow-x hidden, a hidden
+       body becomes its own (never-scrolling) scroll container and every
+       position: sticky on the site silently stops sticking. */
+    overflow-x: clip;
     /* Ensure body doesn't exceed viewport width */
     max-width: 100vw;
     /* World-class typography settings */

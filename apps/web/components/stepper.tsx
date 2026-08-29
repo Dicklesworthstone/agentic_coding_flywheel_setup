@@ -11,6 +11,7 @@ import {
 } from "@/lib/wizardSteps";
 import { motion } from "@/components/motion";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
+import { useUserOS } from "@/lib/userPreferences";
 
 export interface StepperProps {
   /** Current active step (1-indexed) */
@@ -26,6 +27,8 @@ interface StepItemProps {
   isActive: boolean;
   isCompleted: boolean;
   isClickable: boolean;
+  /** Recorded complete because the visitor's OS makes the step unnecessary. */
+  isSkipped?: boolean;
   showConnector: boolean;
   onClick?: () => void;
 }
@@ -35,6 +38,7 @@ function StepItem({
   isActive,
   isCompleted,
   isClickable,
+  isSkipped = false,
   showConnector,
   onClick,
 }: StepItemProps) {
@@ -42,7 +46,9 @@ function StepItem({
   const state = isActive
     ? "current step"
     : showCompletedState
-      ? "completed"
+      ? isSkipped
+        ? "skipped, not needed on Linux"
+        : "completed"
       : isClickable
         ? "available"
         : "locked";
@@ -104,7 +110,9 @@ function StepItem({
           <div className="mt-0.5 text-xs text-primary">In progress</div>
         )}
         {showCompletedState && (
-          <div className="mt-0.5 text-xs text-green">Complete</div>
+          <div className="mt-0.5 text-xs text-green">
+            {isSkipped ? "Skipped (Linux)" : "Complete"}
+          </div>
         )}
       </div>
 
@@ -127,6 +135,9 @@ function StepItem({
  */
 export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
   const [completedSteps] = useCompletedSteps();
+  // Linux users skip step 2 (they already have a terminal); the sidebar
+  // labels it as skipped rather than pretending they installed one.
+  const [userOS] = useUserOS();
   const highestCompleted = getHighestContiguousCompletedStep(completedSteps);
 
   const handleStepClick = useCallback(
@@ -160,6 +171,7 @@ export function Stepper({ currentStep, onStepClick, className }: StepperProps) {
               isActive={isActive}
               isCompleted={isCompleted}
               isClickable={isClickable}
+              isSkipped={step.id === 2 && userOS === "linux"}
               showConnector={!isLastStep}
               onClick={() => handleStepClick(step.id)}
             />

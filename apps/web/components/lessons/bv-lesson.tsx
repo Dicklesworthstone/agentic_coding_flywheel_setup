@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   BarChart3,
   Eye,
@@ -552,6 +552,8 @@ function InteractiveGraphTriage() {
   const [showMetricsDetail, setShowMetricsDetail] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const criticalPathTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   // Clean up timers on unmount
   useEffect(() => {
@@ -590,7 +592,7 @@ function InteractiveGraphTriage() {
 
   // Animate critical path tracing
   useEffect(() => {
-    if (analysisMode !== 'critical-path' || !triageRun) {
+    if (analysisMode !== 'critical-path' || !triageRun || !inView) {
       if (criticalPathTimerRef.current) {
         clearInterval(criticalPathTimerRef.current);
         criticalPathTimerRef.current = null;
@@ -611,7 +613,7 @@ function InteractiveGraphTriage() {
         criticalPathTimerRef.current = null;
       }
     };
-  }, [analysisMode, triageRun]);
+  }, [analysisMode, triageRun, inView]);
 
   const topNode = useMemo(() => {
     return GRAPH_NODES.reduce((best, n) =>
@@ -707,7 +709,7 @@ function InteractiveGraphTriage() {
   }, []);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-80 h-80 bg-violet-500/[0.04] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-blue-500/[0.04] rounded-full blur-3xl pointer-events-none" />
@@ -763,7 +765,7 @@ function InteractiveGraphTriage() {
                 })}
               </div>
               {/* Mode description */}
-              <p className="text-center text-[10px] text-white/30 mt-2">
+              <p className="text-center text-xs text-white/30 mt-2">
                 {MODE_CONFIG[analysisMode].description}
               </p>
             </motion.div>
@@ -811,8 +813,8 @@ function InteractiveGraphTriage() {
                     className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm rounded-2xl"
                   >
                     <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                      animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                      transition={inView ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                     >
                       <Network className="h-8 w-8 text-violet-400" />
                     </motion.div>
@@ -831,7 +833,7 @@ function InteractiveGraphTriage() {
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: 0.5 + i * 0.25 }}
-                          className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.06] text-white/40 font-mono"
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.06] text-white/40 font-mono"
                         >
                           {metric}
                         </motion.span>
@@ -1222,8 +1224,8 @@ function InteractiveGraphTriage() {
                 {animatingPhase === 'computing' ? (
                   <>
                     <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                      transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                     >
                       <Network className="h-4 w-4" />
                     </motion.div>
@@ -1506,8 +1508,8 @@ function MetricBadge({ label, value, maxVal, isInteger }: { label: string; value
   return (
     <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-1.5">
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[9px] text-white/40">{label}</span>
-        <span className="text-[9px] font-mono text-white/60">{isInteger ? value : value.toFixed(2)}</span>
+        <span className="text-[10px] text-white/40">{label}</span>
+        <span className="text-[10px] font-mono text-white/60">{isInteger ? value : value.toFixed(2)}</span>
       </div>
       <div className="h-1 bg-white/[0.06] rounded-full overflow-hidden">
         <div
@@ -1643,7 +1645,7 @@ function CriticalPathPanel({ step }: { step: number }) {
           Critical Path
         </p>
       </div>
-      <p className="text-[10px] text-white/40">
+      <p className="text-xs text-white/40">
         Longest dependency chain: {CRITICAL_PATH_IDS.length} nodes, ~28 estimated days
       </p>
       <div className="space-y-1">
@@ -1654,7 +1656,7 @@ function CriticalPathPanel({ step }: { step: number }) {
           const color = STATUS_COLORS[node.status];
           return (
             <div key={id} className="flex items-center gap-2">
-              <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-mono transition-colors ${
+              <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-mono transition-colors ${
                 isReached ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40' : 'bg-white/[0.04] text-white/30 border border-white/[0.08]'
               }`}>
                 {i + 1}
@@ -1665,7 +1667,7 @@ function CriticalPathPanel({ step }: { step: number }) {
               <span className={`text-xs transition-colors ${isReached ? 'text-white/80' : 'text-white/30'}`}>
                 {node.label}
               </span>
-              <span className={`text-[9px] ml-auto ${color.text}`}>
+              <span className={`text-[10px] ml-auto ${color.text}`}>
                 {color.label}
               </span>
             </div>
@@ -1698,7 +1700,7 @@ function CycleDetectionPanel() {
           Cycle Detected
         </p>
       </div>
-      <p className="text-[10px] text-white/40">
+      <p className="text-xs text-white/40">
         Circular dependency found between {cycleNodes.length} nodes. This creates a deadlock where no node can be completed first.
       </p>
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1753,7 +1755,7 @@ function QuickWinsPanel({
           Quick Wins
         </p>
       </div>
-      <p className="text-[10px] text-white/40">
+      <p className="text-xs text-white/40">
         Tasks with zero blockers that can be started immediately for free velocity.
       </p>
       {nodes.map((node, i) => (
@@ -1773,8 +1775,8 @@ function QuickWinsPanel({
           <Star className="h-3 w-3 text-yellow-400 shrink-0" />
           <span className="text-xs text-white/70 flex-1">{node.label}</span>
           <div className="flex flex-col items-end">
-            <span className="text-[9px] font-mono text-white/40">0 blockers</span>
-            <span className="text-[9px] font-mono text-white/30">{node.age}d old</span>
+            <span className="text-[10px] font-mono text-white/40">0 blockers</span>
+            <span className="text-[10px] font-mono text-white/30">{node.age}d old</span>
           </div>
         </motion.button>
       ))}
@@ -1811,7 +1813,7 @@ function BottleneckPanel({
           Bottleneck Analysis
         </p>
       </div>
-      <p className="text-[10px] text-white/40">
+      <p className="text-xs text-white/40">
         High betweenness centrality nodes that sit on many shortest paths between other issues.
       </p>
       {nodes.map((node, i) => {
@@ -1846,8 +1848,8 @@ function BottleneckPanel({
               />
             </div>
             <div className="flex items-center justify-between mt-1">
-              <span className="text-[9px] text-white/30">Blocks {node.metrics.outDegree} issues</span>
-              <span className="text-[9px] text-white/30">k-core: {node.metrics.kCore}</span>
+              <span className="text-[10px] text-white/30">Blocks {node.metrics.outDegree} issues</span>
+              <span className="text-[10px] text-white/30">k-core: {node.metrics.kCore}</span>
             </div>
           </motion.button>
         );
@@ -1878,12 +1880,12 @@ function RecommendationsPanel() {
           transition={{ type: 'spring', stiffness: 200, damping: 25, delay: 0.3 + i * 0.05 }}
           className="flex items-start gap-2 py-1.5"
         >
-          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-semibold uppercase shrink-0 mt-0.5 ${IMPACT_COLORS[rec.impact]}`}>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold uppercase shrink-0 mt-0.5 ${IMPACT_COLORS[rec.impact]}`}>
             {rec.impact}
           </span>
           <div className="min-w-0">
-            <p className="text-[11px] text-white/70 leading-tight">{rec.action}</p>
-            <p className="text-[9px] text-white/30 mt-0.5">{rec.reason}</p>
+            <p className="text-xs text-white/70 leading-tight">{rec.action}</p>
+            <p className="text-xs text-white/30 mt-0.5">{rec.reason}</p>
           </div>
         </motion.div>
       ))}

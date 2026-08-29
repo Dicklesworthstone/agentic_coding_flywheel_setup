@@ -62,7 +62,13 @@ export default function ReconnectUbuntuPage() {
     router.push(withCurrentSearch("/wizard/verify-key-connection"));
   }, [router, markComplete]);
 
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardLabel = `I'm connected as ${sshUsername.trim() || "ubuntu"}`;
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating,
+    loading: isNavigating,
+    label: forwardLabel,
+  });
 
   if (!ready || !vpsIP) {
     return (
@@ -306,8 +312,8 @@ export default function ReconnectUbuntuPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
-          {isNavigating ? "Loading..." : `I'm connected as ${effectiveUsername}`}
+        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+          {isNavigating ? "Loading..." : forwardLabel}
         </Button>
       </div>
     </div>

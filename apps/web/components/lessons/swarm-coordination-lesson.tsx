@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Workflow,
   Terminal,
@@ -564,12 +564,14 @@ function HexAgentNode({
   cx,
   cy,
   hasConflict,
+  active,
 }: {
   agent: HexAgent;
   status: AgentStatus;
   cx: number;
   cy: number;
   hasConflict: boolean;
+  active: boolean;
 }) {
   const palette = STATUS_PALETTE[status];
   const isActive = status === 'working' || status === 'sending' || status === 'spawning' || status === 'merging';
@@ -587,8 +589,8 @@ function HexAgentNode({
           fill="none"
           stroke={agent.color}
           strokeWidth={1.5}
-          animate={{ strokeOpacity: [0.1, 0.5, 0.1] }}
-          transition={{ duration: 2, repeat: Infinity }}
+          animate={active ? { strokeOpacity: [0.1, 0.5, 0.1] } : { strokeOpacity: 0.1 }}
+          transition={active ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
         />
       )}
 
@@ -599,8 +601,12 @@ function HexAgentNode({
           fill="none"
           stroke="#ef4444"
           strokeWidth={2}
-          animate={{ strokeOpacity: [0.2, 0.8, 0.2], scale: [1, 1.03, 1] }}
-          transition={{ duration: 0.8, repeat: Infinity }}
+          animate={
+            active
+              ? { strokeOpacity: [0.2, 0.8, 0.2], scale: [1, 1.03, 1] }
+              : { strokeOpacity: 0.2, scale: 1 }
+          }
+          transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
         />
       )}
 
@@ -687,8 +693,8 @@ function HexAgentNode({
           fontSize="8"
           fontWeight="bold"
           fontFamily="system-ui"
-          animate={{ opacity: [1, 0.4, 1] }}
-          transition={{ duration: 0.6, repeat: Infinity }}
+          animate={active ? { opacity: [1, 0.4, 1] } : { opacity: 1 }}
+          transition={active ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
         >
           !
         </motion.text>
@@ -696,13 +702,13 @@ function HexAgentNode({
 
       {/* Typing indicator for working agents */}
       {(status === 'working' || status === 'sending' || status === 'spawning') && (
-        <TypingDotsRow cx={cx} cy={cy + 26} color={agent.color} />
+        <TypingDotsRow cx={cx} cy={cy + 26} color={agent.color} active={active} />
       )}
     </motion.g>
   );
 }
 
-function TypingDotsRow({ cx, cy, color }: { cx: number; cy: number; color: string }) {
+function TypingDotsRow({ cx, cy, color, active }: { cx: number; cy: number; color: string; active: boolean }) {
   return (
     <g>
       {[0, 1, 2].map((i) => (
@@ -712,8 +718,8 @@ function TypingDotsRow({ cx, cy, color }: { cx: number; cy: number; color: strin
           cy={cy}
           r={1.8}
           fill={color}
-          animate={{ opacity: [0.25, 0.9, 0.25] }}
-          transition={{ duration: 0.7, repeat: Infinity, delay: i * 0.15 }}
+          animate={active ? { opacity: [0.25, 0.9, 0.25] } : { opacity: 0.25 }}
+          transition={active ? { duration: 0.7, repeat: Infinity, delay: i * 0.15 } : { duration: 0.2 }}
         />
       ))}
     </g>
@@ -756,6 +762,7 @@ function MessageDot({
   y2,
   color,
   delayMs,
+  active,
 }: {
   x1: number;
   y1: number;
@@ -763,27 +770,36 @@ function MessageDot({
   y2: number;
   color: string;
   delayMs: number;
+  active: boolean;
 }) {
   return (
     <motion.circle
       r={4}
       fill={color}
       initial={{ cx: x1, cy: y1, opacity: 0.9 }}
-      animate={{
-        cx: [x1, x2],
-        cy: [y1, y2],
-        opacity: [0.9, 0.9, 0.4],
-        scale: [0.8, 1.2, 0.6],
-      }}
-      transition={{
-        duration: 1.8,
-        repeat: Infinity,
-        repeatDelay: 0.8,
-        delay: delayMs / 1000,
-        type: 'spring',
-        stiffness: 60,
-        damping: 14,
-      }}
+      animate={
+        active
+          ? {
+              cx: [x1, x2],
+              cy: [y1, y2],
+              opacity: [0.9, 0.9, 0.4],
+              scale: [0.8, 1.2, 0.6],
+            }
+          : { cx: x1, cy: y1, opacity: 0.9, scale: 0.8 }
+      }
+      transition={
+        active
+          ? {
+              duration: 1.8,
+              repeat: Infinity,
+              repeatDelay: 0.8,
+              delay: delayMs / 1000,
+              type: 'spring',
+              stiffness: 60,
+              damping: 14,
+            }
+          : { duration: 0.2 }
+      }
     />
   );
 }
@@ -922,7 +938,7 @@ function ProgressBar({ progress }: { progress: number }) {
         transition={{ type: 'spring', stiffness: 80, damping: 20 }}
       />
       <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[9px] font-bold text-white/70 drop-shadow-sm">
+        <span className="text-[10px] font-bold text-white/70 drop-shadow-sm">
           {progress}%
         </span>
       </div>
@@ -961,7 +977,7 @@ function PanelTabBar({
         >
           {t.label}
           {t.badge !== undefined && (
-            <span className="ml-1 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-amber-500/20 px-1 text-[8px] font-bold text-amber-400">
+            <span className="ml-1 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-amber-500/20 px-1 text-[10px] font-bold text-amber-400">
               {t.badge}
             </span>
           )}
@@ -987,6 +1003,8 @@ function InteractiveSwarmOrchestrator() {
   const [playing, setPlaying] = useState(false);
   const [activePanel, setActivePanel] = useState<PanelTab>('queue');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const totalSteps = SCENARIOS.length;
   const scenario = SCENARIOS[step];
@@ -1064,7 +1082,7 @@ function InteractiveSwarmOrchestrator() {
   }
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-48 h-48 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-32 h-32 bg-violet-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -1157,6 +1175,7 @@ function InteractiveSwarmOrchestrator() {
                   y2={tc.y}
                   color={msg.color}
                   delayMs={mi * 400}
+                  active={inView}
                 />
               );
             })}
@@ -1175,6 +1194,7 @@ function InteractiveSwarmOrchestrator() {
                 cx={center.x}
                 cy={center.y}
                 hasConflict={hasConflict}
+                active={inView}
               />
             );
           })}
@@ -1198,7 +1218,7 @@ function InteractiveSwarmOrchestrator() {
           const status = scenario.agentStatuses[agent.id] ?? 'idle';
           const palette = STATUS_PALETTE[status as AgentStatus];
           return (
-            <div key={agent.id} className="flex items-center gap-1 text-[9px]">
+            <div key={agent.id} className="flex items-center gap-1 text-[10px]">
               <div
                 className="h-2 w-2 rounded-full"
                 style={{ backgroundColor: agent.color, opacity: 0.8 }}

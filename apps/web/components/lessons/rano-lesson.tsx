@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Network,
   Terminal,
@@ -657,7 +657,7 @@ function MetricGauge({
   return (
     <div className="space-y-1">
       <div className="flex justify-between items-center">
-        <span className="text-[9px] text-white/40 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] text-white/40 uppercase tracking-wider">{label}</span>
         <span className="text-[10px] font-mono text-white/60">
           {status === 'down' ? '--' : `${value.toLocaleString()}${unit}`}
         </span>
@@ -699,10 +699,10 @@ function ThreatPanel({ threats }: { threats: ThreatEvent[] }) {
             <div className={`mt-0.5 h-2 w-2 rounded-full shrink-0 ${s.dot}`} />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${s.text}`}>{t.severity}</span>
-                <span className="text-[9px] text-white/30 font-mono">{t.timestamp}</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${s.text}`}>{t.severity}</span>
+                <span className="text-[10px] text-white/30 font-mono">{t.timestamp}</span>
               </div>
-              <p className="text-[10px] text-white/60 leading-tight mt-0.5 truncate">{t.message}</p>
+              <p className="text-xs text-white/60 leading-tight mt-0.5 truncate">{t.message}</p>
             </div>
           </motion.div>
         );
@@ -746,7 +746,7 @@ function NocStatCard({ label, value, icon, color }: { label: string; value: stri
     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-2.5 text-center">
       <div className={`flex items-center justify-center gap-1 ${color} mb-0.5`}>
         {icon}
-        <span className="text-[9px] font-semibold uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
       </div>
       <p className="text-sm font-bold font-mono text-white/80">{value}</p>
     </div>
@@ -766,6 +766,8 @@ function InteractiveTrafficMonitor() {
   const frameRef = useRef<ReturnType<typeof requestAnimationFrame> | null>(null);
   const lastTickRef = useRef<number>(0);
   const spawnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
 
   const activeScenario = scenarios[stepIndex];
 
@@ -804,7 +806,7 @@ function InteractiveTrafficMonitor() {
 
   // Animation loop for packet progress
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || !inView) {
       if (frameRef.current !== null) {
         cancelAnimationFrame(frameRef.current);
         frameRef.current = null;
@@ -837,11 +839,11 @@ function InteractiveTrafficMonitor() {
         frameRef.current = null;
       }
     };
-  }, [isPlaying]);
+  }, [isPlaying, inView]);
 
   // Spawn packets periodically when playing
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || !inView) {
       if (spawnTimerRef.current !== null) {
         clearInterval(spawnTimerRef.current);
         spawnTimerRef.current = null;
@@ -861,7 +863,7 @@ function InteractiveTrafficMonitor() {
       clearInterval(interval);
       spawnTimerRef.current = null;
     };
-  }, [isPlaying, spawnPacket]);
+  }, [isPlaying, inView, spawnPacket]);
 
   const handlePrev = useCallback(() => {
     setStepIndex((i) => Math.max(0, i - 1));
@@ -884,7 +886,7 @@ function InteractiveTrafficMonitor() {
   }, []);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={ref} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-violet-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -898,8 +900,8 @@ function InteractiveTrafficMonitor() {
             <p className="text-sm font-semibold text-white/80">Network Operations Center</p>
             {isPlaying && (
               <motion.div
-                animate={{ opacity: [1, 0.3, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
+                animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+                transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                 className="flex items-center gap-1"
               >
                 <div className="h-2 w-2 rounded-full bg-red-400" />
@@ -948,7 +950,7 @@ function InteractiveTrafficMonitor() {
                   Step {stepIndex + 1}: {activeScenario.title}
                 </span>
               </div>
-              <p className="text-[10px] text-white/40 leading-snug mt-0.5">{activeScenario.description}</p>
+              <p className="text-xs text-white/40 leading-snug mt-0.5">{activeScenario.description}</p>
             </div>
           </motion.div>
         </AnimatePresence>
@@ -993,7 +995,7 @@ function InteractiveTrafficMonitor() {
                 {Object.entries(PACKET_COLORS).map(([type, color]) => (
                   <div key={type} className="flex items-center gap-1">
                     <div className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                    <span className="text-[8px] text-white/30 capitalize">{type}</span>
+                    <span className="text-[10px] text-white/30 capitalize">{type}</span>
                   </div>
                 ))}
               </div>
@@ -1039,7 +1041,7 @@ function InteractiveTrafficMonitor() {
                               />
                               <span className="text-[10px] font-mono text-white/60">{region.shortName}</span>
                             </div>
-                            <span className={`text-[9px] font-bold uppercase tracking-wider ${
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${
                               m.status === 'down' ? 'text-red-400' : m.status === 'degraded' ? 'text-yellow-400' : 'text-emerald-400'
                             }`}>
                               {m.status}
@@ -1062,7 +1064,7 @@ function InteractiveTrafficMonitor() {
                   Threat Detection
                 </span>
                 {activeScenario.threats.length > 0 && (
-                  <span className="text-[9px] font-mono text-red-400">
+                  <span className="text-[10px] font-mono text-red-400">
                     {activeScenario.threats.length} alert{activeScenario.threats.length !== 1 ? 's' : ''}
                   </span>
                 )}
@@ -1093,7 +1095,7 @@ function InteractiveTrafficMonitor() {
                 RANO Command Log
               </span>
             </div>
-            <span className="text-[9px] font-mono text-white/30">
+            <span className="text-[10px] font-mono text-white/30">
               ~ {activeScenario.logs.length} commands
             </span>
           </div>
@@ -1146,8 +1148,8 @@ function InteractiveTrafficMonitor() {
             {isPlaying ? (
               <>
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                  transition={inView ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                 >
                   <Network className="h-4 w-4" />
                 </motion.div>

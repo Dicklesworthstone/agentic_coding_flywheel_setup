@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ACFS_RECOMMENDED_MIN_RAM_GB,
+  PRICING_LAST_UPDATED,
+  VPS_PROVIDERS,
+  VPS_TOP_PICK,
   calculateRequiredSpecs,
+  describePlan,
   getWorkloadProfile,
+  isBelowRamRecommendation,
   validateVPSReadiness,
   type VPSReadinessCheckId,
   type VPSReadinessInput,
@@ -21,6 +27,36 @@ type ProviderReadinessScenario = {
   expectedStatus: VPSReadinessStatus;
   expectedChecks: Partial<Record<VPSReadinessCheckId, VPSReadinessStatus>>;
 };
+
+describe("VPS provider table", () => {
+  test("records when the plan data was last verified", () => {
+    expect(PRICING_LAST_UPDATED).toMatch(/^\d{4}-(0[1-9]|1[0-2])$/);
+  });
+
+  test("steers beginners to a provider whose plans meet the RAM recommendation", () => {
+    expect(VPS_TOP_PICK.id).toBe("contabo");
+    expect(VPS_TOP_PICK.recommended.ramGB).toBeGreaterThanOrEqual(64);
+    expect(VPS_TOP_PICK.budget.ramGB).toBeGreaterThanOrEqual(ACFS_RECOMMENDED_MIN_RAM_GB);
+    expect(isBelowRamRecommendation(VPS_TOP_PICK.recommended)).toBe(false);
+    expect(isBelowRamRecommendation(VPS_TOP_PICK.budget)).toBe(false);
+  });
+
+  test("flags every listed plan below the RAM recommendation with a note", () => {
+    const flagged = VPS_PROVIDERS.flatMap((provider) => [provider.recommended, provider.budget])
+      .filter(isBelowRamRecommendation);
+
+    expect(flagged.map((plan) => plan.name)).toEqual(["VPS-4", "VPS-3"]);
+    for (const plan of flagged) {
+      expect(plan.note).toContain(`${ACFS_RECOMMENDED_MIN_RAM_GB} GB`);
+    }
+  });
+
+  test("describes plans for guide prose from the data table", () => {
+    expect(describePlan(VPS_TOP_PICK.recommended)).toBe(
+      "Cloud VPS 16 (64GB RAM, 16 vCPU): ~$43/month"
+    );
+  });
+});
 
 describe("VPS capacity sizing", () => {
   test("keeps the wizard calculator aligned with the standard ACFS profile", () => {
@@ -45,11 +81,11 @@ describe("validateVPSReadiness", () => {
     const scenarios: ProviderReadinessScenario[] = [
       {
         category: "supported",
-        selectedRecommendation: "Contabo Cloud VPS 50",
+        selectedRecommendation: "Contabo Cloud VPS 16",
         artifactPath: "apps/web/lib/vpsProviders.test.ts#provider-readiness-matrix",
         input: {
           providerId: "contabo",
-          planName: "Cloud VPS 50",
+          planName: "Cloud VPS 16",
           ubuntuVersion: "25.10",
           region: "us",
           targetAgents: 10,
@@ -99,7 +135,7 @@ describe("validateVPSReadiness", () => {
         expectedStatus: "unsupported",
         expectedChecks: {
           provider: "supported",
-          plan: "supported",
+          plan: "borderline",
           os: "unsupported",
           region: "supported",
           capacity: "unsupported",
@@ -124,7 +160,7 @@ describe("validateVPSReadiness", () => {
   test("supports a recommended provider plan, Ubuntu image, region, and target", () => {
     const result = validateVPSReadiness({
       providerId: "contabo",
-      planName: "Cloud VPS 50",
+      planName: "Cloud VPS 16",
       ubuntuVersion: "25.10",
       region: "us",
       targetAgents: 10,
@@ -133,14 +169,32 @@ describe("validateVPSReadiness", () => {
 
     expect(result.status).toBe("supported");
     expect(result.provider?.name).toBe("Contabo");
-    expect(result.plan?.name).toBe("Cloud VPS 50");
+    expect(result.plan?.name).toBe("Cloud VPS 16");
     expect(checkStatus(result, "capacity")).toBe("supported");
+  });
+
+  test("marks a below-recommendation plan as borderline even when the target fits", () => {
+    const result = validateVPSReadiness({
+      providerId: "ovh",
+      planName: "VPS-4",
+      ubuntuVersion: "25.10",
+      region: "us-east",
+      targetAgents: 3,
+      workloadId: "light",
+    });
+
+    expect(checkStatus(result, "capacity")).toBe("supported");
+    expect(checkStatus(result, "plan")).toBe("borderline");
+    expect(result.status).toBe("borderline");
+    expect(result.checks.find((check) => check.id === "plan")?.message).toContain(
+      `below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS recommendation`
+    );
   });
 
   test("marks a budget plan as borderline when the target leaves little headroom", () => {
     const result = validateVPSReadiness({
       providerId: "contabo",
-      planName: "Cloud VPS 40",
+      planName: "Cloud VPS 12",
       ubuntuVersion: "24.04",
       region: "us",
       targetAgents: 10,
@@ -170,7 +224,7 @@ describe("validateVPSReadiness", () => {
   test("surfaces weak provider regions as advisory warnings", () => {
     const result = validateVPSReadiness({
       providerId: "contabo",
-      planName: "Cloud VPS 50",
+      planName: "Cloud VPS 16",
       ubuntuVersion: "25.10",
       region: "asia",
       targetAgents: 10,
@@ -199,9 +253,10 @@ describe("validateVPSReadiness", () => {
   });
 
   test("keeps unknown plans advisory even for a known provider", () => {
+    // Cloud VPS 8 is a real Contabo plan (24 GB) that ACFS deliberately does not list.
     const result = validateVPSReadiness({
       providerId: "contabo",
-      planName: "Cloud VPS 10",
+      planName: "Cloud VPS 8",
       ubuntuVersion: "25.10",
       region: "us",
       targetAgents: 10,

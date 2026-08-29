@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Terminal,
   Code2,
@@ -496,6 +496,8 @@ function InteractiveArchitecture() {
   const [revealedLayers, setRevealedLayers] = useState(1);
   const [terminalLine, setTerminalLine] = useState(0);
   const [isAutoRevealing, setIsAutoRevealing] = useState(true);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   // Auto-reveal layers one by one
   useEffect(() => {
@@ -514,11 +516,12 @@ function InteractiveArchitecture() {
 
   // Cycle terminal commands
   useEffect(() => {
+    if (!inView) return;
     const timer = window.setInterval(() => {
       setTerminalLine((prev) => (prev + 1) % terminalCommands.length);
     }, 3000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [inView]);
 
   const handleComponentClick = useCallback((compId: string) => {
     setSelectedComponent((prev) => (prev === compId ? null : compId));
@@ -543,7 +546,7 @@ function InteractiveArchitecture() {
     : null;
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glow effects */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-violet-500/10 rounded-full blur-3xl pointer-events-none" />

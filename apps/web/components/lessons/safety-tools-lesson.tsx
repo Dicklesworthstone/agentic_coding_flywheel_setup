@@ -2,7 +2,7 @@
 
 import type React from "react";
 import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Shield,
   ShieldAlert,
@@ -529,6 +529,8 @@ function InteractiveSafetyDemo() {
   ]);
   const eventCounterRef = useRef(3);
   const dcgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
   const slbTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const typedText = useTypewriter(
@@ -626,7 +628,7 @@ function InteractiveSafetyDemo() {
   const springSmooth = { type: "spring" as const, stiffness: 200, damping: 25 };
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background ambient glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-red-500/[0.06] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-emerald-500/[0.06] rounded-full blur-3xl pointer-events-none" />
@@ -696,8 +698,8 @@ function InteractiveSafetyDemo() {
                     {dcgResult !== null ? activeDcgCmd.cmd : typedText}
                     {dcgResult === null && (
                       <motion.span
-                        animate={{ opacity: [1, 0] }}
-                        transition={{ duration: 0.8, repeat: Infinity }}
+                        animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+                        transition={inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
                         className="text-white/60"
                       >
                         |
@@ -732,7 +734,7 @@ function InteractiveSafetyDemo() {
                           transition={{ ...springSmooth, delay: 0.15 }}
                           className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2"
                         >
-                          <p className="text-[11px] text-red-300/80">
+                          <p className="text-xs text-red-300/80">
                             <span className="text-red-400 font-semibold">Rule:</span>{" "}
                             {activeDcgCmd.rule}
                           </p>
@@ -1011,8 +1013,8 @@ function InteractiveSafetyDemo() {
               Security Events
             </span>
             <motion.div
-              animate={{ opacity: [0.3, 1, 0.3] }}
-              transition={{ duration: 2, repeat: Infinity }}
+              animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
+              transition={inView ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
               className="ml-auto h-2 w-2 rounded-full bg-emerald-400"
             />
             <span className="text-[10px] text-white/30">LIVE</span>
@@ -1031,7 +1033,7 @@ function InteractiveSafetyDemo() {
                   >
                     <span className="text-white/20 shrink-0">[{event.time}]</span>
                     <span
-                      className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                      className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
                         event.type === "blocked"
                           ? "bg-red-500/20 text-red-400"
                           : event.type === "allowed"

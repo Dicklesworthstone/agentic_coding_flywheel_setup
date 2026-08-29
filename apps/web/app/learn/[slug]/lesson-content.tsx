@@ -555,7 +555,7 @@ export function LessonContent({ lesson }: Props) {
 
   if (isLocked) {
     return (
-      <div className="min-h-screen bg-black relative overflow-x-hidden">
+      <div className="min-h-screen bg-black relative overflow-x-clip">
         <div className="fixed inset-0 pointer-events-none">
           <FloatingOrb className="w-[700px] h-[700px] bg-primary/10 blur-[180px] -top-48 left-1/4" />
           <FloatingOrb className="w-[420px] h-[420px] bg-violet-500/10 blur-[120px] bottom-0 right-0" delay={2} />
@@ -600,7 +600,7 @@ export function LessonContent({ lesson }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-black relative overflow-x-hidden">
+    <div className="min-h-screen bg-black relative overflow-x-clip">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Large primary orb */}

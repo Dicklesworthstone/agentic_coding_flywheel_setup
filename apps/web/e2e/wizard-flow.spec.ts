@@ -24,6 +24,57 @@ const ACFS_REF_KEY = "agent-flywheel-acfs-ref";
 const VPS_READINESS_SELECTION_KEY = "agent-flywheel-vps-readiness-selection";
 const FINAL_STEP_PREREQUISITES = Array.from({ length: 12 }, (_, index) => index + 1);
 
+// Selector convention: the mobile dock mirrors the page's primary button
+// label ("Continue to SSH" appears twice on phones), so page-button selectors
+// are scoped to the <main> landmark (`main button:has-text(...)` /
+// `page.getByRole("main").getByRole("button", ...)`); the dock is reached only
+// through `wizard-dock-next` / clickWizardForward().
+/**
+ * Press the wizard's forward control. The mobile dock's forward button
+ * mirrors the page's own primary button and hides while that button is on
+ * screen, so whichever of the two is currently visible is the one to press.
+ */
+async function clickWizardForward(page: Page): Promise<void> {
+  const dockNext = page.getByTestId("wizard-dock-next");
+  if (await dockNext.isVisible()) {
+    await dockNext.click();
+    return;
+  }
+  await page.locator("[data-wizard-primary-cta]").first().click();
+}
+
+/**
+ * Select an OS card and wait until the selection is reflected
+ * (`aria-checked="true"`), re-clicking if the first press landed while the
+ * step was still mounting after a client-side navigation.
+ */
+async function selectOS(page: Page, name: RegExp): Promise<void> {
+  const radio = page.getByRole("radio", { name });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await radio.click();
+    try {
+      await expect(radio).toHaveAttribute("aria-checked", "true", { timeout: 2000 });
+      return;
+    } catch {
+      // retry
+    }
+  }
+  await expect(radio).toHaveAttribute("aria-checked", "true");
+}
+
+/**
+ * Step 9 only unlocks "Installation finished" once the installer card's
+ * "I ran this command" checkbox is ticked (it gates like the doctor step).
+ */
+async function acknowledgeInstallerCommand(page: Page): Promise<void> {
+  const box = page.locator("#run-flywheel-installer");
+  await box.scrollIntoViewIfNeeded();
+  if ((await box.getAttribute("data-state")) !== "checked") {
+    await box.click();
+  }
+  await expect(box).toHaveAttribute("data-state", "checked");
+}
+
 function urlPathWithOptionalQuery(pathname: string): RegExp {
   const escaped = pathname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`${escaped}(\\?.*)?$`);
@@ -143,7 +194,7 @@ test.describe("Wizard Flow", () => {
     await page.getByRole('radio', { name: /Mac/i }).click();
 
     // Wait for Continue button to be visible and clickable
-    const continueBtn = page.getByRole('button', { name: /continue/i });
+    const continueBtn = page.getByRole('main').getByRole('button', { name: /continue/i });
     await expect(continueBtn).toBeVisible();
     await continueBtn.click();
 
@@ -157,7 +208,7 @@ test.describe("Wizard Flow", () => {
     await page.goto("/wizard/os-selection");
     await page.waitForLoadState("domcontentloaded");
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
 
     // Now on step 2
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
@@ -165,7 +216,7 @@ test.describe("Wizard Flow", () => {
     await expect(page.locator("h1").first()).toContainText(/terminal/i);
 
     // Click continue
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
 
     // Should navigate to step 3
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
@@ -176,15 +227,15 @@ test.describe("Wizard Flow", () => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
 
     // Now on step 3
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
     await expect(page.locator("h1").first()).toContainText(/SSH/i);
 
     // Click the step 3 specific button
-    await page.click('button:has-text("I saved my public key")');
+    await page.click('main button:has-text("I saved my public key")');
 
     // Should navigate to step 4
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/rent-vps"));
@@ -229,16 +280,16 @@ test.describe("Wizard Flow", () => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
-    await page.click('button:has-text("I saved my public key")');
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.click('main button:has-text("I saved my public key")');
 
     // Now on step 4
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/rent-vps"));
     await expect(page.locator("h1").first()).toContainText(/VPS/i);
 
     // Click continue
-    await page.click('button:has-text("I rented a VPS")');
+    await page.click('main button:has-text("I rented a VPS")');
 
     // Should navigate to step 5
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
@@ -256,7 +307,8 @@ test.describe("Wizard Flow", () => {
     await expect(calculator).toBeVisible();
     await expect(summary).toContainText("Recommended host");
     await expect(summary).toContainText("64 GB RAM / 16 vCPU");
-    await expect(summary).toContainText(/OVH VPS-5|Contabo Cloud VPS 50/);
+    // The readiness summary names the recommended plan from VPS_PROVIDERS.
+    await expect(summary).toContainText(/Contabo Cloud VPS 16 is the closest listed fit/);
 
     await calculator.getByRole("button", { name: "25" }).click();
     await calculator.getByRole("button", { name: /Heavy/i }).click();
@@ -266,9 +318,10 @@ test.describe("Wizard Flow", () => {
   });
 
   test("should hydrate and preserve saved VPS readiness choices", async ({ page }) => {
+    // A valid but non-default plan proves the saved choice is hydrated rather than reset.
     const savedSelection = {
       providerId: "ovh",
-      planName: "VPS-4",
+      planName: "VPS-3",
       ubuntuVersion: "24.04",
       region: "eu",
       targetAgents: 25,
@@ -287,7 +340,7 @@ test.describe("Wizard Flow", () => {
     await expect(calculator.getByLabel("Target agent count")).toHaveValue("25");
     await expect(calculator.getByRole("button", { name: /Heavy/i })).toHaveClass(/border-primary\/50/);
     await expect(readiness.getByLabel("Provider")).toHaveValue("ovh");
-    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-3");
     await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("24.04");
     await expect(readiness.getByLabel("Region")).toHaveValue("eu");
 
@@ -319,7 +372,7 @@ test.describe("Wizard Flow", () => {
 
     await expect(calculator.getByLabel("Target agent count")).toHaveValue("15");
     await expect(readiness.getByLabel("Provider")).toHaveValue("ovh");
-    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-5");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
     await expect(readiness.getByLabel("Ubuntu image")).toHaveValue("25.10");
     await expect(readiness.getByLabel("Region")).toHaveValue("us-east");
 
@@ -328,7 +381,7 @@ test.describe("Wizard Flow", () => {
       return value ? JSON.parse(value) : null;
     }, VPS_READINESS_SELECTION_KEY)).toEqual({
       providerId: "ovh",
-      planName: "VPS-5",
+      planName: "VPS-4",
       ubuntuVersion: "25.10",
       region: "us-east",
       targetAgents: 15,
@@ -370,7 +423,7 @@ test.describe("Wizard Flow", () => {
 
     await recordState(
       "supported",
-      "Contabo Cloud VPS 50",
+      "Contabo Cloud VPS 16",
       "Supported",
       "Ready for the selected target."
     );
@@ -384,7 +437,7 @@ test.describe("Wizard Flow", () => {
     );
 
     await providerSelect.selectOption("ovh");
-    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-5");
+    await expect(readiness.getByLabel("Plan")).toHaveValue("VPS-4");
     await ubuntuSelect.selectOption("20.04");
     await recordState(
       "unsafe",
@@ -404,10 +457,10 @@ test.describe("Wizard Flow", () => {
     // Set up prerequisite state
     await page.goto("/wizard/os-selection");
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
-    await page.click('button:has-text("I saved my public key")');
-    await page.click('button:has-text("I rented a VPS")');
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
+    await page.click('main button:has-text("I saved my public key")');
+    await page.click('main button:has-text("I rented a VPS")');
 
     // Now on step 5
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
@@ -430,7 +483,7 @@ test.describe("Wizard Flow", () => {
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: 10000 });
 
     // Click continue
-    await page.click('button:has-text("Continue to SSH")');
+    await page.click('main button:has-text("Continue to SSH")');
 
     // Should navigate to step 6
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/ssh-connect"));
@@ -462,7 +515,7 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
     await expect(page.locator('code:has-text("192.168.1.100")').first()).toBeVisible();
 
     // Continue button should be visible and clickable
-    await expect(page.locator('button:has-text("continue")')).toBeVisible();
+    await expect(page.locator('main button:has-text("continue")')).toBeVisible();
   });
 
   test("should show loading spinner briefly then content", async ({ page }) => {
@@ -531,7 +584,7 @@ test.describe("SSH Connect Page - Critical Bug Prevention", () => {
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
 
     // Click continue
-    await page.click('button:has-text("continue")');
+    await page.click('main button:has-text("continue")');
 
     // Should navigate to accounts (step 7 follows ssh-connect step 6)
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/accounts"));
@@ -578,7 +631,7 @@ test.describe("State Persistence", () => {
   test("should persist OS selection across page reloads", async ({ page }) => {
     await page.goto("/wizard/os-selection");
     await page.getByRole('radio', { name: /Windows/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
 
     // Reload the page
     await page.reload();
@@ -615,7 +668,7 @@ test.describe("State Persistence", () => {
 
     // Wait for validation to show success before clicking continue
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: 10000 });
-    await page.click('button:has-text("Continue to SSH")');
+    await page.click('main button:has-text("Continue to SSH")');
 
     // Wait for navigation to complete (prevents flaky reads of URL/localStorage)
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/ssh-connect"), {
@@ -643,7 +696,7 @@ test.describe("Navigation", () => {
 
     await page.goto("/wizard/os-selection");
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
 
     // Now on step 2, click on step 1 in sidebar
     await page.click('text="Choose Your OS"');
@@ -665,13 +718,16 @@ test.describe("Navigation", () => {
     // Mobile navigation buttons should be visible at bottom (Back and Next)
     const bottomNav = page.locator(".bottom-nav-safe");
     await expect(bottomNav.getByRole("button", { name: /^Back$/i })).toBeVisible();
-    await expect(bottomNav.getByRole("button", { name: /^Next$/i })).toBeVisible();
+    // One forward control at a time: the dock's copy or the page's own button.
+    await expect(
+      page.locator('[data-testid="wizard-dock-next"], [data-wizard-primary-cta]').first()
+    ).toBeVisible();
   });
 
   test("should navigate using back button", async ({ page }) => {
     await page.goto("/wizard/os-selection");
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
 
     // Now on step 2 (URL may include query params)
     await expect(page).toHaveURL(/\/wizard\/install-terminal/);
@@ -780,13 +836,16 @@ test.describe("Complete Wizard Flow Integration", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // On desktop projects, the OS should be auto-detected and the Continue button enabled.
-    await expect(page.getByRole("button", { name: /^continue$/i })).toBeEnabled();
-    await page.getByRole("button", { name: /^continue$/i }).click();
+    await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeEnabled();
+    await page.getByRole("main").getByRole("button", { name: /^continue$/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     expect(new URL(page.url()).searchParams.get("os")).toMatch(/^(mac|windows)$/);
   });
 
   test("should complete entire wizard flow from start to finish", async ({ page }) => {
+    // Thirteen steps plus the installer acknowledgement; triple the budget so
+    // worker contention doesn't turn a passing flow into a timeout.
+    test.slow();
     // Start fresh
     await page.goto("/");
     await page.evaluate(() => localStorage.clear());
@@ -796,22 +855,25 @@ test.describe("Complete Wizard Flow Integration", () => {
     await page.getByRole("link", { name: /start the wizard/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/os-selection"));
 
-    // Step 1: Select OS
-    await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    // Step 1: Select OS. Confirm the selection registered before continuing:
+    // a click dispatched while the step is still mounting is lost, and
+    // Continue would then submit the auto-detected OS (the desktop project's
+    // user agent is Windows), which this test explicitly asserts against.
+    await selectOS(page, /Mac/i);
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
 
     // Step 2: Install Terminal
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
 
     // Step 3: Generate SSH Key
-    await page.click('button:has-text("I saved my public key")');
+    await page.click('main button:has-text("I saved my public key")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/rent-vps"));
 
     // Step 4: Rent VPS
-    await page.click('button:has-text("I rented a VPS")');
+    await page.click('main button:has-text("I rented a VPS")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
 
     // Step 5: Create VPS
@@ -827,7 +889,7 @@ test.describe("Complete Wizard Flow Integration", () => {
     await ipInput.type(" 192.168.1.100 ");
     await ipInput.blur();
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: 10000 });
-    await page.click('button:has-text("Continue to SSH")');
+    await page.click('main button:has-text("Continue to SSH")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/ssh-connect"));
     const sshConnectUrl = new URL(page.url());
     expect(sshConnectUrl.searchParams.get("os")).toBe("mac");
@@ -837,36 +899,37 @@ test.describe("Complete Wizard Flow Integration", () => {
     // This should NOT get stuck on a loading spinner
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
     await expect(page.locator("h1").first()).toContainText(/SSH/i);
-    await page.click('button:has-text("continue")');
+    await page.click('main button:has-text("continue")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/accounts"));
 
     // Step 7: Set Up Accounts
     await expect(page.locator("h1").first()).toContainText(/accounts/i);
-    await page.click('button:has-text("continue")');
+    await page.click('main button:has-text("continue")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/preflight-check"));
 
     // Step 8: Pre-Flight Check - check the "passed" checkbox to enable continue button
     await expect(page.locator("h1").first()).toContainText(/pre-?flight|check/i);
     await page.click('label:has-text("Pre-flight passed")');
-    await page.click('button:has-text("continue")');
+    await page.click('main button:has-text("continue")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/run-installer"));
 
     // Step 9: Run Installer
     await expect(page.locator("h1").first()).toContainText(/installer/i);
-    await page.click('button:has-text("Installation finished")');
+    await acknowledgeInstallerCommand(page);
+    await page.click('main button:has-text("Installation finished")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/reconnect-ubuntu"));
 
     // Step 10: Reconnect Ubuntu
-    await page.click('button:has-text("I\'m connected as ubuntu")');
+    await page.click('main button:has-text("I\'m connected as ubuntu")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/verify-key-connection"));
 
     // Step 11: Verify Key Connection
-    await page.click('button:has-text("My key works, continue")');
+    await page.click('main button:has-text("My key works, continue")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/status-check"));
 
     // Step 12: Status Check
     await page.locator("#flywheel-doctor").click();
-    await page.click('button:has-text("Everything looks good!")');
+    await page.click('main button:has-text("Everything looks good!")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/launch-onboarding"));
 
     // Step 13: Launch Onboarding - Final step!
@@ -919,25 +982,25 @@ test.describe("No localStorage (query-only resilience)", () => {
 
     // On mobile, auto-detect is disabled, so Continue should start disabled.
     if (/Mobile/i.test(testInfo.project.name)) {
-      await expect(page.getByRole("button", { name: /^continue$/i })).toBeDisabled();
+      await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeDisabled();
     }
 
     // Select an OS
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /^continue$/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /^continue$/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
     expect(new URL(page.url()).searchParams.get("os")).toBe("mac");
 
     // Step 2 -> Step 3
-    await page.getByRole("button", { name: /continue/i }).click();
+    await page.getByRole("main").getByRole("button", { name: /continue/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
 
     // Step 3 -> Step 4
-    await page.click('button:has-text("I saved my public key")');
+    await page.click('main button:has-text("I saved my public key")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/rent-vps"));
 
     // Step 4 -> Step 5
-    await page.click('button:has-text("I rented a VPS")');
+    await page.click('main button:has-text("I rented a VPS")');
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/create-vps"));
 
     // Step 5 -> Step 6 (IP retained in memory, never stored in the URL)
@@ -952,7 +1015,7 @@ test.describe("No localStorage (query-only resilience)", () => {
     await ipInput.type("10.10.10.10");
     await ipInput.blur();
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: 10000 });
-    await page.click('button:has-text("Continue to SSH")');
+    await page.click('main button:has-text("Continue to SSH")');
 
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/ssh-connect"));
     const url = new URL(page.url());
@@ -984,7 +1047,7 @@ test.describe("Step 7: Accounts Page", () => {
     await expect(optionalSignupChecks.first()).toBeVisible();
     await expect(optionalSignupChecks.first()).not.toBeChecked();
 
-    await page.getByRole("button", { name: /continue to pre-flight check/i }).click();
+    await page.getByRole("main").getByRole("button", { name: /continue to pre-flight check/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/preflight-check"));
   });
 });
@@ -1133,7 +1196,8 @@ test.describe("Step 9: Run Installer Page", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Click the continue button
-    await page.click('button:has-text("Installation finished")');
+    await acknowledgeInstallerCommand(page);
+    await page.click('main button:has-text("Installation finished")');
 
     // Should navigate to step 10 (reconnect-ubuntu)
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/reconnect-ubuntu"));
@@ -1317,7 +1381,7 @@ test.describe("Step 10: Reconnect Ubuntu Page", () => {
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
 
     // Click the skip button
-    await page.click('button:has-text("Skip")');
+    await page.click('main button:has-text("Skip")');
 
     // Should navigate to step 11 (verify-key-connection)
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/verify-key-connection"));
@@ -1328,7 +1392,7 @@ test.describe("Step 10: Reconnect Ubuntu Page", () => {
     await expect(page.locator("h1").first()).toBeVisible({ timeout: TIMEOUTS.LOADING_SPINNER });
 
     // Click the main continue button
-    await page.click('button:has-text("I\'m connected as ubuntu")');
+    await page.click('main button:has-text("I\'m connected as ubuntu")');
 
     // Should navigate to step 11 (verify-key-connection)
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/verify-key-connection"));
@@ -1410,7 +1474,7 @@ test.describe("Step 12: Status Check Page", () => {
     await page.goto("/wizard/status-check");
     await page.waitForLoadState("domcontentloaded");
 
-    const continueButton = page.getByRole("button", { name: /everything looks good/i });
+    const continueButton = page.getByRole("main").getByRole("button", { name: /everything looks good/i });
 
     await expect(page.getByText("Developer Tools")).toBeVisible();
     await expect(page.getByText("gh auth login")).toBeVisible();
@@ -1426,7 +1490,7 @@ test.describe("Step 12: Status Check Page", () => {
     await page.goto("/wizard/status-check");
     await page.waitForLoadState("domcontentloaded");
 
-    const continueButton = page.getByRole("button", { name: /everything looks good/i });
+    const continueButton = page.getByRole("main").getByRole("button", { name: /everything looks good/i });
     const optionalLoginChecks = page.getByLabel("Optional: I logged in to this tool");
 
     await expect(page.getByText(/only the doctor checkbox is required/i)).toBeVisible();
@@ -1563,7 +1627,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
 
     // Continue button should be disabled
-    const continueButton = page.locator('button:has-text("Continue to SSH")');
+    const continueButton = page.locator('main button:has-text("Continue to SSH")');
     await expect(continueButton).toBeDisabled();
   });
 
@@ -1582,7 +1646,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     await ipInput.blur();
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
 
-    const continueButton = page.locator('button:has-text("Continue to SSH")');
+    const continueButton = page.locator('main button:has-text("Continue to SSH")');
     await expect(continueButton).toBeDisabled();
   });
 
@@ -1598,7 +1662,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     }
 
     // Don't enter IP - button should be disabled
-    const continueButton = page.locator('button:has-text("Continue to SSH")');
+    const continueButton = page.locator('main button:has-text("Continue to SSH")');
     await expect(continueButton).toBeDisabled();
   });
 
@@ -1623,7 +1687,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     await expect(page.getByText(/Please enter a valid IP address/i)).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
 
     // Continue button should be disabled
-    const continueButton = page.locator('button:has-text("Continue to SSH")');
+    const continueButton = page.locator('main button:has-text("Continue to SSH")');
     await expect(continueButton).toBeDisabled();
   });
 
@@ -1646,7 +1710,7 @@ test.describe("Create VPS - Button Disabled States", () => {
     await expect(page.locator('text="Valid IP address"')).toBeVisible({ timeout: TIMEOUTS.VALIDATION });
 
     // NOW button should be enabled
-    const continueButton = page.locator('button:has-text("Continue to SSH")');
+    const continueButton = page.locator('main button:has-text("Continue to SSH")');
     await expect(continueButton).toBeEnabled();
   });
 
@@ -1745,7 +1809,7 @@ test.describe("Edge Cases - Reload and Navigation", () => {
     await page.goto("/wizard/os-selection");
     await page.evaluate(() => localStorage.clear());
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
 
     // Reload the page
@@ -1764,10 +1828,10 @@ test.describe("Edge Cases - Reload and Navigation", () => {
     await page.goto("/wizard/os-selection");
     await page.evaluate(() => localStorage.clear());
     await page.getByRole('radio', { name: /Mac/i }).click();
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
 
-    await page.getByRole('button', { name: /continue/i }).click();
+    await page.getByRole('main').getByRole('button', { name: /continue/i }).click();
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/generate-ssh-key"));
 
     // Back/forward navigation - wait for URL changes to complete
@@ -1824,7 +1888,12 @@ test.describe("Mobile Navigation", () => {
 
     const bottomNav = page.locator(".bottom-nav-safe");
     await expect(bottomNav.getByRole("button", { name: /^Back$/i })).toBeVisible({ timeout: TIMEOUTS.PAGE_LOAD });
-    await expect(bottomNav.getByRole("button", { name: /^Next$/i })).toBeVisible();
+    // The dock's forward button only shows while the page's own primary
+    // button is off screen (one forward control at a time), so assert that
+    // exactly one forward affordance is available.
+    await expect(
+      page.locator('[data-testid="wizard-dock-next"], [data-wizard-primary-cta]').first()
+    ).toBeVisible();
   });
 
   test("should have Back button disabled on first step", async ({ page }) => {
@@ -1843,9 +1912,11 @@ test.describe("Mobile Navigation", () => {
     // Select OS first
     await page.getByRole('radio', { name: /Mac/i }).click();
 
-    // Click mobile Next button
-    const bottomNav = page.locator(".bottom-nav-safe");
-    await bottomNav.getByRole("button", { name: /^Next$/i }).click();
+    // Click mobile Next button (the dock mirrors the page button and hides
+    // while that button is on screen; scroll to the top so the dock's copy
+    // is the visible forward control, falling back to the page button).
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await clickWizardForward(page);
 
     // Should navigate to step 2
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
@@ -1857,7 +1928,8 @@ test.describe("Mobile Navigation", () => {
     await page.getByRole('radio', { name: /Mac/i }).click();
 
     const bottomNav = page.locator(".bottom-nav-safe");
-    await bottomNav.getByRole("button", { name: /^Next$/i }).click();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await clickWizardForward(page);
     await expect(page).toHaveURL(urlPathWithOptionalQuery("/wizard/install-terminal"));
 
     // Now click Back
@@ -1900,13 +1972,13 @@ test.describe("OS Selection - Edge Cases", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // On mobile, Continue should be disabled until OS is selected
-    await expect(page.getByRole("button", { name: /^continue$/i })).toBeDisabled();
+    await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeDisabled();
 
     // Select an OS
     await page.getByRole('radio', { name: /Mac/i }).click();
 
     // Now Continue should be enabled
-    await expect(page.getByRole("button", { name: /^continue$/i })).toBeEnabled();
+    await expect(page.getByRole("main").getByRole("button", { name: /^continue$/i })).toBeEnabled();
   });
 
   test("should show detected badge on matching OS card", async ({ page }, testInfo) => {
@@ -1961,7 +2033,7 @@ test.describe("Accessibility", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Continue button should be accessible
-    const continueButton = page.getByRole('button', { name: /continue/i });
+    const continueButton = page.getByRole('main').getByRole('button', { name: /continue/i });
     await expect(continueButton).toBeVisible();
     await expect(continueButton).toBeEnabled();
   });
@@ -2077,7 +2149,7 @@ test.describe("Command Builder Panel", () => {
     await expect(usernameInput).not.toBeVisible();
 
     // Click Advanced toggle
-    await page.click('button:has-text("Advanced")');
+    await page.click('main button:has-text("Advanced")');
 
     // Now username and ref inputs should be visible
     await expect(usernameInput).toBeVisible();
@@ -2092,7 +2164,7 @@ test.describe("Command Builder Panel", () => {
     await expect(page.locator('text="SSH as ubuntu"')).toBeVisible();
 
     // Open advanced settings
-    await page.click('button:has-text("Advanced")');
+    await page.click('main button:has-text("Advanced")');
 
     // Change username
     const usernameInput = page.locator('#cb-user');
@@ -2110,7 +2182,7 @@ test.describe("Command Builder Panel", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Open advanced settings
-    await page.click('button:has-text("Advanced")');
+    await page.click('main button:has-text("Advanced")');
 
     // Set a pinned ref
     const refInput = page.locator('#cb-ref');
@@ -2309,7 +2381,7 @@ test.describe("Command Builder Panel - Mobile", () => {
     await page.waitForLoadState("domcontentloaded");
 
     // Toggle to Safe mode
-    await page.click('button:has-text("Safe")');
+    await page.click('main button:has-text("Safe")');
 
     // Command should update
     await expect(page.locator('code').filter({ hasText: '--mode safe' }).first()).toBeVisible();

@@ -640,7 +640,7 @@ export default function CommandReferencePage() {
   const hasAnyResults = filteredCommands.length > 0;
 
   return (
-    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-hidden">
+    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-clip">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         {/* Large primary orb */}

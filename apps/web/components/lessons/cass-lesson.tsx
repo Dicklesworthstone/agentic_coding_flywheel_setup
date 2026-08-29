@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Search,
   History,
@@ -1013,6 +1013,8 @@ function InteractiveSessionSearch() {
   const [searchProgress, setSearchProgress] = useState(0);
   const searchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const scenario = SEARCH_SCENARIOS[activeScenarioIdx];
 
@@ -1113,7 +1115,7 @@ function InteractiveSessionSearch() {
   const IconForScenario = SCENARIO_ICONS[scenario.icon];
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Decorative glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-emerald-500/8 rounded-full blur-3xl pointer-events-none" />
@@ -1217,12 +1219,8 @@ function InteractiveSessionSearch() {
             </AnimatePresence>
             {(searching || (!hasSearched && terminalLines.length === 0)) && (
               <motion.span
-                animate={{ opacity: [1, 0] }}
-                transition={{
-                  duration: 0.8,
-                  repeat: Infinity,
-                  repeatType: "reverse",
-                }}
+                animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+                transition={inView ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
                 className="inline-block w-2 h-3.5 bg-emerald-400/80"
               />
             )}
@@ -1269,12 +1267,8 @@ function InteractiveSessionSearch() {
             >
               <div className="relative">
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{
-                    duration: 1.2,
-                    repeat: Infinity,
-                    ease: "linear",
-                  }}
+                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                  transition={inView ? { duration: 1.2, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
                 >
                   <Loader2 className="h-8 w-8 text-primary" />
                 </motion.div>
@@ -1781,7 +1775,7 @@ function InteractiveSessionSearch() {
                             >
                               <CatIcon className="h-3 w-3" />
                               {node.label}
-                              <span className="text-[9px] opacity-50 ml-1">
+                              <span className="text-[10px] opacity-50 ml-1">
                                 ({node.connections.length})
                               </span>
                             </motion.div>

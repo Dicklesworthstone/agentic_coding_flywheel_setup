@@ -117,10 +117,11 @@ export default function PreflightCheckPage() {
   }, [goNext]);
 
   // Dock "Next" mirrors "Continue to installer"; the advanced skip stays inline.
-  useWizardForwardNav({
+  const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
     disabled: !canContinue || isNavigating,
     loading: isNavigating,
+    label: "Continue to installer",
   });
 
   if (!ready) {
@@ -286,6 +287,8 @@ export default function PreflightCheckPage() {
         )}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Button
+            ref={forwardCtaRef}
+            data-wizard-primary-cta
             onClick={handleContinue}
             className="bg-primary text-primary-foreground"
             disabled={!canContinue || isNavigating}

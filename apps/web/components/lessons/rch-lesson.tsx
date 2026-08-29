@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Cpu,
   Terminal,
@@ -767,14 +767,14 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
       </div>
 
       {/* Host + latency */}
-      <div className="text-[8px] text-white/30 font-mono mb-2 flex justify-between">
+      <div className="text-[10px] text-white/30 font-mono mb-2 flex justify-between">
         <span>{worker.host}</span>
         <span className={isOffline ? 'text-red-400' : ''}>{isOffline ? 'timeout' : `${worker.latencyMs}ms`}</span>
       </div>
 
       {/* CPU bar */}
       <div className="mb-1">
-        <div className="flex justify-between text-[8px] mb-0.5">
+        <div className="flex justify-between text-[10px] mb-0.5">
           <span className="text-white/40">CPU</span>
           <span className={`font-mono ${worker.cpuPct > 80 ? 'text-amber-400' : 'text-white/40'}`}>{worker.cpuPct}%</span>
         </div>
@@ -789,7 +789,7 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
 
       {/* RAM bar */}
       <div className="mb-1.5">
-        <div className="flex justify-between text-[8px] mb-0.5">
+        <div className="flex justify-between text-[10px] mb-0.5">
           <span className="text-white/40">RAM</span>
           <span className="text-white/40 font-mono">{worker.ramPct}%</span>
         </div>
@@ -805,7 +805,7 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
       {/* Build progress */}
       {worker.buildProgress > 0 && (
         <div>
-          <div className="flex justify-between text-[8px] mb-0.5">
+          <div className="flex justify-between text-[10px] mb-0.5">
             <span className="text-white/40">Build</span>
             <span className={`font-mono ${healthColor(worker.health)}`}>{worker.buildProgress}%</span>
           </div>
@@ -821,7 +821,7 @@ function WorkerCard({ worker, index }: { worker: WorkerNode; index: number }) {
 
       {/* Job label */}
       {worker.job && worker.job !== 'healthy' && worker.job !== 'done' && worker.job !== 'offline' && (
-        <div className={`mt-1.5 text-[8px] font-mono truncate ${healthColor(worker.health)}`}>
+        <div className={`mt-1.5 text-[10px] font-mono truncate ${healthColor(worker.health)}`}>
           {worker.job === 'rsync' ? 'syncing...' : worker.job === 'FAILED' ? 'FAILED' : worker.job}
         </div>
       )}
@@ -851,7 +851,7 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
       <div className="flex items-center gap-2 mb-2">
         <HardDrive className="h-3 w-3 text-amber-400" />
         <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">Build Queue</span>
-        <span className="ml-auto text-[9px] text-white/30 font-mono">{jobs.length} jobs</span>
+        <span className="ml-auto text-[10px] text-white/30 font-mono">{jobs.length} jobs</span>
       </div>
       <div className="space-y-1">
         {jobs.map((job, i) => (
@@ -860,7 +860,7 @@ function BuildQueue({ jobs }: { jobs: BuildJob[] }) {
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ ...SPRING, delay: i * 0.05 }}
-            className={`flex items-center gap-2 px-2 py-1 rounded-md text-[9px] font-mono ${jobStatusBg(job.status)}`}
+            className={`flex items-center gap-2 px-2 py-1 rounded-md text-[10px] font-mono ${jobStatusBg(job.status)}`}
           >
             <span className="text-white/40 w-10 flex-shrink-0">{job.id}</span>
             <span className={`flex-1 truncate ${jobStatusColor(job.status)}`}>{job.crate}</span>
@@ -900,7 +900,7 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
       <div className="space-y-2">
         {/* Local */}
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-mono text-white/40 w-12 flex-shrink-0">Local</span>
+          <span className="text-[10px] font-mono text-white/40 w-12 flex-shrink-0">Local</span>
           <div className="flex-1 h-5 rounded-md bg-white/[0.04] border border-white/[0.06] overflow-hidden relative">
             <motion.div
               className="h-full bg-gradient-to-r from-red-500/40 to-orange-500/40 rounded-md"
@@ -908,14 +908,14 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
               animate={{ width: '100%' }}
               transition={{ duration: 1.5, ease: 'easeOut' }}
             />
-            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white/70">
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-white/70">
               {Math.floor(localSec / 60)}m {localSec % 60}s
             </span>
           </div>
         </div>
         {/* Remote */}
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-mono text-emerald-400/80 w-12 flex-shrink-0">RCH</span>
+          <span className="text-[10px] font-mono text-emerald-400/80 w-12 flex-shrink-0">RCH</span>
           <div className="flex-1 h-5 rounded-md bg-white/[0.04] border border-white/[0.06] overflow-hidden relative">
             <motion.div
               className="h-full bg-gradient-to-r from-emerald-500/50 to-teal-500/50 rounded-md"
@@ -923,13 +923,13 @@ function BuildTimeComparison({ localSec, remoteSec }: { localSec: number; remote
               animate={{ width: `${remoteWidthPct}%` }}
               transition={{ duration: 0.8, ease: 'easeOut', delay: 0.3 }}
             />
-            <span className="absolute left-0 inset-y-0 flex items-center pl-2 text-[9px] font-bold text-emerald-300/90">
+            <span className="absolute left-0 inset-y-0 flex items-center pl-2 text-[10px] font-bold text-emerald-300/90">
               {remoteSec}s
             </span>
           </div>
         </div>
       </div>
-      <div className="mt-2 flex items-center gap-1.5 text-[9px] text-white/35">
+      <div className="mt-2 flex items-center gap-1.5 text-xs text-white/35">
         <Zap className="h-2.5 w-2.5 text-emerald-400" />
         <span>8 workers, 320 total CPU cores vs 8-core local machine</span>
       </div>
@@ -961,9 +961,9 @@ function ArtifactTransfer({ mb }: { mb: number }) {
             />
           </div>
         </div>
-        <span className="text-[9px] font-mono text-teal-300">{mb} MB</span>
+        <span className="text-[10px] font-mono text-teal-300">{mb} MB</span>
       </div>
-      <div className="mt-1.5 flex items-center gap-4 text-[8px] text-white/30 font-mono">
+      <div className="mt-1.5 flex items-center gap-4 text-[10px] text-white/30 font-mono">
         <span>zstd: {mb} MB -&gt; {Math.round(mb * 0.28)} MB</span>
         <span>1.8s transfer</span>
         <span>13.3 MB/s</span>
@@ -991,7 +991,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <div className="w-2 h-2 rounded-full bg-red-400/60" />
         <div className="w-2 h-2 rounded-full bg-amber-400/60" />
         <div className="w-2 h-2 rounded-full bg-emerald-400/60" />
-        <span className="ml-2 text-[9px] text-white/40 font-mono">rch terminal</span>
+        <span className="ml-2 text-[10px] text-white/40 font-mono">rch terminal</span>
       </div>
       <div ref={scrollRef} className="p-3 max-h-40 overflow-y-auto">
         <AnimatePresence mode="sync">
@@ -1001,7 +1001,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: i * 0.03 }}
-              className={`text-[9px] font-mono leading-relaxed ${
+              className={`text-[10px] font-mono leading-relaxed ${
                 line.startsWith('$') ? 'text-emerald-400' :
                 line.includes('WARNING') || line.includes('FAIL') ? 'text-red-400' :
                 line.includes('OK') || line.includes('success') || line.includes('Finished') ? 'text-emerald-300/80' :
@@ -1028,6 +1028,8 @@ function InteractiveFleetDashboard() {
   const [scenarioIdx, setScenarioIdx] = useState(0);
   const scenario = SCENARIOS[scenarioIdx];
   const colors = COLOR_MAP[scenario.color] ?? COLOR_MAP.emerald;
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
 
   const handleStepBack = useCallback(() => {
     setScenarioIdx((prev) => (prev > 0 ? prev - 1 : SCENARIOS.length - 1));
@@ -1050,7 +1052,7 @@ function InteractiveFleetDashboard() {
     : 0;
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={ref} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-blue-500/[0.06] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-violet-500/[0.06] rounded-full blur-3xl pointer-events-none" />
@@ -1060,9 +1062,9 @@ function InteractiveFleetDashboard() {
         {scenario.id === 'failure' && (
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.4, 0] }}
+            animate={inView ? { opacity: [0, 0.4, 0] } : { opacity: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 1.5, repeat: Infinity }}
+            transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
             className="absolute inset-0 bg-red-500/10 rounded-2xl pointer-events-none z-10"
           />
         )}

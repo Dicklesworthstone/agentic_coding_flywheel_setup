@@ -581,7 +581,7 @@ function CompactionSimulatorImpl() {
                   : "Without PCR, the agent has no reminder to re-read project rules. It will continue working but may violate conventions like using npm instead of bun, or deleting files without permission."}
               </p>
               {phase === "compacted" && !pcrEnabled && (
-                <p className="text-[10px] text-white/30 mt-1">
+                <p className="text-xs text-white/30 mt-1">
                   Toggle PCR on and reset to see how the hook prevents this.
                 </p>
               )}

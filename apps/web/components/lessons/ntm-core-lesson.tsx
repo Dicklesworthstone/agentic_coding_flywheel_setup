@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Cpu,
   Terminal,
@@ -391,6 +391,18 @@ function InteractiveNtmOrchestrator() {
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
+  // On phones the 700-unit cockpit keeps desktop scale inside a horizontal
+  // scroll region; start it centred on the hexagonal layout rather than on
+  // the empty left third of the canvas.
+  const cockpitScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = cockpitScrollRef.current;
+    if (!el) return;
+    const overflow = el.scrollWidth - el.clientWidth;
+    if (overflow > 0) el.scrollLeft = overflow / 2;
+  }, []);
   const [terminalProgress, setTerminalProgress] = useState<Record<string, number>>({});
   const [particleBurst, setParticleBurst] = useState(false);
   const [progressValues, setProgressValues] = useState<Record<string, number>>({});
@@ -423,7 +435,7 @@ function InteractiveNtmOrchestrator() {
 
   // Terminal text scrolling during working phase
   useEffect(() => {
-    if (!showWorking || showComplete) return;
+    if (!showWorking || showComplete || !inView) return;
     const interval = setInterval(() => {
       setTerminalProgress((prev) => {
         const next = { ...prev };
@@ -437,7 +449,7 @@ function InteractiveNtmOrchestrator() {
       });
     }, 500);
     return () => clearInterval(interval);
-  }, [showWorking, showComplete]);
+  }, [showWorking, showComplete, inView]);
 
   // Progress bar animation during working phase
   useEffect(() => {
@@ -452,6 +464,7 @@ function InteractiveNtmOrchestrator() {
       }, 0);
       return () => clearTimeout(t);
     }
+    if (!inView) return;
     const interval = setInterval(() => {
       setProgressValues((prev) => {
         const next = { ...prev };
@@ -465,7 +478,7 @@ function InteractiveNtmOrchestrator() {
       });
     }, 400);
     return () => clearInterval(interval);
-  }, [showWorking, showComplete]);
+  }, [showWorking, showComplete, inView]);
 
   // Particle burst when broadcast happens
   useEffect(() => {
@@ -539,7 +552,7 @@ function InteractiveNtmOrchestrator() {
   }, []);
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={ref} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="pointer-events-none absolute -top-20 left-1/4 w-64 h-64 bg-violet-500/8 rounded-full blur-3xl" />
       <div className="pointer-events-none absolute -bottom-16 right-1/4 w-48 h-48 bg-orange-500/6 rounded-full blur-3xl" />
@@ -575,10 +588,10 @@ function InteractiveNtmOrchestrator() {
       </div>
 
       {/* SVG Cockpit Visualization */}
-      <div className="relative px-2 sm:px-4 pb-2">
+      <div ref={cockpitScrollRef} className="relative overflow-x-auto px-2 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 sm:px-4" tabIndex={0} role="region" aria-label="NTM cockpit diagram (scrolls sideways on small screens)">
         <svg
           viewBox="0 0 700 440"
-          className="w-full"
+          className="w-full min-w-[700px] sm:min-w-0"
           role="img"
           aria-label="NTM cockpit visualization showing hexagonal agent layout"
         >
@@ -709,15 +722,16 @@ function InteractiveNtmOrchestrator() {
               stroke="rgba(139,92,246,0.4)"
               strokeWidth={2}
               initial={{ scale: 0.8, opacity: 0 }}
-              animate={{
-                scale: [1, 1.8, 2.2],
-                opacity: [0.6, 0.2, 0],
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: "easeOut",
-              }}
+              animate={
+                inView
+                  ? { scale: [1, 1.8, 2.2], opacity: [0.6, 0.2, 0] }
+                  : { scale: 1, opacity: 0 }
+              }
+              transition={
+                inView
+                  ? { duration: 2, repeat: Infinity, ease: "easeOut" }
+                  : { duration: 0.2 }
+              }
             />
           )}
 
@@ -898,6 +912,7 @@ function InteractiveNtmOrchestrator() {
                     y={py + 11}
                     status={status}
                     color={agent.color}
+                    active={inView}
                   />
 
                   {/* Terminal content area */}
@@ -951,6 +966,7 @@ function InteractiveNtmOrchestrator() {
                           x={px + 10}
                           y={py + 64}
                           color={agent.colorLight}
+                          active={inView}
                         />
                       )}
                     </>
@@ -1262,11 +1278,13 @@ function OrchestratorStatusDot({
   y,
   status,
   color,
+  active,
 }: {
   x: number;
   y: number;
   status: AgentStatus;
   color: string;
+  active: boolean;
 }) {
   if (status === "done") {
     return (
@@ -1288,8 +1306,8 @@ function OrchestratorStatusDot({
         cy={y}
         r={4}
         fill={color}
-        animate={{ opacity: [1, 0.3, 1] }}
-        transition={{ duration: 1, repeat: Infinity }}
+        animate={active ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+        transition={active ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
       />
     );
   }
@@ -1307,15 +1325,17 @@ function OrchestratorTypingCursor({
   x,
   y,
   color,
+  active,
 }: {
   x: number;
   y: number;
   color: string;
+  active: boolean;
 }) {
   return (
     <motion.g
-      animate={{ opacity: [1, 0.2, 1] }}
-      transition={{ duration: 0.8, repeat: Infinity }}
+      animate={active ? { opacity: [1, 0.2, 1] } : { opacity: 1 }}
+      transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
     >
       <rect
         x={x}

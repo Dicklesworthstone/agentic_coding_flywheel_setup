@@ -22,7 +22,7 @@ import {
 } from "@/lib/wizardSteps";
 import { useStepValidation } from "@/lib/hooks/useStepValidation";
 import { getUserOS, getVPSIP, useUserOS } from "@/lib/userPreferences";
-import { withCurrentSearch } from "@/lib/utils";
+import { cn, withCurrentSearch } from "@/lib/utils";
 
 export default function WizardLayout({
   children,
@@ -154,15 +154,48 @@ export default function WizardLayout({
   );
 
   const progress = (currentStep / WIZARD_STEPS.length) * 100;
-  const showDockNext = Boolean(nextStep) && !hideSharedStepChrome;
+
+  // Phones showed two forward controls at once: the page's own affirmative
+  // button ("I saved my public key") and, ~150px below it, the dock's "Next".
+  // The dock now (a) hides its copy while the page button is on screen above
+  // the dock, and (b) otherwise repeats the page button's label, so there is
+  // one forward action with one name wherever the visitor is on the page.
+  const [ctaInView, setCtaInView] = useState(false);
+  const forwardCtaEl = forwardAction?.ctaElement ?? null;
+  useEffect(() => {
+    // State only changes from the observer callback (an IntersectionObserver
+    // reports the initial intersection as soon as `observe` is called); a
+    // step with no registered button is handled by the `forwardCtaEl &&`
+    // guard below rather than by resetting state here.
+    if (!forwardCtaEl || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setCtaInView(entry?.isIntersecting ?? false),
+      // The bottom inset is the dock's height: a button hidden under the
+      // dock is not "on screen" for this purpose.
+      { threshold: 0.5, rootMargin: "0px 0px -168px 0px" }
+    );
+    observer.observe(forwardCtaEl);
+    return () => observer.disconnect();
+  }, [forwardCtaEl]);
+
+  const hasNextStep = Boolean(nextStep) && !hideSharedStepChrome;
+  const showDockNext = hasNextStep && !(forwardCtaEl && ctaInView);
+  const dockNextLabel = forwardAction?.label ?? "Next";
   const dockNextBlocked = Boolean(forwardAction?.disabled) || Boolean(forwardAction?.loading);
   const handleDockNext = useCallback(() => {
     if (forwardAction) {
+      if (forwardAction.loading) return;
+      if (forwardAction.disabled) {
+        // Not `disabled`: a greyed button that does nothing explains nothing.
+        // The step validator names the blocker and scrolls to it.
+        validate(currentStep);
+        return;
+      }
       forwardAction.onContinue();
       return;
     }
     if (nextStep) handleStepClick(nextStep.id);
-  }, [forwardAction, nextStep, handleStepClick]);
+  }, [forwardAction, nextStep, handleStepClick, validate, currentStep]);
 
   // "Swipe to navigate" (the hint in StepperMobile) is bound to the whole
   // fixed dock — progress strip and Back/Next row — not just the 60px strip.
@@ -177,8 +210,8 @@ export default function WizardLayout({
         // Swipe right = go back
         if (prevStep) handleStepClick(prevStep.id);
       } else if (dx < 0) {
-        // Swipe left = go forward
-        if (showDockNext && !dockNextBlocked) handleDockNext();
+        // Swipe left = go forward (also while the page button is on screen)
+        if (hasNextStep && !dockNextBlocked) handleDockNext();
       }
     },
     {
@@ -195,7 +228,7 @@ export default function WizardLayout({
 
   return (
     <WizardForwardNavContext.Provider value={forwardNavRegistry}>
-    <div className="relative min-h-screen overflow-x-hidden bg-background">
+    <div className="relative min-h-screen overflow-x-clip bg-background">
       {/* Subtle background effects */}
       <div className="pointer-events-none fixed inset-0 bg-gradient-cosmic opacity-50" />
       <div className="pointer-events-none fixed inset-0 bg-grid-pattern opacity-20" />
@@ -398,7 +431,9 @@ export default function WizardLayout({
             size="lg"
             onClick={() => prevStep && handleStepClick(prevStep.id)}
             disabled={!prevStep}
-            className={showDockNext ? "flex-1" : "w-full"}
+            // Compact next to a labelled forward action; full width when the
+            // forward control is the page's own button.
+            className={showDockNext ? "shrink-0" : "w-full"}
           >
             <ChevronLeft className="mr-1 h-5 w-5" />
             Back
@@ -407,11 +442,23 @@ export default function WizardLayout({
             <Button
               size="lg"
               onClick={handleDockNext}
-              disabled={dockNextBlocked}
-              className="flex-1"
+              aria-disabled={dockNextBlocked || undefined}
+              aria-busy={Boolean(forwardAction?.loading) || undefined}
+              data-testid="wizard-dock-next"
+              // The mirrored label can be long ("I saved my public key"):
+              // let it take the row, constrain the Button's inner content
+              // wrapper so the label can shrink and ellipsize instead of
+              // overflowing (centred overflow clipped both ends of the text).
+              className={cn(
+                "flex-1 min-w-0 [&>span]:min-w-0 [&>span]:max-w-full",
+                dockNextLabel.length > 14 && "text-sm",
+                dockNextBlocked && "opacity-60"
+              )}
             >
-              {forwardAction?.loading ? "Loading..." : "Next"}
-              <ChevronRight className="ml-1 h-5 w-5" />
+              <span className="min-w-0 truncate">
+                {forwardAction?.loading ? "Loading..." : dockNextLabel}
+              </span>
+              <ChevronRight className="ml-1 h-5 w-5 shrink-0" />
             </Button>
           )}
           </div>

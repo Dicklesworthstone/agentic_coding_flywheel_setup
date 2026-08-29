@@ -785,70 +785,79 @@ export function TableOfContents({
   items: { id: string; label: string; number: string }[];
 }) {
   const [activeId, setActiveId] = useState<string>("");
+  const prefersReducedMotion = useReducedMotion();
+  const railRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Whichever section crosses the band just below the sticky rail is
+    // "current"; a long section stays current while the reader is inside it.
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setActiveId(entry.target.id);
-          }
-        });
+        for (const entry of entries) {
+          if (entry.isIntersecting) setActiveId(entry.target.id);
+        }
       },
-      { rootMargin: "-15% 0px -80% 0px" }
+      { rootMargin: "-20% 0px -75% 0px" }
     );
 
-    items.forEach((item) => {
+    for (const item of items) {
       const el = document.getElementById(item.id);
       if (el) observer.observe(el);
-    });
+    }
 
     return () => observer.disconnect();
   }, [items]);
 
+  // Keep the current chip in view inside the horizontally scrolling rail
+  // (scrolls only the rail, never the page).
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail || !activeId) return;
+    const chip = rail.querySelector<HTMLElement>(`[data-toc-id="${activeId}"]`);
+    if (!chip) return;
+    const left = chip.offsetLeft - rail.clientWidth / 2 + chip.offsetWidth / 2;
+    rail.scrollTo({ left: Math.max(0, left), behavior: prefersReducedMotion ? "auto" : "smooth" });
+  }, [activeId, prefersReducedMotion]);
+
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
-    e.preventDefault();
     const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth" });
-      // Update URL hash without jumping
-      window.history.pushState(null, "", `#${id}`);
-    }
+    if (!el) return; // fall back to the browser's own hash navigation
+    e.preventDefault();
+    el.scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "start" });
+    window.history.pushState(null, "", `#${id}`);
   };
 
   return (
-    <nav className="relative">
-      <div className="absolute left-3 top-0 bottom-0 w-px bg-white/[0.03]" />
-      <ul className="space-y-1 relative">
+    <nav
+      aria-label="On this page"
+      className="sticky top-0 z-30 -mx-6 mb-10 border-b border-white/[0.06] bg-[#020408]/85 backdrop-blur-md lg:-mx-12"
+    >
+      <div ref={railRef} className="scrollbar-none flex gap-1 overflow-x-auto px-6 py-2 lg:px-12">
         {items.map((item) => {
           const isActive = activeId === item.id;
           return (
-            <li key={item.id} className="relative">
-              {isActive && (
-                <motion.div
-                  layoutId="toc-indicator"
-                  className="absolute left-[11px] top-[10px] w-1 h-1 rounded-full bg-primary shadow-[0_0_8px_rgba(var(--primary-rgb),0.8)] z-10"
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                />
-              )}
-              <a
-                href={`#${item.id}`}
-                onClick={(e) => handleClick(e, item.id)}
-                className={`group flex items-center gap-4 py-1.5 pl-8 pr-4 text-[0.8rem] transition-colors ${
-                  isActive
-                    ? "text-white font-medium"
-                    : "text-zinc-500 hover:text-zinc-300 font-light"
-                }`}
-              >
-                <span className={`font-mono text-[0.65rem] ${isActive ? "text-primary font-bold" : "text-zinc-600 group-hover:text-zinc-400"}`}>
-                  {item.number.padStart(2, '0')}
+            <a
+              key={item.id}
+              href={`#${item.id}`}
+              data-toc-id={item.id}
+              aria-current={isActive ? "location" : undefined}
+              onClick={(e) => handleClick(e, item.id)}
+              className={`inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors ${
+                isActive
+                  ? "border-primary/40 bg-primary/10 text-white"
+                  : "border-transparent text-zinc-400 hover:bg-white/[0.04] hover:text-white"
+              }`}
+            >
+              {item.number && (
+                <span className={`font-mono text-[10px] ${isActive ? "text-primary" : "text-zinc-500"}`}>
+                  {item.number.padStart(2, "0")}
                 </span>
-                <span className="truncate">{item.label}</span>
-              </a>
-            </li>
+              )}
+              {item.label}
+            </a>
           );
         })}
-      </ul>
+      </div>
     </nav>
   );
 }

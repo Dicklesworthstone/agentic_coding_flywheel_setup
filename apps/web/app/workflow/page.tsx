@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { VPS_TOP_PICK } from "@/lib/vpsProviders";
 import { motion, AnimatePresence } from "@/components/motion";
 import {
   Sparkles,
@@ -624,7 +625,7 @@ export default function WorkflowPage() {
             <p className="text-sm flex items-start gap-3">
               <Clock className="h-5 w-5 text-[oklch(0.78_0.16_75)] shrink-0 mt-0.5" />
               <span>
-                <strong>Investment:</strong> VPS ($40-56/mo, month-to-month) + Claude Max ($200/mo × 1-5) + ChatGPT Pro ($200/mo × 1-5) +
+                <strong>Investment:</strong> VPS (~${VPS_TOP_PICK.recommended.priceUSD}/mo for 64GB) + Claude Max ($200/mo × 1-5) + ChatGPT Pro ($200/mo × 1-5) +
                 Google/Antigravity access. Scale your swarm as you see ROI; start with one subscription for each agent family and grow.
               </span>
             </p>

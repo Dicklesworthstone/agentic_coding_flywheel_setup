@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Users,
   Terminal,
@@ -538,7 +538,7 @@ function CooldownRing({ seconds, maxSeconds }: { seconds: number; maxSeconds: nu
           transition={SPRING}
         />
       </svg>
-      <span className="absolute text-[9px] font-mono text-violet-300 font-bold">
+      <span className="absolute text-[10px] font-mono text-violet-300 font-bold">
         {minutes}:{secs.toString().padStart(2, '0')}
       </span>
     </div>
@@ -583,7 +583,7 @@ function RateLimitBar({ pct }: { pct: number }) {
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
   return (
     <div className="w-full">
-      <div className="flex justify-between text-[9px] text-white/40 mb-0.5">
+      <div className="flex justify-between text-[10px] text-white/40 mb-0.5">
         <span>Rate Limit</span>
         <span>{pct}%</span>
       </div>
@@ -639,7 +639,7 @@ function MiniTerminal({ lines }: { lines: string[] }) {
         <div className="w-2 h-2 rounded-full bg-red-500/60" />
         <div className="w-2 h-2 rounded-full bg-amber-500/60" />
         <div className="w-2 h-2 rounded-full bg-emerald-500/60" />
-        <span className="ml-2 text-[9px] text-white/30 font-mono">caam</span>
+        <span className="ml-2 text-[10px] text-white/30 font-mono">caam</span>
       </div>
       <div className="p-3 font-mono text-[10px] leading-relaxed space-y-0.5 max-h-[180px] overflow-y-auto">
         {lines.map((line, i) => {
@@ -669,8 +669,12 @@ function MiniTerminal({ lines }: { lines: string[] }) {
 }
 
 function RotationArrow({ fromName, toName, switchMs }: { fromName: string; toName: string; switchMs: number }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
     <motion.div
+      ref={rootRef}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.8 }}
@@ -679,8 +683,8 @@ function RotationArrow({ fromName, toName, switchMs }: { fromName: string; toNam
     >
       <span className="text-xs text-red-400 font-medium">{fromName}</span>
       <motion.div
-        animate={{ x: [0, 6, 0] }}
-        transition={{ duration: 0.6, repeat: Infinity }}
+        animate={inView ? { x: [0, 6, 0] } : { x: 0 }}
+        transition={inView ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
       >
         <Zap className="h-4 w-4 text-blue-400" />
       </motion.div>
@@ -694,7 +698,7 @@ function RotationArrow({ fromName, toName, switchMs }: { fromName: string; toNam
   );
 }
 
-function AccountCard({ account, isActiveScenarioAccount }: { account: Account; isActiveScenarioAccount: boolean }) {
+function AccountCard({ account, isActiveScenarioAccount, active }: { account: Account; isActiveScenarioAccount: boolean; active: boolean }) {
   const styles = getStatusStyles(account.status);
   const sparkColor = getSparkColor(account.providerColor);
 
@@ -717,8 +721,8 @@ function AccountCard({ account, isActiveScenarioAccount }: { account: Account; i
       {account.status === 'active' && isActiveScenarioAccount && (
         <motion.div
           className="absolute inset-0 rounded-2xl border-2 border-emerald-500/30"
-          animate={{ opacity: [0.3, 0.7, 0.3], scale: [1, 1.01, 1] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          animate={active ? { opacity: [0.3, 0.7, 0.3], scale: [1, 1.01, 1] } : { opacity: 0.3, scale: 1 }}
+          transition={active ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.2 }}
         />
       )}
 
@@ -726,7 +730,7 @@ function AccountCard({ account, isActiveScenarioAccount }: { account: Account; i
       <div className="flex items-start justify-between gap-1 mb-1.5">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold text-white/90 truncate">{account.name}</p>
-          <span className={`inline-block mt-0.5 rounded-full border px-1.5 py-0 text-[9px] font-medium ${getProviderBadgeColor(account.providerColor)}`}>
+          <span className={`inline-block mt-0.5 rounded-full border px-1.5 py-0 text-[10px] font-medium ${getProviderBadgeColor(account.providerColor)}`}>
             {account.provider}
           </span>
         </div>
@@ -739,7 +743,7 @@ function AccountCard({ account, isActiveScenarioAccount }: { account: Account; i
       {/* Sparkline */}
       <div className="mt-2 flex items-center justify-between">
         <SparklineChart data={account.sparkline} color={sparkColor} width={64} height={18} />
-        <span className="text-[9px] font-mono text-white/30">{formatTokens(account.tokensSent)}</span>
+        <span className="text-[10px] font-mono text-white/30">{formatTokens(account.tokensSent)}</span>
       </div>
 
       {/* Cooldown ring or status */}
@@ -751,13 +755,13 @@ function AccountCard({ account, isActiveScenarioAccount }: { account: Account; i
             {account.status === 'active' ? (
               <motion.div
                 className={`h-1.5 w-1.5 rounded-full ${styles.dot}`}
-                animate={{ opacity: [1, 0.3, 1] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
+                animate={active ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+                transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
               />
             ) : (
               <div className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
             )}
-            <span className={`text-[9px] font-medium ${styles.labelColor}`}>{styles.label}</span>
+            <span className={`text-[10px] font-medium ${styles.labelColor}`}>{styles.label}</span>
           </>
         )}
       </div>
@@ -780,7 +784,7 @@ function RecoveryTimeline({ accounts }: { accounts: Account[] }) {
           const pct = Math.min((acc.cooldownSec / 300) * 100, 100);
           return (
             <div key={acc.id}>
-              <div className="flex justify-between text-[9px] mb-0.5">
+              <div className="flex justify-between text-[10px] mb-0.5">
                 <span className="text-white/60">{acc.name}</span>
                 <span className="text-violet-300 font-mono">
                   {Math.floor(acc.cooldownSec / 60)}:{(acc.cooldownSec % 60).toString().padStart(2, '0')}
@@ -822,7 +826,7 @@ function ProviderSummary({ accounts }: { accounts: Account[] }) {
 
           return (
             <div key={provider}>
-              <div className="flex justify-between text-[9px] mb-0.5">
+              <div className="flex justify-between text-[10px] mb-0.5">
                 <span style={{ color }} className="font-medium">{provider}</span>
                 <span className="text-white/40">{formatTokens(totalTokens)} total</span>
               </div>
@@ -850,6 +854,8 @@ function InteractiveAccountRotation() {
   const [animatedAccounts, setAnimatedAccounts] = useState<Account[]>(SCENARIOS[0].accounts);
   const animRef = useRef(0);
   const prevAccountsRef = useRef<Account[]>(SCENARIOS[0].accounts);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const scenario = SCENARIOS[scenarioIdx];
   const colors = COLOR_MAP[scenario.color] ?? COLOR_MAP.emerald;
@@ -917,7 +923,7 @@ function InteractiveAccountRotation() {
     : '';
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-orange-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -929,8 +935,8 @@ function InteractiveAccountRotation() {
           <motion.div
             key="emergency-flash"
             initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.15, 0, 0.1, 0] }}
-            transition={{ duration: 2, repeat: Infinity }}
+            animate={inView ? { opacity: [0, 0.15, 0, 0.1, 0] } : { opacity: 0 }}
+            transition={inView ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
             className="absolute inset-0 bg-red-500/20 rounded-3xl pointer-events-none z-10"
           />
         )}
@@ -1060,6 +1066,7 @@ function InteractiveAccountRotation() {
                     key={account.id}
                     account={account}
                     isActiveScenarioAccount={account.id === scenario.activeAccountId}
+                    active={inView}
                   />
                 ))}
               </motion.div>

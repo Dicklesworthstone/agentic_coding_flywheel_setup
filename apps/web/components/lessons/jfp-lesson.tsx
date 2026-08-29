@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   GraduationCap,
   Terminal,
@@ -772,7 +772,7 @@ function VagueVsPreciseTab() {
                 </div>
                 <div className="flex flex-wrap gap-1 pt-1">
                   {['Ambiguous scope', 'No context', 'Missing constraints'].map((tag) => (
-                    <span key={tag} className="px-1.5 py-0.5 rounded text-[9px] bg-red-500/10 text-red-400/70 border border-red-500/20">
+                    <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] bg-red-500/10 text-red-400/70 border border-red-500/20">
                       {tag}
                     </span>
                   ))}
@@ -802,7 +802,7 @@ function VagueVsPreciseTab() {
                 </div>
                 <div className="flex flex-wrap gap-1 pt-1">
                   {['Specific location', 'Clear context', 'Defined output'].map((tag) => (
-                    <span key={tag} className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/10 text-emerald-400/70 border border-emerald-500/20">
+                    <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400/70 border border-emerald-500/20">
                       {tag}
                     </span>
                   ))}
@@ -1055,6 +1055,8 @@ function AgentTerminalTab() {
   const [isRunning, setIsRunning] = useState(false);
   const terminalRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const startSimulation = useCallback(() => {
     setVisibleLines(0);
@@ -1103,7 +1105,7 @@ function AgentTerminalTab() {
   }
 
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-white/40">
           Watch a prompt being searched, installed, and executed in an agent terminal.
@@ -1119,7 +1121,10 @@ function AgentTerminalTab() {
         >
           {isRunning ? (
             <>
-              <motion.span animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+              <motion.span
+                animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
+              >
                 <Loader2 className="h-3 w-3" />
               </motion.span>
               Running...
@@ -1168,8 +1173,8 @@ function AgentTerminalTab() {
           ))}
           {isRunning && (
             <motion.span
-              animate={{ opacity: [1, 0] }}
-              transition={{ duration: 0.6, repeat: Infinity, repeatType: 'reverse' }}
+              animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+              transition={inView ? { duration: 0.6, repeat: Infinity, repeatType: 'reverse' } : { duration: 0.2 }}
               className="inline-block w-2 h-3.5 bg-emerald-400/70 ml-0.5"
             />
           )}
@@ -1210,7 +1215,7 @@ function InteractivePromptGallery() {
           </div>
           <div>
             <h3 className="text-sm font-semibold text-white">Prompt Crafting Lab</h3>
-            <p className="text-[10px] text-white/30">Explore, compare, build, and test prompts</p>
+            <p className="text-xs text-white/30">Explore, compare, build, and test prompts</p>
           </div>
         </div>
 

@@ -338,7 +338,7 @@ describe("progress persistence guards", () => {
       initialValues: {
         [VPS_READINESS_SELECTION_KEY]: JSON.stringify({
           providerId: " contabo ",
-          planName: "Cloud VPS 50",
+          planName: "Cloud VPS 16",
           ubuntuVersion: "25.10",
           region: " us ",
           targetAgents: 10.8,
@@ -349,7 +349,7 @@ describe("progress persistence guards", () => {
 
     expect(getVPSReadinessSelection()).toEqual({
       providerId: "contabo",
-      planName: "Cloud VPS 50",
+      planName: "Cloud VPS 16",
       ubuntuVersion: "25.10",
       region: "us",
       targetAgents: 10,
@@ -414,7 +414,7 @@ describe("progress persistence guards", () => {
     expect(getVPSReadinessSelection()).toEqual({
       ...expectedSelection,
       providerId: "ovh",
-      planName: "VPS-5",
+      planName: "VPS-4",
       ubuntuVersion: "25.10",
       region: "us-east",
     });

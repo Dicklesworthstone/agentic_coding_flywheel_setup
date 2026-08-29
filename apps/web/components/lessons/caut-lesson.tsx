@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef, useMemo, useId } from 'react';
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   BarChart3,
   Terminal,
@@ -501,7 +501,7 @@ function ProviderBar({
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={SPRING_SNAPPY}
-              className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30"
+              className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30"
             >
               Rate Limited
             </motion.span>
@@ -576,8 +576,11 @@ function BudgetGauge({ percent }: { percent: number }) {
     return "text-red-400/60";
   };
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
+    <div ref={rootRef} className="rounded-xl border border-white/[0.08] bg-black/30 p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Gauge className="h-3.5 w-3.5 text-white/40" />
@@ -606,8 +609,8 @@ function BudgetGauge({ percent }: { percent: number }) {
         >
           {/* Animated glow at the end */}
           <motion.div
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
+            animate={inView ? { opacity: [0.5, 1, 0.5] } : { opacity: 0.5 }}
+            transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
             className={`absolute right-0 top-0 h-full w-4 ${getGlowColor(clampedPercent)} blur-sm`}
           />
         </motion.div>
@@ -626,8 +629,8 @@ function BudgetGauge({ percent }: { percent: number }) {
 
       {/* Labels */}
       <div className="flex justify-between mt-1.5">
-        <span className="text-[9px] text-white/20 font-mono">$0</span>
-        <span className={`text-[9px] font-mono ${getLabelColor(clampedPercent)}`}>$50 limit</span>
+        <span className="text-[10px] text-white/20 font-mono">$0</span>
+        <span className={`text-[10px] font-mono ${getLabelColor(clampedPercent)}`}>$50 limit</span>
       </div>
     </div>
   );
@@ -769,16 +772,19 @@ function AlertPanel({ alerts }: { alerts: AlertItem[] }) {
 
 // Live log terminal
 function LiveLog({ lines }: { lines: string[] }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-black/50 overflow-hidden">
+    <div ref={rootRef} className="rounded-xl border border-white/[0.08] bg-black/50 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <Terminal className="h-3 w-3 text-white/30" />
         <span className="text-[10px] uppercase tracking-wider text-white/30 font-medium">
           Live Feed
         </span>
         <motion.div
-          animate={{ opacity: [1, 0.3, 1] }}
-          transition={{ duration: 1.2, repeat: Infinity }}
+          animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+          transition={inView ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
           className="h-1.5 w-1.5 rounded-full bg-emerald-500 ml-auto"
         />
       </div>
@@ -854,6 +860,8 @@ function InteractiveCostDashboardImpl() {
   const [stepIndex, setStepIndex] = useState(0);
   const [previousStepIndex, setPreviousStepIndex] = useState(0);
   const [showAccountSwitch, setShowAccountSwitch] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const step = SCENARIO_STEPS[stepIndex];
 
@@ -960,7 +968,7 @@ function InteractiveCostDashboardImpl() {
     : step.providers.anthropic.accountName;
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Decorative glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
@@ -971,8 +979,8 @@ function InteractiveCostDashboardImpl() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
             <motion.div
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+              animate={inView ? { rotate: [0, 360] } : { rotate: 0 }}
+              transition={inView ? { duration: 20, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
             >
               <Activity className="h-4 w-4 text-white/40" />
             </motion.div>
@@ -980,8 +988,8 @@ function InteractiveCostDashboardImpl() {
               Cost Operations Center
             </span>
             <motion.div
-              animate={{ opacity: [1, 0.3, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
+              animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
+              transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
               className="h-1.5 w-1.5 rounded-full bg-emerald-500"
             />
             <span className="text-[10px] text-emerald-400/60 font-medium">LIVE</span>
@@ -1039,7 +1047,7 @@ function InteractiveCostDashboardImpl() {
                     Step {stepIndex + 1}/{SCENARIO_STEPS.length}
                   </span>
                 </div>
-                <p className="text-[11px] text-white/40 leading-relaxed line-clamp-2">
+                <p className="text-xs text-white/40 leading-relaxed line-clamp-2">
                   {step.description}
                 </p>
               </motion.div>
@@ -1212,7 +1220,7 @@ function InteractiveCostDashboardImpl() {
                       provider.rateLimited ? "opacity-40" : "opacity-80"
                     } min-h-[2px]`}
                   />
-                  <span className="text-[9px] text-white/30 font-mono truncate w-full text-center">
+                  <span className="text-[10px] text-white/30 font-mono truncate w-full text-center">
                     {provider.name.split(" ")[0]}
                   </span>
                 </div>
@@ -1247,7 +1255,7 @@ function InteractiveCostDashboardImpl() {
         {/* Footer tip */}
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
           <TrendingUp className="h-3.5 w-3.5 text-white/30 shrink-0" />
-          <span className="text-[11px] text-white/40">
+          <span className="text-xs text-white/40">
             Step through scenarios to see how CAUT tracks costs, detects spikes, and applies optimizations in real time.
           </span>
         </div>

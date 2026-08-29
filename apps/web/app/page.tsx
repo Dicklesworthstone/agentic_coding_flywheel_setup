@@ -35,6 +35,7 @@ import { springs, fadeUp, staggerContainer, fadeScale } from "@/components/motio
 import { useScrollReveal, staggerDelay } from "@/lib/hooks/useScrollReveal";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import { manifestTools } from "@/lib/generated/manifest-tools";
+import { VPS_TOP_PICK } from "@/lib/vpsProviders";
 
 // The "N+ tools" claim is derived from the generated manifest (39 entries
 // today) and rounded down to the nearest 5 so the copy can only understate.
@@ -653,7 +654,7 @@ const WHY_VPS_ITEMS = [
     icon: <Cloud className="h-6 w-6 text-white" />,
     title: "Not AWS/GCP/Azure",
     description: "Cloud giants charge by the hour and make billing unpredictable. A dedicated VPS is simpler and cheaper.",
-    detail: "A 64GB VPS costs ~$40-56/month flat. Equivalent cloud resources would cost 3-5x more.",
+    detail: `A 64GB VPS costs ~$${VPS_TOP_PICK.recommended.priceUSD}/month flat. Equivalent cloud resources would cost 3-5x more.`,
     gradient: "from-sky-400 to-blue-500",
   },
   {
@@ -837,7 +838,7 @@ function IsThisForYouSection() {
 
 // "What Does This Cost?" Pricing Section
 const PRICING_ITEMS = [
-  { name: "Cloud VPS", price: "$40–56", period: "/month", description: "64GB RAM Ubuntu server (Contabo, OVH)", icon: Server, gradient: "from-sky-400 to-blue-500", note: "64GB RAM for 10+ agents" },
+  { name: "Cloud VPS", price: `~$${VPS_TOP_PICK.recommended.priceUSD}`, period: "/month", description: "64GB RAM Ubuntu server (e.g. Contabo)", icon: Server, gradient: "from-sky-400 to-blue-500", note: "64GB RAM for 10+ agents" },
   { name: "Claude Max", price: "$200", period: "/month", description: "Anthropic's Claude Code CLI", icon: Bot, gradient: "from-amber-400 to-orange-500", note: "$400 for power users (2 accounts)" },
   { name: "ChatGPT Pro", price: "$200", period: "/month", description: "GPT-5.6 Sol Pro for extended thinking planning", icon: Cpu, gradient: "from-emerald-400 to-teal-500", note: "Essential for plan documents" },
 ];

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   GraduationCap,
   Terminal,
@@ -520,6 +520,8 @@ function HighlightMatch({ text, query }: { text: string; query: string }) {
 // Mini terminal component for skill invocation examples
 function MiniTerminal({ lines, isVisible }: { lines: string[]; isVisible: boolean }) {
   const [visibleLines, setVisibleLines] = useState<number>(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
 
   useEffect(() => {
     if (!isVisible) {
@@ -540,7 +542,7 @@ function MiniTerminal({ lines, isVisible }: { lines: string[]; isVisible: boolea
   }, [isVisible, lines]);
 
   return (
-    <div className="rounded-lg bg-black/60 border border-white/[0.06] overflow-hidden">
+    <div ref={ref} className="rounded-lg bg-black/60 border border-white/[0.06] overflow-hidden">
       {/* Terminal title bar */}
       <div className="flex items-center gap-1.5 px-3 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <div className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
@@ -576,8 +578,8 @@ function MiniTerminal({ lines, isVisible }: { lines: string[]; isVisible: boolea
         ))}
         {visibleLines < lines.length && isVisible && (
           <motion.span
-            animate={{ opacity: [1, 0] }}
-            transition={{ repeat: Infinity, duration: 0.8 }}
+            animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+            transition={inView ? { repeat: Infinity, duration: 0.8 } : { duration: 0.2 }}
             className="inline-block w-2 h-3.5 bg-emerald-400/80"
           />
         )}
@@ -784,7 +786,7 @@ function DependencyGraph({
           })}
         </svg>
       </div>
-      <p className="text-[10px] text-white/25 mt-2 text-center">
+      <p className="text-xs text-white/25 mt-2 text-center">
         Click nodes to explore skill dependencies
       </p>
     </div>
@@ -832,6 +834,8 @@ function InteractiveSkillBrowser() {
   const [installProgress, setInstallProgress] = useState(0);
   const [localSkills, setLocalSkills] = useState(INITIAL_SKILLS);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   // Filtered skills
   const filteredSkills = useMemo(() => {
@@ -931,7 +935,7 @@ function InteractiveSkillBrowser() {
   ];
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Dashboard header */}
       <div className="border-b border-white/[0.06] px-6 py-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1136,8 +1140,8 @@ function InteractiveSkillBrowser() {
                           {isInstalling ? (
                             <div className="flex items-center gap-1.5">
                               <motion.div
-                                animate={{ rotate: 360 }}
-                                transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                                animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                                transition={inView ? { repeat: Infinity, duration: 1, ease: 'linear' } : { duration: 0.2 }}
                               >
                                 <Loader2 className={`h-3.5 w-3.5 ${cat.textColor}`} />
                               </motion.div>
@@ -1400,8 +1404,8 @@ function InteractiveSkillBrowser() {
                             <div className="space-y-2">
                               <div className="flex items-center gap-2">
                                 <motion.div
-                                  animate={{ rotate: 360 }}
-                                  transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                                  transition={inView ? { repeat: Infinity, duration: 1, ease: 'linear' } : { duration: 0.2 }}
                                 >
                                   <Loader2
                                     className={`h-4 w-4 ${getCategoryMeta(selectedSkill.category).textColor}`}

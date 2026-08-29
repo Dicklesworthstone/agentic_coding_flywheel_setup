@@ -29,7 +29,7 @@ import { HumanAgentTimelineViz } from "@/components/core-flywheel/human-agent-ti
 export default function CoreFlywheelPage() {
   return (
     <ErrorBoundary>
-      <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-hidden pb-40">
+      <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-[#020408] selection:bg-[#FF5500]/20 selection:text-white overflow-x-clip pb-40">
         <Hero />
 
         {/* Floating quick-nav for desktop */}

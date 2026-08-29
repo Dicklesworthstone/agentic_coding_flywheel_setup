@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Monitor,
   Terminal,
@@ -712,7 +712,7 @@ const TIMELINE_DOTS: Record<TimelineEvent['type'], string> = {
 
 // --- Sub-components ---
 
-function AgentMiniPane({ pane, index }: { pane: AgentPaneData; index: number }) {
+function AgentMiniPane({ pane, index, active }: { pane: AgentPaneData; index: number; active: boolean }) {
   const colors = STATUS_COLORS[pane.status];
   return (
     <motion.div
@@ -728,19 +728,21 @@ function AgentMiniPane({ pane, index }: { pane: AgentPaneData; index: number }) 
           <div className="h-1.5 w-1.5 rounded-full bg-yellow-500/50" />
           <div className="h-1.5 w-1.5 rounded-full bg-green-500/50" />
         </div>
-        <span className="text-[9px] text-white/40 font-mono ml-1 flex-1 truncate">
+        <span className="text-[10px] text-white/40 font-mono ml-1 flex-1 truncate">
           pane #{pane.id} -- {pane.name}
         </span>
         <motion.div
           className={`h-1.5 w-1.5 rounded-full ${colors.dot}`}
           animate={
-            pane.status === 'active'
-              ? { opacity: [0.5, 1, 0.5] }
-              : pane.status === 'error' || pane.status === 'rate-limited'
-                ? { opacity: [0.4, 1, 0.4], scale: [1, 1.3, 1] }
-                : {}
+            !active
+              ? { opacity: 1, scale: 1 }
+              : pane.status === 'active'
+                ? { opacity: [0.5, 1, 0.5] }
+                : pane.status === 'error' || pane.status === 'rate-limited'
+                  ? { opacity: [0.4, 1, 0.4], scale: [1, 1.3, 1] }
+                  : {}
           }
-          transition={{ duration: 1.5, repeat: Infinity }}
+          transition={active ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
         />
       </div>
       {/* Pane terminal content */}
@@ -751,8 +753,8 @@ function AgentMiniPane({ pane, index }: { pane: AgentPaneData; index: number }) 
         {pane.status === 'active' && (
           <motion.span
             className="inline-block w-1.5 h-2.5 bg-emerald-400/80 mt-0.5"
-            animate={{ opacity: [1, 0, 1] }}
-            transition={{ duration: 1, repeat: Infinity }}
+            animate={active ? { opacity: [1, 0, 1] } : { opacity: 1 }}
+            transition={active ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
           />
         )}
       </div>
@@ -772,7 +774,7 @@ function AgentMiniPane({ pane, index }: { pane: AgentPaneData; index: number }) 
               transition={{ type: 'spring', stiffness: 200, damping: 25 }}
             />
           </div>
-          <div className={`text-[8px] mt-0.5 ${colors.text}`}>{pane.progress}%</div>
+          <div className={`text-[10px] mt-0.5 ${colors.text}`}>{pane.progress}%</div>
         </div>
       )}
     </motion.div>
@@ -808,7 +810,7 @@ function ActivityHeatmap({ files }: { files: FileActivity[] }) {
               transition={{ type: 'spring', stiffness: 200, damping: 25, delay: i * 0.05 + 0.2 }}
             />
           </div>
-          <span className="text-[9px] text-white/30 w-4 text-right font-mono flex-shrink-0">
+          <span className="text-[10px] text-white/30 w-4 text-right font-mono flex-shrink-0">
             #{file.agent}
           </span>
         </motion.div>
@@ -844,7 +846,7 @@ function MetricsBar({ panes }: { panes: AgentPaneData[] }) {
             {m.icon}
             <span className="text-sm font-bold font-mono">{m.value}</span>
           </div>
-          <div className="text-[9px] text-white/40 mt-0.5">{m.label}</div>
+          <div className="text-[10px] text-white/40 mt-0.5">{m.label}</div>
         </motion.div>
       ))}
     </div>
@@ -883,12 +885,12 @@ function EventTimeline({ events }: { events: TimelineEvent[] }) {
   );
 }
 
-function MonitorTerminal({ lines }: { lines: string[] }) {
+function MonitorTerminal({ lines, active }: { lines: string[]; active: boolean }) {
   return (
     <div className="rounded-lg border border-white/[0.08] bg-black/60 overflow-hidden">
       <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02]">
         <BarChart3 className="h-3 w-3 text-cyan-400" />
-        <span className="text-[9px] text-white/40 font-mono">wa monitor</span>
+        <span className="text-[10px] text-white/40 font-mono">wa monitor</span>
       </div>
       <div className="p-2.5 font-mono text-[10px] leading-relaxed space-y-0.5">
         {lines.map((line, i) => (
@@ -910,8 +912,8 @@ function MonitorTerminal({ lines }: { lines: string[] }) {
         ))}
         <motion.span
           className="inline-block w-1.5 h-2.5 bg-cyan-400/80 mt-0.5"
-          animate={{ opacity: [1, 0, 1] }}
-          transition={{ duration: 1, repeat: Infinity }}
+          animate={active ? { opacity: [1, 0, 1] } : { opacity: 1 }}
+          transition={active ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
         />
       </div>
     </div>
@@ -935,6 +937,8 @@ function InteractiveTerminalObserver() {
   const [playing, setPlaying] = useState(false);
   const [activeTab, setActiveTab] = useState<ObservatoryTab>('panes');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const totalScenarios = SCENARIOS.length;
   const scenario = SCENARIOS[scenarioIdx];
@@ -974,7 +978,7 @@ function InteractiveTerminalObserver() {
   }, [scenarioIdx, totalScenarios, playing]);
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-cyan-500/8 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-violet-500/8 rounded-full blur-3xl pointer-events-none" />
@@ -1060,7 +1064,7 @@ function InteractiveTerminalObserver() {
               {/* 2x2 grid of agent panes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                 {scenario.panes.map((pane, i) => (
-                  <AgentMiniPane key={pane.id} pane={pane} index={i} />
+                  <AgentMiniPane key={pane.id} pane={pane} index={i} active={inView} />
                 ))}
               </div>
 
@@ -1069,7 +1073,7 @@ function InteractiveTerminalObserver() {
                 <div className="p-3 rounded-lg border border-white/[0.06] bg-black/30">
                   <ActivityHeatmap files={scenario.files} />
                 </div>
-                <MonitorTerminal lines={scenario.monitorOutput} />
+                <MonitorTerminal lines={scenario.monitorOutput} active={inView} />
               </div>
             </motion.div>
           )}
@@ -1109,15 +1113,15 @@ function InteractiveTerminalObserver() {
                       <div className="flex-1 grid grid-cols-3 gap-2 text-center">
                         <div>
                           <div className="text-xs font-mono text-emerald-400">{pane.linesChanged}</div>
-                          <div className="text-[8px] text-white/30">lines</div>
+                          <div className="text-[10px] text-white/30">lines</div>
                         </div>
                         <div>
                           <div className="text-xs font-mono text-cyan-400">{pane.filesTouched}</div>
-                          <div className="text-[8px] text-white/30">files</div>
+                          <div className="text-[10px] text-white/30">files</div>
                         </div>
                         <div>
                           <div className="text-xs font-mono text-violet-400">{pane.commandsRun}</div>
-                          <div className="text-[8px] text-white/30">cmds</div>
+                          <div className="text-[10px] text-white/30">cmds</div>
                         </div>
                       </div>
                       <div className="w-12 flex-shrink-0 text-right">
@@ -1160,7 +1164,7 @@ function InteractiveTerminalObserver() {
                     const colors = STATUS_COLORS[pane.status];
                     return (
                       <div key={pane.id} className="flex items-center gap-2">
-                        <span className="text-[9px] font-mono text-white/40 w-6">#{pane.id}</span>
+                        <span className="text-[10px] font-mono text-white/40 w-6">#{pane.id}</span>
                         <div className="flex-1 flex items-end gap-px h-4">
                           {Array.from({ length: 20 }).map((_, bi) => {
                             // Deterministic bar height based on pane id and bar index
@@ -1188,7 +1192,7 @@ function InteractiveTerminalObserver() {
               </div>
 
               {/* Monitor output */}
-              <MonitorTerminal lines={scenario.monitorOutput} />
+              <MonitorTerminal lines={scenario.monitorOutput} active={inView} />
             </motion.div>
           )}
         </AnimatePresence>

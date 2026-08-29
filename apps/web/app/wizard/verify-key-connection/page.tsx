@@ -52,7 +52,12 @@ export default function VerifyKeyConnectionPage() {
     router.push(withCurrentSearch("/wizard/status-check"));
   }, [router, markComplete]);
 
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating,
+    loading: isNavigating,
+    label: "My key works, continue",
+  });
 
   if (!ready || !vpsIP) {
     return (
@@ -222,7 +227,7 @@ export default function VerifyKeyConnectionPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
           {isNavigating ? "Loading..." : "My key works, continue"}
         </Button>
       </div>

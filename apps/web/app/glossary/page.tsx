@@ -230,13 +230,22 @@ export default function GlossaryPage() {
             <Home className="h-4 w-4" />
             <span className="text-sm">Home</span>
           </Link>
-          <Link
-            href="/wizard/os-selection"
-            className="inline-flex min-h-6 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Terminal className="h-4 w-4" />
-            <span className="text-sm">Setup Wizard</span>
-          </Link>
+          <div className="flex items-center gap-4 sm:gap-6">
+            <Link
+              href="/learn"
+              className="inline-flex min-h-6 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <BookOpen className="h-4 w-4" />
+              <span className="text-sm">Learning Hub</span>
+            </Link>
+            <Link
+              href="/wizard/os-selection"
+              className="inline-flex min-h-6 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Terminal className="h-4 w-4" />
+              <span className="text-sm">Setup Wizard</span>
+            </Link>
+          </div>
         </div>
 
         {/* Hero */}

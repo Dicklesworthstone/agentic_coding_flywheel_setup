@@ -672,7 +672,7 @@ describe("buildTeamProfile", () => {
       generatedAt,
       providerSelection: {
         providerId: "contabo",
-        planName: "Cloud VPS 50",
+        planName: "Cloud VPS 16",
         ubuntuVersion: "25.10",
         region: "us",
         targetAgents: 10,
@@ -691,7 +691,7 @@ describe("buildTeamProfile", () => {
     expect(profile.providerDefaults).toMatchObject({
       provider: "contabo",
       region: "us",
-      planClass: "Cloud VPS 50",
+      planClass: "Cloud VPS 16",
       operatingSystem: "ubuntu-25.10",
       sshUser: "dev-user",
       sshPort: 22,
@@ -845,7 +845,7 @@ describe("buildTeamProfileImportDiff", () => {
       generatedAt,
       providerSelection: {
         providerId: "contabo",
-        planName: "Cloud VPS 50",
+        planName: "Cloud VPS 16",
         ubuntuVersion: "25.10",
         region: "us",
         targetAgents: 10,
@@ -895,7 +895,7 @@ describe("buildTeamProfileImportDiff", () => {
       generatedAt,
       providerSelection: {
         providerId: "contabo",
-        planName: "Cloud VPS 50",
+        planName: "Cloud VPS 16",
         ubuntuVersion: "25.10",
         region: "us",
         targetAgents: 10,
@@ -909,7 +909,7 @@ describe("buildTeamProfileImportDiff", () => {
     const diff = buildTeamProfileImportDiff(profile, {
       providerSelection: {
         providerId: "contabo",
-        planName: "Cloud VPS 50",
+        planName: "Cloud VPS 16",
         ubuntuVersion: "25.10",
         region: "us",
       },
@@ -1415,7 +1415,7 @@ describe("buildTeamProfileImportDiff", () => {
     const providerDefaults = {
       ...original.providerDefaults,
       provider: { id: "contabo" },
-      planClass: ["Cloud VPS 50"],
+      planClass: ["Cloud VPS 16"],
       operatingSystem: "debian-13",
     };
     delete (providerDefaults as Partial<typeof providerDefaults>).region;
@@ -1474,7 +1474,7 @@ describe("buildTeamProfileImportDiff", () => {
     expect(diff.safeDefaults.changes).toContainEqual({
       field: "providerDefaults.planClass",
       current: "CX51",
-      next: "Cloud VPS 50",
+      next: "Cloud VPS 16",
     });
     expect(diff.installerCommand.changes).toEqual([]);
   });

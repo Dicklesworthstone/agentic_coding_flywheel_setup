@@ -101,7 +101,8 @@ test.describe.serial("DCG Website Pages", () => {
       await page.waitForLoadState("networkidle");
 
       // Check DCG is in the stack visualization
-      const dcgMention = page.getByText(/DCG/i).first();
+      // A desktop-only stack badge precedes the visible mention on phones; assert a visible instance.
+      const dcgMention = page.getByText(/DCG/i).filter({ visible: true }).first();
       await expect(dcgMention).toBeVisible();
     });
 
@@ -128,23 +129,27 @@ test.describe.serial("DCG Website Pages", () => {
 
   test.describe("DCG Glossary Entry", () => {
     test("DCG appears in glossary", async ({ page }) => {
-      await page.goto("/learn/glossary");
+      await page.goto("/glossary");
       await page.waitForLoadState("networkidle");
 
-      // Check DCG entry exists
-      const dcgEntry = page.getByText(/DCG/i).first();
+      // Check the DCG entry itself (other entries mention DCG inside their
+      // collapsed definitions, so a page-wide text match is not enough).
+      const dcgEntry = page.locator("#dcg");
       await expect(dcgEntry).toBeVisible();
+      await expect(dcgEntry.getByText(/DCG/i).first()).toBeVisible();
     });
 
     test("DCG glossary entry expands definition", async ({ page }) => {
-      await page.goto("/learn/glossary");
+      await page.goto("/glossary");
       await page.waitForLoadState("networkidle");
 
+      // /glossary entries are native <details> disclosures: the summary row
+      // opens the full definition.
       const dcgCard = page.locator("#dcg");
       await expect(dcgCard).toBeVisible();
 
-      const readMore = dcgCard.getByRole("button", { name: /read more/i });
-      await readMore.click();
+      await dcgCard.locator("summary").click();
+      await expect(dcgCard).toHaveAttribute("open", "");
 
       await expect(
         dcgCard.getByText(/Destructive Command Guard/i).first()
@@ -166,7 +171,7 @@ test.describe.serial("DCG Website Pages", () => {
         errors.push(`Page Error: ${error.message}`);
       });
 
-      await page.goto("/learn/glossary");
+      await page.goto("/glossary");
       await page.waitForLoadState("networkidle");
 
       await expect(page.locator("h1").first()).toBeVisible();

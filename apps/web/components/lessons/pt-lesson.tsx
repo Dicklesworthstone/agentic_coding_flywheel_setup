@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence, springs } from '@/components/motion';
+import { motion, AnimatePresence, springs, useInView } from '@/components/motion';
 import {
   Terminal,
   Activity,
@@ -571,7 +571,7 @@ function KillDialog({ proc, onConfirm, onCancel }: {
         {proc.state === 'zombie' && (
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5 mb-4 flex items-start gap-2">
             <AlertTriangle className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
-            <p className="text-[11px] text-amber-300/80 leading-relaxed">
+            <p className="text-xs text-amber-300/80 leading-relaxed">
               Zombie processes cannot be killed directly. PT will signal the parent process (PID {proc.ppid}) instead.
             </p>
           </div>
@@ -618,6 +618,8 @@ function InteractiveProcessTriageDashboard() {
   const [scoredCount, setScoredCount] = useState(0);
   const [triageDone, setTriageDone] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
 
   const scenario = SCENARIOS[step];
   const totalSteps = SCENARIOS.length;
@@ -693,7 +695,7 @@ function InteractiveProcessTriageDashboard() {
   const res = scenario.resources;
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={ref} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-red-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-emerald-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -859,8 +861,8 @@ function InteractiveProcessTriageDashboard() {
                     className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm font-medium"
                   >
                     <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                      animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                      transition={inView ? { duration: 1.5, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                     >
                       <Search className="h-4 w-4" />
                     </motion.div>
@@ -927,7 +929,7 @@ function InteractiveProcessTriageDashboard() {
           >
             <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
               {/* Table header */}
-              <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 px-3 py-2 border-b border-white/[0.06] text-[9px] uppercase tracking-wider text-white/25 font-semibold bg-white/[0.01]">
+              <div className="grid grid-cols-[44px_36px_1fr_52px_52px_44px_64px] gap-1.5 px-3 py-2 border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-white/25 font-semibold bg-white/[0.01]">
                 <span>PID</span>
                 <span>S</span>
                 <span>Process</span>
@@ -979,7 +981,7 @@ function InteractiveProcessTriageDashboard() {
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
                                 transition={springs.snappy}
-                                className="shrink-0 rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-[8px] text-red-400 font-bold"
+                                className="shrink-0 rounded-full bg-red-500/20 border border-red-500/30 px-1.5 py-0.5 text-[10px] text-red-400 font-bold"
                               >
                                 KILLED
                               </motion.span>
@@ -1013,7 +1015,7 @@ function InteractiveProcessTriageDashboard() {
                                 transition={SPRING}
                               />
                             </div>
-                            <span className={`text-[9px] font-mono w-5 text-right ${isScored ? getDangerTextColor(proc.dangerScore) : 'text-white/15'}`}>
+                            <span className={`text-[10px] font-mono w-5 text-right ${isScored ? getDangerTextColor(proc.dangerScore) : 'text-white/15'}`}>
                               {isScored ? (proc.dangerScore * 100).toFixed(0) : '--'}
                             </span>
                           </div>
@@ -1051,24 +1053,24 @@ function InteractiveProcessTriageDashboard() {
                                   Score: {(proc.dangerScore * 100).toFixed(0)} | Uptime: {proc.uptime} | PPID: {proc.ppid}
                                 </span>
                               </div>
-                              <p className="text-[11px] text-white/50 leading-relaxed mb-3">{proc.reason}</p>
+                              <p className="text-xs text-white/50 leading-relaxed mb-3">{proc.reason}</p>
 
                               {/* Resource detail */}
                               <div className="grid grid-cols-4 gap-3 mb-3">
                                 <div className="text-center">
-                                  <div className="text-[9px] text-white/25 uppercase">CPU</div>
+                                  <div className="text-[10px] text-white/25 uppercase">CPU</div>
                                   <div className="text-xs font-mono text-white/60">{proc.cpu.toFixed(1)}%</div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-[9px] text-white/25 uppercase">Memory</div>
+                                  <div className="text-[10px] text-white/25 uppercase">Memory</div>
                                   <div className="text-xs font-mono text-white/60">{formatMem(proc.memory)}</div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-[9px] text-white/25 uppercase">I/O Read</div>
+                                  <div className="text-[10px] text-white/25 uppercase">I/O Read</div>
                                   <div className="text-xs font-mono text-white/60">{formatIO(proc.ioRead)} MB/s</div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="text-[9px] text-white/25 uppercase">I/O Write</div>
+                                  <div className="text-[10px] text-white/25 uppercase">I/O Write</div>
                                   <div className="text-xs font-mono text-white/60">{formatIO(proc.ioWrite)} MB/s</div>
                                 </div>
                               </div>

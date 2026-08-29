@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Terminal,
   Package,
@@ -262,6 +262,8 @@ function InteractiveReleasePipeline() {
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const intervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
   const terminalRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const scenario = TOOL_SCENARIOS[activeScenario];
 
@@ -450,7 +452,7 @@ function InteractiveReleasePipeline() {
   }, [phase, scenario, isDraft, addTerminalLine, resetPipeline]);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-orange-500/[0.04] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-indigo-500/[0.04] rounded-full blur-3xl pointer-events-none" />
@@ -571,7 +573,7 @@ function InteractiveReleasePipeline() {
                 </span>
                 <Sparkles className="h-4 w-4 text-emerald-400" />
               </div>
-              <p className="text-[10px] text-emerald-400/60 mt-1">
+              <p className="text-xs text-emerald-400/60 mt-1">
                 {scenario.targets.length} platform artifacts built and published locally via DSR
               </p>
               {showConfetti && <ConfettiParticles />}
@@ -597,8 +599,8 @@ function InteractiveReleasePipeline() {
             {phase !== 'idle' && phase !== 'done' ? (
               <>
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                  transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                 >
                   <Loader2 className="h-4 w-4" />
                 </motion.div>
@@ -789,9 +791,11 @@ function ArtifactFlowDiagram({
     done: 4,
   };
   const activeStageIdx = phaseToStageIndex[phase];
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
         <GitBranch className="h-3.5 w-3.5 text-white/40" />
         <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
@@ -832,7 +836,7 @@ function ArtifactFlowDiagram({
                 strokeWidth={2}
                 strokeDasharray={isActive ? 'none' : '4 4'}
               />
-              {isActive && (
+              {isActive && inView && (
                 <motion.circle
                   cx={x1}
                   cy={y}
@@ -979,8 +983,11 @@ function PlatformBuildGrid({
   progress: number[];
   phase: PipelinePhase;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
         <Hammer className="h-3.5 w-3.5 text-white/40" />
         <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
@@ -1022,8 +1029,8 @@ function PlatformBuildGrid({
                 )}
                 {isBuilding && (
                   <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                    transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                   >
                     <Loader2 className="h-3 w-3 text-blue-400" />
                   </motion.div>
@@ -1096,6 +1103,8 @@ function ChecksumVerification({
 
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   useEffect(() => {
     return () => {
@@ -1121,7 +1130,7 @@ function ChecksumVerification({
   }, []);
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
       <div className="flex items-center gap-2 mb-3">
         <Hash className="h-3.5 w-3.5 text-white/40" />
         <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
@@ -1144,7 +1153,7 @@ function ChecksumVerification({
             animate={{ opacity: 1 }}
             className="ml-auto flex items-center gap-1 text-[10px] text-cyan-400 font-mono"
           >
-            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+            <motion.div animate={inView ? { rotate: 360 } : { rotate: 0 }} transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}>
               <Loader2 className="h-3 w-3" />
             </motion.div>
             verifying
@@ -1165,7 +1174,7 @@ function ChecksumVerification({
               <span className="text-[10px] font-mono text-white/40 w-24 shrink-0 truncate">
                 {target.label}
               </span>
-              <div className={`flex-1 font-mono text-[9px] leading-tight truncate transition-colors ${
+              <div className={`flex-1 font-mono text-[10px] leading-tight truncate transition-colors ${
                 isVerified ? 'text-emerald-400/70' : isVerifying ? 'text-cyan-400/60' : 'text-white/25'
               }`}>
                 {revealed ? hashes[idx] : '•'.repeat(64)}
@@ -1227,8 +1236,11 @@ function MiniTerminal({
   lines: TerminalLine[];
   terminalRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-black/40 overflow-hidden">
+    <div ref={rootRef} className="rounded-2xl border border-white/[0.08] bg-black/40 overflow-hidden">
       {/* Terminal header */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-white/[0.06] bg-white/[0.02]">
         <div className="flex items-center gap-1.5">
@@ -1273,8 +1285,8 @@ function MiniTerminal({
         {lines.length > 0 && (
           <motion.span
             className="inline-block h-3 w-1.5 bg-cyan-400/60"
-            animate={{ opacity: [1, 0] }}
-            transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+            animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+            transition={inView ? { duration: 0.8, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
           />
         )}
       </div>

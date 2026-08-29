@@ -133,7 +133,7 @@ interface ToolPageContentProps {
 
 export function ToolPageContent({ tool: doc }: ToolPageContentProps) {
   return (
-    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-hidden">
+    <main id="main-content" tabIndex={-1} className="text-aa-floor min-h-screen bg-black relative overflow-x-clip">
       {/* Dramatic ambient background */}
       <div className="fixed inset-0 pointer-events-none">
         <FloatingOrb

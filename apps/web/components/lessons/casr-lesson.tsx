@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Terminal,
   Repeat,
@@ -274,6 +274,8 @@ function InteractiveSessionHandoffImpl() {
   const [animatedTokens, setAnimatedTokens] = useState(0);
   const [animatedCompressed, setAnimatedCompressed] = useState(0);
   const [pipelineProgress, setPipelineProgress] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
   const terminalRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef(0);
   const pipelineFrameRef = useRef(0);
@@ -385,7 +387,7 @@ function InteractiveSessionHandoffImpl() {
   const contextFillPct = Math.min((animatedCompressed / CONTEXT_WINDOW_MAX) * 100, 100);
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
       {/* Decorative glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 rounded-full blur-3xl pointer-events-none" style={{ background: `${source.color}08` }} />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 rounded-full blur-3xl pointer-events-none" style={{ background: `${target.color}08` }} />
@@ -442,7 +444,7 @@ function InteractiveSessionHandoffImpl() {
                         />
                       )}
                     </motion.div>
-                    <span className={`text-[9px] font-medium leading-tight text-center hidden sm:block ${
+                    <span className={`text-[10px] font-medium leading-tight text-center hidden sm:block ${
                       isActive ? 'text-white/70' : isCompleted ? 'text-white/50' : 'text-white/25'
                     }`}>
                       {s.shortLabel}
@@ -555,8 +557,8 @@ function InteractiveSessionHandoffImpl() {
                     <motion.circle
                       cx="40" cy="40" r="3"
                       fill={source.color}
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
+                      animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
+                      transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                     />
                   )}
                 </g>
@@ -612,14 +614,14 @@ function InteractiveSessionHandoffImpl() {
                     <motion.circle
                       cx="560" cy="40" r="3"
                       fill={target.color}
-                      animate={{ opacity: [0.3, 1, 0.3] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
+                      animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
+                      transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                     />
                   )}
                 </g>
 
                 {/* Data particles flowing through pipeline */}
-                {currentStep >= 1 && currentStep <= 4 && (
+                {inView && currentStep >= 1 && currentStep <= 4 && (
                   <>
                     <motion.circle
                       r="3"
@@ -689,8 +691,8 @@ function InteractiveSessionHandoffImpl() {
                     <motion.circle
                       cx="560" cy="40" r="8"
                       fill="none" stroke="#22c55e" strokeWidth="1"
-                      animate={{ r: [8, 16], opacity: [0.5, 0] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
+                      animate={inView ? { r: [8, 16], opacity: [0.5, 0] } : { r: 8, opacity: 0 }}
+                      transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                     />
                   </motion.g>
                 )}
@@ -791,23 +793,23 @@ function InteractiveSessionHandoffImpl() {
                     {currentStep >= 4 && (
                       <div className="absolute inset-0 flex">
                         <div className="h-full bg-orange-500/10 border-r border-orange-500/20" style={{ width: '20%' }}>
-                          <span className="absolute bottom-0.5 left-0.5 text-[7px] text-orange-300/50">sys</span>
+                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-orange-300/50">sys</span>
                         </div>
                         <div className="h-full bg-violet-500/10 border-r border-violet-500/20" style={{ width: '50%' }}>
-                          <span className="absolute bottom-0.5 left-0.5 text-[7px] text-violet-300/50">task+diffs</span>
+                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-violet-300/50">task+diffs</span>
                         </div>
                         <div className="h-full bg-emerald-500/10" style={{ width: '30%' }}>
-                          <span className="absolute bottom-0.5 left-0.5 text-[7px] text-emerald-300/50">decisions</span>
+                          <span className="absolute bottom-0.5 left-0.5 text-[10px] text-emerald-300/50">decisions</span>
                         </div>
                       </div>
                     )}
                   </motion.div>
 
                   {/* Labels */}
-                  <div className="absolute top-1.5 left-2 text-[9px] font-mono text-white/30">0K</div>
-                  <div className="absolute top-1.5 right-2 text-[9px] font-mono text-white/30">128K</div>
+                  <div className="absolute top-1.5 left-2 text-[10px] font-mono text-white/30">0K</div>
+                  <div className="absolute top-1.5 right-2 text-[10px] font-mono text-white/30">128K</div>
                   <div className="absolute bottom-1.5 left-2 flex items-center gap-1">
-                    <span className="text-[9px] font-mono text-cyan-400/60">
+                    <span className="text-[10px] font-mono text-cyan-400/60">
                       {contextFillPct > 0 ? `${contextFillPct.toFixed(1)}% used` : 'empty'}
                     </span>
                   </div>
@@ -870,8 +872,8 @@ function InteractiveSessionHandoffImpl() {
                 {/* Blinking cursor */}
                 {terminalVisibleLines < step.terminalLines.length && (
                   <motion.span
-                    animate={{ opacity: [1, 0] }}
-                    transition={{ duration: 0.8, repeat: Infinity, repeatType: "reverse" }}
+                    animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+                    transition={inView ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
                     className="inline-block w-2 h-3.5 bg-white/50 ml-0.5"
                   />
                 )}
@@ -897,7 +899,7 @@ function InteractiveSessionHandoffImpl() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* Task */}
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-white/25 font-medium">Task</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">Task</span>
                   <motion.p
                     animate={{
                       opacity: currentStep >= 1 ? 1 : 0.3,
@@ -911,7 +913,7 @@ function InteractiveSessionHandoffImpl() {
 
                 {/* Files */}
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-white/25 font-medium">Files ({currentStep >= 1 ? 8 : 0})</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">Files ({currentStep >= 1 ? 8 : 0})</span>
                   <div className="flex flex-wrap gap-1">
                     <AnimatePresence>
                       {currentStep >= 1 && ['middleware.ts', 'pkce.ts', 'login.ts'].map((file, i) => (
@@ -921,7 +923,7 @@ function InteractiveSessionHandoffImpl() {
                           animate={{ opacity: 1, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.8 }}
                           transition={{ ...springTransition, delay: i * 0.05 }}
-                          className="px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-[9px] text-white/40 font-mono"
+                          className="px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-[10px] text-white/40 font-mono"
                         >
                           {file}
                         </motion.span>
@@ -931,7 +933,7 @@ function InteractiveSessionHandoffImpl() {
                       <motion.span
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="px-1.5 py-0.5 rounded bg-white/[0.04] text-[9px] text-white/30"
+                        className="px-1.5 py-0.5 rounded bg-white/[0.04] text-[10px] text-white/30"
                       >
                         +5 more
                       </motion.span>
@@ -941,7 +943,7 @@ function InteractiveSessionHandoffImpl() {
 
                 {/* Decisions */}
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-white/25 font-medium">Decisions ({currentStep >= 2 ? 5 : 0})</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/25 font-medium">Decisions ({currentStep >= 2 ? 5 : 0})</span>
                   <AnimatePresence>
                     {currentStep >= 2 && (
                       <motion.ul
@@ -956,7 +958,7 @@ function InteractiveSessionHandoffImpl() {
                             initial={{ opacity: 0, x: -4 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ ...springTransition, delay: i * 0.08 }}
-                            className="text-[9px] text-white/40 font-mono flex items-center gap-1"
+                            className="text-[10px] text-white/40 font-mono flex items-center gap-1"
                           >
                             <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400/50 shrink-0" />
                             {d}
@@ -965,7 +967,7 @@ function InteractiveSessionHandoffImpl() {
                         <motion.li
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
-                          className="text-[9px] text-white/25 font-mono"
+                          className="text-[10px] text-white/25 font-mono"
                         >
                           +3 more decisions
                         </motion.li>
@@ -1045,7 +1047,7 @@ function InteractiveSessionHandoffImpl() {
                       borderColor: isActive ? 'rgba(139, 92, 246, 0.4)' : isCompleted ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255,255,255,0.06)',
                     }}
                     transition={springTransition}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border text-[9px] font-mono"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-mono"
                   >
                     {isCompleted ? (
                       <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400/60" />

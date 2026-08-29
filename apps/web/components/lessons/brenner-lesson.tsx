@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   FlaskConical,
   Terminal,
@@ -553,6 +553,8 @@ function InteractiveResearchPipeline() {
   const [showEvidenceBoard, setShowEvidenceBoard] = useState(false);
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const terminalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const terminalTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -596,7 +598,7 @@ function InteractiveResearchPipeline() {
 
   // Auto-play through phases
   useEffect(() => {
-    if (isAutoPlaying) {
+    if (isAutoPlaying && inView) {
       autoPlayRef.current = setInterval(() => {
         setActivePhase((prev) => {
           const next = (prev + 1) % RESEARCH_PHASES.length;
@@ -609,7 +611,7 @@ function InteractiveResearchPipeline() {
     return () => {
       if (autoPlayRef.current) clearInterval(autoPlayRef.current);
     };
-  }, [isAutoPlaying, animateTerminal]);
+  }, [isAutoPlaying, inView, animateTerminal]);
 
   const currentPhase = RESEARCH_PHASES[activePhase];
   const visibleEvidence = EVIDENCE_ITEMS.filter((e) => e.appearsAtPhase <= activePhase);
@@ -618,6 +620,7 @@ function InteractiveResearchPipeline() {
 
   return (
     <motion.div
+      ref={rootRef}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={springTransition}

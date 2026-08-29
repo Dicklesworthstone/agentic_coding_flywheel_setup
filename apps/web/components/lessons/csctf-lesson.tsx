@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   FileText,
   Terminal,
@@ -463,7 +463,7 @@ function ChatBubble({
       className={`flex gap-2 ${isUser ? '' : 'flex-row-reverse'}`}
     >
       <div
-        className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[9px] font-bold ${
+        className={`shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
           isUser
             ? 'bg-white/10 text-white/60'
             : 'text-white'
@@ -473,7 +473,7 @@ function ChatBubble({
         {isUser ? <User className="h-3 w-3" /> : <Bot className="h-3 w-3" />}
       </div>
       <div
-        className={`relative rounded-xl px-3 py-2 max-w-[85%] text-[10px] leading-relaxed transition duration-300 ${
+        className={`relative rounded-xl px-3 py-2 max-w-[85%] text-xs leading-relaxed transition duration-300 ${
           isUser
             ? 'bg-white/[0.06] border border-white/[0.08] text-white/70'
             : 'border text-white/80'
@@ -496,22 +496,22 @@ function ChatBubble({
         {(message.hasCode || message.hasImage || message.hasLink || message.hasTable) && (
           <div className="flex gap-1 mt-1.5">
             {message.hasCode && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[8px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px]">
                 <Code2 className="h-2 w-2" /> code
               </span>
             )}
             {message.hasImage && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[8px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[10px]">
                 <ImageIcon className="h-2 w-2" /> img
               </span>
             )}
             {message.hasLink && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[8px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px]">
                 <ExternalLink className="h-2 w-2" /> link
               </span>
             )}
             {message.hasTable && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[8px]">
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px]">
                 <Table className="h-2 w-2" /> table
               </span>
             )}
@@ -534,10 +534,10 @@ function MarkdownBlock({
   visible: boolean;
 }) {
   const styles: Record<string, string> = {
-    heading: 'text-white/90 font-bold text-[11px]',
-    text: 'text-white/60 text-[10px]',
-    code: 'text-emerald-400 font-mono text-[9px] bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2 py-1',
-    metadata: 'text-white/30 font-mono text-[9px] italic',
+    heading: 'text-white/90 font-bold text-xs',
+    text: 'text-white/60 text-xs',
+    code: 'text-emerald-400 font-mono text-[10px] bg-emerald-500/[0.06] border border-emerald-500/20 rounded-md px-2 py-1',
+    metadata: 'text-white/30 font-mono text-[10px] italic',
   };
 
   return (
@@ -567,11 +567,13 @@ function FormatDetectionBadge({
   index,
   isDetecting,
   isDetected,
+  active,
 }: {
   badge: FormatBadge;
   index: number;
   isDetecting: boolean;
   isDetected: boolean;
+  active: boolean;
 }) {
   const Icon = FORMAT_ICONS[badge.type];
   const colorClass = FORMAT_COLORS[badge.type];
@@ -589,7 +591,7 @@ function FormatDetectionBadge({
         damping: 25,
         delay: index * 0.15,
       }}
-      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[9px] font-medium ${colorClass} ${
+      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-medium ${colorClass} ${
         isDetecting && !isDetected ? 'animate-pulse' : ''
       }`}
     >
@@ -607,8 +609,8 @@ function FormatDetectionBadge({
       )}
       {isDetecting && !isDetected && (
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          animate={active ? { rotate: 360 } : { rotate: 0 }}
+          transition={active ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
           className="h-2 w-2 border border-current border-t-transparent rounded-full"
         />
       )}
@@ -630,9 +632,11 @@ function PipelineProgressBar({
     : stage === 'idle'
       ? 0
       : ((stageIdx + 0.5) / totalStages) * 100;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   return (
-    <div className="space-y-2">
+    <div ref={rootRef} className="space-y-2">
       {/* Stage labels */}
       <div className="flex justify-between">
         {PIPELINE_STAGES.map((s, i) => {
@@ -654,8 +658,8 @@ function PipelineProgressBar({
                   <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                 ) : isCurrent ? (
                   <motion.div
-                    animate={{ rotate: [0, 5, -5, 0] }}
-                    transition={{ duration: 0.8, repeat: Infinity }}
+                    animate={inView ? { rotate: [0, 5, -5, 0] } : { rotate: 0 }}
+                    transition={inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
                   >
                     <Icon className="h-4 w-4" style={{ color: providerColor }} />
                   </motion.div>
@@ -664,7 +668,7 @@ function PipelineProgressBar({
                 )}
               </motion.div>
               <span
-                className={`text-[8px] font-medium hidden sm:block ${
+                className={`text-[10px] font-medium hidden sm:block ${
                   isPast
                     ? 'text-emerald-400'
                     : isCurrent
@@ -695,8 +699,8 @@ function PipelineProgressBar({
             style={{
               background: `linear-gradient(90deg, transparent, ${providerColor}44, transparent)`,
             }}
-            animate={{ x: ['-64px', '400px'] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+            animate={inView ? { x: ['-64px', '400px'] } : { x: '-64px' }}
+            transition={inView ? { duration: 1.5, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
           />
         )}
       </div>
@@ -720,7 +724,7 @@ function SizeComparison({
       <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2">
         <div className="flex items-center gap-1.5">
           <Globe className="h-3 w-3 text-white/40" />
-          <span className="text-[9px] font-semibold text-white/40 uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
             Raw Input
           </span>
         </div>
@@ -740,7 +744,7 @@ function SizeComparison({
       <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 space-y-2">
         <div className="flex items-center gap-1.5">
           <FileText className="h-3 w-3 text-emerald-400/60" />
-          <span className="text-[9px] font-semibold text-emerald-400/60 uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-emerald-400/60 uppercase tracking-wider">
             Clean Output
           </span>
         </div>
@@ -763,7 +767,7 @@ function SizeComparison({
         animate={{ opacity: 1 }}
         transition={{ delay: 0.5 }}
       >
-        <span className="text-[9px] text-emerald-400/70">
+        <span className="text-[10px] text-emerald-400/70">
           {Math.round((1 - source.outputTokens / source.tokens) * 100)}% smaller after cleaning
           {' '}({(source.tokens - source.outputTokens).toLocaleString()} tokens saved)
         </span>
@@ -801,6 +805,8 @@ function InteractiveConversionPipelineImpl() {
   const [visibleMdLines, setVisibleMdLines] = useState(0);
   const [formatDetectionIdx, setFormatDetectionIdx] = useState(-1);
   const timerIdsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const source = useMemo(
     () => SOURCES.find((s) => s.id === selectedSource) ?? null,
@@ -885,7 +891,7 @@ function InteractiveConversionPipelineImpl() {
   }, [clearTimers]);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-56 h-56 bg-violet-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -929,7 +935,7 @@ function InteractiveConversionPipelineImpl() {
               >
                 <div className="flex items-center gap-2 mb-1">
                   <div
-                    className="h-5 w-5 rounded-md flex items-center justify-center text-[9px] font-bold text-white"
+                    className="h-5 w-5 rounded-md flex items-center justify-center text-[10px] font-bold text-white"
                     style={{ backgroundColor: s.color + '33' }}
                   >
                     {s.icon}
@@ -940,8 +946,8 @@ function InteractiveConversionPipelineImpl() {
                     {s.name}
                   </span>
                 </div>
-                <p className="text-[9px] text-white/30 font-mono truncate">{s.url}</p>
-                <p className="text-[9px] text-white/50 truncate mt-0.5">{s.title}</p>
+                <p className="text-[10px] text-white/30 font-mono truncate">{s.url}</p>
+                <p className="text-[10px] text-white/50 truncate mt-0.5">{s.title}</p>
               </motion.button>
             );
           })}
@@ -966,7 +972,7 @@ function InteractiveConversionPipelineImpl() {
                 </p>
                 <div className="flex items-center gap-1">
                   <Clock className="h-3 w-3 text-white/30" />
-                  <span className="text-[9px] text-white/30 font-mono">
+                  <span className="text-[10px] text-white/30 font-mono">
                     {source.messages.length} msgs
                   </span>
                 </div>
@@ -981,12 +987,12 @@ function InteractiveConversionPipelineImpl() {
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-2 min-h-[200px]">
                   <div className="flex items-center gap-2 mb-2">
                     <MessageSquare className="h-3 w-3 text-white/40" />
-                    <span className="text-[9px] font-semibold text-white/40 uppercase tracking-wider">
+                    <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
                       Source Conversation
                     </span>
                     <div className="flex-1" />
                     <span
-                      className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md"
+                      className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
                       style={{
                         color: source.color,
                         backgroundColor: source.color + '1A',
@@ -1022,7 +1028,7 @@ function InteractiveConversionPipelineImpl() {
                         transition={{ type: 'spring', stiffness: 200, damping: 25 }}
                         className="pt-2 border-t border-white/[0.06]"
                       >
-                        <span className="text-[8px] text-white/30 uppercase tracking-wider font-semibold block mb-1.5">
+                        <span className="text-[10px] text-white/30 uppercase tracking-wider font-semibold block mb-1.5">
                           Detected Formats
                         </span>
                         <div className="flex flex-wrap gap-1.5">
@@ -1033,6 +1039,7 @@ function InteractiveConversionPipelineImpl() {
                               index={i}
                               isDetecting={formatDetectionIdx >= i && formatDetectionIdx < source.detectedFormats.length}
                               isDetected={formatDetectionIdx > i || stage === 'format' || stage === 'output' || stage === 'done'}
+                              active={inView}
                             />
                           ))}
                         </div>
@@ -1045,7 +1052,7 @@ function InteractiveConversionPipelineImpl() {
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3 space-y-1.5 min-h-[200px]">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="h-3 w-3 text-white/40" />
-                    <span className="text-[9px] font-semibold text-white/40 uppercase tracking-wider">
+                    <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
                       Markdown Output
                     </span>
                     <div className="flex-1" />
@@ -1054,7 +1061,7 @@ function InteractiveConversionPipelineImpl() {
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ type: 'spring', stiffness: 200, damping: 25 }}
-                        className="text-[9px] font-semibold text-emerald-400 px-1.5 py-0.5 rounded-md bg-emerald-500/10"
+                        className="text-[10px] font-semibold text-emerald-400 px-1.5 py-0.5 rounded-md bg-emerald-500/10"
                       >
                         Complete
                       </motion.span>
@@ -1078,8 +1085,8 @@ function InteractiveConversionPipelineImpl() {
                   {visibleMdLines === 0 && stage !== 'done' && (
                     <div className="flex items-center justify-center h-24 text-white/10">
                       <motion.div
-                        animate={{ x: [0, 6, 0] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
+                        animate={inView ? { x: [0, 6, 0] } : { x: 0 }}
+                        transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                         className="flex items-center gap-2"
                       >
                         <ChevronRight className="h-5 w-5" />

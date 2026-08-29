@@ -2815,27 +2815,29 @@ ACFS works on any Ubuntu VPS with SSH access and either root password login or a
 
 After installation, run `acfs capacity --profile 25-agents --recommend-ntm` on the VPS for a local RAM/CPU/disk sizing report with recommended agent counts and copyable NTM launch profiles.
 
+Plan names, specs, and prices below were verified against the provider sites in 2026-08 (`PRICING_LAST_UPDATED` in `apps/web/lib/vpsProviders.ts`, the single source the wizard renders from).
+
 ### Contabo (Best Value — Top Pick)
 
 | Plan | RAM | vCPU | Storage | Price | Notes |
 |------|-----|------|---------|-------|-------|
-| **Cloud VPS 50** | 64GB | 16 | 400GB NVMe | ~$56/mo (US) | **Recommended** — Best for serious multi-agent work |
-| Cloud VPS 40 | 48GB | 12 | 300GB NVMe | ~$36/mo (US) | Budget option, still comfortable |
+| **Cloud VPS 16** | 64GB | 16 | 500GB SSD | ~$43/mo (€37 EU list) | **Recommended** — Best for serious multi-agent work |
+| Cloud VPS 12 | 48GB | 12 | 400GB SSD | ~$29/mo (€25 EU list) | Budget option, still comfortable |
 
 - Best specs-to-price ratio on the market
-- Month-to-month pricing, no commitment required
-- US datacenter pricing includes ~$10/month premium
+- Contabo lists EUR prices (24-month introductory rate, incl. VAT); the USD figures are approximate conversions
+- Month-to-month terms are available; US datacenters may add a location fee (checkout shows the final price)
 
-### OVH (Great Alternative)
+### OVH (Small Plans Only)
 
 | Plan | RAM | vCore | Storage | Price | Notes |
 |------|-----|-------|---------|-------|-------|
-| **VPS-5** | 64GB | 16 | 320GB NVMe | ~$40/mo | **Recommended** — Great EU and US datacenters |
-| VPS-4 | 48GB | 12 | 240GB NVMe | ~$26/mo | Budget option |
+| **VPS-4** | 24GB | 8 | 200GB NVMe | from $23.37/mo (12-month term) | Largest OVH VPS — **below the 48GB recommendation**; fine for ~4-6 standard agents |
+| VPS-3 | 12GB | 6 | 100GB NVMe | from $12.32/mo (12-month term) | Far below the recommendation; only for trying ACFS with 1-2 agents |
 
-- Anti-DDoS included
-- Month-to-month, 5-15% discount for longer commitments
-- Typically faster activation than Contabo
+- OVH's VPS range now tops out at VPS-4 (24GB); pick Contabo for the 48-64GB hosts this guide recommends
+- Anti-DDoS included; polished control panel and fast activation
+- "From" prices assume a 12-month term; month-to-month costs more
 
 ### Requirements
 
@@ -2844,7 +2846,7 @@ After installation, run `acfs capacity --profile 25-agents --recommend-ntm` on t
 | **RAM** | 32GB (tight) | 48-64GB |
 | **Storage** | 250GB NVMe SSD | 300GB+ NVMe SSD |
 | **CPU** | 12 vCPU | 16 vCPU |
-| **Price** | ~$26/mo | ~$40-56/mo |
+| **Price** | ~$29/mo (48GB) | ~$43/mo (64GB) |
 
 ### Other Providers
 
@@ -2872,7 +2874,7 @@ Each guide includes:
 | Aspect | Contabo | OVH | Hetzner |
 |--------|---------|-----|---------|
 | Best For | Maximum value | EU data residency | German engineering |
-| Provisioning | 1-3 hours | 5-30 minutes | 2-10 minutes |
+| Provisioning | Minutes to ~1 hour | 5-30 minutes | 2-10 minutes |
 | Support | Email only | Phone + chat | 24/7 ticket system |
 | Data Centers | EU, US, Asia | Global | EU only |
 | Payment | Monthly | Hourly or monthly | Hourly or monthly |

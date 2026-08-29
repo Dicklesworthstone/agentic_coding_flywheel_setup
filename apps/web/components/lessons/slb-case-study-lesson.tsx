@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Lightbulb,
   FileText,
@@ -1008,6 +1008,8 @@ function InteractiveBuildTimeline() {
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const auditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
   const scenario = LAUNCH_SCENARIOS[selectedScenario];
 
   // Cleanup timers
@@ -1126,6 +1128,7 @@ function InteractiveBuildTimeline() {
 
   return (
     <motion.div
+      ref={rootRef}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -1298,7 +1301,7 @@ function InteractiveBuildTimeline() {
           {(phase === "denied" || phase === "aborted") && (
             <AbortDisplay reason={scenario.denyReason} />
           )}
-          {phase === "executing" && <ExecutingDisplay />}
+          {phase === "executing" && <ExecutingDisplay active={inView} />}
           {phase === "complete" && (
             <CompleteDisplay command={scenario.command} />
           )}
@@ -1699,7 +1702,7 @@ function AgentConsole({
               <span className="text-[10px] font-mono text-white/30 uppercase block mb-1">
                 {role === "INITIATOR" ? "Reasoning" : phase === "denied" || phase === "aborted" ? "Denial Reason" : "Review Comment"}
               </span>
-              <span className="text-[11px] text-white/50 leading-relaxed block">
+              <span className="text-xs text-white/50 leading-relaxed block">
                 {reasoning}
               </span>
             </div>
@@ -1811,7 +1814,7 @@ function AbortDisplay({ reason }: { reason?: string }) {
 // =============================================================================
 // EXECUTING DISPLAY
 // =============================================================================
-function ExecutingDisplay() {
+function ExecutingDisplay({ active }: { active: boolean }) {
   return (
     <motion.div
       key="executing"
@@ -1822,8 +1825,8 @@ function ExecutingDisplay() {
     >
       <div className="flex items-center justify-center gap-3">
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+          animate={active ? { rotate: 360 } : { rotate: 0 }}
+          transition={active ? { duration: 1, repeat: Infinity, ease: "linear" } : { duration: 0.2 }}
         >
           <Zap className="h-5 w-5 text-amber-400" />
         </motion.div>

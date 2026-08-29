@@ -1,11 +1,22 @@
 /**
  * VPS provider data for the comparison table in the wizard.
  *
- * Prices are as of early 2026 and should be reviewed periodically.
- * Provider data is separated from UI so it's easy to update without
- * touching component code.
+ * Plan names, specs, and prices were re-verified against the providers'
+ * public pages in 2026-08 (see PRICING_LAST_UPDATED) and should be reviewed
+ * periodically. Provider data is separated from UI so it's easy to update
+ * without touching component code; guide prose derives from this table via
+ * describePlan() and VPS_TOP_PICK so the wizard cannot drift from it.
  *
- * @see bd-w8fx
+ * Pricing notes:
+ * - Contabo lists EUR prices (24-month introductory rate, incl. VAT). The
+ *   USD figures here are approximate conversions at the ECB reference rate
+ *   (1 EUR = 1.1643 USD on 2026-08-28). Month-to-month terms and US
+ *   datacenters can cost more.
+ * - OVH shows a "from" USD price that assumes a 12-month upfront term;
+ *   month-to-month billing is higher. OVH's lineup now tops out at VPS-4
+ *   (24 GB), below the ACFS RAM recommendation, and is flagged as such.
+ *
+ * @see bd-w8fx, bd-jspqj
  */
 
 export interface VPSPlan {
@@ -17,8 +28,12 @@ export interface VPSPlan {
   vCPU: number;
   /** Storage in GB */
   storageGB: number;
-  /** Monthly price in USD (no-commitment) */
+  /** Approximate monthly price in USD (see priceNote for how it was derived) */
   priceUSD: number;
+  /** How priceUSD was derived: currency conversion, commitment term, etc. */
+  priceNote?: string;
+  /** Caveat shown next to the plan, e.g. when it is below the ACFS RAM recommendation */
+  note?: string;
 }
 
 export type VPSRegionStatus = "supported" | "borderline";
@@ -69,6 +84,13 @@ export type WorkloadId = "light" | "standard" | "heavy";
 export type PlanStatus = "pass" | "warn" | "fail";
 
 export const VPS_UBUNTU_IMAGE_OPTIONS = ["25.10", "24.04", "22.04", "20.04"] as const;
+
+/**
+ * Minimum RAM the ACFS guide recommends for a multi-agent host. Plans below
+ * this are still listed (they may be the largest a provider sells) but are
+ * flagged wherever plans are rendered.
+ */
+export const ACFS_RECOMMENDED_MIN_RAM_GB = 48;
 
 export interface WorkloadProfile {
   id: WorkloadId;
@@ -170,18 +192,20 @@ export const VPS_PROVIDERS: VPSProvider[] = [
     tagline: "Best specs-to-price ratio",
     url: "https://contabo.com/en-us/vps/",
     recommended: {
-      name: "Cloud VPS 50",
+      name: "Cloud VPS 16",
       ramGB: 64,
       vCPU: 16,
-      storageGB: 400,
-      priceUSD: 56,
+      storageGB: 500,
+      priceUSD: 43,
+      priceNote: "approx.; Contabo lists EUR 37/mo (24-month intro rate)",
     },
     budget: {
-      name: "Cloud VPS 40",
+      name: "Cloud VPS 12",
       ramGB: 48,
       vCPU: 12,
-      storageGB: 300,
-      priceUSD: 36,
+      storageGB: 400,
+      priceUSD: 29,
+      priceNote: "approx.; Contabo lists EUR 25/mo (24-month intro rate)",
     },
     activationTime: "Minutes (up to ~1 hr)",
     bestFor: "Best value overall",
@@ -223,7 +247,8 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       cautionBelowUbuntu: "24.04",
     },
     isTopPick: true,
-    note: "US datacenter pricing includes ~$10/mo surcharge",
+    note:
+      "USD prices are approximate conversions of Contabo's EUR list price (24-month introductory rate, incl. VAT). Month-to-month terms and US datacenters can cost more; the checkout page shows the final price. Storage is listed as SSD.",
   },
   {
     id: "ovh",
@@ -231,21 +256,25 @@ export const VPS_PROVIDERS: VPSProvider[] = [
     tagline: "Polished interface, fast activation",
     url: "https://us.ovhcloud.com/vps/",
     recommended: {
-      name: "VPS-5",
-      ramGB: 64,
-      vCPU: 16,
-      storageGB: 640,
-      priceUSD: 40,
+      name: "VPS-4",
+      ramGB: 24,
+      vCPU: 8,
+      storageGB: 200,
+      priceUSD: 24,
+      priceNote: "OVH lists from $23.37/mo with a 12-month term; monthly is higher",
+      note: "Largest OVH VPS; 24 GB is below the 48 GB ACFS recommendation",
     },
     budget: {
-      name: "VPS-4",
-      ramGB: 48,
-      vCPU: 12,
-      storageGB: 480,
-      priceUSD: 26,
+      name: "VPS-3",
+      ramGB: 12,
+      vCPU: 6,
+      storageGB: 100,
+      priceUSD: 13,
+      priceNote: "OVH lists from $12.32/mo with a 12-month term; monthly is higher",
+      note: "12 GB is far below the 48 GB ACFS recommendation; only for trying ACFS with 1-2 agents",
     },
     activationTime: "Minutes",
-    bestFor: "Lowest 64GB price",
+    bestFor: "Small hosts only (max 24 GB)",
     regions: "US, EU, CA, Asia",
     regionOptions: [
       {
@@ -290,11 +319,27 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       minimumUbuntu: "22.04",
       cautionBelowUbuntu: "24.04",
     },
+    note:
+      "OVH's VPS range now tops out at VPS-4 (24 GB), below the 48 GB ACFS target. Choose OVH only for a small swarm; pick Contabo for 48-64 GB.",
   },
 ];
 
-/** Date the pricing data was last verified */
-export const PRICING_LAST_UPDATED = "2026-01";
+/** Date the plan names, specs, and pricing were last verified against the provider sites */
+export const PRICING_LAST_UPDATED = "2026-08";
+
+/** The provider the guide steers beginners to (first isTopPick, else the first entry). */
+export const VPS_TOP_PICK: VPSProvider =
+  VPS_PROVIDERS.find((provider) => provider.isTopPick) ?? VPS_PROVIDERS[0];
+
+/** True when a plan has less RAM than the ACFS guide recommends. */
+export function isBelowRamRecommendation(plan: VPSPlan): boolean {
+  return plan.ramGB < ACFS_RECOMMENDED_MIN_RAM_GB;
+}
+
+/** Short label for guide prose, e.g. "Cloud VPS 16 (64GB RAM, 16 vCPU): ~$43/month". */
+export function describePlan(plan: VPSPlan): string {
+  return `${plan.name} (${plan.ramGB}GB RAM, ${plan.vCPU} vCPU): ~$${plan.priceUSD}/month`;
+}
 
 function roundUpToTier(value: number, tiers: number[]): number {
   return tiers.find((tier) => tier >= value) ?? tiers[tiers.length - 1];
@@ -475,11 +520,16 @@ export function validateVPSReadiness(
         : capacity.status === "warn"
           ? "borderline"
           : "unsupported";
+    const belowRecommendation = isBelowRamRecommendation(plan);
     checks.push({
       id: "plan",
       label: "Plan",
-      status: "supported",
-      message: `${provider.name} ${plan.name} has ${plan.ramGB}GB RAM, ${plan.vCPU} vCPU, and ${plan.storageGB}GB storage.`,
+      status: belowRecommendation ? "borderline" : "supported",
+      message: `${provider.name} ${plan.name} has ${plan.ramGB}GB RAM, ${plan.vCPU} vCPU, and ${plan.storageGB}GB storage.${
+        belowRecommendation
+          ? ` That is below the ${ACFS_RECOMMENDED_MIN_RAM_GB}GB ACFS recommendation.`
+          : ""
+      }`,
     });
     checks.push({
       id: "capacity",

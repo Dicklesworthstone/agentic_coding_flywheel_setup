@@ -198,10 +198,11 @@ export default function StatusCheckPage() {
     router.push(withCurrentSearch("/wizard/launch-onboarding"));
   }, [router, markComplete]);
 
-  useWizardForwardNav({
+  const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
     disabled: isNavigating || !doctorConfirmed,
     loading: isNavigating,
+    label: "Everything looks good!",
   });
 
   // Compute auth services once, not on every category iteration
@@ -691,6 +692,8 @@ export default function StatusCheckPage() {
         )}
         <div className="flex justify-end">
           <Button
+            ref={forwardCtaRef}
+            data-wizard-primary-cta
             onClick={handleContinue}
             disabled={isNavigating || !doctorConfirmed}
             size="lg"

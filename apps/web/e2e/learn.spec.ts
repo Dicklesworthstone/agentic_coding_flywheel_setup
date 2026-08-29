@@ -188,7 +188,7 @@ test.describe.serial("Learning Hub", () => {
     await expect(page.locator('a[href="/learn/agent-commands"]')).toHaveCount(2);
     await expect(page.locator('a[href="/learn/ntm-palette"]')).toHaveCount(2);
     await expect(page.locator('a[href="/learn/commands"]')).toHaveCount(1);
-    await expect(page.locator('a[href="/learn/glossary"]')).toHaveCount(1);
+    await expect(page.locator('a[href="/glossary"]')).toHaveCount(1);
   });
 
   test("a still-locked lesson ignores the complete shortcut", async ({ page }) => {

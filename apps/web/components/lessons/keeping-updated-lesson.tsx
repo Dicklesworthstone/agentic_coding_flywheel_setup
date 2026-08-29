@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   RefreshCw,
   Zap,
@@ -829,6 +829,8 @@ const STATUS_COLORS: Record<RepoSyncStatus, { bg: string; border: string; text: 
 const STAGE_STEP_DURATION = 800;
 
 function InteractiveUpdatePipeline() {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
   const [activeScenario, setActiveScenario] = useState(0);
   const [repoStatuses, setRepoStatuses] = useState<Record<string, RepoSyncStatus>>(
     () => Object.fromEntries(REPOS.map((r) => [r.id, "idle" as RepoSyncStatus]))
@@ -944,6 +946,7 @@ function InteractiveUpdatePipeline() {
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 200, damping: 25 }}
@@ -1036,7 +1039,7 @@ function InteractiveUpdatePipeline() {
               exit={{ opacity: 0, scale: 0.98 }}
               transition={{ type: "spring", stiffness: 200, damping: 25 }}
             >
-              <DependencyGraph repoStatuses={repoStatuses} />
+              <DependencyGraph repoStatuses={repoStatuses} active={inView} />
             </motion.div>
           ) : (
             <motion.div
@@ -1051,6 +1054,7 @@ function InteractiveUpdatePipeline() {
                 repoErrors={repoErrors}
                 selectedRepo={selectedRepo}
                 onSelectRepo={setSelectedRepo}
+                active={inView}
               />
             </motion.div>
           )}
@@ -1219,11 +1223,13 @@ function RepoGrid({
   repoErrors,
   selectedRepo,
   onSelectRepo,
+  active,
 }: {
   repoStatuses: Record<string, RepoSyncStatus>;
   repoErrors: Record<string, string>;
   selectedRepo: string | null;
   onSelectRepo: (id: string | null) => void;
+  active: boolean;
 }) {
   return (
     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -1251,15 +1257,15 @@ function RepoGrid({
             {status === "syncing" && (
               <motion.div
                 className="absolute inset-0 rounded-xl border border-amber-500/20"
-                animate={{ opacity: [0.2, 0.5, 0.2] }}
-                transition={{ duration: 1.2, repeat: Infinity, repeatType: "reverse" }}
+                animate={active ? { opacity: [0.2, 0.5, 0.2] } : { opacity: 0.2 }}
+                transition={active ? { duration: 1.2, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
                 style={{ boxShadow: "0 0 16px rgba(245, 158, 11, 0.1)" }}
               />
             )}
 
             {/* Status icon */}
             <div className="relative">
-              <RepoStatusIcon status={status} />
+              <RepoStatusIcon status={status} active={active} />
             </div>
 
             {/* Name */}
@@ -1268,7 +1274,7 @@ function RepoGrid({
             </span>
 
             {/* Category badge */}
-            <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${catColor.bg} ${catColor.text} border ${catColor.border}`}>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${catColor.bg} ${catColor.text} border ${catColor.border}`}>
               {repo.category}
             </span>
 
@@ -1291,7 +1297,7 @@ function RepoGrid({
 // REPO STATUS ICON — Animated icon per status
 // =============================================================================
 
-function RepoStatusIcon({ status }: { status: RepoSyncStatus }) {
+function RepoStatusIcon({ status, active }: { status: RepoSyncStatus; active: boolean }) {
   return (
     <AnimatePresence mode="wait">
       {status === "idle" && (
@@ -1309,13 +1315,13 @@ function RepoStatusIcon({ status }: { status: RepoSyncStatus }) {
         <motion.div
           key="syncing"
           initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 1, scale: 1, rotate: 360 }}
+          animate={{ opacity: 1, scale: 1, rotate: active ? 360 : 0 }}
           exit={{ opacity: 0, scale: 0.5 }}
           transition={{
             type: "spring",
             stiffness: 200,
             damping: 20,
-            rotate: { repeat: Infinity, duration: 1, ease: "linear" },
+            rotate: active ? { repeat: Infinity, duration: 1, ease: "linear" } : { duration: 0.2 },
           }}
         >
           <Loader2 className="h-4 w-4 text-amber-400" />
@@ -1373,7 +1379,7 @@ function RepoStatusIcon({ status }: { status: RepoSyncStatus }) {
 // SVG DEPENDENCY GRAPH — Shows repo relationships
 // =============================================================================
 
-function DependencyGraph({ repoStatuses }: { repoStatuses: Record<string, RepoSyncStatus> }) {
+function DependencyGraph({ repoStatuses, active }: { repoStatuses: Record<string, RepoSyncStatus>; active: boolean }) {
   // Layout: position repos in a tree-like graph
   const positions: Record<string, { x: number; y: number }> = {
     apt: { x: 250, y: 25 },
@@ -1456,8 +1462,8 @@ function DependencyGraph({ repoStatuses }: { repoStatuses: Record<string, RepoSy
                   fill="none"
                   stroke="rgba(245,158,11,0.3)"
                   strokeWidth={1}
-                  animate={{ r: [18, 24, 18], opacity: [0.3, 0.6, 0.3] }}
-                  transition={{ duration: 1.2, repeat: Infinity, repeatType: "reverse" }}
+                  animate={active ? { r: [18, 24, 18], opacity: [0.3, 0.6, 0.3] } : { r: 18, opacity: 0.3 }}
+                  transition={active ? { duration: 1.2, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
                 />
               )}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Globe,
   Terminal,
@@ -362,6 +362,8 @@ function InteractiveWebToMarkdown() {
   const [convertedTokens, setConvertedTokens] = useState<string[]>([]);
   const [flyingTokenIndex, setFlyingTokenIndex] = useState(-1);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
 
   const page = PAGE_TYPES[pageIndex];
 
@@ -475,7 +477,7 @@ function InteractiveWebToMarkdown() {
   const isAnimating = stage !== 'idle' && stage !== 'done';
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={ref} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 right-1/4 w-72 h-72 bg-violet-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-1/4 w-56 h-56 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -625,7 +627,7 @@ function InteractiveWebToMarkdown() {
                         <motion.span
                           initial={{ opacity: 0, scale: 0.5 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          className={`ml-auto shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+                          className={`ml-auto shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
                             el.isNoise
                               ? 'bg-red-500/20 text-red-300'
                               : 'bg-emerald-500/20 text-emerald-300'
@@ -707,8 +709,8 @@ function InteractiveWebToMarkdown() {
                         className="flex items-center gap-2 text-xs text-white/30"
                       >
                         <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                          animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                          transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                         >
                           <Globe className="h-3.5 w-3.5" />
                         </motion.div>
@@ -722,8 +724,8 @@ function InteractiveWebToMarkdown() {
                         className="flex items-center gap-2 text-xs text-amber-300/50"
                       >
                         <motion.div
-                          animate={{ opacity: [0.3, 1, 0.3] }}
-                          transition={{ duration: 1.2, repeat: Infinity }}
+                          animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 1 }}
+                          transition={inView ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
                         >
                           <BarChart3 className="h-3.5 w-3.5" />
                         </motion.div>
@@ -743,8 +745,8 @@ function InteractiveWebToMarkdown() {
                     {stage === 'converting' && convertedTokens.length < contentCount && (
                       <motion.div
                         initial={{ opacity: 0 }}
-                        animate={{ opacity: [0.4, 1, 0.4] }}
-                        transition={{ duration: 0.8, repeat: Infinity }}
+                        animate={inView ? { opacity: [0.4, 1, 0.4] } : { opacity: 1 }}
+                        transition={inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
                         className="flex items-center gap-2 text-xs text-violet-300/50"
                       >
                         <FileCode2 className="h-3.5 w-3.5" />
@@ -806,7 +808,7 @@ function InteractiveWebToMarkdown() {
                         transition={{ ...SPRING, delay: 0.1 }}
                         className="h-full rounded-full bg-gradient-to-r from-red-400/30 to-red-500/40 flex items-center justify-end pr-2"
                       >
-                        <span className="text-[9px] font-mono text-red-200/70">{(page.htmlBytes / 1024).toFixed(1)} KB</span>
+                        <span className="text-[10px] font-mono text-red-200/70">{(page.htmlBytes / 1024).toFixed(1)} KB</span>
                       </motion.div>
                     </div>
                   </div>
@@ -819,7 +821,7 @@ function InteractiveWebToMarkdown() {
                         transition={{ ...SPRING, delay: 0.25 }}
                         className="h-full rounded-full bg-gradient-to-r from-emerald-400/40 to-emerald-500/50 flex items-center justify-end pr-2"
                       >
-                        <span className="text-[9px] font-mono text-emerald-200/80">{(page.mdBytes / 1024).toFixed(1)} KB</span>
+                        <span className="text-[10px] font-mono text-emerald-200/80">{(page.mdBytes / 1024).toFixed(1)} KB</span>
                       </motion.div>
                     </div>
                   </div>
@@ -946,7 +948,7 @@ function InteractiveWebToMarkdown() {
                     opacity: isActive || isPast ? 1 : 0.25,
                   }}
                   transition={SPRING}
-                  className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[9px] font-medium ${
+                  className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium ${
                     isActive
                       ? 'border-white/20 bg-white/[0.06] text-white/80'
                       : isPast
@@ -956,8 +958,8 @@ function InteractiveWebToMarkdown() {
                 >
                   {isActive ? (
                     <motion.div
-                      animate={{ rotate: s !== 'done' ? 360 : 0 }}
-                      transition={s !== 'done' ? { duration: 1.5, repeat: Infinity, ease: 'linear' } : {}}
+                      animate={{ rotate: s !== 'done' && inView ? 360 : 0 }}
+                      transition={s !== 'done' && inView ? { duration: 1.5, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                     >
                       <Icon className="h-2.5 w-2.5" />
                     </motion.div>
@@ -989,8 +991,8 @@ function InteractiveWebToMarkdown() {
             {isAnimating ? (
               <>
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                  transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                 >
                   <Globe className="h-4 w-4" />
                 </motion.div>

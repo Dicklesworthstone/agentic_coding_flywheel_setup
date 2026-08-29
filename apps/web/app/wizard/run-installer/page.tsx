@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
   Sparkles,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { CommandCard } from "@/components/command-card";
+import { CommandCard, commandCompletionKeys } from "@/components/command-card";
 import { AlertCard, OutputPreview, DetailsSection } from "@/components/alert-card";
 import { TrackedLink } from "@/components/tracked-link";
 import {
@@ -30,7 +31,7 @@ import {
   useWizardForwardNav,
 } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
-import { copyTextToClipboard, withCurrentSearch } from "@/lib/utils";
+import { copyTextToClipboard, safeGetItem, withCurrentSearch } from "@/lib/utils";
 import {
   buildHandoffRunbook,
   buildInstallCommand,
@@ -109,6 +110,11 @@ const VERIFIED_INSTALLER_CACHE_PATH = "/var/cache/acfs-installer-cache";
  * copying the text. Object URLs are revoked on a timer: Safari and older
  * Firefox cancel a download whose URL is revoked before the navigation begins.
  */
+// The installer CommandCard persists its "I ran this command" checkbox under
+// this key (see COMPLETION_KEY_PREFIX in command-card.tsx); step 9 unlocks
+// Continue from it, the same way step 12 unlocks from the doctor command.
+const RUN_INSTALLER_COMPLETION_KEY = "acfs-command-run-flywheel-installer";
+
 function downloadTextFile(filename: string, contents: string, mimeType: string): boolean {
   if (typeof document === "undefined") return false;
   try {
@@ -152,6 +158,12 @@ export default function RunInstallerPage() {
   const [refDraftOverride, setRefDraftOverride] = useState<string | null>(null);
   // Transient "Saved <file>" / "Download failed" message for the handoff buttons.
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
+  // Shares the CommandCard's query key, so ticking the box unlocks Continue
+  // (and the mobile dock) immediately.
+  const { data: installerAcknowledged = false } = useQuery({
+    queryKey: commandCompletionKeys.completion(RUN_INSTALLER_COMPLETION_KEY),
+    queryFn: () => safeGetItem(RUN_INSTALLER_COMPLETION_KEY) === "true",
+  });
   const downloadStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usePinnedRef = pinEditorOpen || pinnedRef !== null;
   const refDraft = pinEditorOpen
@@ -365,7 +377,12 @@ export default function RunInstallerPage() {
     );
   }, [teamProfile, saveArtifact]);
 
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating || !installerAcknowledged,
+    loading: isNavigating,
+    label: "Installation finished",
+  });
 
   if (!ready || vpsIP === null) {
     return (
@@ -973,9 +990,23 @@ export default function RunInstallerPage() {
         </div>
       </SimplerGuide>
 
-      {/* Continue button */}
-      <div className="flex justify-end pt-4">
-        <Button onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+      {/* Continue button — unlocked by the installer card's "I ran this
+          command" checkbox (mirrors the doctor gate on the status-check step). */}
+      <div className="flex flex-col items-end gap-2 pt-4">
+        {!installerAcknowledged && (
+          <p id="run-installer-continue-hint" className="text-sm text-muted-foreground">
+            Tick <span className="font-medium text-foreground">&ldquo;I ran this command&rdquo;</span> under the installer command above to unlock the next step.
+          </p>
+        )}
+        <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
+          onClick={handleContinue}
+          disabled={isNavigating || !installerAcknowledged}
+          aria-describedby={!installerAcknowledged ? "run-installer-continue-hint" : undefined}
+          size="lg"
+          disableMotion
+        >
           {isNavigating ? "Loading..." : "Installation finished"}
         </Button>
       </div>

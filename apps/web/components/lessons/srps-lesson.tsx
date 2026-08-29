@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Shield,
   Activity,
@@ -537,6 +537,8 @@ function InteractiveResourceMonitor() {
   // Terminal output
   const [terminalVisibleLines, setTerminalVisibleLines] = useState(0);
   const termTimerRef = useRef(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   // Process table
   const [sortColumn, setSortColumn] = useState<"cpu" | "mem">("cpu");
@@ -723,10 +725,11 @@ function InteractiveResourceMonitor() {
     return () => clearTimeout(timeout);
   }, [terminalVisibleLines]);
 
-  useAnimationFrame(simulate, true);
+  useAnimationFrame(simulate, inView);
 
   // Cycle terminal lines
   useEffect(() => {
+    if (!inView) return;
     const interval = setInterval(() => {
       setTerminalVisibleLines(0);
       // Defer the reset using setTimeout so we don't setState synchronously in effect
@@ -735,10 +738,10 @@ function InteractiveResourceMonitor() {
       }, 0);
     }, 12000);
     return () => clearInterval(interval);
-  }, []);
+  }, [inView]);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary/[0.04] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-48 h-48 bg-emerald-500/[0.04] rounded-full blur-3xl pointer-events-none" />
@@ -840,6 +843,7 @@ function InteractiveResourceMonitor() {
               swapUsage={swapUsage}
               oomWarning={oomWarning}
               srpsActive={srpsActive}
+              active={inView}
             />
           </div>
 
@@ -873,12 +877,12 @@ function InteractiveResourceMonitor() {
         {/* Governor Panel */}
         <AnimatePresence>
           {governorVisible && srpsActive && (
-            <GovernorPanel scenario={scenario} totalCpu={totalCpu} />
+            <GovernorPanel scenario={scenario} totalCpu={totalCpu} active={inView} />
           )}
         </AnimatePresence>
 
         {/* Mini Terminal */}
-        <MiniTerminal visibleLines={terminalVisibleLines} />
+        <MiniTerminal visibleLines={terminalVisibleLines} active={inView} />
       </div>
     </div>
   );
@@ -1108,7 +1112,7 @@ function CoreBar({
       </div>
       {srpsActive && load < 35 && (
         <div className="text-center">
-          <span className="text-[8px] text-emerald-400/60">throttled</span>
+          <span className="text-[10px] text-emerald-400/60">throttled</span>
         </div>
       )}
     </div>
@@ -1124,11 +1128,13 @@ function MemoryPanel({
   swapUsage,
   oomWarning,
   srpsActive,
+  active,
 }: {
   memValues: number[];
   swapUsage: number;
   oomWarning: boolean;
   srpsActive: boolean;
+  active: boolean;
 }) {
   const totalMem = memValues.reduce((a, b) => a + b, 0);
   const memPct = clamp(totalMem / 2, 0, 100); // Assuming ~200% scale for 4 agents
@@ -1147,8 +1153,8 @@ function MemoryPanel({
         <div className="flex items-center gap-2">
           {oomWarning && (
             <motion.span
-              animate={{ opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 1.2, repeat: Infinity }}
+              animate={active ? { opacity: [0.5, 1, 0.5] } : { opacity: 0.5 }}
+              transition={active ? { duration: 1.2, repeat: Infinity } : { duration: 0.2 }}
               className="text-[10px] font-bold text-red-400 uppercase"
             >
               OOM RISK
@@ -1162,7 +1168,7 @@ function MemoryPanel({
 
       {/* Circular gauge */}
       <div className="flex items-center gap-4">
-        <MemoryGauge percentage={memPct} oomRisk={oomWarning} />
+        <MemoryGauge percentage={memPct} oomRisk={oomWarning} active={active} />
 
         <div className="flex-1 space-y-2">
           {agentNames.map((name, i) => (
@@ -1212,7 +1218,7 @@ function MemoryPanel({
           />
         </div>
         {srpsActive && (
-          <span className="text-[9px] text-emerald-400/60">
+          <span className="text-[10px] text-emerald-400/60">
             Swap pressure managed by sysctl tweaks
           </span>
         )}
@@ -1224,9 +1230,11 @@ function MemoryPanel({
 function MemoryGauge({
   percentage,
   oomRisk,
+  active,
 }: {
   percentage: number;
   oomRisk: boolean;
+  active: boolean;
 }) {
   const radius = 32;
   const circumference = 2 * Math.PI * radius;
@@ -1270,13 +1278,13 @@ function MemoryGauge({
         >
           {Math.round(percentage)}%
         </span>
-        <span className="text-[8px] text-white/40">MEM</span>
+        <span className="text-[10px] text-white/40">MEM</span>
       </div>
       {oomRisk && (
         <motion.div
           className="absolute -top-1 -right-1"
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ duration: 0.8, repeat: Infinity }}
+          animate={active ? { scale: [1, 1.2, 1] } : { scale: 1 }}
+          transition={active ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
         >
           <AlertTriangle className="h-3.5 w-3.5 text-red-400" />
         </motion.div>
@@ -1371,11 +1379,11 @@ function DiskIoPanel({
       <div className="flex items-center gap-4 pt-1 border-t border-white/[0.06]">
         <div className="flex items-center gap-1">
           <div className="h-2 w-2 rounded-full bg-sky-500/70" />
-          <span className="text-[9px] text-white/40">Read</span>
+          <span className="text-[10px] text-white/40">Read</span>
         </div>
         <div className="flex items-center gap-1">
           <div className="h-2 w-2 rounded-full bg-orange-500/70" />
-          <span className="text-[9px] text-white/40">Write</span>
+          <span className="text-[10px] text-white/40">Write</span>
         </div>
       </div>
     </div>
@@ -1637,7 +1645,7 @@ function ProcessTable({
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between text-[9px] text-white/30 pt-1 border-t border-white/[0.06]">
+      <div className="flex items-center justify-between text-[10px] text-white/30 pt-1 border-t border-white/[0.06]">
         <span>4 agent processes tracked by ananicy-cpp</span>
         {srpsActive && (
           <motion.span
@@ -1661,9 +1669,11 @@ function ProcessTable({
 function GovernorPanel({
   scenario,
   totalCpu,
+  active,
 }: {
   scenario: ScenarioConfig;
   totalCpu: number;
+  active: boolean;
 }) {
   const throttleActions = [
     { process: "rustc", action: "nice +19, sched idle", savings: "~60% CPU" },
@@ -1686,15 +1696,16 @@ function GovernorPanel({
     >
       <div className="flex items-center gap-3">
         <motion.div
-          animate={{
-            rotate: [0, -5, 5, -3, 3, 0],
-            scale: [1, 1.05, 1],
-          }}
-          transition={{
-            duration: 2,
-            repeat: Infinity,
-            repeatType: "reverse",
-          }}
+          animate={
+            active
+              ? { rotate: [0, -5, 5, -3, 3, 0], scale: [1, 1.05, 1] }
+              : { rotate: 0, scale: 1 }
+          }
+          transition={
+            active
+              ? { duration: 2, repeat: Infinity, repeatType: "reverse" }
+              : { duration: 0.2 }
+          }
         >
           <Shield className="h-8 w-8 text-emerald-400" />
         </motion.div>
@@ -1754,7 +1765,7 @@ function GovernorPanel({
 // Mini Terminal
 // ---------------------------------------------------------------------------
 
-function MiniTerminal({ visibleLines }: { visibleLines: number }) {
+function MiniTerminal({ visibleLines, active }: { visibleLines: number; active: boolean }) {
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-black/40 p-4 space-y-2 overflow-hidden">
       <div className="flex items-center gap-2 pb-2 border-b border-white/[0.06]">
@@ -1790,12 +1801,12 @@ function MiniTerminal({ visibleLines }: { visibleLines: number }) {
               {line.cmd}
               {i === visibleLines - 1 && line.cmd.startsWith("$") && (
                 <motion.span
-                  animate={{ opacity: [1, 0] }}
-                  transition={{
-                    duration: 0.6,
-                    repeat: Infinity,
-                    repeatType: "reverse",
-                  }}
+                  animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
+                  transition={
+                    active
+                      ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" }
+                      : { duration: 0.2 }
+                  }
                   className="inline-block w-2 h-3.5 bg-emerald-400/70 ml-0.5 align-middle"
                 />
               )}
@@ -1807,12 +1818,12 @@ function MiniTerminal({ visibleLines }: { visibleLines: number }) {
           <div className="text-emerald-400">
             <span>$ </span>
             <motion.span
-              animate={{ opacity: [1, 0] }}
-              transition={{
-                duration: 0.6,
-                repeat: Infinity,
-                repeatType: "reverse",
-              }}
+              animate={active ? { opacity: [1, 0] } : { opacity: 1 }}
+              transition={
+                active
+                  ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" }
+                  : { duration: 0.2 }
+              }
               className="inline-block w-2 h-3.5 bg-emerald-400/70 align-middle"
             />
           </div>

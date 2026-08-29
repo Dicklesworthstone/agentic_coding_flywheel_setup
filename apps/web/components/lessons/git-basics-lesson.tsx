@@ -1092,7 +1092,7 @@ function CommitNode({
             transition={SPRING}
             className="absolute -top-6 left-1/2 -translate-x-1/2"
           >
-            <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-bold text-amber-300 uppercase tracking-wider whitespace-nowrap">
+            <span className="rounded bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 uppercase tracking-wider whitespace-nowrap">
               HEAD
             </span>
           </motion.div>
@@ -1118,7 +1118,7 @@ function CommitNode({
 
       {/* Hash label */}
       <span
-        className={`text-[9px] font-mono ${
+        className={`text-[10px] font-mono ${
           isSelected ? c.text : "text-white/30"
         } group-hover:text-white/60 transition-colors whitespace-nowrap`}
       >

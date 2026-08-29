@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Terminal,
   RefreshCw,
@@ -568,8 +568,11 @@ function getLinePrefix(status: PlanLine['status']) {
 // --- Sub-components ---
 
 function QualityChart({ iterations, currentIdx }: { iterations: IterationData[]; currentIdx: number }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
+    <div ref={rootRef} className="rounded-xl border border-white/[0.08] bg-black/30 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider">
           Quality Progression
@@ -602,13 +605,13 @@ function QualityChart({ iterations, currentIdx }: { iterations: IterationData[];
                 {isVisible && i === currentIdx && (
                   <motion.div
                     className="absolute inset-0 bg-white/10"
-                    animate={{ opacity: [0, 0.3, 0] }}
-                    transition={{ duration: 2, repeat: Infinity }}
+                    animate={inView ? { opacity: [0, 0.3, 0] } : { opacity: 0 }}
+                    transition={inView ? { duration: 2, repeat: Infinity } : { duration: 0.2 }}
                   />
                 )}
               </motion.div>
               <span
-                className="text-[8px] font-mono transition-colors duration-300"
+                className="text-[10px] font-mono transition-colors duration-300"
                 style={{ color: isVisible ? iter.color : 'rgba(255,255,255,0.2)' }}
               >
                 {isVisible ? `${iter.quality}` : ''}
@@ -623,7 +626,7 @@ function QualityChart({ iterations, currentIdx }: { iterations: IterationData[];
         {iterations.map((iter, i) => (
           <div
             key={iter.id}
-            className="flex-1 text-center text-[8px] font-medium transition-colors duration-300"
+            className="flex-1 text-center text-[10px] font-medium transition-colors duration-300"
             style={{
               color: i <= currentIdx ? iter.color : 'rgba(255,255,255,0.15)',
               opacity: i === currentIdx ? 1 : 0.6,
@@ -780,7 +783,7 @@ function PlanDocument({
                       <div className="flex items-start gap-1.5">
                         <div className="flex-shrink-0 mt-0.5">{cStyle.icon}</div>
                         <div>
-                          <span className="text-[9px] font-semibold text-white/40 block">
+                          <span className="text-[10px] font-semibold text-white/40 block">
                             {comment.author}
                           </span>
                           <span className={`text-[10px] ${cStyle.text}`}>
@@ -809,7 +812,7 @@ function MiniTerminal({ lines, animateIn }: { lines: string[]; animateIn: boolea
           <div className="h-2 w-2 rounded-full bg-amber-500/60" />
           <div className="h-2 w-2 rounded-full bg-emerald-500/60" />
         </div>
-        <span className="text-[9px] font-mono text-white/30">terminal</span>
+        <span className="text-[10px] font-mono text-white/30">terminal</span>
       </div>
       <div className="p-3 space-y-0.5 max-h-[160px] overflow-y-auto">
         {lines.map((line, i) => {
@@ -1078,12 +1081,12 @@ function InteractiveRefinementLoop() {
                 className="flex items-start gap-2 px-3 py-2 rounded-lg border border-white/[0.06] bg-white/[0.02]"
               >
                 <ArrowRight className="h-3 w-3 text-white/30 mt-0.5 flex-shrink-0" />
-                <span className="text-[11px] text-white/50">{iteration.changeSummary}</span>
+                <span className="text-xs text-white/50">{iteration.changeSummary}</span>
               </motion.div>
             </AnimatePresence>
 
             {/* Diff legend */}
-            <div className="flex flex-wrap gap-3 px-1 text-[9px] font-mono text-white/40">
+            <div className="flex flex-wrap gap-3 px-1 text-[10px] font-mono text-white/40">
               <span className="flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-sm bg-emerald-500/40" /> Added
               </span>
@@ -1128,7 +1131,7 @@ function InteractiveRefinementLoop() {
                     {tab.icon}
                     <span className="hidden sm:inline">{tab.label}</span>
                     {tab.badge && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/[0.06] text-white/40">
                         {tab.badge}
                       </span>
                     )}
@@ -1187,10 +1190,10 @@ function InteractiveRefinementLoop() {
                                 <div className="flex-shrink-0 mt-0.5">{cStyle.icon}</div>
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2 mb-0.5">
-                                    <span className="text-[9px] font-bold text-white/50">
+                                    <span className="text-[10px] font-bold text-white/50">
                                       {comment.author}
                                     </span>
-                                    <span className="text-[9px] font-mono text-white/25">
+                                    <span className="text-[10px] font-mono text-white/25">
                                       line {comment.line + 1}
                                     </span>
                                   </div>

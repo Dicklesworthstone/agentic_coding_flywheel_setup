@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Terminal,
   Image as ImageIcon,
@@ -632,6 +632,8 @@ function InteractiveCloudDownload() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const callbackRef = useRef<(() => void) | null>(null);
   const pipelineTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
 
   const activeProvider = CLOUD_PROVIDERS.find((p) => p.id === selectedProvider);
 
@@ -781,7 +783,7 @@ function InteractiveCloudDownload() {
   const phaseIndex = ['idle', 'pasting', 'detecting', 'negotiating', 'downloading', 'processing', 'done'].indexOf(phase);
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl">
+    <div ref={ref} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 backdrop-blur-xl">
       {/* Header with phase indicator */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -938,8 +940,8 @@ function InteractiveCloudDownload() {
                     </span>
                     {phase === 'pasting' && !typingDone && (
                       <motion.span
-                        animate={{ opacity: [1, 0] }}
-                        transition={{ duration: 0.6, repeat: Infinity }}
+                        animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+                        transition={inView ? { duration: 0.6, repeat: Infinity } : { duration: 0.2 }}
                         className="text-white/80"
                       >
                         |
@@ -1038,8 +1040,8 @@ function InteractiveCloudDownload() {
                         {phase === 'downloading' && (
                           <motion.div
                             className="absolute inset-y-0 w-20 bg-gradient-to-r from-transparent via-white/10 to-transparent"
-                            animate={{ x: ['-80px', '400px'] }}
-                            transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                            animate={inView ? { x: ['-80px', '400px'] } : { x: '-80px' }}
+                            transition={inView ? { duration: 1.2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                           />
                         )}
                       </div>
@@ -1157,7 +1159,7 @@ function InteractiveCloudDownload() {
                                 {activeProvider.pipelineSteps.map((step, i) => (
                                   <div key={step} className="flex items-center gap-2">
                                     <div
-                                      className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold ${
+                                      className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
                                         phase === 'done'
                                           ? `bg-gradient-to-br ${activeProvider.gradient} text-white`
                                           : 'bg-white/[0.06] text-white/30'
@@ -1334,7 +1336,7 @@ function InteractiveCloudDownload() {
                           <ImageIcon className="h-4 w-4 text-white/25" />
                         </div>
                         <div className="absolute bottom-0 inset-x-0 bg-black/40 px-1.5 py-0.5">
-                          <p className="text-[8px] text-white/60 truncate font-mono">
+                          <p className="text-[10px] text-white/60 truncate font-mono">
                             {p.file.name}
                           </p>
                         </div>

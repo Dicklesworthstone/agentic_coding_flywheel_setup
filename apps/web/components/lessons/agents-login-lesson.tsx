@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence, springs } from "@/components/motion";
+import { motion, AnimatePresence, springs, useInView } from "@/components/motion";
 import {
   Bot,
   Key,
@@ -1367,6 +1367,8 @@ function AgentTerminalPanel({
 }) {
   const colors = AGENT_COLORS[agentKey];
   const terminalRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   // Auto-scroll terminal to bottom
   useEffect(() => {
@@ -1378,7 +1380,7 @@ function AgentTerminalPanel({
   const agentLabel = AGENT_LABELS[agentKey];
 
   return (
-    <div className="bg-black/40 flex flex-col">
+    <div ref={rootRef} className="bg-black/40 flex flex-col">
       {/* Terminal header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
@@ -1418,8 +1420,8 @@ function AgentTerminalPanel({
             <div className="flex items-center gap-1">
               <motion.div
                 className={`h-1.5 w-1.5 rounded-full ${colors.bg}`}
-                animate={{ opacity: [0.3, 1, 0.3] }}
-                transition={{ duration: 1, repeat: Infinity }}
+                animate={inView ? { opacity: [0.3, 1, 0.3] } : { opacity: 0.3 }}
+                transition={inView ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
               />
               <span className="text-[10px] text-white/30">running</span>
             </div>
@@ -1472,8 +1474,8 @@ function AgentTerminalPanel({
         {isPlaying && !isDone && visibleCount > 0 && (
           <motion.span
             className={`inline-block w-1.5 h-3.5 ${colors.bg} ml-0.5`}
-            animate={{ opacity: [1, 0, 1] }}
-            transition={{ duration: 0.8, repeat: Infinity }}
+            animate={inView ? { opacity: [1, 0, 1] } : { opacity: 1 }}
+            transition={inView ? { duration: 0.8, repeat: Infinity } : { duration: 0.2 }}
           />
         )}
       </div>

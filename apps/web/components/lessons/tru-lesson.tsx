@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Minimize2,
   Terminal,
@@ -743,7 +743,7 @@ function CompressionGauge({
               <span className="text-2xl font-bold font-mono text-emerald-400">
                 {percentage}%
               </span>
-              <p className="text-[9px] text-white/40 uppercase tracking-wider mt-0.5">
+              <p className="text-[10px] text-white/40 uppercase tracking-wider mt-0.5">
                 reduced
               </p>
             </motion.div>
@@ -756,7 +756,7 @@ function CompressionGauge({
               className="text-center"
             >
               <Gauge className="h-6 w-6 text-white/20 mx-auto" />
-              <p className="text-[9px] text-white/30 mt-1">Ratio</p>
+              <p className="text-[10px] text-white/30 mt-1">Ratio</p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -830,7 +830,7 @@ function ContextWindowBar({
           ))}
         </div>
       </div>
-      <div className="flex justify-between text-[8px] text-white/30 font-mono">
+      <div className="flex justify-between text-[10px] text-white/30 font-mono">
         <span>0</span>
         <span>32k</span>
         <span>64k</span>
@@ -902,7 +902,7 @@ const PHASE_CONFIG: Record<CompressionPhase, { label: string; color: string }> =
   done: { label: 'Compression complete', color: 'text-emerald-400' },
 };
 
-function PhaseIndicator({ phase }: { phase: CompressionPhase }) {
+function PhaseIndicator({ phase, active }: { phase: CompressionPhase; active: boolean }) {
   const config = PHASE_CONFIG[phase];
   return (
     <AnimatePresence mode="wait">
@@ -916,8 +916,8 @@ function PhaseIndicator({ phase }: { phase: CompressionPhase }) {
       >
         {phase !== 'idle' && phase !== 'done' && (
           <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            animate={active ? { rotate: 360 } : { rotate: 0 }}
+            transition={active ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
           >
             <Minimize2 className="h-3 w-3" />
           </motion.div>
@@ -989,6 +989,8 @@ function InteractiveTokenCompressorImpl() {
   const [displayedTokens, setDisplayedTokens] = useState(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [showParticles, setShowParticles] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   const sample = CODE_SAMPLES[selectedSample];
   const isCompressed = phase === 'done';
@@ -1071,7 +1073,7 @@ function InteractiveTokenCompressorImpl() {
   useEffect(() => clearTimers, [clearTimers]);
 
   return (
-    <div className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
+    <div ref={rootRef} className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-br from-white/[0.02] to-transparent backdrop-blur-xl overflow-hidden">
       {/* Background glows */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/[0.03] rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-indigo-500/[0.03] rounded-full blur-3xl pointer-events-none" />
@@ -1086,7 +1088,7 @@ function InteractiveTokenCompressorImpl() {
               Token Compression Laboratory
             </span>
           </div>
-          <p className="text-[11px] text-white/40 max-w-md mx-auto">
+          <p className="text-xs text-white/40 max-w-md mx-auto">
             Select a code sample, run compression, and watch tokens shrink in real time.
             See exactly how much context window you recover.
           </p>
@@ -1146,7 +1148,7 @@ function InteractiveTokenCompressorImpl() {
             <span className="text-xs text-white/60 font-medium">{sample.label}</span>
             <span className="text-[10px] text-white/30 font-mono">{sample.lang}</span>
           </div>
-          <PhaseIndicator phase={phase} />
+          <PhaseIndicator phase={phase} active={inView} />
         </div>
 
         {/* Split panel: original and compressed */}
@@ -1218,17 +1220,18 @@ function InteractiveTokenCompressorImpl() {
                     {/* Pulsing compression icon */}
                     <div className="relative">
                       <motion.div
-                        animate={{
-                          scale: [1, 1.3, 1],
-                          opacity: [0.3, 0.6, 0.3],
-                        }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
+                        animate={
+                          inView
+                            ? { scale: [1, 1.3, 1], opacity: [0.3, 0.6, 0.3] }
+                            : { scale: 1, opacity: 0.3 }
+                        }
+                        transition={inView ? { duration: 1.5, repeat: Infinity } : { duration: 0.2 }}
                         className="absolute inset-0 rounded-full bg-blue-500/20 blur-xl"
                         style={{ width: 60, height: 60, left: -10, top: -10 }}
                       />
                       <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                        animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                        transition={inView ? { duration: 2, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                       >
                         <Minimize2 className="h-10 w-10 text-blue-400/80" />
                       </motion.div>
@@ -1250,12 +1253,12 @@ function InteractiveTokenCompressorImpl() {
                         <motion.div
                           key={i}
                           className="w-1.5 h-1.5 rounded-full bg-blue-400"
-                          animate={{ opacity: [0.2, 1, 0.2] }}
-                          transition={{
-                            duration: 0.8,
-                            repeat: Infinity,
-                            delay: i * 0.15,
-                          }}
+                          animate={inView ? { opacity: [0.2, 1, 0.2] } : { opacity: 0.2 }}
+                          transition={
+                            inView
+                              ? { duration: 0.8, repeat: Infinity, delay: i * 0.15 }
+                              : { duration: 0.2 }
+                          }
                         />
                       ))}
                     </div>
@@ -1321,7 +1324,7 @@ function InteractiveTokenCompressorImpl() {
                             {sample.originalTokens.toLocaleString()}
                           </span>
                         </motion.div>
-                        <p className="text-[9px] text-white/30">tokens</p>
+                        <p className="text-[10px] text-white/30">tokens</p>
                       </div>
 
                       {/* Arrow */}
@@ -1347,7 +1350,7 @@ function InteractiveTokenCompressorImpl() {
                             {sample.compressedTokens.toLocaleString()}
                           </span>
                         </motion.div>
-                        <p className="text-[9px] text-emerald-400/50">tokens</p>
+                        <p className="text-[10px] text-emerald-400/50">tokens</p>
                       </div>
                     </div>
 
@@ -1375,7 +1378,7 @@ function InteractiveTokenCompressorImpl() {
                     <div className="flex items-end gap-3 h-28">
                       {/* Before bar */}
                       <div className="flex flex-col items-center gap-1.5">
-                        <span className="text-[9px] font-mono text-white/40">
+                        <span className="text-[10px] font-mono text-white/40">
                           {sample.originalTokens}
                         </span>
                         <motion.div
@@ -1384,11 +1387,11 @@ function InteractiveTokenCompressorImpl() {
                           transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.1 }}
                           className="w-10 rounded-t-lg bg-gradient-to-t from-white/[0.08] to-white/[0.15]"
                         />
-                        <span className="text-[8px] text-white/40 font-medium">Before</span>
+                        <span className="text-[10px] text-white/40 font-medium">Before</span>
                       </div>
                       {/* After bar */}
                       <div className="flex flex-col items-center gap-1.5">
-                        <span className="text-[9px] font-mono text-emerald-400/80">
+                        <span className="text-[10px] font-mono text-emerald-400/80">
                           {sample.compressedTokens}
                         </span>
                         <motion.div
@@ -1397,7 +1400,7 @@ function InteractiveTokenCompressorImpl() {
                           transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.3 }}
                           className="w-10 rounded-t-lg bg-gradient-to-t from-emerald-500/30 to-emerald-400/50"
                         />
-                        <span className="text-[8px] text-emerald-400/60 font-medium">After</span>
+                        <span className="text-[10px] text-emerald-400/60 font-medium">After</span>
                       </div>
                     </div>
                   </div>
@@ -1468,8 +1471,8 @@ function InteractiveTokenCompressorImpl() {
             {isRunning ? (
               <>
                 <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                  animate={inView ? { rotate: 360 } : { rotate: 0 }}
+                  transition={inView ? { duration: 1, repeat: Infinity, ease: 'linear' } : { duration: 0.2 }}
                 >
                   <Minimize2 className="h-4 w-4" />
                 </motion.div>

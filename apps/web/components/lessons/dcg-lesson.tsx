@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -771,12 +771,15 @@ function PipelineView({
   onBypassSubmit: () => void;
   onReset: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
+
   if (!scenario && phase === "idle") {
     return (
       <div className="rounded-xl border border-white/[0.06] bg-black/20 p-8 text-center">
         <Shield className="h-10 w-10 text-white/20 mx-auto mb-3" />
         <p className="text-sm text-white/40">Select a command above to see DCG in action</p>
-        <p className="text-[10px] text-white/25 mt-1">Watch the full interception pipeline animate</p>
+        <p className="text-xs text-white/25 mt-1">Watch the full interception pipeline animate</p>
       </div>
     );
   }
@@ -815,7 +818,7 @@ function PipelineView({
   ];
 
   return (
-    <div className="space-y-3">
+    <div ref={rootRef} className="space-y-3">
       {/* Phase progress indicators */}
       <div className="flex items-center gap-1 overflow-hidden">
         {phaseSteps.map((step, i) => (
@@ -896,8 +899,8 @@ function PipelineView({
             </span>
             {phase === "typing" && (
               <motion.span
-                animate={{ opacity: [1, 0] }}
-                transition={{ duration: 0.6, repeat: Infinity, repeatType: "reverse" }}
+                animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+                transition={inView ? { duration: 0.6, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
                 className="text-white/60"
               >
                 |
@@ -1062,7 +1065,7 @@ function PipelineView({
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ type: "spring", stiffness: 200, damping: 25 }}
                     >
-                      <p className="text-[10px] text-white/40 mb-2">
+                      <p className="text-xs text-white/40 mb-2">
                         Enter the bypass code to allow this command once:
                       </p>
                       <div className="flex gap-2">
@@ -1234,7 +1237,7 @@ function PacksBrowser({
             <span className="h-1.5 w-1.5 rounded-full bg-yellow-500/60" />
             <span className="h-1.5 w-1.5 rounded-full bg-green-500/60" />
           </div>
-          <span className="text-[9px] text-white/20 ml-1 font-mono">terminal</span>
+          <span className="text-[10px] text-white/20 ml-1 font-mono">terminal</span>
         </div>
         <div className="font-mono text-[11px] space-y-1">
           <p>
@@ -1271,7 +1274,7 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
       <div className="rounded-xl border border-white/[0.06] bg-black/20 p-8 text-center">
         <History className="h-8 w-8 text-white/15 mx-auto mb-2" />
         <p className="text-xs text-white/30">No commands analyzed yet</p>
-        <p className="text-[10px] text-white/20 mt-1">Run commands from the Pipeline tab to see history</p>
+        <p className="text-xs text-white/20 mt-1">Run commands from the Pipeline tab to see history</p>
       </div>
     );
   }
@@ -1311,7 +1314,7 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
                 {entry.command}
               </span>
               {entry.rule && (
-                <span className="text-[9px] text-white/25 font-mono flex-shrink-0 ml-auto">
+                <span className="text-[10px] text-white/25 font-mono flex-shrink-0 ml-auto">
                   {entry.rule}
                 </span>
               )}
@@ -1324,15 +1327,15 @@ function BlockHistoryLog({ entries }: { entries: BlockLogEntry[] }) {
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg border border-white/[0.06] bg-black/20 p-2 text-center">
           <p className="text-lg font-bold text-white/80">{entries.length}</p>
-          <p className="text-[9px] text-white/30 uppercase tracking-wider">Total</p>
+          <p className="text-[10px] text-white/30 uppercase tracking-wider">Total</p>
         </div>
         <div className="rounded-lg border border-red-500/20 bg-red-500/[0.05] p-2 text-center">
           <p className="text-lg font-bold text-red-400">{entries.filter((e) => e.blocked).length}</p>
-          <p className="text-[9px] text-red-400/50 uppercase tracking-wider">Blocked</p>
+          <p className="text-[10px] text-red-400/50 uppercase tracking-wider">Blocked</p>
         </div>
         <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] p-2 text-center">
           <p className="text-lg font-bold text-emerald-400">{entries.filter((e) => !e.blocked).length}</p>
-          <p className="text-[9px] text-emerald-400/50 uppercase tracking-wider">Allowed</p>
+          <p className="text-[10px] text-emerald-400/50 uppercase tracking-wider">Allowed</p>
         </div>
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { motion, AnimatePresence } from "@/components/motion";
+import { motion, AnimatePresence, useInView } from "@/components/motion";
 import {
   Palette,
   Sparkles,
@@ -780,7 +780,7 @@ function KeyCombo({ keys }: { keys: string[] }) {
     <div className="flex items-center gap-0.5">
       {keys.map((key, i) => (
         <span key={i} className="flex items-center gap-0.5">
-          {i > 0 && <span className="text-white/20 text-[9px] mx-0.5">+</span>}
+          {i > 0 && <span className="text-white/20 text-[10px] mx-0.5">+</span>}
           <kbd className="inline-flex h-5 min-w-[20px] items-center justify-center rounded border border-white/[0.12] bg-white/[0.06] px-1.5 font-mono text-[10px] font-medium text-white/50 shadow-sm">
             {key}
           </kbd>
@@ -800,8 +800,10 @@ function MiniTerminal({
   lines: string[];
   isTyping: boolean;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
   return (
-    <div className="rounded-lg border border-white/[0.08] bg-black/40 overflow-hidden">
+    <div ref={ref} className="rounded-lg border border-white/[0.08] bg-black/40 overflow-hidden">
       <div className="flex items-center gap-1.5 border-b border-white/[0.06] bg-black/30 px-3 py-1.5">
         <div className="h-2 w-2 rounded-full bg-red-400/60" />
         <div className="h-2 w-2 rounded-full bg-yellow-400/60" />
@@ -827,8 +829,8 @@ function MiniTerminal({
         ))}
         {isTyping && (
           <motion.span
-            animate={{ opacity: [1, 0] }}
-            transition={{ duration: 0.8, repeat: Infinity, repeatType: "reverse" }}
+            animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+            transition={inView ? { duration: 0.8, repeat: Infinity, repeatType: "reverse" } : { duration: 0.2 }}
             className="inline-block h-3.5 w-1.5 bg-emerald-400/80 ml-0.5"
           />
         )}
@@ -866,6 +868,8 @@ function InteractivePaletteBrowser() {
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(rootRef, { amount: 0.15 });
 
   // Cleanup timers
   useEffect(() => {
@@ -1014,7 +1018,7 @@ function InteractivePaletteBrowser() {
   }, [groupedResults]);
 
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
       {/* Palette toggle bar */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -1089,10 +1093,10 @@ function InteractivePaletteBrowser() {
                   </motion.button>
                 )}
                 <div className="flex items-center gap-1 text-white/20">
-                  <kbd className="rounded border border-white/[0.1] bg-white/[0.04] px-1 py-0.5 font-mono text-[9px]">
+                  <kbd className="rounded border border-white/[0.1] bg-white/[0.04] px-1 py-0.5 font-mono text-[10px]">
                     <CornerDownLeft className="h-2.5 w-2.5" />
                   </kbd>
-                  <span className="text-[9px]">select</span>
+                  <span className="text-[10px]">select</span>
                 </div>
               </div>
 
@@ -1191,7 +1195,7 @@ function InteractivePaletteBrowser() {
                           <span className="text-[10px] font-medium uppercase tracking-wider text-white/25">
                             {group.name}
                           </span>
-                          <span className="text-[9px] text-white/15">
+                          <span className="text-[10px] text-white/15">
                             {items.length}
                           </span>
                         </div>
@@ -1239,12 +1243,12 @@ function InteractivePaletteBrowser() {
                                         )}
                                       </span>
                                       {match.command.params && (
-                                        <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[9px] text-white/30">
+                                        <span className="shrink-0 rounded bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-white/30">
                                           {match.command.params}
                                         </span>
                                       )}
                                     </div>
-                                    <p className="mt-0.5 truncate text-[11px] text-white/35">
+                                    <p className="mt-0.5 truncate text-xs text-white/35">
                                       {match.command.description}
                                     </p>
                                   </div>
@@ -1440,13 +1444,12 @@ function InteractivePaletteBrowser() {
                       className="flex flex-col items-center justify-center h-full px-8 py-12"
                     >
                       <motion.div
-                        animate={{ y: [0, -6, 0] }}
-                        transition={{
-                          duration: 3,
-                          repeat: Infinity,
-                          repeatType: "loop",
-                          ease: "easeInOut",
-                        }}
+                        animate={inView ? { y: [0, -6, 0] } : { y: 0 }}
+                        transition={
+                          inView
+                            ? { duration: 3, repeat: Infinity, repeatType: "loop", ease: "easeInOut" }
+                            : { duration: 0.2 }
+                        }
                         className="mb-4"
                       >
                         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 to-violet-500/10 border border-white/[0.06]">
@@ -1461,25 +1464,25 @@ function InteractivePaletteBrowser() {
                       </p>
                       <div className="mt-4 flex items-center gap-3 text-white/15">
                         <div className="flex items-center gap-1">
-                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px]">
+                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px]">
                             &uarr;
                           </kbd>
-                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px]">
+                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px]">
                             &darr;
                           </kbd>
-                          <span className="text-[9px] ml-0.5">navigate</span>
+                          <span className="text-[10px] ml-0.5">navigate</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px]">
+                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px]">
                             Enter
                           </kbd>
-                          <span className="text-[9px] ml-0.5">select</span>
+                          <span className="text-[10px] ml-0.5">select</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px]">
+                          <kbd className="rounded border border-white/[0.08] bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px]">
                             Esc
                           </kbd>
-                          <span className="text-[9px] ml-0.5">back</span>
+                          <span className="text-[10px] ml-0.5">back</span>
                         </div>
                       </div>
                     </motion.div>

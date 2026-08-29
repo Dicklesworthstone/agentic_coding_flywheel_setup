@@ -110,7 +110,12 @@ export default function GenerateSSHKeyPage() {
     router.push(withCurrentSearch("/wizard/rent-vps"));
   }, [router, markComplete]);
 
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating,
+    loading: isNavigating,
+    label: "I saved my public key",
+  });
 
   if (!ready || !os) {
     return (
@@ -496,7 +501,7 @@ export default function GenerateSSHKeyPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
           {isNavigating ? "Loading..." : "I saved my public key"}
         </Button>
       </div>

@@ -165,7 +165,12 @@ export default function SSHConnectPage() {
     router.push(withCurrentSearch("/wizard/accounts"));
   }, [router, markComplete]);
 
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating,
+    loading: isNavigating,
+    label: "I'm connected, continue",
+  });
 
   if (!ready || !vpsIP || !os) {
     return (
@@ -497,7 +502,7 @@ export default function SSHConnectPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
           {isNavigating ? "Loading..." : "I'm connected, continue"}
         </Button>
       </div>

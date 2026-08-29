@@ -290,7 +290,12 @@ export default function AccountsPage() {
   }, [router, markComplete]);
 
   // Dock "Next" = Continue; "Skip for now" stays an explicit inline choice.
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating,
+    loading: isNavigating,
+    label: "Continue to pre-flight check",
+  });
 
   const tieredServices: Record<ServiceTier, Service[]> = {
     essential: getServicesByTier("essential").sort(sortByOrder),
@@ -461,6 +466,8 @@ export default function AccountsPage() {
           Skip for now
         </Button>
         <Button
+          ref={forwardCtaRef}
+          data-wizard-primary-cta
           onClick={handleContinue}
           disabled={isNavigating}
           size="lg"

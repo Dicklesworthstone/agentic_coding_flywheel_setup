@@ -452,7 +452,12 @@ export default function InstallTerminalPage() {
     router.push(withCurrentSearch("/wizard/generate-ssh-key"));
   }, [router, os, markComplete]);
 
-  useWizardForwardNav({ onContinue: handleContinue, disabled: isNavigating, loading: isNavigating });
+  const forwardCtaRef = useWizardForwardNav({
+    onContinue: handleContinue,
+    disabled: isNavigating,
+    loading: isNavigating,
+    label: "I installed it, continue",
+  });
 
   // Show loading state while detecting OS or during SSR
   if (!ready || !os) {
@@ -503,7 +508,7 @@ export default function InstallTerminalPage() {
 
       {/* Continue button */}
       <div className="flex justify-end pt-4">
-        <Button onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
+        <Button ref={forwardCtaRef} data-wizard-primary-cta onClick={handleContinue} disabled={isNavigating} size="lg" disableMotion>
           {isNavigating ? "Loading..." : "I installed it, continue"}
         </Button>
       </div>

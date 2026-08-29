@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from '@/components/motion';
+import { motion, AnimatePresence, useInView } from '@/components/motion';
 import {
   Terminal,
   Search,
@@ -649,7 +649,7 @@ function ResultCard({
           {result.semanticLinks.map((link) => (
             <span
               key={link}
-              className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-[9px] font-medium text-cyan-400/70"
+              className="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 text-[10px] font-medium text-cyan-400/70"
             >
               <Brain className="h-2 w-2" />
               {link}
@@ -757,8 +757,10 @@ function RelevanceGauge({
    ========================================================================= */
 
 function MiniTerminal({ command, isRunning }: { command: string; isRunning: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.15 });
   return (
-    <div className="rounded-xl border border-white/[0.08] bg-black/40 overflow-hidden">
+    <div ref={ref} className="rounded-xl border border-white/[0.08] bg-black/40 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02]">
         <div className="flex gap-1.5">
           <div className="h-2 w-2 rounded-full bg-red-500/40" />
@@ -773,8 +775,8 @@ function MiniTerminal({ command, isRunning }: { command: string; isRunning: bool
           <span className="text-white/70">{command}</span>
           {isRunning && (
             <motion.span
-              animate={{ opacity: [1, 0] }}
-              transition={{ duration: 0.6, repeat: Infinity, repeatType: 'reverse' }}
+              animate={inView ? { opacity: [1, 0] } : { opacity: 1 }}
+              transition={inView ? { duration: 0.6, repeat: Infinity, repeatType: 'reverse' } : { duration: 0.2 }}
               className="inline-block w-1.5 h-3.5 bg-white/50"
             />
           )}
@@ -1089,7 +1091,7 @@ function InteractiveHybridSearch() {
                         <BookOpen className="h-3 w-3 text-purple-400" />
                         <span className="text-[11px] font-semibold text-purple-300">BM25</span>
                       </div>
-                      <span className="text-[9px] font-mono text-purple-400/60">
+                      <span className="text-[10px] font-mono text-purple-400/60">
                         {stage === 'done' || stageIndex(stage) >= 2
                           ? `${scenario.bm25TimeMs}ms`
                           : '...'}
@@ -1109,7 +1111,7 @@ function InteractiveHybridSearch() {
                               <span className="text-[10px] font-medium text-white/60 truncate">
                                 {r.title}
                               </span>
-                              <span className="text-[9px] font-mono text-purple-300/70 flex-shrink-0">
+                              <span className="text-[10px] font-mono text-purple-300/70 flex-shrink-0">
                                 {Math.round(r.bm25Score * 100)}%
                               </span>
                             </div>
@@ -1140,7 +1142,7 @@ function InteractiveHybridSearch() {
                         <Brain className="h-3 w-3 text-cyan-400" />
                         <span className="text-[11px] font-semibold text-cyan-300">Semantic</span>
                       </div>
-                      <span className="text-[9px] font-mono text-cyan-400/60">
+                      <span className="text-[10px] font-mono text-cyan-400/60">
                         {stage === 'done' || stageIndex(stage) >= 3
                           ? `${scenario.vectorTimeMs}ms`
                           : '...'}
@@ -1160,7 +1162,7 @@ function InteractiveHybridSearch() {
                               <span className="text-[10px] font-medium text-white/60 truncate">
                                 {r.title}
                               </span>
-                              <span className="text-[9px] font-mono text-cyan-300/70 flex-shrink-0">
+                              <span className="text-[10px] font-mono text-cyan-300/70 flex-shrink-0">
                                 {Math.round(r.cosineScore * 100)}%
                               </span>
                             </div>
@@ -1191,7 +1193,7 @@ function InteractiveHybridSearch() {
                         <Merge className="h-3 w-3 text-amber-400" />
                         <span className="text-[11px] font-semibold text-amber-300">Hybrid Fused</span>
                       </div>
-                      <span className="text-[9px] font-mono text-amber-400/60">
+                      <span className="text-[10px] font-mono text-amber-400/60">
                         {stage === 'done'
                           ? `${scenario.fusionTimeMs}ms`
                           : '...'}
@@ -1211,7 +1213,7 @@ function InteractiveHybridSearch() {
                               <span className="text-[10px] font-medium text-white/60 truncate">
                                 {r.title}
                               </span>
-                              <span className="text-[9px] font-mono text-amber-300/70 flex-shrink-0">
+                              <span className="text-[10px] font-mono text-amber-300/70 flex-shrink-0">
                                 {Math.round(r.fusedScore * 100)}%
                               </span>
                             </div>
