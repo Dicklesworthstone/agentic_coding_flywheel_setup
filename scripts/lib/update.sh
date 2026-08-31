@@ -2982,10 +2982,20 @@ sync_acfs_zshrc() {
         return 0
     fi
 
+    local had_deployed=false
+    [[ -f "$deployed_zshrc" ]] && had_deployed=true
+
     mkdir -p "$(dirname "$deployed_zshrc")"
     cp "$repo_zshrc" "$deployed_zshrc"
-    log_item "ok" "acfs.zshrc" "synced from repo"
-    log_to_file "Deployed $repo_zshrc -> $deployed_zshrc"
+    if [[ "$had_deployed" == "true" ]]; then
+        # acfs.zshrc is a managed file: any hand edits to the deployed copy are
+        # replaced on sync. Say so instead of reporting a routine sync (#359).
+        log_item "warn" "acfs.zshrc" "synced from repo; the deployed copy differed and was replaced (local modifications, if any, are gone -- this file is managed by ACFS)"
+        log_to_file "Deployed $repo_zshrc -> $deployed_zshrc (replaced differing deployed copy)"
+    else
+        log_item "ok" "acfs.zshrc" "synced from repo"
+        log_to_file "Deployed $repo_zshrc -> $deployed_zshrc"
+    fi
 }
 
 sync_acfs_zsh_loader() {
@@ -3610,12 +3620,53 @@ sync_acfs_global_command_links() {
 
 CHECKSUMS_LOCAL="${ACFS_HOME:-$HOME/.acfs}/checksums.yaml"
 
+# State-dir cache for remotely fetched checksums on git-checkout installs.
+# refresh_checksums() writes here instead of clobbering a tracked
+# checksums.yaml inside a git work tree (issue #364).
+update_remote_checksums_cache_file() {
+    local state_home="${XDG_STATE_HOME:-}"
+    if [[ -z "$state_home" ]]; then
+        local runtime_home=""
+        runtime_home="$(update_existing_home "${HOME:-}" 2>/dev/null || true)"
+        [[ -n "$runtime_home" ]] || return 1
+        state_home="$runtime_home/.local/state"
+    fi
+    printf '%s\n' "$state_home/acfs/checksums.remote.yaml"
+}
+
+# Return 0 when the given directory lives inside a git work tree (a checkout
+# install), meaning tracked files there must never be overwritten in place.
+update_dir_is_git_checkout() {
+    local dir="$1"
+    [[ -n "$dir" && -d "$dir" ]] || return 1
+    command -v git >/dev/null 2>&1 || return 1
+    [[ "$(git -C "$dir" rev-parse --is-inside-work-tree 2>/dev/null)" == "true" ]]
+}
+
 update_resolve_checksums_file() {
     local installed_checksums=""
     local repo_checksums=""
     local default_acfs_home=""
+    local remote_cache=""
     default_acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
     [[ -n "$default_acfs_home" ]] && installed_checksums="$default_acfs_home/checksums.yaml"
+
+    # On git-checkout installs refresh_checksums() maintains a state-dir cache
+    # of the latest remote ledger instead of touching the tracked file. Prefer
+    # that cache when it is valid and not older than the tracked candidates.
+    remote_cache="$(update_remote_checksums_cache_file 2>/dev/null || true)"
+    if [[ -n "$remote_cache" && -f "$remote_cache" && ! -L "$remote_cache" && -r "$remote_cache" ]] \
+        && update_checksums_file_has_required_metadata "$remote_cache" 2>/dev/null; then
+        local newer_tracked=""
+        for newer_tracked in "$installed_checksums" "${ACFS_REPO_ROOT:+${ACFS_REPO_ROOT}/checksums.yaml}"; do
+            [[ -n "$newer_tracked" && -f "$newer_tracked" && "$newer_tracked" -nt "$remote_cache" ]] && break
+            newer_tracked=""
+        done
+        if [[ -z "$newer_tracked" ]]; then
+            printf '%s\n' "$remote_cache"
+            return 0
+        fi
+    fi
 
     if [[ -n "${ACFS_REPO_ROOT:-}" ]] && [[ -r "${ACFS_REPO_ROOT}/checksums.yaml" ]]; then
         repo_checksums="${ACFS_REPO_ROOT}/checksums.yaml"
@@ -3867,7 +3918,23 @@ refresh_checksums() {
         log_to_file "Checksums refresh skipped: unable to resolve runtime ACFS home"
         return 1
     fi
-    checksums_local="$checksums_local/checksums.yaml"
+
+    # Git-checkout installs track checksums.yaml in the repo; overwriting it in
+    # place dirties the work tree and breaks the internal-checksum ledger
+    # (issue #364). Write the fetched ledger to a state-dir cache instead and
+    # let update_resolve_checksums_file()/security.sh prefer that cache.
+    if update_dir_is_git_checkout "$checksums_local"; then
+        local cache_target=""
+        cache_target="$(update_remote_checksums_cache_file 2>/dev/null || true)"
+        if [[ -z "$cache_target" ]]; then
+            log_to_file "Checksums refresh skipped: checkout install but no state cache path"
+            return 1
+        fi
+        log_to_file "Checkout install detected: refreshing checksums into $cache_target"
+        checksums_local="$cache_target"
+    else
+        checksums_local="$checksums_local/checksums.yaml"
+    fi
 
     # Create directory if needed
     if ! "$mkdir_bin" -p "${checksums_local%/*}"; then

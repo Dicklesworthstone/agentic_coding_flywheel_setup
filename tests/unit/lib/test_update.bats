@@ -884,6 +884,68 @@ EOF
     assert_success
 }
 
+@test "refresh_checksums: git-checkout install writes state cache, never the tracked file" {
+    local runtime_home
+    local checksums_file
+    local cache_file
+    runtime_home="$(create_temp_dir)"
+    checksums_file="$runtime_home/.acfs/checksums.yaml"
+    cache_file="$runtime_home/.local/state/acfs/checksums.remote.yaml"
+
+    mkdir -p "$runtime_home/.acfs"
+    export HOME="$runtime_home"
+    export TARGET_HOME="$runtime_home"
+    unset TARGET_USER XDG_STATE_HOME
+    export ACFS_HOME="$runtime_home/.acfs"
+    export ACFS_CHECKSUMS_REF="main"
+
+    # Make the runtime ACFS home a git checkout with a tracked checksums.yaml
+    printf 'installers: {}\n# tracked-sentinel\n' > "$checksums_file"
+    git -C "$runtime_home/.acfs" init -q
+    git -C "$runtime_home/.acfs" -c user.email=t@t -c user.name=t add checksums.yaml
+    git -C "$runtime_home/.acfs" -c user.email=t@t -c user.name=t commit -qm init
+
+    update_curl() {
+        local output_file=""
+        local url="${*: -1}"
+        local i=1
+        while [[ $i -le $# ]]; do
+            if [[ "${!i}" == "-o" ]]; then
+                local next=$((i + 1))
+                output_file="${!next}"
+                break
+            fi
+            ((i += 1))
+        done
+        case "$url" in
+            https://api.github.com/repos/*/contents/checksums.yaml?ref=main)
+                write_update_refresh_checksums_fixture "$output_file" "6666666666666666666666666666666666666666666666666666666666666666"
+                return 0
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    }
+
+    run refresh_checksums true
+    assert_success
+
+    # Tracked file untouched (work tree stays clean)
+    run grep -F 'tracked-sentinel' "$checksums_file"
+    assert_success
+    run git -C "$runtime_home/.acfs" status --porcelain
+    assert_output ""
+
+    # Remote ledger landed in the state cache instead
+    run grep -F '6666666666666666666666666666666666666666666666666666666666666666' "$cache_file"
+    assert_success
+
+    # Resolver prefers the fresh cache over the tracked file
+    run update_resolve_checksums_file
+    assert_output "$cache_file"
+}
+
 @test "refresh_checksums: cache-busts raw fallback when GitHub API fails" {
     local runtime_home
     local calls_file
