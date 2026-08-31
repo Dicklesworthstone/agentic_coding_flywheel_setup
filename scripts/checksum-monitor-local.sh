@@ -569,7 +569,20 @@ bun_dir_mode_value=$((8#$bun_dir_mode))
 bun_owner="$(stat -c '%u' -- "$BUN_BIN" 2>/dev/null || true)"
 bun_links="$(stat -c '%h' -- "$BUN_BIN" 2>/dev/null || true)"
 bun_mode="$(stat -c '%a' -- "$BUN_BIN" 2>/dev/null || true)"
-[[ "$bun_owner" == "$(id -u)" && "$bun_links" == "1" && "$bun_mode" =~ ^[0-7]{3,4}$ ]] \
+# nlink==1 is the plain case. Bun's own installer hardlinks bunx to bun in the
+# same directory, so nlink==2 is also legitimate when the extra link is exactly
+# that sibling bunx (same inode). Anything else stays fail-closed (#355).
+bun_links_ok=false
+if [[ "$bun_links" == "1" ]]; then
+    bun_links_ok=true
+elif [[ "$bun_links" == "2" && -f "$bun_dir/bunx" && ! -L "$bun_dir/bunx" ]]; then
+    bun_inode="$(stat -c '%i' -- "$BUN_BIN" 2>/dev/null || true)"
+    bunx_inode="$(stat -c '%i' -- "$bun_dir/bunx" 2>/dev/null || true)"
+    if [[ -n "$bun_inode" && "$bun_inode" == "$bunx_inode" ]]; then
+        bun_links_ok=true
+    fi
+fi
+[[ "$bun_owner" == "$(id -u)" && "$bun_links_ok" == "true" && "$bun_mode" =~ ^[0-7]{3,4}$ ]] \
     || fail_closed "pinned Bun binary metadata is unsafe: $BUN_BIN"
 bun_mode_value=$((8#$bun_mode))
 (( (bun_mode_value & 022) == 0 )) \

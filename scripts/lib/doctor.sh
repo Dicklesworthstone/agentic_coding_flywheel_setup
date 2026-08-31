@@ -2252,6 +2252,41 @@ check_shell() {
     blank_line
 }
 
+# Version-aware cosign check (#367): the Agent Mail installer's verifier
+# requires cosign >=v3.1.3 and <v4.0.0, so "installed" alone is not healthy.
+check_cosign_version() {
+    local cosign_fix="COSIGN_VERSION=v3.1.3 && curl -fsSL https://github.com/sigstore/cosign/releases/download/\${COSIGN_VERSION}/cosign-linux-amd64 -o /tmp/cosign && sudo install /tmp/cosign /usr/local/bin/cosign"
+    local cosign_bin=""
+    cosign_bin="$(doctor_binary_path cosign 2>/dev/null || true)"
+
+    if [[ -z "$cosign_bin" ]]; then
+        check "tool.cosign" "cosign" "warn" "not found" "$cosign_fix"
+        return 0
+    fi
+
+    local cosign_ver=""
+    cosign_ver="$("$cosign_bin" version 2>/dev/null \
+        | sed -n 's/^GitVersion:[[:space:]]*v\{0,1\}\([0-9][0-9A-Za-z.-]*\).*/\1/p' \
+        | head -n1)"
+
+    if [[ ! "$cosign_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+        check "tool.cosign" "cosign" "warn" \
+            "installed but its version could not be determined (Agent Mail verification requires >=v3.1.3 and <v4.0.0)" \
+            "$cosign_fix"
+        return 0
+    fi
+
+    local cosign_major="${cosign_ver%%.*}"
+    if printf '%s\n%s\n' "3.1.3" "$cosign_ver" | sort -V -C 2>/dev/null \
+        && [[ "$cosign_major" -lt 4 ]]; then
+        check "tool.cosign" "cosign (v$cosign_ver)" "pass" "installed, compatible with Agent Mail verification"
+    else
+        check "tool.cosign" "cosign (v$cosign_ver)" "warn" \
+            "incompatible with Agent Mail verification (requires >=v3.1.3 and <v4.0.0)" \
+            "$cosign_fix"
+    fi
+}
+
 # Check core tools
 check_core_tools() {
     section "Core tools"
@@ -2268,8 +2303,7 @@ check_core_tools() {
     check_command "tool.strace" "strace" "strace" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y strace"
     check_command "tool.lsof" "lsof" "lsof" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y lsof"
     check_command "tool.zstd" "zstd" "zstd" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y zstd"
-    check_optional_command "tool.cosign" "cosign" "cosign" \
-        "COSIGN_VERSION=v2.4.1 && curl -fsSL https://github.com/sigstore/cosign/releases/download/\${COSIGN_VERSION}/cosign-linux-amd64 -o /tmp/cosign && sudo install /tmp/cosign /usr/local/bin/cosign"
+    check_cosign_version
     check_command "tool.dig" "dig (dnsutils)" "dig" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y dnsutils"
     check_command "tool.nc" "nc (netcat-openbsd)" "nc" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y netcat-openbsd"
     check_command "tool.sg" "ast-grep" "sg" "cargo install ast-grep --locked"

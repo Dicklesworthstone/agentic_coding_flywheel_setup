@@ -424,7 +424,13 @@ _acfs_atuin_agent_context() {
         return 0
     fi
 
-    parent_comm="$(ps -o comm= -p "${PPID:-0}" 2>/dev/null || true)"
+    # Hot path: this runs twice per interactive command (preexec + precmd).
+    # Read /proc directly on Linux to avoid a ps fork per invocation (#359).
+    if [[ -r "/proc/${PPID:-0}/comm" ]]; then
+        read -r parent_comm < "/proc/${PPID:-0}/comm" || parent_comm=""
+    else
+        parent_comm="$(ps -o comm= -p "${PPID:-0}" 2>/dev/null || true)"
+    fi
     case "$parent_comm" in
         claude|codex|cod|cc|agy|antigravity|agy-locked|gmi|gemini|bun|node) return 0 ;;
         *) return 1 ;;
@@ -476,6 +482,70 @@ _cli_normalize_atuin_shims() {
     done
 
     [[ "$installed_wrapper" == true ]]
+}
+
+# Pin atuin's daemon socket to a stable, TMPDIR-independent path (#358).
+# Atuin's default socket path resolves through the system temp directory, so a
+# daemon started with a different TMPDIR than the interactive shell binds a
+# different socket, and every command then pays a failed connect (~4s). Atuin
+# does not expand env vars in config.toml, so write the literal expanded path.
+_cli_pin_atuin_daemon_socket() {
+    local target_user="${TARGET_USER:-ubuntu}"
+    local target_home=""
+    target_home="$(_cli_target_home "$target_user")"
+    [[ -n "$target_home" ]] || return 0
+
+    local config_dir="$target_home/.config/atuin"
+    local config_file="$config_dir/config.toml"
+    local socket_path="$target_home/.local/share/atuin/atuin-daemon.sock"
+
+    # Respect an explicit user pin.
+    if [[ -f "$config_file" ]] && grep -Eq '^[[:space:]]*socket_path[[:space:]]*=' "$config_file"; then
+        log_detail "atuin daemon.socket_path already pinned"
+        return 0
+    fi
+
+    mkdir -p "$config_dir" 2>/dev/null || {
+        log_warn "Could not create $config_dir to pin atuin daemon socket"
+        return 1
+    }
+
+    if [[ -f "$config_file" ]] && grep -Eq '^\[daemon\]' "$config_file"; then
+        # Existing [daemon] table without socket_path: insert the key under it.
+        local tmp_config="$config_file.acfs-tmp.$$"
+        if awk -v sock="$socket_path" '
+            { print }
+            /^\[daemon\]/ && !done { printf "socket_path = \"%s\"\n", sock; done=1 }
+        ' "$config_file" > "$tmp_config" && mv "$tmp_config" "$config_file"; then
+            :
+        else
+            rm -f "$tmp_config" 2>/dev/null || true
+            log_warn "Could not merge atuin daemon.socket_path into $config_file"
+            return 1
+        fi
+    else
+        local lead_newline=""
+        [[ -f "$config_file" ]] && lead_newline=$'\n'
+        {
+            printf '%s# Managed by ACFS: pin the daemon socket to a TMPDIR-independent path (#358)\n' "$lead_newline"
+            printf '[daemon]\n'
+            printf 'socket_path = "%s"\n' "$socket_path"
+        } >> "$config_file" || {
+            log_warn "Could not write atuin daemon.socket_path to $config_file"
+            return 1
+        }
+    fi
+
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        local chown_path=""
+        for chown_path in "$config_file" "$config_dir" "$target_home/.config"; do
+            chown "$target_user:$target_user" "$chown_path" 2>/dev/null \
+                || chown "$target_user" "$chown_path" 2>/dev/null || true
+        done
+    fi
+
+    log_detail "Pinned atuin daemon.socket_path to $socket_path"
+    return 0
 }
 
 # Fetch latest version tag from GitHub
@@ -980,6 +1050,7 @@ install_atuin() {
 
     if [[ -x "$target_atuin_bin" ]]; then
         log_detail "atuin already installed"
+        _cli_pin_atuin_daemon_socket || true
         if ! _cli_normalize_atuin_shims; then
             log_warn "Could not install guarded atuin shim"
             return 1
@@ -1011,6 +1082,7 @@ install_atuin() {
     fi
 
     if [[ -x "$target_atuin_bin" ]]; then
+        _cli_pin_atuin_daemon_socket || true
         if ! _cli_normalize_atuin_shims; then
             log_warn "Could not install guarded atuin shim"
             return 1
