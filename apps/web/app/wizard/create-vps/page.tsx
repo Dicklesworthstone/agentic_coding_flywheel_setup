@@ -35,8 +35,9 @@ type ScreenshotSpec = {
   caption: string;
 };
 
-const SCREENSHOT_BASE =
-  "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/research_screenshots";
+// Screenshots ship with the site (research_screenshots/ is gitignored, so
+// raw.githubusercontent.com URLs 404 — issue #363).
+const SCREENSHOT_BASE = "/screenshots";
 
 function screenshotUrl(file: string): string {
   return `${SCREENSHOT_BASE}/${file}`;
