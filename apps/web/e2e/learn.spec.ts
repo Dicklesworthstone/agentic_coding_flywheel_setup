@@ -49,6 +49,117 @@ test.describe.serial("Learning Hub", () => {
     expect(errors).toEqual([]);
   });
 
+  test("desktop lesson sidebar stays visible while the lesson scrolls", async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name.startsWith("Mobile"),
+      "The lesson sidebar is intentionally hidden on mobile"
+    );
+
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "acfs-learning-hub-completed-lessons",
+        JSON.stringify(Array.from({ length: 50 }, (_, index) => index))
+      );
+    });
+
+    await page.goto("/learn/debugging-agents");
+    await page.waitForLoadState("networkidle");
+
+    const sidebar = page.getByTestId("lesson-sidebar");
+    await expect(sidebar).toBeVisible();
+
+    await page.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight)
+    );
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+    await expect
+      .poll(() =>
+        sidebar.evaluate((element) => Math.round(element.getBoundingClientRect().top))
+      )
+      .toBe(0);
+  });
+
+  test("first visit to a deep lesson reveals the current lesson in the sidebar", async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name.startsWith("Mobile"),
+      "The lesson sidebar is intentionally hidden on mobile"
+    );
+
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "acfs-learning-hub-completed-lessons",
+        JSON.stringify(Array.from({ length: 49 }, (_, index) => index))
+      );
+    });
+
+    await page.goto("/learn/debugging-agents");
+    await page.waitForLoadState("networkidle");
+
+    const lessonNav = page.getByRole("navigation", { name: "Lessons" });
+
+    await expect
+      .poll(() =>
+        lessonNav.evaluate((nav) => {
+          const currentLesson = nav.querySelector('[aria-current="page"]');
+          if (!currentLesson) return false;
+          const navRect = nav.getBoundingClientRect();
+          const lessonRect = currentLesson.getBoundingClientRect();
+          return lessonRect.top >= navRect.top && lessonRect.bottom <= navRect.bottom;
+        })
+      )
+      .toBe(true);
+  });
+
+  test("desktop lesson sidebar remembers its scroll position between lessons", async ({ page }, testInfo) => {
+    test.skip(
+      testInfo.project.name.startsWith("Mobile"),
+      "The lesson sidebar is intentionally hidden on mobile"
+    );
+
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        "acfs-learning-hub-completed-lessons",
+        JSON.stringify(Array.from({ length: 50 }, (_, index) => index))
+      );
+    });
+
+    await page.goto("/learn/debugging-agents");
+    await page.waitForLoadState("networkidle");
+
+    const lessonNav = page.getByRole("navigation", { name: "Lessons" });
+
+    const savedScrollTop = await lessonNav.evaluate((element) => {
+      const maxScrollTop = element.scrollHeight - element.clientHeight;
+      element.scrollTop = Math.floor(maxScrollTop * 0.65);
+      return element.scrollTop;
+    });
+    expect(savedScrollTop).toBeGreaterThan(0);
+
+    await expect
+      .poll(async () => {
+        const stored = await page.evaluate(() =>
+          Number(sessionStorage.getItem("acfs-learning-hub-sidebar-scroll-top"))
+        );
+        return Math.abs(stored - savedScrollTop);
+      })
+      .toBeLessThanOrEqual(2);
+
+    // Navigate to the next lesson via the keyboard shortcut.
+    await page.keyboard.press("ArrowRight");
+    await expect(page).toHaveURL(/\/learn\/context-mastery$/);
+
+    const restoredNav = page.getByRole("navigation", { name: "Lessons" });
+    await expect
+      .poll(() =>
+        restoredNav.evaluate(
+          (element, expected) => Math.abs(element.scrollTop - expected),
+          savedScrollTop
+        )
+      )
+      .toBeLessThanOrEqual(2);
+  });
+
   test("lesson route server-renders lesson content before progress hydration", async ({ request }) => {
     const response = await request.get("/learn/welcome");
     expect(response.ok()).toBeTruthy();

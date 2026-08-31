@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { renderLessonComponent } from "@/components/lessons";
 import {
   ArrowLeft,
@@ -47,6 +53,34 @@ import { isInteractiveKeyboardTarget } from "@/lib/utils";
 
 interface Props {
   lesson: Lesson;
+}
+
+// Sidebar scroll persistence (#356). sessionStorage keeps the lesson list where
+// the reader left it for the lifetime of the tab, without leaking into new tabs.
+const SIDEBAR_SCROLL_KEY = "acfs-learning-hub-sidebar-scroll-top";
+
+function readSidebarScrollTop(): number | null {
+  try {
+    const raw = window.sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
+    if (raw === null) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  } catch {
+    // Storage can be blocked (private mode, hardened browsers). Persistence is
+    // a convenience; never let it break the page.
+    return null;
+  }
+}
+
+function saveSidebarScrollTop(scrollTop: number): void {
+  try {
+    window.sessionStorage.setItem(
+      SIDEBAR_SCROLL_KEY,
+      String(Math.max(0, Math.round(scrollTop)))
+    );
+  } catch {
+    // Same rationale as readSidebarScrollTop: storage failures are non-fatal.
+  }
 }
 
 // Reading progress hook
@@ -94,9 +128,64 @@ function LessonSidebar({
   currentLessonId: number;
 }) {
   const progressPercent = Math.round((completedLessons.length / LESSONS.length) * 100);
+  const navRef = useRef<HTMLElement | null>(null);
+  const currentLessonRef = useRef<HTMLLIElement | null>(null);
+
+  // Restore the lesson list's scroll position before paint, and persist it as
+  // the reader scrolls, so switching lessons never loses their place (#356).
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    const savedScrollTop = readSidebarScrollTop();
+    if (savedScrollTop !== null) {
+      nav.scrollTop = savedScrollTop;
+    } else {
+      // First visit in this tab: reveal the current lesson instead of showing
+      // the top of a 60+ entry list.
+      const currentLesson = currentLessonRef.current;
+      if (currentLesson) {
+        const offsetWithinList =
+          currentLesson.getBoundingClientRect().top -
+          nav.getBoundingClientRect().top +
+          nav.scrollTop;
+        nav.scrollTop = Math.max(
+          0,
+          offsetWithinList - (nav.clientHeight - currentLesson.offsetHeight) / 2
+        );
+      }
+    }
+
+    let pendingFrame: number | null = null;
+    const persist = () => saveSidebarScrollTop(nav.scrollTop);
+    const schedulePersist = () => {
+      if (pendingFrame !== null) return;
+      pendingFrame = window.requestAnimationFrame(() => {
+        pendingFrame = null;
+        persist();
+      });
+    };
+
+    nav.addEventListener("scroll", schedulePersist, { passive: true });
+    window.addEventListener("pagehide", persist);
+
+    return () => {
+      nav.removeEventListener("scroll", schedulePersist);
+      window.removeEventListener("pagehide", persist);
+      if (pendingFrame !== null) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+      // Client-side lesson navigation does not fire pagehide, so record the
+      // position once more when this lesson goes away.
+      persist();
+    };
+  }, [currentLessonId]);
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-80 shrink-0 xl:block">
+    <aside
+      data-testid="lesson-sidebar"
+      className="fixed inset-y-0 left-0 z-30 hidden w-80 xl:block"
+    >
       {/* Multi-layer glass effect */}
       <div className="relative h-full">
         {/* Background layer */}
@@ -196,11 +285,19 @@ function LessonSidebar({
           </div>
 
           {/* Lesson list with timeline */}
-          <nav className="flex-1 overflow-y-auto px-4 scrollbar-hide">
-            <ul className="relative space-y-1 py-2">
-              {/* Timeline track */}
-              <div className="absolute left-[34px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-primary/30 via-white/[0.08] to-emerald-500/30" />
+          <nav
+            ref={navRef}
+            aria-label="Lessons"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 scrollbar-hide"
+          >
+            <div className="relative">
+              {/* Timeline track. Kept outside the <ul> so the list markup stays valid. */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-[34px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-primary/30 via-white/[0.08] to-emerald-500/30"
+              />
 
+              <ul className="relative space-y-1 py-2">
               {LESSONS.map((lesson) => {
                 const status = getLessonStatus(lesson.id, completedLessons);
                 const isCompleted = status === "completed";
@@ -208,10 +305,15 @@ function LessonSidebar({
                 const isAccessible = status !== "locked";
 
                 return (
-                  <li key={lesson.id} className="relative">
+                  <li
+                    key={lesson.id}
+                    ref={isCurrent ? currentLessonRef : undefined}
+                    className="relative"
+                  >
                     <Link
                       href={isAccessible ? `/learn/${lesson.slug}` : "#"}
                       aria-disabled={!isAccessible}
+                      aria-current={isCurrent ? "page" : undefined}
                       tabIndex={isAccessible ? 0 : -1}
                       className={`group relative flex items-center gap-4 rounded-xl px-4 py-4 transition duration-500 ${
                         isCurrent
@@ -282,7 +384,8 @@ function LessonSidebar({
                   </li>
                 );
               })}
-            </ul>
+              </ul>
+            </div>
           </nav>
 
           {/* Footer */}
@@ -544,7 +647,10 @@ export function LessonContent({ lesson }: Props) {
         }}
       />
 
-      <div className="relative flex">
+      {/* The sidebar is position: fixed on xl screens (the page root's
+          overflow-x-hidden broke position: sticky by making it a clipping
+          ancestor), so reserve its width here to keep the article clear. */}
+      <div className="relative flex xl:pl-80">
         <LessonSidebar
           completedLessons={completedLessons}
           currentLessonId={lesson.id}
