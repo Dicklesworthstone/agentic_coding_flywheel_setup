@@ -202,6 +202,29 @@ check_branch_policy() {
     fi
 }
 
+# The v0.8.0 tag shipped with VERSION still reading 0.7.0 (issue #352);
+# gate releases on the VERSION file matching install.sh's ACFS_VERSION.
+check_version_consistency() {
+    local command="VERSION == install.sh ACFS_VERSION"
+    if record_fake_check_if_requested "version_consistency" "Version consistency" "$command"; then
+        return 0
+    fi
+
+    local version_file installer_version
+    version_file="$(head -n1 "$REPO_ROOT/VERSION" 2>/dev/null | tr -d '[:space:]' || true)"
+    installer_version="$(sed -n 's/^ACFS_VERSION="\([^"]*\)".*/\1/p' "$REPO_ROOT/install.sh" | head -n1)"
+
+    if [[ -z "$version_file" ]]; then
+        record_check "version_consistency" "Version consistency" "fail" "VERSION file is missing or empty" "$command"
+    elif [[ -z "$installer_version" ]]; then
+        record_check "version_consistency" "Version consistency" "fail" "could not read ACFS_VERSION from install.sh" "$command"
+    elif [[ "$version_file" != "$installer_version" ]]; then
+        record_check "version_consistency" "Version consistency" "fail" "VERSION file ($version_file) != install.sh ACFS_VERSION ($installer_version)" "$command"
+    else
+        record_check "version_consistency" "Version consistency" "pass" "VERSION and ACFS_VERSION both $version_file" "$command"
+    fi
+}
+
 check_shellcheck() {
     local command="shellcheck install.sh scripts/**/*.sh"
     if record_fake_check_if_requested "shellcheck" "ShellCheck" "$command"; then
@@ -425,6 +448,7 @@ print_json_report() {
 main() {
     parse_args "$@"
     check_branch_policy
+    check_version_consistency
     check_shellcheck
     check_manifest_drift
     check_checksum_candidate
