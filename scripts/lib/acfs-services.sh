@@ -213,6 +213,10 @@ _http_url_host() {
     fi
 }
 
+# Returns: 0 = alive and ready; 1 = down (liveness failed); 2 = alive but
+# readiness not confirmed. Liveness stays on a tight 3s timeout, while the
+# readiness probe gets 10s -- a busy Agent Mail (e.g. SQLite maintenance)
+# can legitimately take >3s to answer readiness without being down (#362).
 _agent_mail_is_healthy() {
     local url_host=""
     local readiness_body=""
@@ -224,13 +228,13 @@ _agent_mail_is_healthy() {
         "http://${url_host}:${ACFS_AGENT_MAIL_PORT}/health/liveness" >/dev/null 2>&1 || return 1
 
     for readiness_path in /health/readiness /health; do
-        readiness_body="$("$_CURL_BIN" -fsS --max-time 3 \
+        readiness_body="$("$_CURL_BIN" -fsS --max-time 10 \
             "http://${url_host}:${ACFS_AGENT_MAIL_PORT}${readiness_path}" 2>/dev/null)" || continue
         if [[ "$readiness_body" =~ \"status\"[[:space:]]*:[[:space:]]*\"ready\"([[:space:]]*[,\}]) ]]; then
             return 0
         fi
     done
-    return 1
+    return 2
 }
 
 _native_agent_mail_unit_available() {
@@ -541,9 +545,15 @@ cmd_status() {
         owner="tmux"
     fi
 
-    if _agent_mail_is_healthy; then
+    local am_health_rc=0
+    _agent_mail_is_healthy || am_health_rc=$?
+    if (( am_health_rc == 0 )); then
         printf '  %-12s  %sready%s    %s  (%s)\n' "agent-mail" "$_C_GREEN" "$_C_RESET" \
             "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT" "$owner"
+    elif (( am_health_rc == 2 )); then
+        printf '  %-12s  %salive, readiness slow%s  %s  (%s)\n' "agent-mail" "$_C_YELLOW" "$_C_RESET" \
+            "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT" "$owner"
+        rc=1
     else
         printf '  %-12s  %snot ready%s  %s\n' "agent-mail" "$_C_RED" "$_C_RESET" \
             "$ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT"
