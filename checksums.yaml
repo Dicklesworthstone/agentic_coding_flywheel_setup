@@ -44,7 +44,7 @@ installers:
 
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
-    sha256: "d2565a90bbec4e72822c14f5dbc4f987ff6a5e5c903215b6f642384044ed90ec"
+    sha256: "73a71becde58452840fc348546b1da506b850739b5e5aa3698b574180830f4a4"
 
   claude:
     url: "https://claude.ai/install.sh"
@@ -72,7 +72,7 @@ installers:
 
   fmd:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/franken_markdown/main/install.sh"
-    sha256: "bfc5e870c0857e3c3e356820006ba73f7516cf96ef6d77bcf2e9d1be18975b8f"
+    sha256: "d885ef667ed0f7b4fb593ada310e0b5dd4b66b3685a900846ba1c7f2740bd31b"
 
   fsfs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/frankensearch/refs/heads/main/install.sh"
@@ -88,7 +88,7 @@ installers:
 
   grok:
     url: "https://x.ai/cli/install.sh"
-    sha256: "65cf570a44ef216e496dfe45efc1602b20428b4678a38bdad8bbfd21f804fb9b"
+    sha256: "e11ef1692ece18489a450ee918bdb7dd0b229d001c08d9c2b1387fffd78a0aa9"
 
   jfp:
     url: "https://jeffreysprompts.com/install-cli.sh"
