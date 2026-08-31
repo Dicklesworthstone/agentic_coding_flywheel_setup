@@ -7030,6 +7030,18 @@ acfs_install_sudoers_dropin() {
     return 0
 }
 
+# Legacy phase bodies are coarse category installers and do not consult the
+# module selection plan. When selection filters (--only/--only-phase/--skip)
+# are active, individually guarded legacy modules must honor them too (#350:
+# the Arch legacy routing bypassed module selection entirely).
+# Returns 0 when the module should run, 1 when it was deselected.
+acfs_legacy_module_selected() {
+    local module_id="$1"
+    declare -f acfs_selection_filters_active >/dev/null 2>&1 || return 0
+    acfs_selection_filters_active || return 0
+    should_run_module "$module_id"
+}
+
 normalize_user() {
     set_phase "user_setup" "User Normalization"
     log_step "1/9" "Normalizing user account..."
@@ -8016,8 +8028,13 @@ _ensure_target_nvm_node() {
 
     log_detail "Installing nvm + latest Node.js for $TARGET_USER"
     try_step "Installing nvm" acfs_run_verified_upstream_script_as_target "nvm" "bash" || return 1
-    try_step "Installing Node.js via nvm" run_as_target bash -c '
+    # nvm refuses to run with an npm prefix configured (exit 11) even when Node
+    # itself installed fine (#351): strip the prefix env vars for the nvm call,
+    # and on failure verify the installed node binary before failing the phase.
+    local nvm_rc=0
+    try_step "Installing Node.js via nvm" run_as_target env -u NPM_CONFIG_PREFIX -u npm_config_prefix bash -c '
         set -euo pipefail
+        unset NPM_CONFIG_PREFIX npm_config_prefix
         export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
         if [[ ! -s "$NVM_DIR/nvm.sh" && -s "$HOME/.config/nvm/nvm.sh" ]]; then
             # nvm 0.40+ installs to $HOME/.config/nvm when NVM_DIR was preset
@@ -8031,7 +8048,19 @@ _ensure_target_nvm_node() {
         . "$NVM_DIR/nvm.sh"
         nvm install node
         nvm alias default node
-    ' || return 1
+    ' || nvm_rc=$?
+
+    if (( nvm_rc != 0 )); then
+        # nvm can exit nonzero (notably 11 on npm-prefix detection) after Node
+        # was already installed correctly. Trust a working node binary.
+        local node_bin_dir=""
+        if node_bin_dir="$(_target_latest_nvm_node_bin 2>/dev/null)" \
+            && run_as_target "$node_bin_dir/node" --version >/dev/null 2>&1; then
+            log_warn "nvm exited with status $nvm_rc but Node.js at $node_bin_dir/node works; continuing (#351)"
+            return 0
+        fi
+        return 1
+    fi
 
     _target_has_nvm_node
 }
@@ -8284,7 +8313,9 @@ install_languages() {
         acfs_run_generated_category_phase "lang" "6" || lang_phase_rc=1
         ran_any=true
     else
-        install_languages_legacy_lang || return 1
+        # A lang failure (e.g. an nvm/Node hiccup, #351) must not prevent the
+        # independent tool modules below from installing; record and continue.
+        install_languages_legacy_lang || lang_phase_rc=1
         ran_any=true
     fi
 
@@ -8302,7 +8333,7 @@ install_languages() {
     fi
 
     if [[ "$lang_phase_rc" -ne 0 ]]; then
-        log_warn "Language phase finished with generated-module failures (see summary); the phase will be retried on resume"
+        log_warn "Language phase finished with module failures (see summary); the phase will be retried on resume"
         return 1
     fi
     log_success "Language runtimes installed"
@@ -9319,7 +9350,9 @@ NTM_CONFIG_EOF
     fi
 
     # MCP Agent Mail
-    if [[ -f "${ACFS_LIB_DIR:-}/stack.sh" ]]; then
+    if ! acfs_legacy_module_selected "stack.mcp_agent_mail"; then
+        log_detail "Skipping MCP Agent Mail (stack.mcp_agent_mail is not selected)"
+    elif [[ -f "${ACFS_LIB_DIR:-}/stack.sh" ]]; then
         # shellcheck source=scripts/lib/stack.sh
         source "$ACFS_LIB_DIR/stack.sh"
         # Agent Mail failing (port 8765 held, slow readiness, no user
@@ -10160,7 +10193,13 @@ UNIT_EOF
     fi
 
     # System Resource Protection Script (srps)
-    if binary_installed "sysmoni"; then
+    if ! acfs_legacy_module_selected "stack.srps"; then
+        log_detail "Skipping SRPS (stack.srps is not selected)"
+    elif [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != "ubuntu" ]]; then
+        # SRPS's upstream installer supports apt-based systems only (#350);
+        # do not fail the stack phase for an unsupported optional module.
+        log_detail "Skipping SRPS (apt-based systems only; detected family: ${ACFS_DISTRO_FAMILY})"
+    elif binary_installed "sysmoni"; then
         log_detail "SRPS already installed"
     else
         log_detail "Installing SRPS"
