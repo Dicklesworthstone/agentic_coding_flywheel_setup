@@ -138,9 +138,9 @@ export function KeepingUpdatedLesson() {
           />
 
           <UpdatePattern
-            title="Include Stack Tools"
-            description="The Agent Flywheel stack (ntm, slb, ubs, etc.) is skipped by default because it takes longer. Include it with:"
-            command="acfs-update --stack"
+            title="Skip Stack Tools"
+            description="The Agent Flywheel stack (ntm, slb, ubs, etc.) is included by default. Skip it when you want a faster run:"
+            command="acfs-update --no-stack"
           />
         </div>
       </Section>
@@ -156,12 +156,26 @@ export function KeepingUpdatedLesson() {
         <Paragraph>For hands-off maintenance, use quiet mode:</Paragraph>
 
         <div className="mt-6">
-          <CodeBlock code="acfs-update --yes --quiet" />
+          <CodeBlock code="acfs-update --yes --quiet --no-self-update" />
         </div>
 
         <Paragraph>
-          This runs without prompts and only shows errors.
+          This runs without prompts, only shows errors, and leaves the ACFS
+          tree itself alone. The shipped nightly timer runs exactly this.
         </Paragraph>
+
+        <div className="mt-6">
+          <TipBox variant="info">
+            The control-plane boundary: with --no-self-update, automated runs
+            update your stack tools but never ACFS itself -- not the git
+            checkout, and not the deployed runtime copies under ~/.acfs
+            (acfs, acfs-update, the update libraries). Refresh the control
+            plane separately every so often: run acfs-update without
+            --no-self-update, or git pull the checkout and then run
+            acfs-update --shell-only to redeploy the runtime copies. acfs
+            doctor warns when the checkout and the deployed runtime disagree.
+          </TipBox>
+        </div>
 
         <div className="mt-6">
           <TipBox variant="tip">
@@ -175,7 +189,7 @@ export function KeepingUpdatedLesson() {
 crontab -e
 
 # Add this line for weekly Sunday 3am updates
-0 3 * * 0 $HOME/.local/bin/acfs-update --yes --quiet >> $HOME/.acfs/logs/cron-update.log 2>&1`}
+0 3 * * 0 $HOME/.local/bin/acfs-update --yes --quiet --no-self-update >> $HOME/.acfs/logs/cron-update.log 2>&1`}
           />
         </div>
       </Section>
@@ -420,12 +434,12 @@ function TroubleshootingCard({
 // =============================================================================
 function QuickReferenceTable() {
   const commands = [
-    { command: "acfs-update", description: "Update everything (except stack)" },
-    { command: "acfs-update --stack", description: "Include stack tools" },
+    { command: "acfs-update", description: "Update everything, including stack tools" },
+    { command: "acfs-update --no-stack", description: "Skip stack tools (faster)" },
     { command: "acfs-update --agents-only", description: "Just update agents" },
     { command: "acfs-update --no-apt", description: "Skip apt (faster)" },
     { command: "acfs-update --dry-run", description: "Preview changes" },
-    { command: "acfs-update --yes --quiet", description: "Automated mode" },
+    { command: "acfs-update --yes --quiet --no-self-update", description: "Automated mode (leaves ACFS itself alone)" },
     { command: "acfs-update --help", description: "Full help" },
   ];
 
@@ -589,7 +603,7 @@ const SCENARIOS: Scenario[] = [
     id: "routine",
     label: "Routine Sync",
     description: "Standard update across all components. Everything pulls cleanly.",
-    command: "acfs-update --stack",
+    command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
       { repoId: "omz", finalStatus: "updated", delay: 400 },
@@ -605,7 +619,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "dcg", finalStatus: "updated", delay: 1400 },
     ],
     terminalLines: [
-      "$ acfs-update --stack",
+      "$ acfs-update",
       "[apt] Fetching package lists...",
       "[apt] 3 packages upgraded",
       "[shell] Pulling oh-my-zsh latest... done",
@@ -626,7 +640,7 @@ const SCENARIOS: Scenario[] = [
     id: "breaking",
     label: "Breaking Change",
     description: "A major version bump in Wrangler introduces breaking API changes. The updater detects this and pauses.",
-    command: "acfs-update --stack",
+    command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
       { repoId: "omz", finalStatus: "updated", delay: 400 },
@@ -642,7 +656,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "dcg", finalStatus: "conflict", delay: 1400, errorMsg: "Depends on wrangler@^3" },
     ],
     terminalLines: [
-      "$ acfs-update --stack",
+      "$ acfs-update",
       "[apt] 3 packages upgraded",
       "[shell] All shell tools updated",
       "[agents] All agents updated",
@@ -660,7 +674,7 @@ const SCENARIOS: Scenario[] = [
     id: "conflict",
     label: "Version Conflict",
     description: "NTM and Supabase CLI have conflicting dependency requirements. The resolver detects and handles it.",
-    command: "acfs-update --stack",
+    command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
       { repoId: "omz", finalStatus: "updated", delay: 400 },
@@ -676,7 +690,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "dcg", finalStatus: "updated", delay: 1400 },
     ],
     terminalLines: [
-      "$ acfs-update --stack",
+      "$ acfs-update",
       "[apt] 3 packages upgraded",
       "[shell] All shell tools updated",
       "[agents] All agents updated",
@@ -694,7 +708,7 @@ const SCENARIOS: Scenario[] = [
     id: "automerge",
     label: "Auto-Merge",
     description: "Git-based tools (OMZ, plugins) have local modifications. The updater auto-merges cleanly via stash/pop.",
-    command: "acfs-update --stack",
+    command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
       { repoId: "omz", finalStatus: "updated", delay: 600 },
@@ -710,7 +724,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "dcg", finalStatus: "updated", delay: 1400 },
     ],
     terminalLines: [
-      "$ acfs-update --stack",
+      "$ acfs-update",
       "[apt] 3 packages upgraded",
       "[shell] omz: local modifications detected",
       "[shell] omz: git stash -> pull -> stash pop",
@@ -728,7 +742,7 @@ const SCENARIOS: Scenario[] = [
     id: "manual",
     label: "Manual Intervention",
     description: "A merge conflict in OMZ custom config cannot be auto-resolved. The updater flags it for manual fix.",
-    command: "acfs-update --stack",
+    command: "acfs-update",
     repoSequence: [
       { repoId: "apt", finalStatus: "updated", delay: 0 },
       { repoId: "omz", finalStatus: "manual", delay: 600, errorMsg: "Merge conflict in custom/themes" },
@@ -744,7 +758,7 @@ const SCENARIOS: Scenario[] = [
       { repoId: "dcg", finalStatus: "updated", delay: 1400 },
     ],
     terminalLines: [
-      "$ acfs-update --stack",
+      "$ acfs-update",
       "[apt] 3 packages upgraded",
       "[shell] omz: local modifications detected",
       "[shell] omz: git stash -> pull -> stash pop",

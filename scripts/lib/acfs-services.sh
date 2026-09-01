@@ -582,6 +582,16 @@ cmd_status() {
         _info "Attach: tmux attach -t $ACFS_SVC_SESSION"
     fi
     _info "Logs:   acfs services logs [agent-mail|cm|cass]"
+    if (( rc != 0 )); then
+        # Lifecycle contract (#196, documented per #360): "not running" can be
+        # intentional. Say exactly what owns what and what the fix is.
+        printf '\n'
+        _info "Lifecycle: only agent-mail persists across reboots (native user service)."
+        _info "cm and cass run in the '$ACFS_SVC_SESSION' tmux session, which does not survive"
+        _info "a reboot and does not restart crashed processes -- run 'acfs services start'"
+        _info "to bring them back. Leaving cm/cass off is fine if you only use 'cm context'/'cm reflect'"
+        _info "or are diagnosing indexing/resource problems."
+    fi
     return $rc
 }
 

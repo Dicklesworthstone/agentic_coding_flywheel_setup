@@ -4814,7 +4814,104 @@ check_updates_health() {
         check "updates.rollback" "Post-install rollback" "pass" "no tools rolled back"
     fi
 
+    check_runtime_deploy_skew
+
     blank_line
+}
+
+_acfs_doctor_file_sha256() {
+    local file="${1:-}"
+    [[ -n "$file" && -f "$file" && -r "$file" ]] || return 1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" 2>/dev/null | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" 2>/dev/null | awk '{print $1}'
+    else
+        return 1
+    fi
+}
+
+# Checkout-vs-deployed runtime skew (issue #360, reusing the #364 checkout
+# detection): on a git-checkout install, `acfs-update --no-self-update` (the
+# shipped nightly default) updates stack tools while leaving the checkout AND
+# the deployed ~/.acfs runtime copies (bin/acfs, bin/acfs-update,
+# scripts/lib/*.sh) alone. A checkout that drifts ahead of -- or far behind --
+# the deployed runtime produces the mixed state from the field report, where
+# `acfs services status` invoked the credential wizard. Detect the
+# disagreement and print the exact refresh command.
+check_runtime_deploy_skew() {
+    local runtime_home=""
+    runtime_home="$(doctor_runtime_home)"
+    local deployed_root="$runtime_home/.acfs"
+    [[ -d "$deployed_root" ]] || return 0
+
+    # Discover a git checkout the way update.sh's repo discovery does.
+    local script_root=""
+    script_root="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd || true)"
+    local checkout_root=""
+    local candidate=""
+    for candidate in \
+        "$script_root" \
+        "$deployed_root" \
+        "/data/projects/agentic_coding_flywheel_setup" \
+        "/dp/agentic_coding_flywheel_setup" \
+        "$runtime_home/agentic_coding_flywheel_setup"; do
+        [[ -n "$candidate" && -d "$candidate/.git" && -f "$candidate/scripts/lib/update.sh" ]] || continue
+        checkout_root="$candidate"
+        break
+    done
+
+    if [[ -z "$checkout_root" ]]; then
+        # Tarball/deployed-only install: nothing to disagree with.
+        return 0
+    fi
+
+    if [[ "$checkout_root" == "$deployed_root" ]]; then
+        check "updates.runtime_skew" "Runtime deploy sync" "pass" "self-managed checkout (~/.acfs is the git checkout)"
+        return 0
+    fi
+
+    # Compare the runtime files a stale deployment actually bites on.
+    local -a skew_pairs=(
+        "scripts/lib/update.sh:scripts/lib/update.sh"
+        "scripts/lib/doctor.sh:bin/acfs"
+        "scripts/acfs-update:bin/acfs-update"
+        "scripts/lib/acfs-services.sh:scripts/lib/acfs-services.sh"
+    )
+    local -a stale_files=()
+    local pair="" repo_rel="" deployed_rel="" repo_file="" deployed_file=""
+    local repo_sha="" deployed_sha=""
+    local hash_available=true
+    for pair in "${skew_pairs[@]}"; do
+        repo_rel="${pair%%:*}"
+        deployed_rel="${pair##*:}"
+        repo_file="$checkout_root/$repo_rel"
+        deployed_file="$deployed_root/$deployed_rel"
+        [[ -f "$repo_file" && -f "$deployed_file" ]] || continue
+        repo_sha="$(_acfs_doctor_file_sha256 "$repo_file" 2>/dev/null || true)"
+        deployed_sha="$(_acfs_doctor_file_sha256 "$deployed_file" 2>/dev/null || true)"
+        if [[ -z "$repo_sha" || -z "$deployed_sha" ]]; then
+            hash_available=false
+            continue
+        fi
+        [[ "$repo_sha" == "$deployed_sha" ]] || stale_files+=("$deployed_rel")
+    done
+
+    if [[ "$hash_available" != "true" && ${#stale_files[@]} -eq 0 ]]; then
+        check "updates.runtime_skew" "Runtime deploy sync" "skip" "no sha256 tool available to compare checkout vs deployed runtime"
+        return 0
+    fi
+
+    local head_desc=""
+    head_desc="$(git -C "$checkout_root" log -1 --format=%h 2>/dev/null || true)"
+
+    if [[ ${#stale_files[@]} -eq 0 ]]; then
+        check "updates.runtime_skew" "Runtime deploy sync" "pass" "deployed ~/.acfs runtime matches the checkout at $checkout_root${head_desc:+ (HEAD $head_desc)}"
+    else
+        check "updates.runtime_skew" "Runtime deploy sync" "warn" \
+            "checkout at $checkout_root${head_desc:+ (HEAD $head_desc)} and the deployed ~/.acfs runtime disagree (${#stale_files[@]} file(s): ${stale_files[*]}). The nightly's --no-self-update leaves both the checkout and these deployed copies alone, so stack tools can be current while the control plane is stale" \
+            "git -C $checkout_root pull --rebase && acfs-update --shell-only  # refresh the checkout, then redeploy the runtime copies"
+    fi
 }
 
 main() {

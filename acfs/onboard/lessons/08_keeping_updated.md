@@ -90,6 +90,15 @@ acfs-update --yes --quiet --no-self-update
 
 This runs without prompts, only shows errors, and leaves the ACFS tree itself alone.
 
+**The control-plane boundary:** because `--no-self-update` leaves ACFS alone,
+automated runs keep your stack tools current but never touch ACFS itself --
+neither the git checkout nor the deployed runtime copies under `~/.acfs`
+(`bin/acfs`, `bin/acfs-update`, the update libraries). Refresh the control plane
+separately every so often: run `acfs-update` without `--no-self-update`, or
+`git pull --rebase` the checkout and then run `acfs-update --shell-only` to
+redeploy the runtime copies. `acfs doctor` warns (`updates.runtime_skew`) when
+the checkout and the deployed runtime disagree.
+
 You can add this to a cron job for weekly updates:
 
 ```bash

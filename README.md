@@ -668,6 +668,16 @@ acfs-update --bootstrap-self-update
 
 `--bootstrap-self-update` replaces ACFS repository files with `origin/main`. Copy local files elsewhere or commit local edits before opting in. Routine updates leave non-git and incomplete Git installs untouched.
 
+**The control-plane boundary:** with `--no-self-update` (the shipped nightly
+timer's default), automated runs update your stack tools but never ACFS itself --
+neither the git checkout nor the deployed runtime copies under `~/.acfs`
+(`bin/acfs`, `bin/acfs-update`, `scripts/lib/*.sh`). The control plane therefore
+needs its own periodic refresh: run `acfs-update` without `--no-self-update` from
+time to time, or `git pull --rebase` the checkout and then run
+`acfs-update --shell-only` to redeploy the runtime copies. `acfs doctor` warns
+(`updates.runtime_skew`) when the checkout and the deployed runtime disagree, so
+a stack kept current by the nightly cannot silently outrun a stale dispatcher.
+
 ### What Gets Updated
 
 | Category | Tools | Method |
@@ -1044,6 +1054,22 @@ Agent Mail keeps its ACFS-reserved `127.0.0.1:8765` endpoint and reuses the nati
 user service when one is already healthy. CM runs on `127.0.0.1:8766`, and CM plus
 the CASS watch indexer run in the `acfs-svc` tmux session. `start` and `status`
 return nonzero if any daemon fails its runtime readiness check.
+
+**Lifecycle contract** (the tmux tradeoff chosen in #196, made explicit per #360):
+
+- The installer does **not** start this service group; run `acfs services start`
+  yourself after install (and after every reboot).
+- `start` is a **one-shot launcher**, not a foreground supervisor: it brings the
+  daemons up, reports readiness, and exits.
+- Only **Agent Mail** is normally boot-persistent, via its native systemd user
+  service. **CM and the CASS watch indexer live in the `acfs-svc` tmux session**,
+  which does not survive a reboot and does not restart crashed processes -- after
+  a reboot or crash, rerun `acfs services start`.
+- CM's HTTP server is **optional** if you only use `cm context` / `cm reflect`
+  from the CLI; those read the store directly.
+- Leaving the CASS watcher off can be deliberate (for example while diagnosing
+  indexing or resource problems); `acfs services status` reporting it "not
+  running" is not necessarily a fault.
 
 This lifecycle command is distinct from `acfs services-setup`, which configures
 credentials and integrations rather than background processes.
