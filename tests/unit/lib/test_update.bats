@@ -15251,3 +15251,180 @@ _slb_install_fixture_binary() {
         "$PROJECT_ROOT/scripts/lib/update.sh"
     assert_success
 }
+
+# ============================================================
+# Per-tool version holds & post-install rollback (issue #357)
+# ============================================================
+
+write_active_hold() {
+    local tool="${1:-br}"
+    mkdir -p "$HOME/.acfs"
+    export ACFS_HOLDS_FILE="$HOME/.acfs/holds.yaml"
+    cat > "$ACFS_HOLDS_FILE" <<EOF
+holds:
+  ${tool}:
+    held_version: "0.4.1"
+    owner: "henry"
+    reason: "0.5.2 cannot read beads DBs"
+    expiry: "2099-01-02"
+EOF
+}
+
+@test "holds: verified installer skips a held tool with owner/reason/expiry named" {
+    write_active_hold br
+
+    run update_run_verified_installer_with_env br ""
+    [[ "$status" -eq 93 ]]
+    assert_output --partial "SKIPPED (hold): br"
+    assert_output --partial "henry"
+    assert_output --partial "0.5.2 cannot read beads DBs"
+    assert_output --partial "2099-01-02"
+}
+
+@test "holds: expired hold warns and the update proceeds past the hold check" {
+    mkdir -p "$HOME/.acfs"
+    export ACFS_HOLDS_FILE="$HOME/.acfs/holds.yaml"
+    cat > "$ACFS_HOLDS_FILE" <<'EOF'
+holds:
+  br:
+    held_version: "0.4.1"
+    owner: "henry"
+    reason: "old regression"
+    expiry: "2020-01-01"
+EOF
+
+    run update_run_verified_installer_with_env br ""
+    [[ "$status" -ne 93 ]]
+    assert_output --partial "hold expired"
+}
+
+@test "holds: run_cmd counts a held tool as skip+held, not failure" {
+    write_active_hold br
+    SUCCESS_COUNT=0; SKIP_COUNT=0; FAIL_COUNT=0; HELD_COUNT=0; UPDATE_HELD_TOOLS=()
+
+    run_cmd "Beads Rust" update_run_verified_installer br
+
+    [[ "$FAIL_COUNT" -eq 0 ]]
+    [[ "$SKIP_COUNT" -eq 1 ]]
+    [[ "$HELD_COUNT" -eq 1 ]]
+    [[ "${UPDATE_HELD_TOOLS[*]}" == "br" ]]
+}
+
+@test "holds: or_existing_on_transient wrapper reports held tool as skip" {
+    write_active_hold dcg
+    SUCCESS_COUNT=0; SKIP_COUNT=0; FAIL_COUNT=0; HELD_COUNT=0; UPDATE_HELD_TOOLS=()
+
+    update_run_verified_installer_or_existing_on_transient "DCG" dcg dcg dcg
+
+    [[ "$FAIL_COUNT" -eq 0 ]]
+    [[ "$SKIP_COUNT" -eq 1 ]]
+    [[ "$HELD_COUNT" -eq 1 ]]
+    [[ "${UPDATE_HELD_TOOLS[*]}" == "dcg" ]]
+}
+
+@test "rollback: failed smoke check restores the retained previous binary" {
+    # The setup() for this file stubs `date`; these tests need real epochs.
+    date() { /bin/date "$@"; }
+    local fake_dir="$HOME/fakebin"
+    mkdir -p "$fake_dir"
+    unset XDG_STATE_HOME
+
+    printf '#!/usr/bin/env bash\necho "goodtool 1.0.0"\n' > "$fake_dir/goodtool"
+    chmod +x "$fake_dir/goodtool"
+
+    update_tool_binary_path() { printf '%s\n' "$fake_dir/goodtool"; }
+
+    update_snapshot_tool_binary goodtool
+    [[ -f "$fake_dir/goodtool.prev" ]]
+
+    # Simulate the installer replacing the binary with one that cannot run.
+    printf '#!/usr/bin/env bash\nexit 1\n' > "$fake_dir/goodtool"
+    chmod +x "$fake_dir/goodtool"
+
+    run update_verify_tool_or_rollback goodtool
+    assert_failure
+    assert_output --partial "POST-INSTALL VERIFICATION FAILED"
+    assert_output --partial "ROLLED BACK"
+
+    # Previous binary restored and functional again.
+    run "$fake_dir/goodtool" --version
+    assert_success
+    assert_output "goodtool 1.0.0"
+
+    # Failure recorded with a backoff count so the nightly does not retry-loop.
+    local state_file="$HOME/.local/state/acfs/update-rollback.state"
+    [[ -f "$state_file" ]]
+    run grep -c '^goodtool 1 ' "$state_file"
+    assert_output "1"
+}
+
+@test "rollback: healthy smoke check clears the failure state and keeps .prev" {
+    # The setup() for this file stubs `date`; these tests need real epochs.
+    date() { /bin/date "$@"; }
+    local fake_dir="$HOME/fakebin"
+    mkdir -p "$fake_dir" "$HOME/.local/state/acfs"
+    unset XDG_STATE_HOME
+    printf 'goodtool 3 1700000000\n' > "$HOME/.local/state/acfs/update-rollback.state"
+
+    printf '#!/usr/bin/env bash\necho "goodtool 2.0.0"\n' > "$fake_dir/goodtool"
+    chmod +x "$fake_dir/goodtool"
+
+    update_tool_binary_path() { printf '%s\n' "$fake_dir/goodtool"; }
+
+    update_snapshot_tool_binary goodtool
+    run update_verify_tool_or_rollback goodtool
+    assert_success
+
+    # Previous binary retained for manual rollback, state cleared.
+    [[ -f "$fake_dir/goodtool.prev" ]]
+    run grep -c '^goodtool ' "$HOME/.local/state/acfs/update-rollback.state"
+    assert_output "0"
+}
+
+@test "rollback backoff: recent verification failure suppresses the retry, --force overrides" {
+    # The setup() for this file stubs `date`; these tests need real epochs.
+    date() { /bin/date "$@"; }
+    mkdir -p "$HOME/.local/state/acfs"
+    unset XDG_STATE_HOME
+    printf 'br 3 %s\n' "$(/bin/date +%s)" > "$HOME/.local/state/acfs/update-rollback.state"
+
+    FORCE_MODE=false
+    run update_tool_rollback_backoff_details br
+    assert_success
+
+    update_tool_rollback_backoff_details br || true
+    [[ "$UPDATE_LAST_BACKOFF_DETAILS" == *"failed 3 time(s)"* ]]
+    [[ "$UPDATE_LAST_BACKOFF_DETAILS" == *"--force"* ]]
+
+    FORCE_MODE=true
+    run update_tool_rollback_backoff_details br
+    assert_failure
+    FORCE_MODE=false
+}
+
+@test "rollback backoff: an old failure no longer suppresses updates" {
+    # The setup() for this file stubs `date`; these tests need real epochs.
+    date() { /bin/date "$@"; }
+    mkdir -p "$HOME/.local/state/acfs"
+    unset XDG_STATE_HOME
+    # 1 failure => 1 day of backoff; 10 days ago is well past it.
+    printf 'br 1 %s\n' "$(( $(/bin/date +%s) - 10 * 86400 ))" > "$HOME/.local/state/acfs/update-rollback.state"
+
+    FORCE_MODE=false
+    run update_tool_rollback_backoff_details br
+    assert_failure
+}
+
+@test "rollback backoff: verified installer returns the backoff exit code" {
+    # The setup() for this file stubs `date`; these tests need real epochs.
+    date() { /bin/date "$@"; }
+    mkdir -p "$HOME/.local/state/acfs"
+    unset XDG_STATE_HOME
+    export ACFS_HOLDS_FILE="$HOME/.acfs/holds.yaml"
+    printf 'br 2 %s\n' "$(/bin/date +%s)" > "$HOME/.local/state/acfs/update-rollback.state"
+
+    FORCE_MODE=false
+    run update_run_verified_installer_with_env br ""
+    [[ "$status" -eq 94 ]]
+    assert_output --partial "SKIPPED (rollback backoff)"
+}

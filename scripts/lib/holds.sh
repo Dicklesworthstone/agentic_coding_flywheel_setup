@@ -107,7 +107,12 @@ acfs_holds_lookup() {
     entry="$(awk -v tool="$tool" '
         function unquote(v) {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-            if (v ~ /^".*"$/) { v = substr(v, 2, length(v) - 2) }
+            if (v ~ /^".*"$/) {
+                v = substr(v, 2, length(v) - 2)
+                # Reverse the writer escaping: \" -> " and \\ -> \
+                gsub(/\\"/, "\"", v)
+                gsub(/\\\\/, "\\", v)
+            }
             else if (v ~ /^\x27.*\x27$/) { v = substr(v, 2, length(v) - 2) }
             return v
         }

@@ -1077,6 +1077,10 @@ print_acfs_help() {
     echo "                      --project DIR | --to PATH"
     echo "    path              Print the canonical guide path"
     echo "  update [options]    Update ACFS tools to latest versions"
+    echo "  hold <tool> --reason \"why\" [--version X] [--expiry DATE]"
+    echo "                      Pin one tool out of updates (owner/reason/expiry recorded)"
+    echo "  unhold <tool>       Release a version hold"
+    echo "  holds               List version holds (also shown in doctor/update output)"
     echo "  services            Manage Agent Mail, CM, and CASS daemons"
     echo "  services-setup      Configure AI agents and cloud services"
     echo "  session <command>   Export/import/share agent sessions"
@@ -4663,6 +4667,79 @@ EOF
 }
 
 # Main
+# Surface per-tool version holds and post-install rollback state every doctor
+# run (issue #357): a held tool must be reported, never silently skipped, and
+# a tool whose fresh install failed verification should be visible here too.
+check_updates_health() {
+    section "Updates"
+
+    local holds_script=""
+    holds_script="$(_acfs_doctor_find_lib_script "holds.sh" 2>/dev/null || true)"
+    if [[ -n "$holds_script" && -f "$holds_script" ]] && ! type -t acfs_holds_tools &>/dev/null; then
+        # shellcheck source=/dev/null
+        source "$holds_script" 2>/dev/null || true
+    fi
+
+    if ! type -t acfs_holds_tools &>/dev/null; then
+        check "updates.holds" "Version holds" "skip" "holds.sh not deployed (run acfs-update to sync the runtime)"
+    else
+        local -a held_tools=()
+        local tool=""
+        while IFS= read -r tool; do
+            [[ -n "$tool" ]] && held_tools+=("$tool")
+        done < <(acfs_holds_tools 2>/dev/null || true)
+
+        if [[ ${#held_tools[@]} -eq 0 ]]; then
+            check "updates.holds" "Version holds" "pass" "no tools held"
+        else
+            local details=""
+            local hold_rc=0
+            for tool in "${held_tools[@]}"; do
+                hold_rc=0
+                details="$(acfs_holds_active_details "$tool" 2>/dev/null)" || hold_rc=$?
+                case "$hold_rc" in
+                    0)
+                        check "updates.holds.$tool" "Hold: $tool" "warn" \
+                            "updates skip this tool -- $details" \
+                            "acfs unhold $tool"
+                        ;;
+                    2)
+                        check "updates.holds.$tool" "Hold: $tool" "warn" \
+                            "EXPIRED and ignored by updates -- $details" \
+                            "acfs unhold $tool"
+                        ;;
+                    *)
+                        check "updates.holds.$tool" "Hold: $tool" "warn" \
+                            "hold entry present but unreadable"
+                        ;;
+                esac
+            done
+        fi
+    fi
+
+    # Rollback/backoff state written by acfs-update when a fresh install
+    # failed its post-install smoke check and the previous binary was kept.
+    local runtime_home=""
+    runtime_home="$(doctor_runtime_home)"
+    local rollback_state="${XDG_STATE_HOME:-$runtime_home/.local/state}/acfs/update-rollback.state"
+    local reported_rollback=false
+    if [[ -f "$rollback_state" ]]; then
+        local rb_tool="" rb_count="" rb_epoch=""
+        while read -r rb_tool rb_count rb_epoch; do
+            [[ -n "$rb_tool" && "$rb_count" =~ ^[0-9]+$ ]] || continue
+            reported_rollback=true
+            check "updates.rollback.$rb_tool" "Rollback: $rb_tool" "warn" \
+                "post-install verification failed ${rb_count} time(s); the previous binary was restored and nightly retries are backed off" \
+                "acfs-update --force  # retry now, or investigate the upstream release"
+        done < "$rollback_state"
+    fi
+    if [[ "$reported_rollback" != "true" ]]; then
+        check "updates.rollback" "Post-install rollback" "pass" "no tools rolled back"
+    fi
+
+    blank_line
+}
+
 main() {
     local invoked_as
     invoked_as="$(basename "${0:-acfs}")"
@@ -5082,6 +5159,24 @@ main() {
             echo "Error: update.sh not found" >&2
             return 1
             ;;
+        hold|unhold|holds)
+            # Per-tool version holds for the updater (issue #357).
+            local holds_action="$subcmd"
+            shift
+            local holds_script=""
+            holds_script="$(_acfs_doctor_find_lib_script "holds.sh" 2>/dev/null || true)"
+
+            if [[ -n "$holds_script" ]]; then
+                case "$holds_action" in
+                    hold) _acfs_doctor_exec_bash_script "$holds_script" add "$@" ;;
+                    unhold) _acfs_doctor_exec_bash_script "$holds_script" remove "$@" ;;
+                    holds) _acfs_doctor_exec_bash_script "$holds_script" list "$@" ;;
+                esac
+            fi
+
+            echo "Error: holds.sh not found (run acfs-update to sync the runtime)" >&2
+            return 1
+            ;;
         newproj|new-project|new)
             shift
             local newproj_script=""
@@ -5380,6 +5475,7 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
     check_cloud
     check_stack
     check_utilities
+    check_updates_health
     check_manifest_supplemental
     show_skipped_tools
 

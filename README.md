@@ -719,6 +719,36 @@ acfs-update --bootstrap-self-update
 --abort-on-failure Stop on first failure (default: continue)
 ```
 
+### Per-Tool Version Holds
+
+When a single tool ships a regression, hold just that tool instead of pausing
+the whole nightly. Every hold records an owner, a reason, and an optional
+expiry, so a hold is a visible decision rather than silent version drift:
+
+```bash
+acfs hold br --version 0.4.1 --reason "0.5.2 cannot read existing beads DBs" --expiry 2026-09-15
+acfs holds        # list holds (also surfaced by `acfs doctor` and every update summary)
+acfs unhold br    # release the hold
+```
+
+Held tools are skipped by every update run with the owner/reason/expiry named
+in the log. Expired holds warn and are ignored. Holds live in
+`~/.acfs/holds.yaml`.
+
+### Post-Install Verification and Rollback
+
+Before a verified installer replaces a tool binary, the previous binary is
+retained at `<binary>.prev`. After the install, a smoke check runs
+(`<tool> --version`); if the fresh binary fails it, the previous binary is
+restored atomically and the failure is recorded in
+`~/.local/state/acfs/update-rollback.state` so nightly runs back off instead of
+reinstalling the same broken release every night. `acfs doctor` reports rolled
+back tools; `acfs-update --force` retries immediately.
+
+`acfs-update` exit codes distinguish partial from total failure: `0` all
+succeeded, `1` total failure (nothing updated), `2` partial failure (some tools
+updated, some failed).
+
 ### Logs
 
 Update logs are automatically saved to `~/.acfs/logs/updates/` with timestamps:
@@ -756,6 +786,7 @@ acfs newproj                 # Create a new project (TUI or CLI)
 acfs agents update           # Regenerate the flywheel agent guide (ACFS-owned)
 acfs agents install --help   # Explicitly deploy the guide (never overwrites)
 acfs update                  # Update all tools
+acfs holds                   # List per-tool version holds (acfs hold/unhold to manage)
 acfs services status         # Check Agent Mail, CM, and CASS daemons
 acfs services-setup          # Configure agent credentials
 acfs continue                # View upgrade progress after reboot

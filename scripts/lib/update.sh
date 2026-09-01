@@ -4657,7 +4657,11 @@ _update_rollback_state_rewrite() {
         if [[ -f "$state_file" ]]; then
             awk -v tool="$tool" '$1 != tool { print }' "$state_file"
         fi
-        [[ -n "$new_line" ]] && printf '%s\n' "$new_line"
+        # `if` (not `[[ ]] &&`) so an empty new_line does not fail the group
+        # under the trailing `||` (same trap as issue #279).
+        if [[ -n "$new_line" ]]; then
+            printf '%s\n' "$new_line"
+        fi
     } >| "$tmp_file" || {
         rm -f "$tmp_file" 2>/dev/null || true
         return 1
@@ -4707,6 +4711,8 @@ update_tool_rollback_backoff_details() {
     local retry_epoch=$((last_epoch + backoff_days * 86400))
     local now_epoch=0
     now_epoch="$(date +%s)"
+    # A broken clock fails open: better to retry the update than to wedge.
+    [[ "$now_epoch" =~ ^[0-9]+$ ]] || return 1
     ((now_epoch < retry_epoch)) || return 1
 
     local retry_display=""
