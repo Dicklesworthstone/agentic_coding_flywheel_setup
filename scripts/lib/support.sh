@@ -3062,6 +3062,168 @@ support_sed_in_place() {
     return 1
 }
 
+# Replace every literal occurrence of a string in a file, in place, with no
+# regex interpretation on either side (identity values are paths and
+# hostnames full of regex metacharacters). Values travel via the environment
+# rather than awk -v so backslash sequences (the JSON-escaped \/ form) are
+# not mangled. Fail-closed like support_sed_in_place: on any error the file
+# is replaced with a redaction-failure marker and the function returns 1.
+# Usage: support_replace_literal_in_file <file> <find> <replacement>
+support_replace_literal_in_file() {
+    local file="$1"
+    local find_str="$2"
+    local replace_str="$3"
+    local tmp=""
+
+    [[ -n "$find_str" ]] || return 0
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    tmp="$(mktemp "${file}.redacted.XXXXXX" 2>/dev/null)" || return 1
+    if ACFS_REDACT_FIND="$find_str" ACFS_REDACT_REPL="$replace_str" \
+        LC_ALL=C awk '
+            BEGIN {
+                find = ENVIRON["ACFS_REDACT_FIND"]
+                repl = ENVIRON["ACFS_REDACT_REPL"]
+                flen = length(find)
+            }
+            {
+                line = $0
+                out = ""
+                while (flen > 0 && (idx = index(line, find)) > 0) {
+                    out = out substr(line, 1, idx - 1) repl
+                    line = substr(line, idx + flen)
+                }
+                print out line
+            }
+        ' "$file" > "$tmp" 2>/dev/null \
+        && [[ -f "$file" && ! -L "$file" ]] \
+        && mv -- "$tmp" "$file" 2>/dev/null; then
+        return 0
+    fi
+
+    printf '<REDACTED:redaction_failed>\n' > "$tmp" 2>/dev/null || return 1
+    [[ -f "$file" && ! -L "$file" ]] || return 1
+    mv -- "$tmp" "$file" 2>/dev/null || return 1
+    return 1
+}
+
+# Null-byte sniff shared by the identity pass (same 512-byte heuristic
+# redact_file uses for its binary check).
+support_file_has_null_bytes() {
+    local file="$1"
+    local raw="" nonull=""
+    raw="$(head -c 512 "$file" 2>/dev/null | wc -c | tr -d ' ' || echo 0)"
+    nonull="$(head -c 512 "$file" 2>/dev/null | LC_ALL=C tr -d '\0' | wc -c | tr -d ' ' || echo 0)"
+    [[ "$raw" -gt 0 && "$raw" != "$nonull" ]]
+}
+
+# Build the identity candidate list shared by support_redact_identity and
+# support_verify_identity_redaction, so the redactor and the fail-closed
+# verifier can never disagree about what counts as identity. Populates
+# _SUPPORT_IDENTITY_CANDIDATES with alternating label/value entries.
+# Usage: support_collect_identity_candidates [<hostname binary path>]
+support_collect_identity_candidates() {
+    local hostname_bin="${1:-}"
+    local raw_hostname=""
+
+    _SUPPORT_IDENTITY_CANDIDATES=()
+    if [[ -n "$hostname_bin" ]]; then
+        raw_hostname="$("$hostname_bin" 2>/dev/null || true)"
+    fi
+    [[ -n "$raw_hostname" && "$raw_hostname" != "unknown" ]] \
+        && _SUPPORT_IDENTITY_CANDIDATES+=("hostname" "$raw_hostname")
+    [[ -n "${SUPPORT_TARGET_HOME:-}" && "$SUPPORT_TARGET_HOME" != "/" ]] \
+        && _SUPPORT_IDENTITY_CANDIDATES+=("target home" "$SUPPORT_TARGET_HOME")
+    [[ -n "${_SUPPORT_CURRENT_HOME:-}" && "$_SUPPORT_CURRENT_HOME" != "/" \
+        && "$_SUPPORT_CURRENT_HOME" != "${SUPPORT_TARGET_HOME:-}" ]] \
+        && _SUPPORT_IDENTITY_CANDIDATES+=("collector home" "$_SUPPORT_CURRENT_HOME")
+    [[ -n "${_SUPPORT_ACFS_HOME:-}" && "$_SUPPORT_ACFS_HOME" != "/" \
+        && "$_SUPPORT_ACFS_HOME" != "${SUPPORT_TARGET_HOME:-}/.acfs" ]] \
+        && _SUPPORT_IDENTITY_CANDIDATES+=("ACFS home" "$_SUPPORT_ACFS_HOME")
+    return 0
+}
+
+# Replace raw identity values (hostname and target/collector/ACFS home
+# paths) across every collected file, including the JSON-escaped (\/) form
+# of each path. The final support_verify_identity_redaction scan remains
+# the fail-closed gate; this pass exists so real bundles -- whose .zshrc,
+# install logs/summaries, doctor.json, and state.json all embed the target
+# home -- can actually pass that gate (#369). Walks the same
+# `find -type f` file set the verifier scans, NOT redact_file's
+# extension-filtered list.
+# Usage: support_redact_identity <bundle_dir>
+support_redact_identity() {
+    local bundle_dir="$1"
+    local find_bin=""
+    local grep_bin=""
+    local hostname_bin=""
+    local label="" candidate="" placeholder="" escaped=""
+    local file=""
+    local -a candidates=()
+    local -a path_pass=()
+    local -a hostname_pass=()
+
+    find_bin="$(support_system_binary_path find 2>/dev/null || true)"
+    grep_bin="$(support_system_binary_path grep 2>/dev/null || true)"
+    hostname_bin="$(support_system_binary_path hostname 2>/dev/null || true)"
+    if [[ -z "$find_bin" || -z "$grep_bin" ]]; then
+        log_error "Cannot redact support-bundle identity: required scanner unavailable"
+        return 1
+    fi
+
+    support_collect_identity_candidates "$hostname_bin"
+    candidates=("${_SUPPORT_IDENTITY_CANDIDATES[@]}")
+
+    # Redact path candidates before the hostname: a hostname that is a
+    # substring of a home path (host "ubuntu", home "/home/ubuntu") would
+    # otherwise split the path literal and leave mixed placeholders.
+    while ((${#candidates[@]} > 0)); do
+        label="${candidates[0]}"
+        candidate="${candidates[1]}"
+        candidates=("${candidates[@]:2}")
+        case "$label" in
+            hostname) placeholder="<REDACTED:hostname>" ;;
+            "target home") placeholder="<REDACTED:target_home>" ;;
+            "collector home") placeholder="<REDACTED:collector_home>" ;;
+            "ACFS home") placeholder="<REDACTED:acfs_home>" ;;
+            *) placeholder="<REDACTED:identity>" ;;
+        esac
+        if [[ "$label" == "hostname" ]]; then
+            hostname_pass+=("$candidate" "$placeholder")
+        else
+            path_pass+=("$candidate" "$placeholder")
+        fi
+    done
+    candidates=("${path_pass[@]}" "${hostname_pass[@]}")
+
+    while ((${#candidates[@]} > 0)); do
+        candidate="${candidates[0]}"
+        placeholder="${candidates[1]}"
+        candidates=("${candidates[@]:2}")
+        # JSON-escaped form: producers that escape forward slashes embed
+        # the path as \/home\/user; the raw grep gate cannot see it, but
+        # it identifies the machine just as well.
+        escaped="${candidate//\//\\/}"
+        while IFS= read -r -d '' file; do
+            [[ -f "$file" && ! -L "$file" ]] || continue
+            if support_file_has_null_bytes "$file"; then
+                # Binary content cannot be line-rewritten safely; blank it
+                # like redact_file blanks binaries, but only when it holds
+                # the identity value.
+                if "$grep_bin" -F -q -- "$candidate" "$file" 2>/dev/null; then
+                    printf '<REDACTED:binary_file>\n' > "$file" 2>/dev/null || return 1
+                fi
+                continue
+            fi
+            support_replace_literal_in_file "$file" "$candidate" "$placeholder" || return 1
+            if [[ "$escaped" != "$candidate" ]]; then
+                support_replace_literal_in_file "$file" "$escaped" "$placeholder" || return 1
+            fi
+        done < <("$find_bin" "$bundle_dir" -type f -print0 2>/dev/null)
+    done
+
+    return 0
+}
+
 # Redact sensitive values from a single text file in-place.
 # Increments REDACTION_COUNT once when the file content changes.
 # Usage: redact_file <file_path>
@@ -3209,6 +3371,14 @@ redact_bundle() {
     if [[ "$VERBOSE" == "true" ]]; then
         log_detail "Scanned $file_count files, redacted $REDACTION_COUNT"
     fi
+
+    # Identity redaction (hostname + home paths) must walk every file the
+    # fail-closed verifier scans -- .zshrc, install logs, doctor.json,
+    # state.json and friends all embed the raw target home (#369).
+    if ! support_redact_identity "$bundle_dir"; then
+        log_error "Identity redaction failed for a collected bundle file; refusing to create an archive"
+        return 1
+    fi
 }
 
 # Prove the default-share artifact does not retain the machine hostname or the
@@ -3219,7 +3389,6 @@ support_verify_identity_redaction() {
     local find_bin=""
     local grep_bin=""
     local hostname_bin=""
-    local raw_hostname=""
     local candidate=""
     local label=""
     local file=""
@@ -3239,17 +3408,10 @@ support_verify_identity_redaction() {
         return 1
     fi
 
-    raw_hostname="$("$hostname_bin" 2>/dev/null || true)"
-    [[ -n "$raw_hostname" && "$raw_hostname" != "unknown" ]] \
-        && identity_candidates+=("hostname" "$raw_hostname")
-    [[ -n "${SUPPORT_TARGET_HOME:-}" && "$SUPPORT_TARGET_HOME" != "/" ]] \
-        && identity_candidates+=("target home" "$SUPPORT_TARGET_HOME")
-    [[ -n "${_SUPPORT_CURRENT_HOME:-}" && "$_SUPPORT_CURRENT_HOME" != "/" \
-        && "$_SUPPORT_CURRENT_HOME" != "${SUPPORT_TARGET_HOME:-}" ]] \
-        && identity_candidates+=("collector home" "$_SUPPORT_CURRENT_HOME")
-    [[ -n "${_SUPPORT_ACFS_HOME:-}" && "$_SUPPORT_ACFS_HOME" != "/" \
-        && "$_SUPPORT_ACFS_HOME" != "${SUPPORT_TARGET_HOME:-}/.acfs" ]] \
-        && identity_candidates+=("ACFS home" "$_SUPPORT_ACFS_HOME")
+    # Shared candidate list keeps this verifier and support_redact_identity
+    # agreeing about what counts as identity (#369).
+    support_collect_identity_candidates "$hostname_bin"
+    identity_candidates=("${_SUPPORT_IDENTITY_CANDIDATES[@]}")
 
     while ((${#identity_candidates[@]} > 0)); do
         label="${identity_candidates[0]}"
