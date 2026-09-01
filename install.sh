@@ -5146,7 +5146,12 @@ run_as_target() {
     # install.sh is running as root and switching to TARGET_USER non-interactively.
     local -a env_args=("UV_NO_CONFIG=1" "HOME=$user_home" "PATH=$command_path" "TARGET_USER=$user" "TARGET_HOME=$user_home")
     if [[ "$clean_environment" == "true" ]]; then
-        env_args=(-i "${env_args[@]}" "USER=$user" "LOGNAME=$user" "LANG=C.UTF-8")
+        # TERM must survive sanitization: verified installers that touch
+        # terminfo (e.g. SRPS's unguarded `tput` color helpers) die with
+        # "TERM environment variable not set." under a bare `env -i`.
+        # Pass the caller's TERM through when set, defaulting to `dumb`
+        # so color-capable installers degrade instead of aborting (#370).
+        env_args=(-i "${env_args[@]}" "USER=$user" "LOGNAME=$user" "LANG=C.UTF-8" "TERM=${TERM:-dumb}")
     fi
     local target_uid=""
     local target_runtime_dir=""
