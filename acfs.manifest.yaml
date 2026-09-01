@@ -2791,7 +2791,7 @@ modules:
         cd "$WA_TMP"
         git clone --depth 1 https://github.com/Dicklesworthstone/wezterm_automata.git .
         cargo build --release -p wa
-        cp target/release/wa ~/.cargo/bin/
+        cp "${CARGO_TARGET_DIR:-target}/release/wa" ~/.cargo/bin/
         rm -rf "$WA_TMP"
     verify:
       - wa --version || wa --help
@@ -3747,7 +3747,7 @@ modules:
         git clone --depth 1 https://github.com/Dicklesworthstone/rust_proxy.git "$ACFS_TMP_DIR/rust_proxy"
         cd "$ACFS_TMP_DIR/rust_proxy"
         cargo build --release
-        cp target/release/rust_proxy ~/.cargo/bin/
+        cp "${CARGO_TARGET_DIR:-target}/release/rust_proxy" ~/.cargo/bin/
     verify:
       - rust_proxy --help || rust_proxy --version
 
@@ -3792,7 +3792,7 @@ modules:
         git clone --depth 1 https://github.com/Dicklesworthstone/aadc.git "$ACFS_TMP_DIR/aadc"
         cd "$ACFS_TMP_DIR/aadc"
         cargo build --release
-        cp target/release/aadc ~/.cargo/bin/
+        cp "${CARGO_TARGET_DIR:-target}/release/aadc" ~/.cargo/bin/
     verify:
       - aadc --help || aadc --version
 
@@ -3837,7 +3837,7 @@ modules:
         git clone --depth 1 https://github.com/Dicklesworthstone/coding_agent_usage_tracker.git "$ACFS_TMP_DIR/caut"
         cd "$ACFS_TMP_DIR/caut"
         cargo build --release
-        cp target/release/caut ~/.cargo/bin/
+        cp "${CARGO_TARGET_DIR:-target}/release/caut" ~/.cargo/bin/
     verify:
       - caut --help || caut --version
 

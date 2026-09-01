@@ -1767,7 +1767,7 @@ trap '[ -n "$ACFS_TMP_DIR" ] && rm -rf "$ACFS_TMP_DIR"' EXIT
 git clone --depth 1 https://github.com/Dicklesworthstone/rust_proxy.git "$ACFS_TMP_DIR/rust_proxy"
 cd "$ACFS_TMP_DIR/rust_proxy"
 cargo build --release
-cp target/release/rust_proxy ~/.cargo/bin/
+cp "${CARGO_TARGET_DIR:-target}/release/rust_proxy" ~/.cargo/bin/
 INSTALL_UTILS_RUST_PROXY
         then
             log_warn "utils.rust_proxy: install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
@@ -1822,7 +1822,7 @@ trap '[ -n "$ACFS_TMP_DIR" ] && rm -rf "$ACFS_TMP_DIR"' EXIT
 git clone --depth 1 https://github.com/Dicklesworthstone/aadc.git "$ACFS_TMP_DIR/aadc"
 cd "$ACFS_TMP_DIR/aadc"
 cargo build --release
-cp target/release/aadc ~/.cargo/bin/
+cp "${CARGO_TARGET_DIR:-target}/release/aadc" ~/.cargo/bin/
 INSTALL_UTILS_AADC
         then
             log_warn "utils.aadc: install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
@@ -1877,7 +1877,7 @@ trap '[ -n "$ACFS_TMP_DIR" ] && rm -rf "$ACFS_TMP_DIR"' EXIT
 git clone --depth 1 https://github.com/Dicklesworthstone/coding_agent_usage_tracker.git "$ACFS_TMP_DIR/caut"
 cd "$ACFS_TMP_DIR/caut"
 cargo build --release
-cp target/release/caut ~/.cargo/bin/
+cp "${CARGO_TARGET_DIR:-target}/release/caut" ~/.cargo/bin/
 INSTALL_UTILS_CAUT
         then
             log_warn "utils.caut: install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"

@@ -2913,7 +2913,7 @@ trap 'rm -rf "$WA_TMP"' EXIT
 cd "$WA_TMP"
 git clone --depth 1 https://github.com/Dicklesworthstone/wezterm_automata.git .
 cargo build --release -p wa
-cp target/release/wa ~/.cargo/bin/
+cp "${CARGO_TARGET_DIR:-target}/release/wa" ~/.cargo/bin/
 rm -rf "$WA_TMP"
 INSTALL_STACK_WEZTERM_AUTOMATA
         then
