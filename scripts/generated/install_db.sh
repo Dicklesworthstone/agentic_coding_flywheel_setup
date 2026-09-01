@@ -382,6 +382,14 @@ echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.or
 INSTALL_DB_POSTGRES18
         then
             log_warn "db.postgres18: install command failed: mkdir -p /etc/apt/keyrings"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "db.postgres18"; then
+              log_error "db.postgres18: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "db.postgres18" "install command failed: mkdir -p /etc/apt/keyrings"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -398,6 +406,14 @@ apt-get -o DPkg::Lock::Timeout=120 update
 INSTALL_DB_POSTGRES18
         then
             log_warn "db.postgres18: install command failed: apt-get -o DPkg::Lock::Timeout=120 update"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "db.postgres18"; then
+              log_error "db.postgres18: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "db.postgres18" "install command failed: apt-get -o DPkg::Lock::Timeout=120 update"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -414,6 +430,14 @@ apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18
 INSTALL_DB_POSTGRES18
         then
             log_warn "db.postgres18: install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "db.postgres18"; then
+              log_error "db.postgres18: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "db.postgres18" "install command failed: apt-get -o DPkg::Lock::Timeout=120 install -y postgresql-18"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -432,6 +456,14 @@ psql --version
 INSTALL_DB_POSTGRES18
         then
             log_warn "db.postgres18: verify failed: psql --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "db.postgres18"; then
+              log_error "db.postgres18: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "db.postgres18" "verify failed: psql --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then

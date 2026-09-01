@@ -905,6 +905,14 @@ function moduleFailureLines(module: Module, reason: string): string[] {
   if (module.optional) {
     return [
       `log_warn "${module.id}: ${escapedReason}"`,
+      '# Optional-module failures are warnings on a default install, but a',
+      '# module the user explicitly named with --only had exactly one job:',
+      '# propagate the failure instead of reporting phase success (#373).',
+      'if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \\',
+      `    && acfs_module_explicitly_selected "${module.id}"; then`,
+      `  log_error "${module.id}: explicitly requested via --only; treating optional-module failure as fatal"`,
+      '  return 1',
+      'fi',
       'if type -t record_skipped_tool >/dev/null 2>&1; then',
       `  record_skipped_tool "${module.id}" "${escapedReason}"`,
       'elif type -t state_tool_skip >/dev/null 2>&1; then',

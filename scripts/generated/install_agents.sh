@@ -886,6 +886,14 @@ acfs_generated_install_agents_gemini() {
 INSTALL_AGENTS_GEMINI
         then
             log_warn "agents.gemini: install command failed: ~/.bun/bin/bun install -g --trust @google/gemini-cli@latest"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.gemini"; then
+              log_error "agents.gemini: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.gemini" "install command failed: ~/.bun/bin/bun install -g --trust @google/gemini-cli@latest"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1067,6 +1075,14 @@ acfs_install_executable_into_primary_bin "$wrapper_tmp" "gemini"
 INSTALL_AGENTS_GEMINI
         then
             log_warn "agents.gemini: install command failed: trap 'rm -f \"\$wrapper_tmp\"' EXIT"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.gemini"; then
+              log_error "agents.gemini: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.gemini" "install command failed: trap 'rm -f \"\$wrapper_tmp\"' EXIT"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1148,6 +1164,14 @@ fi
 INSTALL_AGENTS_GEMINI
         then
             log_warn "agents.gemini: install command failed: if [[ ! -f \"\$security_lib\" ]]; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.gemini"; then
+              log_error "agents.gemini: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.gemini" "install command failed: if [[ ! -f \"\$security_lib\" ]]; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1167,6 +1191,14 @@ target_bin="${ACFS_BIN_DIR:-$HOME/.local/bin}"
 INSTALL_AGENTS_GEMINI
         then
             log_warn "agents.gemini: verify failed: \"\$target_bin/gemini\" --version || \"\$target_bin/gemini\" --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.gemini"; then
+              log_error "agents.gemini: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.gemini" "verify failed: \"\$target_bin/gemini\" --version || \"\$target_bin/gemini\" --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1521,6 +1553,14 @@ acfs_generated_install_agents_opencode() {
             fi
         }; then
             log_warn "agents.opencode: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.opencode"; then
+              log_error "agents.opencode: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.opencode" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1700,6 +1740,14 @@ acfs_link_primary_bin_command "$opencode_bin" "opencode"
 INSTALL_AGENTS_OPENCODE
         then
             log_warn "agents.opencode: install command failed: if [[ ! -x \"\$opencode_bin\" ]]; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.opencode"; then
+              log_error "agents.opencode: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.opencode" "install command failed: if [[ ! -x \"\$opencode_bin\" ]]; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1718,6 +1766,14 @@ opencode --version || opencode --help
 INSTALL_AGENTS_OPENCODE
         then
             log_warn "agents.opencode: verify failed: opencode --version || opencode --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.opencode"; then
+              log_error "agents.opencode: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.opencode" "verify failed: opencode --version || opencode --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1822,6 +1878,14 @@ acfs_generated_install_agents_omp() {
             fi
         }; then
             log_warn "agents.omp: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.omp"; then
+              log_error "agents.omp: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.omp" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2005,6 +2069,14 @@ fi
 INSTALL_AGENTS_OMP
         then
             log_warn "agents.omp: install command failed: ensure omp is on the ACFS bin dir PATH"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.omp"; then
+              log_error "agents.omp: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.omp" "install command failed: ensure omp is on the ACFS bin dir PATH"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2023,6 +2095,14 @@ omp --version || omp --help
 INSTALL_AGENTS_OMP
         then
             log_warn "agents.omp: verify failed: omp --version || omp --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.omp"; then
+              log_error "agents.omp: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.omp" "verify failed: omp --version || omp --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2127,6 +2207,14 @@ acfs_generated_install_agents_grok() {
             fi
         }; then
             log_warn "agents.grok: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.grok"; then
+              log_error "agents.grok: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.grok" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2316,6 +2404,14 @@ fi
 INSTALL_AGENTS_GROK
         then
             log_warn "agents.grok: install command failed: ensure grok is on the ACFS bin dir PATH"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.grok"; then
+              log_error "agents.grok: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.grok" "install command failed: ensure grok is on the ACFS bin dir PATH"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2334,6 +2430,14 @@ grok --version || grok --help
 INSTALL_AGENTS_GROK
         then
             log_warn "agents.grok: verify failed: grok --version || grok --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "agents.grok"; then
+              log_error "agents.grok: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "agents.grok" "verify failed: grok --version || grok --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then

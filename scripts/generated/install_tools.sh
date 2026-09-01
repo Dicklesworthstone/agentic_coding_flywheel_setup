@@ -862,6 +862,14 @@ apt-get -o DPkg::Lock::Timeout=120 update && apt-get -o DPkg::Lock::Timeout=120 
 INSTALL_TOOLS_VAULT
         then
             log_warn "tools.vault: install command failed: if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "tools.vault"; then
+              log_error "tools.vault: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "tools.vault" "install command failed: if curl -q --help all 2>/dev/null | grep -q -- '--proto'; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -880,6 +888,14 @@ vault --version
 INSTALL_TOOLS_VAULT
         then
             log_warn "tools.vault: verify failed: vault --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "tools.vault"; then
+              log_error "tools.vault: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "tools.vault" "verify failed: vault --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -984,6 +1000,14 @@ acfs_generated_install_utils_giil() {
             fi
         }; then
             log_warn "utils.giil: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.giil"; then
+              log_error "utils.giil: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.giil" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1002,6 +1026,14 @@ giil --help || giil --version
 INSTALL_UTILS_GIIL
         then
             log_warn "utils.giil: verify failed: giil --help || giil --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.giil"; then
+              log_error "utils.giil: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.giil" "verify failed: giil --help || giil --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1106,6 +1138,14 @@ acfs_generated_install_utils_csctf() {
             fi
         }; then
             log_warn "utils.csctf: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.csctf"; then
+              log_error "utils.csctf: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.csctf" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1124,6 +1164,14 @@ csctf --help || csctf --version
 INSTALL_UTILS_CSCTF
         then
             log_warn "utils.csctf: verify failed: csctf --help || csctf --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.csctf"; then
+              log_error "utils.csctf: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.csctf" "verify failed: csctf --help || csctf --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1228,6 +1276,14 @@ acfs_generated_install_utils_xf() {
             fi
         }; then
             log_warn "utils.xf: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.xf"; then
+              log_error "utils.xf: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.xf" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1246,6 +1302,14 @@ xf --help || xf --version
 INSTALL_UTILS_XF
         then
             log_warn "utils.xf: verify failed: xf --help || xf --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.xf"; then
+              log_error "utils.xf: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.xf" "verify failed: xf --help || xf --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1350,6 +1414,14 @@ acfs_generated_install_utils_toon_rust() {
             fi
         }; then
             log_warn "utils.toon_rust: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.toon_rust"; then
+              log_error "utils.toon_rust: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.toon_rust" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1368,6 +1440,14 @@ toon --help || toon --version
 INSTALL_UTILS_TOON_RUST
         then
             log_warn "utils.toon_rust: verify failed: toon --help || toon --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.toon_rust"; then
+              log_error "utils.toon_rust: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.toon_rust" "verify failed: toon --help || toon --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1472,6 +1552,14 @@ acfs_generated_install_utils_rano() {
             fi
         }; then
             log_warn "utils.rano: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.rano"; then
+              log_error "utils.rano: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.rano" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1490,6 +1578,14 @@ rano --help || rano --version
 INSTALL_UTILS_RANO
         then
             log_warn "utils.rano: verify failed: rano --help || rano --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.rano"; then
+              log_error "utils.rano: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.rano" "verify failed: rano --help || rano --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1594,6 +1690,14 @@ acfs_generated_install_utils_mdwb() {
             fi
         }; then
             log_warn "utils.mdwb: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.mdwb"; then
+              log_error "utils.mdwb: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.mdwb" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1612,6 +1716,14 @@ mdwb --help || mdwb --version
 INSTALL_UTILS_MDWB
         then
             log_warn "utils.mdwb: verify failed: mdwb --help || mdwb --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.mdwb"; then
+              log_error "utils.mdwb: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.mdwb" "verify failed: mdwb --help || mdwb --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1716,6 +1828,14 @@ acfs_generated_install_utils_s2p() {
             fi
         }; then
             log_warn "utils.s2p: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.s2p"; then
+              log_error "utils.s2p: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.s2p" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1734,6 +1854,14 @@ s2p --help
 INSTALL_UTILS_S2P
         then
             log_warn "utils.s2p: verify failed: s2p --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.s2p"; then
+              log_error "utils.s2p: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.s2p" "verify failed: s2p --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1771,6 +1899,14 @@ cp "${CARGO_TARGET_DIR:-target}/release/rust_proxy" ~/.cargo/bin/
 INSTALL_UTILS_RUST_PROXY
         then
             log_warn "utils.rust_proxy: install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.rust_proxy"; then
+              log_error "utils.rust_proxy: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.rust_proxy" "install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1789,6 +1925,14 @@ rust_proxy --help || rust_proxy --version
 INSTALL_UTILS_RUST_PROXY
         then
             log_warn "utils.rust_proxy: verify failed: rust_proxy --help || rust_proxy --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.rust_proxy"; then
+              log_error "utils.rust_proxy: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.rust_proxy" "verify failed: rust_proxy --help || rust_proxy --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1826,6 +1970,14 @@ cp "${CARGO_TARGET_DIR:-target}/release/aadc" ~/.cargo/bin/
 INSTALL_UTILS_AADC
         then
             log_warn "utils.aadc: install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.aadc"; then
+              log_error "utils.aadc: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.aadc" "install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1844,6 +1996,14 @@ aadc --help || aadc --version
 INSTALL_UTILS_AADC
         then
             log_warn "utils.aadc: verify failed: aadc --help || aadc --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.aadc"; then
+              log_error "utils.aadc: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.aadc" "verify failed: aadc --help || aadc --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1881,6 +2041,14 @@ cp "${CARGO_TARGET_DIR:-target}/release/caut" ~/.cargo/bin/
 INSTALL_UTILS_CAUT
         then
             log_warn "utils.caut: install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.caut"; then
+              log_error "utils.caut: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.caut" "install command failed: trap '[ -n \"\$ACFS_TMP_DIR\" ] && rm -rf \"\$ACFS_TMP_DIR\"' EXIT"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1899,6 +2067,14 @@ caut --help || caut --version
 INSTALL_UTILS_CAUT
         then
             log_warn "utils.caut: verify failed: caut --help || caut --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "utils.caut"; then
+              log_error "utils.caut: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "utils.caut" "verify failed: caut --help || caut --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then

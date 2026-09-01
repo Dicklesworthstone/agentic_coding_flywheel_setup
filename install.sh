@@ -147,6 +147,10 @@ ACFS_VERSION="0.8.0"
 # ------------------------------------------------------------
 declare -ag ACFS_PHASE_FAILURES=()
 declare -ag ACFS_MODULE_FAILURES=()
+# Set by acfs_stack_phase_selection_verdict() when SOME (but not all) of the
+# modules the user explicitly requested with --only failed and nothing else
+# went wrong: main exits 2 (the #357 partial-failure code) instead of 1.
+ACFS_INSTALL_PARTIAL_FAILURE=0
 # Idempotency guard for the EXIT-trap skills/summary fallback (see cleanup()).
 ACFS_SKILLS_AND_SUMMARY_DONE=0
 # Set once the user has confirmed a real install is proceeding (past
@@ -9260,6 +9264,67 @@ binary_installed() {
     [[ -n "$path" ]]
 }
 
+# Honest verdict for a failed stack phase under explicit --only selection
+# (#373). Distinguishes "every module the user asked for failed" from a
+# partial failure, prints an accurate summary, and flags pure partial
+# failures so main can exit 2 (the #357 partial-failure exit code) instead
+# of 1. Never changes the phase result: a failed phase stays failed.
+acfs_stack_phase_selection_verdict() {
+    local failures_before="${1:-0}"
+
+    declare -p ACFS_PLAN_REASON >/dev/null 2>&1 || return 0
+    [[ "${ONLY_MODULES+x}" == "x" ]] || return 0
+    [[ ${#ONLY_MODULES[@]} -gt 0 ]] || return 0
+
+    # Modules of this phase (categories tools/stack, phase 9) the user
+    # explicitly named with --only.
+    local -a requested=()
+    local module=""
+    for module in "${ACFS_EFFECTIVE_PLAN[@]}"; do
+        case "${ACFS_MODULE_CATEGORY[$module]:-}" in
+            tools | stack) ;;
+            *) continue ;;
+        esac
+        [[ "${ACFS_MODULE_PHASE[$module]:-}" == "9" ]] || continue
+        [[ "${ACFS_PLAN_REASON[$module]:-}" == "explicitly requested" ]] || continue
+        requested+=("$module")
+    done
+    [[ ${#requested[@]} -gt 0 ]] || return 0
+
+    # Failures recorded during this phase only (module id is the first word
+    # of each ACFS_MODULE_FAILURES entry: "module (reason)").
+    local -a phase_failures=("${ACFS_MODULE_FAILURES[@]:$failures_before}")
+    local -a failed_requested=()
+    local other_failures=0
+    local entry="" failed_id="" is_requested=""
+    for entry in "${phase_failures[@]}"; do
+        failed_id="${entry%% *}"
+        is_requested=""
+        for module in "${requested[@]}"; do
+            if [[ "$module" == "$failed_id" ]]; then
+                is_requested=1
+                break
+            fi
+        done
+        if [[ -n "$is_requested" ]]; then
+            failed_requested+=("$failed_id")
+        else
+            other_failures=$((other_failures + 1))
+        fi
+    done
+    [[ ${#failed_requested[@]} -gt 0 ]] || return 0
+
+    if [[ ${#failed_requested[@]} -eq ${#requested[@]} ]]; then
+        log_error "Stack phase failed: all ${#requested[@]} explicitly requested module(s) failed: ${failed_requested[*]}"
+    else
+        log_warn "Stack phase partially failed: ${#failed_requested[@]} of ${#requested[@]} explicitly requested module(s) failed: ${failed_requested[*]}"
+        if [[ "$other_failures" -eq 0 ]]; then
+            ACFS_INSTALL_PARTIAL_FAILURE=1
+        fi
+    fi
+    return 0
+}
+
 install_stack_phase() {
     set_phase "stack" "Agent Flywheel Stack"
     log_step "8/9" "Installing Agent Flywheel stack..."
@@ -9270,6 +9335,7 @@ install_stack_phase() {
     # installer, br/bv, cass, cm, ... (the `|| return 1` short-circuit did
     # exactly that once category failures started propagating).
     local stack_phase_rc=0
+    local stack_failures_before=${#ACFS_MODULE_FAILURES[@]}
     if acfs_use_generated_category "tools"; then
         log_detail "Using generated installers for tools (phase 9)"
         acfs_run_generated_category_phase "tools" "9" || stack_phase_rc=1
@@ -9280,6 +9346,8 @@ install_stack_phase() {
         acfs_run_generated_category_phase "stack" "9" || stack_phase_rc=1
         if [[ "$stack_phase_rc" -eq 0 ]]; then
             log_success "Agent Flywheel stack installed"
+        else
+            acfs_stack_phase_selection_verdict "$stack_failures_before"
         fi
         return "$stack_phase_rc"
     fi
@@ -11768,6 +11836,15 @@ main() {
     print_summary
 
     if acfs_install_run_has_failures; then
+        # Partial-failure exit semantics (#357/#373): when the only thing
+        # that went wrong is that SOME (not all) of the explicitly requested
+        # --only modules failed, exit 2 so callers can tell a partial result
+        # from a total failure.
+        if [[ "${ACFS_INSTALL_PARTIAL_FAILURE:-0}" == "1" ]] \
+            && [[ "${SMOKE_TEST_FAILED:-false}" != "true" ]] \
+            && [[ ${#ACFS_PHASE_FAILURES[@]} -le 1 ]]; then
+            exit 2
+        fi
         exit 1
     fi
 }

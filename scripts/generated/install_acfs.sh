@@ -374,6 +374,14 @@ git init 2>/dev/null || true
 INSTALL_ACFS_WORKSPACE
         then
             log_warn "acfs.workspace: install command failed: mkdir -p /data/projects/my_first_project"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.workspace"; then
+              log_error "acfs.workspace: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.workspace" "install command failed: mkdir -p /data/projects/my_first_project"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -418,6 +426,14 @@ printf '%s\n' "" \
 INSTALL_ACFS_WORKSPACE
         then
             log_warn "acfs.workspace: install command failed: mkdir -p ~/.acfs"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.workspace"; then
+              log_error "acfs.workspace: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.workspace" "install command failed: mkdir -p ~/.acfs"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -450,6 +466,14 @@ fi
 INSTALL_ACFS_WORKSPACE
         then
             log_warn "acfs.workspace: install command failed: if ! tmux has-session -t \"\$SESSION_NAME\" 2>/dev/null; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.workspace"; then
+              log_error "acfs.workspace: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.workspace" "install command failed: if ! tmux has-session -t \"\$SESSION_NAME\" 2>/dev/null; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -483,6 +507,14 @@ fi
 INSTALL_ACFS_WORKSPACE
         then
             log_warn "acfs.workspace: install command failed: if ! acfs_has_active_agents_alias ~/.zshrc.local; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.workspace"; then
+              log_error "acfs.workspace: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.workspace" "install command failed: if ! acfs_has_active_agents_alias ~/.zshrc.local; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -501,6 +533,14 @@ test -d /data/projects/my_first_project
 INSTALL_ACFS_WORKSPACE
         then
             log_warn "acfs.workspace: verify failed: test -d /data/projects/my_first_project"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.workspace"; then
+              log_error "acfs.workspace: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.workspace" "verify failed: test -d /data/projects/my_first_project"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -528,6 +568,14 @@ acfs_has_active_agents_alias ~/.zshrc.local || acfs_has_active_agents_alias ~/.z
 INSTALL_ACFS_WORKSPACE
         then
             log_warn "acfs.workspace: verify failed: acfs_has_active_agents_alias ~/.zshrc.local || acfs_has_active_agents_alias ~/.zshrc"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.workspace"; then
+              log_error "acfs.workspace: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.workspace" "verify failed: acfs_has_active_agents_alias ~/.zshrc.local || acfs_has_active_agents_alias ~/.zshrc"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1023,6 +1071,14 @@ mkdir -p ~/.acfs/scripts ~/.config/systemd/user
 INSTALL_ACFS_NIGHTLY
         then
             log_warn "acfs.nightly: install command failed: mkdir -p ~/.acfs/scripts ~/.config/systemd/user"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.nightly"; then
+              log_error "acfs.nightly: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.nightly" "install command failed: mkdir -p ~/.acfs/scripts ~/.config/systemd/user"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1052,6 +1108,14 @@ chmod +x ~/.acfs/scripts/nightly-update.sh
 INSTALL_ACFS_NIGHTLY
         then
             log_warn "acfs.nightly: install command failed: if [[ -n \"\${ACFS_BOOTSTRAP_DIR:-}\" ]] && [[ -f \"\${ACFS_BOOTSTRAP_DIR}/scripts/lib/nightly_update.sh\" ]]; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.nightly"; then
+              log_error "acfs.nightly: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.nightly" "install command failed: if [[ -n \"\${ACFS_BOOTSTRAP_DIR:-}\" ]] && [[ -f \"\${ACFS_BOOTSTRAP_DIR}/scripts/lib/nightly_update.sh\" ]]; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1080,6 +1144,14 @@ fi
 INSTALL_ACFS_NIGHTLY
         then
             log_warn "acfs.nightly: install command failed: if [[ -n \"\${ACFS_BOOTSTRAP_DIR:-}\" ]] && [[ -f \"\${ACFS_BOOTSTRAP_DIR}/scripts/templates/acfs-nightly-update.timer\" ]]; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.nightly"; then
+              log_error "acfs.nightly: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.nightly" "install command failed: if [[ -n \"\${ACFS_BOOTSTRAP_DIR:-}\" ]] && [[ -f \"\${ACFS_BOOTSTRAP_DIR}/scripts/templates/acfs-nightly-update.timer\" ]]; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1108,6 +1180,14 @@ fi
 INSTALL_ACFS_NIGHTLY
         then
             log_warn "acfs.nightly: install command failed: if [[ -n \"\${ACFS_BOOTSTRAP_DIR:-}\" ]] && [[ -f \"\${ACFS_BOOTSTRAP_DIR}/scripts/templates/acfs-nightly-update.service\" ]]; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.nightly"; then
+              log_error "acfs.nightly: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.nightly" "install command failed: if [[ -n \"\${ACFS_BOOTSTRAP_DIR:-}\" ]] && [[ -f \"\${ACFS_BOOTSTRAP_DIR}/scripts/templates/acfs-nightly-update.service\" ]]; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1126,6 +1206,14 @@ systemctl --user enable --now acfs-nightly-update.timer
 INSTALL_ACFS_NIGHTLY
         then
             log_warn "acfs.nightly: install command failed: systemctl --user daemon-reload"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.nightly"; then
+              log_error "acfs.nightly: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.nightly" "install command failed: systemctl --user daemon-reload"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1144,6 +1232,14 @@ systemctl --user is-enabled acfs-nightly-update.timer
 INSTALL_ACFS_NIGHTLY
         then
             log_warn "acfs.nightly: verify failed: systemctl --user is-enabled acfs-nightly-update.timer"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "acfs.nightly"; then
+              log_error "acfs.nightly: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "acfs.nightly" "verify failed: systemctl --user is-enabled acfs-nightly-update.timer"
             elif type -t state_tool_skip >/dev/null 2>&1; then

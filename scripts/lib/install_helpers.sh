@@ -498,6 +498,20 @@ should_run_module() {
     [[ -n "${ACFS_EFFECTIVE_RUN[$module_id]:-}" ]]
 }
 
+# True when the user explicitly named this module with --only, as opposed to
+# it being pulled in as a dependency, by --only-phase, or by default.
+# Consumed by generated optional-module failure handlers: a failing optional
+# module stays a warn-and-skip on a default install, but must fail the run
+# when installing it was the entire point of the invocation (#373).
+acfs_module_explicitly_selected() {
+    local module_id="${1:-}"
+    [[ -n "$module_id" ]] || return 1
+    local reason_map_decl=""
+    reason_map_decl="$(declare -p ACFS_PLAN_REASON 2>/dev/null || true)"
+    [[ "$reason_map_decl" == declare\ -A* ]] || return 1
+    [[ "${ACFS_PLAN_REASON[$module_id]:-}" == "explicitly requested" ]]
+}
+
 # ------------------------------------------------------------
 # Feature flags for incremental category rollout (mjt.5.6)
 #

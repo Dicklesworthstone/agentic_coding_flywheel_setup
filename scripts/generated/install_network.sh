@@ -463,6 +463,14 @@ systemctl reload sshd || systemctl reload ssh || true
 INSTALL_NETWORK_SSH_KEEPALIVE
         then
             log_warn "network.ssh_keepalive: install command failed: if [[ ! -f /etc/ssh/sshd_config.acfs.bak ]]; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "network.ssh_keepalive"; then
+              log_error "network.ssh_keepalive: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "network.ssh_keepalive" "install command failed: if [[ ! -f /etc/ssh/sshd_config.acfs.bak ]]; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -481,6 +489,14 @@ grep -E '^ClientAliveInterval[[:space:]]+60' /etc/ssh/sshd_config
 INSTALL_NETWORK_SSH_KEEPALIVE
         then
             log_warn "network.ssh_keepalive: verify failed: grep -E '^ClientAliveInterval[[:space:]]+60' /etc/ssh/sshd_config"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "network.ssh_keepalive"; then
+              log_error "network.ssh_keepalive: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "network.ssh_keepalive" "verify failed: grep -E '^ClientAliveInterval[[:space:]]+60' /etc/ssh/sshd_config"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -497,6 +513,14 @@ grep -E '^ClientAliveCountMax[[:space:]]+3' /etc/ssh/sshd_config
 INSTALL_NETWORK_SSH_KEEPALIVE
         then
             log_warn "network.ssh_keepalive: verify failed: grep -E '^ClientAliveCountMax[[:space:]]+3' /etc/ssh/sshd_config"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "network.ssh_keepalive"; then
+              log_error "network.ssh_keepalive: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "network.ssh_keepalive" "verify failed: grep -E '^ClientAliveCountMax[[:space:]]+3' /etc/ssh/sshd_config"
             elif type -t state_tool_skip >/dev/null 2>&1; then

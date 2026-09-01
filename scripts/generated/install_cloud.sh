@@ -371,6 +371,14 @@ acfs_generated_install_cloud_wrangler() {
 INSTALL_CLOUD_WRANGLER
         then
             log_warn "cloud.wrangler: install command failed: ~/.bun/bin/bun install -g --trust wrangler"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "cloud.wrangler"; then
+              log_error "cloud.wrangler: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "cloud.wrangler" "install command failed: ~/.bun/bin/bun install -g --trust wrangler"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -555,6 +563,14 @@ acfs_install_executable_into_primary_bin "$wrapper_tmp" "wrangler"
 INSTALL_CLOUD_WRANGLER
         then
             log_warn "cloud.wrangler: install command failed: if [[ ! -x \"\$HOME/.bun/bin/wrangler\" ]] || command -v node >/dev/null 2>&1; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "cloud.wrangler"; then
+              log_error "cloud.wrangler: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "cloud.wrangler" "install command failed: if [[ ! -x \"\$HOME/.bun/bin/wrangler\" ]] || command -v node >/dev/null 2>&1; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -573,6 +589,14 @@ wrangler --version
 INSTALL_CLOUD_WRANGLER
         then
             log_warn "cloud.wrangler: verify failed: wrangler --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "cloud.wrangler"; then
+              log_error "cloud.wrangler: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "cloud.wrangler" "verify failed: wrangler --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -884,6 +908,14 @@ rmdir "$tmp_dir" 2>/dev/null || true
 INSTALL_CLOUD_SUPABASE
         then
             log_warn "cloud.supabase: install command failed: case \"\$(uname -m)\" in"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "cloud.supabase"; then
+              log_error "cloud.supabase: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "cloud.supabase" "install command failed: case \"\$(uname -m)\" in"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -902,6 +934,14 @@ supabase --version
 INSTALL_CLOUD_SUPABASE
         then
             log_warn "cloud.supabase: verify failed: supabase --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "cloud.supabase"; then
+              log_error "cloud.supabase: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "cloud.supabase" "verify failed: supabase --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -933,6 +973,14 @@ acfs_generated_install_cloud_vercel() {
 INSTALL_CLOUD_VERCEL
         then
             log_warn "cloud.vercel: install command failed: ~/.bun/bin/bun install -g --trust vercel"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "cloud.vercel"; then
+              log_error "cloud.vercel: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "cloud.vercel" "install command failed: ~/.bun/bin/bun install -g --trust vercel"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -951,6 +999,14 @@ vercel --version
 INSTALL_CLOUD_VERCEL
         then
             log_warn "cloud.vercel: verify failed: vercel --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "cloud.vercel"; then
+              log_error "cloud.vercel: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "cloud.vercel" "verify failed: vercel --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then

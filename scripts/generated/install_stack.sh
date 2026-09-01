@@ -1185,6 +1185,14 @@ acfs_generated_install_stack_automated_plan_reviser() {
             fi
         }; then
             log_warn "stack.automated_plan_reviser: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.automated_plan_reviser"; then
+              log_error "stack.automated_plan_reviser: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.automated_plan_reviser" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1203,6 +1211,14 @@ apr --help
 INSTALL_STACK_AUTOMATED_PLAN_REVISER
         then
             log_warn "stack.automated_plan_reviser: verify failed: apr --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.automated_plan_reviser"; then
+              log_error "stack.automated_plan_reviser: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.automated_plan_reviser" "verify failed: apr --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1317,6 +1333,14 @@ acfs_generated_install_stack_jeffreysprompts() {
             fi
         }; then
             log_warn "stack.jeffreysprompts: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.jeffreysprompts"; then
+              log_error "stack.jeffreysprompts: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.jeffreysprompts" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1335,6 +1359,14 @@ jfp --version
 INSTALL_STACK_JEFFREYSPROMPTS
         then
             log_warn "stack.jeffreysprompts: verify failed: jfp --version"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.jeffreysprompts"; then
+              log_error "stack.jeffreysprompts: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.jeffreysprompts" "verify failed: jfp --version"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1449,6 +1481,14 @@ acfs_generated_install_stack_process_triage() {
             fi
         }; then
             log_warn "stack.process_triage: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.process_triage"; then
+              log_error "stack.process_triage: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.process_triage" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -1467,6 +1507,14 @@ pt --help
 INSTALL_STACK_PROCESS_TRIAGE
         then
             log_warn "stack.process_triage: verify failed: pt --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.process_triage"; then
+              log_error "stack.process_triage: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.process_triage" "verify failed: pt --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2331,6 +2379,14 @@ acfs_generated_install_stack_slb() {
             fi
         }; then
             log_warn "stack.slb: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.slb"; then
+              log_error "stack.slb: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.slb" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2349,6 +2405,14 @@ export PATH="$HOME/go/bin:$PATH" && slb >/dev/null 2>&1 || slb --help >/dev/null
 INSTALL_STACK_SLB
         then
             log_warn "stack.slb: verify failed: export PATH=\"\$HOME/go/bin:\$PATH\" && slb >/dev/null 2>&1 || slb --help >/dev/null 2>&1"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.slb"; then
+              log_error "stack.slb: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.slb" "verify failed: export PATH=\"\$HOME/go/bin:\$PATH\" && slb >/dev/null 2>&1 || slb --help >/dev/null 2>&1"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2741,6 +2805,14 @@ acfs_generated_install_stack_brenner_bot() {
             fi
         }; then
             log_warn "stack.brenner_bot: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.brenner_bot"; then
+              log_error "stack.brenner_bot: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.brenner_bot" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2759,6 +2831,14 @@ brenner --version || brenner --help
 INSTALL_STACK_BRENNER_BOT
         then
             log_warn "stack.brenner_bot: verify failed: brenner --version || brenner --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.brenner_bot"; then
+              log_error "stack.brenner_bot: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.brenner_bot" "verify failed: brenner --version || brenner --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2863,6 +2943,14 @@ acfs_generated_install_stack_rch() {
             fi
         }; then
             log_warn "stack.rch: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.rch"; then
+              log_error "stack.rch: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.rch" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2881,6 +2969,14 @@ rch --version || rch --help
 INSTALL_STACK_RCH
         then
             log_warn "stack.rch: verify failed: rch --version || rch --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.rch"; then
+              log_error "stack.rch: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.rch" "verify failed: rch --version || rch --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2918,6 +3014,14 @@ rm -rf "$WA_TMP"
 INSTALL_STACK_WEZTERM_AUTOMATA
         then
             log_warn "stack.wezterm_automata: install command failed: trap 'rm -rf \"\$WA_TMP\"' EXIT"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.wezterm_automata"; then
+              log_error "stack.wezterm_automata: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.wezterm_automata" "install command failed: trap 'rm -rf \"\$WA_TMP\"' EXIT"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -2936,6 +3040,14 @@ wa --version || wa --help
 INSTALL_STACK_WEZTERM_AUTOMATA
         then
             log_warn "stack.wezterm_automata: verify failed: wa --version || wa --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.wezterm_automata"; then
+              log_error "stack.wezterm_automata: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.wezterm_automata" "verify failed: wa --version || wa --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3040,6 +3152,14 @@ acfs_generated_install_stack_srps() {
             fi
         }; then
             log_warn "stack.srps: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.srps"; then
+              log_error "stack.srps: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.srps" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3058,6 +3178,14 @@ command -v sysmoni
 INSTALL_STACK_SRPS
         then
             log_warn "stack.srps: verify failed: command -v sysmoni"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.srps"; then
+              log_error "stack.srps: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.srps" "verify failed: command -v sysmoni"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3074,6 +3202,14 @@ systemctl is-active ananicy-cpp
 INSTALL_STACK_SRPS
         then
             log_warn "stack.srps: verify failed: systemctl is-active ananicy-cpp"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.srps"; then
+              log_error "stack.srps: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.srps" "verify failed: systemctl is-active ananicy-cpp"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3251,6 +3387,14 @@ acfs_generated_install_stack_frankensearch() {
             fi
         }; then
             log_warn "stack.frankensearch: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.frankensearch"; then
+              log_error "stack.frankensearch: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.frankensearch" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3269,6 +3413,14 @@ fsfs version || fsfs --help
 INSTALL_STACK_FRANKENSEARCH
         then
             log_warn "stack.frankensearch: verify failed: fsfs version || fsfs --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.frankensearch"; then
+              log_error "stack.frankensearch: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.frankensearch" "verify failed: fsfs version || fsfs --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3373,6 +3525,14 @@ acfs_generated_install_stack_storage_ballast_helper() {
             fi
         }; then
             log_warn "stack.storage_ballast_helper: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.storage_ballast_helper"; then
+              log_error "stack.storage_ballast_helper: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.storage_ballast_helper" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3391,6 +3551,14 @@ command -v sbh
 INSTALL_STACK_STORAGE_BALLAST_HELPER
         then
             log_warn "stack.storage_ballast_helper: verify failed: command -v sbh"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.storage_ballast_helper"; then
+              log_error "stack.storage_ballast_helper: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.storage_ballast_helper" "verify failed: command -v sbh"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3495,6 +3663,14 @@ acfs_generated_install_stack_cross_agent_session_resumer() {
             fi
         }; then
             log_warn "stack.cross_agent_session_resumer: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.cross_agent_session_resumer"; then
+              log_error "stack.cross_agent_session_resumer: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.cross_agent_session_resumer" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3513,6 +3689,14 @@ casr providers || casr --help
 INSTALL_STACK_CROSS_AGENT_SESSION_RESUMER
         then
             log_warn "stack.cross_agent_session_resumer: verify failed: casr providers || casr --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.cross_agent_session_resumer"; then
+              log_error "stack.cross_agent_session_resumer: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.cross_agent_session_resumer" "verify failed: casr providers || casr --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3617,6 +3801,14 @@ acfs_generated_install_stack_doodlestein_self_releaser() {
             fi
         }; then
             log_warn "stack.doodlestein_self_releaser: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.doodlestein_self_releaser"; then
+              log_error "stack.doodlestein_self_releaser: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.doodlestein_self_releaser" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3635,6 +3827,14 @@ dsr --version || dsr --help
 INSTALL_STACK_DOODLESTEIN_SELF_RELEASER
         then
             log_warn "stack.doodlestein_self_releaser: verify failed: dsr --version || dsr --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.doodlestein_self_releaser"; then
+              log_error "stack.doodlestein_self_releaser: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.doodlestein_self_releaser" "verify failed: dsr --version || dsr --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3739,6 +3939,14 @@ acfs_generated_install_stack_agent_settings_backup() {
             fi
         }; then
             log_warn "stack.agent_settings_backup: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.agent_settings_backup"; then
+              log_error "stack.agent_settings_backup: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.agent_settings_backup" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3792,6 +4000,14 @@ echo "ASB backup root: $backup_root" >&2
 INSTALL_STACK_AGENT_SETTINGS_BACKUP
         then
             log_warn "stack.agent_settings_backup: install command failed: if [[ -d \"\$backup_root\" ]]; then"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.agent_settings_backup"; then
+              log_error "stack.agent_settings_backup: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.agent_settings_backup" "install command failed: if [[ -d \"\$backup_root\" ]]; then"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3810,6 +4026,14 @@ asb version || asb help
 INSTALL_STACK_AGENT_SETTINGS_BACKUP
         then
             log_warn "stack.agent_settings_backup: verify failed: asb version || asb help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.agent_settings_backup"; then
+              log_error "stack.agent_settings_backup: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.agent_settings_backup" "verify failed: asb version || asb help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3841,6 +4065,14 @@ command -v claude >/dev/null 2>&1
 INSTALL_STACK_PCR_PRE_INSTALL_CHECK
         then
             log_warn "stack.pcr: Skipping PCR - Claude Code not found"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.pcr"; then
+              log_error "stack.pcr: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.pcr" "Skipping PCR - Claude Code not found"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3930,6 +4162,14 @@ INSTALL_STACK_PCR_PRE_INSTALL_CHECK
             fi
         }; then
             log_warn "stack.pcr: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.pcr"; then
+              log_error "stack.pcr: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.pcr" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -3992,6 +4232,14 @@ claude_settings_has_command_hook "$settings" "$pcr_command_pattern" ||
 INSTALL_STACK_PCR
         then
             log_warn "stack.pcr: verify failed: test -x \"\$hook_script\" || exit 1"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.pcr"; then
+              log_error "stack.pcr: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.pcr" "verify failed: test -x \"\$hook_script\" || exit 1"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4096,6 +4344,14 @@ acfs_generated_install_stack_eidetic_engine_cli() {
             fi
         }; then
             log_warn "stack.eidetic_engine_cli: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.eidetic_engine_cli"; then
+              log_error "stack.eidetic_engine_cli: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.eidetic_engine_cli" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4114,6 +4370,14 @@ ee --version || ee --help
 INSTALL_STACK_EIDETIC_ENGINE_CLI
         then
             log_warn "stack.eidetic_engine_cli: verify failed: ee --version || ee --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.eidetic_engine_cli"; then
+              log_error "stack.eidetic_engine_cli: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.eidetic_engine_cli" "verify failed: ee --version || ee --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4218,6 +4482,14 @@ acfs_generated_install_stack_franken_markdown() {
             fi
         }; then
             log_warn "stack.franken_markdown: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.franken_markdown"; then
+              log_error "stack.franken_markdown: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.franken_markdown" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4236,6 +4508,14 @@ fmd --version || fmd --help
 INSTALL_STACK_FRANKEN_MARKDOWN
         then
             log_warn "stack.franken_markdown: verify failed: fmd --version || fmd --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.franken_markdown"; then
+              log_error "stack.franken_markdown: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.franken_markdown" "verify failed: fmd --version || fmd --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4340,6 +4620,14 @@ acfs_generated_install_stack_pi_agent_rust() {
             fi
         }; then
             log_warn "stack.pi_agent_rust: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.pi_agent_rust"; then
+              log_error "stack.pi_agent_rust: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.pi_agent_rust" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4358,6 +4646,14 @@ pi --version || pi --help
 INSTALL_STACK_PI_AGENT_RUST
         then
             log_warn "stack.pi_agent_rust: verify failed: pi --version || pi --help"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.pi_agent_rust"; then
+              log_error "stack.pi_agent_rust: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.pi_agent_rust" "verify failed: pi --version || pi --help"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4462,6 +4758,14 @@ acfs_generated_install_stack_power_failure_resumer() {
             fi
         }; then
             log_warn "stack.power_failure_resumer: verified installer failed"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.power_failure_resumer"; then
+              log_error "stack.power_failure_resumer: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.power_failure_resumer" "verified installer failed"
             elif type -t state_tool_skip >/dev/null 2>&1; then
@@ -4480,6 +4784,14 @@ command -v pfr
 INSTALL_STACK_POWER_FAILURE_RESUMER
         then
             log_warn "stack.power_failure_resumer: verify failed: command -v pfr"
+            # Optional-module failures are warnings on a default install, but a
+            # module the user explicitly named with --only had exactly one job:
+            # propagate the failure instead of reporting phase success (#373).
+            if declare -f acfs_module_explicitly_selected >/dev/null 2>&1 \
+                && acfs_module_explicitly_selected "stack.power_failure_resumer"; then
+              log_error "stack.power_failure_resumer: explicitly requested via --only; treating optional-module failure as fatal"
+              return 1
+            fi
             if type -t record_skipped_tool >/dev/null 2>&1; then
               record_skipped_tool "stack.power_failure_resumer" "verify failed: command -v pfr"
             elif type -t state_tool_skip >/dev/null 2>&1; then
