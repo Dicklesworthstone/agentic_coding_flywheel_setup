@@ -7784,7 +7784,7 @@ install_cli_tools() {
     # Required CLI packages. Arch-family installs gh/gum straight from pacman;
     # Ubuntu uses the batch below plus the dedicated GitHub CLI installer.
     if [[ "$ACFS_DISTRO_FAMILY" == "arch" ]]; then
-        local -a arch_required_pkgs=(ripgrep tmux fzf direnv jq git-lfs lsof bind strace rsync zstd gum github-cli)
+        local -a arch_required_pkgs=(ripgrep tmux fzf direnv jq git-lfs lsof bind strace rsync zstd gum github-cli minisign)
         # openbsd-netcat conflicts with gnu-netcat; only add it when no `nc`
         # provider is present so an existing choice never aborts the batch.
         if ! command_exists nc; then
@@ -7807,7 +7807,7 @@ install_cli_tools() {
         fi
     else
         log_detail "Installing required apt packages"
-        try_step "Installing required apt packages" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd || return 1
+        try_step "Installing required apt packages" $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ripgrep tmux fzf direnv jq git-lfs lsof dnsutils netcat-openbsd strace rsync zstd minisign || return 1
     fi
 
     # GitHub CLI (gh)
