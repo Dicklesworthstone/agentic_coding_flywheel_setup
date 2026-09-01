@@ -2190,6 +2190,7 @@ check_shell() {
     # module. "shell.atuin" was also a nonexistent module id, which made
     # fix_for_module build a reinstall command that installs nothing.
     check_command "tools.atuin" "Atuin" "atuin" "$(fix_for_module "tools.atuin")"
+    check_atuin_daemon
     check_command "shell.fzf" "fzf" "fzf" "$(doctor_pkg_install_hint fzf)"
     check_command "tools.zoxide" "zoxide" "zoxide" \
         "Re-run: $(fix_for_module tools.zoxide)"
@@ -2288,6 +2289,82 @@ check_cosign_version() {
         check "tool.cosign" "cosign (v$cosign_ver)" "warn" \
             "incompatible with Agent Mail verification (requires >=v3.1.3 and <v4.0.0)" \
             "$cosign_fix"
+    fi
+}
+
+# Atuin daemon health (#359 follow-up to #358): compare the configured
+# daemon.socket_path against the socket actually bound. A daemon-enabled atuin
+# with an unreachable socket passes the bare binary check above while adding
+# seconds to every command and silently dropping history -- exactly the state
+# the reporter sat in for two days. #358's fix pins socket_path at install;
+# this check catches a daemon that predates the pin, ignores it, or died.
+check_atuin_daemon() {
+    local runtime_home=""
+    runtime_home="$(doctor_runtime_home)"
+    local config_file="$runtime_home/.config/atuin/config.toml"
+    local atuin_bin=""
+    atuin_bin="$(doctor_binary_path atuin 2>/dev/null || true)"
+
+    # Missing atuin/config is already reported by the presence check above.
+    [[ -n "$atuin_bin" && -f "$config_file" ]] && [[ -r "$config_file" ]] || return 0
+
+    local daemon_enabled=""
+    daemon_enabled="$(awk -F'=' '
+        /^\[daemon\]/ { in_daemon = 1; next }
+        /^\[/ { in_daemon = 0 }
+        in_daemon && $1 ~ /^[[:space:]]*enabled[[:space:]]*$/ {
+            v = $2
+            gsub(/[[:space:]]/, "", v)
+            print v
+        }
+    ' "$config_file" 2>/dev/null | tail -n1)"
+    [[ "$daemon_enabled" == "true" ]] || return 0
+
+    local configured_socket=""
+    configured_socket="$(awk -F'=' '
+        /^\[daemon\]/ { in_daemon = 1; next }
+        /^\[/ { in_daemon = 0 }
+        in_daemon && $1 ~ /^[[:space:]]*socket_path[[:space:]]*$/ {
+            v = $2
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+            gsub(/^"|"$/, "", v)
+            print v
+        }
+    ' "$config_file" 2>/dev/null | tail -n1)"
+
+    if [[ -z "$configured_socket" ]]; then
+        check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
+            "daemon.enabled is true but socket_path is not pinned; the socket follows TMPDIR and the shell can lose the daemon (#358)" \
+            "re-run the ACFS installer (it pins socket_path), or set socket_path under [daemon] in ~/.config/atuin/config.toml"
+        return 0
+    fi
+
+    local ss_bin=""
+    ss_bin="$(command -v ss 2>/dev/null || true)"
+    if [[ -z "$ss_bin" ]]; then
+        check "shell.atuin_daemon" "Atuin daemon socket" "skip" "cannot inspect bound unix sockets (ss not available)"
+        return 0
+    fi
+
+    local bound_sockets=""
+    bound_sockets="$("$ss_bin" -xl 2>/dev/null | grep -oE '[^[:space:]]*atuin[^[:space:]]*\.sock[^[:space:]]*' | sort -u || true)"
+
+    if [[ -n "$bound_sockets" ]] && grep -Fxq "$configured_socket" <<< "$bound_sockets"; then
+        check "shell.atuin_daemon" "Atuin daemon socket" "pass" "daemon bound to configured socket ($configured_socket)"
+    elif [[ -n "$bound_sockets" ]]; then
+        local bound_first=""
+        bound_first="$(head -n1 <<< "$bound_sockets")"
+        check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
+            "socket mismatch: config=$configured_socket bound=$bound_first -- the shell connects to the configured path, so history writes stall against the wrong daemon" \
+            "restart the atuin daemon so it binds the configured path: pkill -f 'atuin daemon' 2>/dev/null; (setsid atuin daemon >/dev/null 2>&1 &)"
+    elif [[ -S "$configured_socket" ]]; then
+        check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
+            "stale socket: $configured_socket exists but no daemon is listening (every command pays a failed connect)" \
+            "rm -f '$configured_socket' && (setsid atuin daemon >/dev/null 2>&1 &)"
+    else
+        check "shell.atuin_daemon" "Atuin daemon socket" "warn" \
+            "daemon.enabled is true but no atuin daemon socket is bound (daemon not running)" \
+            "(setsid atuin daemon >/dev/null 2>&1 &)  # or run it under a user service"
     fi
 }
 

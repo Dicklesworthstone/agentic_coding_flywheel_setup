@@ -323,6 +323,22 @@ command -v direnv &>/dev/null && eval "$(direnv hook zsh)"
 export DISABLE_FZF_KEY_BINDINGS=1
 [[ -f "$HOME/.fzf.zsh" ]] && source "$HOME/.fzf.zsh"
 
+# Atuin (shell history)
+#
+# Managed here -- not in ~/.zshrc -- so ACFS controls its hook ordering
+# (after compinit and fzf, so atuin's ctrl-r wins) and can repair the
+# configuration on update (#359). The upstream installer's unmanaged
+# `eval "$(atuin init zsh)"` line in ~/.zshrc is commented out by
+# acfs-update; this block is the one that counts.
+#
+# User overrides: set ACFS_NO_ATUIN_INIT=1 before this file is sourced to
+# keep atuin uninitialized (e.g. to run your own `atuin init` with custom
+# flags), or set ACFS_ATUIN_INIT_FLAGS to pass extra flags here.
+if [[ -z "${ACFS_NO_ATUIN_INIT:-}" ]] && command -v atuin &>/dev/null; then
+  # ${=...} word-splits deliberately so multiple flags work.
+  eval "$(atuin init zsh ${=ACFS_ATUIN_INIT_FLAGS:-})"
+fi
+
 # --- Prompt config ---
 if [[ "$TERM_PROGRAM" == "vscode" ]]; then
   PROMPT='%n@%m:%~%# '

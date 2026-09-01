@@ -3008,6 +3008,32 @@ cleanup_legacy_br_alias() {
     fi
 }
 
+# The atuin installer appends `eval "$(atuin init zsh)"` to ~/.zshrc, outside
+# the ACFS-managed loader (issue #359 item 3). Now that acfs.zshrc owns atuin
+# init, comment the unmanaged line out -- but only when the deployed managed
+# loader really carries the init, so atuin never ends up uninitialized. Only
+# the exact stock line is touched; a customized invocation is left alone.
+cleanup_unmanaged_atuin_init() {
+    local runtime_home=""
+    runtime_home="$(update_runtime_shell_home 2>/dev/null || true)"
+    [[ -n "$runtime_home" ]] || return 0
+    local zshrc="$runtime_home/.zshrc"
+    local deployed="$runtime_home/.acfs/zsh/acfs.zshrc"
+    [[ -f "$zshrc" && -f "$deployed" ]] || return 0
+    grep -q 'atuin init zsh' "$deployed" 2>/dev/null || return 0
+    grep -Eq '^[[:space:]]*eval "\$\(atuin init zsh\)"[[:space:]]*$' "$zshrc" 2>/dev/null || return 0
+
+    if update_is_read_only_mode; then
+        log_item "skip" "atuin init cleanup" "dry-run: would comment the unmanaged 'atuin init' line in ~/.zshrc (managed by acfs.zshrc now)"
+        return 0
+    fi
+
+    if sed -i 's|^\([[:space:]]*\)eval "\$(atuin init zsh)"[[:space:]]*$|\1# eval "$(atuin init zsh)"  # disabled by ACFS: atuin init now lives in ~/.acfs/zsh/acfs.zshrc (#359)|' "$zshrc" 2>/dev/null; then
+        log_item "ok" "atuin init cleanup" "commented the unmanaged 'atuin init' line in ~/.zshrc; the managed acfs.zshrc block owns it now"
+        log_to_file "Commented unmanaged atuin init line in $zshrc"
+    fi
+}
+
 # Re-deploy acfs.zshrc from repo to ~/.acfs/ if repo copy is newer
 sync_acfs_zshrc() {
     local repo_zshrc="$ACFS_REPO_ROOT/acfs/zsh/acfs.zshrc"
@@ -7439,6 +7465,9 @@ update_shell() {
     sync_acfs_zprofile_paths
     sync_acfs_zsh_loader
     sync_acfs_zshrc
+    # Re-run after the sync so the first run that deploys an atuin-owning
+    # acfs.zshrc also retires the unmanaged ~/.zshrc init line (#359).
+    cleanup_unmanaged_atuin_init
     sync_acfs_deployed
     sync_acfs_global_wrapper
     sync_acfs_global_command_links
@@ -7884,6 +7913,7 @@ main() {
     cleanup_legacy_git_safety_guard
     cleanup_legacy_br_alias
     cleanup_legacy_bv_alias
+    cleanup_unmanaged_atuin_init
 
     # Run updates
     update_apt

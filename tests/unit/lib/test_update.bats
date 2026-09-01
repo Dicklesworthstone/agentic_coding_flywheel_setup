@@ -15428,3 +15428,68 @@ EOF
     [[ "$status" -eq 94 ]]
     assert_output --partial "SKIPPED (rollback backoff)"
 }
+
+# ============================================================
+# Unmanaged atuin init cleanup (issue #359 item 3)
+# ============================================================
+
+@test "cleanup_unmanaged_atuin_init: comments the stock line once the managed loader owns atuin" {
+    sed --version >/dev/null 2>&1 || skip "GNU sed required (fleet target)"
+
+    mkdir -p "$HOME/.acfs/zsh"
+    cat > "$HOME/.zshrc" <<'EOF'
+# user zshrc
+source "$HOME/.acfs/zsh/acfs.zshrc"
+eval "$(atuin init zsh)"
+EOF
+    cat > "$HOME/.acfs/zsh/acfs.zshrc" <<'EOF'
+if [[ -z "${ACFS_NO_ATUIN_INIT:-}" ]] && command -v atuin &>/dev/null; then
+  eval "$(atuin init zsh ${=ACFS_ATUIN_INIT_FLAGS:-})"
+fi
+EOF
+
+    update_runtime_shell_home() { printf '%s\n' "$HOME"; }
+
+    run cleanup_unmanaged_atuin_init
+    assert_success
+
+    run grep -c '^# eval "\$(atuin init zsh)"' "$HOME/.zshrc"
+    assert_output "1"
+    run grep -c '^eval "\$(atuin init zsh)"' "$HOME/.zshrc"
+    assert_output "0"
+    # The managed loader line is untouched.
+    run grep -c 'source "\$HOME/.acfs/zsh/acfs.zshrc"' "$HOME/.zshrc"
+    assert_output "1"
+}
+
+@test "cleanup_unmanaged_atuin_init: leaves ~/.zshrc alone when the managed loader lacks atuin init" {
+    mkdir -p "$HOME/.acfs/zsh"
+    cat > "$HOME/.zshrc" <<'EOF'
+eval "$(atuin init zsh)"
+EOF
+    printf '# no atuin here\n' > "$HOME/.acfs/zsh/acfs.zshrc"
+
+    update_runtime_shell_home() { printf '%s\n' "$HOME"; }
+
+    run cleanup_unmanaged_atuin_init
+    assert_success
+    run grep -c '^eval "\$(atuin init zsh)"' "$HOME/.zshrc"
+    assert_output "1"
+}
+
+@test "cleanup_unmanaged_atuin_init: preserves a customized atuin init invocation" {
+    mkdir -p "$HOME/.acfs/zsh"
+    cat > "$HOME/.zshrc" <<'EOF'
+eval "$(atuin init zsh --disable-up-arrow)"
+EOF
+    printf 'eval "$(atuin init zsh)"\n' > "$HOME/.acfs/zsh/acfs.zshrc"
+
+    update_runtime_shell_home() { printf '%s\n' "$HOME"; }
+
+    run cleanup_unmanaged_atuin_init
+    assert_success
+    run grep -c -- '--disable-up-arrow' "$HOME/.zshrc"
+    assert_output "1"
+    run grep -c '^#' "$HOME/.zshrc"
+    assert_output "0"
+}

@@ -548,6 +548,28 @@ _cli_pin_atuin_daemon_socket() {
     return 0
 }
 
+# Comment out the stock unmanaged `eval "$(atuin init zsh)"` line the upstream
+# installer appends to ~/.zshrc, once the managed acfs.zshrc owns atuin init
+# (#359 item 3). Only the exact stock line is touched, and only when the
+# deployed managed loader really carries the init, so atuin is never left
+# uninitialized. Customized invocations are preserved.
+_cli_retire_unmanaged_atuin_init() {
+    local target_user="${TARGET_USER:-ubuntu}"
+    local target_home=""
+    target_home="$(_cli_target_home "$target_user")"
+    [[ -n "$target_home" ]] || return 0
+
+    local zshrc="$target_home/.zshrc"
+    local deployed="$target_home/.acfs/zsh/acfs.zshrc"
+    [[ -f "$zshrc" && -f "$deployed" ]] || return 0
+    grep -q 'atuin init zsh' "$deployed" 2>/dev/null || return 0
+    grep -Eq '^[[:space:]]*eval "\$\(atuin init zsh\)"[[:space:]]*$' "$zshrc" 2>/dev/null || return 0
+
+    if sed -i 's|^\([[:space:]]*\)eval "\$(atuin init zsh)"[[:space:]]*$|\1# eval "$(atuin init zsh)"  # disabled by ACFS: atuin init now lives in ~/.acfs/zsh/acfs.zshrc (#359)|' "$zshrc" 2>/dev/null; then
+        log_detail "Retired unmanaged atuin init line in $zshrc (managed by acfs.zshrc now)"
+    fi
+}
+
 # Fetch latest version tag from GitHub
 # Usage: _fetch_github_version "owner/repo" [strip_v]
 _fetch_github_version() {
@@ -1051,6 +1073,7 @@ install_atuin() {
     if [[ -x "$target_atuin_bin" ]]; then
         log_detail "atuin already installed"
         _cli_pin_atuin_daemon_socket || true
+        _cli_retire_unmanaged_atuin_init || true
         if ! _cli_normalize_atuin_shims; then
             log_warn "Could not install guarded atuin shim"
             return 1
@@ -1083,6 +1106,7 @@ install_atuin() {
 
     if [[ -x "$target_atuin_bin" ]]; then
         _cli_pin_atuin_daemon_socket || true
+        _cli_retire_unmanaged_atuin_init || true
         if ! _cli_normalize_atuin_shims; then
             log_warn "Could not install guarded atuin shim"
             return 1
