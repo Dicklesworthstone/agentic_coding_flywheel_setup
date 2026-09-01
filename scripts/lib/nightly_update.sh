@@ -549,8 +549,16 @@ if [[ "$UPDATE_RC" -eq 0 ]]; then
     if type -t acfs_notify_update_success &>/dev/null; then
         acfs_notify_update_success 2>/dev/null || true
     fi
+elif [[ "$UPDATE_RC" -eq 2 ]]; then
+    # acfs-update exit 2 = partial failure: most tools updated, a few failed
+    # (issue #357). Distinct wording so "60 succeeded, 2 failed" is never read
+    # as "the update failed".
+    log "=== Nightly update PARTIALLY failed (exit 2): most tools updated, some failed -- see the acfs-update log ==="
+    if type -t acfs_notify_update_failure &>/dev/null; then
+        acfs_notify_update_failure "partial failure (exit code 2): some tools failed while others updated" 2>/dev/null || true
+    fi
 else
-    log "=== Nightly update finished with exit code $UPDATE_RC ==="
+    log "=== Nightly update FAILED (exit code $UPDATE_RC) ==="
     if type -t acfs_notify_update_failure &>/dev/null; then
         acfs_notify_update_failure "exit code $UPDATE_RC" 2>/dev/null || true
     fi

@@ -380,6 +380,19 @@ SKIP_COUNT=0
 FAIL_COUNT=0
 UPDATE_LAST_COMMAND_OUTPUT=""
 
+# Per-tool version holds (issue #357). A held tool is skipped by every
+# verified-installer path and reported (never silently) in the summary.
+HELD_COUNT=0
+UPDATE_HELD_TOOLS=()
+# Distinguished exit codes returned from inside the verified-installer choke
+# point so run_cmd and the wrapper functions can report "held"/"backing off"
+# as skips instead of failures. Chosen well away from common tool exit codes.
+UPDATE_EXIT_HELD=93
+UPDATE_EXIT_ROLLBACK_BACKOFF=94
+UPDATE_LAST_HOLD_DETAILS=""
+UPDATE_LAST_HOLD_TOOL=""
+UPDATE_LAST_BACKOFF_DETAILS=""
+
 # Flags
 UPDATE_APT=true
 UPDATE_AGENTS=true
@@ -892,7 +905,9 @@ update_ensure_gemini_patch_node() {
         return 0
     fi
 
-    update_run_verified_installer nvm || return 1
+    # `return $?` (not `return 1`) so a hold skip (exit 93) keeps its meaning
+    # for run_cmd instead of being flattened into a failure (#357).
+    update_run_verified_installer nvm || return $?
 
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
     if [[ ! -s "$NVM_DIR/nvm.sh" && -s "${XDG_CONFIG_HOME:-$HOME/.config}/nvm/nvm.sh" ]]; then
@@ -1355,6 +1370,11 @@ update_run_command_capture_with_retry() {
             return 0
         fi
 
+        # Hold/backoff skips (issue #357) are deliberate; never retry them.
+        if [[ $exit_code -eq $UPDATE_EXIT_HELD || $exit_code -eq $UPDATE_EXIT_ROLLBACK_BACKOFF ]]; then
+            return "$exit_code"
+        fi
+
         if update_is_transient_failure_output "$output" && [[ $attempt -lt $max_attempts ]]; then
             local sleep_secs
             sleep_secs="$(update_retry_sleep_seconds "$attempt")"
@@ -1651,6 +1671,16 @@ update_run_verified_installer_with_shell_repair() {
     log_item "run" "$desc"
     update_run_command_capture_with_retry "$desc" update_run_verified_installer "$tool" "$@" || exit_code=$?
 
+    if [[ $exit_code -eq $UPDATE_EXIT_HELD && -n "$UPDATE_LAST_HOLD_DETAILS" ]]; then
+        update_finish_cmd_skip "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool "$tool"
+        return 0
+    fi
+    if [[ $exit_code -eq $UPDATE_EXIT_ROLLBACK_BACKOFF && -n "$UPDATE_LAST_BACKOFF_DETAILS" ]]; then
+        update_finish_cmd_skip "$desc" "BACKOFF: $UPDATE_LAST_BACKOFF_DETAILS"
+        return 0
+    fi
+
     "$repair_fn" >/dev/null 2>&1 || true
     after_path="$(update_tool_binary_path "$tool" 2>/dev/null || true)"
     after_version="$(get_version "$tool")"
@@ -1817,6 +1847,12 @@ run_cmd() {
     local cmd_display=""
     cmd_display=$(printf '%q ' "$@")
 
+    # Stale hold/backoff details from an earlier tool must not misclassify an
+    # unrelated exit code (issue #357).
+    UPDATE_LAST_HOLD_DETAILS=""
+    UPDATE_LAST_HOLD_TOOL=""
+    UPDATE_LAST_BACKOFF_DETAILS=""
+
     log_to_file "Running: $cmd_display"
 
     if [[ "$DRY_RUN" == "true" ]]; then
@@ -1888,6 +1924,16 @@ run_cmd() {
         fi
         log_to_file "Success: $desc"
         ((SUCCESS_COUNT += 1))
+        return 0
+    elif [[ $exit_code -eq $UPDATE_EXIT_HELD && -n "$UPDATE_LAST_HOLD_DETAILS" ]]; then
+        # A held tool is a deliberate skip, not a failure (issue #357). The
+        # details globals were reset at the top of this call and can only have
+        # been set by the hold check inside this command's own call chain.
+        update_finish_cmd_skip "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool "$UPDATE_LAST_HOLD_TOOL"
+        return 0
+    elif [[ $exit_code -eq $UPDATE_EXIT_ROLLBACK_BACKOFF && -n "$UPDATE_LAST_BACKOFF_DETAILS" ]]; then
+        update_finish_cmd_skip "$desc" "BACKOFF: $UPDATE_LAST_BACKOFF_DETAILS"
         return 0
     else
         if [[ "$QUIET" != "true" ]] && [[ "$VERBOSE" != "true" ]]; then
@@ -3358,6 +3404,7 @@ sync_acfs_deployed() {
         "scripts/lib/nightly_update.sh:scripts/lib/nightly_update.sh"
         "scripts/lib/nightly_update.sh:scripts/nightly-update.sh"
         "scripts/lib/security.sh:scripts/lib/security.sh"
+        "scripts/lib/holds.sh:scripts/lib/holds.sh"
         "scripts/lib/github_api.sh:scripts/lib/github_api.sh"
         "scripts/lib/tools.sh:scripts/lib/tools.sh"
         "scripts/lib/autofix.sh:scripts/lib/autofix.sh"
@@ -4444,6 +4491,306 @@ EOF
 }
 
 # ============================================================
+# Per-Tool Version Holds & Post-Install Verification (issue #357)
+# ============================================================
+# Real incident: the nightly installed br 0.5.2 which could not
+# read existing beads databases; recovery required a manual
+# fleet-wide downgrade re-applied every morning. Two defenses:
+#   1. Holds (~/.acfs/holds.yaml via scripts/lib/holds.sh): a
+#      held tool is skipped with owner/reason/expiry named in
+#      the log, the summary, and acfs doctor.
+#   2. Post-install verification + rollback: before an install
+#      the current binary is retained at <binary>.prev; after
+#      the install a smoke check runs and on failure the
+#      previous binary is restored atomically. The failure is
+#      recorded with a backoff count so the nightly does not
+#      retry-loop the same broken release every night.
+# ============================================================
+
+UPDATE_HOLDS_READY=false
+
+update_require_holds() {
+    if [[ "$UPDATE_HOLDS_READY" == "true" ]]; then
+        return 0
+    fi
+    if type -t acfs_holds_active_details &>/dev/null; then
+        UPDATE_HOLDS_READY=true
+        return 0
+    fi
+
+    local candidate=""
+    local runtime_acfs_home=""
+    runtime_acfs_home="$(update_runtime_acfs_home 2>/dev/null || true)"
+    local -a holds_candidates=()
+    [[ -n "$SCRIPT_DIR" ]] && holds_candidates+=("$SCRIPT_DIR/holds.sh")
+    [[ -n "$runtime_acfs_home" ]] && holds_candidates+=("$runtime_acfs_home/scripts/lib/holds.sh")
+    if [[ -n "${ACFS_REPO_ROOT:-}" ]]; then
+        holds_candidates+=("${ACFS_REPO_ROOT}/scripts/lib/holds.sh")
+    fi
+
+    for candidate in "${holds_candidates[@]}"; do
+        if [[ -n "$candidate" && -f "$candidate" ]]; then
+            # shellcheck source=/dev/null
+            if source "$candidate" 2>/dev/null && type -t acfs_holds_active_details &>/dev/null; then
+                UPDATE_HOLDS_READY=true
+                return 0
+            fi
+        fi
+    done
+
+    # Missing holds.sh (older deployed tree) degrades to "no holds", never to
+    # a failed update.
+    return 1
+}
+
+# Set UPDATE_LAST_HOLD_DETAILS and return 0 when an ACTIVE hold covers the
+# tool. An expired hold warns once here and returns 1 (update proceeds).
+update_tool_hold_details() {
+    local tool="${1:-}"
+    UPDATE_LAST_HOLD_DETAILS=""
+    UPDATE_LAST_HOLD_TOOL=""
+    [[ -n "$tool" ]] || return 1
+    update_require_holds || return 1
+
+    local details=""
+    local hold_rc=0
+    details="$(acfs_holds_active_details "$tool" 2>/dev/null)" || hold_rc=$?
+    case "$hold_rc" in
+        0)
+            UPDATE_LAST_HOLD_DETAILS="$details"
+            UPDATE_LAST_HOLD_TOOL="$tool"
+            return 0
+            ;;
+        2)
+            log_item "warn" "$tool hold expired" "$details -- hold ignored, updating normally (acfs unhold $tool to clean up)"
+            return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Record a held tool exactly once per run for the summary.
+update_note_held_tool() {
+    local tool="${1:-}"
+    [[ -n "$tool" ]] || return 0
+    local seen=""
+    for seen in "${UPDATE_HELD_TOOLS[@]}"; do
+        [[ "$seen" == "$tool" ]] && return 0
+    done
+    UPDATE_HELD_TOOLS+=("$tool")
+    ((HELD_COUNT += 1))
+    return 0
+}
+
+# Installer key -> binary name, for the few tools where they differ. An empty
+# result means "no single binary to snapshot/verify" and the rollback layer
+# steps aside for that tool.
+update_tool_rollback_binary_name() {
+    local tool="${1:-}"
+    case "$tool" in
+        nvm) printf '%s\n' "" ;;                     # shell function, not a binary
+        pcr) printf '%s\n' "claude-post-compact-reminder" ;;
+        brenner_bot) printf '%s\n' "brenner" ;;
+        antigravity) printf '%s\n' "agy" ;;
+        *) printf '%s\n' "$tool" ;;
+    esac
+}
+
+# Smoke-check an installed binary. Generous 20s ceiling: a healthy binary that
+# does startup work (Supabase CLI takes ~5s) must not be misreported as broken
+# by a tight verification timeout.
+update_tool_smoke_check() {
+    local tool="${1:-}"
+    local binary="${2:-}"
+    [[ -n "$binary" && -x "$binary" ]] || return 1
+
+    local -a smoke_args=("--version")
+    case "$tool" in
+        pfr) smoke_args=("--doctor" "--json") ;;     # pfr has no --version flag
+    esac
+
+    local timeout_bin=""
+    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -n "$timeout_bin" ]]; then
+        "$timeout_bin" --kill-after=5s "${UPDATE_SMOKE_TIMEOUT:-20}" \
+            "$binary" "${smoke_args[@]}" >/dev/null 2>&1
+    else
+        "$binary" "${smoke_args[@]}" >/dev/null 2>&1
+    fi
+}
+
+# State file recording post-install verification failures per tool, so the
+# nightly backs off instead of retry-looping a broken release. Plain text,
+# one `tool count last_failure_epoch` line per tool.
+update_rollback_state_file() {
+    local state_home="${XDG_STATE_HOME:-}"
+    if [[ -z "$state_home" ]]; then
+        local runtime_home=""
+        runtime_home="$(update_existing_home "${HOME:-}" 2>/dev/null || true)"
+        [[ -n "$runtime_home" ]] || return 1
+        state_home="$runtime_home/.local/state"
+    fi
+    printf '%s\n' "$state_home/acfs/update-rollback.state"
+}
+
+update_rollback_state_lookup() {
+    local tool="${1:-}"
+    local state_file=""
+    state_file="$(update_rollback_state_file 2>/dev/null || true)"
+    [[ -n "$state_file" && -f "$state_file" ]] || return 1
+    awk -v tool="$tool" '$1 == tool { print $2, $3; found = 1 } END { exit found ? 0 : 1 }' "$state_file"
+}
+
+_update_rollback_state_rewrite() {
+    local tool="${1:-}"
+    local new_line="${2:-}"
+    local state_file=""
+    state_file="$(update_rollback_state_file 2>/dev/null || true)"
+    [[ -n "$state_file" ]] || return 1
+    mkdir -p "${state_file%/*}" 2>/dev/null || return 1
+
+    local tmp_file=""
+    tmp_file="$(mktemp "${state_file}.XXXXXX" 2>/dev/null)" || return 1
+    {
+        if [[ -f "$state_file" ]]; then
+            awk -v tool="$tool" '$1 != tool { print }' "$state_file"
+        fi
+        [[ -n "$new_line" ]] && printf '%s\n' "$new_line"
+    } >| "$tmp_file" || {
+        rm -f "$tmp_file" 2>/dev/null || true
+        return 1
+    }
+    mv -f "$tmp_file" "$state_file" 2>/dev/null || {
+        rm -f "$tmp_file" 2>/dev/null || true
+        return 1
+    }
+}
+
+update_rollback_state_record_failure() {
+    local tool="${1:-}"
+    [[ -n "$tool" ]] || return 1
+    local count=0
+    local entry=""
+    entry="$(update_rollback_state_lookup "$tool" 2>/dev/null || true)"
+    [[ -n "$entry" ]] && count="${entry%% *}"
+    [[ "$count" =~ ^[0-9]+$ ]] || count=0
+    _update_rollback_state_rewrite "$tool" "$tool $((count + 1)) $(date +%s)"
+}
+
+update_rollback_state_clear() {
+    local tool="${1:-}"
+    [[ -n "$tool" ]] || return 1
+    update_rollback_state_lookup "$tool" >/dev/null 2>&1 || return 0
+    _update_rollback_state_rewrite "$tool" ""
+}
+
+# Backoff: after N verification failures, skip re-attempting the tool for
+# min(N, 7) days. --force overrides (a human is watching); holds do not.
+update_tool_rollback_backoff_details() {
+    local tool="${1:-}"
+    UPDATE_LAST_BACKOFF_DETAILS=""
+    [[ -n "$tool" ]] || return 1
+    [[ "${FORCE_MODE:-false}" == "true" ]] && return 1
+
+    local entry="" count=0 last_epoch=0
+    entry="$(update_rollback_state_lookup "$tool" 2>/dev/null || true)"
+    [[ -n "$entry" ]] || return 1
+    count="${entry%% *}"
+    last_epoch="${entry##* }"
+    [[ "$count" =~ ^[0-9]+$ && "$last_epoch" =~ ^[0-9]+$ ]] || return 1
+    ((count > 0)) || return 1
+
+    local backoff_days="$count"
+    ((backoff_days > 7)) && backoff_days=7
+    local retry_epoch=$((last_epoch + backoff_days * 86400))
+    local now_epoch=0
+    now_epoch="$(date +%s)"
+    ((now_epoch < retry_epoch)) || return 1
+
+    local retry_display=""
+    retry_display="$(date -d "@$retry_epoch" +%F 2>/dev/null || date -r "$retry_epoch" +%F 2>/dev/null || echo "later")"
+    UPDATE_LAST_BACKOFF_DETAILS="post-install verification failed ${count} time(s) and the previous binary was kept; retry suppressed until ${retry_display} (use --force to retry now)"
+    return 0
+}
+
+# Retain the current binary as <binary>.prev before the installer replaces it.
+# Best-effort: a tool with no resolvable binary (fresh install) simply has no
+# rollback candidate. Sets UPDATE_ROLLBACK_PREV_PATH/UPDATE_ROLLBACK_BIN_PATH.
+update_snapshot_tool_binary() {
+    local tool="${1:-}"
+    UPDATE_ROLLBACK_PREV_PATH=""
+    UPDATE_ROLLBACK_BIN_PATH=""
+
+    local binary_name=""
+    binary_name="$(update_tool_rollback_binary_name "$tool")"
+    [[ -n "$binary_name" ]] || return 0
+
+    local bin_path=""
+    bin_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
+    [[ -n "$bin_path" && -x "$bin_path" && ! -d "$bin_path" ]] || return 0
+
+    if cp -p "$bin_path" "$bin_path.prev" 2>/dev/null; then
+        UPDATE_ROLLBACK_PREV_PATH="$bin_path.prev"
+        UPDATE_ROLLBACK_BIN_PATH="$bin_path"
+        log_to_file "Retained previous $tool binary at $bin_path.prev"
+    else
+        log_to_file "Could not retain previous $tool binary at $bin_path.prev (continuing without rollback candidate)"
+    fi
+    return 0
+}
+
+# After a successful installer run: smoke-check the installed binary and roll
+# back to the retained .prev on failure. Returns 0 when the tool is healthy
+# (or unverifiable), 1 when verification failed (rolled back or not).
+update_verify_tool_or_rollback() {
+    local tool="${1:-}"
+    local prev_path="${UPDATE_ROLLBACK_PREV_PATH:-}"
+
+    local binary_name=""
+    binary_name="$(update_tool_rollback_binary_name "$tool")"
+    [[ -n "$binary_name" ]] || return 0
+
+    local new_path=""
+    new_path="$(update_tool_binary_path "$binary_name" 2>/dev/null || true)"
+    if [[ -z "$new_path" ]]; then
+        # Nothing resolvable to verify; the per-tool wrappers still do their
+        # own existence/version verification.
+        return 0
+    fi
+
+    if update_tool_smoke_check "$tool" "$new_path"; then
+        update_rollback_state_clear "$tool" || true
+        return 0
+    fi
+
+    echo "POST-INSTALL VERIFICATION FAILED for $tool: '$new_path' failed its smoke check" >&2
+    log_to_file "POST-INSTALL VERIFICATION FAILED for $tool at $new_path"
+
+    if [[ -n "$prev_path" && -f "$prev_path" ]]; then
+        local restore_target="$new_path"
+        [[ -n "${UPDATE_ROLLBACK_BIN_PATH:-}" ]] && restore_target="$UPDATE_ROLLBACK_BIN_PATH"
+        if mv -f "$prev_path" "$restore_target" 2>/dev/null; then
+            echo "ROLLED BACK: restored previous $tool binary at $restore_target" >&2
+            log_to_file "ROLLED BACK $tool: restored previous binary at $restore_target"
+            if [[ "$restore_target" != "$new_path" ]]; then
+                log_to_file "NOTE: new $tool binary at $new_path left in place; restored copy is earlier on PATH resolution order"
+            fi
+        else
+            echo "ROLLBACK FAILED for $tool: could not restore $prev_path -> $restore_target" >&2
+            log_to_file "ROLLBACK FAILED for $tool: could not restore $prev_path -> $restore_target"
+        fi
+    else
+        echo "No previous $tool binary retained; cannot roll back automatically" >&2
+        log_to_file "No previous $tool binary retained for rollback"
+    fi
+
+    update_rollback_state_record_failure "$tool" || true
+    return 1
+}
+
+# ============================================================
 # Verified Installer Wrappers
 # ============================================================
 # Download an upstream installer, verify its SHA-256 checksum
@@ -4468,6 +4815,22 @@ update_run_verified_installer_with_env() {
     if [[ "$tool" == "ms" ]] && update_is_linux_arm64; then
         echo "meta_skill has no checksum-anchored Linux ARM64 install source; refusing an unpinned source checkout" >&2
         return 1
+    fi
+
+    # Per-tool version hold (issue #357): a held tool is skipped before any
+    # download, with owner/reason/expiry named so the skip is never silent.
+    if update_tool_hold_details "$tool"; then
+        echo "SKIPPED (hold): $tool $UPDATE_LAST_HOLD_DETAILS" >&2
+        log_to_file "Hold honored for $tool: $UPDATE_LAST_HOLD_DETAILS"
+        return "$UPDATE_EXIT_HELD"
+    fi
+
+    # Rollback backoff (issue #357): a tool whose fresh install failed its
+    # post-install smoke check recently is not retried every run.
+    if update_tool_rollback_backoff_details "$tool"; then
+        echo "SKIPPED (rollback backoff): $tool -- $UPDATE_LAST_BACKOFF_DETAILS" >&2
+        log_to_file "Rollback backoff honored for $tool: $UPDATE_LAST_BACKOFF_DETAILS"
+        return "$UPDATE_EXIT_ROLLBACK_BACKOFF"
     fi
 
     if ! update_require_security; then
@@ -4520,9 +4883,17 @@ update_run_verified_installer_with_env() {
         return 1
     fi
 
+    # Retain the current binary as <binary>.prev so a broken release can be
+    # rolled back after the post-install smoke check (issue #357).
+    update_snapshot_tool_binary "$tool"
+
     local exit_code=0
     update_run_in_target_context "$bash_env_assignment" bash "$tmp_install" "$@" </dev/null || exit_code=$?
     rm -f "$tmp_install" 2>/dev/null || true
+
+    if [[ $exit_code -eq 0 ]]; then
+        update_verify_tool_or_rollback "$tool" || return 1
+    fi
 
     return "$exit_code"
 }
@@ -4627,6 +4998,16 @@ update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() {
     log_item "run" "$desc"
     update_run_command_capture_with_retry "$desc" update_run_verified_installer_with_target_tmpdir "$installer_key" "$@" || exit_code=$?
 
+    if [[ $exit_code -eq $UPDATE_EXIT_HELD && -n "$UPDATE_LAST_HOLD_DETAILS" ]]; then
+        update_finish_cmd_skip "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool "$installer_key"
+        return 0
+    fi
+    if [[ $exit_code -eq $UPDATE_EXIT_ROLLBACK_BACKOFF && -n "$UPDATE_LAST_BACKOFF_DETAILS" ]]; then
+        update_finish_cmd_skip "$desc" "BACKOFF: $UPDATE_LAST_BACKOFF_DETAILS"
+        return 0
+    fi
+
     existing_path="$(update_binary_path "$binary_name" 2>/dev/null || true)"
     existing_version="$(get_version "$version_tool" 2>/dev/null || true)"
     if [[ $exit_code -eq 0 ]]; then
@@ -4671,6 +5052,16 @@ update_run_verified_installer_or_existing_on_transient() {
 
     log_item "run" "$desc"
     update_run_command_capture_with_retry "$desc" update_run_verified_installer "$installer_key" "$@" || exit_code=$?
+
+    if [[ $exit_code -eq $UPDATE_EXIT_HELD && -n "$UPDATE_LAST_HOLD_DETAILS" ]]; then
+        update_finish_cmd_skip "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool "$installer_key"
+        return 0
+    fi
+    if [[ $exit_code -eq $UPDATE_EXIT_ROLLBACK_BACKOFF && -n "$UPDATE_LAST_BACKOFF_DETAILS" ]]; then
+        update_finish_cmd_skip "$desc" "BACKOFF: $UPDATE_LAST_BACKOFF_DETAILS"
+        return 0
+    fi
 
     existing_path="$(update_binary_path "$binary_name" 2>/dev/null || true)"
     existing_version="$(get_version "$version_tool" 2>/dev/null || true)"
@@ -5867,6 +6258,18 @@ run_cmd_claude_update() {
         return 0
     fi
 
+    # The installer runs in a background subshell below, so hold/backoff must
+    # be checked here in the parent shell where the counters live (#357).
+    if update_tool_hold_details "claude"; then
+        log_item "skip" "$desc" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool "claude"
+        return 0
+    fi
+    if update_tool_rollback_backoff_details "claude"; then
+        log_item "skip" "$desc" "BACKOFF: $UPDATE_LAST_BACKOFF_DETAILS"
+        return 0
+    fi
+
     log_item "run" "$desc"
 
     local exit_code=0
@@ -7050,6 +7453,9 @@ print_summary() {
             echo "Updated: $SUCCESS_COUNT"
             echo "Skipped: $SKIP_COUNT"
             echo "Failed:  $FAIL_COUNT"
+            if [[ $HELD_COUNT -gt 0 ]]; then
+                echo "Held:    $HELD_COUNT (${UPDATE_HELD_TOOLS[*]})"
+            fi
             if [[ "$REBOOT_REQUIRED" == "true" ]]; then
                 echo "Reboot:  REQUIRED"
             fi
@@ -7063,13 +7469,26 @@ print_summary() {
     if [[ "$QUIET" != "true" ]]; then
         echo ""
         echo "============================================================"
-        printf "Summary: ${GREEN}%d updated${NC}, ${DIM}%d skipped${NC}, ${RED}%d failed${NC}\n" "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+        printf "Summary: ${GREEN}%d updated${NC}, ${DIM}%d skipped${NC}, ${RED}%d failed${NC}" "$SUCCESS_COUNT" "$SKIP_COUNT" "$FAIL_COUNT"
+        if [[ $HELD_COUNT -gt 0 ]]; then
+            printf ", ${YELLOW}%d held${NC}" "$HELD_COUNT"
+        fi
+        printf "\n"
         echo ""
+
+        # A hold must be reported every run, never silently applied (#357).
+        if [[ $HELD_COUNT -gt 0 ]]; then
+            printf "${YELLOW}Held tools (skipped by this run): %s${NC}\n" "${UPDATE_HELD_TOOLS[*]}"
+            printf "${DIM}Review with 'acfs holds'; release with 'acfs unhold <tool>'.${NC}\n"
+            echo ""
+        fi
 
         if [[ $FAIL_COUNT -eq 0 ]]; then
             printf "${GREEN}All updates completed successfully!${NC}\n"
+        elif [[ $SUCCESS_COUNT -gt 0 ]]; then
+            printf "${YELLOW}Partial failure: %d tool(s) updated, %d failed. Check output above.${NC}\n" "$SUCCESS_COUNT" "$FAIL_COUNT"
         else
-            printf "${YELLOW}Some updates failed. Check output above.${NC}\n"
+            printf "${RED}Update failed: nothing was updated (%d error(s)).${NC}\n" "$FAIL_COUNT"
         fi
 
         # Reboot warning
@@ -7090,12 +7509,24 @@ print_summary() {
             printf "${DIM}Log: %s${NC}\n" "$UPDATE_LOG_FILE"
         fi
     elif [[ $FAIL_COUNT -gt 0 ]]; then
-        # In quiet mode, still report failures
+        # In quiet mode, still report failures -- and distinguish "some tools
+        # failed" from "the update failed" so a partial failure is actionable
+        # instead of ambient (#357).
         echo ""
-        printf "${RED}Update failed: %d error(s)${NC}\n" "$FAIL_COUNT"
+        if [[ $SUCCESS_COUNT -gt 0 ]]; then
+            printf "${YELLOW}Partial failure: %d updated, %d failed${NC}\n" "$SUCCESS_COUNT" "$FAIL_COUNT"
+        else
+            printf "${RED}Update failed: %d error(s), nothing updated${NC}\n" "$FAIL_COUNT"
+        fi
+        if [[ $HELD_COUNT -gt 0 ]]; then
+            printf "${YELLOW}Held tools (skipped): %s${NC}\n" "${UPDATE_HELD_TOOLS[*]}"
+        fi
         if [[ -n "$UPDATE_LOG_FILE" ]]; then
             printf "${DIM}See: %s${NC}\n" "$UPDATE_LOG_FILE"
         fi
+    elif [[ $HELD_COUNT -gt 0 ]]; then
+        # Quiet clean run with holds: still name them (#357).
+        printf "${YELLOW}Held tools (skipped): %s${NC} -- review with 'acfs holds'\n" "${UPDATE_HELD_TOOLS[*]}"
     fi
 }
 
@@ -7141,6 +7572,28 @@ BEHAVIOR OPTIONS:
   --abort-on-failure Stop immediately on first failure
   --continue         Continue after failures (default)
   --help, -h         Show this help message
+
+PER-TOOL VERSION HOLDS:
+  A hold pins one tool out of updates without pausing everything else.
+  Each hold records an owner, reason, and optional expiry; expired holds
+  warn and are ignored. Held tools are named in every update summary.
+
+  acfs hold br --reason "0.5.2 regression" --expiry 2026-09-15
+  acfs holds           # list holds
+  acfs unhold br       # release the hold
+
+POST-INSTALL VERIFICATION & ROLLBACK:
+  Before a verified installer replaces a tool binary, the previous binary
+  is retained at <binary>.prev. After the install a smoke check runs
+  (--version); if it fails, the previous binary is restored and the
+  failure is recorded (~/.local/state/acfs/update-rollback.state) so
+  nightly runs back off instead of reinstalling the same broken release.
+  Use --force to retry a backed-off tool immediately.
+
+EXIT CODES:
+  0   all updates succeeded (held tools count as deliberate skips)
+  1   total failure: errors occurred and nothing was updated
+  2   partial failure: some tools updated, some failed
 
 EXAMPLES:
   # Standard update (EVERYTHING: apt, runtimes, shell, agents, cloud, stack)
@@ -7442,8 +7895,16 @@ main() {
     # Summary
     print_summary
 
-    # Exit code
+    # Exit code (issue #357): distinguish a partial failure (some tools
+    # updated, some failed/held) from a total failure so callers and the
+    # nightly log can tell "60 succeeded, 2 failed" from "the update failed".
+    #   0 = everything succeeded (held tools count as deliberate skips)
+    #   1 = total failure: errors occurred and nothing was updated
+    #   2 = partial failure: some tools updated, some failed
     if [[ $FAIL_COUNT -gt 0 ]]; then
+        if [[ $SUCCESS_COUNT -gt 0 ]]; then
+            exit 2
+        fi
         exit 1
     fi
     exit 0
