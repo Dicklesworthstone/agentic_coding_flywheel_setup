@@ -343,7 +343,7 @@ Agents coordinate via **Agent Mail** (MCP server). Key concepts:
 ## Git Conventions
 
 - Commit messages: `type(scope): description` (feat, fix, chore, docs, test, refactor)
-- Always include: `Co-Authored-By: Claude <noreply@anthropic.com>`
+- Follow the target repository's attribution and trailer policy; do not invent or hardcode a co-author identity
 - Push after committing — don't leave unpushed work
 - Never amend published commits
 

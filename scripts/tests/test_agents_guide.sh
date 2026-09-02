@@ -154,6 +154,16 @@ test_dry_run() {
     [[ ! -e "$sandbox/home/.acfs/docs/flywheel-agent-guide.md" ]]
 }
 
+# Test 10: the shared guide defers attribution rules to each target repository
+test_repository_neutral_attribution() {
+    local sandbox out
+    sandbox="$(make_sandbox)" || return 1
+
+    out="$(run_generator "$sandbox" --dry-run)" || return 1
+    [[ "$out" == *"Follow the target repository's attribution and trailer policy"* ]] || return 1
+    [[ "$out" != *"Co-Authored-By:"* ]]
+}
+
 # ============================================================
 # Run tests
 # ============================================================
@@ -167,6 +177,7 @@ run_test "deploy refuses overwrite + writes candidate" test_deploy_refuses_overw
 run_test "redeploy of identical content is idempotent" test_deploy_idempotent
 run_test "deploy without target is a usage error" test_deploy_requires_target
 run_test "dry-run writes nothing" test_dry_run
+run_test "generated attribution policy is repository-neutral" test_repository_neutral_attribution
 
 echo ""
 echo "Passed: $TESTS_PASSED, Failed: $TESTS_FAILED, Skipped: $TESTS_SKIPPED"
