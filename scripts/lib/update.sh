@@ -392,6 +392,9 @@ UPDATE_EXIT_ROLLBACK_BACKOFF=94
 UPDATE_LAST_HOLD_DETAILS=""
 UPDATE_LAST_HOLD_TOOL=""
 UPDATE_LAST_BACKOFF_DETAILS=""
+# Post-install smoke verdict (issue #378): healthy | unsupported | broken.
+UPDATE_LAST_SMOKE_VERDICT=""
+UPDATE_LAST_SMOKE_DETAIL=""
 
 # Flags
 UPDATE_APT=true
@@ -4700,27 +4703,141 @@ update_tool_rollback_binary_name() {
     esac
 }
 
-# Smoke-check an installed binary. Generous 20s ceiling: a healthy binary that
-# does startup work (Supabase CLI takes ~5s) must not be misreported as broken
-# by a tight verification timeout.
-update_tool_smoke_check() {
+# Per-tool smoke probe (issue #378): the argument that proves a fresh binary
+# starts, for tools whose CLI rejects the default `--version`. Every probe here
+# must be headless-safe (no TTY, no display, no optional runtime dependency):
+# the probe answers "does this binary run?", not "is this host fully set up?".
+# Tools without an entry go through the fallback chain in
+# update_tool_smoke_check (`--version`, `--help`, `version`).
+update_tool_smoke_probe() {
     local tool="${1:-}"
-    local binary="${2:-}"
-    [[ -n "$binary" && -x "$binary" ]] || return 1
-
-    local -a smoke_args=("--version")
     case "$tool" in
-        pfr) smoke_args=("--doctor" "--json") ;;     # pfr has no --version flag
+        fsfs) printf '%s\n' "version" ;;    # subcommand-only CLI; `--version` is "unknown flag"
+        mdwb) printf '%s\n' "--help" ;;     # Click CLI without a --version option
+        pfr)  printf '%s\n' "--help" ;;     # `--doctor` is a health report: fails without Ghostty
+        *)    printf '%s\n' "" ;;
     esac
+}
 
+# Exit statuses that prove the binary itself is broken, independent of which
+# probe argument it was given: timeout(1) expiry (124), cannot execute (126),
+# missing interpreter/loader (127), or death by signal (128+N).
+update_smoke_exit_status_is_fatal() {
+    local status="${1:-0}"
+    [[ "$status" =~ ^[0-9]+$ ]] || return 1
+    ((status == 124 || status == 126 || status == 127 || status > 128))
+}
+
+# Does the probe output look like a CLI argument-parsing rejection? Every
+# mainstream parser prints a usage line or an "unknown/unexpected/no such
+# option" message on an unsupported flag; a binary that got that far
+# demonstrably executed. Case-insensitive so `Usage:` and `usage:` both count.
+update_smoke_output_indicates_probe_rejected() {
+    local output="${1:-}"
+    local lowered=""
+    # LC_ALL=C: probe output may contain bytes that a UTF-8 tr rejects, and
+    # that must not abort the updater under errexit.
+    lowered="$(printf '%s' "$output" | LC_ALL=C tr '[:upper:]' '[:lower:]' 2>/dev/null || true)"
+    case "$lowered" in
+        *"usage:"*|*"usage :"*|*"unknown flag"*|*"unknown option"*|*"unknown command"*|\
+        *"unknown argument"*|*"unknown subcommand"*|*"unexpected argument"*|\
+        *"unrecognized argument"*|*"unrecognized option"*|*"unrecognised option"*|\
+        *"no such option"*|*"no such command"*|*"invalid option"*|*"invalid flag"*|\
+        *"illegal option"*|*"not a valid"*|*"try '"*"--help'"*|*"try \`"*"--help'"*)
+            return 0 ;;
+    esac
+    return 1
+}
+
+# Run one probe with a bounded wall clock, stdin detached (a TUI must never
+# block verification on a terminal). Prints the probe's combined output and
+# returns its exit status; 124 when the timeout expired.
+update_run_smoke_probe() {
+    local binary="${1:-}"
+    shift
     local timeout_bin=""
     timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
     if [[ -n "$timeout_bin" ]]; then
         "$timeout_bin" --kill-after=5s "${UPDATE_SMOKE_TIMEOUT:-20}" \
-            "$binary" "${smoke_args[@]}" >/dev/null 2>&1
+            "$binary" "$@" </dev/null 2>&1
     else
-        "$binary" "${smoke_args[@]}" >/dev/null 2>&1
+        "$binary" "$@" </dev/null 2>&1
     fi
+}
+
+# Smoke-check an installed binary. Generous 20s ceiling per probe: a healthy
+# binary that does startup work (Supabase CLI takes ~5s) must not be
+# misreported as broken by a tight verification timeout.
+#
+# Verdict is left in UPDATE_LAST_SMOKE_VERDICT (issue #378):
+#   healthy      -- a probe exited 0; the binary runs.
+#   unsupported  -- every probe was rejected as an unknown argument (usage
+#                   error), but the binary executed and returned. This is a
+#                   gap in the probe table, not a broken install, and MUST NOT
+#                   trigger a rollback or backoff.
+#   broken       -- a probe timed out, could not execute, died by signal, or
+#                   failed without a usage-style rejection (crash, missing
+#                   runtime, traceback).
+# Return status: 0 for healthy, 1 otherwise (callers branch on the verdict).
+update_tool_smoke_check() {
+    local tool="${1:-}"
+    local binary="${2:-}"
+    UPDATE_LAST_SMOKE_VERDICT="broken"
+    UPDATE_LAST_SMOKE_DETAIL=""
+    if [[ -z "$binary" || ! -x "$binary" ]]; then
+        UPDATE_LAST_SMOKE_DETAIL="binary missing or not executable"
+        return 1
+    fi
+
+    # Explicit per-tool probe first, then the generic chain, each tried once.
+    local -a probes=()
+    local declared_probe=""
+    declared_probe="$(update_tool_smoke_probe "$tool")"
+    [[ -n "$declared_probe" ]] && probes+=("$declared_probe")
+    # `--help` before the bare `version` word: a flag no parser treats as a
+    # positional argument is safer than a word some CLIs would act on.
+    local fallback=""
+    for fallback in "--version" "--help" "version"; do
+        [[ "$fallback" == "$declared_probe" ]] || probes+=("$fallback")
+    done
+
+    local probe="" output="" status=0
+    local all_rejected=true
+    local -a attempts=()
+    for probe in "${probes[@]}"; do
+        # `if` form: a plain `output=$(...)` would trip errexit on a failing
+        # probe before the status could be classified.
+        if output="$(update_run_smoke_probe "$binary" "$probe")"; then
+            status=0
+        else
+            status=$?
+        fi
+        output="${output:0:4096}"
+        if ((status == 0)); then
+            UPDATE_LAST_SMOKE_VERDICT="healthy"
+            UPDATE_LAST_SMOKE_DETAIL="'$binary $probe' exited 0"
+            return 0
+        fi
+        attempts+=("'$probe' exit $status")
+        if update_smoke_exit_status_is_fatal "$status"; then
+            UPDATE_LAST_SMOKE_VERDICT="broken"
+            UPDATE_LAST_SMOKE_DETAIL="'$binary $probe' exit $status (timeout, not executable, or killed by signal)"
+            return 1
+        fi
+        update_smoke_output_indicates_probe_rejected "$output" || all_rejected=false
+    done
+
+    local attempts_summary=""
+    attempts_summary="$(printf '%s; ' "${attempts[@]}")"
+    attempts_summary="${attempts_summary%; }"
+    if [[ "$all_rejected" == "true" ]]; then
+        UPDATE_LAST_SMOKE_VERDICT="unsupported"
+        UPDATE_LAST_SMOKE_DETAIL="'$binary' executed but rejected every probe as an unknown argument (${attempts_summary}); add a probe for '$tool' to update_tool_smoke_probe"
+    else
+        UPDATE_LAST_SMOKE_VERDICT="broken"
+        UPDATE_LAST_SMOKE_DETAIL="'$binary' failed every probe without a usage-style rejection (${attempts_summary})"
+    fi
+    return 1
 }
 
 # State file recording post-install verification failures per tool, so the
@@ -4873,8 +4990,18 @@ update_verify_tool_or_rollback() {
         return 0
     fi
 
-    echo "POST-INSTALL VERIFICATION FAILED for $tool: '$new_path' failed its smoke check" >&2
-    log_to_file "POST-INSTALL VERIFICATION FAILED for $tool at $new_path"
+    # Issue #378: a probe the CLI does not understand is a gap in our probe
+    # table, not a broken install. The binary executed and parsed arguments;
+    # keep it, keep it out of backoff, and say so in the log.
+    if [[ "${UPDATE_LAST_SMOKE_VERDICT:-}" == "unsupported" ]]; then
+        echo "POST-INSTALL VERIFICATION UNAVAILABLE for $tool: ${UPDATE_LAST_SMOKE_DETAIL:-smoke probe unsupported}; keeping the new binary" >&2
+        log_to_file "POST-INSTALL VERIFICATION UNAVAILABLE for $tool at $new_path: ${UPDATE_LAST_SMOKE_DETAIL:-smoke probe unsupported}"
+        update_rollback_state_clear "$tool" || true
+        return 0
+    fi
+
+    echo "POST-INSTALL VERIFICATION FAILED for $tool: ${UPDATE_LAST_SMOKE_DETAIL:-"'$new_path' failed its smoke check"}" >&2
+    log_to_file "POST-INSTALL VERIFICATION FAILED for $tool at $new_path: ${UPDATE_LAST_SMOKE_DETAIL:-smoke check failed}"
 
     if [[ -n "$prev_path" && -f "$prev_path" ]]; then
         local restore_target="$new_path"

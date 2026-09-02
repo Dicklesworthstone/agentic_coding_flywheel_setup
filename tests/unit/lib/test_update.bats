@@ -15644,3 +15644,209 @@ EOF
     run grep -c '^#' "$HOME/.zshrc"
     assert_output "0"
 }
+
+# ============================================================
+# Post-install smoke probes (issue #378)
+# ============================================================
+# The smoke check must never roll back a healthy binary because its CLI
+# rejects `--version`; only a binary that cannot run is "broken".
+
+write_smoke_fake_binary() {
+    local path="$1"
+    local body="$2"
+    printf '#!/usr/bin/env bash\n%s\n' "$body" > "$path"
+    chmod +x "$path"
+}
+
+@test "smoke probe table: fsfs uses the version subcommand, mdwb and pfr use --help" {
+    run update_tool_smoke_probe fsfs
+    assert_success
+    assert_output "version"
+
+    run update_tool_smoke_probe mdwb
+    assert_success
+    assert_output "--help"
+
+    run update_tool_smoke_probe pfr
+    assert_success
+    assert_output "--help"
+
+    run update_tool_smoke_probe ntm
+    assert_success
+    assert_output ""
+}
+
+@test "smoke check: fsfs-style CLI that rejects --version passes via its declared probe" {
+    local bin="$HOME/fsfs"
+    write_smoke_fake_binary "$bin" '
+case "${1:-}" in
+    version) echo "fsfs 1.8.0 (frankensearch 1.8.0)"; exit 0 ;;
+    *) echo "Error: InvalidConfig { field: \"cli.flag\", value: \"$1\", reason: \"unknown flag; valid commands: search|version\" }" >&2; exit 2 ;;
+esac'
+
+    update_tool_smoke_check fsfs "$bin"
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "healthy" ]]
+    [[ "$UPDATE_LAST_SMOKE_DETAIL" == *"version"* ]]
+}
+
+@test "smoke check: undeclared Click-style CLI falls back from --version to --help" {
+    local bin="$HOME/clicktool"
+    write_smoke_fake_binary "$bin" '
+case "${1:-}" in
+    --help) echo "Usage: clicktool [OPTIONS] COMMAND"; exit 0 ;;
+    *) echo "Usage: clicktool [OPTIONS] COMMAND"; echo "Try '"'"'clicktool --help'"'"' for help."; echo "Error: No such option: $1"; exit 2 ;;
+esac'
+
+    update_tool_smoke_check clicktool "$bin"
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "healthy" ]]
+    [[ "$UPDATE_LAST_SMOKE_DETAIL" == *"--help"* ]]
+}
+
+@test "smoke check: pfr is probed with --help, never --doctor" {
+    local bin="$HOME/pfr"
+    write_smoke_fake_binary "$bin" '
+case "${1:-}" in
+    --help) echo "Usage: pfr [options]"; exit 0 ;;
+    --doctor) echo "ghostty not found in PATH" >&2; exit 1 ;;
+    *) echo "pfr: unknown option: $1" >&2; exit 2 ;;
+esac'
+
+    update_tool_smoke_check pfr "$bin"
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "healthy" ]]
+    [[ "$UPDATE_LAST_SMOKE_DETAIL" == *"--help"* ]]
+    [[ "$UPDATE_LAST_SMOKE_DETAIL" != *"--doctor"* ]]
+}
+
+@test "smoke check: a binary that rejects every probe as unknown is unsupported, not broken" {
+    local bin="$HOME/oddtool"
+    write_smoke_fake_binary "$bin" 'echo "error: unexpected argument '"'"'${1:-}'"'"' found" >&2; echo "Usage: oddtool <SUBCOMMAND>" >&2; exit 2'
+
+    run update_tool_smoke_check oddtool "$bin"
+    assert_failure
+    update_tool_smoke_check oddtool "$bin" || true
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "unsupported" ]]
+    [[ "$UPDATE_LAST_SMOKE_DETAIL" == *"update_tool_smoke_probe"* ]]
+}
+
+@test "smoke check: a crashing binary (traceback, no usage line) is broken" {
+    local bin="$HOME/brokentool"
+    write_smoke_fake_binary "$bin" 'echo "Traceback (most recent call last):" >&2; echo "ModuleNotFoundError: No module named click" >&2; exit 1'
+
+    update_tool_smoke_check brokentool "$bin" || true
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "broken" ]]
+    [[ "$UPDATE_LAST_SMOKE_DETAIL" == *"without a usage-style rejection"* ]]
+}
+
+@test "smoke check: death by signal is broken even when stderr mentions usage" {
+    local bin="$HOME/segvtool"
+    write_smoke_fake_binary "$bin" 'echo "Usage: segvtool" >&2; kill -SEGV $$'
+
+    update_tool_smoke_check segvtool "$bin" || true
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "broken" ]]
+    [[ "$UPDATE_LAST_SMOKE_DETAIL" == *"killed by signal"* ]]
+}
+
+@test "smoke check: a missing interpreter (exit 127) is broken" {
+    local bin="$HOME/noloader"
+    printf '#!/nonexistent/interpreter\n' > "$bin"
+    chmod +x "$bin"
+
+    update_tool_smoke_check noloader "$bin" || true
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "broken" ]]
+}
+
+@test "smoke check: probes run with stdin detached so a TUI cannot block verification" {
+    local bin="$HOME/ttytool"
+    write_smoke_fake_binary "$bin" '
+case "${1:-}" in
+    --version) if read -r -t 2 line; then echo "got input"; exit 3; fi; echo "ttytool 1.0"; exit 0 ;;
+    *) exit 2 ;;
+esac'
+
+    # Process-substitution redirect (not a pipe) keeps the function in this
+    # shell so the verdict global is visible afterwards.
+    update_tool_smoke_check ttytool "$bin" < <(printf 'interactive input\n')
+    [[ "$UPDATE_LAST_SMOKE_VERDICT" == "healthy" ]]
+}
+
+@test "smoke exit status classifier: 124/126/127 and signals are fatal, usage codes are not" {
+    update_smoke_exit_status_is_fatal 124
+    update_smoke_exit_status_is_fatal 126
+    update_smoke_exit_status_is_fatal 127
+    update_smoke_exit_status_is_fatal 139
+    ! update_smoke_exit_status_is_fatal 0
+    ! update_smoke_exit_status_is_fatal 1
+    ! update_smoke_exit_status_is_fatal 2
+    ! update_smoke_exit_status_is_fatal 64
+    ! update_smoke_exit_status_is_fatal 101
+    ! update_smoke_exit_status_is_fatal abc
+}
+
+@test "smoke output classifier: recognises common parser rejections and not tracebacks" {
+    update_smoke_output_indicates_probe_rejected "Usage: tool [OPTIONS]"
+    update_smoke_output_indicates_probe_rejected "Error: No such option: --version"
+    update_smoke_output_indicates_probe_rejected "reason: \"unknown flag; valid commands: search\""
+    update_smoke_output_indicates_probe_rejected "error: unexpected argument '--version' found"
+    update_smoke_output_indicates_probe_rejected "tool: unrecognized option '--version'"
+    update_smoke_output_indicates_probe_rejected "Try 'tool --help' for more information."
+    ! update_smoke_output_indicates_probe_rejected "Traceback (most recent call last):"
+    ! update_smoke_output_indicates_probe_rejected "thread 'main' panicked at src/main.rs:1:1"
+    ! update_smoke_output_indicates_probe_rejected ""
+}
+
+@test "verify-or-rollback: unsupported probe keeps the new binary and records no backoff" {
+    export XDG_STATE_HOME="$HOME/.local/state"
+    mkdir -p "$HOME/bin"
+    local bin="$HOME/bin/oddtool"
+    write_smoke_fake_binary "$bin" 'echo "Usage: oddtool <SUBCOMMAND>" >&2; exit 2'
+    printf '#!/usr/bin/env bash\necho old\n' > "$bin.prev"
+    chmod +x "$bin.prev"
+    update_tool_binary_path() { printf '%s\n' "$HOME/bin/oddtool"; }
+    UPDATE_ROLLBACK_PREV_PATH="$bin.prev"
+    UPDATE_ROLLBACK_BIN_PATH="$bin"
+
+    run update_verify_tool_or_rollback oddtool
+    assert_success
+    [[ "$output" == *"VERIFICATION UNAVAILABLE"* ]]
+    [[ "$output" != *"ROLLED BACK"* ]]
+    grep -q 'Usage: oddtool' "$bin"
+    [[ -f "$bin.prev" ]]
+    ! update_rollback_state_lookup oddtool
+}
+
+@test "verify-or-rollback: a broken binary is rolled back and put in backoff" {
+    export XDG_STATE_HOME="$HOME/.local/state"
+    mkdir -p "$HOME/bin"
+    local bin="$HOME/bin/brokentool"
+    write_smoke_fake_binary "$bin" 'echo "Traceback (most recent call last):" >&2; exit 1'
+    printf '#!/usr/bin/env bash\necho old\n' > "$bin.prev"
+    chmod +x "$bin.prev"
+    update_tool_binary_path() { printf '%s\n' "$HOME/bin/brokentool"; }
+    UPDATE_ROLLBACK_PREV_PATH="$bin.prev"
+    UPDATE_ROLLBACK_BIN_PATH="$bin"
+
+    run update_verify_tool_or_rollback brokentool
+    assert_failure
+    [[ "$output" == *"VERIFICATION FAILED"* ]]
+    [[ "$output" == *"ROLLED BACK"* ]]
+    grep -q 'echo old' "$bin"
+    [[ ! -f "$bin.prev" ]]
+    update_rollback_state_lookup brokentool
+}
+
+@test "verify-or-rollback: a healthy fsfs-style install clears a previous backoff" {
+    export XDG_STATE_HOME="$HOME/.local/state"
+    mkdir -p "$HOME/bin"
+    local bin="$HOME/bin/fsfs"
+    write_smoke_fake_binary "$bin" '[[ "${1:-}" == "version" ]] && { echo "fsfs 1.8.0"; exit 0; }; echo "unknown flag" >&2; exit 2'
+    update_tool_binary_path() { printf '%s\n' "$HOME/bin/fsfs"; }
+    UPDATE_ROLLBACK_PREV_PATH=""
+    UPDATE_ROLLBACK_BIN_PATH=""
+    update_rollback_state_record_failure fsfs
+    update_rollback_state_lookup fsfs
+
+    run update_verify_tool_or_rollback fsfs
+    assert_success
+    [[ "$output" != *"VERIFICATION"* ]]
+    ! update_rollback_state_lookup fsfs
+}

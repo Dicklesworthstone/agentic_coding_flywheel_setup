@@ -748,12 +748,25 @@ in the log. Expired holds warn and are ignored. Holds live in
 ### Post-Install Verification and Rollback
 
 Before a verified installer replaces a tool binary, the previous binary is
-retained at `<binary>.prev`. After the install, a smoke check runs
-(`<tool> --version`); if the fresh binary fails it, the previous binary is
-restored atomically and the failure is recorded in
-`~/.local/state/acfs/update-rollback.state` so nightly runs back off instead of
-reinstalling the same broken release every night. `acfs doctor` reports rolled
-back tools; `acfs-update --force` retries immediately.
+retained at `<binary>.prev`. After the install, a smoke check probes the fresh
+binary with a per-tool argument (`update_tool_smoke_probe` in
+`scripts/lib/update.sh`: `fsfs version`, `mdwb --help`, `pfr --help`) or, for
+tools without an entry, the chain `--version` → `--help` → `version`. Every
+probe is headless-safe and runs with stdin detached under a 20 s ceiling.
+Verdicts:
+
+- **healthy** — a probe exited 0.
+- **unsupported** — every probe was rejected as an unknown argument (usage
+  error). The binary ran, so it is kept and logged as
+  `POST-INSTALL VERIFICATION UNAVAILABLE`; no rollback, no backoff.
+- **broken** — a probe timed out, could not execute, died by signal, or failed
+  without a usage-style rejection (crash, traceback, missing runtime). The
+  previous binary is restored atomically and the failure is recorded in
+  `~/.local/state/acfs/update-rollback.state` so nightly runs back off instead
+  of reinstalling the same broken release every night.
+
+`acfs doctor` reports rolled back tools; `acfs-update --force` retries
+immediately.
 
 `acfs-update` exit codes distinguish partial from total failure: `0` all
 succeeded, `1` total failure (nothing updated), `2` partial failure (some tools
