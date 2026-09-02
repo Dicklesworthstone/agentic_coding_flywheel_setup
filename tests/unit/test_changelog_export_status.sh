@@ -522,6 +522,57 @@ test_changelog_rejects_invalid_duration() {
     cleanup_mock_env
 }
 
+# Regression for #376: the documented duration forms (30d, 2w, 1m, bare days)
+# crashed with "10#30d: value too great for base"; ISO dates are also accepted.
+test_changelog_accepts_documented_since_forms() {
+    setup_mock_env
+
+    local value=""
+    local output=""
+    local exit_code=0
+    local all_ok=true
+    local failure_detail=""
+
+    for value in 30d 7D 2w 1m 30 0d; do
+        exit_code=0
+        output=$(ACFS_HOME="$TEST_ACFS" ACFS_REPO="$TEST_REPO" bash "$CHANGELOG_SH" --since "$value" 2>&1) || exit_code=$?
+        if [[ "$exit_code" -ne 0 ]] || [[ "$output" == *"value too great for base"* ]] || [[ "$output" != *"Changes since:"* ]]; then
+            all_ok=false
+            failure_detail="value=$value exit=$exit_code output=$output"
+            break
+        fi
+    done
+
+    if [[ "$all_ok" == "true" ]]; then
+        exit_code=0
+        output=$(ACFS_HOME="$TEST_ACFS" ACFS_REPO="$TEST_REPO" bash "$CHANGELOG_SH" --since 2026-03-05 2>&1) || exit_code=$?
+        if [[ "$exit_code" -ne 0 ]] || [[ "$output" != *"Changes since: 2026-03-05"* ]]; then
+            all_ok=false
+            failure_detail="value=2026-03-05 exit=$exit_code output=$output"
+        fi
+    fi
+
+    if [[ "$all_ok" == "true" ]]; then
+        for value in 2026-13-01 1x d7; do
+            exit_code=0
+            output=$(ACFS_HOME="$TEST_ACFS" ACFS_REPO="$TEST_REPO" bash "$CHANGELOG_SH" --since "$value" 2>&1) || exit_code=$?
+            if [[ "$exit_code" -eq 0 ]] || [[ "$output" != *"invalid duration"* ]] || [[ "$output" == *"value too great for base"* ]]; then
+                all_ok=false
+                failure_detail="value=$value exit=$exit_code output=$output"
+                break
+            fi
+        done
+    fi
+
+    if [[ "$all_ok" == "true" ]]; then
+        harness_pass "changelog accepts documented --since forms (Nd/Nw/Nm/days/ISO date)"
+    else
+        harness_fail "changelog accepts documented --since forms (Nd/Nw/Nm/days/ISO date)" "$failure_detail"
+    fi
+
+    cleanup_mock_env
+}
+
 test_services_setup_prefers_target_home_libs_under_root_home() {
     setup_mock_env
 
@@ -11607,6 +11658,7 @@ main() {
     test_changelog_json_is_valid || true
     test_changelog_defaults_to_last_updated || true
     test_changelog_rejects_invalid_duration || true
+    test_changelog_accepts_documented_since_forms || true
 
     harness_section "Services Setup"
     test_services_setup_prefers_target_home_libs_under_root_home || true

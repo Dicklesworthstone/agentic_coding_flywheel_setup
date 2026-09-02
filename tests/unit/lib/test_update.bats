@@ -1496,6 +1496,7 @@ EOF
 }
 
 @test "update_stack continues after Meta Skill retry exhaustion" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     QUIET=true
     VERBOSE=false
     DRY_RUN=false
@@ -1548,6 +1549,7 @@ EOF
 }
 
 @test "update_stack records MCP Agent Mail target-home failure and continues" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     QUIET=true
     VERBOSE=false
     DRY_RUN=false
@@ -1598,6 +1600,7 @@ EOF
 }
 
 @test "update_stack skips upstream MCP Agent Mail setup and owns service readiness" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     local mode_file="$HOME/mcp-agent-mail-installer-mode"
 
     QUIET=true
@@ -1649,7 +1652,153 @@ EOF
     [[ "$(cat "$mode_file")" == "755" ]]
 }
 
+# Shared fixture for the MCP Agent Mail hold/minisign tests: every stack step
+# other than Agent Mail is stubbed out, and Agent Mail's download/service
+# steps drop marker files so the tests can prove they never ran.
+_setup_stack_agent_mail_gate_fixture() {
+    QUIET=true
+    VERBOSE=false
+    DRY_RUN=false
+    UPDATE_STACK=true
+    ABORT_ON_FAILURE=false
+    ACFS_UPDATE_RETRY_MAX_ATTEMPTS=1
+    UPDATE_LOG_FILE="$HOME/update.log"
+    SUCCESS_COUNT=0
+    FAIL_COUNT=0
+    SKIP_COUNT=0
+    HELD_COUNT=0
+    UPDATE_HELD_TOOLS=()
+    UPDATE_MINISIGN_STATUS=""
+
+    declare -gA KNOWN_INSTALLERS=([mcp_agent_mail]="https://example.test/install-am.sh")
+
+    update_require_security() { return 0; }
+    get_checksum() { printf '%s\n' "abc123"; }
+    verify_checksum() {
+        : > "$HOME/mcp-agent-mail-downloaded"
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'exit 0'
+    }
+    update_target_user() { id -un; }
+    update_target_home() { printf '%s\n' "$HOME"; }
+    update_run_logged_passthrough() {
+        : > "$HOME/mcp-agent-mail-installer-ran"
+        return 0
+    }
+    update_source_stack_lib() { return 0; }
+    _stack_repair_agent_mail_cli_symlink() { return 0; }
+    _stack_configure_agent_mail_service() {
+        : > "$HOME/mcp-agent-mail-service-refreshed"
+        return 0
+    }
+    _stack_wait_for_agent_mail_health() { return 0; }
+    capture_version_before() { :; }
+    capture_version_after() { return 1; }
+    update_binary_exists() { return 1; }
+    update_run_verified_installer() {
+        case "${1:-}" in
+            apr) : > "$HOME/apr-ran" ;;
+            caam) : > "$HOME/caam-ran" ;;
+        esac
+        return 0
+    }
+    update_run_verified_installer_or_existing_on_transient() { return 0; }
+    update_run_verified_installer_with_target_tmpdir_or_existing_on_transient() { return 0; }
+    update_run_verified_installer_with_env() { return 0; }
+    update_run_slb_verified_install() { return 0; }
+    update_run_fsfs_installer() { return 0; }
+}
+
+@test "update_stack honors an active MCP Agent Mail hold before any download or service action (#377)" {
+    _setup_stack_agent_mail_gate_fixture
+    update_ensure_minisign() { return 0; }
+    update_tool_hold_details() {
+        UPDATE_LAST_HOLD_DETAILS=""
+        UPDATE_LAST_HOLD_TOOL=""
+        if [[ "${1:-}" == "mcp_agent_mail" ]]; then
+            UPDATE_LAST_HOLD_DETAILS="version current, owner ops, reason 'stale pin', expires 2099-01-01"
+            UPDATE_LAST_HOLD_TOOL="mcp_agent_mail"
+            return 0
+        fi
+        return 1
+    }
+
+    # Call directly (not via `run`) so the counters mutated by update_stack
+    # are visible to the assertions.
+    update_stack > "$HOME/stack.out" 2>&1 || true
+    local output
+    output="$(cat "$HOME/stack.out")"
+
+    [[ ! -f "$HOME/mcp-agent-mail-downloaded" ]]
+    [[ ! -f "$HOME/mcp-agent-mail-installer-ran" ]]
+    [[ ! -f "$HOME/mcp-agent-mail-service-refreshed" ]]
+    [[ -f "$HOME/apr-ran" ]]
+    [[ -f "$HOME/caam-ran" ]]
+    grep -qF "[skip] MCP Agent Mail - HELD: version current, owner ops, reason 'stale pin', expires 2099-01-01" "$UPDATE_LOG_FILE"
+    [[ "$output" != *"[fail] MCP Agent Mail"* ]]
+    [[ "$output" != *"[fail] CAAM"* ]]
+    [[ "$HELD_COUNT" -eq 1 ]]
+    [[ "${UPDATE_HELD_TOOLS[*]}" == "mcp_agent_mail" ]]
+}
+
+@test "update_stack fails MCP Agent Mail and CAAM loudly when minisign is missing and cannot be installed (#375)" {
+    _setup_stack_agent_mail_gate_fixture
+    update_tool_hold_details() { UPDATE_LAST_HOLD_DETAILS=""; UPDATE_LAST_HOLD_TOOL=""; return 1; }
+    update_system_binary_path() { return 1; }
+    update_sudo_prefix() { return 1; }
+
+    run update_stack
+    assert_success
+    assert_output --partial "[fail] MCP Agent Mail"
+    assert_output --partial "[fail] CAAM"
+    assert_output --partial "minisign is required to verify release signatures but is not installed"
+    assert_output --partial "install -y minisign"
+    [[ ! -f "$HOME/mcp-agent-mail-downloaded" ]]
+    [[ ! -f "$HOME/mcp-agent-mail-installer-ran" ]]
+    [[ ! -f "$HOME/caam-ran" ]]
+    [[ -f "$HOME/apr-ran" ]]
+}
+
+@test "update_stack installs minisign through the package manager before the Agent Mail installer runs (#375)" {
+    _setup_stack_agent_mail_gate_fixture
+    update_tool_hold_details() { UPDATE_LAST_HOLD_DETAILS=""; UPDATE_LAST_HOLD_TOOL=""; return 1; }
+    # minisign "appears" in /usr/bin only after the stubbed package install;
+    # every other lookup keeps the real system-path behavior.
+    update_system_binary_path() {
+        local candidate=""
+        if [[ "${1:-}" == "minisign" ]]; then
+            [[ -f "$HOME/minisign-installed" ]] || return 1
+            printf '%s\n' "/usr/bin/minisign"
+            return 0
+        fi
+        for candidate in "/usr/bin/$1" "/bin/$1" "/usr/sbin/$1" "/sbin/$1"; do
+            [[ -x "$candidate" ]] || continue
+            printf '%s\n' "$candidate"
+            return 0
+        done
+        return 1
+    }
+    update_sudo_prefix() { local -n _ref="$1"; _ref=(); return 0; }
+    stub_command "apt-get" ""
+    run_cmd_sudo_with_retry_status() {
+        printf '%s\n' "$*" > "$HOME/minisign-install.args"
+        : > "$HOME/minisign-installed"
+        return 0
+    }
+
+    run update_stack
+    assert_success
+    [[ -f "$HOME/minisign-install.args" ]]
+    grep -q "install -y minisign" "$HOME/minisign-install.args"
+    [[ -f "$HOME/mcp-agent-mail-downloaded" ]]
+    [[ -f "$HOME/mcp-agent-mail-installer-ran" ]]
+    [[ -f "$HOME/caam-ran" ]]
+    grep -qF "Success: MCP Agent Mail" "$UPDATE_LOG_FILE"
+    ! grep -qF "[fail] MCP Agent Mail" "$UPDATE_LOG_FILE"
+}
+
 @test "update_stack runs CASS through target tmpdir fallback and continues on failure" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     local calls_file="$HOME/verified-installer-calls"
 
     QUIET=true
@@ -1713,6 +1862,7 @@ EOF
 }
 
 @test "update_stack honors abort-on-failure for MCP Agent Mail target-home failure" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     QUIET=true
     VERBOSE=false
     DRY_RUN=false
@@ -1764,6 +1914,7 @@ EOF
 }
 
 @test "update_stack honors abort-on-failure for MCP Agent Mail installer failure" {
+    update_ensure_minisign() { return 0; }  # the minisign gate (#375) has its own tests
     QUIET=true
     VERBOSE=false
     DRY_RUN=false

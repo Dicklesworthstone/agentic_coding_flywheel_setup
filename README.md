@@ -1369,6 +1369,7 @@ ACFS installs a comprehensive suite of **30+ tools** organized into categories:
 | **dnsutils** | `dig` | DNS debugging |
 | **netcat** | `nc` | Network debugging |
 | **strace** | `strace` | Syscall tracing |
+| **minisign** | `minisign` | Release signature verification (required by the Agent Mail and CAAM installers) |
 
 ### Networking
 

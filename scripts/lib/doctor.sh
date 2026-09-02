@@ -2013,6 +2013,9 @@ get_version_line() {
         version=$(UBS_MAX_DIR_SIZE_MB=10000 doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" --version) || true
     elif [[ "$cmd" == "lsof" ]] || [[ "$exec_path" == */lsof ]]; then
         version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" merge "$exec_path" -v) || true
+    elif [[ "$cmd" == "minisign" ]] || [[ "$exec_path" == */minisign ]]; then
+        # minisign only knows -v; --version prints its usage text to stdout.
+        version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" -v) || true
     else
         version=$(doctor_version_probe "$timeout_bin" "$DOCTOR_VERSION_TIMEOUT" discard "$exec_path" --version) || true
     fi
@@ -2385,6 +2388,9 @@ check_core_tools() {
     check_command "tool.lsof" "lsof" "lsof" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y lsof"
     check_command "tool.zstd" "zstd" "zstd" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y zstd"
     check_cosign_version
+    # minisign (#375): the MCP Agent Mail (>= 0.3.31) and CAAM (>= 0.1.18)
+    # installers verify release signatures with it and fail closed without it.
+    check_command "tool.minisign" "minisign (Agent Mail/CAAM release verification)" "minisign" "$(doctor_pkg_install_hint minisign)"
     check_command "tool.dig" "dig (dnsutils)" "dig" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y dnsutils"
     check_command "tool.nc" "nc (netcat-openbsd)" "nc" "sudo apt-get -o DPkg::Lock::Timeout=120 install -y netcat-openbsd"
     check_command "tool.sg" "ast-grep" "sg" "cargo install ast-grep --locked"

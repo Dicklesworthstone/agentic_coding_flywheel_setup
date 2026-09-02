@@ -10,6 +10,7 @@
 #   acfs changelog --all        # Full history
 #   acfs changelog --since 7d   # Last 7 days
 #   acfs changelog --since 2w   # Last 2 weeks
+#   acfs changelog --since 2026-01-01   # Since a calendar date
 #   acfs changelog --json       # JSON output for scripting
 #
 # Design Philosophy:
@@ -684,23 +685,30 @@ get_last_update_date() {
     date -d "30 days ago" '+%Y-%m-%d' 2>/dev/null || date '+%Y-%m-%d'
 }
 
-# Parse duration string (e.g., "7d", "2w", "1m") to days
+# Parse a --since duration ("30d", "2w", "1m", or a bare number of days) to
+# a whole number of days. The unit is case-insensitive; months are 30 days.
+# Anything else returns 1 without touching bash arithmetic, so the caller can
+# print a friendly error instead of "10#30d: value too great for base" (#376).
 parse_duration() {
-    local num="${1:-1}"
-    local duration="${2:-days}"
+    local input="${1:-}"
+    local num=""
+    local unit=""
 
-    case "${duration,,}" in
-        d|D|days) echo "$((10#$num))" ;;
-        w|W|weeks) echo "$((10#$num * 7))" ;;
-        m|M|months) echo "$((10#$num * 30))" ;;
-        *) 
-            if [[ "$num" =~ ^[0-9]+$ ]]; then
-                echo "$((10#$num))"
-            else
-                echo "1"
-            fi
-            ;;
+    [[ "$input" =~ ^([0-9]+)([dDwWmM]?)$ ]] || return 1
+    num="${BASH_REMATCH[1]}"
+    unit="${BASH_REMATCH[2],,}"
+
+    case "$unit" in
+        ""|d) echo "$((10#$num))" ;;
+        w) echo "$((10#$num * 7))" ;;
+        m) echo "$((10#$num * 30))" ;;
+        *) return 1 ;;
     esac
+}
+
+# True when the --since value is an ISO calendar date (YYYY-MM-DD).
+is_iso_date() {
+    [[ "${1:-}" =~ ^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$ ]]
 }
 
 # Format change type icon and color
@@ -926,7 +934,8 @@ Usage: acfs changelog [OPTIONS]
 
 Options:
   --all              Show full changelog history
-  --since <PERIOD>   Show changes since period (e.g., 7d, 2w, 1m)
+  --since <PERIOD>   Show changes since a duration (7d, 2w, 1m, or whole days)
+                     or since an ISO date (YYYY-MM-DD)
   --json             Output in JSON format
   --help, -h         Show this help message
 
@@ -935,6 +944,7 @@ Examples:
   acfs changelog --all        # Full history
   acfs changelog --since 7d   # Last 7 days
   acfs changelog --since 2w   # Last 2 weeks
+  acfs changelog --since 2026-01-01   # Since a calendar date
   acfs changelog --json       # JSON output
 
 Legend:
@@ -961,7 +971,7 @@ main() {
                 ;;
             --since|-s)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
-                    echo "Error: --since requires a duration value (e.g., 7d, 2w, 1m)" >&2
+                    echo "Error: --since requires a duration (e.g., 7d, 2w, 1m) or a date (YYYY-MM-DD)" >&2
                     exit 1
                 fi
                 since_period="$2"
@@ -998,12 +1008,16 @@ main() {
     if [[ "$show_all" == "true" ]]; then
         since_date="1970-01-01"
     elif [[ -n "$since_period" ]]; then
-        local days
-        if ! days=$(parse_duration "$since_period"); then
-            echo "Error: invalid duration '$since_period' (expected 7d, 2w, 1m, or whole days)" >&2
-            exit 1
+        if is_iso_date "$since_period"; then
+            since_date="$since_period"
+        else
+            local days
+            if ! days=$(parse_duration "$since_period"); then
+                echo "Error: invalid duration '$since_period' (expected 7d, 2w, 1m, whole days, or YYYY-MM-DD)" >&2
+                exit 1
+            fi
+            since_date=$(date -d "${days} days ago" '+%Y-%m-%d' 2>/dev/null || date '+%Y-%m-%d')
         fi
-        since_date=$(date -d "${days} days ago" '+%Y-%m-%d' 2>/dev/null || date '+%Y-%m-%d')
     else
         since_date=$(get_last_update_date)
     fi

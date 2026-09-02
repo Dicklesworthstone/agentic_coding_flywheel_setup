@@ -4610,6 +4610,82 @@ update_note_held_tool() {
     return 0
 }
 
+# ============================================================
+# minisign prerequisite (issue #375)
+# ============================================================
+# The mcp_agent_mail (>= 0.3.31) and caam (>= 0.1.18) installers verify
+# release signatures with minisign and fail closed without it. Fresh installs
+# provision it in the base phase; hosts installed before that get it here,
+# before any installer that needs it runs, so the nightly never fails on a
+# silent missing prerequisite.
+# ============================================================
+
+UPDATE_MINISIGN_STATUS=""   # "" (unchecked), present, installed, or missing
+
+update_minisign_install_hint() {
+    if ! command -v apt-get &>/dev/null && command -v pacman &>/dev/null; then
+        printf '%s' "sudo pacman -S --needed minisign"
+    else
+        printf '%s' "sudo apt-get -o DPkg::Lock::Timeout=120 install -y minisign"
+    fi
+}
+
+# Failure text for a tool whose installer cannot verify releases without minisign.
+update_minisign_missing_details() {
+    printf '%s' "minisign is required to verify release signatures but is not installed; run '$(update_minisign_install_hint)' and re-run acfs update"
+}
+
+# minisign is a system package (/usr/bin), but honor a user-local copy too.
+update_minisign_present() {
+    update_system_binary_path minisign >/dev/null 2>&1 || update_binary_exists minisign
+}
+
+# Ensure minisign is available, installing it through the system package
+# manager when we can. Returns 0 when present (or freshly installed), 1 when
+# it is missing and could not be installed. Result is cached per run.
+update_ensure_minisign() {
+    case "$UPDATE_MINISIGN_STATUS" in
+        present|installed) return 0 ;;
+        missing) return 1 ;;
+    esac
+
+    if update_minisign_present; then
+        UPDATE_MINISIGN_STATUS="present"
+        return 0
+    fi
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_item "skip" "minisign" "dry-run: would install (required by the MCP Agent Mail and CAAM installers)"
+        UPDATE_MINISIGN_STATUS="missing"
+        return 1
+    fi
+
+    local -a sudo_cmd=()
+    if ! update_sudo_prefix sudo_cmd; then
+        log_to_file "minisign missing and sudo unavailable; cannot install it"
+        UPDATE_MINISIGN_STATUS="missing"
+        return 1
+    fi
+
+    if command -v apt-get &>/dev/null; then
+        run_cmd_sudo_with_retry_status "Installing minisign (release signature verification)" \
+            env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+            apt-get -o DPkg::Lock::Timeout=120 install -y minisign || true
+    elif command -v pacman &>/dev/null; then
+        run_cmd_sudo_with_retry_status "Installing minisign (release signature verification)" \
+            pacman -S --needed --noconfirm minisign || true
+    else
+        log_to_file "minisign missing and no supported package manager found"
+    fi
+
+    if update_minisign_present; then
+        UPDATE_MINISIGN_STATUS="installed"
+        return 0
+    fi
+    UPDATE_MINISIGN_STATUS="missing"
+    return 1
+}
+
 # Installer key -> binary name, for the few tools where they differ. An empty
 # result means "no single binary to snapshot/verify" and the rollback layer
 # steps aside for that tool.
@@ -6840,6 +6916,11 @@ update_stack() {
         update_say "       ${DIM}%s → %s${NC}\n" "${VERSION_BEFORE[ntm]}" "${VERSION_AFTER[ntm]}"
     fi
 
+    # minisign (issue #375): the MCP Agent Mail and CAAM installers fail
+    # closed without it, so provision it once here, before either runs.
+    local minisign_ready=true
+    update_ensure_minisign || minisign_ready=false
+
     # MCP Agent Mail - always install/update via non-blocking installer mode,
     # then enable the managed user service on port 8765.
     local tool="mcp_agent_mail"
@@ -6849,6 +6930,14 @@ update_stack() {
 
     if [[ "$DRY_RUN" == "true" ]]; then
         log_item "skip" "MCP Agent Mail" "dry-run: verified install + service refresh"
+    elif update_tool_hold_details "$tool"; then
+        # Per-tool hold (issues #357, #377): this custom path bypasses the
+        # shared verified-installer wrapper, so honor the hold here, before
+        # any download or service action, and count it as a deliberate skip.
+        log_item "skip" "MCP Agent Mail" "HELD: $UPDATE_LAST_HOLD_DETAILS"
+        update_note_held_tool "$tool"
+    elif [[ "$minisign_ready" != "true" ]]; then
+        log_item "fail" "MCP Agent Mail" "$(update_minisign_missing_details)"
     elif [[ -n "$url" ]] && [[ -n "$expected_sha256" ]]; then
         local tmp_install
         tmp_install="$(update_create_target_readable_temp_file "acfs-install-am" 2>/dev/null)" || tmp_install=""
@@ -6967,8 +7056,14 @@ update_stack() {
     # unless the CLI is still present and versionable afterward.
     update_run_verified_installer_or_existing_on_transient "CASS Memory" cm cm cm --easy-mode --verify || true
 
-    # CAAM - always install/update
-    run_cmd "CAAM" update_run_verified_installer caam
+    # CAAM - always install/update. Releases >= 0.1.18 are minisign-signed and
+    # the installer fails closed without minisign (#375); a held CAAM still
+    # skips through the shared path regardless.
+    if [[ "$minisign_ready" == "true" || "$DRY_RUN" == "true" ]] || update_tool_hold_details caam; then
+        run_cmd "CAAM" update_run_verified_installer caam
+    else
+        log_item "fail" "CAAM" "$(update_minisign_missing_details)"
+    fi
 
     # SLB - install when absent; refresh only ACFS-managed binaries (#329).
     # An operator-audited/pinned binary is preserved unless ACFS_FORCE_SLB_UPDATE=1.
