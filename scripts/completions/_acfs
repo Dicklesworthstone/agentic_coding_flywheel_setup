@@ -409,7 +409,7 @@ _acfs() {
                     ;;
                 services|svc)
                     _arguments -C \
-                        '1: :_values "service command" start stop status restart logs help' \
+                        '1: :_values "service command" start stop status restart repair drift logs help' \
                         '2: :_values "service" agent-mail cm cass' \
                         '--dry-run[Show actions without changing service state]' \
                         '-h[Show help message]' \

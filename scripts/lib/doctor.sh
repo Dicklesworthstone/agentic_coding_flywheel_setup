@@ -3020,6 +3020,46 @@ check_stack() {
 }
 
 # ============================================================
+# Managed service binary drift (issue #381)
+# ============================================================
+# A tool update replaces the file on disk while the live service keeps running
+# the executable it started with. `cass --version` then reports the new release
+# although the running watcher still executes the old code. Delegate the
+# comparison to acfs-services.sh, which inspects what each SERVICE runs
+# (/proc/<pid>/exe) rather than what the caller's PATH resolves.
+check_service_binary_drift() {
+    local service_manager=""
+    local drift_output=""
+    local service="" state="" detail=""
+    local timeout_bin=""
+    local -a drift_cmd=()
+
+    service_manager="$(_acfs_doctor_find_lib_script "acfs-services.sh" 2>/dev/null || true)"
+    if [[ -z "$service_manager" || ! -r "$service_manager" ]]; then
+        return 0
+    fi
+
+    drift_cmd=(bash "$service_manager" drift --robot)
+    timeout_bin="$(_acfs_doctor_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -n "$timeout_bin" ]]; then
+        drift_cmd=("$timeout_bin" 30 "${drift_cmd[@]}")
+    fi
+
+    drift_output="$("${drift_cmd[@]}" 2>/dev/null || true)"
+    [[ -n "$drift_output" ]] || return 0
+
+    while IFS='|' read -r service state detail; do
+        [[ -n "$service" && "$state" == "stale" ]] || continue
+        check "services.binary_drift.$service" \
+            "Managed service '$service' is running a replaced binary" \
+            "warn" "$detail" \
+            "Restart just this service at a quiescent moment: acfs services restart $service"
+    done <<< "$drift_output"
+
+    return 0
+}
+
+# ============================================================
 # Utility Tools Health Checks (bd-2gog)
 # ============================================================
 # Optional utility tools from the Dicklesworthstone ecosystem.
@@ -5654,6 +5694,7 @@ $(gum style --foreground "$ACFS_MUTED" "OS:") $(gum style --foreground "$ACFS_TE
     check_agents
     check_cloud
     check_stack
+    check_service_binary_drift
     check_utilities
     check_updates_health
     check_manifest_supplemental

@@ -1060,6 +1060,8 @@ Start, stop, restart, inspect, or follow logs for the local coordination daemons
 acfs services start
 acfs services status
 acfs services logs agent-mail
+acfs services restart cass     # restart one service; the others keep running
+acfs services drift            # is the live process on the installed binary?
 acfs services stop
 ```
 
@@ -1083,6 +1085,36 @@ return nonzero if any daemon fails its runtime readiness check.
 - Leaving the CASS watcher off can be deliberate (for example while diagnosing
   indexing or resource problems); `acfs services status` reporting it "not
   running" is not necessarily a fault.
+
+**Converging a partly-down group** (#383): when the `acfs-svc` session already
+exists, `start` repairs it instead of reporting and exiting. It relaunches only
+the services that are not running -- a pane whose process is alive is never
+touched, which matters when the tmux server also hosts long-lived agent panes.
+`acfs services repair` is the same operation under its own name.
+
+**Preflight before teardown** (#382): `restart` resolves and validates every
+binary it will need *before* it stops anything. Validation is the post-install
+smoke check from #378 -- the binary must exist, be executable, and answer a
+probe; a `broken` verdict (timeout, wrong architecture, missing loader, crash)
+aborts the restart with no service-state change, while an `unsupported` verdict
+(the CLI rejects `--version`/`--help`/`version` as unknown arguments) is
+accepted. Managed binaries are resolved from the ACFS install directories as
+well as `PATH`, so a noninteractive SSH shell without `~/.local/bin` on `PATH`
+no longer takes the group down. `restart` also accepts service names
+(`acfs services restart cass`) to restart one service without interrupting the
+others.
+
+**Running-binary drift** (#381): updating a tool replaces the file on disk, but
+a service keeps executing the inode it started with -- `cass --version` then
+reports the new release while the live watcher still runs the old code. ACFS
+compares what each *service* executes (`/proc/<pid>/exe`, which is not the same
+thing as what `PATH` resolves) against the installed binary, and warns with both
+paths and hashes from `acfs services status`, `acfs doctor`, and the end of
+`acfs update`. Nothing is restarted automatically: the warning names the exact
+per-service restart command so you can pick a quiescent moment. `acfs services
+drift` runs the check on demand (`--robot` for one `service|state|detail` line
+per service). The comparison needs procfs, so it reports `unknown` on platforms
+without one.
 
 This lifecycle command is distinct from `acfs services-setup`, which configures
 credentials and integrations rather than background processes.

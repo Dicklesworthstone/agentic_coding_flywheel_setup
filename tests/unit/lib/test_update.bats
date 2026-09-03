@@ -24,6 +24,12 @@ setup() {
 }
 
 teardown() {
+    # A services test that fails before its own cleanup must not leave an
+    # isolated tmux server running on the developer's machine.
+    if [[ -n "${ACFS_SVC_TEST_SOCKET:-}" && -n "${ACFS_SVC_TEST_TMUX:-}" ]]; then
+        "$ACFS_SVC_TEST_TMUX" -L "$ACFS_SVC_TEST_SOCKET" kill-server >/dev/null 2>&1 || true
+        unset ACFS_SVC_TEST_SOCKET ACFS_SVC_TEST_TMUX
+    fi
     common_teardown
 }
 
@@ -9915,11 +9921,12 @@ EOF
         _initialize_bins() { :; }
         _require_tmux() { :; }
         _session_exists() { return 0; }
+        cmd_repair() { return 0; }
         cmd_status() { return 23; }
         cmd_start
     ' _ "$services"
     assert_failure 23
-    assert_output --partial "checking actual service health"
+    assert_output --partial "repairing any service that is not running"
 }
 
 @test "acfs services reuses an external owner without requiring am or failing stop" {
@@ -15849,4 +15856,435 @@ esac'
     assert_success
     [[ "$output" != *"VERIFICATION"* ]]
     ! update_rollback_state_lookup fsfs
+}
+
+# ============================================================
+# acfs services: preflight, pane repair, and running-binary drift
+# (issues #381, #382, #383)
+# ============================================================
+
+# Build a self-contained fixture: an isolated tmux server (its own socket, so a
+# test can never touch a live session) plus fake am/cm/cass binaries that exec
+# a non-shell process, exactly like a real service pane.
+_svc_fixture() {
+    local dir="$BATS_TEST_TMPDIR/svcfix"
+    local tmux_bin=""
+    local name=""
+
+    tmux_bin="$(command -v tmux 2>/dev/null || true)"
+    [[ -n "$tmux_bin" ]] || return 1
+
+    mkdir -p "$dir"
+    export ACFS_SVC_TEST_SOCKET="acfs-bats-$$-${BATS_TEST_NUMBER:-0}"
+    export ACFS_SVC_TEST_TMUX="$tmux_bin"
+    printf '#!/usr/bin/env bash\nexec %q -L %q "$@"\n' "$tmux_bin" "$ACFS_SVC_TEST_SOCKET" > "$dir/tmux"
+    chmod +x "$dir/tmux"
+
+    for name in am cm cass; do
+        {
+            printf '#!/usr/bin/env bash\n'
+            printf 'if [[ "${1:-}" == "--version" ]]; then echo "%s 9.9.9"; exit 0; fi\n' "$name"
+            printf 'exec sleep 100000\n'
+        } > "$dir/$name"
+        chmod +x "$dir/$name"
+    done
+
+    export SVCFIX="$dir"
+    return 0
+}
+
+# Shared stub preamble: real tmux (isolated), fake binaries, and health probes
+# that report Agent Mail and the CM port as up so the tests exercise pane
+# lifecycle rather than HTTP.
+_svc_stub_preamble() {
+    cat <<'STUBS'
+_initialize_bins() {
+    _TMUX_BIN="$SVCFIX/tmux"
+    _CURL_BIN="/usr/bin/curl"
+    _SS_BIN=""; _LSOF_BIN=""; _SYSTEMCTL_BIN=""; _JOURNALCTL_BIN=""
+    _AM_BIN="$SVCFIX/am"; _CM_BIN="$SVCFIX/cm"; _CASS_BIN="$SVCFIX/cass"
+}
+_agent_mail_is_healthy() { return 0; }
+_native_agent_mail_unit_available() { return 1; }
+_native_agent_mail_is_active() { return 1; }
+_port_is_listening() { return 0; }
+_validate_http_endpoints() { return 0; }
+_report_binary_drift() { return 0; }
+STUBS
+}
+
+@test "acfs services start repairs a dead service pane without touching live panes (#383)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    _svc_fixture || skip "tmux is not installed"
+
+    run bash -c "
+        source \"\$1\"
+        set +e
+        $(_svc_stub_preamble)
+        cmd_start >/dev/null 2>&1 || { echo 'INITIAL_START_FAILED'; exit 1; }
+
+        cm_pane=\"\$(_pane_id_for_service cm)\"
+        cass_pane=\"\$(_pane_id_for_service cass)\"
+        cm_pid_before=\"\$(\"\$_TMUX_BIN\" display-message -t \"\$cm_pane\" -p '#{pane_pid}')\"
+
+        # Kill only the cass process; its pane survives at a shell prompt.
+        cass_shell=\"\$(\"\$_TMUX_BIN\" display-message -t \"\$cass_pane\" -p '#{pane_pid}')\"
+        pkill -P \"\$cass_shell\" >/dev/null 2>&1
+        sleep 2
+        _pane_service_is_running cass && { echo 'CASS_STILL_RUNNING'; exit 1; }
+
+        cmd_start >/dev/null 2>&1
+        rc=\$?
+        sleep 2
+        cm_pid_after=\"\$(\"\$_TMUX_BIN\" display-message -t \"\$cm_pane\" -p '#{pane_pid}')\"
+        _pane_service_is_running cass && echo 'CASS_REPAIRED'
+        _pane_service_is_running cm && echo 'CM_STILL_RUNNING'
+        [[ \"\$cm_pid_before\" == \"\$cm_pid_after\" ]] && echo 'CM_PANE_UNTOUCHED'
+        [[ \"\$cm_pane\" == \"\$(_pane_id_for_service cm)\" ]] && echo 'CM_PANE_ID_STABLE'
+        echo \"START_RC=\$rc\"
+        \"\$_TMUX_BIN\" kill-server >/dev/null 2>&1
+    " _ "$services"
+
+    assert_output --partial "CASS_REPAIRED"
+    assert_output --partial "CM_STILL_RUNNING"
+    assert_output --partial "CM_PANE_UNTOUCHED"
+    assert_output --partial "CM_PANE_ID_STABLE"
+    assert_output --partial "START_RC=0"
+    refute_output --partial "INITIAL_START_FAILED"
+}
+
+@test "acfs services restart <service> restarts only the named service (#383)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    _svc_fixture || skip "tmux is not installed"
+
+    run bash -c "
+        source \"\$1\"
+        set +e
+        $(_svc_stub_preamble)
+        cmd_start >/dev/null 2>&1 || { echo 'INITIAL_START_FAILED'; exit 1; }
+        cm_pane=\"\$(_pane_id_for_service cm)\"
+        cm_pid_before=\"\$(\"\$_TMUX_BIN\" display-message -t \"\$cm_pane\" -p '#{pane_pid}')\"
+
+        cmd_restart cass >/dev/null 2>&1
+        echo \"RESTART_RC=\$?\"
+        sleep 2
+        cm_pid_after=\"\$(\"\$_TMUX_BIN\" display-message -t \"\$cm_pane\" -p '#{pane_pid}')\"
+        _pane_service_is_running cass && echo 'CASS_RUNNING'
+        _pane_service_is_running cm && echo 'CM_RUNNING'
+        [[ \"\$cm_pid_before\" == \"\$cm_pid_after\" ]] && echo 'CM_UNTOUCHED'
+        \"\$_TMUX_BIN\" kill-server >/dev/null 2>&1
+    " _ "$services"
+
+    assert_output --partial "RESTART_RC=0"
+    assert_output --partial "CASS_RUNNING"
+    assert_output --partial "CM_RUNNING"
+    assert_output --partial "CM_UNTOUCHED"
+}
+
+@test "acfs services start reports an existing healthy session without relaunching anything (#383)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    _svc_fixture || skip "tmux is not installed"
+
+    run bash -c "
+        source \"\$1\"
+        set +e
+        $(_svc_stub_preamble)
+        cmd_start >/dev/null 2>&1 || { echo 'INITIAL_START_FAILED'; exit 1; }
+        cmd_start 2>&1
+        echo \"SECOND_START_RC=\$?\"
+        \"\$_TMUX_BIN\" kill-server >/dev/null 2>&1
+    " _ "$services"
+
+    assert_output --partial "already running; nothing to repair"
+    assert_output --partial "SECOND_START_RC=0"
+    refute_output --partial "Relaunched"
+}
+
+@test "acfs services restart preflights binaries before stopping anything (#382)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _initialize_bins() {
+            _TMUX_BIN="/usr/bin/true"
+            _CURL_BIN="/usr/bin/true"
+            _AM_BIN=""; _CM_BIN=""; _CASS_BIN=""
+        }
+        _agent_mail_is_healthy() { return 0; }
+        _native_agent_mail_unit_available() { return 1; }
+        _native_agent_mail_is_active() { return 1; }
+        _session_exists() { return 0; }
+        _pane_service_is_running() { return 0; }
+        cmd_stop() { echo "STOP_WAS_CALLED"; }
+        cmd_start() { echo "START_WAS_CALLED"; }
+        cmd_restart
+        echo "RC=$?"
+    ' _ "$services"
+
+    assert_output --partial "Missing binary: cm"
+    assert_output --partial "Missing binary: cass"
+    assert_output --partial "no service was stopped and nothing changed"
+    assert_output --partial "RC=1"
+    refute_output --partial "STOP_WAS_CALLED"
+    refute_output --partial "START_WAS_CALLED"
+}
+
+@test "acfs services restart refuses a binary that cannot be executed (#382)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local broken="$BATS_TEST_TMPDIR/broken-cass"
+
+    printf '#!/nonexistent/interpreter\n' > "$broken"
+    chmod +x "$broken"
+
+    run bash -c '
+        source "$1"
+        set +e
+        broken_cass="$2"
+        _initialize_bins() {
+            _TMUX_BIN="/usr/bin/true"
+            _CURL_BIN="/usr/bin/true"
+            _AM_BIN="/usr/bin/true"; _CM_BIN="/usr/bin/true"; _CASS_BIN="$broken_cass"
+        }
+        _agent_mail_is_healthy() { return 0; }
+        _native_agent_mail_unit_available() { return 1; }
+        _native_agent_mail_is_active() { return 1; }
+        _session_exists() { return 0; }
+        _pane_service_is_running() { return 0; }
+        cmd_stop() { echo "STOP_WAS_CALLED"; }
+        cmd_start() { echo "START_WAS_CALLED"; }
+        cmd_restart
+        echo "RC=$?"
+    ' _ "$services" "$broken"
+
+    assert_output --partial "cass is not runnable"
+    assert_output --partial "RC=1"
+    refute_output --partial "STOP_WAS_CALLED"
+}
+
+@test "acfs services preflight accepts a binary whose probes are unsupported (#378 verdicts)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local quirky="$BATS_TEST_TMPDIR/quirky-cm"
+
+    printf '#!/usr/bin/env bash\necho "unknown flag: $1" >&2\nexit 2\n' > "$quirky"
+    chmod +x "$quirky"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _binary_smoke_verdict "$2"
+        echo "VERDICT=$_SMOKE_VERDICT"
+        _CM_BIN="$2"
+        _preflight_service_binary cm
+        echo "PREFLIGHT_RC=$?"
+    ' _ "$services" "$quirky"
+
+    assert_output --partial "VERDICT=unsupported"
+    assert_output --partial "PREFLIGHT_RC=0"
+}
+
+@test "acfs services preflight classifies a crashing binary as broken (#378 verdicts)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local crasher="$BATS_TEST_TMPDIR/crashing-cm"
+
+    printf '#!/usr/bin/env bash\necho "Traceback (most recent call last)" >&2\nexit 1\n' > "$crasher"
+    chmod +x "$crasher"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _binary_smoke_verdict "$2"
+        echo "VERDICT=$_SMOKE_VERDICT"
+        _CM_BIN="$2"
+        _preflight_service_binary cm
+        echo "PREFLIGHT_RC=$?"
+    ' _ "$services" "$crasher"
+
+    assert_output --partial "VERDICT=broken"
+    assert_output --partial "PREFLIGHT_RC=1"
+}
+
+@test "acfs services resolves managed binaries outside the caller's PATH (#382)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+    local bindir="$BATS_TEST_TMPDIR/hidden-bin"
+
+    mkdir -p "$bindir"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$bindir/cass"
+    chmod +x "$bindir/cass"
+
+    run env ACFS_BIN_DIR="$bindir" PATH="/usr/bin:/bin" bash -c '
+        source "$1"
+        set +e
+        _user_binary_path cass
+    ' _ "$services"
+
+    assert_success
+    assert_output "$bindir/cass"
+}
+
+@test "acfs services drift flags a service running a deleted executable (#381)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _CASS_BIN="/home/u/.local/bin/cass"
+        _AM_BIN=""; _CM_BIN=""
+        _proc_fs_available() { return 0; }
+        _service_process_pid() { [[ "$1" == "cass" ]] && printf "4242\n"; }
+        _proc_exe_path() { _EXE_DELETED=true; _EXE_PATH="/home/u/.local/bin/cass"; return 0; }
+        _short_sha() { printf "abc123abc123\n"; }
+        _service_binary_drift cass
+    ' _ "$services"
+
+    assert_success
+    assert_output --partial "cass|stale|"
+    assert_output --partial "pid 4242 runs a deleted executable"
+    assert_output --partial "installed: /home/u/.local/bin/cass"
+}
+
+@test "acfs services drift flags a replaced binary by inode identity (#381)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _CASS_BIN="/home/u/.local/bin/cass"
+        _proc_fs_available() { return 0; }
+        _service_process_pid() { printf "77\n"; }
+        _proc_exe_path() { _EXE_DELETED=false; _EXE_PATH="/home/u/.local/bin/cass"; return 0; }
+        _file_identity() { case "$1" in /proc/*) printf "1:100\n" ;; *) printf "1:200\n" ;; esac; }
+        _short_sha() { printf "deadbeefcafe\n"; }
+        _service_binary_drift cass
+    ' _ "$services"
+
+    assert_success
+    assert_output --partial "cass|stale|"
+    assert_output --partial "sha256 deadbeefcafe"
+}
+
+@test "acfs services drift reports ok when the running executable is the installed one (#381)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _CM_BIN="/home/u/.local/bin/cm"
+        _proc_fs_available() { return 0; }
+        _service_process_pid() { printf "88\n"; }
+        _proc_exe_path() { _EXE_DELETED=false; _EXE_PATH="/home/u/.local/bin/cm"; return 0; }
+        _file_identity() { printf "1:100\n"; }
+        _service_binary_drift cm
+    ' _ "$services"
+
+    assert_success
+    assert_output --partial "cm|ok|pid 88 runs /home/u/.local/bin/cm"
+}
+
+@test "acfs services drift reports not-running and unknown states without procfs (#381)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _proc_fs_available() { return 0; }
+        _service_process_pid() { return 1; }
+        _service_binary_drift cass
+        _service_process_pid() { printf "9\n"; }
+        _proc_fs_available() { return 1; }
+        _service_binary_drift cass
+    ' _ "$services"
+
+    assert_success
+    assert_output --partial "cass|not-running|no live process"
+    assert_output --partial "cass|unknown|no procfs on this platform"
+}
+
+@test "acfs services status warns loudly about running-binary drift (#381)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _service_binary_drift() {
+            case "$1" in
+                cass) printf "cass|stale|pid 42 runs a deleted executable\n" ;;
+                *)    printf "%s|not-running|no live process\n" "$1" ;;
+            esac
+        }
+        _report_binary_drift
+        echo "RC=$?"
+    ' _ "$services"
+
+    assert_output --partial "Running-binary drift"
+    assert_output --partial "cass: pid 42 runs a deleted executable"
+    assert_output --partial "acfs services restart cass"
+    assert_output --partial "RC=1"
+}
+
+@test "acfs services drift --robot prints one machine-readable line per service (#381)" {
+    local services="$PROJECT_ROOT/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        _initialize_bins() { _TMUX_BIN="/usr/bin/true"; }
+        _service_binary_drift() { printf "%s|not-running|no live process\n" "$1"; }
+        cmd_drift --robot
+        echo "RC=$?"
+    ' _ "$services"
+
+    assert_output --partial "agent-mail|not-running|no live process"
+    assert_output --partial "cm|not-running|no live process"
+    assert_output --partial "cass|not-running|no live process"
+    assert_output --partial "RC=0"
+}
+
+@test "acfs doctor runs the managed-service drift check (#381)" {
+    local doctor="$PROJECT_ROOT/scripts/lib/doctor.sh"
+
+    run grep -F 'bash "$service_manager" drift --robot' "$doctor"
+    assert_success
+
+    run grep -F 'check_service_binary_drift' "$doctor"
+    assert_success
+}
+
+@test "acfs update reports managed services still running a replaced binary (#381)" {
+    local fake_home="$BATS_TEST_TMPDIR/acfs-home"
+
+    mkdir -p "$fake_home/scripts/lib"
+    printf '#!/usr/bin/env bash\nprintf "cass|stale|pid 42 runs a deleted executable\\n"\nprintf "cm|ok|pid 43 runs /home/u/.local/bin/cm\\n"\n' \
+        > "$fake_home/scripts/lib/acfs-services.sh"
+    chmod +x "$fake_home/scripts/lib/acfs-services.sh"
+
+    run bash -c '
+        source "$1"
+        set +e
+        fake_home="$2"
+        update_runtime_acfs_home() { printf "%s\n" "$fake_home"; }
+        DRY_RUN=false
+        update_report_service_binary_drift
+        echo "RC=$?"
+    ' _ "$PROJECT_ROOT/scripts/lib/update.sh" "$fake_home"
+
+    assert_output --partial "Updated tools are installed but not live"
+    assert_output --partial "cass: pid 42 runs a deleted executable"
+    assert_output --partial "acfs services restart cass"
+    assert_output --partial "RC=0"
+    refute_output --partial "cm: pid 43"
+}
+
+@test "acfs update skips the drift report during a dry run (#381)" {
+    run bash -c '
+        source "$1"
+        set +e
+        update_runtime_acfs_home() { echo "SHOULD_NOT_BE_CALLED" >&2; printf "/nonexistent\n"; }
+        DRY_RUN=true
+        update_report_service_binary_drift
+        echo "RC=$?"
+    ' _ "$PROJECT_ROOT/scripts/lib/update.sh"
+
+    assert_output --partial "RC=0"
+    refute_output --partial "SHOULD_NOT_BE_CALLED"
 }

@@ -6,10 +6,12 @@
 # owns the CM/CASS processes.
 #
 # Usage:
-#   acfs services start       Start all services
+#   acfs services start       Start all services (repairs a partial session)
 #   acfs services stop        Stop all services
 #   acfs services status      Show which services are running
-#   acfs services restart     Stop then start
+#   acfs services restart [svc...]  Restart everything, or just named services
+#   acfs services repair      Relaunch only the services that are not running
+#   acfs services drift       Report services running a replaced binary
 #   acfs services logs [svc]  Attach to a service pane for logs
 #
 # Services:
@@ -90,14 +92,48 @@ _system_binary_path() {
     return 1
 }
 
+# Directories ACFS installs user-scoped tools into, in resolution order.
+# `acfs services` is routinely invoked from a noninteractive SSH command whose
+# PATH does not include them (#382), so PATH alone must not decide whether a
+# managed binary exists.
+_user_install_dirs() {
+    local home_dir="${HOME:-}"
+    local dir=""
+    local -a dirs=()
+
+    [[ -n "${ACFS_BIN_DIR:-}" ]] && dirs+=("$ACFS_BIN_DIR")
+    if [[ -n "$home_dir" && "$home_dir" == /* ]]; then
+        dirs+=("$home_dir/.local/bin" "$home_dir/.acfs/bin" "$home_dir/.cargo/bin" "$home_dir/bin")
+    fi
+    dirs+=("/usr/local/bin" "/opt/homebrew/bin")
+
+    for dir in "${dirs[@]}"; do
+        [[ -n "$dir" && "$dir" == /* ]] || continue
+        printf '%s\n' "$dir"
+    done
+}
+
 _user_binary_path() {
     local name="${1:-}"
     local resolved=""
+    local dir=""
 
     [[ "$name" =~ ^[A-Za-z0-9._+-]+$ ]] || return 1
     resolved="$(type -P "$name" 2>/dev/null || true)"
-    [[ -n "$resolved" && "$resolved" == /* && -x "$resolved" && ! -d "$resolved" ]] || return 1
-    printf '%s\n' "$resolved"
+    if [[ -n "$resolved" && "$resolved" == /* && -x "$resolved" && ! -d "$resolved" ]]; then
+        printf '%s\n' "$resolved"
+        return 0
+    fi
+
+    # PATH did not resolve it: fall back to the known ACFS install locations.
+    while IFS= read -r dir; do
+        [[ -n "$dir" ]] || continue
+        if [[ -x "$dir/$name" && ! -d "$dir/$name" ]]; then
+            printf '%s\n' "$dir/$name"
+            return 0
+        fi
+    done < <(_user_install_dirs)
+    return 1
 }
 
 _initialize_bins() {
@@ -262,10 +298,10 @@ _wait_for_agent_mail() {
     done
 }
 
-# Validate the resolved HTTP endpoints before we create the tmux session.
-# Fails fast (non-zero) with an actionable message on bad/duplicate/occupied
-# ports so we never leave a dead pane behind a "started" report.
-_validate_http_endpoints() {
+# Static endpoint validation: host/port syntax and the Agent Mail / CM
+# collision. Contains no live socket probing, so it is safe to run as a
+# preflight while the services are still up (#382).
+_validate_endpoint_config() {
     local rc=0
     local p
     local h
@@ -292,6 +328,16 @@ _validate_http_endpoints() {
         _err "They cannot share a port. Override with ACFS_AGENT_MAIL_PORT / ACFS_CM_PORT."
         return 1
     fi
+    return 0
+}
+
+# Validate the resolved HTTP endpoints before we create the tmux session.
+# Fails fast (non-zero) with an actionable message on bad/duplicate/occupied
+# ports so we never leave a dead pane behind a "started" report.
+_validate_http_endpoints() {
+    local rc=0
+
+    _validate_endpoint_config || return 1
 
     # During --dry-run we only validate config, not live socket state.
     $_DRY_RUN && return 0
@@ -315,6 +361,204 @@ _require_tmux() {
         _err "tmux is not installed. Install with: sudo apt install tmux"
         return 1
     fi
+}
+
+# --- Binary preflight (issue #382) ---
+#
+# Every command that is about to stop or (re)launch a managed process proves
+# the replacement binary can actually run FIRST. The verdict vocabulary matches
+# the updater's post-install smoke check (issue #378):
+#   healthy      -- a probe exited 0.
+#   unsupported  -- the binary executed but rejected every probe as an unknown
+#                   argument. Not a broken binary; never a reason to abort.
+#   broken       -- the binary timed out, could not be executed (wrong
+#                   architecture, missing loader), died by a signal, or failed
+#                   every probe without a usage-style rejection.
+_SMOKE_VERDICT=""
+_SMOKE_DETAIL=""
+
+_smoke_exit_status_is_fatal() {
+    local status="${1:-0}"
+    [[ "$status" =~ ^[0-9]+$ ]] || return 1
+    ((status == 124 || status == 126 || status == 127 || status > 128))
+}
+
+_smoke_output_indicates_probe_rejected() {
+    local output="${1:-}"
+    local lowered=""
+    # LC_ALL=C: probe output can contain bytes a UTF-8 tr rejects, and that
+    # must never abort the caller under errexit.
+    lowered="$(printf '%s' "$output" | LC_ALL=C tr '[:upper:]' '[:lower:]' 2>/dev/null || true)"
+    case "$lowered" in
+        *"usage:"*|*"usage :"*|*"unknown flag"*|*"unknown option"*|*"unknown command"*|\
+        *"unknown argument"*|*"unknown subcommand"*|*"unexpected argument"*|\
+        *"unrecognized argument"*|*"unrecognized option"*|*"unrecognised option"*|\
+        *"no such option"*|*"no such command"*|*"invalid option"*|*"invalid flag"*|\
+        *"illegal option"*|*"not a valid"*|*"try '"*"--help'"*|*"try \`"*"--help'"*)
+            return 0 ;;
+    esac
+    return 1
+}
+
+_run_smoke_probe() {
+    local binary="${1:-}"
+    shift
+    local timeout_bin=""
+
+    timeout_bin="$(_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -n "$timeout_bin" ]]; then
+        "$timeout_bin" --kill-after=5s "${ACFS_SVC_SMOKE_TIMEOUT:-15}" \
+            "$binary" "$@" </dev/null 2>&1
+    else
+        "$binary" "$@" </dev/null 2>&1
+    fi
+}
+
+# Leaves the verdict in $_SMOKE_VERDICT and the human-readable reason in
+# $_SMOKE_DETAIL (globals, so callers must not run this in a subshell).
+# Returns 0 only for a healthy binary.
+_binary_smoke_verdict() {
+    local binary="${1:-}"
+    local probe="" output="" status=0
+    local all_rejected=true
+    local -a attempts=()
+
+    _SMOKE_VERDICT="broken"
+    _SMOKE_DETAIL=""
+    if [[ -z "$binary" || ! -f "$binary" || ! -x "$binary" ]]; then
+        _SMOKE_DETAIL="binary missing or not executable"
+        return 1
+    fi
+
+    for probe in "--version" "--help" "version"; do
+        if output="$(_run_smoke_probe "$binary" "$probe")"; then
+            status=0
+        else
+            status=$?
+        fi
+        output="${output:0:4096}"
+        if ((status == 0)); then
+            _SMOKE_VERDICT="healthy"
+            _SMOKE_DETAIL="'$binary $probe' exited 0"
+            return 0
+        fi
+        attempts+=("'$probe' exit $status")
+        if _smoke_exit_status_is_fatal "$status"; then
+            case "$status" in
+                124) _SMOKE_DETAIL="'$binary $probe' timed out after ${ACFS_SVC_SMOKE_TIMEOUT:-15}s" ;;
+                126) _SMOKE_DETAIL="'$binary' exists but cannot be executed (wrong architecture, missing loader, or not executable)" ;;
+                127) _SMOKE_DETAIL="'$binary' could not be started (missing interpreter or shared library)" ;;
+                *)   _SMOKE_DETAIL="'$binary $probe' was killed by a signal (exit $status)" ;;
+            esac
+            return 1
+        fi
+        _smoke_output_indicates_probe_rejected "$output" || all_rejected=false
+    done
+
+    local summary=""
+    summary="$(printf '%s; ' "${attempts[@]}")"
+    summary="${summary%; }"
+    if [[ "$all_rejected" == "true" ]]; then
+        _SMOKE_VERDICT="unsupported"
+        _SMOKE_DETAIL="'$binary' executed but rejected every probe as an unknown argument ($summary)"
+    else
+        _SMOKE_VERDICT="broken"
+        _SMOKE_DETAIL="'$binary' failed every probe without a usage-style rejection ($summary)"
+    fi
+    return 1
+}
+
+_service_binary_var() {
+    case "${1:-}" in
+        agent-mail) printf '%s\n' "$_AM_BIN" ;;
+        cm)         printf '%s\n' "$_CM_BIN" ;;
+        cass)       printf '%s\n' "$_CASS_BIN" ;;
+        *)          return 1 ;;
+    esac
+}
+
+_service_binary_name() {
+    case "${1:-}" in
+        agent-mail) printf '%s\n' "am" ;;
+        cm)         printf '%s\n' "cm" ;;
+        cass)       printf '%s\n' "cass" ;;
+        *)          return 1 ;;
+    esac
+}
+
+# Set by a full restart when Agent Mail is running in our own tmux session:
+# that process is about to be stopped, so the `am` binary IS required for the
+# restart even though the endpoint is healthy right now.
+_PREFLIGHT_AGENT_MAIL_WILL_STOP=false
+
+# Does this service need its own binary launched by us? Agent Mail does not
+# when it is already healthy or owned by the native user unit.
+_service_needs_own_binary() {
+    local service="${1:-}"
+    [[ "$service" == "agent-mail" ]] || return 0
+    $_PREFLIGHT_AGENT_MAIL_WILL_STOP && return 0
+    _agent_mail_is_healthy && return 1
+    _native_agent_mail_unit_available && return 1
+    return 0
+}
+
+# Validate one service's launch binary. Returns 1 only when the binary is
+# missing or provably broken; an unsupported probe is reported and accepted.
+_preflight_service_binary() {
+    local service="${1:-}"
+    local binary="" name="" verdict=""
+
+    _service_needs_own_binary "$service" || return 0
+    name="$(_service_binary_name "$service")" || return 1
+    binary="$(_service_binary_var "$service")" || return 1
+
+    if [[ -z "$binary" ]]; then
+        if [[ "$service" == "agent-mail" ]]; then
+            _err "Missing binary: am (needed for the Agent Mail fallback)"
+        else
+            _err "Missing binary: $name (needed for $service)"
+        fi
+        _err "Looked on PATH and in: $(_user_install_dirs | tr '\n' ' ')"
+        return 1
+    fi
+
+    _binary_smoke_verdict "$binary" || true
+    verdict="$_SMOKE_VERDICT"
+    case "$verdict" in
+        healthy) return 0 ;;
+        unsupported)
+            _warn "$name: ${_SMOKE_DETAIL}; treating it as runnable."
+            return 0
+            ;;
+        *)
+            _err "$name is not runnable: ${_SMOKE_DETAIL}"
+            return 1
+            ;;
+    esac
+}
+
+# Preflight everything needed to launch the given services (default: all).
+# Performs no live-state changes and probes no listening sockets, so callers
+# can run it while the services are still up.
+_preflight_services() {
+    local -a targets=()
+    local service=""
+    local rc=0
+
+    (($#)) && targets=("$@")
+    ((${#targets[@]})) || targets=("${ACFS_SERVICE_NAMES[@]}")
+
+    for service in "${targets[@]}"; do
+        _preflight_service_binary "$service" || rc=1
+    done
+
+    if [[ -z "$_CURL_BIN" ]]; then
+        _err "Missing system binary: curl (needed for health checks)"
+        rc=1
+    fi
+
+    _validate_endpoint_config || rc=1
+    return $rc
 }
 
 _get_pane_ids() {
@@ -383,6 +627,311 @@ _wait_for_tmux_services() {
     done
 }
 
+# Readiness for exactly one service, so a targeted repair or restart does not
+# wait on (or fail because of) a service the operator did not touch.
+_wait_for_service_ready() {
+    local service="$1"
+    local max_wait="${2:-15}"
+    local waited=0
+
+    if [[ "$service" == "agent-mail" ]]; then
+        _wait_for_agent_mail "$max_wait"
+        return $?
+    fi
+
+    while true; do
+        if _pane_service_is_running "$service"; then
+            if [[ "$service" != "cm" ]] || _port_is_listening "$ACFS_CM_HOST" "$ACFS_CM_PORT"; then
+                return 0
+            fi
+        fi
+        (( waited >= max_wait )) && return 1
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+
+# --- Running-binary drift detection (issue #381) ---
+#
+# A tool update replaces the file on disk; the running service keeps executing
+# the old (now deleted) inode until it is restarted. `cass --version` then
+# reports the new release while the watcher still runs the old code. These
+# helpers compare what the SERVICE actually executes against the installed
+# binary ACFS resolves -- never against whatever the caller's PATH happens to
+# find, because on a normal host those can legitimately differ.
+
+_proc_fs_available() {
+    [[ -d /proc/self && -r /proc/self/exe ]]
+}
+
+# Resolve /proc/<pid>/exe into the globals _EXE_PATH and _EXE_DELETED
+# (globals, not stdout: a command substitution would discard the deleted flag).
+# Returns 1 when the link cannot be read.
+_EXE_PATH=""
+_EXE_DELETED=false
+_proc_exe_path() {
+    local pid="$1"
+    local link=""
+
+    _EXE_PATH=""
+    _EXE_DELETED=false
+    link="$(readlink "/proc/$pid/exe" 2>/dev/null || true)"
+    [[ -n "$link" ]] || return 1
+    if [[ "$link" == *" (deleted)" ]]; then
+        _EXE_DELETED=true
+        link="${link% (deleted)}"
+    fi
+    _EXE_PATH="$link"
+    return 0
+}
+
+# Device:inode identity of a path, following symlinks. Empty when unknown.
+_file_identity() {
+    local path="$1"
+    local stat_bin=""
+
+    stat_bin="$(_system_binary_path stat 2>/dev/null || true)"
+    [[ -n "$stat_bin" && -e "$path" ]] || return 1
+    "$stat_bin" -Lc '%d:%i' "$path" 2>/dev/null || return 1
+}
+
+_file_sha256() {
+    local path="$1"
+    local bin=""
+    local out=""
+
+    bin="$(_system_binary_path sha256sum 2>/dev/null || true)"
+    if [[ -n "$bin" ]]; then
+        out="$("$bin" "$path" 2>/dev/null || true)"
+    else
+        bin="$(_system_binary_path shasum 2>/dev/null || true)"
+        [[ -n "$bin" ]] || return 1
+        out="$("$bin" -a 256 "$path" 2>/dev/null || true)"
+    fi
+    [[ -n "$out" ]] || return 1
+    printf '%s\n' "${out%% *}"
+}
+
+_short_sha() {
+    local path="$1"
+    local sha=""
+
+    sha="$(_file_sha256 "$path" 2>/dev/null || true)"
+    [[ -n "$sha" ]] || { printf '%s\n' "unknown"; return 0; }
+    printf '%s\n' "${sha:0:12}"
+}
+
+# Direct children of a pid, from procfs. Falls back to scanning /proc when the
+# kernel does not expose the children file.
+_child_pids() {
+    local pid="$1"
+    local children=""
+    local stat_line=""
+    local candidate=""
+    local rest=""
+    local ppid=""
+
+    children="$(cat "/proc/$pid/task/$pid/children" 2>/dev/null || true)"
+    if [[ -n "$children" ]]; then
+        local child=""
+        for child in $children; do
+            printf '%s\n' "$child"
+        done
+        return 0
+    fi
+
+    for candidate in /proc/[0-9]*; do
+        [[ -r "$candidate/stat" ]] || continue
+        stat_line="$(cat "$candidate/stat" 2>/dev/null || true)"
+        [[ -n "$stat_line" ]] || continue
+        # Skip "pid (comm) " -- comm can contain spaces and parentheses.
+        rest="${stat_line##*) }"
+        # rest is now "state ppid ..."
+        ppid="$(printf '%s\n' "$rest" | while read -r _state parent _; do printf '%s\n' "$parent"; break; done)"
+        [[ "$ppid" == "$pid" ]] && printf '%s\n' "${candidate##*/}"
+    done
+    return 0
+}
+
+# Find the pid under $1 whose executable basename is $2 (depth-limited).
+_descendant_pid_for_binary() {
+    local root_pid="$1"
+    local want="$2"
+    local -a queue=("$root_pid")
+    local -a next=()
+    local depth=0
+    local pid="" exe="" child=""
+
+    while ((${#queue[@]} && depth < 4)); do
+        next=()
+        for pid in "${queue[@]}"; do
+            exe=""
+            _proc_exe_path "$pid" 2>/dev/null && exe="$_EXE_PATH"
+            if [[ -n "$exe" && "${exe##*/}" == "$want" ]]; then
+                printf '%s\n' "$pid"
+                return 0
+            fi
+            while IFS= read -r child; do
+                [[ -n "$child" ]] && next+=("$child")
+            done < <(_child_pids "$pid")
+        done
+        queue=("${next[@]+"${next[@]}"}")
+        depth=$((depth + 1))
+    done
+    return 1
+}
+
+# Pid of the live process for one managed service, or nothing.
+_service_process_pid() {
+    local service="$1"
+    local name="" pane_id="" pane_pid="" main_pid=""
+
+    name="$(_service_binary_name "$service")" || return 1
+
+    if [[ "$service" == "agent-mail" ]] && _native_agent_mail_is_active; then
+        main_pid="$("$_SYSTEMCTL_BIN" --user show agent-mail.service -p MainPID --value 2>/dev/null || true)"
+        if [[ "$main_pid" =~ ^[0-9]+$ ]] && (( main_pid > 0 )); then
+            printf '%s\n' "$main_pid"
+            return 0
+        fi
+        return 1
+    fi
+
+    _session_exists || return 1
+    pane_id="$(_pane_id_for_service "$service" 2>/dev/null || true)"
+    [[ -n "$pane_id" ]] || return 1
+    pane_pid="$("$_TMUX_BIN" display-message -t "$pane_id" -p '#{pane_pid}' 2>/dev/null || true)"
+    [[ "$pane_pid" =~ ^[0-9]+$ ]] || return 1
+    _descendant_pid_for_binary "$pane_pid" "$name"
+}
+
+# Emits "<service>|<state>|<detail>" for one service.
+#   ok           running the installed binary
+#   stale        running a replaced/deleted/different executable
+#   not-running  no live process
+#   unknown      could not compare (no procfs, unreadable link, no installed
+#                binary resolved)
+_service_binary_drift() {
+    local service="$1"
+    local pid="" exe="" installed="" running_id="" installed_id=""
+    local deleted=false
+
+    # procfs first: without it we cannot even identify the service process, so
+    # "no live process" would be a lie rather than an observation.
+    if ! _proc_fs_available; then
+        printf '%s|%s|%s\n' "$service" "unknown" "no procfs on this platform"
+        return 0
+    fi
+
+    installed="$(_service_binary_var "$service" 2>/dev/null || true)"
+    pid="$(_service_process_pid "$service" 2>/dev/null || true)"
+
+    if [[ -z "$pid" ]]; then
+        printf '%s|%s|%s\n' "$service" "not-running" "no live process"
+        return 0
+    fi
+    if [[ -z "$installed" ]]; then
+        printf '%s|%s|%s\n' "$service" "unknown" "no installed binary resolved for $service"
+        return 0
+    fi
+
+    if ! _proc_exe_path "$pid" 2>/dev/null; then
+        printf '%s|%s|%s\n' "$service" "unknown" "cannot read /proc/$pid/exe"
+        return 0
+    fi
+    exe="$_EXE_PATH"
+    deleted=$_EXE_DELETED
+
+    if $deleted; then
+        printf '%s|%s|%s\n' "$service" "stale" \
+            "pid $pid runs a deleted executable ($exe); installed: $installed (sha256 $(_short_sha "$installed"))"
+        return 0
+    fi
+
+    running_id="$(_file_identity "/proc/$pid/exe" 2>/dev/null || true)"
+    installed_id="$(_file_identity "$installed" 2>/dev/null || true)"
+    if [[ -z "$running_id" || -z "$installed_id" ]]; then
+        printf '%s|%s|%s\n' "$service" "unknown" "cannot compare $exe with $installed"
+        return 0
+    fi
+    if [[ "$running_id" == "$installed_id" ]]; then
+        printf '%s|%s|%s\n' "$service" "ok" "pid $pid runs $installed"
+        return 0
+    fi
+
+    printf '%s|%s|%s\n' "$service" "stale" \
+        "pid $pid runs $exe (sha256 $(_short_sha "/proc/$pid/exe")); installed: $installed (sha256 $(_short_sha "$installed"))"
+}
+
+# Warn loudly about every managed service running something other than the
+# installed binary. Returns 0 when everything is current, 1 when any service
+# is running a stale executable.
+_report_binary_drift() {
+    local service="" line="" state="" detail=""
+    local drift_found=false
+
+    for service in "${ACFS_SERVICE_NAMES[@]}"; do
+        line="$(_service_binary_drift "$service")"
+        state="${line#*|}"
+        detail="${state#*|}"
+        state="${state%%|*}"
+        [[ "$state" == "stale" ]] || continue
+        if ! $drift_found; then
+            printf '\n' >&2
+            _warn "Running-binary drift: an updated tool is installed but the live service still runs the old executable."
+            drift_found=true
+        fi
+        _warn "  $service: $detail"
+        _warn "  Restart just this service: acfs services restart $service"
+    done
+
+    if $drift_found; then
+        _warn "A restart interrupts that service; Agent Mail stays up unless you restart it too."
+        _warn "Pick a quiescent moment: in-flight agent work in that service is cut off."
+        printf '\n' >&2
+        return 1
+    fi
+    return 0
+}
+
+cmd_drift() {
+    local robot=false
+    local service="" line="" state=""
+    local rc=0
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --robot|--porcelain) robot=true; shift ;;
+            "") shift ;;
+            *)
+                _err "Unknown option for 'drift': '$1'"
+                _info "Usage: acfs services drift [--robot]"
+                return 1
+                ;;
+        esac
+    done
+
+    _initialize_bins
+    _require_tmux
+
+    if $robot; then
+        for service in "${ACFS_SERVICE_NAMES[@]}"; do
+            line="$(_service_binary_drift "$service")"
+            printf '%s\n' "$line"
+            state="${line#*|}"
+            [[ "${state%%|*}" == "stale" ]] && rc=1
+        done
+        return $rc
+    fi
+
+    if _report_binary_drift; then
+        _ok "Every running ACFS-managed service is executing its installed binary."
+    else
+        rc=1
+    fi
+    return $rc
+}
+
 # --- Commands ---
 
 cmd_start() {
@@ -390,21 +939,18 @@ cmd_start() {
     _require_tmux
 
     if _session_exists; then
-        _warn "Session '$ACFS_SVC_SESSION' already exists; checking actual service health."
-        cmd_status
-        return $?
+        local repair_rc=0 status_rc=0
+        _warn "Session '$ACFS_SVC_SESSION' already exists; repairing any service that is not running."
+        cmd_repair || repair_rc=$?
+        cmd_status || status_rc=$?
+        (( status_rc != 0 )) && return "$status_rc"
+        return "$repair_rc"
     fi
 
-    # Pre-flight: check all binaries exist
-    local missing=0
-    if ! _agent_mail_is_healthy && ! _native_agent_mail_unit_available; then
-        [[ -n "$_AM_BIN" ]] || { _err "Missing binary: am (needed for the Agent Mail fallback)"; missing=1; }
-    fi
-    [[ -n "$_CM_BIN" ]] || { _err "Missing binary: cm (needed for cm)"; missing=1; }
-    [[ -n "$_CASS_BIN" ]] || { _err "Missing binary: cass (needed for cass)"; missing=1; }
-    [[ -n "$_CURL_BIN" ]] || { _err "Missing system binary: curl (needed for health checks)"; missing=1; }
-    if (( missing )); then
-        _err "Cannot start services -- install missing binaries first."
+    # Pre-flight: every binary we are about to launch must exist and run
+    # (issue #382). Endpoint syntax is validated here too.
+    if ! _preflight_services; then
+        _err "Cannot start services -- fix the problems above first."
         return 1
     fi
 
@@ -483,6 +1029,124 @@ cmd_start() {
     _ok "All services are ready."
     _info "Attach with: tmux attach -t $ACFS_SVC_SESSION"
     _info "View logs:   acfs services logs [agent-mail|cm|cass]"
+}
+
+# Recreate or relaunch the pane for one service inside an existing session.
+# Only ever touches a pane that is demonstrably not running the service: a
+# pane whose process is alive is left strictly alone, because this session can
+# be sharing a tmux server with long-lived agent panes (#383).
+_repair_service_pane() {
+    local service="$1"
+    local pane_id="" pane_dead=""
+
+    _preflight_service_binary "$service" || return 1
+
+    pane_id="$(_pane_id_for_service "$service" 2>/dev/null || true)"
+
+    if [[ -z "$pane_id" ]]; then
+        # No tagged pane at all: add one to the services window, creating the
+        # window if the session lost it. Untagged panes are never reused.
+        if "$_TMUX_BIN" list-panes -t "$ACFS_SVC_SESSION:services" >/dev/null 2>&1; then
+            pane_id="$("$_TMUX_BIN" split-window -t "$ACFS_SVC_SESSION:services" -v -P -F '#{pane_id}' 2>/dev/null || true)"
+        else
+            pane_id="$("$_TMUX_BIN" new-window -t "$ACFS_SVC_SESSION" -n "services" -P -F '#{pane_id}' 2>/dev/null || true)"
+        fi
+        if [[ -z "$pane_id" ]]; then
+            _err "Failed to create a tmux pane for $service."
+            return 1
+        fi
+    else
+        pane_dead="$("$_TMUX_BIN" display-message -t "$pane_id" -p '#{pane_dead}' 2>/dev/null || true)"
+        if [[ "$pane_dead" == "1" ]]; then
+            # respawn-pane without -k refuses to touch a pane that is not dead,
+            # which is exactly the guarantee we want here.
+            if ! "$_TMUX_BIN" respawn-pane -t "$pane_id" >/dev/null 2>&1; then
+                _err "Failed to respawn the dead $service pane ($pane_id)."
+                return 1
+            fi
+            # Let the fresh shell reach a prompt before typing the command.
+            sleep 1
+        fi
+    fi
+
+    if ! _tag_and_start_pane "$pane_id" "$service"; then
+        _err "Failed to relaunch $service in tmux."
+        return 1
+    fi
+    _info "Relaunched $service in pane $pane_id."
+    return 0
+}
+
+# Converge an existing service group toward ready: start Agent Mail if it is
+# down, and relaunch only the services that are not running (#383). With no
+# arguments every managed service is considered; names narrow it down.
+cmd_repair() {
+    local -a targets=()
+    local -a repaired=()
+    local service=""
+    local rc=0
+
+    (($#)) && targets=("$@")
+
+    _initialize_bins
+    _require_tmux
+
+    ((${#targets[@]})) || targets=("${ACFS_SERVICE_NAMES[@]}")
+    for service in "${targets[@]}"; do  # never empty after the default above
+        if ! _service_desc "$service" >/dev/null 2>&1; then
+            _err "Unknown service: '$service'"
+            _info "Available services: ${ACFS_SERVICE_NAMES[*]}"
+            return 1
+        fi
+    done
+
+    if ! _session_exists; then
+        _err "Session '$ACFS_SVC_SESSION' is not running. Start with: acfs services start"
+        return 1
+    fi
+
+    if $_DRY_RUN; then
+        _info "[dry-run] Would relaunch these services if they are not running: ${targets[*]}"
+        return 0
+    fi
+
+    _validate_endpoint_config || return 1
+
+    for service in "${targets[@]}"; do
+        if [[ "$service" == "agent-mail" ]]; then
+            _agent_mail_is_healthy && continue
+            if _native_agent_mail_unit_available; then
+                repaired+=("agent-mail")
+                _info "Starting native Agent Mail user service..."
+                if ! "$_SYSTEMCTL_BIN" --user start agent-mail.service >/dev/null 2>&1; then
+                    _err "Agent Mail user service failed to start."
+                    _err "Inspect it with: systemctl --user status agent-mail.service"
+                    rc=1
+                fi
+                continue
+            fi
+            # No native unit: Agent Mail is one of our tmux panes.
+        fi
+
+        _pane_service_is_running "$service" && continue
+        repaired+=("$service")
+        _repair_service_pane "$service" || rc=1
+    done
+
+    if ((${#repaired[@]} == 0)); then
+        _info "Every ACFS-managed service is already running; nothing to repair."
+        return $rc
+    fi
+
+    "$_TMUX_BIN" select-layout -t "$ACFS_SVC_SESSION:services" even-vertical >/dev/null 2>&1 || true
+
+    for service in "${repaired[@]}"; do
+        if ! _wait_for_service_ready "$service" 15; then
+            _err "$service did not pass its readiness check after being relaunched; it was left running for diagnosis."
+            rc=1
+        fi
+    done
+    return $rc
 }
 
 cmd_stop() {
@@ -592,13 +1256,130 @@ cmd_status() {
         _info "to bring them back. Leaving cm/cass off is fine if you only use 'cm context'/'cm reflect'"
         _info "or are diagnosing indexing/resource problems."
     fi
+
+    # A service can be perfectly "ready" and still be executing the binary an
+    # update replaced days ago (#381). Say so; do not let readiness read green
+    # while the shipped fix is not actually live.
+    _report_binary_drift || true
     return $rc
 }
 
+# Stop one tmux-owned service without disturbing the rest of the session:
+# interrupt the process, wait for it to leave, and leave the pane in place.
+_stop_pane_service() {
+    local service="$1"
+    local pane_id=""
+    local waited=0
+
+    pane_id="$(_pane_id_for_service "$service" 2>/dev/null || true)"
+    [[ -n "$pane_id" ]] || return 0
+
+    "$_TMUX_BIN" send-keys -t "$pane_id" C-c 2>/dev/null || true
+    while _pane_service_is_running "$service"; do
+        (( waited >= 10 )) && { _err "$service did not stop after 10s; leaving it alone."; return 1; }
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 0
+}
+
+# Restart exactly one service. Agent Mail goes through its native unit when it
+# owns the process; everything else is restarted in place in its tmux pane, so
+# restarting cass never interrupts Agent Mail or CM.
+_restart_one_service() {
+    local service="$1"
+
+    if [[ "$service" == "agent-mail" ]] && _native_agent_mail_is_active; then
+        _info "Restarting native Agent Mail user service..."
+        if ! "$_SYSTEMCTL_BIN" --user restart agent-mail.service >/dev/null 2>&1 || \
+           ! _wait_for_agent_mail 15; then
+            _err "Agent Mail user service did not become ready after restart."
+            _err "Inspect it with: systemctl --user status agent-mail.service"
+            return 1
+        fi
+        return 0
+    fi
+
+    if ! _session_exists; then
+        _err "Session '$ACFS_SVC_SESSION' is not running. Start with: acfs services start"
+        return 1
+    fi
+
+    if [[ "$service" == "agent-mail" ]] && [[ -z "$(_pane_id_for_service agent-mail 2>/dev/null || true)" ]]; then
+        _err "Agent Mail is not owned by ACFS here (no native unit, no managed pane); refusing to restart it."
+        _err "Whatever serves $ACFS_AGENT_MAIL_HOST:$ACFS_AGENT_MAIL_PORT was started outside ACFS -- restart it there."
+        return 1
+    fi
+
+    _stop_pane_service "$service" || return 1
+    _repair_service_pane "$service" || return 1
+    if ! _wait_for_service_ready "$service" 15; then
+        _err "$service did not pass its readiness check after the restart."
+        return 1
+    fi
+    return 0
+}
+
 cmd_restart() {
+    local -a targets=()
+    local service=""
+    local rc=0
+    local stop_rc=0
+
+    (($#)) && targets=("$@")
+
+    _initialize_bins
+    _require_tmux
+
+    for service in "${targets[@]+"${targets[@]}"}"; do
+        if ! _service_desc "$service" >/dev/null 2>&1; then
+            _err "Unknown service: '$service'"
+            _info "Available services: ${ACFS_SERVICE_NAMES[*]}"
+            return 1
+        fi
+    done
+
+    # A full restart tears down the tmux session, so an Agent Mail fallback
+    # pane counts as "will be stopped" and its binary must preflight too.
+    if ((${#targets[@]} == 0)) && ! _native_agent_mail_is_active && \
+       _session_exists && _pane_service_is_running agent-mail; then
+        _PREFLIGHT_AGENT_MAIL_WILL_STOP=true
+    fi
+
+    # Preflight BEFORE anything is stopped (issue #382): a restart that cannot
+    # resolve or run the replacement binaries must leave healthy services up.
+    if ! _preflight_services "${targets[@]+"${targets[@]}"}"; then
+        _err "Preflight failed: no service was stopped and nothing changed."
+        _err "Fix the problems above, then re-run: acfs services restart${targets[*]:+ ${targets[*]}}"
+        return 1
+    fi
+
+    if ((${#targets[@]})); then
+        if $_DRY_RUN; then
+            _info "[dry-run] Would restart: ${targets[*]}"
+            return 0
+        fi
+        _info "Restarting ACFS services: ${targets[*]}"
+        for service in "${targets[@]+"${targets[@]}"}"; do
+            _restart_one_service "$service" || rc=1
+        done
+        cmd_status || true
+        return $rc
+    fi
+
     _info "Restarting ACFS services..."
-    cmd_stop
-    cmd_start
+    cmd_stop || stop_rc=$?
+    if (( stop_rc != 0 )); then
+        _err "Stop reported errors; not starting on top of an unknown state."
+        _err "Inspect with 'acfs services status', then run 'acfs services start'."
+        return "$stop_rc"
+    fi
+    if ! cmd_start; then
+        rc=$?
+        _err "Services were stopped but did not come back up (start exit $rc)."
+        _err "Recover with: acfs services start   (after fixing the errors above)"
+        return "$rc"
+    fi
 }
 
 cmd_logs() {
@@ -664,11 +1445,17 @@ ACFS Services — Unified background daemon management
 Usage: acfs services <command> [options]
 
 Commands:
-  start           Start all ACFS background services
-  stop            Stop all services (graceful shutdown)
-  status          Show which services are running
-  restart         Stop then start all services
-  logs [service]  Attach to tmux session (optionally select a pane)
+  start               Start all ACFS background services. If the session
+                      already exists, relaunch only the services that are
+                      not running; healthy panes are never touched.
+  stop                Stop all services (graceful shutdown)
+  status              Show which services are running
+  restart [service…]  Restart everything, or only the named services.
+                      Binaries are validated before anything is stopped.
+  repair              Relaunch only the services that are not running
+  drift [--robot]     Report managed services still executing a binary that
+                      has since been replaced on disk
+  logs [service]      Attach to tmux session (optionally select a pane)
 
 Services managed:
   agent-mail      native service or am fallback               [default 127.0.0.1:8765]
@@ -687,10 +1474,12 @@ Options:
   --help, -h      Show this help message
 
 Examples:
-  acfs services start              # Start all daemons
+  acfs services start              # Start all daemons (or repair a partial session)
   acfs services status             # Quick health check
   acfs services logs agent-mail    # View Agent Mail logs
   acfs services restart            # Restart everything
+  acfs services restart cass       # Restart only CASS; Agent Mail stays up
+  acfs services drift              # Are the live services on the installed binaries?
   acfs services stop               # Graceful shutdown
 
 CM and CASS run in a dedicated tmux session named 'acfs-svc'. Agent Mail
@@ -726,7 +1515,9 @@ main() {
         start)   cmd_start ;;
         stop)    cmd_stop ;;
         status)  cmd_status ;;
-        restart) cmd_restart ;;
+        restart) cmd_restart "${args[@]+"${args[@]}"}" ;;
+        repair)  cmd_repair "${args[@]+"${args[@]}"}" ;;
+        drift)   cmd_drift "${args[@]+"${args[@]}"}" ;;
         logs|log|attach)
             cmd_logs "${args[0]:-}" ;;
         help|-h|--help|"")

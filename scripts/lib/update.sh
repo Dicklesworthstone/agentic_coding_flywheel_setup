@@ -7699,6 +7699,53 @@ update_shell() {
 # Summary
 # ============================================================
 
+# After the tools have been updated, an ACFS-managed service can still be
+# executing the binary that was just replaced -- `cass --version` reports the
+# new release while the live watcher runs the old, now-deleted inode (issue
+# #381). Report it loudly; never restart a service group behind the operator's
+# back, because that would cut off in-flight agent work.
+update_report_service_binary_drift() {
+    local services_script=""
+    local drift_output=""
+    local service="" state="" detail=""
+    local timeout_bin=""
+    local -a drift_cmd=()
+    local reported=false
+
+    [[ "$DRY_RUN" == "true" ]] && return 0
+
+    services_script="$(update_runtime_acfs_home 2>/dev/null || true)/scripts/lib/acfs-services.sh"
+    [[ -r "$services_script" ]] || return 0
+
+    drift_cmd=(bash "$services_script" drift --robot)
+    timeout_bin="$(update_system_binary_path timeout 2>/dev/null || true)"
+    if [[ -n "$timeout_bin" ]]; then
+        drift_cmd=("$timeout_bin" 30 "${drift_cmd[@]}")
+    fi
+
+    drift_output="$("${drift_cmd[@]}" 2>/dev/null || true)"
+    [[ -n "$drift_output" ]] || return 0
+
+    while IFS='|' read -r service state detail; do
+        [[ -n "$service" && "$state" == "stale" ]] || continue
+        if [[ "$reported" != "true" ]]; then
+            reported=true
+            echo ""
+            printf "${YELLOW}${BOLD}! Updated tools are installed but not live${NC}\n"
+            printf "${DIM}These ACFS-managed services still run the executable they started with:${NC}\n"
+        fi
+        printf "${YELLOW}  %s: %s${NC}\n" "$service" "$detail"
+        printf "${DIM}    Restart just this service: acfs services restart %s${NC}\n" "$service"
+        log_to_file "SERVICE BINARY DRIFT: $service: $detail"
+    done <<< "$drift_output"
+
+    if [[ "$reported" == "true" ]]; then
+        printf "${DIM}    A restart interrupts that service (Agent Mail stays up unless you restart it too);${NC}\n"
+        printf "${DIM}    pick a quiescent moment so in-flight agent work is not cut off.${NC}\n"
+    fi
+    return 0
+}
+
 print_summary() {
     # Log footer to file
     if [[ -n "$UPDATE_LOG_FILE" ]]; then
@@ -8149,6 +8196,9 @@ main() {
     update_shell
     update_stack
     update_root_agents_md
+
+    # Report managed services still running a replaced binary (#381)
+    update_report_service_binary_drift
 
     # Summary
     print_summary

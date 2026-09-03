@@ -41,7 +41,7 @@ _acfs_completions() {
     local session_import_flags="--dry-run"
     local session_convert_flags="--from --to --workspace --session-id --dry-run --json --no-json"
     local session_show_flags="--format"
-    local services_subcommands="start stop status restart logs help"
+    local services_subcommands="start stop status restart repair drift logs help"
     local services_logs_targets="agent-mail cm cass"
     local dashboard_subcommands="generate serve"
     local common_flags="-h --help"
@@ -274,7 +274,7 @@ _acfs_completions() {
             local svc_cmd=""
             for ((j=i+1; j < cword; j++)); do
                 case "${words[j]}" in
-                    start|stop|status|restart|logs|help)
+                    start|stop|status|restart|repair|drift|logs|help)
                         svc_cmd="${words[j]}"
                         break
                         ;;
@@ -285,8 +285,14 @@ _acfs_completions() {
                 logs)
                     mapfile -t COMPREPLY < <(compgen -W "$services_logs_targets --dry-run" -- "$cur")
                     ;;
-                start|stop|restart)
+                restart)
+                    mapfile -t COMPREPLY < <(compgen -W "$services_logs_targets --dry-run" -- "$cur")
+                    ;;
+                start|stop|repair)
                     mapfile -t COMPREPLY < <(compgen -W "--dry-run" -- "$cur")
+                    ;;
+                drift)
+                    mapfile -t COMPREPLY < <(compgen -W "--robot" -- "$cur")
                     ;;
                 status|help)
                     COMPREPLY=()
