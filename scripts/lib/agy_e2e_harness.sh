@@ -97,7 +97,7 @@ agy_e2e_skip_if_unauth() {
 }
 
 # agy_e2e_required_model — echo the one allowed model string.
-agy_e2e_required_model() { printf '%s' "${AGY_REQUIRED_MODEL:-Gemini 3.7 Flash (High)}"; }
+agy_e2e_required_model() { printf '%s' "${AGY_REQUIRED_MODEL:-Gemini 3.8 Flash (High)}"; }
 
 # agy_e2e_assert_model <captured-output> — fail-closed: reject output that names a
 # forbidden model family. Delegates to agy_model_guard's agy_assert_output_model.
@@ -151,7 +151,7 @@ _agy_e2e_self_test() {
   local fails=0
   AGY_E2E_LOG=""  # stdout-only for the self-test
   printf 'agy_e2e_harness self-test\n'
-  [[ "$(agy_e2e_required_model)" == "Gemini 3.7 Flash (High)" ]] \
+  [[ "$(agy_e2e_required_model)" == "Gemini 3.8 Flash (High)" ]] \
     && echo "  ok   required model" || { echo "  FAIL required model"; fails=$((fails+1)); }
   # json log line is valid-ish (has ts/level/event + the custom key)
   local line; line="$(agy_e2e_log info unit_test foo=bar 2>&1 | tail -1)"

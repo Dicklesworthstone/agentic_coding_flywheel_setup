@@ -11,7 +11,7 @@ import sys
 import tempfile
 
 
-MODEL = "Gemini 3.7 Flash (High)"
+MODEL = "Gemini 3.8 Flash (High)"
 HOME = pathlib.Path.home()
 REAL_AGY = HOME / ".local" / "bin" / "agy-real"
 SETTINGS_PATH = HOME / ".gemini" / "antigravity-cli" / "settings.json"
@@ -61,6 +61,7 @@ PINNED_SETTINGS = {
     "artifactReviewPolicy": "always-proceed",
     "colorScheme": "terminal",
     "editor": "auto",
+    "effort": "high",
     "enableTelemetry": False,
     "enableTerminalSandbox": False,
     "model": MODEL,

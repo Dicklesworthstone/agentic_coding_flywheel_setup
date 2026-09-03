@@ -375,7 +375,7 @@ check "uca delegates all agent updates to the authoritative verified updater" \
 check "uca contains no direct network-to-shell installer" \
   "! grep '^alias uca=' acfs/zsh/acfs.zshrc | grep -Eq 'curl|wget|\\|[[:space:]]*(bash|sh)([[:space:]]|$)'"
 check "agy locked launcher pins the required model" \
-  "grep -q 'MODEL = \"Gemini 3.7 Flash (High)\"' scripts/lib/agy_locked.py"
+  "grep -q 'MODEL = \"Gemini 3.8 Flash (High)\"' scripts/lib/agy_locked.py"
 check "agy locked launcher strips -m and -model flags" \
   "python3 -c 'import sys; sys.path.insert(0, \"scripts/lib\"); import agy_locked; res = agy_locked.filtered_args([\"-m\", \"foo\", \"-m=bar\", \"--model=baz\", \"--model\", \"qux\", \"prompt\"]); assert res == [\"prompt\"], f\"got {res}\"'"
 check "agy locked launcher points to agy-real" \

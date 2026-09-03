@@ -1166,7 +1166,7 @@ modules:
             raise SystemExit(1)
 
         expected = {
-            "model": "Gemini 3.7 Flash (High)",
+            "model": "Gemini 3.8 Flash (High)",
             "toolPermission": "always-proceed",
             "artifactReviewPolicy": "always-proceed",
             "enableTelemetry": False,
@@ -1210,7 +1210,7 @@ modules:
             raise SystemExit(1)
         PY
     notes:
-      - "Pin the model to 'Gemini 3.7 Flash (High)' on every invocation (see scripts/lib/agy_model_guard.sh)"
+      - "Pin the model to 'Gemini 3.8 Flash (High)' on every invocation (see scripts/lib/agy_model_guard.sh)"
       - "Auth is Google OAuth (a human step); the agy shell alias in acfs.zshrc launches the locked policy wrapper"
       - "ACFS installs agy-locked and maps both agy and gmi to it; the legacy Gemini CLI module is not installed by default"
 
