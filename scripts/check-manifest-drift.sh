@@ -852,6 +852,8 @@ generation_dirty_sources() {
         [[ "$status_line" == '?? '* ]] && continue
         [[ -n "$status_line" ]] && printf '%s\n' "$status_line"
     done <<< "$status_output"
+    # A clean tree leaves `read` as the last command with status 1; that is not a failure.
+    return 0
 }
 
 # Synchronize before deriving any artifact. Rebasing after verification could
