@@ -9391,7 +9391,7 @@ projects_base = "/data/projects"
 # Default models when no specifier given
 default_claude = "claude-fable-5"
 default_codex = "gpt-5.6-sol"
-default_gemini = "Gemini 3.7 Flash (High)"
+default_gemini = "Gemini 3.8 Flash (High)"
 
 [agents]
 # Route legacy Gemini slots through ACFS's locked Antigravity launcher.

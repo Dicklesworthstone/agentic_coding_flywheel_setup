@@ -2,7 +2,7 @@
 # agy_model_guard.sh — canonical model-pin guard for the Antigravity CLI (`agy`).
 #
 # USER MANDATE (2026-08-24): every `agy` invocation across ACFS, the skills, and
-# every spawned-agent flow MUST run on "Gemini 3.7 Flash (High)" and NOTHING else —
+# every spawned-agent flow MUST run on "Gemini 3.8 Flash (High)" and NOTHING else —
 # never an older Flash generation (3.5/3.6), never a Medium/Low tier, never a
 # Gemini Pro model, never an Anthropic/Claude model via agy, never GPT-OSS.
 #
@@ -15,7 +15,7 @@
 # Usage:
 #   source "$ACFS_ROOT/scripts/lib/agy_model_guard.sh"
 #   agy_run --add-dir "$dir" --dangerously-skip-permissions --print "<prompt>"
-#   #   -> runs: agy --model "Gemini 3.7 Flash (High)" <your args>
+#   #   -> runs: agy --model "Gemini 3.8 Flash (High)" <your args>
 #   # For scripted/CI use that must prove the model post-hoc:
 #   out="$(agy_run_checked --add-dir "$dir" --print "Reply with your model name.")" || exit 1
 #

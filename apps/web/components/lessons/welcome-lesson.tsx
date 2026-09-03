@@ -393,7 +393,7 @@ const archLayers: ArchLayer[] = [
         name: "Antigravity CLI (Google)",
         shortName: "agy",
         description:
-          "Google's coding assistant, pinned to Gemini 3.7 Flash (High). Excellent for research-heavy tasks, fresh-eyes review, and large codebases. (Successor to the retired Gemini CLI / gmi.)",
+          "Google's coding assistant, pinned to Gemini 3.8 Flash (High). Excellent for research-heavy tasks, fresh-eyes review, and large codebases. (Successor to the retired Gemini CLI / gmi.)",
         commands: ["agy", "agy 'explain this codebase'"],
         dependencies: ["tmux", "runtimes", "git"],
         status: "ready",

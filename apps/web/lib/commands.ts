@@ -127,7 +127,7 @@ export const COMMANDS: CommandRef[] = [
   {
     name: "agy",
     fullName: "Antigravity CLI",
-    description: "Google coding agent, pinned to Gemini 3.7 Flash (High).",
+    description: "Google coding agent, pinned to Gemini 3.8 Flash (High).",
     category: "agents",
     example: 'agy "review this PR"',
     docsUrl: "/learn/tools/antigravity-cli",

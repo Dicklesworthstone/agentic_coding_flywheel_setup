@@ -6,7 +6,7 @@
 # dcg guard, caam account) should SOURCE this file so they share:
 #   - structured JSON-line logging (one event per line) + a per-run artifact dir
 #   - skip-cleanly-if-agy-unauthenticated (e2e must never hard-fail in CI/headless)
-#   - a model-guard assertion (reuses agy_model_guard.sh — "Gemini 3.7 Flash (High)")
+#   - a model-guard assertion (reuses agy_model_guard.sh — "Gemini 3.8 Flash (High)")
 #   - a headless agy round-trip helper (the only non-interactive way to drive agy)
 #
 # Design notes:

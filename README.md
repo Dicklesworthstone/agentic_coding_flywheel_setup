@@ -987,7 +987,7 @@ Example output:
 ║  Quick Commands:                                              ║
 ║    cc    → Claude Code (dangerous mode)                       ║
 ║    cod   → Codex CLI (dangerous mode)                         ║
-║    agy   → Antigravity CLI (Gemini 3.7 Flash High)            ║
+║    agy   → Antigravity CLI (Gemini 3.8 Flash High)            ║
 ║    ntm   → Named Tmux Manager                                 ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
@@ -1018,7 +1018,7 @@ Example output:
 ║  Agents                                                        ║
 ║    cc   → claude --dangerously-skip-permissions                ║
 ║    cod  → codex --dangerously-bypass-approvals-and-sandbox     ║
-║    agy  → agy --model 'Gemini 3.7 Flash (High)'                ║
+║    agy  → agy --model 'Gemini 3.8 Flash (High)'                ║
 ║                                                                ║
 ║  Git                                                           ║
 ║    gs   → git status                                           ║

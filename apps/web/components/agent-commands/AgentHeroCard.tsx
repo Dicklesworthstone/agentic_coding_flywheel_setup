@@ -55,7 +55,7 @@ export const agentPersonalities: Record<
     glowColor: "oklch(0.7 0.2 280)",
     bgGlow: "bg-[oklch(0.7_0.2_280/0.15)]",
     borderHover: "hover:border-[oklch(0.7_0.2_280/0.5)]",
-    tagline: "Gemini 3.7 Flash — fresh-eyes docs & review",
+    tagline: "Gemini 3.8 Flash — fresh-eyes docs & review",
   },
   gemini: {
     gradient: "from-blue-400 via-indigo-400 to-blue-500",

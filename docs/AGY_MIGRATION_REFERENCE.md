@@ -27,7 +27,7 @@ agy --version                                                 # -> 1.0.7
 | `brain/<uuid>/.system_generated/logs/transcript.jsonl` | ⭐ **Clean JSONL transcript of the conversation** — the recommended READ source (§3). Also `transcript_full.jsonl`. |
 | `brain/<uuid>/.system_generated/messages/*.json` | Per-message JSON. |
 | `brain/<uuid>/*.md` | Working docs (implementation_plan.md / task.md / walkthrough.md) — only for substantive conversations. |
-| `settings.json` | ACFS pins `enableTelemetry: false`, `model: "Gemini 3.7 Flash (High)"`, `toolPermission: "always-proceed"`, `artifactReviewPolicy: "always-proceed"`, native-terminal rendering, sandbox off, and the other `agy-locked` defaults before every launch. |
+| `settings.json` | ACFS pins `enableTelemetry: false`, `model: "Gemini 3.8 Flash (High)"`, `toolPermission: "always-proceed"`, `artifactReviewPolicy: "always-proceed"`, native-terminal rendering, sandbox off, and the other `agy-locked` defaults before every launch. |
 | `cache/projects.json`, `cache/onboarding.json` | Workspace/onboarding metadata only (NOT history). |
 | `antigravity-oauth-token`, `installation_id`, `keybindings.json`, `builtin/`, `implicit/`, `log/cli-*.log` | Auth, ids, config, logs. |
 | `~/.gemini/config/mcp_config.json` | MCP server registration (empty by default; see §7). |
@@ -42,7 +42,7 @@ agy --version                                                 # -> 1.0.7
 
 ```json
 {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-06-11T20:14:42Z","content":"<USER_REQUEST>\n...\n</USER_REQUEST>\n<ADDITIONAL_METADATA>...</ADDITIONAL_METADATA>"}
-{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"...","content":"I am currently running as Gemini 3.7 Flash. ..."}
+{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"...","content":"I am currently running as Gemini 3.8 Flash. ..."}
 ```
 - `source`: `USER_EXPLICIT` | `MODEL` | `SYSTEM`.
 - `type`: `USER_INPUT` | `PLANNER_RESPONSE` | `EPHEMERAL_MESSAGE` | `SYSTEM_MESSAGE` | `CONVERSATION_HISTORY` | … (tool steps appear for tool-using turns).
@@ -75,7 +75,7 @@ gen_metadata, executor_metadata, parent_references, trajectory_metadata_blob, ba
 | Need | Invocation |
 |---|---|
 | One-shot, non-interactive (scripts/spawn/skills) | `agy --print "<prompt>"` (also `--prompt`, `-p`). **The prompt is the VALUE of `--print`** — Go flag parsing. Put it LAST or use `--print="<prompt>"`. ⚠️ `agy --print --model …` makes `--print` swallow `--model` as the prompt. |
-| Pick model (REQUIRED, §6) | `--model "Gemini 3.7 Flash (High)"` |
+| Pick model (REQUIRED, §6) | `--model "Gemini 3.8 Flash (High)"` |
 | Autonomous (no permission prompts) | `--dangerously-skip-permissions` |
 | Workspace dir(s) | `--add-dir <dir>` (repeatable) |
 | Resume most recent | `--continue` / `-c` |
@@ -88,24 +88,24 @@ gen_metadata, executor_metadata, parent_references, trajectory_metadata_blob, ba
 
 **Verified working headless task execution:**
 ```bash
-agy --model "Gemini 3.7 Flash (High)" --add-dir /work --dangerously-skip-permissions \
+agy --model "Gemini 3.8 Flash (High)" --add-dir /work --dangerously-skip-permissions \
     --print "Read notes.txt and reply with only the secret word."   # -> e.g. "FLYWHEEL 42"
 ```
-Each `agy --print` starts a **new** conversation (new `conversations/<uuid>.db`). The model self-reports its name in early turns ("I am currently running as Gemini 3.7 Flash").
+Each `agy --print` starts a **new** conversation (new `conversations/<uuid>.db`). The model self-reports its name in early turns ("I am currently running as Gemini 3.8 Flash").
 
 ---
 
 ## 6. 🔴 MODEL-PIN GUARD (mandatory — bead bd-47kjh.1.7)
 
-**Every** `agy` invocation in **every** tool/skill MUST run on **`Gemini 3.7 Flash (High)`** and never anything else. `agy models` lists:
+**Every** `agy` invocation in **every** tool/skill MUST run on **`Gemini 3.8 Flash (High)`** and never anything else. `agy models` lists:
 
 | Allowed | Forbidden |
 |---|---|
-| `Gemini 3.7 Flash (High)` | `Gemini 3.7 Flash (Medium/Low)`, `Gemini 3.6 Flash (High/Medium/Low)`, `Gemini 3.5 Flash (High/Medium/Low)`, `Gemini 3.1 Pro (High/Low)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)` |
+| `Gemini 3.8 Flash (High)` | `Gemini 3.8 Flash (Medium/Low)`, `Gemini 3.7 Flash (High/Medium/Low)`, `Gemini 3.6 Flash (High/Medium/Low)`, `Gemini 3.5 Flash (High/Medium/Low)`, `Gemini 3.1 Pro (High/Low)`, `Claude Sonnet 4.6 (Thinking)`, `Claude Opus 4.6 (Thinking)`, `GPT-OSS 120B (Medium)` |
 
 **Enforcement contract:**
-1. **Pin**: always pass `--model "Gemini 3.7 Flash (High)"` explicitly on every spawn/`--print`/`--continue`/`--conversation` call. Do NOT rely on the `settings.json` default.
-2. **Verify** (any of, fail-closed): read `~/.gemini/antigravity-cli/settings.json → "model"`; and/or parse the transcript `<USER_SETTINGS_CHANGE>` / the model's self-report. If the effective model is not exactly `Gemini 3.7 Flash (High)`, **refuse/abort with a clear error** — never silently run on a worse model.
+1. **Pin**: always pass `--model "Gemini 3.8 Flash (High)"` explicitly on every spawn/`--print`/`--continue`/`--conversation` call. Do NOT rely on the `settings.json` default.
+2. **Verify** (any of, fail-closed): read `~/.gemini/antigravity-cli/settings.json → "model"`; and/or parse the transcript `<USER_SETTINGS_CHANGE>` / the model's self-report. If the effective model is not exactly `Gemini 3.8 Flash (High)`, **refuse/abort with a clear error** — never silently run on a worse model.
 3. **One definition**: keep the allowed-model string in a single shared constant/helper per tool (Go helper in ntm, etc.) — no copy-paste drift.
 4. Every e2e test asserts the model (§9).
 
@@ -122,10 +122,10 @@ agy reads MCP servers from `~/.gemini/config/mcp_config.json` — **empty by def
 | gmi (legacy) | agy |
 |---|---|
 | `gmi` (interactive) | `agy-locked` (same forward path as `agy`) |
-| scripted prompt | `agy --print "<prompt>" --model "Gemini 3.7 Flash (High)"` |
+| scripted prompt | `agy --print "<prompt>" --model "Gemini 3.8 Flash (High)"` |
 | history `~/.gemini/tmp/<hash>/chats/session-*.json` (JSON) | `~/.gemini/antigravity-cli/conversations/<uuid>.db` + `brain/<uuid>/…/transcript.jsonl` |
 | resume | `agy --continue` / `agy --conversation <uuid>` |
-| model select | `--model "<name>"` (PIN to Gemini 3.7 Flash (High)) |
+| model select | `--model "<name>"` (PIN to Gemini 3.8 Flash (High)) |
 | MCP servers | `~/.gemini/config/mcp_config.json` |
 | account switch (caam) | OAuth keyring + `antigravity-oauth-token` |
 
@@ -133,4 +133,4 @@ agy reads MCP servers from `~/.gemini/config/mcp_config.json` — **empty by def
 
 ## 9. Testing baseline (harness bead bd-47kjh.12)
 
-Every per-component e2e script must: structured timestamped logging + artifact capture (the exact `agy` command incl `--model`, stdout/stderr, the resulting `conversations/<uuid>.db` + `brain/<uuid>/…/transcript.jsonl`, the effective model); assert the model is `Gemini 3.7 Flash (High)`; skip cleanly if agy is unauthenticated; clean up its temp conversations. Reuse the verified smoke prompt (read a fixture file → assert the answer) as a known-good agy task.
+Every per-component e2e script must: structured timestamped logging + artifact capture (the exact `agy` command incl `--model`, stdout/stderr, the resulting `conversations/<uuid>.db` + `brain/<uuid>/…/transcript.jsonl`, the effective model); assert the model is `Gemini 3.8 Flash (High)`; skip cleanly if agy is unauthenticated; clean up its temp conversations. Reuse the verified smoke prompt (read a fixture file → assert the answer) as a known-good agy task.

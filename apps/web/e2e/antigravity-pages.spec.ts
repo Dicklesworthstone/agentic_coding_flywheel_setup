@@ -51,7 +51,7 @@ test.describe.serial("Antigravity (agy) migration pages", () => {
         ).toBeVisible();
       });
 
-      await test.step("mentions the pinned Gemini 3.7 Flash model + agy command", async () => {
+      await test.step("mentions the pinned Gemini 3.8 Flash model + agy command", async () => {
         await expect(page.getByText(/Gemini 3\.1 Pro/i).first()).toBeVisible();
       });
 
