@@ -384,8 +384,10 @@ check "agy locked launcher refuses wrapper copies as the real binary" \
   "resolver_refuses_launcher_copy"
 check "agy locked launcher never falls back to another agy wrapper" \
   "! sed -n '/^def resolve_real_agy():$/,/^    return REAL_AGY$/p' scripts/lib/agy_locked.py | grep -F ' / \"agy\"'"
+# The lanes resolve grep to a trusted system binary ("$grep_bin", /usr/bin/grep), so match the
+# marker probe itself rather than one spelling of the grep invocation.
 check "all agy relocation lanes identify wrappers before replacing agy-real" \
-  "grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" install.sh && grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" scripts/lib/update.sh && grep -Fq \"grep -aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" acfs.manifest.yaml"
+  "grep -Fq \"-aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" install.sh && grep -Fq \"-aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" scripts/lib/update.sh && grep -Fq \"-aFq 'Launch Antigravity CLI with ACFS pinned defaults'\" acfs.manifest.yaml"
 check "agents library propagates locked-settings priming failure" \
   "settings_prime_failure_is_propagated"
 check "agent installer aggregate preserves an Antigravity failure" \
