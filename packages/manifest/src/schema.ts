@@ -4,7 +4,7 @@
  */
 
 import { z } from 'zod';
-import { MODULE_CATEGORIES } from './types.js';
+import { DISTRO_FAMILIES, MODULE_CATEGORIES } from './types.js';
 
 // The manifest is executable configuration. Keep authored object boundaries
 // strict so a misspelled field cannot be silently stripped before generation.
@@ -30,6 +30,7 @@ export const ManifestDefaultsSchema = z
  */
 const RunAsSchema = z.enum(['target_user', 'root', 'current']);
 const ModuleCategorySchema = z.enum(MODULE_CATEGORIES);
+const DistroFamilySchema = z.enum(DISTRO_FAMILIES);
 const ShellCommandSchema = z
   .string()
   .min(1, 'Shell command cannot be empty')
@@ -313,6 +314,21 @@ export const ModuleSchema = z
 
     // Verified installer reference
     verified_installer: VerifiedInstallerSchema.optional(),
+
+    // Distro families this module applies to (#385). Absent means "every
+    // family", which is the case for all but a handful of modules whose
+    // upstream installer is package-manager specific. Both install.sh and the
+    // generated doctor checks read this, so a module that is skipped by design
+    // is reported as SKIP rather than warned about with a fix that would skip
+    // it again.
+    families: z
+      .array(DistroFamilySchema)
+      .min(1, 'families cannot be an empty list; omit the key to mean "all families"')
+      .refine(
+        (families) => new Set(families).size === families.length,
+        'families cannot contain duplicates'
+      )
+      .optional(),
 
     // Installation behavior
     optional: z.boolean().default(false),

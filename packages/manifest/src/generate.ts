@@ -2137,6 +2137,20 @@ export function generateManifestIndex(manifest: Manifest, manifestSha256: string
   lines.push(')');
   lines.push('');
 
+  // #385: only modules that narrow themselves appear here. An absent key means
+  // "applies to every family", so consumers treat a missing entry as allowed
+  // and no entry has to be written for the overwhelming majority of modules.
+  lines.push('# Space-separated distro families a module applies to (#385).');
+  lines.push('# A module with no entry here applies to every family.');
+  lines.push('declare -gA ACFS_MODULE_FAMILIES=(');
+  for (const module of orderedModules) {
+    if (module.families && module.families.length > 0) {
+      lines.push(`  ['${module.id}']="${escapeBash(module.families.join(' '))}"`);
+    }
+  }
+  lines.push(')');
+  lines.push('');
+
   lines.push('ACFS_PROFILES_IN_ORDER=(');
   for (const profile of WEB_SELECTION_PROFILES) {
     lines.push(`  "${profile.id}"`);
@@ -2327,6 +2341,20 @@ export function generateDoctorChecks(manifest: Manifest): string {
     }
   }
 
+  lines.push(')');
+  lines.push('');
+
+  // #385: doctor does not source manifest_index.sh, so the family gate is
+  // emitted here too. Both arrays are generated from the same manifest key, so
+  // the declaration still lives in exactly one authored place.
+  lines.push('# Space-separated distro families a module applies to (#385).');
+  lines.push('# A module with no entry here applies to every family.');
+  lines.push('declare -gA ACFS_MODULE_FAMILIES=(');
+  for (const module of sortedModules) {
+    if (module.families && module.families.length > 0) {
+      lines.push(`  ['${module.id}']="${escapeBash(module.families.join(' '))}"`);
+    }
+  }
   lines.push(')');
   lines.push('');
   lines.push('# Execute a manifest check in the requested context without prompting.');

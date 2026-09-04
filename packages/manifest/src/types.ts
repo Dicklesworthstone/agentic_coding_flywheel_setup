@@ -44,6 +44,18 @@ export const MODULE_CATEGORIES = [
 export type ModuleCategory = (typeof MODULE_CATEGORIES)[number];
 
 /**
+ * Distro families ACFS distinguishes at install time (#385).
+ *
+ * These are exactly the values `install.sh` assigns to `ACFS_DISTRO_FAMILY`:
+ * `arch` for ID=arch, ID=omarchy, or an ID_LIKE containing arch, and `ubuntu`
+ * for everything else (the apt-based default). A module may narrow itself to a
+ * subset via its `families` key; omitting the key means every family.
+ */
+export const DISTRO_FAMILIES = ['ubuntu', 'arch'] as const;
+
+export type DistroFamily = (typeof DISTRO_FAMILIES)[number];
+
+/**
  * Allowed runners for verified installers.
  * SECURITY: Only allow known-safe shell interpreters to prevent command injection.
  */
@@ -188,6 +200,12 @@ export interface Module {
   notes?: string[];
   /** Optional user-facing message printed after the module finishes installing */
   post_install_message?: string;
+  /**
+   * Distro families this module applies to (#385). Omitted means all of them;
+   * a narrowed list makes both the installer's skip and doctor's expectations
+   * derive from one declaration instead of from hand-written installer logic.
+   */
+  families?: DistroFamily[];
   /** Optional tags for higher-level selection */
   tags?: string[];
   /** Optional documentation URL */

@@ -498,6 +498,37 @@ should_run_module() {
     [[ -n "${ACFS_EFFECTIVE_RUN[$module_id]:-}" ]]
 }
 
+# Does a module apply to this distro family? (#385)
+#
+# The answer comes from the manifest's `families` key, surfaced by the
+# generated ACFS_MODULE_FAMILIES map. A module with no entry applies
+# everywhere, which is true of all but the handful whose upstream installer is
+# package-manager specific. Reading the declaration here rather than hardcoding
+# a family test per module is what lets the installer's skip and doctor's
+# expectations derive from the same place.
+acfs_module_supports_family() {
+    local module_id="${1:-}"
+    local family="${2:-${ACFS_DISTRO_FAMILY:-ubuntu}}"
+    local families=""
+    local families_map_decl=""
+    local candidate=""
+
+    [[ -n "$module_id" ]] || return 0
+
+    # No index loaded (or an older index without the map): do not invent a
+    # restriction the manifest did not declare.
+    families_map_decl="$(declare -p ACFS_MODULE_FAMILIES 2>/dev/null || true)"
+    [[ "$families_map_decl" == declare\ -A* ]] || return 0
+
+    families="${ACFS_MODULE_FAMILIES[$module_id]:-}"
+    [[ -n "$families" ]] || return 0
+
+    for candidate in $families; do
+        [[ "$candidate" == "$family" ]] && return 0
+    done
+    return 1
+}
+
 # True when the user explicitly named this module with --only, as opposed to
 # it being pulled in as a dependency, by --only-phase, or by default.
 # Consumed by generated optional-module failure handlers: a failing optional

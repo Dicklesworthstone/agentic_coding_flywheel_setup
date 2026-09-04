@@ -10274,9 +10274,10 @@ UNIT_EOF
     # System Resource Protection Script (srps)
     if ! acfs_legacy_module_selected "stack.srps"; then
         log_detail "Skipping SRPS (stack.srps is not selected)"
-    elif [[ "${ACFS_DISTRO_FAMILY:-ubuntu}" != "ubuntu" ]]; then
-        # SRPS's upstream installer supports apt-based systems only (#350);
-        # do not fail the stack phase for an unsupported optional module.
+    elif ! acfs_module_supports_family "stack.srps"; then
+        # SRPS's upstream installer supports apt-based systems only (#350). The
+        # constraint is declared as `families: [ubuntu]` in the manifest (#385)
+        # so doctor reports SKIP for the same modules the installer skips.
         log_detail "Skipping SRPS (apt-based systems only; detected family: ${ACFS_DISTRO_FAMILY})"
     elif binary_installed "sysmoni"; then
         log_detail "SRPS already installed"

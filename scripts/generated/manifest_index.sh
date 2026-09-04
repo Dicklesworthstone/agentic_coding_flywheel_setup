@@ -6,7 +6,7 @@
 # ============================================================
 # Data-only manifest index. Safe to source.
 
-ACFS_MANIFEST_SHA256="74305824465588a9c812115ef0faf11be4caa4c071d7db50fab6224babf7fe9d"
+ACFS_MANIFEST_SHA256="1c8095118497cb89e75c785ed3370db336007243e3df557d94e3f1ec5060fa68"
 
 ACFS_MODULES_IN_ORDER=(
   "base.system"
@@ -946,6 +946,12 @@ declare -gA ACFS_MODULE_OPTIONAL=(
   ['acfs.update']="0"
   ['acfs.nightly']="1"
   ['acfs.doctor']="0"
+)
+
+# Space-separated distro families a module applies to (#385).
+# A module with no entry here applies to every family.
+declare -gA ACFS_MODULE_FAMILIES=(
+  ['stack.srps']="ubuntu"
 )
 
 ACFS_PROFILES_IN_ORDER=(

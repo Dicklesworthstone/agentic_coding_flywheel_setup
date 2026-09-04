@@ -1358,6 +1358,42 @@ _acfs_doctor_is_arch_family() {
     [[ "$_ACFS_DOCTOR_IS_ARCH_FAMILY" == "true" ]]
 }
 
+# The distro family this doctor run evaluates modules against (#385).
+# Uses the installer's verdict when it exported one, otherwise re-derives it
+# from /etc/os-release exactly as install.sh does.
+_acfs_doctor_distro_family() {
+    if [[ -n "${ACFS_DISTRO_FAMILY:-}" ]]; then
+        printf '%s' "$ACFS_DISTRO_FAMILY"
+    elif _acfs_doctor_is_arch_family; then
+        printf 'arch'
+    else
+        printf 'ubuntu'
+    fi
+}
+
+# Does a manifest module apply to this distro family? (#385)
+#
+# Reads the generated ACFS_MODULE_FAMILIES map, which carries the manifest's
+# `families` key. A module with no entry applies everywhere, so an older
+# generated index (or a manifest that declares nothing) leaves every check
+# exactly as it was.
+_acfs_doctor_module_applies_to_family() {
+    local module_id="$1"
+    local families=""
+    local family=""
+    local candidate=""
+
+    declare -p ACFS_MODULE_FAMILIES >/dev/null 2>&1 || return 0
+    families="${ACFS_MODULE_FAMILIES[$module_id]:-}"
+    [[ -n "$families" ]] || return 0
+
+    family="$(_acfs_doctor_distro_family)"
+    for candidate in $families; do
+        [[ "$candidate" == "$family" ]] && return 0
+    done
+    return 1
+}
+
 # Emit a distro-appropriate package install hint.
 # Usage: doctor_pkg_install_hint <apt-package> [pacman-package]
 # The pacman package name defaults to the apt name; pass the second arg when
@@ -2069,6 +2105,42 @@ check_optional_command() {
     fi
 }
 
+# Does the invoking user hold any sudo entitlement? (#384)
+#
+# Behavioural test first: `sudo -l` asks the sudoers policy what the invoking
+# user may run and exits non-zero when they may run nothing, which is correct on
+# every distro. `-n` keeps it from prompting, and stdout is discarded because
+# only the exit status matters.
+#
+# Fall back to admin-group membership, because on sudoers configurations that
+# require authentication merely to *list*, `-n` makes the behavioural test exit
+# non-zero for a user who does have sudo. The group test accepts both
+# conventions: Debian/Ubuntu grant through `sudo`, Arch/Omarchy through `wheel`
+# — which is what install.sh already does when it adds the user to a group and
+# installs the `%wheel` sudoers drop-in on Arch.
+_acfs_doctor_has_sudo_entitlement() {
+    local sudo_bin="${1:-}"
+    local id_bin="${2:-}"
+    local grep_bin="${3:-}"
+
+    [[ -n "$sudo_bin" ]] || return 1
+    "$sudo_bin" -ln true >/dev/null 2>&1 && return 0
+
+    [[ -n "$id_bin" && -n "$grep_bin" ]] || return 1
+    "$id_bin" -nG 2>/dev/null | "$grep_bin" -Eqw 'sudo|wheel'
+}
+
+# The administrative group this distro family grants sudo through, used only
+# for the remediation hint so it never tells an Arch user to join a group that
+# has no meaning there (#384).
+_acfs_doctor_admin_group_name() {
+    if _acfs_doctor_is_arch_family; then
+        printf 'wheel'
+    else
+        printf 'sudo'
+    fi
+}
+
 # Check identity
 check_identity() {
     section "Identity"
@@ -2096,10 +2168,12 @@ check_identity() {
     else
         id_bin="$(_acfs_doctor_system_binary_path id 2>/dev/null || true)"
         grep_bin="$(_acfs_doctor_system_binary_path grep 2>/dev/null || true)"
-        if [[ -n "$sudo_bin" && -n "$id_bin" && -n "$grep_bin" ]] && "$id_bin" -nG 2>/dev/null | "$grep_bin" -qw sudo; then
+        if _acfs_doctor_has_sudo_entitlement "$sudo_bin" "$id_bin" "$grep_bin"; then
             check "identity.sudo" "Sudo available (safe mode)" "pass"
         else
-            check "identity.sudo" "Sudo available (safe mode)" "fail" "sudo unavailable" "Ensure ${TARGET_USER} is in the sudo group and sudo is installed"
+            local admin_group=""
+            admin_group="$(_acfs_doctor_admin_group_name)"
+            check "identity.sudo" "Sudo available (safe mode)" "fail" "sudo unavailable" "Ensure ${TARGET_USER} is in the ${admin_group} group and sudo is installed"
         fi
     fi
 
@@ -3451,6 +3525,14 @@ check_manifest_supplemental() {
         # Build per-module fix suggestion for failed/warn checks (bd-31ps.5.2)
         local module_id
         module_id=$(_manifest_module_id "$id")
+
+        # A module the installer skips by design on this distro family must not
+        # be warned about with a fix that would skip it again (#385).
+        if ! _acfs_doctor_module_applies_to_family "$module_id"; then
+            check_skipped "$id" "$tool_name" "not applicable on $(_acfs_doctor_distro_family)"
+            continue
+        fi
+
         local fix
         fix="$(fix_for_module "$module_id")"
 

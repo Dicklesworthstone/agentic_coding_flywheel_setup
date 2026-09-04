@@ -459,6 +459,12 @@ declare -a MANIFEST_CHECKS=(
     "acfs.doctor	ACFS doctor command for health checks	acfs doctor --help || command -v acfs	required	target_user"
 )
 
+# Space-separated distro families a module applies to (#385).
+# A module with no entry here applies to every family.
+declare -gA ACFS_MODULE_FAMILIES=(
+  ['stack.srps']="ubuntu"
+)
+
 # Execute a manifest check in the requested context without prompting.
 run_manifest_check_command() {
     local run_as="$1"

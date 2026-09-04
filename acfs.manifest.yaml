@@ -2801,6 +2801,10 @@ modules:
     category: stack
     phase: 9
     run_as: target_user
+    # SRPS's upstream installer is apt-only (#350), so the module does not apply
+    # to the arch family. Declaring it here is what lets install.sh skip it and
+    # doctor report SKIP instead of an unresolvable warning (#385).
+    families: [ubuntu]
     optional: true
     enabled_by_default: true
     tags: [recommended, system-health]
