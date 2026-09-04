@@ -7994,6 +7994,381 @@ TROUBLESHOOTING:
 EOF
 }
 
+# ── process-storm watchdog (#348) ───────────────────────────────────────────
+# A host once accumulated ~3,600 concurrent `ast-grep` processes during
+# overlapping `acfs update` runs and went into fork exhaustion. It had to be
+# rebooted, which destroyed every trace of what was spawning them: no parent
+# chain, no argv, no fork rate. ACFS itself never fans `ast-grep` out (it only
+# runs `cargo install ast-grep` and a single timeout-bounded `--version`
+# probe), so the mechanism remains unknown — and unknowable without evidence
+# captured while the storm is live.
+#
+# This watchdog samples the process table during an update and, the first time
+# any single process name (or the table as a whole) blows past a threshold,
+# writes a forensic snapshot to disk: the per-name histogram, the offending
+# processes with their parents and full argv, the parent histogram, load, and
+# the kernel fork counter. That file survives the reboot.
+#
+# Everything in the sampling and dumping path uses bash builtins only — no
+# fork, no subshell, no external binary. That is not micro-optimisation: the
+# failure being diagnosed IS fork exhaustion, and a watchdog that has to fork
+# `ps` is exactly the watchdog that cannot report on it.
+
+ACFS_PROCWATCH_PID=""
+ACFS_PROCWATCH_ACTIVE_FIFO=""
+
+# Result globals set by update_procwatch_scan().
+PROCWATCH_TOTAL=0
+PROCWATCH_TOP_COMM=""
+PROCWATCH_TOP_COUNT=0
+declare -gA PROCWATCH_COUNTS=()
+
+# Online CPUs, read from /proc without forking. Falls back to 1.
+update_procwatch_cpu_count() {
+    local procroot="${1:-/proc}"
+    local line
+    local count=0
+
+    if [[ -r "$procroot/cpuinfo" ]]; then
+        while IFS= read -r line; do
+            if [[ "$line" == processor* ]]; then count=$((count + 1)); fi
+        done < "$procroot/cpuinfo"
+    fi
+    (( count > 0 )) || count=1
+    printf '%s' "$count"
+}
+
+# PPid of a pid, parsed from /proc/<pid>/stat into the named variable. The comm
+# field is parenthesised and may itself contain spaces or ')', so split after
+# the LAST ') '. Writes into a variable rather than stdout so callers need no
+# command substitution (which forks).
+update_procwatch_read_ppid() {
+    local _pw_var="$1"
+    local _pw_stat="$2"
+    local _pw_line="" _pw_rest=""
+
+    read -r _pw_line < "$_pw_stat" 2>/dev/null || return 1
+    _pw_rest="${_pw_line##*') '}"
+    [[ "$_pw_rest" != "$_pw_line" ]] || return 1
+    _pw_rest="${_pw_rest#* }"
+    _pw_rest="${_pw_rest%% *}"
+    [[ "$_pw_rest" =~ ^[0-9]+$ ]] || return 1
+    printf -v "$_pw_var" '%s' "$_pw_rest"
+}
+
+# Full argv of a pid into the named variable. /proc/<pid>/cmdline is
+# NUL-separated and bash cannot hold NUL in a variable, so read the records
+# into an array and rejoin with spaces.
+update_procwatch_read_cmdline() {
+    local _pw_var="$1"
+    local _pw_file="$2"
+    local -a _pw_argv=()
+
+    mapfile -d '' -t _pw_argv < "$_pw_file" 2>/dev/null || return 1
+    (( ${#_pw_argv[@]} > 0 )) || return 1
+    printf -v "$_pw_var" '%s' "${_pw_argv[*]}"
+}
+
+# Sample the process table. Sets PROCWATCH_TOTAL / PROCWATCH_TOP_COMM /
+# PROCWATCH_TOP_COUNT / PROCWATCH_COUNTS. Returns 1 if /proc is unusable.
+update_procwatch_scan() {
+    local procroot="${1:-/proc}"
+    local min_interesting="${2:-0}"
+    local entry comm
+    local -a entries=()
+
+    PROCWATCH_COUNTS=()
+    PROCWATCH_TOTAL=0
+    PROCWATCH_TOP_COMM=""
+    PROCWATCH_TOP_COUNT=0
+
+    [[ -d "$procroot" ]] || return 1
+
+    entries=("$procroot"/[0-9]*)
+    # An unmatched glob expands to itself; treat that as "no processes".
+    if (( ${#entries[@]} == 1 )) && [[ ! -e "${entries[0]}" ]]; then
+        entries=()
+    fi
+    (( ${#entries[@]} > 0 )) || return 1
+
+    # Cheap early-out: no threshold can be crossed while the whole table is
+    # smaller than the smallest of them, so skip the per-process reads
+    # entirely. This is what keeps the steady-state cost of the watchdog at
+    # one directory glob per tick on a healthy host. PROCWATCH_COUNTS and
+    # PROCWATCH_TOP_* stay empty in that case, by design.
+    if (( min_interesting > 0 && ${#entries[@]} < min_interesting )); then
+        PROCWATCH_TOTAL=${#entries[@]}
+        return 0
+    fi
+
+    for entry in "${entries[@]}"; do
+        [[ -r "$entry/comm" ]] || continue
+        comm=""
+        read -r comm < "$entry/comm" 2>/dev/null || continue
+        [[ -n "$comm" ]] || continue
+        # comm is at most 15 bytes but is process-controlled; keep it to a
+        # character set that is safe as an associative-array subscript.
+        comm="${comm//[^[:alnum:]._+:-]/_}"
+        PROCWATCH_COUNTS["$comm"]=$(( ${PROCWATCH_COUNTS["$comm"]:-0} + 1 ))
+        PROCWATCH_TOTAL=$(( PROCWATCH_TOTAL + 1 ))
+    done
+
+    (( PROCWATCH_TOTAL > 0 )) || return 1
+
+    for comm in "${!PROCWATCH_COUNTS[@]}"; do
+        if (( PROCWATCH_COUNTS["$comm"] > PROCWATCH_TOP_COUNT )); then
+            PROCWATCH_TOP_COUNT=${PROCWATCH_COUNTS["$comm"]}
+            PROCWATCH_TOP_COMM="$comm"
+        fi
+    done
+
+    return 0
+}
+
+# Append a forensic snapshot to "$dumpfile". Assumes update_procwatch_scan()
+# has just run against the same "$procroot".
+update_procwatch_dump() {
+    local procroot="$1"
+    local dumpfile="$2"
+    local reason="$3"
+    local max_procs="${4:-256}"
+
+    local comm entry pid ppid cmdline line item key
+    local -a ordered=()
+    local -A ppid_counts=()
+    local shown=0
+    local i j
+
+    {
+        printf '# ACFS process-storm snapshot\n'
+        printf 'time:      %(%Y-%m-%dT%H:%M:%S%z)T\n' -1
+        printf 'reason:    %s\n' "$reason"
+        printf 'acfs:      update pid=%s\n' "$$"
+        printf 'total:     %s processes\n' "$PROCWATCH_TOTAL"
+        printf 'top:       %s x %s\n' "${PROCWATCH_TOP_COMM:-<none>}" "$PROCWATCH_TOP_COUNT"
+
+        if [[ -r "$procroot/loadavg" ]] && read -r line < "$procroot/loadavg" 2>/dev/null; then
+            printf 'loadavg:   %s\n' "$line"
+        fi
+        # /proc/stat's "processes" counter is total forks since boot; two
+        # snapshots of it give the spawn rate directly.
+        if [[ -r "$procroot/stat" ]]; then
+            while IFS= read -r line; do
+                case "$line" in
+                    'processes '*) printf 'forks:     %s (cumulative since boot)\n' "${line#processes }" ;;
+                    'procs_running '*) printf 'runnable:  %s\n' "${line#procs_running }" ;;
+                    'procs_blocked '*) printf 'blocked:   %s\n' "${line#procs_blocked }" ;;
+                esac
+            done < "$procroot/stat"
+        fi
+        if [[ -r "$procroot/sys/kernel/pid_max" ]] && read -r line < "$procroot/sys/kernel/pid_max" 2>/dev/null; then
+            printf 'pid_max:   %s\n' "$line"
+        fi
+        if [[ -r "$procroot/sys/kernel/threads-max" ]] && read -r line < "$procroot/sys/kernel/threads-max" 2>/dev/null; then
+            printf 'thr_max:   %s\n' "$line"
+        fi
+
+        printf '\n## process-name histogram (descending)\n'
+        for comm in "${!PROCWATCH_COUNTS[@]}"; do
+            printf -v item '%08d %s' "${PROCWATCH_COUNTS["$comm"]}" "$comm"
+            ordered+=("$item")
+        done
+        # Insertion sort: at most a few hundred distinct names, and it keeps
+        # this path free of `sort`.
+        for (( i = 1; i < ${#ordered[@]}; i++ )); do
+            key="${ordered[i]}"
+            j=$(( i - 1 ))
+            while (( j >= 0 )) && [[ "${ordered[j]}" < "$key" ]]; do
+                ordered[j + 1]="${ordered[j]}"
+                j=$(( j - 1 ))
+            done
+            ordered[j + 1]="$key"
+        done
+        for item in "${ordered[@]}"; do
+            printf '  %6d  %s\n' "10#${item%% *}" "${item#* }"
+        done
+
+        if [[ -n "$PROCWATCH_TOP_COMM" ]]; then
+            printf '\n## processes named %s (first %s, with parent and argv)\n' \
+                "$PROCWATCH_TOP_COMM" "$max_procs"
+            for entry in "$procroot"/[0-9]*; do
+                [[ -r "$entry/comm" ]] || continue
+                comm=""
+                read -r comm < "$entry/comm" 2>/dev/null || continue
+                comm="${comm//[^[:alnum:]._+:-]/_}"
+                [[ "$comm" == "$PROCWATCH_TOP_COMM" ]] || continue
+                pid="${entry##*/}"
+                ppid="?"
+                update_procwatch_read_ppid ppid "$entry/stat" || ppid="?"
+                ppid_counts["$ppid"]=$(( ${ppid_counts["$ppid"]:-0} + 1 ))
+                if (( shown < max_procs )); then
+                    cmdline=""
+                    update_procwatch_read_cmdline cmdline "$entry/cmdline" || cmdline=""
+                    printf '  pid=%-8s ppid=%-8s %s\n' "$pid" "$ppid" "${cmdline:-<none>}"
+                    shown=$(( shown + 1 ))
+                fi
+            done
+
+            printf '\n## parents of %s (ppid, count, parent comm and argv)\n' "$PROCWATCH_TOP_COMM"
+            for ppid in "${!ppid_counts[@]}"; do
+                comm=""
+                cmdline=""
+                if [[ -r "$procroot/$ppid/comm" ]]; then
+                    read -r comm < "$procroot/$ppid/comm" 2>/dev/null || comm=""
+                    update_procwatch_read_cmdline cmdline "$procroot/$ppid/cmdline" || cmdline=""
+                fi
+                printf '  ppid=%-8s count=%-6s %s :: %s\n' \
+                    "$ppid" "${ppid_counts["$ppid"]}" "${comm:-<gone>}" "${cmdline:-<none>}"
+            done
+        fi
+    } >> "$dumpfile" 2>/dev/null || return 1
+
+    return 0
+}
+
+# Sampling loop; runs in the background for the duration of the update. Takes
+# every tunable as an argument so it is testable without touching the caller's
+# environment.
+update_procwatch_loop() {
+    local procroot="$1"
+    local dumpdir="$2"
+    local interval="$3"
+    local comm_threshold="$4"
+    local total_threshold="$5"
+    local max_dumps="$6"
+    local tick_fifo="${7:-}"
+    local once="${8:-0}"
+
+    local dumps=0
+    local reason stamp dumpfile
+    local have_fifo=0
+    local min_interesting="$comm_threshold"
+
+    if (( total_threshold < min_interesting )); then
+        min_interesting="$total_threshold"
+    fi
+
+    # Fork-free sleep: block on a FIFO nobody writes to until `read` times out.
+    # `sleep` costs a fork per tick, and the whole point is to keep sampling
+    # once forking stops. Opened read-write so the open itself cannot block.
+    if [[ -n "$tick_fifo" ]] && exec 8<>"$tick_fifo" 2>/dev/null; then
+        have_fifo=1
+    fi
+
+    while true; do
+        if update_procwatch_scan "$procroot" "$min_interesting"; then
+            reason=""
+            if (( PROCWATCH_TOP_COUNT >= comm_threshold )); then
+                reason="process name '$PROCWATCH_TOP_COMM' reached $PROCWATCH_TOP_COUNT (threshold $comm_threshold)"
+            elif (( PROCWATCH_TOTAL >= total_threshold )); then
+                reason="process table reached $PROCWATCH_TOTAL entries (threshold $total_threshold)"
+            fi
+
+            if [[ -n "$reason" ]]; then
+                printf -v stamp '%(%Y%m%dT%H%M%S)T' -1
+                dumpfile="$dumpdir/storm-$stamp-$$-$dumps.txt"
+                if update_procwatch_dump "$procroot" "$dumpfile" "$reason" 256; then
+                    printf 'acfs: process-storm watchdog tripped (%s); snapshot: %s\n' \
+                        "$reason" "$dumpfile" >&2
+                    dumps=$(( dumps + 1 ))
+                    if (( dumps >= max_dumps )); then
+                        printf 'acfs: process-storm watchdog wrote %s snapshots; stopping.\n' \
+                            "$max_dumps" >&2
+                        break
+                    fi
+                fi
+            fi
+        fi
+
+        if [[ "$once" == "1" ]]; then break; fi
+
+        if (( have_fifo )); then
+            read -r -t "$interval" -u 8 _ || true
+        else
+            sleep "$interval" || break
+        fi
+    done
+
+    if (( have_fifo )); then exec 8>&- 2>/dev/null || true; fi
+    return 0
+}
+
+update_procwatch_start() {
+    local procroot="${ACFS_PROCWATCH_PROC:-/proc}"
+    local cores comm_threshold total_threshold interval max_dumps dumpdir tick_fifo
+
+    [[ "${ACFS_PROCWATCH:-1}" != "0" ]] || return 0
+    [[ -n "${BASH_VERSION:-}" ]] || return 0
+    # /proc is Linux-only, and there is no fork-free equivalent elsewhere.
+    [[ -r "$procroot/loadavg" ]] || return 0
+    [[ -z "$ACFS_PROCWATCH_PID" ]] || return 0
+
+    cores="$(update_procwatch_cpu_count "$procroot")"
+    interval="${ACFS_PROCWATCH_INTERVAL:-30}"
+    max_dumps="${ACFS_PROCWATCH_MAX_DUMPS:-5}"
+
+    # Defaults scale with the box: a legitimate build peaks near one compiler
+    # per core, so 32x cores is far above anything normal while still catching
+    # a storm (3,646 processes on a 10-core host) long before the table fills.
+    comm_threshold="${ACFS_PROCWATCH_THRESHOLD:-}"
+    if [[ -z "$comm_threshold" ]]; then
+        comm_threshold=$(( cores * 32 ))
+        (( comm_threshold >= 256 )) || comm_threshold=256
+    fi
+    total_threshold="${ACFS_PROCWATCH_TOTAL_THRESHOLD:-}"
+    if [[ -z "$total_threshold" ]]; then
+        total_threshold=$(( cores * 200 ))
+        (( total_threshold >= 2000 )) || total_threshold=2000
+    fi
+
+    case "${interval}${comm_threshold}${total_threshold}${max_dumps}" in
+        '' | *[!0-9]*) return 0 ;;
+    esac
+    (( interval > 0 && comm_threshold > 0 && total_threshold > 0 && max_dumps > 0 )) || return 0
+
+    dumpdir="${ACFS_PROCWATCH_DIR:-${HOME:-/tmp}/.acfs/diagnostics/procwatch}"
+    mkdir -p "$dumpdir" 2>/dev/null || return 0
+    [[ -w "$dumpdir" ]] || return 0
+
+    # One FIFO per watcher, created up front while forking still works.
+    tick_fifo="$dumpdir/.tick.$$"
+    rm -f "$tick_fifo" 2>/dev/null || true
+    mkfifo -m 0600 "$tick_fifo" 2>/dev/null || tick_fifo=""
+
+    # Explicit subshell so fd 9 — the exclusive per-UID update lock (#347) —
+    # can be closed in the child. If the parent were ever SIGKILLed, a watchdog
+    # still holding that descriptor would keep the lock alive and make every
+    # later `acfs update` skip. The child also drops the parent's EXIT trap so
+    # it never runs the stop handler against itself.
+    (
+        trap - EXIT
+        exec 9>&- 2>/dev/null || true
+        update_procwatch_loop "$procroot" "$dumpdir" "$interval" \
+            "$comm_threshold" "$total_threshold" "$max_dumps" "$tick_fifo"
+    ) &
+    ACFS_PROCWATCH_PID="$!"
+    ACFS_PROCWATCH_ACTIVE_FIFO="$tick_fifo"
+    if declare -F log_to_file >/dev/null 2>&1; then
+        log_to_file "process-storm watchdog started (pid $ACFS_PROCWATCH_PID, interval ${interval}s, name threshold $comm_threshold, table threshold $total_threshold, snapshots -> $dumpdir)"
+    fi
+    return 0
+}
+
+update_procwatch_stop() {
+    local pid="$ACFS_PROCWATCH_PID"
+    local fifo="$ACFS_PROCWATCH_ACTIVE_FIFO"
+
+    ACFS_PROCWATCH_PID=""
+    ACFS_PROCWATCH_ACTIVE_FIFO=""
+    if [[ -n "$pid" ]]; then
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+    if [[ -n "$fifo" ]]; then rm -f "$fifo" 2>/dev/null || true; fi
+    return 0
+}
+
+
 main() {
     # Ensure PATH includes user tool directories
     ensure_path
@@ -8156,6 +8531,11 @@ main() {
     # Initialize logging
     init_logging
 
+    # Process-storm watchdog (#348): capture the evidence a fork-exhaustion
+    # event destroys. Read-only; writes only when a threshold trips.
+    trap 'update_procwatch_stop' EXIT
+    update_procwatch_start
+
     # Header
     if [[ "$QUIET" != "true" ]]; then
         echo ""
@@ -8199,6 +8579,8 @@ main() {
 
     # Report managed services still running a replaced binary (#381)
     update_report_service_binary_drift
+
+    update_procwatch_stop
 
     # Summary
     print_summary
