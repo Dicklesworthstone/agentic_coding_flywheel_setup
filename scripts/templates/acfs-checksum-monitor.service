@@ -13,6 +13,17 @@ Type=oneshot
 
 # bun lives in ~/.bun/bin, gh/git/jq are system, monitor state in ~/.local/state.
 Environment=PATH=%h/.bun/bin:%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+
+# Bootstrap from canonical main before executing repository-owned monitor code.
+# Otherwise a stale checkout can reject a host dependency before reaching the
+# monitor's in-script fetch and permanently prevent itself from ingesting the
+# corresponding predicate fix (#355). Dirty tracked state and non-fast-forward
+# histories remain fail-closed; the direct URL prevents a rewritten origin from
+# selecting the bootstrap source, and repository hooks cannot run during merge.
+ExecStartPre=/usr/bin/git -C %h/acfs-monitor diff --quiet --exit-code --
+ExecStartPre=/usr/bin/git -C %h/acfs-monitor diff --cached --quiet --exit-code --
+ExecStartPre=/usr/bin/git -C %h/acfs-monitor fetch --quiet --no-tags --recurse-submodules=no https://github.com/Dicklesworthstone/agentic_coding_flywheel_setup.git +refs/heads/main:refs/remotes/acfs-bootstrap/main
+ExecStartPre=/usr/bin/git -C %h/acfs-monitor -c core.hooksPath=/dev/null merge --ff-only --quiet refs/remotes/acfs-bootstrap/main
 ExecStart=%h/acfs-monitor/scripts/checksum-monitor-local.sh
 
 # A full verify + regenerate cycle is minutes, not hours.
