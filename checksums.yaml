@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-09-02T21:34:49+00:00
+# checksums.yaml - Auto-generated 2026-09-04T00:36:47-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -44,7 +44,7 @@ installers:
 
   cass:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_session_search/main/install.sh"
-    sha256: "096e913f8d3cedb96f9da4c24c74e1fd9d4fa9de02d1709d0d0a50113a28605a"
+    sha256: "6a676e76d6954c7fa0fb705032b4b2114e6d7fb1202cab95ad232b9192efe8e2"
 
   claude:
     url: "https://claude.ai/install.sh"
@@ -96,7 +96,7 @@ installers:
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "fef2ec859f98448bfb1ffa331220569a3c3145cb0c20dd0df37a24fb8db9f112"
+    sha256: "e154a22e00532c928a04a7d1e2fb0c5824202def20af368d34198a0754f77b57"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
@@ -172,7 +172,7 @@ installers:
 
   srps:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/system_resource_protection_script/main/install.sh"
-    sha256: "b6963b0100fd23cf6b5219ddf2f58c13086edc5aceacbe75d13a9f814e36ac5a"
+    sha256: "3c62e1abe7332a4678ef5e588525aee09aa3ad355df1a4a874e846d3a7b86622"
 
   tru:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/toon_rust/main/install.sh"
@@ -180,7 +180,7 @@ installers:
 
   ubs:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/ultimate_bug_scanner/main/install.sh"
-    sha256: "b34d3cfbf795b05e712156ef58d63784ddab9aaa7dd07e98ba7121d924fc9d6f"
+    sha256: "9dcbce20bcaff58aa5ef477b7d462abf93f0d63f882228492961a6947152ba53"
 
   uv:
     url: "https://astral.sh/uv/install.sh"
