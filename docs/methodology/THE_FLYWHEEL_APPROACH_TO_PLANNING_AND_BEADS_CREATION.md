@@ -318,7 +318,7 @@ The installer is idempotent (safe to re-run), checkpointed (resumes on failure),
 
 ```bash
 alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
-alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.6-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
+alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6-astra -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
 # Antigravity CLI (successor to the retired Gemini CLI), model-pinned + auto-approve
 agy() { command agy --model "Gemini 3.8 Flash (High)" --dangerously-skip-permissions "$@"; }
 # Gemini CLI — LEGACY (retired 2026-06-18; kept only to read old ~/.gemini/tmp history)

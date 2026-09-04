@@ -1469,7 +1469,7 @@ Benefits for agentic workflows:
 alias cc='NODE_OPTIONS="--max-old-space-size=32768" claude --dangerously-skip-permissions'
 
 # Codex with bypass and dangerous filesystem access
-alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.6-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
+alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6-astra -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
 
 # Antigravity CLI, model/settings/DCG locked by the ACFS launcher
 alias agy='$HOME/.local/bin/agy-locked'

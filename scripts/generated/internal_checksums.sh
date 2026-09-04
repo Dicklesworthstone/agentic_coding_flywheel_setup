@@ -10,14 +10,14 @@
 ACFS_INTERNAL_CHECKSUMS_SCHEMA=1
 
 declare -gA ACFS_INTERNAL_CHECKSUMS=(
-  [install.sh]="a55faede338f906ff1b66d2b278374951e5200e9d93c45f910fbba565fcd8abe"
+  [install.sh]="0d46b0d3ca4889223fcb86a3158866770118152c0ed4544da0c9747920e5bf90"
   [checksums.yaml]="aabe9be6f9b95876f779b7ad04c3e87ba2614933718457eadd9c34f5335cd2c0"
   [scripts/preflight.sh]="6c49cbb7368c52cbfb720b2781e1b335379a88e151ce24a5b386e9b91b99273c"
   [scripts/lib/security.sh]="589e7550dffbdd3831b486bc572619e5091e7b5ef86ac62bfc73258ec4578e97"
   [scripts/lib/github_api.sh]="80699922df2e924694f5682457e614dedf9181d7c071472cc8a6db4f17373d3d"
   [scripts/lib/contract.sh]="22c148f44ddbaccd559196196ef903f26f65fc77e3b1b6b4efc62b77d3b97aa3"
   [scripts/lib/agents.sh]="d8cfa821bd712ddd07b9c40a9f43edb90170526d112c2c8fad43ba4d9c5b3918"
-  [scripts/lib/update.sh]="2fcb949127e2d1d2c30c9d7938444955c0448ad4109d10b3c9a5af65c9358528"
+  [scripts/lib/update.sh]="23af1f193dd097cc555c574f737c1f3727a942a41e54f253e03895bc88a8920c"
   [scripts/lib/doctor.sh]="c9467632c2f9a4560d1ccd3e4ff0bfde94a1dacaccacc706f5cf92188a12ea91"
   [scripts/lib/acfs-services.sh]="01e543d418c0ca5c45d42acb81510fce03150ff98e8bfd05438c863708daf359"
   [scripts/lib/doctor_fix.sh]="0a11a8df59b119a22f5a9d9734897be8a66d8cff71f9857a71a886f3b26a250b"
@@ -58,7 +58,7 @@ declare -gA ACFS_INTERNAL_CHECKSUMS=(
   [acfs/AGENTS.md]="a0d88f02162be2754c6adb1a34e18542b3f0dcda2fcdd19109943290dd888f6f"
   [acfs/onboard/docs/ntm/command_palette.md]="32a60a206d8431c60f948016cc13b85baa6a9470f345e083783f5f4bf224bfee"
   [acfs/tmux/tmux.conf]="d5a8c0e6e8be67b34fb3fdddef0396cba9761318992107fe70c57c549b475b03"
-  [acfs/zsh/acfs.zshrc]="e3c062f9e5c8e190912d12354ceb20c7c471c067a642f73f07a121fcbb57017d"
+  [acfs/zsh/acfs.zshrc]="d879f5da12262d8618ae5db9570595a950f8031be318d8ef8e76855af869d73c"
   [acfs/zsh/p10k.zsh]="c0f940424680a295d52559684c7d63d9dae8d0586b2ef964c449fa6054653c4d"
   [scripts/completions/_acfs]="15545f6326b56b3715be59be6f7608bad7eae2eea58b546d37a7eb4cf182f8b0"
   [scripts/completions/acfs.bash]="5c619eeb0299144ee487d551bb551efc8a8e3d5ee5546802f82713667f9969b0"

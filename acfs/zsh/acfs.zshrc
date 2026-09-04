@@ -630,7 +630,7 @@ alias cc='NODE_OPTIONS="--max-old-space-size=32768" ~/.local/bin/claude --danger
 # cod pins model + effort on the command line: the Codex CLI rewrites
 # ~/.codex/config.toml from its own model picker, so a bare alias silently
 # drifts to whatever effort was last selected. Flags beat config.toml.
-alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.6-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
+alias cod='codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6-astra -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental'
 
 # agy/gmi: Antigravity CLI (Google), locked to ACFS policy.
 alias agy='$HOME/.local/bin/agy-locked'

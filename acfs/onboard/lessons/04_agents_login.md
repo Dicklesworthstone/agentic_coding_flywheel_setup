@@ -33,7 +33,7 @@ NODE_OPTIONS="--max-old-space-size=32768" \
 
 ### `cod` (Codex CLI)
 ```bash
-codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-5.6-sol -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental
+codex --dangerously-bypass-approvals-and-sandbox --search -m gpt-6-astra -c model_reasoning_effort=xhigh -c model_reasoning_summary_format=experimental
 ```
 - Bypass safety prompts
 - No approval/sandbox checks

@@ -120,12 +120,12 @@ export function AgentsLoginLesson() {
             alias="cod"
             name="Codex CLI"
             code={`codex --dangerously-bypass-approvals-and-sandbox --search \\
-  -m gpt-5.6-sol -c model_reasoning_effort=xhigh \\
+  -m gpt-6-astra -c model_reasoning_effort=xhigh \\
   -c model_reasoning_summary_format=experimental`}
             features={[
               "Bypass safety prompts",
               "No approval/sandbox checks",
-              "Model pinned to gpt-5.6-sol at xhigh effort",
+              "Model pinned to gpt-6-astra at xhigh effort",
             ]}
             gradient="from-emerald-500/20 to-teal-500/20"
           />
