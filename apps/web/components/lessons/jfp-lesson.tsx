@@ -113,8 +113,8 @@ export function JfpLesson() {
             { command: 'jfp search <query>', description: 'Search for prompts' },
             { command: 'jfp show <id>', description: 'View prompt details' },
             { command: 'jfp copy <id>', description: 'Copy prompt to clipboard' },
-            { command: 'jfp install <id>', description: 'Install as Claude Code skill' },
-            { command: 'jfp installed', description: 'List installed skills' },
+            { command: 'jsm install <id>', description: 'Install as a Claude Code skill (skill management moved from jfp to jsm)' },
+            { command: 'jsm list', description: 'List installed skills' },
           ]}
         />
 
@@ -133,8 +133,8 @@ jfp list
 # Search for code review prompts
 jfp search "code review"
 
-# Install a prompt as a skill
-jfp install idea-wizard
+# Install a prompt as a skill (jsm owns skill management now)
+jsm install idea-wizard
 
 # Use in Claude Code
 /idea-wizard "build a REST API"`} />
@@ -383,7 +383,7 @@ const TERMINAL_LINES = [
   { type: 'result' as const, text: '  2. bundle-analyzer    Bundle size optimization review      4.7' },
   { type: 'result' as const, text: '  3. render-audit       React re-render analysis             4.6' },
   { type: 'output' as const, text: '' },
-  { type: 'command' as const, text: '$ jfp install perf-review-pro' },
+  { type: 'command' as const, text: '$ jsm install perf-review-pro' },
   { type: 'progress' as const, text: 'Downloading prompt template...' },
   { type: 'progress' as const, text: 'Installing as Claude Code skill...' },
   { type: 'success' as const, text: 'Installed! Use with: /perf-review-pro <file_or_directory>' },

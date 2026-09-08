@@ -226,11 +226,11 @@ caam activate claude backup-account`,
               gradient: "from-indigo-500/20 to-blue-500/20",
               useCases: [
                 "Sync dozens of repos with one command",
-                "AI-driven commit automation",
+                "Group dirty worktrees into conventional commits",
                 "Parallel workflow management",
               ],
               example: `ru sync -j4                  # Parallel sync
-ru agent-sweep --dry-run    # Preview AI commits`,
+ru commit-sweep              # Preview the commit plan (dry-run)`,
             }}
           />
 
@@ -979,7 +979,7 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     agent: "Brenner",
     description:
       "Scan the backlog, triage issues by priority, and pick the highest-impact task. Beads keeps everything ranked and visible.",
-    commands: ["acfs bv list --priority high", "acfs br ready"],
+    commands: ["bv --robot-triage", "br ready"],
   },
   {
     id: "plan",
@@ -988,11 +988,11 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     icon: Brain,
     color: "#8b5cf6",
     warmColor: "#c084fc",
-    tools: ["CM reflect", "CLAUDE.md"],
+    tools: ["CM context", "CLAUDE.md"],
     agent: "Context Master",
     description:
-      "Review procedural memory, outline the approach, and decide which agents to spawn for parallel work.",
-    commands: ["acfs cm reflect --task $TASK_ID", "cat CLAUDE.md"],
+      "Pull the procedural-memory rules that apply to this task, outline the approach, and decide which agents to spawn for parallel work.",
+    commands: ['cm context "$TASK_TITLE" --json', "cat CLAUDE.md"],
   },
   {
     id: "implement",
@@ -1006,8 +1006,8 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     description:
       "Spawn parallel coding agents with NTM. Each agent works on a slice of the task, coordinating via Agent Mail.",
     commands: [
-      "acfs ntm spawn --agents 3 --task $TASK_ID",
-      "acfs am send @agent-2 'merge ready'",
+      "ntm spawn myproject --cc=3",
+      'am mail send --project myproject --from cc-1 --to cc-2 --subject "merge ready" --body "auth slice done"',
     ],
   },
   {
@@ -1017,11 +1017,11 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     icon: TestTube,
     color: "#06b6d4",
     warmColor: "#22d3ee",
-    tools: ["UBS scan", "CAUT check"],
+    tools: ["UBS scan", "CAUT usage"],
     agent: "UBS Scanner",
     description:
-      "Run automated bug scanning, check test coverage, and verify the changes pass all quality gates.",
-    commands: ["acfs ubs scan --deep", "acfs caut check --all"],
+      "Run automated bug scanning on the changed files, verify the changes pass all quality gates, and check how much agent quota the run consumed.",
+    commands: ["ubs --diff --format=json", "caut usage"],
   },
   {
     id: "review",
@@ -1030,11 +1030,11 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     icon: Eye,
     color: "#10b981",
     warmColor: "#34d399",
-    tools: ["DCG guard", "APR review"],
+    tools: ["DCG test", "RU review"],
     agent: "DCG Guardian",
     description:
-      "DCG blocks dangerous commands. APR provides automated pull request review with context-aware suggestions.",
-    commands: ["acfs dcg guard --strict", "acfs apr review --pr $PR_NUM"],
+      "DCG blocks dangerous commands before they run. RU orchestrates AI-assisted review of open issues and pull requests across your repos.",
+    commands: ['dcg test "git push --force origin main"', "ru review --dry-run"],
   },
   {
     id: "deploy",
@@ -1046,8 +1046,8 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     tools: ["RU sync", "git push"],
     agent: "RU Deployer",
     description:
-      "RU handles multi-repo sync, AI-driven commit messages, and coordinated deployments across all projects.",
-    commands: ["acfs ru sync --all", "git push origin main"],
+      "RU handles multi-repo sync and groups leftover changes into conventional commits, then you push across all projects.",
+    commands: ["ru sync", "git push origin main"],
   },
   {
     id: "monitor",
@@ -1056,11 +1056,11 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     icon: Activity,
     color: "#ec4899",
     warmColor: "#f472b6",
-    tools: ["DSR report", "acfs status"],
+    tools: ["DSR status", "acfs status"],
     agent: "DSR Reporter",
     description:
-      "Track deployment health, generate daily status reports, and surface any regressions or anomalies immediately.",
-    commands: ["acfs dsr report --today", "acfs status --verbose"],
+      "Track release health and the last run summary, check that every installed tool is current, and surface regressions immediately.",
+    commands: ["dsr status", "acfs status --check-updates"],
   },
   {
     id: "learn",
@@ -1069,11 +1069,11 @@ const FLYWHEEL_STAGES_V2: FlywheelStageData[] = [
     icon: BookOpen,
     color: "#a855f7",
     warmColor: "#d946ef",
-    tools: ["CASS search", "CM distill"],
+    tools: ["CASS index", "CM reflect"],
     agent: "CASS Indexer",
     description:
-      "CASS indexes session history for future retrieval. CM distills reusable patterns into procedural memory for the next cycle.",
-    commands: ["acfs cass index --session $SID", "acfs cm distill --patterns"],
+      "CASS indexes session history for future retrieval. CM reflects on recent sessions to extract reusable rules into procedural memory for the next cycle.",
+    commands: ["cass index", "cm reflect --days 7"],
   },
 ];
 

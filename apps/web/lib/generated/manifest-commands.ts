@@ -100,7 +100,7 @@ export const manifestCommands: ManifestCommand[] = [
     cliName: "casr",
     cliAliases: [],
     description: "Cross-provider AI coding session resumption — convert and resume sessions across providers (casr)",
-    commandExample: "casr export --from claude",
+    commandExample: "casr resume cod <session-id>",
     docsUrl: "https://github.com/Dicklesworthstone/cross_agent_session_resumer",
   },
   {
@@ -120,7 +120,7 @@ export const manifestCommands: ManifestCommand[] = [
     cliName: "dsr",
     cliAliases: [],
     description: "Fallback release infrastructure — local builds via act when GitHub Actions is throttled (dsr)",
-    commandExample: "dsr release",
+    commandExample: "dsr release ntm 1.2.3",
     docsUrl: "https://github.com/Dicklesworthstone/doodlestein_self_releaser",
   },
   {
@@ -228,7 +228,7 @@ export const manifestCommands: ManifestCommand[] = [
     cliName: "pt",
     cliAliases: [],
     description: "Find and terminate stuck/zombie processes with intelligent scoring (pt)",
-    commandExample: "pt --robot --top 10",
+    commandExample: "pt scan --format json",
     docsUrl: "https://github.com/Dicklesworthstone/process_triage",
   },
   {

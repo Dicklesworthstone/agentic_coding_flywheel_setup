@@ -66,8 +66,8 @@ export function RuLesson() {
             />
             <FeatureCard
               icon={<Bot className="h-5 w-5" />}
-              title="Agent Sweep"
-              description="AI-driven commit automation"
+              title="Commit Sweep"
+              description="Group dirty worktrees into conventional commits"
               gradient="from-violet-500/20 to-purple-500/20"
             />
             <FeatureCard
@@ -117,37 +117,40 @@ export function RuLesson() {
 
       <Divider />
 
-      {/* Section 3: Agent Sweep */}
-      <Section title="Agent Sweep: AI Automation" icon={<Bot className="h-5 w-5" />} delay={0.2}>
+      {/* Section 3: Commit Sweep */}
+      <Section title="Commit Sweep: Clean Up Dirty Worktrees" icon={<Bot className="h-5 w-5" />} delay={0.2}>
         <Paragraph>
-          Agent Sweep is RU&apos;s killer feature. It uses Claude Code to automatically
-          commit dirty repos with intelligent commit messages.
+          After a swarm session you are left with dirty worktrees across many repos.
+          <Highlight>ru commit-sweep</Highlight> groups the changes in each repo into
+          logical conventional commits. It is a dry-run by default: you see the plan
+          first and apply it with <code>--execute</code>.
         </Paragraph>
 
         <CodeBlock
-          code={`# Phase 1: Understand
-# Agent reads AGENTS.md, explores codebase, learns conventions
+          code={`# Phase 1: Scan
+# RU finds every repo with uncommitted changes
 
-# Phase 2: Plan
-# Agent produces JSON commit plan (files, messages)
-# RU validates: no secrets, file size limits, schema check
+# Phase 2: Plan (default, no git writes)
+# Changes are grouped into logical conventional commits
+# Manually staged files stay their own group with --respect-staging
 
 # Phase 3: Execute
-# RU executes validated plan with deterministic git commands`}
+# ru commit-sweep --execute runs the planned commits with plain git`}
           filename="Three-Phase Workflow"
         />
 
         <CommandList
           commands={[
-            { command: 'ru agent-sweep --dry-run', description: 'Preview what would happen' },
-            { command: 'ru agent-sweep --parallel 4', description: 'Process 4 repos simultaneously' },
-            { command: 'ru agent-sweep --with-release', description: 'Include version bumps and tags' },
-            { command: 'ru agent-sweep --resume', description: 'Continue interrupted sweep' },
+            { command: 'ru commit-sweep', description: 'Preview the commit plan (dry-run is the default)' },
+            { command: 'ru commit-sweep --execute', description: 'Run the planned commits' },
+            { command: 'ru commit-sweep --respect-staging', description: 'Keep manually staged files as their own commit' },
+            { command: 'ru commit-sweep --repos="cass*"', description: 'Limit the sweep to repos matching a glob' },
           ]}
         />
 
         <TipBox variant="warning">
-          Always run <code>--dry-run</code> first to preview the commit plan!
+          Read the plan before adding <code>--execute</code>: the sweep commits
+          everything it grouped, in every matching repo.
         </TipBox>
       </Section>
 
@@ -237,8 +240,9 @@ git@github.com:owner/repo.git as myrepo`}
           >
             <h4 className="font-semibold text-primary mb-2">RU + NTM</h4>
             <p className="text-muted-foreground text-sm">
-              Agent Sweep uses NTM robot mode to spawn Claude sessions. NTM manages
-              the tmux panes, RU orchestrates the workflow.
+              <code className="text-primary">ru review --mode=ntm</code> drives its
+              Claude sessions through NTM. NTM manages the tmux panes, RU orchestrates
+              the review workflow.
             </p>
           </motion.div>
           <motion.div
@@ -263,7 +267,7 @@ git@github.com:owner/repo.git as myrepo`}
             <h4 className="font-semibold text-primary mb-2">RU + Mail</h4>
             <p className="text-muted-foreground text-sm">
               Agents can claim repos via Mail to prevent conflicts during
-              parallel agent-sweep runs.
+              parallel <code className="text-primary">ru review</code> sessions.
             </p>
           </motion.div>
         </div>
@@ -334,11 +338,11 @@ interface Scenario {
 
 const SCENARIOS: Scenario[] = [
   { id: 'parallel-sync', label: 'Parallel Sync', icon: <FolderSync className="h-3.5 w-3.5" />, description: '10 repos synced with 4 workers', command: 'ru sync -j4' },
-  { id: 'initial-clone', label: 'Initial Clone', icon: <FolderGit2 className="h-3.5 w-3.5" />, description: 'Clone missing repos from manifest', command: 'ru sync --clone' },
+  { id: 'initial-clone', label: 'Initial Clone', icon: <FolderGit2 className="h-3.5 w-3.5" />, description: 'Clone missing repos from manifest', command: 'ru sync --clone-only' },
   { id: 'dirty-detect', label: 'Dirty Detection', icon: <AlertTriangle className="h-3.5 w-3.5" />, description: 'Identify repos with uncommitted changes', command: 'ru status --fetch' },
-  { id: 'ai-commit', label: 'AI Commit', icon: <Sparkles className="h-3.5 w-3.5" />, description: 'AI analyzes diffs and generates commits', command: 'ru agent-sweep --dry-run' },
+  { id: 'ai-commit', label: 'Commit Plan', icon: <Sparkles className="h-3.5 w-3.5" />, description: 'Group dirty changes into conventional commits (dry-run)', command: 'ru commit-sweep' },
   { id: 'conflict-resolve', label: 'Conflict Resolution', icon: <GitMerge className="h-3.5 w-3.5" />, description: 'Detect and report merge conflicts', command: 'ru sync --autostash' },
-  { id: 'full-sweep', label: 'Full Sweep', icon: <Bot className="h-3.5 w-3.5" />, description: 'Agent sweep + parallel commit + push', command: 'ru agent-sweep --parallel 4' },
+  { id: 'full-sweep', label: 'Execute Sweep', icon: <Bot className="h-3.5 w-3.5" />, description: 'Run the planned commits across every dirty repo', command: 'ru commit-sweep --execute' },
 ];
 
 const ALL_REPOS: SyncRepo[] = [
@@ -580,8 +584,8 @@ function InteractiveRepoSync() {
     const dirtyRepos = ['cass', 'dcg', 'bv'];
     const delay = 200;
 
-    addTerminalLine('$ ru agent-sweep --dry-run');
-    addTerminalLine('Phase 1: Scanning for dirty repos...');
+    addTerminalLine('$ ru commit-sweep');
+    addTerminalLine('Phase 1: Scanning for dirty repos (dry-run)...');
 
     // Mark dirty repos
     dirtyRepos.forEach((name, i) => {
@@ -600,7 +604,7 @@ function InteractiveRepoSync() {
       const msg = AI_COMMIT_MESSAGES[msgIndex];
 
       addTimer(() => {
-        addTerminalLine(`Phase 2: AI analyzing diff for ${name}...`);
+        addTerminalLine(`Phase 2: Grouping changes in ${name}...`);
         updateRepo(name, { status: 'ai-commit', progress: 50 });
         setAiTargetRepo(name);
         setAiTyping('');
@@ -617,8 +621,8 @@ function InteractiveRepoSync() {
       const typingDuration = 400 + chars.length * 35 + 300;
 
       addTimer(() => {
-        updateRepo(name, { status: 'synced', progress: 100, commitMsg: msg, lastAction: 'AI committed' });
-        addTerminalLine(`  Commit: "${msg}"`);
+        updateRepo(name, { status: 'synced', progress: 100, commitMsg: msg, lastAction: 'commit planned' });
+        addTerminalLine(`  Planned: "${msg}"`);
         setAiTyping('');
         setAiTargetRepo('');
       }, aiDelay + typingDuration);
@@ -688,8 +692,8 @@ function InteractiveRepoSync() {
     const sweepRepos = ['cass', 'dcg', 'caam', 'bv', 'ntm', 'slb'];
     const delay = 200;
 
-    addTerminalLine('$ ru agent-sweep --parallel 4');
-    addTerminalLine('Spawning 4 Claude Code agents...');
+    addTerminalLine('$ ru commit-sweep --execute');
+    addTerminalLine('Executing planned commits...');
 
     // Phase 1: Detect dirty
     sweepRepos.forEach((name, i) => {
@@ -713,16 +717,16 @@ function InteractiveRepoSync() {
 
         addTimer(() => {
           updateRepo(name, { status: 'ai-commit', progress: 50 });
-          addTerminalLine(`[agent-${batch + bi}] analyzing ${name}...`);
+          addTerminalLine(`[${name}] grouping changes...`);
         }, agentDelay + bi * 150);
 
         addTimer(() => {
           updateRepo(name, { progress: 80, commitMsg: AI_COMMIT_MESSAGES[msgIdx] });
-          addTerminalLine(`[agent-${batch + bi}] committing ${name}: "${AI_COMMIT_MESSAGES[msgIdx].slice(0, 40)}..."`);
+          addTerminalLine(`[${name}] commit: "${AI_COMMIT_MESSAGES[msgIdx].slice(0, 40)}..."`);
         }, agentDelay + 1000 + bi * 150);
 
         addTimer(() => {
-          updateRepo(name, { status: 'synced', progress: 100, lastAction: 'agent committed + pushed' });
+          updateRepo(name, { status: 'synced', progress: 100, lastAction: 'committed' });
         }, agentDelay + 1600 + bi * 150);
       });
 
@@ -967,7 +971,7 @@ function InteractiveRepoSync() {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-medium text-violet-300">AI Generating Commit for {aiTargetRepo}</span>
+                  <span className="text-[11px] font-medium text-violet-300">Planning commit for {aiTargetRepo}</span>
                   <motion.div
                     animate={inView ? { opacity: [1, 0.3, 1] } : { opacity: 1 }}
                     transition={inView ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}

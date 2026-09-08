@@ -33,52 +33,63 @@ apr --help
 
 # The Basic Workflow
 
-APR works with Markdown plan files. The typical flow looks like this:
+APR works in numbered **rounds** against a configured workflow, not on a
+loose file. The typical flow looks like this:
 
 1. Generate an initial plan (from Claude Code or write it yourself)
-2. Run `apr refine` to improve it
-3. Review the refined plan
-4. Feed it back to Claude Code for implementation
+2. Run `apr setup` once to point a workflow at that plan
+3. Run `apr run 1`, `apr run 2`, ... to revise it round by round
+4. Compare rounds, then feed the result back to Claude Code
 
 ---
 
-# Refining a Plan
+# Setting Up a Workflow
 
-Let's say you have a plan file called `plan.md`. Refine it:
+Point APR at your plan with the interactive wizard:
 
 ```bash
-apr refine plan.md
+apr setup
 ```
 
-APR analyzes the plan and outputs an improved version with:
+It asks for the workflow name and the plan document, and saves the answers
+so later commands can use `-w NAME` (or the default workflow).
+
+---
+
+# Running a Revision Round
+
+Run the first round:
+
+```bash
+apr run 1
+```
+
+APR sends the plan out for extended-reasoning review and stores the
+revised version as round 1, with:
 - Clearer structure
 - Identified dependencies
 - Potential edge cases
 - More actionable steps
 
----
-
-# Saving to a Specific File
-
-By default, APR outputs to stdout. Save to a specific file:
-
-```bash
-apr refine plan.md -o refined-plan.md
-```
-
-Now you have both versions to compare.
+Add `--dry-run` to preview the bundle without sending anything.
 
 ---
 
 # Iterative Refinement
 
-APR supports multiple passes. If the first refinement isn't thorough enough:
+Each round builds on the previous one. If round 1 isn't thorough enough:
 
 ```bash
-apr refine refined-plan.md -o final-plan.md
+apr run 2
+apr run 3 --include-impl   # also send the implementation document
 ```
 
-Each pass adds more detail and structure.
+Then see what changed between rounds:
+
+```bash
+apr diff 3 2
+apr stats
+```
 
 ---
 
@@ -90,14 +101,19 @@ Here's a real workflow:
 # 1. Claude Code generates initial plan
 # (creates plan.md)
 
-# 2. Refine with APR
-apr refine plan.md -o refined-plan.md
+# 2. Point APR at it (once)
+apr setup
 
-# 3. Review the output
-cat refined-plan.md
+# 3. Revise it in rounds
+apr run 1
+apr run 2
 
-# 4. Give to Claude Code for implementation
-# "Please implement according to refined-plan.md"
+# 4. Review the latest round and the delta
+apr show 2
+apr diff 2 1
+
+# 5. Hand it to Claude Code for implementation
+apr integrate 2 --copy   # integration prompt is now on your clipboard
 ```
 
 ---
@@ -106,8 +122,8 @@ cat refined-plan.md
 
 You've learned:
 1. **APR** turns rough plans into polished roadmaps
-2. **apr refine <file>** processes a plan file
-3. **-o** saves output to a specific file
-4. Use APR iteratively for complex plans
+2. **apr setup** configures a workflow around a plan file
+3. **apr run <round>** runs one revision round
+4. **apr diff** / **apr show** / **apr integrate** review and hand off rounds
 
 APR is especially useful when you want Claude Code to follow a well-structured implementation plan.

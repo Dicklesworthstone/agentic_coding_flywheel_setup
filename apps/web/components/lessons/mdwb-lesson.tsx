@@ -98,18 +98,22 @@ export function MdwbLesson() {
       {/* Section 2: Quick Start */}
       <Section title="Quick Start" icon={<Play className="h-5 w-5" />} delay={0.15}>
         <Paragraph>
-          Convert any URL to Markdown with a single command.
+          Submit a URL as a capture job, then read the Markdown snapshot back
+          by job id.
         </Paragraph>
 
         <CodeBlock
-          code={`# Convert a web page to Markdown
-mdwb "https://docs.example.com/api/reference"
+          code={`# Capture a web page (streams progress, prints the job id)
+mdwb fetch "https://docs.example.com/api/reference" --watch
 
-# Save to a file
-mdwb "https://docs.example.com/guide" > guide.md
+# Read the Markdown snapshot for that job
+mdwb show <job-id>
+
+# Save it to a file
+mdwb show <job-id> > guide.md
 
 # Pipe directly to an AI agent
-mdwb "https://docs.example.com/api" | claude "summarize this API"`}
+mdwb show <job-id> | claude "summarize this API"`}
           filename="Basic Usage"
         />
 
@@ -124,9 +128,10 @@ mdwb "https://docs.example.com/api" | claude "summarize this API"`}
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'mdwb "<url>"', description: 'Convert a URL to Markdown' },
-            { command: 'mdwb -o output.md "<url>"', description: 'Save output to a file' },
-            { command: 'mdwb --links "<url>"', description: 'Include link URLs in output' },
+            { command: 'mdwb fetch "<url>" --watch', description: 'Capture a URL as a Markdown job' },
+            { command: 'mdwb show <job-id>', description: 'Print the Markdown snapshot for a job' },
+            { command: 'mdwb links <job-id>', description: 'List the links found on the captured page' },
+            { command: 'mdwb search "<query>"', description: 'Full-text search across captured pages' },
             { command: 'mdwb --help', description: 'Show all available options' },
           ]}
         />
@@ -147,18 +152,19 @@ mdwb "https://docs.example.com/api" | claude "summarize this API"`}
 
         <CodeBlock
           code={`# Research a library's docs before using it
-mdwb "https://docs.rs/tokio/latest" > tokio-docs.md
+mdwb fetch "https://docs.rs/tokio/latest" --watch
+mdwb show <job-id> > tokio-docs.md
 
 # Get error context from StackOverflow
-mdwb "https://stackoverflow.com/questions/12345" > context.md
+mdwb fetch "https://stackoverflow.com/questions/12345" --watch
+mdwb show <job-id> > context.md
 
-# Archive a blog post for reference
-mdwb "https://blog.example.com/architecture-decisions" > arch.md
+# Crawl a docs site one level deep
+mdwb crawl "https://blog.example.com/architecture-decisions"
 
-# Feed multiple pages to an agent
-for url in $(cat urls.txt); do
-  mdwb "$url"
-done | claude "analyze these documents"`}
+# Capture several pages as one tagged batch, then search across them
+mdwb batch --url "https://docs.example.com/a" --url "https://docs.example.com/b" --tag research
+mdwb search "architecture" --tag research | claude "analyze these documents"`}
           filename="Use Cases"
         />
       </Section>
@@ -345,10 +351,10 @@ const PAGE_TYPES: PageType[] = [
 ];
 
 const COMMANDS = [
-  { cmd: 'mdwb "<url>"', desc: 'Convert URL to Markdown' },
-  { cmd: 'mdwb -o file.md "<url>"', desc: 'Save to file' },
-  { cmd: 'mdwb --links "<url>"', desc: 'Preserve link URLs' },
-  { cmd: 'mdwb "<url>" | claude', desc: 'Pipe to AI agent' },
+  { cmd: 'mdwb fetch "<url>" --watch', desc: 'Capture URL as a job' },
+  { cmd: 'mdwb show <job-id> > file.md', desc: 'Save snapshot to file' },
+  { cmd: 'mdwb links <job-id>', desc: 'List captured links' },
+  { cmd: 'mdwb show <job-id> | claude', desc: 'Pipe to AI agent' },
 ];
 
 type ConversionStage = 'idle' | 'fetching' | 'scanning' | 'stripping' | 'converting' | 'done';

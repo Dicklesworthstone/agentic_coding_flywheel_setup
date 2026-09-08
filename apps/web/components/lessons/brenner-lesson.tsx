@@ -135,7 +135,7 @@ export function BrennerLesson() {
             { command: 'brenner --version', description: 'Check installation' },
             { command: 'brenner doctor', description: 'Run diagnostics' },
             { command: 'brenner corpus search "query"', description: 'Search transcripts' },
-            { command: 'brenner session start "topic"', description: 'Start research session' },
+            { command: 'brenner session start --thread-id <id> --to <A,B> --excerpt-file <path> --question "<topic>"', description: 'Start research session' },
           ]}
         />
 
@@ -156,14 +156,15 @@ export function BrennerLesson() {
           code={`# Search the transcript corpus
 brenner corpus search "experimental design"
 
-# List available sections
-brenner corpus list
+# Cap the hits, or get JSON for tooling
+brenner corpus search "experimental design" --limit 10 --json
 
 # Build excerpts from specific sections
 brenner excerpt build --sections 42,43,44
 
-# Export with citations
-brenner excerpt build --sections 42-50 --format markdown`}
+# Export in transcript order, or as JSON for tooling
+brenner excerpt build --sections 42-50 --ordering chronological
+brenner excerpt build --sections 42-50 --json`}
           filename="Corpus Commands"
         />
 
@@ -182,9 +183,9 @@ brenner excerpt build --sections 42-50 --format markdown`}
 
         <CommandList
           commands={[
-            { command: 'brenner session start "hypothesis"', description: 'Start new session' },
-            { command: 'brenner session resume <id>', description: 'Resume existing session' },
-            { command: 'brenner session list', description: 'List active sessions' },
+            { command: 'brenner session start --thread-id <id> --to <A,B> --excerpt-file <path> --question "<q>"', description: 'Start new session' },
+            { command: 'brenner session status --thread-id <id> --watch', description: 'Follow an existing session' },
+            { command: 'brenner session compile --thread-id <id>', description: 'Compile the session artifact' },
           ]}
         />
 
@@ -315,7 +316,7 @@ const RESEARCH_PHASES: ResearchPhase[] = [
     bgColor: "bg-blue-500/10",
     description: "Define competing hypotheses with explicit assumptions",
     terminalLines: [
-      "$ brenner session start \"gene regulation\"",
+      "$ brenner session start --thread-id BR-0847 --to Claude,Codex,Gemini --excerpt-file excerpt.md --question \"gene regulation\"",
       "Session #BR-0847 initialized",
       "Loading corpus sections 42-58...",
       "Generating hypothesis slate...",
@@ -373,14 +374,14 @@ const RESEARCH_PHASES: ResearchPhase[] = [
     textColor: "text-pink-400",
     borderColor: "border-pink-500/30",
     bgColor: "bg-pink-500/10",
-    description: "Multi-agent triangulation across model syntheses",
+    description: "Cross-reference the evidence ledger against every hypothesis",
     terminalLines: [
-      "$ brenner crossref --session BR-0847",
-      "Dispatching to 3 agent lanes...",
-      "[Claude] Corpus analysis complete",
-      "[GPT] Pattern cross-reference done",
-      "[Gemini] Adversarial critique ready",
-      "Merging triangulation results...",
+      "$ brenner evidence list --thread-id BR-0847",
+      "EV-001  \u00a742 transcript   supports H1",
+      "EV-002  \u00a745 transcript   supports H2, refutes H1",
+      "EV-003  \u00a751 experiment   informs T1",
+      "3 evidence items, 2 hypotheses covered",
+      "$ brenner session status --thread-id BR-0847",
       "Conflict detected: H1 vs H3 on \u00a745",
     ],
   },
@@ -395,7 +396,7 @@ const RESEARCH_PHASES: ResearchPhase[] = [
     bgColor: "bg-emerald-500/10",
     description: "Merge findings and score hypotheses against evidence",
     terminalLines: [
-      "$ brenner synthesize --session BR-0847",
+      "$ brenner session compile --thread-id BR-0847",
       "Scoring hypotheses against tests...",
       "H1: 0.62 confidence (weakened)",
       "H2: 0.78 confidence (strengthened)",
@@ -415,7 +416,7 @@ const RESEARCH_PHASES: ResearchPhase[] = [
     bgColor: "bg-cyan-500/10",
     description: "Export structured findings with full citations",
     terminalLines: [
-      "$ brenner publish --session BR-0847",
+      "$ brenner session publish --thread-id BR-0847 --to Claude,Codex,Gemini",
       "Compiling research report...",
       "Embedding 23 citations (\u00a7 format)",
       "Attaching assumption ledger (14 items)",

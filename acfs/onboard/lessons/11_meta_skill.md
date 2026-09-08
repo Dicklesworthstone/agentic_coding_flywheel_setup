@@ -71,15 +71,23 @@ ms list
 
 # Creating a Skill
 
-Let's create a simple skill. Skills are just Markdown files with some YAML metadata.
-
-Create a new skill called "hello":
+Skills are just Markdown files with some YAML metadata, and `ms` builds them
+for you rather than opening an editor. Write a short note describing what
+the skill does (e.g., "Say hello to the user in a pirate voice") and import
+it:
 
 ```bash
-ms create "hello"
+ms import hello.md --name hello
 ```
 
-This will open your editor. You can define what the skill does (e.g., "Say hello to the user in a pirate voice").
+`ms` classifies the text into a skill spec (add `--dry-run` to preview).
+Once you have coding history indexed by CASS, you can also mine it:
+
+```bash
+ms build --name hello --from-cass "pirate greeting"
+```
+
+Load a skill into your context with `ms load hello`.
 
 ---
 
@@ -105,6 +113,7 @@ You've learned:
 1. **ms** manages AI skills locally in your project.
 2. **ms init** sets up a project.
 3. **ms suggest** finds the right skill for the job.
-4. **MCP** connects these skills to Claude Code automatically.
+4. **ms import** / **ms build** create skills; **ms load** uses one.
+5. **MCP** connects these skills to Claude Code automatically.
 
 Next, we'll look at how to find *remote* skills from the community using `jfp`.

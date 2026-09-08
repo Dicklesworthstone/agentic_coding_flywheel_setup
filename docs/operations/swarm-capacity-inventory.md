@@ -197,7 +197,7 @@ rch exec -- cargo clippy
 ### RU
 
 RU remains the multi-repo sync tool. Inventory can mark whether a host is
-appropriate for `ru sync` or `ru agent-sweep`, but it must not run RU commands
+appropriate for `ru sync` or `ru commit-sweep`, but it must not run RU commands
 or infer repo paths from RU state.
 
 ### NTM

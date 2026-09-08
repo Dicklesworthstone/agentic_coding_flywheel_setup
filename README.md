@@ -1235,7 +1235,7 @@ Plan (Beads) ──> Coordinate (Agent Mail) ──> Execute (NTM + Agents)
 | 5,500 Lines to 347 Beads | Turn a massive planning document into a dependency-tracked task graph | ~1 day for a complex feature |
 | Fresh Eyes Code Review | Agents re-investigate code from a fresh perspective to find what humans miss | Continuous |
 | Multi-Repo Morning Sync | Start the day with every repo synced and agents spawned across the fleet | < 10 minutes to full productivity |
-| Bulk AI Commit Automation | `ru agent-sweep` commits dirty repos with AI-written messages | 30 min – 2 hours depending on repo count |
+| Bulk Commit Sweep | `ru commit-sweep` turns dirty worktrees into logical conventional commits (plan first, `--execute` to apply) | 30 min – 2 hours depending on repo count |
 | Resource-Protected Agent Swarm | Run heavy agents without the workstation freezing (SRPS keeps priorities in check) | Hours of unattended work |
 
 The scenarios are defined in `apps/web/lib/flywheel.ts`; the page renders whatever that file contains.
@@ -2402,7 +2402,7 @@ Available packs: `database.*`, `containers.*`, `kubernetes.*`, `cloud.*`, `infra
 ### Core Features
 
 - **Multi-repo sync**: Clone missing repos, pull updates, detect conflicts
-- **Agent sweep**: AI-driven commit automation across repositories with uncommitted changes
+- **Commit sweep**: groups uncommitted changes across repositories into logical conventional commits (plan first, `--execute` to apply)
 - **AI code review**: Orchestrate Claude Code review sessions for open issues/PRs
 - **Work-stealing queue**: Parallel execution with load-balanced workers
 - **NTM integration**: Session management via Named Tmux Manager
@@ -2426,25 +2426,25 @@ ru sync
 ru status
 ```
 
-### Agent Sweep Workflow
+### Commit Sweep Workflow
 
-The `agent-sweep` command automates commits across dirty repositories:
+The `commit-sweep` command groups the changes in your dirty worktrees into
+logical conventional commits:
 
 ```bash
-# Preview repos to process
-ru agent-sweep --dry-run
+# Preview the commit plan (dry run is the default)
+ru commit-sweep
 
-# Full automation with AI
-ru agent-sweep --parallel 4
+# Execute the planned commits
+ru commit-sweep --execute
 
-# Include release automation
-ru agent-sweep --with-release
+# Keep manually staged files as their own group; limit to matching repos
+ru commit-sweep --respect-staging --repos='*_rust' --execute
 ```
 
-**Three-Phase Workflow:**
-1. **Planning**: Claude Code analyzes changes, generates commit message
-2. **Commit**: Validates plan, stages files, runs quality gates
-3. **Release**: (Optional) Creates version tag and GitHub release
+**Two-Step Workflow:**
+1. **Plan**: Inspects every dirty worktree and prints the commits it would make
+2. **Execute**: With `--execute`, makes those commits with deterministic git commands (never pushes)
 
 ### Configuration
 

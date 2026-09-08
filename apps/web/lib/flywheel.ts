@@ -209,24 +209,24 @@ export const workflowScenarios: WorkflowScenario[] = [
     timeframe: "< 10 minutes to full productivity",
   },
   {
-    id: "agent-sweep-bulk",
-    title: "Bulk AI Commit Automation",
-    description: "Use RU's Agent Sweep to intelligently commit dirty repos across your entire fleet with AI-generated commit messages.",
+    id: "commit-sweep-bulk",
+    title: "Bulk Commit Automation",
+    description: "Use RU's Commit Sweep to group dirty worktrees across your entire fleet into logical conventional commits.",
     steps: [
       {
         tool: "ru",
-        action: "Preview sweep: `ru agent-sweep --dry-run`",
-        result: "See which repos have uncommitted changes",
+        action: "Preview sweep: `ru commit-sweep` (dry run by default)",
+        result: "See the planned commits for every dirty repo",
       },
       {
         tool: "ru",
-        action: "Run sweep: `ru agent-sweep --parallel 4`",
-        result: "AI analyzes each repo, creates intelligent commits",
+        action: "Run sweep: `ru commit-sweep --execute`",
+        result: "RU makes the planned conventional commits repo by repo",
       },
       {
         tool: "ntm",
-        action: "Agent Sweep spawns Claude agents via ntm robot mode",
-        result: "Three-phase workflow: understand → plan → execute",
+        action: "For AI-assisted review of the result, `ru review` drives agents via ntm robot mode",
+        result: "Two-phase workflow: --plan (discover) → --apply (execute)",
       },
       {
         tool: "bv",
@@ -412,10 +412,10 @@ export const synergyExplanations = [
     tools: ["ru", "mail"],
     title: "Repo Coordination",
     description:
-      "RU agent-sweep can coordinate via Mail to prevent conflicts. Agents claim repos before committing. Complete audit trail of which agent touched which repo.",
+      "RU commit-sweep can coordinate via Mail to prevent conflicts. Agents claim repos before committing. Complete audit trail of which agent touched which repo.",
     multiplier: "Conflict-free",
     example:
-      "Agent A claims repo-1, Agent B claims repo-2. Both run agent-sweep in parallel. No conflicts, clear ownership.",
+      "Agent A claims repo-1, Agent B claims repo-2. Both run `ru commit-sweep --execute` on their own repos. No conflicts, clear ownership.",
   },
   {
     tools: ["dcg", "slb"],
@@ -460,7 +460,7 @@ const _flywheelTools: FlywheelTool[] = [
       mail: "Agents auto-register with Mail; ntm mail commands for messaging; pre-commit guard for file reservations",
       cass: "Direct integration via --robot-cass-search, --robot-cass-context, --robot-cass-status",
       caam: "Quick-switches credentials when spawning new agents",
-      ru: "RU agent-sweep uses ntm robot mode for orchestration",
+      ru: "RU review (ru review) uses ntm robot mode for orchestration",
       srps: "SRPS keeps tmux sessions responsive when agents spawn heavy builds",
       bv: "Graph analysis via --robot-plan, --robot-graph for dependency insights",
       br: "Bead management via --robot-bead-create, --robot-bead-claim, --robot-bead-close",
@@ -874,10 +874,10 @@ conflict type (dirty tree, diverged branches, auth failures).
 - Two-phase workflow: --plan (discover) → --apply --push (execute)
 - Quality gates: ShellCheck, tests, lint before push
 
-**Agent Sweep (ru agent-sweep):**
-- Three-phase AI workflow: understand → plan → execute
-- Parallel execution with phase timeouts
-- Secret scanning (none/warn/block modes)
+**Commit Sweep (ru commit-sweep):**
+- Groups dirty worktrees into logical conventional commits
+- Dry run by default; --execute applies the plan
+- --repos=PATTERN to scope, --respect-staging to keep hand-staged files separate
 
 **Dependency Updates (ru dep-update):**
 - Supported: npm, pip, cargo, go, composer
@@ -891,7 +891,7 @@ conflict type (dirty tree, diverged branches, auth failures).
 - Orphan repo cleanup with ru prune`,
     connectsTo: ["ntm", "mail", "bv"],
     connectionDescriptions: {
-      ntm: "Uses ntm robot mode for AI-assisted reviews and agent sweep",
+      ntm: "Uses ntm robot mode for AI-assisted reviews (ru review)",
       mail: "Can coordinate repo claims across agents",
       bv: "Integrates with beads for multi-repo task tracking",
     },
@@ -900,7 +900,7 @@ conflict type (dirty tree, diverged branches, auth failures).
       "Parallel sync with work-stealing queue (ru sync -j4)",
       "AI code review with priority scoring (ru review)",
       "Dependency updates across package managers (ru dep-update)",
-      "Agent sweep for multi-repo automation",
+      "Commit sweep for multi-repo automation (ru commit-sweep)",
       "Git worktree isolation for parallel sessions",
       "Resume from checkpoint: ru sync --resume",
       "Quality gates: ShellCheck, tests, lint",
@@ -914,7 +914,7 @@ conflict type (dirty tree, diverged branches, auth failures).
       "ru status --no-fetch       # Quick local status check",
       "ru review --plan           # AI-assisted code review",
       "ru review --apply --push   # Apply approved changes",
-      "ru agent-sweep -j4         # Parallel AI commit automation",
+      "ru commit-sweep --execute  # Commit dirty worktrees logically",
       "ru import github user/org  # Bulk import repos",
       "ru prune                   # Remove orphan repos",
     ],
@@ -1168,7 +1168,7 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
     features: [
       "Interactive fzf-style prompt picker (jfp i)",
       "Task-based prompt suggestions (jfp suggest)",
-      "Install prompts as Claude Code skills",
+      "Skill installs hand off to its sibling jsm (jsm install <skill>)",
       "Workflow bundles for team standardization",
       "MCP server mode for agent integration (jfp serve)",
       "Variable rendering with placeholder fill (jfp render --fill)",
@@ -1179,7 +1179,7 @@ sections with §n anchors), multi-model syntheses (Opus, GPT, Gemini), and full 
       "jfp i",
       "jfp suggest \"write unit tests\"",
       "jfp search \"code review\"",
-      "jfp install idea-wizard",
+      "jfp copy idea-wizard",
       "jfp bundles",
       "jfp serve",
     ],
@@ -1607,7 +1607,7 @@ Key capabilities:
       "Recursive crawling",
       "Clean Markdown output",
     ],
-    cliCommands: ["mdwb fetch https://docs.example.com", "mdwb --recursive", "mdwb --help"],
+    cliCommands: ["mdwb fetch https://docs.example.com", "mdwb crawl https://docs.example.com", "mdwb --help"],
     installCommand:
       "curl -fsSL https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh | bash",
     language: "Rust",
@@ -1887,7 +1887,7 @@ Session diff and merge allow combining insights from parallel agent sessions.
 
 The conversion preserves tool calls, file edits, and reasoning chains in a format each
 target provider understands. Quality depends on what was captured — inspect the generated
-resume context with 'casr preview' before trusting it.`,
+conversion with 'casr resume <target> <session-id> --dry-run' before trusting it.`,
     connectsTo: ["cass", "ntm", "caam"],
     connectionDescriptions: {
       cass: "CASS provides the session logs that CASR converts",
@@ -1904,8 +1904,9 @@ resume context with 'casr preview' before trusting it.`,
     ],
     cliCommands: [
       "casr providers               # List supported providers",
-      "casr resume --from claude --to codex",
-      "casr preview session.jsonl    # Inspect conversion",
+      "casr list                    # Sessions saved for this project",
+      "casr resume cod <session-id> # Convert a session and resume in Codex",
+      "casr resume cod <session-id> --dry-run  # Inspect conversion",
     ],
     installCommand:
       'curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/cross_agent_session_resumer/main/install.sh" | bash',

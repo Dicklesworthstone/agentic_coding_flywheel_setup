@@ -151,7 +151,7 @@ dcg doctor --format json`}
 slb init
 
 # Agent 1 wants to force-push (DCG would normally block)
-slb create "git push --force origin main"
+slb request "git push --force origin main" --reason "Rewrite history on my feature branch"
 # → Launch request created: slb-a7f3
 
 # Agent 1 sees:
@@ -275,7 +275,7 @@ caam status --all
 # → DCG: BLOCKED (sql.destructive_ddl)
 
 # Step 2: Agent creates SLB request
-slb create "DROP DATABASE test_db"
+slb request "DROP DATABASE test_db" --reason "Recreate the throwaway test DB"
 # → slb-b2e9 created, awaiting approval
 
 # Step 3: Human reviews, sees it's a test DB, approves
@@ -302,15 +302,15 @@ slb execute slb-b2e9
 
         <CodeBlock
           code={`# DCG logs every block decision
-dcg log --last 20
-# → Timestamped list of blocked commands with reasons
+dcg stats --days 1
+# → Blocked/allowed/bypassed counts and the rules that fired
 
 # SLB tracks every request, approval, and execution
-slb list --all --json
+slb history --json
 # → Full history with who requested, who approved, when
 
 # CAAM logs account switches and rate limit events
-caam log --last 50
+caam history --limit 50
 # → Shows rotation events, usage spikes, cooldown periods
 
 # Combined: full picture of agent safety

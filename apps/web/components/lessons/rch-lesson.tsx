@@ -132,7 +132,7 @@ cargo build --release
           commands={[
             { command: 'rch hook install', description: 'Install the Claude Code hook' },
             { command: 'rch daemon start', description: 'Start the local daemon' },
-            { command: 'rch workers add user@host', description: 'Add a remote worker' },
+            { command: 'rch workers init', description: 'Add a remote worker (interactive wizard)' },
             { command: 'rch status', description: 'Check system status' },
           ]}
         />
@@ -152,10 +152,10 @@ cargo build --release
 
         <CommandList
           commands={[
-            { command: 'rch workers add user@hostname', description: 'Add a new worker' },
+            { command: 'rch workers init', description: 'Add a new worker (wizard: host, SSH, cores, toolchain)' },
+            { command: 'rch workers discover --add', description: 'Add hosts found in your SSH config and aliases' },
             { command: 'rch workers list', description: 'List configured workers' },
-            { command: 'rch workers status', description: 'Check worker connectivity' },
-            { command: 'rch workers ping', description: 'Verify all workers are reachable' },
+            { command: 'rch workers probe --all', description: 'Verify all workers are reachable' },
           ]}
         />
 
@@ -216,13 +216,13 @@ rch config show
 # Set default worker
 rch config set default_worker=build-server-1
 
-# Update RCH binaries on all workers
-rch update --remote`}
+# Update RCH binaries locally and on all workers
+rch update --fleet`}
           filename="Configuration Commands"
         />
 
         <TipBox variant="info">
-          Keep workers in sync with <code>rch update --remote</code> after updating the local RCH binary.
+          Keep workers in sync with <code>rch update --fleet</code>, which updates the local RCH binary and every configured worker.
         </TipBox>
       </Section>
 
@@ -294,7 +294,7 @@ rch update --remote`}
           </div>
           <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/30">
             <span className="text-violet-400 font-semibold">Keep Synced</span>
-            <p className="text-white/80 text-sm mt-1">Update workers with rch update --remote</p>
+            <p className="text-white/80 text-sm mt-1">Update workers with rch update --fleet</p>
           </div>
           <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
             <span className="text-amber-400 font-semibold">Monitor Status</span>

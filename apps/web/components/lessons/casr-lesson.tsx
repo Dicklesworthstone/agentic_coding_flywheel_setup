@@ -92,9 +92,10 @@ export function CasrLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'casr export', description: 'Export current session context' },
-            { command: 'casr resume --from claude', description: 'Resume a Claude session in current provider' },
-            { command: 'casr list', description: 'List available session snapshots' },
+            { command: 'casr list', description: 'List sessions found for this project (--all for every workspace)' },
+            { command: 'casr info <session-id> --peek', description: 'Inspect a session and its last few turns' },
+            { command: 'casr resume cod <session-id>', description: 'Convert a session and resume it in Codex CLI' },
+            { command: 'casr providers', description: 'Show detected providers' },
             { command: 'casr --help', description: 'Show all options' },
           ]}
         />
@@ -109,14 +110,16 @@ export function CasrLesson() {
 
       {/* Section 3: Common Scenarios */}
       <Section title="Common Scenarios" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# Export current Claude Code session
-casr export
+        <CodeBlock code={`# Find the Claude Code session you were working in
+casr list --provider claude-code
 
-# Resume in Codex CLI
-casr resume --from claude --to codex
+# Preview the conversion without writing anything
+casr resume cod <session-id> --dry-run
 
-# List all saved session snapshots
-casr list`} />
+# Convert it and resume in Codex CLI
+casr resume cod <session-id>
+
+# Target aliases: cc, cod, gmi, agy, cur, cln, aid, amp, opc, gpt`} />
       </Section>
 
       <Divider />
@@ -154,29 +157,29 @@ interface ScenarioStep {
 const SCENARIO_STEPS: ScenarioStep[] = [
   {
     id: 'capture',
-    label: 'Session Capture',
-    shortLabel: 'Capture',
+    label: 'Session Discovery',
+    shortLabel: 'Discover',
     icon: <Database className="h-4 w-4" />,
-    description: 'The current agent\'s full session is captured including all conversation turns, tool calls, file edits, and reasoning traces.',
+    description: 'CASR discovers the current agent\'s session on disk: every conversation turn, tool call, file edit, and reasoning trace the provider recorded.',
     terminalLines: [
-      '$ casr export --format portable',
+      '$ casr list --provider claude-code',
       'Scanning session history...',
       'Found 47 conversation turns',
       'Found 12 tool invocations',
       'Found 8 file modifications',
-      'Session captured: .casr/session_2026-03-12.json',
+      'Session: 3f9a1c2e (claude-code, ~/projects/auth)',
     ],
     tokensBefore: 128000,
     tokensAfter: 128000,
   },
   {
     id: 'extract',
-    label: 'Context Extraction',
-    shortLabel: 'Extract',
+    label: 'Context Inspection',
+    shortLabel: 'Inspect',
     icon: <Layers className="h-4 w-4" />,
-    description: 'Key context is extracted: task description, code changes, architectural decisions, and unresolved questions are pulled from the raw session.',
+    description: 'Key context is inspected before the handoff: task description, code changes, architectural decisions, and unresolved questions are read from the raw session.',
     terminalLines: [
-      '$ casr extract --session latest',
+      '$ casr info 3f9a1c2e --peek',
       'Parsing conversation graph...',
       'Extracting task context... done',
       'Extracting code diffs... 8 files',
@@ -188,17 +191,17 @@ const SCENARIO_STEPS: ScenarioStep[] = [
   },
   {
     id: 'distill',
-    label: 'Knowledge Distillation',
-    shortLabel: 'Distill',
+    label: 'History Trimming',
+    shortLabel: 'Trim',
     icon: <Sparkles className="h-4 w-4" />,
-    description: 'The extracted context is compressed and distilled. Redundant information is removed, key decisions are summarized, and a portable handoff document is produced.',
+    description: 'The transferred history is trimmed to fit the target window: tool output is truncated, the oldest turns are dropped first, and the original task plus the most recent history are pinned.',
     terminalLines: [
-      '$ casr distill --optimize',
-      'Compressing conversation turns...',
-      'Deduplicating code context...',
-      'Summarizing 5 decisions -> 5 bullets',
-      'Optimizing for target window...',
-      'Distilled: 128K -> 8.2K tokens (93.6%)',
+      '$ casr resume cod 3f9a1c2e --dry-run --max-context-tokens 8000 --max-tool-output 2000',
+      'Truncating tool output to 2000 chars...',
+      'Dropping oldest turns first...',
+      'Pinning original task + recent history',
+      'Dropping source reasoning traces...',
+      'Would write: 128K -> 8.2K tokens (93.6%)',
     ],
     tokensBefore: 48200,
     tokensAfter: 8200,
@@ -208,14 +211,14 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     label: 'New Agent Bootstrap',
     shortLabel: 'Bootstrap',
     icon: <Cpu className="h-4 w-4" />,
-    description: 'A new agent session is initialized with the target provider. The agent\'s system prompt and capabilities are configured for the handoff.',
+    description: 'The target provider is checked and the session file is planned. Nothing is written yet; the dry run shows exactly where the converted session will land.',
     terminalLines: [
-      '$ casr resume --to codex --dry-run',
-      'Initializing Codex CLI session...',
-      'Configuring system prompt...',
-      'Setting workspace: ~/projects/auth',
-      'Agent ready, awaiting context...',
-      'Bootstrap complete.',
+      '$ casr resume cod 3f9a1c2e --dry-run',
+      'Target: Codex CLI (installed)',
+      'Planning session file...',
+      'Workspace: ~/projects/auth',
+      'Would write ~/.codex/sessions/2026/03/12/rollout-3f9a1c2e.jsonl',
+      'Dry run complete, nothing written.',
     ],
     tokensBefore: 0,
     tokensAfter: 2100,
@@ -225,10 +228,10 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     label: 'Context Injection',
     shortLabel: 'Inject',
     icon: <Zap className="h-4 w-4" />,
-    description: 'The distilled handoff document is injected into the new agent\'s context window. The agent now has full awareness of the prior session\'s work.',
+    description: 'The converted session is written into the target provider\'s own session store and the agent is launched on it. The agent now has full awareness of the prior session\'s work.',
     terminalLines: [
-      '$ casr resume --to codex',
-      'Injecting handoff document...',
+      '$ casr resume cod 3f9a1c2e --enrich',
+      'Writing converted session...',
       'Loading task: auth middleware refactor',
       'Loading 8 file contexts...',
       'Loading 5 key decisions...',
@@ -242,9 +245,9 @@ const SCENARIO_STEPS: ScenarioStep[] = [
     label: 'Verification',
     shortLabel: 'Verify',
     icon: <Shield className="h-4 w-4" />,
-    description: 'The new agent verifies it understands the handoff by summarizing the task, confirming key decisions, and identifying the next action to take.',
+    description: 'The new agent verifies it understands the handoff by summarizing the task, confirming key decisions, and identifying the next action to take. Ask it, or peek at the converted session.',
     terminalLines: [
-      '$ casr verify --check-context',
+      '$ casr info 3f9a1c2e --source cod --peek',
       'Agent confirms task understanding...',
       'Verified: 5/5 decisions acknowledged',
       'Verified: 8/8 files in workspace',
@@ -834,7 +837,7 @@ function InteractiveSessionHandoffImpl() {
                   <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/40" />
                   <div className="h-2.5 w-2.5 rounded-full bg-green-500/40" />
                 </div>
-                <span className="text-[10px] font-mono text-white/30 ml-2">casr session handoff</span>
+                <span className="text-[10px] font-mono text-white/30 ml-2">casr resume cod &lt;session-id&gt;</span>
                 <div className="flex-1" />
                 <Terminal className="h-3 w-3 text-white/20" />
               </div>

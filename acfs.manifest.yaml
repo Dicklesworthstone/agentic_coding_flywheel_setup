@@ -2210,7 +2210,7 @@ modules:
       language: "Rust"
       stars: 45
       cli_name: "pt"
-      command_example: "pt --robot --top 10"
+      command_example: "pt scan --format json"
       lesson_slug: "pt"
     dependencies:
       - lang.rust
@@ -2962,7 +2962,7 @@ modules:
       language: "Rust"
       stars: 25
       cli_name: "casr"
-      command_example: "casr export --from claude"
+      command_example: "casr resume cod <session-id>"
       lesson_slug: "casr"
     dependencies:
       - lang.rust
@@ -3005,7 +3005,7 @@ modules:
       language: "Bash"
       stars: 15
       cli_name: "dsr"
-      command_example: "dsr release"
+      command_example: "dsr release ntm 1.2.3"
       lesson_slug: "dsr"
     dependencies:
       - cli.modern   # for gh, docker

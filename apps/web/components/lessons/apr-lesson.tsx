@@ -104,8 +104,12 @@ export function AprLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'apr refine plan.md', description: 'Refine a plan file' },
-            { command: 'apr refine --output revised.md', description: 'Save to specific file' },
+            { command: 'apr setup', description: 'Configure a workflow (plan file, output dir) once' },
+            { command: 'apr run 1', description: 'Run revision round 1 against the configured workflow' },
+            { command: 'apr run 2 --include-impl', description: 'Next round, bundling the implementation doc' },
+            { command: 'apr diff 2 1', description: 'Compare two round outputs' },
+            { command: 'apr integrate 2 -o prompt.md', description: 'Write the Claude Code integration prompt to a file' },
+            { command: 'apr stats', description: 'Round analytics and convergence signals' },
             { command: 'apr --help', description: 'Show all options' },
           ]}
         />
@@ -122,13 +126,20 @@ export function AprLesson() {
         <CodeBlock code={`# 1. Generate initial plan with Claude Code
 # (Claude creates plan.md)
 
-# 2. Refine with APR
-apr refine plan.md -o refined-plan.md
+# 2. Point APR at it once (interactive wizard: plan file, output dir)
+apr setup
 
-# 3. Review the refined plan
-cat refined-plan.md
+# 3. Run revision rounds until the diff between rounds gets small
+apr run 1
+apr run 2 --include-impl
+apr diff 2 1
+apr stats
 
-# 4. Feed back to Claude Code for implementation`} />
+# 4. Review the latest round's output
+apr show 2
+
+# 5. Feed back to Claude Code for implementation
+apr integrate 2 --copy`} />
       </Section>
     </div>
   );
@@ -212,7 +223,7 @@ const ITERATION_DATA: IterationData[] = [
       { line: 12, author: 'Architecture Review', text: '"Store users somewhere" needs a schema with fields and constraints.', type: 'issue' },
     ],
     terminalLines: [
-      '$ apr refine plan.md --pass 1',
+      '$ apr run 1',
       'Loading plan.md (13 lines)...',
       'Running architecture review...',
       '[FAIL] 5 critical issues found',
@@ -262,7 +273,7 @@ const ITERATION_DATA: IterationData[] = [
       { line: 16, author: 'Architecture Review', text: 'Add full column definitions, types, and constraints.', type: 'issue' },
     ],
     terminalLines: [
-      '$ apr refine plan.md --pass 2',
+      '$ apr run 2',
       'Applying architecture review fixes...',
       '[PASS] Endpoints now defined',
       '[PASS] Token strategy added',
@@ -319,7 +330,7 @@ const ITERATION_DATA: IterationData[] = [
       { line: 6, author: 'Architecture Review', text: 'Endpoint shapes look solid now.', type: 'praise' },
     ],
     terminalLines: [
-      '$ apr refine plan.md --pass 3',
+      '$ apr run 3',
       'Running edge case analysis...',
       '[PASS] Input validation rules added',
       '[PASS] Error responses documented',
@@ -374,7 +385,7 @@ const ITERATION_DATA: IterationData[] = [
       { line: 20, author: 'Architecture Review', text: 'Add created_at/updated_at timestamps and soft delete.', type: 'suggestion' },
     ],
     terminalLines: [
-      '$ apr refine plan.md --pass 4',
+      '$ apr run 4',
       'Running performance optimization...',
       '[PASS] Rate limiting configured',
       '[PASS] Database indices added',
@@ -430,7 +441,7 @@ const ITERATION_DATA: IterationData[] = [
       { line: 22, author: 'Security Audit', text: 'Account lockout prevents brute-force while backoff slows automation.', type: 'praise' },
     ],
     terminalLines: [
-      '$ apr refine plan.md --pass 5',
+      '$ apr run 5',
       'Running security audit...',
       '[PASS] Password hashing hardened',
       '[PASS] Token rotation secured',
@@ -486,14 +497,14 @@ const ITERATION_DATA: IterationData[] = [
       { line: 0, author: 'APR Engine', text: 'Converged. Quality delta < 3% -- no further passes needed.', type: 'praise' },
     ],
     terminalLines: [
-      '$ apr refine plan.md --pass 6',
+      '$ apr run 6',
       'Running final polish...',
       '[PASS] All 6 checks passing',
       '[INFO] Quality delta: +7 (< 10 threshold)',
-      '[DONE] Converged after 6 passes',
+      '[DONE] Converged after 6 rounds',
       'Quality: 90% -> 97% -- FINAL',
       '',
-      '$ cat refined-plan.md | wc -l',
+      '$ apr show 6 | wc -l',
       '  87 lines (was 13)',
     ],
     changeSummary: 'Added observability, deployment. Converged -- production-ready.',

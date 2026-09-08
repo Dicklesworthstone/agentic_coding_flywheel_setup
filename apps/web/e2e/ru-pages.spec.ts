@@ -149,9 +149,9 @@ test.describe.serial("RU Website Pages", () => {
       await page.goto("/learn/glossary");
       await page.waitForLoadState("networkidle");
 
-      // Check for agent-sweep or repo-related terms
-      const agentSweepTerm = page.getByText(/agent.*sweep/i).first();
-      await expect(agentSweepTerm).toBeVisible();
+      // Check for commit-sweep or repo-related terms
+      const commitSweepTerm = page.getByText(/commit.*sweep/i).first();
+      await expect(commitSweepTerm).toBeVisible();
     });
 
     test("glossary page loads without JS errors", async ({ page }) => {
@@ -185,12 +185,12 @@ test.describe.serial("RU Website Pages", () => {
       await expect(ruCommands).toBeVisible();
     });
 
-    test("RU command shows sync and agent-sweep", async ({ page }) => {
+    test("RU command shows sync and commit-sweep", async ({ page }) => {
       await page.goto("/learn/commands");
       await page.waitForLoadState("networkidle");
 
-      // Look for ru sync or agent-sweep mentions
-      const ruContent = page.getByText(/sync|agent.*sweep|repo.*updater/i);
+      // Look for ru sync or commit-sweep mentions
+      const ruContent = page.getByText(/sync|commit.*sweep|repo.*updater/i);
       await expect(ruContent.first()).toBeVisible();
     });
   });

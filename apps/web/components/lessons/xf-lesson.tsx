@@ -96,7 +96,7 @@ export function XfLesson() {
           commands={[
             { command: 'xf index <archive-path>', description: 'Index your Twitter archive' },
             { command: 'xf search <query>', description: 'Search your tweets' },
-            { command: 'xf search --from 2023-01-01', description: 'Search with date filter' },
+            { command: 'xf search <query> --since 2023-01-01', description: 'Search with a date filter (--since/--until)' },
             { command: 'xf --help', description: 'Show all options' },
           ]}
         />
@@ -129,7 +129,7 @@ xf index ~/Downloads/twitter-archive
 xf search "machine learning"
 
 # Search within a date range
-xf search "rust" --from 2024-01-01 --to 2024-06-30
+xf search "rust" --since 2024-01-01 --until 2024-06-30
 
 # Export results to JSON
 xf search "AI" --format json > results.json`} />
@@ -393,8 +393,8 @@ const SCENARIOS: Scenario[] = [
     id: 'thread-recon',
     label: 'Thread Rebuild',
     icon: <FileText className="h-3.5 w-3.5" />,
-    description: 'Reconstruct full threads from fragmented tweets',
-    command: 'xf threads --reconstruct "rust error handling"',
+    description: 'Rebuild the reply chain of one of your own threads from the archive',
+    command: 'xf tweet 1842391045738271744 --thread',
     totalResults: 23,
     searchTimeMs: 0.67,
     indexStats: {
@@ -402,7 +402,7 @@ const SCENARIOS: Scenario[] = [
       dateRange: '2019-03-14 to 2024-12-28',
       topHashtags: ['#Rust', '#ErrorHandling', '#Programming'],
     },
-    pipelineSteps: ['Parse query', 'Thread detect', 'Reply chain walk', 'Reconstruct order'],
+    pipelineSteps: ['Look up tweet', 'Walk in_reply_to up', 'Collect your replies', 'Order by date'],
     results: [
       {
         id: 'thread-1',
@@ -444,10 +444,10 @@ const SCENARIOS: Scenario[] = [
   },
   {
     id: 'sentiment',
-    label: 'Sentiment Analysis',
+    label: 'Engagement Ranking',
     icon: <TrendingUp className="h-3.5 w-3.5" />,
-    description: 'Analyze emotional tone across search results',
-    command: 'xf search "AI" --sentiment --stats',
+    description: 'Rank matching tweets by likes and retweets instead of relevance',
+    command: 'xf search "AI" --sort engagement',
     totalResults: 523,
     searchTimeMs: 1.24,
     indexStats: {
@@ -455,7 +455,7 @@ const SCENARIOS: Scenario[] = [
       dateRange: '2019-03-14 to 2024-12-28',
       topHashtags: ['#AI', '#AGI', '#LLM', '#Safety', '#OpenAI'],
     },
-    pipelineSteps: ['Parse query', 'BM25 scan', 'Sentiment classify', 'Aggregate stats'],
+    pipelineSteps: ['Parse query', 'Hybrid search', 'Sort by engagement', 'Render results'],
     results: [
       {
         id: 'sent-1',

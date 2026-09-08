@@ -283,8 +283,9 @@ ru list --paths | while read -r repo; do
   diff <(head -50 "$repo/AGENTS.md") <(head -50 ~/reference/AGENTS.md)
 done
 
-# Use agent-sweep for mass updates
-ru agent-sweep --prompt "Update AGENTS.md to match
+# Mass update: broadcast the same instruction to every agent in a swarm
+# (one pane per repo), then review the diffs before committing
+ntm send myproject --all "Update AGENTS.md to match
 the gold standard template structure while preserving
 all project-specific sections"`}
             language="bash"

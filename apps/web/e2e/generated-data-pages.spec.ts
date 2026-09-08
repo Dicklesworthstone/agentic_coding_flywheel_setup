@@ -349,7 +349,7 @@ test.describe("Tool Detail Pages (generated data)", () => {
     await waitForPageSettled(page);
 
     bodyText = await page.textContent("body");
-    expect(bodyText).toContain("casr export --from claude");
+    expect(bodyText).toContain("casr resume cod <session-id>");
     expect(bodyText).not.toContain("casr providers");
   });
 });

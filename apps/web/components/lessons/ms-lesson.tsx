@@ -249,7 +249,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: true,
     category: 'dev',
     triggers: ['/review', '/cr', 'review this PR'],
-    commands: ['ms invoke code-review --file src/', 'ms invoke code-review --diff HEAD~1'],
+    commands: ['ms load code-review', 'ms show code-review'],
     dependencies: ['refactor-guru'],
     usageCount: 2847,
     rating: 4.9,
@@ -263,7 +263,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: true,
     category: 'dev',
     triggers: ['/refactor', '/clean', 'refactor this function'],
-    commands: ['ms invoke refactor-guru --target src/utils.ts', 'ms invoke refactor-guru --smell'],
+    commands: ['ms load refactor-guru', 'ms load refactor-guru --full'],
     dependencies: ['code-review'],
     usageCount: 1923,
     rating: 4.7,
@@ -277,7 +277,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'agent',
     triggers: ['/idea', '/brainstorm', 'plan this project'],
-    commands: ['ms invoke idea-wizard --prompt "build a todo app"', 'ms invoke idea-wizard --interactive'],
+    commands: ['ms load idea-wizard', 'ms show idea-wizard'],
     dependencies: ['doc-gen'],
     usageCount: 3421,
     rating: 4.8,
@@ -291,7 +291,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'dev',
     triggers: ['/docs', '/document', 'generate docs'],
-    commands: ['ms invoke doc-gen --source src/', 'ms invoke doc-gen --format markdown'],
+    commands: ['ms load doc-gen', 'ms load doc-gen --full'],
     dependencies: [],
     usageCount: 2156,
     rating: 4.6,
@@ -305,7 +305,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: true,
     category: 'cli',
     triggers: ['/decode', '/trace', 'explain this error'],
-    commands: ['ms invoke stacktrace-decoder --paste', 'ms invoke stacktrace-decoder --file crash.log'],
+    commands: ['ms load stacktrace-decoder', 'ms show stacktrace-decoder'],
     dependencies: ['log-analyzer'],
     usageCount: 1567,
     rating: 4.5,
@@ -319,7 +319,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'cli',
     triggers: ['/logs', '/analyze', 'check the logs'],
-    commands: ['ms invoke log-analyzer --file app.log', 'ms invoke log-analyzer --tail --service api'],
+    commands: ['ms load log-analyzer', 'ms load log-analyzer --full'],
     dependencies: [],
     usageCount: 987,
     rating: 4.3,
@@ -333,7 +333,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'cli',
     triggers: ['/bisect', '/findbug', 'find which commit broke'],
-    commands: ['ms invoke git-bisect-helper --test "bun test"', 'ms invoke git-bisect-helper --auto'],
+    commands: ['ms load git-bisect-helper', 'ms show git-bisect-helper'],
     dependencies: ['stacktrace-decoder'],
     usageCount: 654,
     rating: 4.4,
@@ -347,7 +347,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: true,
     category: 'dev',
     triggers: ['/test', '/generate-tests', 'write tests for'],
-    commands: ['ms invoke test-gen --file src/utils.ts', 'ms invoke test-gen --coverage 90'],
+    commands: ['ms load test-gen', 'ms load test-gen --full'],
     dependencies: ['code-review'],
     usageCount: 2891,
     rating: 4.8,
@@ -361,7 +361,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'infra',
     triggers: ['/docker', '/containerize', 'dockerize this'],
-    commands: ['ms invoke docker-compose --stack node,postgres', 'ms invoke docker-compose --optimize'],
+    commands: ['ms load docker-compose', 'ms show docker-compose'],
     dependencies: ['ci-pipeline', 'deploy-helper'],
     usageCount: 1432,
     rating: 4.6,
@@ -375,7 +375,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: true,
     category: 'infra',
     triggers: ['/ci', '/pipeline', 'set up CI'],
-    commands: ['ms invoke ci-pipeline --platform github', 'ms invoke ci-pipeline --detect'],
+    commands: ['ms load ci-pipeline', 'ms load ci-pipeline --full'],
     dependencies: ['test-gen'],
     usageCount: 1876,
     rating: 4.7,
@@ -389,7 +389,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'infra',
     triggers: ['/deploy', '/release', 'deploy to production'],
-    commands: ['ms invoke deploy-helper --env production', 'ms invoke deploy-helper --rollback'],
+    commands: ['ms load deploy-helper', 'ms show deploy-helper'],
     dependencies: ['ci-pipeline'],
     usageCount: 1098,
     rating: 4.5,
@@ -403,7 +403,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: true,
     category: 'security',
     triggers: ['/scan-secrets', '/secrets', 'check for leaked keys'],
-    commands: ['ms invoke secret-scanner --dir .', 'ms invoke secret-scanner --hook install'],
+    commands: ['ms load secret-scanner', 'ms load secret-scanner --full'],
     dependencies: [],
     usageCount: 2234,
     rating: 4.9,
@@ -417,7 +417,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'security',
     triggers: ['/threat', '/stride', 'analyze security'],
-    commands: ['ms invoke threat-model --arch diagram.md', 'ms invoke threat-model --interactive'],
+    commands: ['ms load threat-model', 'ms show threat-model'],
     dependencies: ['secret-scanner'],
     usageCount: 876,
     rating: 4.4,
@@ -431,7 +431,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'coord',
     triggers: ['/swarm', '/dispatch', 'run agents in parallel'],
-    commands: ['ms invoke swarm-dispatch --tasks plan.json', 'ms invoke swarm-dispatch --agents 4'],
+    commands: ['ms load swarm-dispatch', 'ms load swarm-dispatch --full'],
     dependencies: ['idea-wizard'],
     usageCount: 1567,
     rating: 4.7,
@@ -445,7 +445,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'coord',
     triggers: ['/replay', '/session', 'review last session'],
-    commands: ['ms invoke session-replay --last', 'ms invoke session-replay --extract-skills'],
+    commands: ['ms load session-replay', 'ms show session-replay'],
     dependencies: [],
     usageCount: 1234,
     rating: 4.6,
@@ -459,7 +459,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: false,
     category: 'agent',
     triggers: ['/optimize-prompt', '/prompt', 'improve this prompt'],
-    commands: ['ms invoke prompt-optimizer --file CLAUDE.md', 'ms invoke prompt-optimizer --benchmark'],
+    commands: ['ms load prompt-optimizer', 'ms load prompt-optimizer --full'],
     dependencies: ['session-replay'],
     usageCount: 1789,
     rating: 4.8,
@@ -473,7 +473,7 @@ const INITIAL_SKILLS: Skill[] = [
     installed: true,
     category: 'agent',
     triggers: ['/pack', '/context', 'pack context for'],
-    commands: ['ms invoke context-packer --dir src/ --limit 8000', 'ms invoke context-packer --smart'],
+    commands: ['ms load context-packer', 'ms load context-packer --pack 8000'],
     dependencies: ['prompt-optimizer'],
     usageCount: 2543,
     rating: 4.9,
@@ -907,8 +907,8 @@ function InteractiveSkillBrowser() {
   const terminalLines = useMemo(() => {
     if (!selectedSkill) return [];
     return [
-      `# Invoke ${selectedSkill.name}`,
-      `$ ms invoke ${selectedSkill.name}`,
+      `# Load ${selectedSkill.name}`,
+      `$ ms load ${selectedSkill.name}`,
       `> Loading skill from .claude/skills/${selectedSkill.file}`,
       `> Resolving ${selectedSkill.dependencies.length} dependencies...`,
       `> Skill ready. Triggers: ${selectedSkill.triggers.join(', ')}`,
@@ -1639,7 +1639,7 @@ function InteractiveSkillBrowser() {
                 {filteredSkills.filter((s) => s.installed).length === 0 && (
                   <div className="text-center py-6">
                     <Terminal className="mx-auto h-5 w-5 text-white/15 mb-2" />
-                    <p className="text-xs text-white/25">No installed skills to invoke</p>
+                    <p className="text-xs text-white/25">No installed skills to load</p>
                   </div>
                 )}
               </div>
@@ -1651,8 +1651,8 @@ function InteractiveSkillBrowser() {
                     selectedSkill
                       ? terminalLines
                       : [
-                          '# Select an installed skill to preview invocation',
-                          '$ ms list --installed',
+                          '# Select an installed skill to preview loading it',
+                          '$ ms list',
                           `> ${localSkills.filter((s) => s.installed).length} skills installed`,
                         ]
                   }

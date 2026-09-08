@@ -106,8 +106,8 @@ export function DsrLesson() {
       <Section title="Essential Commands" icon={<Terminal className="h-5 w-5" />} delay={0.2}>
         <CommandList
           commands={[
-            { command: 'dsr release', description: 'Build and publish a release locally' },
-            { command: 'dsr build', description: 'Build artifacts without publishing' },
+            { command: 'dsr release <tool> <version>', description: 'Upload the built artifacts as a GitHub release' },
+            { command: 'dsr build --repo ntm', description: 'Build a tool\'s artifacts without publishing' },
             { command: 'dsr status', description: 'Check release readiness' },
             { command: 'dsr --help', description: 'Show all options' },
           ]}
@@ -127,10 +127,13 @@ export function DsrLesson() {
 dsr status
 
 # Build release artifacts locally
-dsr build
+dsr build --repo ntm
 
-# Full release: build + tag + publish
-dsr release`} />
+# Upload the built artifacts as a GitHub release (the tag must exist)
+dsr release ntm 1.2.3
+
+# Or run the whole pipeline: check -> build -> release
+dsr fallback ntm`} />
       </Section>
     </div>
   );
@@ -177,7 +180,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     toolName: 'ntm',
     version: 'v2.4.1',
     description: 'Node Tool Manager release with cross-platform binaries',
-    command: 'dsr release ntm --version v2.4.1',
+    command: 'dsr release ntm 2.4.1',
     targets: PLATFORM_TARGETS,
     checksumPrefix: 'a3f8c2',
   },
@@ -188,7 +191,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     toolName: 'ubs',
     version: 'v1.8.0',
     description: 'Universal Build System packaging for all platforms',
-    command: 'dsr release ubs --version v1.8.0',
+    command: 'dsr release ubs 1.8.0',
     targets: PLATFORM_TARGETS,
     checksumPrefix: 'e7d1b9',
   },
@@ -199,7 +202,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     toolName: 'bv',
     version: 'v3.1.2',
     description: 'Build Verifier release with integrity checks',
-    command: 'dsr release bv --version v3.1.2',
+    command: 'dsr release bv 3.1.2',
     targets: PLATFORM_TARGETS.slice(0, 2),
     checksumPrefix: '4b2e7a',
   },
@@ -210,7 +213,7 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     toolName: 'cass',
     version: 'v4.0.0',
     description: 'CASS Agent Safety System with signed artifacts',
-    command: 'dsr release cass --version v4.0.0 --sign',
+    command: 'dsr release cass 4.0.0 --verify-tag',
     targets: PLATFORM_TARGETS,
     checksumPrefix: 'f9c3d5',
   },
@@ -221,18 +224,18 @@ const TOOL_SCENARIOS: ToolScenario[] = [
     toolName: 'cm',
     version: 'v2.2.3',
     description: 'CASS Memory System with incremental update',
-    command: 'dsr release cm --version v2.2.3',
+    command: 'dsr release cm 2.2.3',
     targets: PLATFORM_TARGETS.slice(0, 3),
     checksumPrefix: '8d4f1e',
   },
   {
     id: 'batch',
-    label: 'Multi-Tool Batch',
+    label: 'Full Fallback Pipeline',
     icon: Globe,
-    toolName: 'all',
+    toolName: 'ntm',
     version: 'v2025.03',
-    description: 'Batch release of all tools in the ACFS suite',
-    command: 'dsr release --batch --tag v2025.03',
+    description: 'Check, build, sign, and release in one run when Actions is throttled',
+    command: 'dsr fallback ntm --version 2025.03',
     targets: PLATFORM_TARGETS,
     checksumPrefix: 'c1a9e6',
   },

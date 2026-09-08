@@ -66,11 +66,14 @@ GitHub Actions has rate limits and queue times. DSR provides:
 # Check if repo is ready to release
 dsr check --all
 
-# Build release for current platform
-dsr build
+# Build a tool's release artifacts for the current platform
+dsr build --repo ntm
 
-# Create a GitHub release with built artifacts
-dsr release --tag v1.2.3
+# Create the v1.2.3 GitHub release for a tool from its built artifacts
+dsr release ntm 1.2.3
+
+# Or stage it as a draft first
+dsr release ntm 1.2.3 --draft
 ```
 
 ---
@@ -80,5 +83,5 @@ dsr release --tag v1.2.3
 You've learned:
 1. **dsr check** - Verify release readiness
 2. **dsr build** - Compile release binaries locally
-3. **dsr release** - Publish to GitHub
+3. **dsr release <tool> <version>** - Publish to GitHub
 4. How DSR provides CI/CD independence for urgent releases

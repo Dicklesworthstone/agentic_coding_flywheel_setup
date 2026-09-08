@@ -102,8 +102,8 @@ export function PtLesson() {
         <CommandList
           commands={[
             { command: 'pt', description: 'Show process overview' },
-            { command: 'pt --top', description: 'Show top resource consumers' },
-            { command: 'pt search <name>', description: 'Find processes by name' },
+            { command: 'pt scan', description: 'Quick multi-sample scan of all processes' },
+            { command: 'pt run', description: 'Interactive triage: scan, infer, plan, approve, apply' },
             { command: 'pt --help', description: 'Show all options' },
           ]}
         />
@@ -117,14 +117,14 @@ export function PtLesson() {
 
       {/* Section 3: Common Scenarios */}
       <Section title="Common Scenarios" icon={<Play className="h-5 w-5" />} delay={0.3}>
-        <CodeBlock code={`# Find what's using CPU
-pt --top
+        <CodeBlock code={`# Quick scan: what's using CPU, memory, and I/O
+pt scan
 
-# Search for node processes
-pt search node
+# Full deep scan with every available probe
+pt deep-scan
 
-# Find processes using port 3000
-pt --port 3000`} />
+# Interactive triage with a recovery goal
+pt run --goal 'free 4GB RAM'`} />
       </Section>
     </div>
   );
@@ -178,7 +178,7 @@ const SCENARIOS: Scenario[] = [
     icon: <CheckCircle className="h-4 w-4" />,
     description: 'Healthy system with typical development workloads. All processes within expected ranges.',
     terminalLines: [
-      '$ pt --top',
+      '$ pt scan',
       'Process Triage v2.4 -- scanning 147 processes',
       'System load: 1.24 (healthy)',
       '',
@@ -200,7 +200,7 @@ const SCENARIOS: Scenario[] = [
     icon: <Flame className="h-4 w-4" />,
     description: 'A cargo build process is consuming all CPU cores and thrashing swap.',
     terminalLines: [
-      '$ pt --top',
+      '$ pt scan',
       'Process Triage v2.4 -- scanning 203 processes',
       '\x1b[31m!! WARNING: CPU saturation detected (98.7%)\x1b[0m',
       '\x1b[33m!! SWAP pressure: 87% utilized\x1b[0m',
@@ -224,8 +224,8 @@ const SCENARIOS: Scenario[] = [
     icon: <Zap className="h-4 w-4" />,
     description: 'A Node.js process has a memory leak, slowly consuming all available RAM.',
     terminalLines: [
-      '$ pt search node',
-      'Process Triage v2.4 -- 3 matches for "node"',
+      '$ pt scan',
+      'Process Triage v2.4 -- scanning 171 processes, 3 node workers flagged',
       '',
       '\x1b[33m!! PID 2900: Memory growing 120MB/hour\x1b[0m',
       'Current: 4.2G (started at 280M, 18h ago)',
@@ -271,7 +271,7 @@ const SCENARIOS: Scenario[] = [
     icon: <HardDrive className="h-4 w-4" />,
     description: 'Saturated disk I/O from concurrent heavy writes blocking all processes.',
     terminalLines: [
-      '$ pt --top',
+      '$ pt scan',
       'Process Triage v2.4 -- scanning 156 processes',
       '\x1b[31m!! Disk I/O saturated: 450MB/s write\x1b[0m',
       '\x1b[33m!! 8 processes in D (disk-wait) state\x1b[0m',
@@ -300,8 +300,8 @@ const SCENARIOS: Scenario[] = [
       '\x1b[31m!! 2 processes recommended for termination\x1b[0m',
       '\x1b[33m!! 1 suspicious process flagged\x1b[0m',
       '',
-      '$ pt kill 7720',
-      'Send SIGTERM to PID 7720 (npm install)? [y/N] y',
+      '$ pt run',
+      'Plan: SIGTERM PID 7720 (npm install). Approve? [y/N] y',
       'SIGTERM sent. Waiting 5s for graceful exit...',
       'Process 7720 terminated.',
     ],

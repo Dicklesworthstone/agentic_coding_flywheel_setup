@@ -35,8 +35,8 @@ brenner doctor
 # Search the transcript corpus
 brenner corpus search "experimental design"
 
-# Browse available sections
-brenner corpus list
+# Top five hits as machine-readable output
+brenner corpus search "experimental design" --limit 5 --json
 ```
 
 ### Building Excerpts
@@ -45,9 +45,11 @@ brenner corpus list
 # Compose cited passages from specific sections
 brenner excerpt build --sections 42,43,44
 
-# Export with citations
-brenner excerpt build --sections 42-50 --format markdown
+# Keep the passages in transcript order
+brenner excerpt build --sections 42-50 --ordering chronological
 ```
+
+Excerpts print as cited Markdown; add `--json` for structured output.
 
 ---
 
@@ -55,15 +57,20 @@ brenner excerpt build --sections 42-50 --format markdown
 
 ### Starting a Session
 
+A session is an Agent Mail thread, so you name the thread, the agents, an
+excerpt file, and the question:
+
 ```bash
 # Launch a multi-agent research workflow
-brenner session start "hypothesis about X"
+brenner session start --thread-id RS-001 --to Claude,Codex \
+  --excerpt-file excerpt.md --question "hypothesis about X"
 
-# Resume an existing session
-brenner session resume <session_id>
+# Check on a running session (add --watch to follow it)
+brenner session status --thread-id RS-001
 
-# List active sessions
-brenner session list
+# Compile and publish the artifact when it converges
+brenner session compile --thread-id RS-001
+brenner session publish --thread-id RS-001 --to Claude,Codex
 ```
 
 ### Session Outputs
@@ -97,10 +104,10 @@ Brenner Bot coordinates with other tools:
 | `brenner --version` | Check version |
 | `brenner doctor` | Run diagnostics |
 | `brenner corpus search "..."` | Search transcripts |
-| `brenner corpus list` | List sections |
-| `brenner excerpt build` | Build cited passages |
-| `brenner session start` | Start research session |
-| `brenner session list` | List active sessions |
+| `brenner excerpt build --sections ...` | Build cited passages |
+| `brenner session start --thread-id ...` | Start research session |
+| `brenner session status --thread-id ...` | Check a session |
+| `brenner session publish --thread-id ...` | Publish the artifact |
 
 ---
 
@@ -125,4 +132,4 @@ The web app at brennerbot.org provides:
 
 ---
 
-*Run `brenner session list` to see active research sessions!*
+*Run `brenner corpus search "experimental design"` to try the corpus!*

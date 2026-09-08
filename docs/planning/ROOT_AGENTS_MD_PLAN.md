@@ -82,8 +82,8 @@ Each tool section should include:
 - Gotchas (1-3 bullets).
 
 #### ru
-- Purpose: multi-repo sync, agent-sweep automation.
-- Commands: `ru init --example`, `ru sync`, `ru status`, `ru agent-sweep --dry-run`.
+- Purpose: multi-repo sync, commit-sweep automation.
+- Commands: `ru init --example`, `ru sync`, `ru status`, `ru commit-sweep` (dry run by default).
 - Config: `~/.config/ru/config`, `~/.config/ru/repos.d/*.txt`.
 
 #### br

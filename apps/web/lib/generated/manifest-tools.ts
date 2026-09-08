@@ -320,7 +320,7 @@ export const manifestTools: ManifestWebTool[] = [
     stars: 25,
     cliName: "casr",
     cliAliases: [],
-    commandExample: "casr export --from claude",
+    commandExample: "casr resume cod <session-id>",
     lessonSlug: "casr",
   },
   {
@@ -386,7 +386,7 @@ export const manifestTools: ManifestWebTool[] = [
     stars: 15,
     cliName: "dsr",
     cliAliases: [],
-    commandExample: "dsr release",
+    commandExample: "dsr release ntm 1.2.3",
     lessonSlug: "dsr",
   },
   {
@@ -746,7 +746,7 @@ export const manifestTools: ManifestWebTool[] = [
     stars: 45,
     cliName: "pt",
     cliAliases: [],
-    commandExample: "pt --robot --top 10",
+    commandExample: "pt scan --format json",
     lessonSlug: "pt",
   },
   {

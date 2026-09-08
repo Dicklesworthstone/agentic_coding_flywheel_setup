@@ -43,14 +43,17 @@ rch daemon start
 ### Worker Management
 
 ```bash
-# Add a remote worker
-rch workers add user@hostname
+# Add a remote worker (interactive wizard: host, SSH, cores, toolchain)
+rch workers init
+
+# Or pick hosts up from your SSH config
+rch workers discover --add
 
 # List configured workers
 rch workers list
 
-# Check worker status
-rch workers status
+# Check worker connectivity
+rch workers probe --all
 ```
 
 ---
@@ -85,8 +88,9 @@ rch config set default_worker=myserver
 |---------|--------------|
 | `rch hook install` | Install Claude Code hook |
 | `rch daemon start` | Start local daemon |
-| `rch workers add HOST` | Add a remote worker |
+| `rch workers init` | Add a remote worker (wizard) |
 | `rch workers list` | List all workers |
+| `rch workers probe --all` | Check worker connectivity |
 | `rch status` | System overview |
 | `rch doctor` | Run diagnostics |
 | `rch update` | Update RCH binaries |
@@ -105,7 +109,7 @@ rch config set default_worker=myserver
 
 1. **Set up SSH keys** for passwordless access to workers
 2. **Use fast workers** with lots of CPU cores and RAM
-3. **Keep workers in sync** with `rch update --remote`
+3. **Keep workers in sync** with `rch update --fleet`
 4. **Check status regularly** with `rch status`
 
 ---
@@ -120,7 +124,7 @@ rch doctor --fix
 rch daemon status
 
 # Verify worker connectivity
-rch workers ping
+rch workers probe --all
 ```
 
 ---

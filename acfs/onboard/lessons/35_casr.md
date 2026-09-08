@@ -11,7 +11,7 @@ skills:
 
 Ever started a task with Claude, hit a rate limit, and wanted to continue with Gemini without losing context? CASR handles that.
 
-**CASR (Cross-Agent Session Resumer)** captures session state from one AI coding agent and generates a structured handoff prompt for another. It preserves file context, conversation history, and task progress across provider boundaries.
+**CASR (Cross-Agent Session Resumer)** reads the session an AI coding agent already saved on disk and converts it into another agent's native session format. It preserves file context, conversation history, and task progress across provider boundaries.
 
 ---
 
@@ -37,15 +37,22 @@ This shows supported agents (Claude Code, Codex CLI, Gemini CLI) and their sessi
 
 ---
 
-# Creating a Handoff
+# Finding the Session to Hand Off
 
-When you need to switch agents mid-task:
+There is nothing to capture: agents save their sessions as they go, and
+CASR discovers them. From the project directory:
 
 ```bash
-casr capture --from claude-code --session-dir .
+casr list
 ```
 
-This captures the current session state and generates a resume prompt.
+This lists recent sessions for this project across every installed
+provider (add `--all` for every workspace). Inspect one before handing it
+off:
+
+```bash
+casr info <session-id> --peek
+```
 
 ---
 
@@ -63,15 +70,18 @@ In multi-agent workflows, rate limits and context windows force agent switches. 
 # Common Scenarios
 
 ```bash
-# Capture current Claude session for Gemini handoff
-casr capture --from claude-code
-
-# Resume a captured session in Codex
-casr resume --to codex-cli --session latest
-
-# List recent session captures
+# Find the Claude session you were working in
 casr list
+
+# Preview what converting it to Codex would do
+casr resume cod <session-id> --dry-run
+
+# Convert it and resume in Codex (target aliases: cc, cod, gmi, agy, ...)
+casr resume cod <session-id>
 ```
+
+If the same session ID exists in two providers, add `--source cc` to pick
+the Claude one.
 
 ---
 
@@ -79,6 +89,6 @@ casr list
 
 You've learned:
 1. **casr providers** - List supported agents
-2. **casr capture** - Save session state for handoff
-3. **casr resume** - Continue work in a different agent
+2. **casr list** / **casr info** - Find and inspect saved sessions
+3. **casr resume <target> <session-id>** - Continue work in a different agent
 4. How cross-agent handoffs maintain task continuity

@@ -501,18 +501,18 @@ export const jargonDictionary: Record<string, JargonTerm> = {
   ru: {
     term: "RU",
     short: "Repo Updater, a tool for syncing and managing multiple GitHub repositories",
-    long: "RU (Repo Updater) solves the multi-repo management problem. When you have 20+ GitHub repos to keep in sync, manually running 'cd repo; git pull' for each one is tedious and error-prone. RU syncs all your repos with one command, using parallel workers for speed. Even better, it has Agent Sweep: an AI-driven commit automation system that analyzes dirty repos, understands the changes, and creates intelligent commit messages. RU uses pure git plumbing (no string parsing), making it locale-safe and reliable.",
-    analogy: "RU is like having a diligent assistant who manages all your filing cabinets. Every morning, they check each cabinet for updates, pull in any new documents, and flag anything that needs your attention. And when you've made changes to several cabinets, they can intelligently organize and label your work without you specifying every detail.",
-    why: "Multi-repo workflows are common in serious development. A project might span a frontend repo, backend repo, shared libraries, deployment configs, and documentation. RU keeps them all synchronized and enables AI agents to commit across your entire fleet of repos intelligently.",
+    long: "RU (Repo Updater) solves the multi-repo management problem. When you have 20+ GitHub repos to keep in sync, manually running 'cd repo; git pull' for each one is tedious and error-prone. RU syncs all your repos with one command, using parallel workers for speed. It also has Commit Sweep (ru commit-sweep): it groups the changes in your dirty worktrees into logical conventional commits, shows the plan first, and only executes when you ask. RU uses pure git plumbing (no string parsing), making it locale-safe and reliable.",
+    analogy: "RU is like having a diligent assistant who manages all your filing cabinets. Every morning, they check each cabinet for updates, pull in any new documents, and flag anything that needs your attention. And when you've made changes to several cabinets, they can sort the loose papers into labeled folders and show you the plan before filing anything.",
+    why: "Multi-repo workflows are common in serious development. A project might span a frontend repo, backend repo, shared libraries, deployment configs, and documentation. RU keeps them all synchronized and turns the dirty worktrees you accumulate across them into clean, reviewable commits.",
     related: ["git", "ntm", "agent-mail", "beads"],
   },
 
-  "agent-sweep": {
-    term: "Agent Sweep",
-    short: "RU's AI-powered commit automation feature",
-    long: "Agent Sweep is a three-phase AI workflow built into RU. Phase 1: Understand (agent reads AGENTS.md, explores codebase, learns conventions). Phase 2: Plan (agent produces a JSON commit plan with files and messages). Phase 3: Execute (RU validates the plan and executes with deterministic git commands). This lets you commit changes across many repos with intelligent, contextual messages without manually writing each commit message.",
-    analogy: "Imagine an assistant who visits each of your workstations, reviews what you've been working on, understands the context, writes professional notes about the changes, and files everything properly. Agent Sweep does this for your dirty repos, creating thoughtful commits that explain what changed and why.",
-    why: "Manual commit messages become a bottleneck when working across many repos. Agent Sweep removes that friction by intelligently analyzing changes and creating meaningful commits. Always run with '--dry-run' first to preview what it will do.",
+  "commit-sweep": {
+    term: "Commit Sweep",
+    short: "RU's dirty-worktree-to-conventional-commits feature (ru commit-sweep)",
+    long: "Commit Sweep is RU's two-step commit workflow. Step 1: Plan (ru commit-sweep, the default, is a dry run: it inspects every dirty worktree, groups related changes, and prints the conventional commits it would make). Step 2: Execute (ru commit-sweep --execute makes those commits with deterministic git commands; --respect-staging keeps files you staged by hand as their own group, and --repos=PATTERN limits the sweep). It never pushes.",
+    analogy: "Imagine an assistant who visits each of your workstations, sorts the loose papers into labeled folders, and hands you the filing plan. Only when you say go does Commit Sweep actually file them, one clean folder per commit.",
+    why: "Committing across many repos by hand is where changes get lost or lumped into a single 'WIP' commit. Commit Sweep removes that friction while keeping you in control: the plan is the default, and nothing happens until you pass --execute.",
     related: ["ru", "git", "ai-agents"],
   },
 

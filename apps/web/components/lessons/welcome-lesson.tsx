@@ -414,7 +414,7 @@ const archLayers: ArchLayer[] = [
         shortName: "ntm",
         description:
           "The orchestrator. Launches multiple agents in parallel tmux panes so you can run Claude, Codex, and Antigravity simultaneously on different tasks.",
-        commands: ["ntm launch", "ntm status", "ntm kill"],
+        commands: ["ntm spawn myproject --cc=2 --cod=2", "ntm status myproject", "ntm kill myproject"],
         dependencies: ["tmux", "claude", "codex", "antigravity"],
         status: "active",
       },
@@ -424,7 +424,7 @@ const archLayers: ArchLayer[] = [
         shortName: "beads",
         description:
           "Lightweight task and issue tracker that lives in your repo as a JSONL file. Agents can read and update beads to coordinate work.",
-        commands: ["acfs beads list", "acfs beads add 'task'"],
+        commands: ["br list", "br create 'task'"],
         dependencies: ["git"],
         status: "active",
       },
@@ -434,7 +434,7 @@ const archLayers: ArchLayer[] = [
         shortName: "AGENTS.md",
         description:
           "A markdown file in your repo that tells agents about the project, coding conventions, and how to behave. The shared brain for all agents.",
-        commands: ["cat AGENTS.md", "acfs agents-md"],
+        commands: ["cat AGENTS.md", "acfs newproj myproject"],
         dependencies: ["git"],
         status: "active",
       },
@@ -484,10 +484,10 @@ const archLayers: ArchLayer[] = [
 
 const terminalCommands = [
   { prompt: "~", cmd: "acfs status", output: "All systems nominal" },
-  { prompt: "~", cmd: "ntm launch 3", output: "Spawning 3 agent panes..." },
+  { prompt: "~", cmd: "ntm spawn myproject --cc=3", output: "Spawning 3 agent panes..." },
   { prompt: "~", cmd: "acfs doctor", output: "14/14 checks passed" },
   { prompt: "~", cmd: "cc 'fix the auth bug'", output: "Claude Code starting..." },
-  { prompt: "~/proj", cmd: "acfs beads list", output: "3 open, 2 done" },
+  { prompt: "~/proj", cmd: "br list", output: "3 open, 2 done" },
   { prompt: "~", cmd: "tmux ls", output: "work: 4 panes (attached)" },
 ];
 

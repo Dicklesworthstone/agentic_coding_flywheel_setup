@@ -352,7 +352,7 @@ function makeScenarios(): DebugScenario[] {
       fixes: [
         { rank: 1, label: 'Kill loop and reset context', command: 'wa robot send pane-1 "/clear"', confidence: 95 },
         { rank: 2, label: 'Add eslint-disable for conflicting rule', command: 'Agent: "Add eslint-disable comment"', confidence: 82 },
-        { rank: 3, label: 'Break task into two separate steps', command: 'ntm send pane-1 "Fix only the type error first"', confidence: 78 },
+        { rank: 3, label: 'Break task into two separate steps', command: 'ntm send myproject --pane=1 "Fix only the type error first"', confidence: 78 },
       ],
       sessionLog: [
         { time: '14:02:01', level: 'info', message: 'Agent started task: fix lint errors' },
@@ -398,7 +398,7 @@ function makeScenarios(): DebugScenario[] {
       fixes: [
         { rank: 1, label: 'Force context refresh', command: 'wa robot send pane-2 "Read the file again"', confidence: 92 },
         { rank: 2, label: 'Clear conversation and restart', command: 'wa robot send pane-2 "/clear"', confidence: 88 },
-        { rank: 3, label: 'Pull latest changes first', command: 'ntm send pane-2 "Run git pull first"', confidence: 85 },
+        { rank: 3, label: 'Pull latest changes first', command: 'ntm send myproject --pane=2 "Run git pull first"', confidence: 85 },
       ],
       sessionLog: [
         { time: '13:45:00', level: 'info', message: 'Agent read src/api.ts (snapshot stored)' },
@@ -443,8 +443,8 @@ function makeScenarios(): DebugScenario[] {
       ],
       fixes: [
         { rank: 1, label: 'Revert the wrong edit', command: 'git checkout src/utils.ts', confidence: 98 },
-        { rank: 2, label: 'Be explicit about file path', command: 'ntm send pane-1 "Edit app/utils.ts specifically"', confidence: 90 },
-        { rank: 3, label: 'Add path context to prompt', command: 'cm rule add "Always use full paths"', confidence: 72 },
+        { rank: 2, label: 'Be explicit about file path', command: 'ntm send myproject --pane=1 "Edit app/utils.ts specifically"', confidence: 90 },
+        { rank: 3, label: 'Add path context to prompt', command: 'cm playbook add "Always use full paths" --category workflow', confidence: 72 },
       ],
       sessionLog: [
         { time: '15:10:00', level: 'info', message: 'Task: fix type error in utils.ts' },
@@ -488,9 +488,9 @@ function makeScenarios(): DebugScenario[] {
         'Cost: $4.20 for individual fixes vs $0.18 for root cause',
       ],
       fixes: [
-        { rank: 1, label: 'Fix the shared test fixture', command: 'ntm send pane-1 "Fix test/fixtures.ts to match new API shape"', confidence: 96 },
-        { rank: 2, label: 'Show agent the failure pattern', command: 'ntm send pane-1 "All 23 failures share fixtures.ts"', confidence: 91 },
-        { rank: 3, label: 'Regenerate fixtures from types', command: 'ntm send pane-1 "Generate fixtures from types/api.ts"', confidence: 84 },
+        { rank: 1, label: 'Fix the shared test fixture', command: 'ntm send myproject --pane=1 "Fix test/fixtures.ts to match new API shape"', confidence: 96 },
+        { rank: 2, label: 'Show agent the failure pattern', command: 'ntm send myproject --pane=1 "All 23 failures share fixtures.ts"', confidence: 91 },
+        { rank: 3, label: 'Regenerate fixtures from types', command: 'ntm send myproject --pane=1 "Generate fixtures from types/api.ts"', confidence: 84 },
       ],
       sessionLog: [
         { time: '11:00:00', level: 'info', message: 'Agent started: fix failing tests' },
@@ -534,9 +534,9 @@ function makeScenarios(): DebugScenario[] {
         'Spiral: more retries = more 429s',
       ],
       fixes: [
-        { rank: 1, label: 'Rotate API accounts', command: 'caam rotate --all-agents', confidence: 94 },
-        { rank: 2, label: 'Stagger agent requests', command: 'ntm config set rate-stagger 5s', confidence: 87 },
-        { rank: 3, label: 'Pause 2 of 3 agents', command: 'ntm pause pane-2 pane-3', confidence: 80 },
+        { rank: 1, label: 'Rotate API accounts', command: 'caam next claude --usage-aware', confidence: 94 },
+        { rank: 2, label: 'Stagger agent requests', command: 'ntm spawn myproject --cc=3 --stagger-mode=smart', confidence: 87 },
+        { rank: 3, label: 'Interrupt the agents', command: 'ntm interrupt myproject', confidence: 80 },
       ],
       sessionLog: [
         { time: '09:30:00', level: 'info', message: 'All 3 agents active, same provider' },
@@ -581,8 +581,8 @@ function makeScenarios(): DebugScenario[] {
       ],
       fixes: [
         { rank: 1, label: 'Resolve conflicts manually', command: 'git mergetool src/auth.ts', confidence: 97 },
-        { rank: 2, label: 'Add file locking via Agent Mail', command: 'am broadcast "Lock src/auth.ts before editing"', confidence: 85 },
-        { rank: 3, label: 'Assign files to specific agents', command: 'cm rule add "Only pane-1 edits src/auth.ts"', confidence: 79 },
+        { rank: 2, label: 'Add file locking via Agent Mail', command: 'am mail send --project ~/projects/myproject --from cc-1 --to cc-2,cc-3 --subject "Lock src/auth.ts" --body "Reserve src/auth.ts before editing"', confidence: 85 },
+        { rank: 3, label: 'Assign files to specific agents', command: 'cm playbook add "Only pane-1 edits src/auth.ts" --category coordination', confidence: 79 },
       ],
       sessionLog: [
         { time: '16:00:00', level: 'info', message: 'Agent A starts auth refactor' },

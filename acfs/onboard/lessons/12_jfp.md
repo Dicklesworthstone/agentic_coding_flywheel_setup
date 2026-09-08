@@ -13,7 +13,7 @@ In Lesson 11, you learned how `ms` manages skills locally. But where do good ski
 
 **JFP (JeffreysPrompts.com CLI)** gives you access to a curated library of battle-tested prompts for Claude, GPT, and other AI coding agents. The CLI and website share the same prompt library.
 
-Prompts are organized into bundles and workflows. You can browse, copy to clipboard, or install directly as Claude Code skills.
+Prompts are organized into bundles and workflows. You can browse, copy to clipboard, or install them as Claude Code skills through the sibling `jsm` CLI.
 
 ---
 
@@ -79,13 +79,16 @@ The prompt is now in your clipboard, ready to paste.
 
 # Installing as a Skill
 
-The real power: install prompts directly as Claude Code skills:
+The real power: install a skill directly into your agents' skill
+directories. Skill installation moved from `jfp` to its sibling CLI `jsm`
+(jeffreys-skills.md); the old jfp subcommand now just points you there:
 
 ```bash
-jfp install idea-wizard
+jsm install idea-wizard
 ```
 
-After installation, you can invoke it in Claude Code:
+List what is installed with `jsm list`. After installation, you can invoke
+it in Claude Code:
 
 ```bash
 /idea-wizard "build a REST API for user management"
@@ -108,6 +111,6 @@ You've learned:
 2. **jfp search** — Find prompts by keyword
 3. **jfp show** — View full prompt details
 4. **jfp copy** — Copy to clipboard
-5. **jfp install** — Install as a Claude Code skill
+5. **jsm install** — Install as a Claude Code skill (`jsm list` shows installed ones)
 
 Combined with `ms` from Lesson 11, you now have a complete skill management workflow: find prompts with `jfp`, manage them locally with `ms`.

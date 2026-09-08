@@ -311,7 +311,7 @@ const RAW_TOOLS: Record<ToolId, ToolCard> = {
     glowColor: "rgba(45,212,191,0.4)",
     docsUrl: "https://github.com/Dicklesworthstone/automated_plan_reviser_pro",
     docsLabel: "GitHub",
-    quickCommand: "apr refine plan.md",
+    quickCommand: "apr run 1",
     relatedTools: ["beads", "claude-code", "ntm"],
   },
   jfp: {

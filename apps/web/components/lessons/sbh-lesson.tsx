@@ -96,9 +96,9 @@ export function SbhLesson() {
         <CommandList
           commands={[
             { command: 'sbh status', description: 'Show disk usage and ballast state' },
-            { command: 'sbh create --size 5G', description: 'Create a 5 GB ballast file' },
-            { command: 'sbh release', description: 'Manually release ballast space' },
-            { command: 'sbh reclaim', description: 'Re-create ballast after cleanup' },
+            { command: 'sbh ballast provision', description: 'Create (or rebuild) the configured ballast files' },
+            { command: 'sbh ballast release 1', description: 'Release one ballast file to free space now' },
+            { command: 'sbh ballast replenish', description: 'Re-create released ballast after cleanup' },
           ]}
         />
 
@@ -115,11 +115,14 @@ export function SbhLesson() {
         <CodeBlock code={`# Check current disk pressure
 sbh status
 
-# Create ballast on a new machine
-sbh create --size 10G
+# Create ballast on a new machine (size comes from the sbh config)
+sbh ballast provision
 
-# Emergency release when disk is full
-sbh release`} />
+# Release one ballast file when disk is full
+sbh ballast release 1
+
+# Zero-write emergency recovery when writes are already failing
+sbh emergency`} />
       </Section>
     </div>
   );
@@ -303,7 +306,7 @@ const SCENARIOS: Scenario[] = [
       { time: '15:59', message: 'Cleaned /tmp: freed 2.1 GB', severity: 'info' },
     ],
     terminalLines: [
-      '$ sbh cleanup --auto',
+      '$ sbh clean --yes',
       'Scanning for reclaimable space...',
       '',
       'Rotated:  /var/log/*.log.gz   -9.2 GB',
@@ -387,13 +390,13 @@ const SCENARIOS: Scenario[] = [
       { time: '18:19', message: 'Node cache: 22.1 GB across 12 workspaces', severity: 'warn' },
     ],
     terminalLines: [
-      '$ sbh analyze /home',
+      '$ sbh scan /home',
       'Top consumers in /home:',
       '  ~/.cargo/registry  31.4 GB',
       '  node_modules/      22.1 GB',
       '  target/            28.7 GB',
       '',
-      '$ sbh purge-caches --aggressive',
+      '$ sbh clean --target-free 20 --yes',
       'Purging Cargo registry (keeping latest)...',
       'Purging node_modules (stale > 7d)...',
       'Freed: 41.2 GB from cache purge',
@@ -429,7 +432,7 @@ const SCENARIOS: Scenario[] = [
       { time: '18:58', message: 'All cleanup strategies executing...', severity: 'warn' },
     ],
     terminalLines: [
-      '$ sbh release --emergency',
+      '$ sbh emergency',
       '!!! EMERGENCY BALLAST RELEASE !!!',
       '',
       'Released: /var/ballast (7.0 GB)',
@@ -439,7 +442,7 @@ const SCENARIOS: Scenario[] = [
       '  Truncating old logs...    -4.2 GB',
       '  Clearing /tmp...          -8.1 GB',
       '',
-      '$ sbh reclaim  # after cleanup',
+      '$ sbh ballast replenish  # after cleanup',
     ],
     ballastStatus: 'released',
     ballastGb: 0.0,
@@ -722,7 +725,7 @@ function BallastIndicator({ status, sizeGb }: { status: string; sizeGb: number }
       </div>
       <p className="text-xs text-white/40 mt-1.5">
         {isReleased
-          ? 'Ballast released! Run sbh reclaim after cleanup.'
+          ? 'Ballast released! Run sbh ballast replenish after cleanup.'
           : `${sizeGb.toFixed(1)} GB reserved at /var/ballast. Auto-releases at 95%.`}
       </p>
     </div>

@@ -213,8 +213,8 @@ sudo systemctl enable --now acfs-nightly.timer`}
 # Reconnect to workspace after SSH
 tmux attach -t main
 
-# Or use NTM for named sessions
-ntm spawn coding --agents cc,cod --project ~/workspace/myproject`}
+# Or use NTM for named sessions (session name = project dir under projects_base)
+ntm spawn myproject --cc=1 --cod=1`}
             showLineNumbers
           />
         </div>

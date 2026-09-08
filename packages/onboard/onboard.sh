@@ -1038,7 +1038,7 @@ declare -gA LESSON_SUMMARIES=(
     [6]="Using the prompt palette|Common prompts and shortcuts|Customizing your workflow"
     [7]="The agentic development loop|Continuous improvement|Measuring productivity"
     [8]="Keeping tools updated|Staying current with AI agents|Community resources"
-    [9]="Multi-repo sync with ru sync|AI-driven commits via agent-sweep|Parallel workflow automation"
+    [9]="Multi-repo sync with ru sync|Logical commits via ru commit-sweep|Parallel workflow automation"
     [10]="DCG command safety|Protection packs|Allow-once workflow"
     [21]="Single-branch model for agent swarms|File reservations replace branches|Preventing conflicts with Agent Mail"
 )

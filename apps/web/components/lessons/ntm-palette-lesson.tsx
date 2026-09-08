@@ -543,56 +543,56 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     description: "Broadcast a prompt to all agents in the session",
     category: "Agent Control",
     shortcut: ["Ctrl", "B", "S"],
-    params: "--prompt <text>",
+    params: "<session> <prompt>",
     fullText:
-      "ntm send <prompt>\nBroadcast a prompt to all active agent panes simultaneously.\nAgents receive the prompt and begin processing in parallel.\n\nOptions:\n  --target <n>   Send to specific agent pane\n  --file <path>  Send contents of a file as prompt\n  --delay <ms>   Stagger delivery between agents",
+      "ntm send <session> <prompt>\nBroadcast a prompt to all active agent panes simultaneously.\nAgents receive the prompt and begin processing in parallel.\n\nOptions:\n  --pane <n>     Send to one specific pane\n  --file <path>  Send contents of a file as prompt\n  --delay <dur>  Stagger delivery between agents (e.g. 5s)",
     starred: true,
   },
   {
     id: "pause-agents",
-    title: "Pause All Agents",
-    description: "Temporarily halt agent execution without losing context",
+    title: "Interrupt All Agents",
+    description: "Send Ctrl+C to every agent pane so you can review before they continue",
     category: "Agent Control",
     shortcut: ["Ctrl", "B", "P"],
     fullText:
-      "ntm pause\nSuspend all running agents while preserving their context.\nUseful for reviewing output before agents proceed.\n\nOptions:\n  --target <n>   Pause specific agent\n  --timeout <s>  Auto-resume after timeout",
+      "ntm interrupt <session>\nSend an interrupt signal (Ctrl+C) to all agent panes in a session.\nUser panes are not affected. Useful for reviewing output before\nagents proceed.\n\nOptions:\n  --tag <tag>    Only interrupt panes with this tag",
   },
   {
     id: "resume-agents",
-    title: "Resume Agents",
-    description: "Continue paused agent execution",
+    title: "Resume From Handoff",
+    description: "Pick up a session from its latest handoff notes",
     category: "Agent Control",
     shortcut: ["Ctrl", "B", "R"],
     fullText:
-      "ntm resume\nResume all paused agents from where they left off.\n\nOptions:\n  --target <n>   Resume specific agent\n  --with <text>  Resume with additional context",
+      "ntm resume <session>\nResume work from the most recent handoff for a session\n(goal, decisions, blockers, next steps).\n\nOptions:\n  --inject       Inject the context into the existing session\n  --spawn --cc=2 Resume and spawn fresh agents with the context",
   },
   // Window Layout
   {
     id: "layout-wide",
-    title: "Wide Layout",
-    description: "Arrange panes in horizontal split (side-by-side agents)",
+    title: "Dashboard Overlay",
+    description: "Float the NTM dashboard over your agent panes",
     category: "Window Layout",
     shortcut: ["Ctrl", "B", "W"],
     fullText:
-      "ntm layout wide\nRearrange all panes into a wide horizontal layout.\nIdeal for widescreen monitors where agents work side-by-side.\n\nEach agent pane gets equal width with a minimum of 80 columns.",
+      "ntm overlay <session>\nOpen the NTM dashboard in a tmux popup that floats over your\nagent panes. Press Escape to dismiss, or Enter on a pane to\ndismiss and zoom into it.\n\nOptions:\n  --bind-key F12  Also set F12 as a toggle key",
   },
   {
     id: "layout-tiled",
-    title: "Tiled Layout",
-    description: "Grid arrangement for monitoring multiple agents equally",
+    title: "Tiled View",
+    description: "Unzoom and tile every pane for equal visibility",
     category: "Window Layout",
     shortcut: ["Ctrl", "B", "T"],
     fullText:
-      "ntm layout tiled\nArrange panes in an even grid. Automatically calculates\noptimal rows and columns based on pane count.\n\nBest for 4+ agents when you want equal visibility.",
+      "ntm view <session>\nUnzoom any zoomed panes, apply the tiled layout to all windows,\nand attach to the session (alias: ntm tile).\n\nBest for 4+ agents when you want equal visibility.",
   },
   {
     id: "layout-focus",
-    title: "Focus Mode",
-    description: "Maximize one agent pane, minimize others to sidebar",
+    title: "Zoom Pane",
+    description: "Maximize one agent pane; run again to pick another",
     category: "Window Layout",
     shortcut: ["Ctrl", "B", "F"],
     fullText:
-      "ntm layout focus <pane>\nMaximize a single agent pane with others collapsed to a\nnarrow sidebar. Toggle back with the same shortcut.\n\nOptions:\n  --pane <n>     Pane number to focus (default: current)",
+      "ntm zoom <session> [pane]\nZoom a single pane and attach to it. Give a pane index (0), an\nagent type (cc) or omit it for a pane selector.\n\nExamples:\n  ntm zoom myproject 0\n  ntm zoom myproject cc",
     starred: true,
   },
   // Monitoring

@@ -64,12 +64,18 @@ AI coding agents generate large build artifacts, download dependencies, and crea
 # Check current protection status
 sbh status
 
-# Manually release ballast space in an emergency
-sbh release
+# Manually release one ballast file to free space right now
+sbh ballast release 1
 
-# Restore ballast after freeing disk space
-sbh restore
+# Disk already full? Zero-write recovery of stale build artifacts
+sbh emergency
+
+# Re-provision the ballast once you have freed disk space
+sbh ballast replenish
 ```
+
+`sbh ballast status` shows the ballast inventory, and anything `sbh clean`
+quarantined comes back with `sbh undo`.
 
 ---
 
@@ -77,6 +83,6 @@ sbh restore
 
 You've learned:
 1. **sbh status** - Check disk protection state
-2. **sbh release** - Emergency space recovery
-3. **sbh restore** - Re-enable protection
+2. **sbh ballast release** / **sbh emergency** - Emergency space recovery
+3. **sbh ballast replenish** - Re-enable protection
 4. How ballast files prevent out-of-space crashes during builds
