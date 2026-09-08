@@ -64,13 +64,21 @@ The prompts are organized into categories:
 3. Copy it
 4. Use `ntm send` or paste directly
 
-### Option 2: Direct Send (Power Move)
+### Option 2: Send Without The TUI (Power Move)
+
+The palette itself is interactive-only (it has no `--send` or `--list`
+flags). The non-interactive sender is `ntm send`:
 
 ```bash
-ntm palette myproject --send
+# Send a one-off prompt to every agent in the session
+ntm send myproject "Review the changes in src/ for edge cases"
+
+# Send a built-in prompt template (see `ntm template list`)
+ntm send myproject -t code_review --file src/main.go
 ```
 
-This lets you select a prompt and immediately send it to all agents!
+Same battle-tested prompts, no menu: `ntm send` targets all agents by
+default, or use `--cc`, `--cod`, `--agy`, or `--pane=N` to pick recipients.
 
 ---
 

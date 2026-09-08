@@ -38,11 +38,36 @@ test_palette_content() {
     fi
 }
 
+# Count the prompt entries in a palette file. Entries are `### id | Title`
+# headings under `## Category` headings; that is the format `ntm palette`
+# parses, and the only non-interactive view of the palette we have (the TUI
+# has no --list/--send flags, so never probe it with one: an unknown flag
+# exits non-zero and a `|| echo 0` fallback would hide that, see #393).
+palette_entry_count() {
+    local palette="$1"
+    local count
+    count=$(grep -cE '^### [A-Za-z0-9_-]+ \| ' "$palette") || count=0
+    echo "$count"
+}
+
+# `ntm palette --help` must exit 0. The help path is the only thing the
+# subcommand does without a TTY, and a non-zero exit here means the
+# subcommand itself is missing or broken.
+assert_ntm_palette_subcommand() {
+    local help_output
+    if ! help_output=$(ntm palette --help 2>&1); then
+        fail "$1: 'ntm palette --help' failed: $help_output"
+    fi
+    if ! grep -q 'ntm palette \[session\]' <<< "$help_output"; then
+        fail "$1: 'ntm palette --help' does not describe the palette subcommand"
+    fi
+}
+
 # ============================================
 # Test 3: NTM palette command shows entries
 # ============================================
 test_ntm_palette_command() {
-    log "Test 3: ntm palette shows entries"
+    log "Test 3: ntm palette subcommand works and the palette has entries"
 
     if ! command -v ntm >/dev/null 2>&1; then
         log "  Skipping: ntm not installed"
@@ -50,9 +75,13 @@ test_ntm_palette_command() {
         return
     fi
 
-    local count=$(ntm palette --list 2>/dev/null | wc -l || echo "0")
+    assert_ntm_palette_subcommand "Test 3"
 
-    log "  ntm palette shows $count entries"
+    local palette="$HOME/.config/ntm/command_palette.md"
+    local count
+    count=$(palette_entry_count "$palette")
+
+    log "  palette file has $count prompt entries"
 
     if [[ $count -gt 5 ]]; then
         pass "Test 3: Palette has $count entries (>5)"
@@ -97,18 +126,27 @@ test_works_without_acfs() {
         mv "$acfs_dir" "$acfs_backup"
     fi
 
-    # Test ntm palette still works
-    local count=$(ntm palette --list 2>/dev/null | wc -l || echo "0")
+    # Test ntm palette still works: the subcommand must resolve and the
+    # palette file it reads must still be populated. Capture the outcome
+    # rather than exiting so ~/.acfs is always restored.
+    local help_rc=0
+    ntm palette --help >/dev/null 2>&1 || help_rc=$?
+    local count
+    count=$(palette_entry_count "$HOME/.config/ntm/command_palette.md")
 
     # Restore .acfs
     if [[ -d "$acfs_backup" ]]; then
         mv "$acfs_backup" "$acfs_dir"
     fi
 
+    if [[ $help_rc -ne 0 ]]; then
+        fail "Test 5: 'ntm palette --help' exited $help_rc without ~/.acfs"
+    fi
+
     if [[ $count -gt 5 ]]; then
-        pass "Test 5: Palette works without ~/.acfs"
+        pass "Test 5: Palette works without ~/.acfs ($count entries)"
     else
-        fail "Test 5: Palette broken without ~/.acfs"
+        fail "Test 5: Palette broken without ~/.acfs ($count entries)"
     fi
 }
 

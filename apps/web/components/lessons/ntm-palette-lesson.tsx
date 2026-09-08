@@ -167,15 +167,24 @@ export function NtmPaletteLesson() {
 
           <UsageOption
             number={2}
-            title="Direct Send (Power Move)"
+            title="Send Without The TUI (Power Move)"
             steps={[]}
           >
             <div className="mt-4">
-              <CodeBlock code="ntm palette myproject --send" />
+              <CodeBlock
+                code={`# One-off prompt to every agent in the session
+ntm send myproject "Review the changes in src/ for edge cases"
+
+# A built-in prompt template (see \`ntm template list\`)
+ntm send myproject -t code_review --file src/main.go`}
+              />
             </div>
             <p className="mt-3 text-white/60">
-              This lets you select a prompt and immediately send it to all
-              agents!
+              The palette itself is interactive-only (no <InlineCode>--send</InlineCode>{" "}
+              flag). <InlineCode>ntm send</InlineCode> is the non-interactive sender:
+              it targets all agents by default, or use <InlineCode>--cc</InlineCode>,{" "}
+              <InlineCode>--cod</InlineCode>, <InlineCode>--agy</InlineCode>, or{" "}
+              <InlineCode>--pane=N</InlineCode> to pick recipients.
             </p>
           </UsageOption>
         </div>
@@ -654,7 +663,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "1"],
     fullText:
-      "ntm quick review\nInstantly send a battle-tested code review prompt to the focused agent.\nThe prompt covers security, performance, readability, and edge cases.\n\nEquivalent to: ntm palette --send \"Code Review\"",
+      "ntm send <session> -t code_review --file <path>\nSend the built-in code_review prompt template to the agents.\nThe prompt covers security, performance, readability, and edge cases.\n\nEquivalent to: opening `ntm palette` and picking \"Code Review\"",
     starred: true,
   },
   {
@@ -664,7 +673,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "2"],
     fullText:
-      "ntm quick test\nGenerate comprehensive tests for the file currently open in the\nfocused agent pane. Uses the project's testing framework conventions.\n\nEquivalent to: ntm palette --send \"Test Generation\"",
+      "ntm send <session> -t test --file <path>\nSend the built-in test prompt template so the agents write\ncomprehensive tests using the project's testing framework conventions.\n\nEquivalent to: opening `ntm palette` and picking \"Test Generation\"",
   },
   {
     id: "quick-fix",
@@ -673,7 +682,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "3"],
     fullText:
-      "ntm quick fix\nCapture the most recent error from the terminal and send it to\nthe focused agent with a debugging prompt. The agent will trace\nthe error, identify root cause, and suggest a fix.\n\nEquivalent to: ntm palette --send \"Error Analysis\"",
+      "ntm send <session> -t fix --var issue=\"<error>\" --file <path>\nSend the built-in fix template with the error text. The agent will\ntrace the error, identify root cause, and suggest a fix.\n(Pipe a log in instead: cat error.log | ntm send <session> --cc)\n\nEquivalent to: opening `ntm palette` and picking \"Error Analysis\"",
   },
   {
     id: "quick-docs",
@@ -682,7 +691,7 @@ const PALETTE_COMMANDS: PaletteCommand[] = [
     category: "Quick Actions",
     shortcut: ["Ctrl", "B", "4"],
     fullText:
-      "ntm quick docs\nGenerate documentation for the code in the focused agent's context.\nProduces JSDoc comments, function descriptions, and usage examples.\n\nEquivalent to: ntm palette --send \"Inline Comments\"",
+      "ntm send <session> -t document --file <path>\nSend the built-in document template so the agents add\ndoc comments, function descriptions, and usage examples.\n\nEquivalent to: opening `ntm palette` and picking \"Inline Comments\"",
   },
 ];
 
