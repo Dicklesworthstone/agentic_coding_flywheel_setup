@@ -286,6 +286,69 @@ export const ModuleWebMetadataSchema = z
     visible: z.boolean().default(true),
   });
 
+/**
+ * Schema for coding-agent roster metadata (#392).
+ * Required fields are the ones every roster row must render; the block is
+ * optional on a module but only permitted on modules in the `agents` category.
+ */
+export const ModuleAgentMetadataSchema = z
+  .strictObject({
+    display_name: z
+      .string()
+      .min(1, 'agent.display_name cannot be empty')
+      .max(100, 'agent.display_name must be at most 100 characters'),
+    vendor: z
+      .string()
+      .min(1, 'agent.vendor cannot be empty')
+      .max(60, 'agent.vendor must be at most 60 characters')
+      .optional(),
+    cli: z
+      .string()
+      .min(1, 'agent.cli cannot be empty')
+      .max(30, 'agent.cli must be at most 30 characters')
+      .regex(
+        /^[a-z][a-z0-9_-]*$/,
+        'agent.cli must be lowercase alphanumeric with hyphens/underscores'
+      ),
+    aliases: z
+      .array(
+        z
+          .string()
+          .min(1, 'agent.aliases entries cannot be empty')
+          .max(30, 'agent.aliases entries must be at most 30 characters')
+          .regex(
+            /^[a-z][a-z0-9_-]*$/,
+            'agent.aliases entries must be lowercase alphanumeric with hyphens/underscores'
+          )
+      )
+      .max(10)
+      .optional(),
+    auth: z
+      .string()
+      .min(1, 'agent.auth cannot be empty')
+      .max(200, 'agent.auth must be at most 200 characters')
+      .refine(
+        (value) => !/[\r\n|]/.test(value),
+        'agent.auth must be a single line without "|" (it is rendered inside a Markdown table)'
+      ),
+    docs_url: z
+      .string()
+      .url('agent.docs_url must be a valid URL')
+      .refine(
+        (value) => value.startsWith('https://'),
+        'agent.docs_url must use https://'
+      ),
+    summary: z
+      .string()
+      .min(1, 'agent.summary cannot be empty')
+      .max(200, 'agent.summary must be at most 200 characters')
+      .refine(
+        (value) => !/[\r\n|]/.test(value),
+        'agent.summary must be a single line without "|" (it is rendered inside a Markdown table)'
+      )
+      .optional(),
+  });
+
 export const ModuleSchema = z
   .strictObject({
     id: z
@@ -376,6 +439,7 @@ export const ModuleSchema = z
     tags: z.array(z.string()).optional(),
     docs_url: z.string().url().optional(),
     aliases: z.array(z.string()).optional(),
+    agent: ModuleAgentMetadataSchema.optional(),
     web: ModuleWebMetadataSchema.optional(),
     plugin: ModulePluginProvenanceSchema.optional(),
   })
@@ -404,6 +468,14 @@ export const ModuleSchema = z
         code: 'custom',
         path: ['id'],
         message: `Module ID without an explicit category must begin with a canonical category (${MODULE_CATEGORIES.join(', ')})`,
+      });
+    }
+    const resolvedCategory = module.category ?? idCategory;
+    if (module.agent !== undefined && resolvedCategory !== 'agents') {
+      context.addIssue({
+        code: 'custom',
+        path: ['agent'],
+        message: `agent roster metadata is only allowed on modules in the "agents" category (got "${resolvedCategory}")`,
       });
     }
   });

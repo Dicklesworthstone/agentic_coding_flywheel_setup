@@ -150,6 +150,32 @@ export interface ModuleWebMetadata {
 }
 
 /**
+ * Roster metadata for a coding-agent module (category `agents`).
+ *
+ * This is the single source for the "Compatible Agents" roster that the
+ * generator renders into README.md and apps/web (#392). Install status
+ * (default vs optional vs legacy) is NOT declared here: it is derived from
+ * `enabled_by_default`, `optional`, and the `legacy` tag so the roster can
+ * never disagree with what the installer actually does.
+ */
+export interface ModuleAgentMetadata {
+  /** Human-readable agent name (e.g., "Claude Code") */
+  display_name: string;
+  /** Vendor or maintainer shown next to the name (e.g., "Anthropic") */
+  vendor?: string;
+  /** Primary CLI entrypoint installed on PATH (e.g., "claude") */
+  cli: string;
+  /** Shell aliases ACFS defines for the CLI (e.g., ["cc"]) */
+  aliases?: string[];
+  /** Command (or first-run action) that authenticates the agent */
+  auth: string;
+  /** Upstream documentation URL (https) */
+  docs_url: string;
+  /** One-line "what it is good for" shown in the roster */
+  summary?: string;
+}
+
+/**
  * Provenance for modules supplied by a validated ACFS plugin package.
  */
 export interface ModulePluginProvenance {
@@ -214,6 +240,8 @@ export interface Module {
   dependencies?: string[];
   /** Optional aliases this module creates */
   aliases?: string[];
+  /** Roster metadata; only meaningful (and only allowed) on `agents` modules */
+  agent?: ModuleAgentMetadata;
   /** Optional web-facing metadata for website content generation */
   web?: ModuleWebMetadata;
   /** Present only for modules supplied by validated plugin packages */
