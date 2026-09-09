@@ -56,6 +56,7 @@ const OUTPUT_DIR = join(PROJECT_ROOT, 'scripts/generated');
 const WEB_OUTPUT_DIR = join(PROJECT_ROOT, 'apps/web/lib/generated');
 const CHECKSUMS_PATH = join(PROJECT_ROOT, 'checksums.yaml');
 const VERSION_PATH = join(PROJECT_ROOT, 'VERSION');
+const README_PATH = join(PROJECT_ROOT, 'README.md');
 
 export function findUnexpectedGeneratedPaths(
   expectedPaths: Iterable<string>,
@@ -3043,6 +3044,292 @@ export function generateWebLessonsIndex(manifest: Manifest): string {
   return lines.join('\n');
 }
 
+// ============================================================
+// Compatible-agent roster (#392)
+// ============================================================
+
+/**
+ * Install status of an agent module, derived from the installer-facing flags
+ * rather than declared in `agent:` metadata, so the roster can never claim an
+ * agent is a default when `--only`/profile selection would not install it.
+ */
+export type AgentRosterStatus = 'default' | 'optional' | 'legacy';
+
+export interface AgentRosterEntry {
+  moduleId: string;
+  displayName: string;
+  vendor?: string;
+  cli: string;
+  aliases: string[];
+  auth: string;
+  docsUrl: string;
+  summary: string;
+  status: AgentRosterStatus;
+}
+
+const AGENT_ROSTER_STATUS_ORDER: Record<AgentRosterStatus, number> = {
+  default: 0,
+  optional: 1,
+  legacy: 2,
+};
+
+const AGENT_ROSTER_STATUS_LABEL: Record<AgentRosterStatus, string> = {
+  default: 'Default',
+  optional: 'Optional',
+  legacy: 'Legacy',
+};
+
+export const README_AGENT_ROSTER_BEGIN =
+  '<!-- BEGIN GENERATED: compatible-agents (source: acfs.manifest.yaml) -->';
+export const README_AGENT_ROSTER_END = '<!-- END GENERATED: compatible-agents -->';
+
+export const README_AGENT_SUMMARY_BEGIN =
+  '<!-- BEGIN GENERATED: compatible-agents-summary (source: acfs.manifest.yaml) -->';
+export const README_AGENT_SUMMARY_END =
+  '<!-- END GENERATED: compatible-agents-summary -->';
+
+function agentRosterStatus(module: Module): AgentRosterStatus {
+  if (module.tags?.includes('legacy')) return 'legacy';
+  if (module.enabled_by_default === true && module.optional !== true) return 'default';
+  return 'optional';
+}
+
+/**
+ * Build the roster rows from the manifest. Ordering is (status, module id) so
+ * regeneration is stable no matter where an agent sits in the YAML file.
+ */
+export function buildAgentRoster(manifest: Manifest): AgentRosterEntry[] {
+  return manifest.modules
+    .filter((module) => module.agent !== undefined)
+    .map((module) => {
+      const agent = module.agent!;
+      return {
+        moduleId: module.id,
+        displayName: agent.display_name,
+        ...(agent.vendor === undefined ? {} : { vendor: agent.vendor }),
+        cli: agent.cli,
+        aliases: agent.aliases ?? [],
+        auth: agent.auth,
+        docsUrl: agent.docs_url,
+        summary: agent.summary ?? module.description,
+        status: agentRosterStatus(module),
+      } satisfies AgentRosterEntry;
+    })
+    .sort((a, b) => {
+      const byStatus =
+        AGENT_ROSTER_STATUS_ORDER[a.status] - AGENT_ROSTER_STATUS_ORDER[b.status];
+      return byStatus !== 0 ? byStatus : a.moduleId.localeCompare(b.moduleId);
+    });
+}
+
+/**
+ * Escape a value for a single Markdown table cell. The schema already rejects
+ * newlines and raw pipes in the free-text fields; this stays as a second line
+ * of defence for values (module ids, descriptions used as a summary fallback)
+ * that the agent schema does not constrain.
+ */
+function escapeMarkdownCell(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+function markdownCode(value: string): string {
+  return `\`${escapeMarkdownCell(value)}\``;
+}
+
+/**
+ * Render the "Compatible Agents" roster that lives inside the README generated
+ * region. The returned text does NOT include the region markers.
+ */
+export function generateAgentRosterMarkdown(manifest: Manifest): string {
+  const roster = buildAgentRoster(manifest);
+  const defaults = roster.filter((entry) => entry.status === 'default').length;
+  const lines: string[] = [];
+
+  lines.push('<!-- Regenerate with: bun run --cwd packages/manifest generate -->');
+  lines.push('');
+  lines.push(
+    `ACFS ships ${roster.length} coding-agent modules; ${defaults} of them install by default.`
+  );
+  lines.push('');
+  lines.push('| Agent | CLI | ACFS aliases | Install | Module | Sign in | Docs |');
+  lines.push('|-------|-----|--------------|---------|--------|---------|------|');
+
+  for (const entry of roster) {
+    const name = entry.vendor
+      ? `**${escapeMarkdownCell(entry.displayName)}** (${escapeMarkdownCell(entry.vendor)})`
+      : `**${escapeMarkdownCell(entry.displayName)}**`;
+    const aliases =
+      entry.aliases.length > 0 ? entry.aliases.map(markdownCode).join(', ') : '—';
+    lines.push(
+      `| ${name} | ${markdownCode(entry.cli)} | ${aliases} | ${AGENT_ROSTER_STATUS_LABEL[entry.status]} | ${markdownCode(entry.moduleId)} | ${markdownCode(entry.auth)} | [docs](${entry.docsUrl}) |`
+    );
+  }
+
+  lines.push('');
+  lines.push(
+    'Turn any of them on or off at install time with the **Module** column above: `--only <module>` installs that agent plus its dependencies, `--skip <module>` leaves it out — for example `--only agents.grok` or `--skip agents.codex`. `--list-modules` prints every module id and `--print-plan` shows what a given selection would run.'
+  );
+  lines.push('');
+  lines.push('**What each one is for:**');
+  lines.push('');
+
+  for (const entry of roster) {
+    lines.push(`- **${escapeMarkdownCell(entry.displayName)}** — ${escapeMarkdownCell(entry.summary)}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Render the one-line TL;DR bullet. It used to be hand-written prose that
+ * enumerated six of the seven agent modules (#392), so it is generated from the
+ * same roster as the table.
+ */
+export function generateAgentRosterSummaryMarkdown(manifest: Manifest): string {
+  const roster = buildAgentRoster(manifest);
+  const names = (status: AgentRosterStatus): string[] =>
+    roster
+      .filter((entry) => entry.status === status)
+      .map((entry) => escapeMarkdownCell(entry.displayName));
+
+  const groups: string[] = [];
+  const defaults = names('default');
+  const optional = names('optional');
+  const legacy = names('legacy');
+  if (defaults.length > 0) {
+    groups.push(`${defaults.length} installed by default (${defaults.join(', ')})`);
+  }
+  if (optional.length > 0) {
+    groups.push(`${optional.length} optional (${optional.join(', ')})`);
+  }
+  if (legacy.length > 0) {
+    groups.push(`${legacy.length} legacy, off by default (${legacy.join(', ')})`);
+  }
+
+  const detail = groups.length > 0 ? ` — ${groups.join('; ')}` : '';
+  // A paragraph, not a list item: an HTML comment inside a Markdown list
+  // splits the list into separate <ul> blocks on GitHub.
+  const count = `${roster.length} module${roster.length === 1 ? '' : 's'}`;
+  return `**Coding agents:** ${count}${detail}. Full roster in [Compatible AI Coding Agents](#compatible-ai-coding-agents).`;
+}
+
+/**
+ * Replace the README generated region with freshly rendered roster content.
+ * Throws when the markers are missing or malformed so drift is loud instead of
+ * silently appending a second table.
+ */
+function replaceMarkedRegion(
+  text: string,
+  beginMarker: string,
+  endMarker: string,
+  label: string,
+  body: string
+): string {
+  const begin = text.indexOf(beginMarker);
+  const end = text.indexOf(endMarker);
+
+  if (begin === -1 || end === -1) {
+    throw new Error(
+      `README.md is missing the ${label} generated region markers (${beginMarker} ... ${endMarker})`
+    );
+  }
+  if (end < begin) {
+    throw new Error(`README.md ${label} region markers are out of order`);
+  }
+  if (text.indexOf(beginMarker, begin + 1) !== -1) {
+    throw new Error(`README.md has more than one ${label} BEGIN marker`);
+  }
+  if (text.indexOf(endMarker, end + 1) !== -1) {
+    throw new Error(`README.md has more than one ${label} END marker`);
+  }
+
+  return `${text.slice(0, begin + beginMarker.length)}\n${body}\n${text.slice(end)}`;
+}
+
+/**
+ * Extract the body of a marked region, or null when the markers are missing or
+ * malformed. Used by the drift contract to compare without re-rendering.
+ */
+export function readMarkedRegion(
+  text: string,
+  beginMarker: string,
+  endMarker: string
+): string | null {
+  const begin = text.indexOf(beginMarker);
+  const end = text.indexOf(endMarker);
+  if (begin === -1 || end === -1 || end < begin) return null;
+  if (text.indexOf(beginMarker, begin + 1) !== -1) return null;
+  if (text.indexOf(endMarker, end + 1) !== -1) return null;
+  return text.slice(begin + beginMarker.length, end);
+}
+
+export function renderReadmeAgentRoster(readme: string, manifest: Manifest): string {
+  const withSummary = replaceMarkedRegion(
+    readme,
+    README_AGENT_SUMMARY_BEGIN,
+    README_AGENT_SUMMARY_END,
+    'compatible-agents-summary',
+    generateAgentRosterSummaryMarkdown(manifest)
+  );
+  return replaceMarkedRegion(
+    withSummary,
+    README_AGENT_ROSTER_BEGIN,
+    README_AGENT_ROSTER_END,
+    'compatible-agents',
+    generateAgentRosterMarkdown(manifest)
+  );
+}
+
+/**
+ * Generate manifest-agents.ts — the roster as data for apps/web.
+ */
+export function generateWebAgents(manifest: Manifest): string {
+  const roster = buildAgentRoster(manifest);
+  const lines: string[] = [TS_HEADER];
+
+  lines.push('export type ManifestAgentStatus = "default" | "optional" | "legacy";');
+  lines.push('');
+  lines.push('export interface ManifestAgent {');
+  lines.push('  moduleId: string;');
+  lines.push('  displayName: string;');
+  lines.push('  vendor?: string;');
+  lines.push('  cli: string;');
+  lines.push('  aliases: string[];');
+  lines.push('  auth: string;');
+  lines.push('  docsUrl: string;');
+  lines.push('  summary: string;');
+  lines.push('  status: ManifestAgentStatus;');
+  lines.push('}');
+  lines.push('');
+
+  lines.push('export const manifestAgents: ManifestAgent[] = [');
+  for (const entry of roster) {
+    lines.push('  {');
+    lines.push(`    moduleId: "${escapeTs(entry.moduleId)}",`);
+    lines.push(`    displayName: "${escapeTs(entry.displayName)}",`);
+    if (entry.vendor) {
+      lines.push(`    vendor: "${escapeTs(entry.vendor)}",`);
+    }
+    lines.push(`    cli: "${escapeTs(entry.cli)}",`);
+    lines.push(`    aliases: ${formatTsArray(entry.aliases, 4)},`);
+    lines.push(`    auth: "${escapeTs(entry.auth)}",`);
+    lines.push(`    docsUrl: "${escapeTs(entry.docsUrl)}",`);
+    lines.push(`    summary: "${escapeTs(entry.summary)}",`);
+    lines.push(`    status: "${entry.status}",`);
+    lines.push('  },');
+  }
+  lines.push('];');
+  lines.push('');
+
+  lines.push('/** Agents installed unless explicitly skipped. */');
+  lines.push(
+    'export const defaultManifestAgents: ManifestAgent[] = manifestAgents.filter((agent) => agent.status === "default");'
+  );
+  lines.push('');
+
+  return lines.join('\n');
+}
+
 /**
  * Generate manifest-web-index.ts — barrel re-export for all web generated data.
  */
@@ -3063,6 +3350,9 @@ export function generateWebIndex(): string {
   lines.push('');
   lines.push("export { manifestLessonLinks, lessonSlugByModuleId } from './manifest-lessons-index';");
   lines.push("export type { ManifestLessonLink } from './manifest-lessons-index';");
+  lines.push('');
+  lines.push("export { manifestAgents, defaultManifestAgents } from './manifest-agents';");
+  lines.push("export type { ManifestAgent, ManifestAgentStatus } from './manifest-agents';");
   lines.push('');
 
   return lines.join('\n');
@@ -3454,8 +3744,47 @@ async function main(): Promise<void> {
     const lessonsPath = join(WEB_OUTPUT_DIR, 'manifest-lessons-index.ts');
     filesToGenerate.set(lessonsPath, { content: generateWebLessonsIndex(effectiveManifest), mode: 0o644 });
 
+    const agentsPath = join(WEB_OUTPUT_DIR, 'manifest-agents.ts');
+    filesToGenerate.set(agentsPath, { content: generateWebAgents(effectiveManifest), mode: 0o644 });
+
     const indexPath = join(WEB_OUTPUT_DIR, 'manifest-web-index.ts');
     filesToGenerate.set(indexPath, { content: generateWebIndex(), mode: 0o644 });
+  }
+
+  // Files that are hand-written except for one marked region. They cannot join
+  // `filesToGenerate` (that map owns whole files and drives stale detection and
+  // the internal checksum store), so they are rendered and compared separately.
+  const regionsToPatch = new Map<
+    string,
+    {
+      label: string;
+      snapshot: Buffer;
+      existing: string;
+      content: string | null;
+      error: string | null;
+      mode: number;
+    }
+  >();
+  {
+    const readme = inspectRegularFileNoFollow(README_PATH, 'README');
+    const existing = readme.content.toString('utf-8');
+    // A broken marker pair must be reported by --diff (the release gate), not
+    // crash it, so the render failure is carried instead of thrown here.
+    let content: string | null = null;
+    let error: string | null = null;
+    try {
+      content = renderReadmeAgentRoster(existing, effectiveManifest);
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+    regionsToPatch.set(README_PATH, {
+      label: 'README',
+      snapshot: readme.content,
+      existing,
+      content,
+      error,
+      mode: readme.mode,
+    });
   }
 
   const allInputSnapshots = new Map<string, Buffer>(internalChecksumSnapshots);
@@ -3536,6 +3865,17 @@ async function main(): Promise<void> {
       }
     }
 
+    for (const [filepath, region] of regionsToPatch) {
+      const filename = relative(PROJECT_ROOT, filepath);
+      if (region.error === null && region.existing === region.content) {
+        console.log(`[OK]   ${filename}`);
+        continue;
+      }
+      hasDiff = true;
+      console.log(`[DIFF] ${filename}`);
+      console.log(`       ${region.error ?? 'Generated region is stale'}`);
+    }
+
     for (const stalePath of stalePaths) {
       hasDiff = true;
       console.log(`[STALE] ${relative(PROJECT_ROOT, stalePath)}`);
@@ -3563,6 +3903,16 @@ async function main(): Promise<void> {
         console.log('---');
         console.log(content.slice(0, 500) + '...');
         console.log('---');
+      }
+    }
+    for (const [filepath, region] of regionsToPatch) {
+      const filename = relative(PROJECT_ROOT, filepath);
+      if (region.error !== null) {
+        console.log(`[DRY-RUN] Cannot update generated region in ${filename}: ${region.error}`);
+      } else if (region.existing === region.content) {
+        console.log(`[DRY-RUN] Generated region already current: ${filename}`);
+      } else {
+        console.log(`[DRY-RUN] Would update generated region in: ${filename}`);
       }
     }
     assertAllInputSnapshotsUnchanged();
@@ -3598,8 +3948,29 @@ async function main(): Promise<void> {
   }
   assertAllInputSnapshotsUnchanged();
 
+  let patchedRegions = 0;
+  for (const [filepath, region] of regionsToPatch) {
+    const filename = relative(PROJECT_ROOT, filepath);
+    if (region.error !== null || region.content === null) {
+      throw new Error(`Cannot update the generated region in ${filename}: ${region.error ?? 'render produced no content'}`);
+    }
+    if (region.existing === region.content) {
+      console.log(`Unchanged: ${filename} (generated region already current)`);
+      continue;
+    }
+    // Re-read before clobbering: another agent may have edited the prose
+    // outside the region while this run was rendering.
+    assertInputSnapshotUnchanged(filepath, region.snapshot, region.label);
+    writeGeneratedFileNoFollow(filepath, region.content, region.mode);
+    console.log(`Updated generated region: ${filename}`);
+    patchedRegions += 1;
+  }
+
   console.log('');
-  console.log(`Generated ${generatedFiles.length} files (${OUTPUT_DIR} + ${WEB_OUTPUT_DIR})`);
+  console.log(
+    `Generated ${generatedFiles.length} files (${OUTPUT_DIR} + ${WEB_OUTPUT_DIR})` +
+      (patchedRegions > 0 ? ` and patched ${patchedRegions} generated region(s)` : '')
+  );
 }
 
 function isDirectInvocation(): boolean {

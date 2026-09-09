@@ -32,8 +32,16 @@ apps/web/lib/generated/
 ├── manifest-tldr.ts       # TL;DR summaries
 ├── manifest-commands.ts   # CLI command reference
 ├── manifest-lessons-index.ts  # Lesson navigation index
+├── manifest-agents.ts     # Compatible-agent roster (agents.* modules)
 └── manifest-web-index.ts  # Re-exports all above
 ```
+
+The generator also rewrites two marked regions inside `README.md`
+(`<!-- BEGIN GENERATED: compatible-agents ... -->` and
+`<!-- ... compatible-agents-summary ... -->`). Everything outside those markers
+is hand-written; `check-manifest-drift.sh` reports a stale region but will not
+auto-commit `README.md`, so run `bun run --cwd packages/manifest generate` and
+commit the README yourself.
 
 **IMPORTANT:** Files in `apps/web/lib/generated/` are auto-generated. Never edit them directly.
 

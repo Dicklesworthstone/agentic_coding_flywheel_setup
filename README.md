@@ -70,10 +70,13 @@ The installer is **idempotent**—if interrupted, simply re-run it. It will auto
 **What you get:**
 - Modern shell (zsh + oh-my-zsh + powerlevel10k)
 - All language runtimes (bun, uv/Python, Rust, Go)
-- Three AI coding agents by default (Claude Code, Codex CLI, Antigravity CLI), plus optional OpenCode, oh-my-pi (omp), and Grok CLI
 - Agent coordination tools (NTM, MCP Agent Mail, SLB)
 - Cloud CLIs (Vault, Wrangler, Supabase, Vercel)
 - And 20+ more developer tools
+
+<!-- BEGIN GENERATED: compatible-agents-summary (source: acfs.manifest.yaml) -->
+**Coding agents:** 7 modules — 3 installed by default (Antigravity CLI, Claude Code, Codex CLI); 3 optional (Grok CLI, oh-my-pi, OpenCode); 1 legacy, off by default (Gemini CLI). Full roster in [Compatible AI Coding Agents](#compatible-ai-coding-agents).
+<!-- END GENERATED: compatible-agents-summary -->
 
 ---
 
@@ -1451,17 +1454,35 @@ Benefits for agentic workflows:
 - **SSH keys over Tailscale**: Use `tailscale ssh` for key-free authentication
 - **ACLs**: Fine-grained access control for team environments
 
-### AI Coding Agents
+### Compatible AI Coding Agents
 
-| Agent | Command | Alias (Vibe Mode) |
-|-------|---------|-------------------|
-| **Claude Code** | `claude` | `cc` (dangerous mode) |
-| **Codex CLI** | `codex` | `cod` (dangerous mode) |
-| **Antigravity CLI** | `agy` | `agy` (model-pinned, dangerous mode) |
-| **Gemini CLI** (legacy) | `gemini` | `gmi` (retired 2026-06-18; routes to locked `agy`) |
-| **OpenCode** (optional) | `opencode` | — |
-| **oh-my-pi** (optional) | `omp` | — |
-| **Grok CLI** (optional) | `grok` | — |
+<!-- BEGIN GENERATED: compatible-agents (source: acfs.manifest.yaml) -->
+<!-- Regenerate with: bun run --cwd packages/manifest generate -->
+
+ACFS ships 7 coding-agent modules; 3 of them install by default.
+
+| Agent | CLI | ACFS aliases | Install | Module | Sign in | Docs |
+|-------|-----|--------------|---------|--------|---------|------|
+| **Antigravity CLI** (Google) | `agy` | `agy`, `gmi` | Default | `agents.antigravity` | `agy` | [docs](https://antigravity.google/cli) |
+| **Claude Code** (Anthropic) | `claude` | `cc` | Default | `agents.claude` | `claude auth login` | [docs](https://docs.claude.com/en/docs/claude-code/overview) |
+| **Codex CLI** (OpenAI) | `codex` | `cod` | Default | `agents.codex` | `codex login --device-auth` | [docs](https://github.com/openai/codex) |
+| **Grok CLI** (xAI) | `grok` | — | Optional | `agents.grok` | `grok login` | [docs](https://x.ai/cli) |
+| **oh-my-pi** | `omp` | — | Optional | `agents.omp` | `omp auth-broker login <provider>` | [docs](https://omp.sh) |
+| **OpenCode** | `opencode` | — | Optional | `agents.opencode` | `opencode auth login` | [docs](https://opencode.ai/docs) |
+| **Gemini CLI** (Google) | `gemini` | — | Legacy | `agents.gemini` | `gemini` | [docs](https://github.com/google-gemini/gemini-cli) |
+
+Turn any of them on or off at install time with the **Module** column above: `--only <module>` installs that agent plus its dependencies, `--skip <module>` leaves it out — for example `--only agents.grok` or `--skip agents.codex`. `--list-modules` prints every module id and `--print-plan` shows what a given selection would run.
+
+**What each one is for:**
+
+- **Antigravity CLI** — Google's successor to the Gemini CLI; ACFS pins its model and permissions via agy-locked.
+- **Claude Code** — Long autonomous runs with deep tool use; the ACFS default driver.
+- **Codex CLI** — Runs on a ChatGPT plan; --device-auth is the login path on a headless VPS.
+- **Grok CLI** — xAI's terminal agent; also accepts GROK_DEPLOYMENT_KEY for headless use.
+- **oh-my-pi** — Community fork of the Pi agent with its own model roster and credential broker.
+- **OpenCode** — Multi-provider harness; drives Claude, GPT, and Gemini models from one TUI.
+- **Gemini CLI** — Retired upstream on 2026-06-18; kept installable for existing setups, use Antigravity instead.
+<!-- END GENERATED: compatible-agents -->
 
 **Vibe Mode Aliases:**
 ```bash

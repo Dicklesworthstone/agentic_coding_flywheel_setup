@@ -6,6 +6,14 @@ import {
   checkManifestDriftContract,
   type DriftContractCode,
 } from './drift-contract.js';
+import {
+  README_AGENT_ROSTER_BEGIN,
+  README_AGENT_ROSTER_END,
+  README_AGENT_SUMMARY_BEGIN,
+  README_AGENT_SUMMARY_END,
+  renderReadmeAgentRoster,
+} from './generate.js';
+import { parseManifestFile } from './parser.js';
 
 const HASH = 'a'.repeat(64);
 const INSTALLER_URL = 'https://example.com/example/install.sh';
@@ -178,6 +186,97 @@ export const lessonSlugByModuleId = {
   return root;
 }
 
+const AGENT_MODULE_YAML = `  - id: agents.example
+    description: Example coding agent
+    run_as: target_user
+    optional: false
+    enabled_by_default: true
+    generated: true
+    install:
+      - echo agent
+    verify:
+      - exampleagent --version
+    agent:
+      display_name: Example Agent
+      vendor: Example Co
+      cli: exampleagent
+      aliases: [xa]
+      auth: exampleagent login
+      docs_url: https://example.com/agent
+      summary: Example roster entry.
+`;
+
+/**
+ * cleanFixture() plus one agents module wired through every surface the roster
+ * touches, so the roster checks are exercised against a manifest that actually
+ * ships an agent.
+ */
+function agentFixture(): string {
+  const root = cleanFixture();
+
+  const manifestPath = join(root, 'acfs.manifest.yaml');
+  writeFixtureFile(
+    root,
+    'acfs.manifest.yaml',
+    `${readFileSync(manifestPath, 'utf-8')}${AGENT_MODULE_YAML}`
+  );
+
+  const indexPath = 'scripts/generated/manifest_index.sh';
+  writeFixtureFile(
+    root,
+    indexPath,
+    readFileSync(join(root, indexPath), 'utf-8').replace(
+      '\n)\n',
+      '\n    "agents.example"\n)\n'
+    )
+  );
+
+  const doctorPath = 'scripts/generated/doctor_checks.sh';
+  writeFixtureFile(
+    root,
+    doctorPath,
+    readFileSync(join(root, doctorPath), 'utf-8').replace(
+      '\n)\n',
+      '\n    "agents.example\tExample coding agent\texampleagent --version\trequired\ttarget_user"\n)\n'
+    )
+  );
+
+  const modulesPath = 'apps/web/lib/generated/manifest-modules.ts';
+  writeFixtureFile(
+    root,
+    modulesPath,
+    readFileSync(join(root, modulesPath), 'utf-8').replace(
+      '\n];\n',
+      '\n  {\n    id: "agents.example",\n  },\n];\n'
+    )
+  );
+
+  writeFixtureFile(
+    root,
+    'apps/web/lib/generated/manifest-agents.ts',
+    'export const manifestAgents = [{ moduleId: "agents.example" }];\n'
+  );
+
+  const readmePath = join(root, 'README.md');
+  const readmeWithMarkers = [
+    readFileSync(readmePath, 'utf-8'),
+    '',
+    README_AGENT_SUMMARY_BEGIN,
+    README_AGENT_SUMMARY_END,
+    '',
+    README_AGENT_ROSTER_BEGIN,
+    README_AGENT_ROSTER_END,
+    '',
+  ].join('\n');
+  const parsed = parseManifestFile(join(root, 'acfs.manifest.yaml'));
+  if (!parsed.success || !parsed.data) {
+    throw new Error(`agent fixture manifest did not parse: ${parsed.error?.message}`);
+  }
+  writeFixtureFile(root, 'README.md', renderReadmeAgentRoster(readmeWithMarkers, parsed.data));
+
+  return root;
+}
+
 function codes(root: string): DriftContractCode[] {
   return checkManifestDriftContract(root).mismatches.map((mismatch) => mismatch.code);
 }
@@ -191,6 +290,94 @@ describe('manifest drift contract', () => {
     expect(result.summary.verifiedInstallers).toBe(1);
     expect(result.summary.webVisibleModules).toBe(1);
     expect(result.summary.lessonLinkedModules).toBe(1);
+  });
+
+  test('accepts a manifest whose agent roster is in sync everywhere', () => {
+    const result = checkManifestDriftContract(agentFixture());
+
+    expect(result.mismatches).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.summary.agentRosterEntries).toBe(1);
+  });
+
+  test('flags an agents module with no roster metadata', () => {
+    const root = agentFixture();
+    const manifestPath = join(root, 'acfs.manifest.yaml');
+    writeFixtureFile(
+      root,
+      'acfs.manifest.yaml',
+      `${readFileSync(manifestPath, 'utf-8')}  - id: agents.undocumented
+    description: Undocumented coding agent
+    run_as: target_user
+    optional: true
+    enabled_by_default: false
+    generated: true
+    install:
+      - echo undocumented
+    verify:
+      - undocumented --version
+`
+    );
+
+    expect(checkManifestDriftContract(root).mismatches).toContainEqual(
+      expect.objectContaining({
+        code: 'AGENT_ROSTER_METADATA_MISSING',
+        moduleId: 'agents.undocumented',
+      })
+    );
+  });
+
+  test('flags a README whose roster region no longer matches the manifest', () => {
+    const root = agentFixture();
+    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
+    writeFixtureFile(root, 'README.md', readme.replace('Example Agent', 'Stale Agent'));
+
+    expect(codes(root)).toContain('README_AGENT_ROSTER_DRIFT');
+  });
+
+  test('flags a README whose summary region no longer matches the manifest', () => {
+    const root = agentFixture();
+    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
+    writeFixtureFile(root, 'README.md', readme.replace('1 module', '9 modules'));
+
+    expect(codes(root)).toContain('README_AGENT_ROSTER_DRIFT');
+  });
+
+  test('flags a README that lost the roster region markers', () => {
+    const root = agentFixture();
+    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
+    const begin = readme.indexOf(README_AGENT_ROSTER_BEGIN);
+    writeFixtureFile(root, 'README.md', readme.slice(0, begin));
+
+    expect(codes(root)).toContain('README_AGENT_ROSTER_REGION_MISSING');
+  });
+
+  test('flags a README that lost the summary region markers', () => {
+    const root = agentFixture();
+    const readme = readFileSync(join(root, 'README.md'), 'utf-8');
+    writeFixtureFile(
+      root,
+      'README.md',
+      readme.replace(README_AGENT_SUMMARY_BEGIN, '').replace(README_AGENT_SUMMARY_END, '')
+    );
+
+    expect(codes(root)).toContain('README_AGENT_ROSTER_REGION_MISSING');
+  });
+
+  test('flags a generated web roster that dropped an agent', () => {
+    const root = agentFixture();
+    writeFixtureFile(
+      root,
+      'apps/web/lib/generated/manifest-agents.ts',
+      'export const manifestAgents = [];\n'
+    );
+
+    expect(checkManifestDriftContract(root).mismatches).toContainEqual(
+      expect.objectContaining({
+        code: 'WEB_AGENT_MISSING',
+        moduleId: 'agents.example',
+      })
+    );
   });
 
   test('detects stale generated manifest index output', () => {

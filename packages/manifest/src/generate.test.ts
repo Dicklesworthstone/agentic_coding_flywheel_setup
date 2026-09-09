@@ -14,9 +14,18 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { parseManifestFile } from './parser.js';
 import {
+  README_AGENT_ROSTER_BEGIN,
+  README_AGENT_ROSTER_END,
+  README_AGENT_SUMMARY_BEGIN,
+  README_AGENT_SUMMARY_END,
+  buildAgentRoster,
   findUnexpectedGeneratedPaths,
+  generateAgentRosterMarkdown,
+  generateAgentRosterSummaryMarkdown,
+  generateWebAgents,
   isOptionalVerifyCommand,
   normalizeVerifiedInstallerScriptArgs,
+  renderReadmeAgentRoster,
   stripOptionalVerifySuffix,
 } from './generate.js';
 import {
@@ -24,6 +33,7 @@ import {
   getModuleCategory,
   sortModulesByInstallOrder,
   getTransitiveDependencies,
+  resolveModuleCategory,
   toGeneratedFunctionName,
 } from './utils.js';
 import { MODULE_CATEGORIES, type Manifest, type Module } from './types.js';
@@ -1363,6 +1373,7 @@ describe('Generated web data files exist', () => {
     'manifest-tldr.ts',
     'manifest-commands.ts',
     'manifest-lessons-index.ts',
+    'manifest-agents.ts',
     'manifest-web-index.ts',
   ];
 
@@ -1381,6 +1392,7 @@ describe('Generated web files have correct headers', () => {
     'manifest-tldr.ts',
     'manifest-commands.ts',
     'manifest-lessons-index.ts',
+    'manifest-agents.ts',
     'manifest-web-index.ts',
   ];
 
@@ -1605,6 +1617,190 @@ describe('manifest-web-index.ts barrel exports', () => {
   test('re-exports manifestLessonLinks', () => {
     expect(content).toContain("export { manifestLessonLinks, lessonSlugByModuleId } from './manifest-lessons-index'");
     expect(content).toContain("export type { ManifestLessonLink } from './manifest-lessons-index'");
+  });
+
+  test('re-exports the compatible-agent roster', () => {
+    expect(content).toContain("export { manifestAgents, defaultManifestAgents } from './manifest-agents'");
+    expect(content).toContain("export type { ManifestAgent, ManifestAgentStatus } from './manifest-agents'");
+  });
+});
+
+describe('Compatible agent roster (#392)', () => {
+  let manifest: Manifest;
+
+  beforeAll(() => {
+    const parseResult = parseManifestFile(MANIFEST_PATH);
+    if (!parseResult.success || !parseResult.data) {
+      throw new Error(`Failed to parse manifest: ${parseResult.error?.message}`);
+    }
+    manifest = parseResult.data;
+  });
+
+  test('covers every agents module in the manifest', () => {
+    const agentModuleIds = manifest.modules
+      .filter((module) => resolveModuleCategory(module) === 'agents')
+      .map((module) => module.id)
+      .sort();
+
+    expect(buildAgentRoster(manifest).map((entry) => entry.moduleId).sort()).toEqual(
+      agentModuleIds
+    );
+  });
+
+  test('derives install status from the installer flags, not from agent metadata', () => {
+    for (const entry of buildAgentRoster(manifest)) {
+      const module = manifest.modules.find((candidate) => candidate.id === entry.moduleId);
+      expect(module).toBeDefined();
+      const expected = module!.tags?.includes('legacy')
+        ? 'legacy'
+        : module!.enabled_by_default === true && module!.optional !== true
+          ? 'default'
+          : 'optional';
+      expect(entry.status).toBe(expected);
+    }
+  });
+
+  test('orders rows by status then module id so regeneration is stable', () => {
+    const roster = buildAgentRoster(manifest);
+    const rank = { default: 0, optional: 1, legacy: 2 } as const;
+    const keys = roster.map((entry) => `${rank[entry.status]}:${entry.moduleId}`);
+
+    expect(keys).toEqual([...keys].sort());
+    expect(buildAgentRoster(manifest)).toEqual(roster);
+  });
+
+  test('renders one Markdown row per agent with no cell-breaking characters', () => {
+    const roster = buildAgentRoster(manifest);
+    const markdown = generateAgentRosterMarkdown(manifest);
+    const rows = markdown
+      .split('\n')
+      .filter((line) => line.startsWith('| ') && !line.startsWith('|---') && !line.startsWith('| Agent '));
+
+    expect(rows).toHaveLength(roster.length);
+    for (const entry of roster) {
+      expect(markdown).toContain(`\`${entry.moduleId}\``);
+      expect(markdown).toContain(entry.displayName);
+      expect(markdown).toContain(entry.docsUrl);
+    }
+    for (const row of rows) {
+      // 7 columns between a leading and trailing pipe => 9 split parts, and no
+      // cell may smuggle in an unescaped pipe or a raw newline.
+      expect(row.split(/(?<!\\)\|/)).toHaveLength(9);
+    }
+  });
+
+  test('both README regions match the manifest and re-rendering is a no-op', () => {
+    const readme = readFileSync(resolve(PROJECT_ROOT, 'README.md'), 'utf-8');
+
+    for (const [beginMarker, endMarker, body] of [
+      [README_AGENT_ROSTER_BEGIN, README_AGENT_ROSTER_END, generateAgentRosterMarkdown(manifest)],
+      [
+        README_AGENT_SUMMARY_BEGIN,
+        README_AGENT_SUMMARY_END,
+        generateAgentRosterSummaryMarkdown(manifest),
+      ],
+    ] as const) {
+      const begin = readme.indexOf(beginMarker);
+      const end = readme.indexOf(endMarker);
+      expect(begin).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(begin);
+      expect(readme.slice(begin + beginMarker.length, end)).toBe(`\n${body}\n`);
+    }
+
+    const rendered = renderReadmeAgentRoster(readme, manifest);
+    expect(rendered).toBe(readme);
+    expect(renderReadmeAgentRoster(rendered, manifest)).toBe(readme);
+  });
+
+  test('the TL;DR summary counts every agent module by status', () => {
+    const roster = buildAgentRoster(manifest);
+    const summary = generateAgentRosterSummaryMarkdown(manifest);
+
+    expect(summary).toContain(`${roster.length} module${roster.length === 1 ? '' : 's'}`);
+    expect(summary.includes('\n')).toBe(false);
+    for (const status of ['default', 'optional', 'legacy'] as const) {
+      const group = roster.filter((entry) => entry.status === status);
+      if (group.length === 0) continue;
+      for (const entry of group) {
+        expect(summary).toContain(entry.displayName);
+      }
+    }
+  });
+
+  test('README prose no longer undercounts the agent roster', () => {
+    const readme = readFileSync(resolve(PROJECT_ROOT, 'README.md'), 'utf-8');
+
+    expect(readme).not.toContain(
+      'Three AI coding agents by default (Claude Code, Codex CLI, Antigravity CLI), plus optional OpenCode, oh-my-pi (omp), and Grok CLI'
+    );
+    expect(readme).toContain(generateAgentRosterSummaryMarkdown(manifest));
+    for (const entry of buildAgentRoster(manifest)) {
+      expect(readme).toContain(entry.moduleId);
+    }
+  });
+
+  test('rejects a README without a usable generated region', () => {
+    const summaryRegion = `${README_AGENT_SUMMARY_BEGIN}\n${README_AGENT_SUMMARY_END}`;
+    const rosterRegion = `${README_AGENT_ROSTER_BEGIN}\n${README_AGENT_ROSTER_END}`;
+
+    expect(() => renderReadmeAgentRoster('no markers here', manifest)).toThrow(/missing/i);
+    expect(() => renderReadmeAgentRoster(summaryRegion, manifest)).toThrow(
+      /missing the compatible-agents generated region/i
+    );
+    expect(() => renderReadmeAgentRoster(rosterRegion, manifest)).toThrow(
+      /missing the compatible-agents-summary generated region/i
+    );
+    expect(() =>
+      renderReadmeAgentRoster(
+        `${summaryRegion}\n${README_AGENT_ROSTER_END}\n${README_AGENT_ROSTER_BEGIN}`,
+        manifest
+      )
+    ).toThrow(/out of order/i);
+    expect(() =>
+      renderReadmeAgentRoster(
+        `${summaryRegion}\n${README_AGENT_ROSTER_BEGIN}\n${rosterRegion}`,
+        manifest
+      )
+    ).toThrow(/more than one/i);
+    expect(() =>
+      renderReadmeAgentRoster(`${summaryRegion}\n${rosterRegion}\n${README_AGENT_ROSTER_END}`, manifest)
+    ).toThrow(/more than one/i);
+  });
+
+  test('replaces only the marked regions and keeps the surrounding prose', () => {
+    const source = [
+      'before',
+      README_AGENT_SUMMARY_BEGIN,
+      'stale summary',
+      README_AGENT_SUMMARY_END,
+      'middle',
+      README_AGENT_ROSTER_BEGIN,
+      'stale table',
+      README_AGENT_ROSTER_END,
+      'after',
+      '',
+    ].join('\n');
+    const rendered = renderReadmeAgentRoster(source, manifest);
+
+    expect(rendered.startsWith('before\n')).toBe(true);
+    expect(rendered).toContain(`${README_AGENT_SUMMARY_END}\nmiddle\n`);
+    expect(rendered.endsWith(`${README_AGENT_ROSTER_END}\nafter\n`)).toBe(true);
+    expect(rendered).not.toContain('stale table');
+    expect(rendered).not.toContain('stale summary');
+    expect(renderReadmeAgentRoster(rendered, manifest)).toBe(rendered);
+  });
+
+  test('generated web roster carries every row plus the default subset', () => {
+    const generated = generateWebAgents(manifest);
+    const onDisk = readFileSync(resolve(WEB_GENERATED_DIR, 'manifest-agents.ts'), 'utf-8');
+
+    expect(onDisk).toBe(generated);
+    expect(generated).toContain('export interface ManifestAgent');
+    expect(generated).toContain('export const defaultManifestAgents');
+    for (const entry of buildAgentRoster(manifest)) {
+      expect(generated).toContain(`moduleId: "${entry.moduleId}"`);
+      expect(generated).toContain(`status: "${entry.status}"`);
+    }
   });
 });
 

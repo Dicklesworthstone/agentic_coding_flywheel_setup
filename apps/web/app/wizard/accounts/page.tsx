@@ -19,6 +19,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCard } from "@/components/alert-card";
+import { AgentRoster } from "@/components/agent-roster";
+import {
+  defaultManifestAgents,
+  manifestAgents,
+} from "@/lib/generated/manifest-web-index";
 import { markStepComplete, useWizardForwardNav } from "@/lib/wizardSteps";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { useCheckedServices } from "@/lib/userPreferences";
@@ -386,6 +391,27 @@ export default function AccountsPage() {
           />
         ))}
       </div>
+
+      {/* Compatible agents roster - generated from acfs.manifest.yaml so the
+          accounts you sign up for always match the agents ACFS can install. */}
+      <section aria-labelledby="compatible-agents-heading" className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/20">
+            <Bot className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 id="compatible-agents-heading" className="text-lg font-semibold">
+              Compatible agents
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              ACFS installs {defaultManifestAgents.length} of these{" "}
+              {manifestAgents.length} agents by default. Each one needs its own account, so
+              sign up only for the agents you plan to use.
+            </p>
+          </div>
+        </div>
+        <AgentRoster variant="surface" />
+      </section>
 
       {/* Beginner Guide */}
       <SimplerGuide>

@@ -17,3 +17,6 @@ export type { ManifestCommand } from './manifest-commands';
 
 export { manifestLessonLinks, lessonSlugByModuleId } from './manifest-lessons-index';
 export type { ManifestLessonLink } from './manifest-lessons-index';
+
+export { manifestAgents, defaultManifestAgents } from './manifest-agents';
+export type { ManifestAgent, ManifestAgentStatus } from './manifest-agents';

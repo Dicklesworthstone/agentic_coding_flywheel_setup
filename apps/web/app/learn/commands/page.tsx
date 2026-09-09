@@ -17,7 +17,12 @@ import {
   Sparkles,
 } from "lucide-react";
 import { motion } from "@/components/motion";
+import { AgentRoster } from "@/components/agent-roster";
 import { CommandCard } from "@/components/command-card";
+import {
+  defaultManifestAgents,
+  manifestAgents,
+} from "@/lib/generated/manifest-web-index";
 import { springs, staggerDelay } from "@/lib/design-tokens";
 import {
   ALL_COMMANDS as GENERATED_COMMANDS,
@@ -56,7 +61,12 @@ const CATEGORY_META: Array<{
   {
     id: "agents",
     name: "AI Agents",
-    description: "Your three coding agents (aliases included)",
+    // Counted from the manifest so this line cannot outlive the roster it
+    // describes (the prose used to say "three" while the manifest shipped
+    // seven agent modules).
+    description: `${defaultManifestAgents.length} agents installed by default, ${
+      manifestAgents.length - defaultManifestAgents.length
+    } more you can opt into (aliases included)`,
     icon: <Bot className="h-5 w-5" />,
     gradient: "from-violet-500/20 to-purple-500/20",
   },
@@ -761,6 +771,28 @@ export default function CommandReferencePage() {
             />
           ))}
         </motion.div>
+
+        {/* Compatible agents roster - generated from acfs.manifest.yaml */}
+        <motion.section
+          id="compatible-agents"
+          className="mb-12 scroll-mt-24"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...springs.smooth, delay: 0.35 }}
+        >
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.05]">
+              <Bot className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-white">Compatible Agents</h2>
+              <p className="text-sm text-white/50">
+                Every coding agent ACFS can install, and how to turn each one on.
+              </p>
+            </div>
+          </div>
+          <AgentRoster variant="glass" />
+        </motion.section>
 
         {/* Content */}
         <div className="space-y-8">

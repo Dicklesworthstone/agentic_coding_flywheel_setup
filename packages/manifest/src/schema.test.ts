@@ -9,6 +9,7 @@ import { describe, test, expect } from 'bun:test';
 import {
   ManifestSchema,
   ManifestDefaultsSchema,
+  ModuleAgentMetadataSchema,
   ModuleSchema,
   ModuleWebMetadataSchema,
 } from './schema.js';
@@ -806,6 +807,98 @@ describe('ManifestSchema', () => {
     if (!result.success) {
       // Should have multiple errors
       expect(result.error.issues.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('ModuleAgentMetadataSchema', () => {
+  const validAgent = {
+    display_name: 'Example Agent',
+    vendor: 'Example Co',
+    cli: 'exampleagent',
+    aliases: ['xa'],
+    auth: 'exampleagent login',
+    docs_url: 'https://example.com/agent',
+    summary: 'Example roster entry.',
+  };
+
+  test('validates complete agent metadata', () => {
+    expect(ModuleAgentMetadataSchema.safeParse(validAgent).success).toBe(true);
+  });
+
+  test('accepts the minimum set of required roster fields', () => {
+    const result = ModuleAgentMetadataSchema.safeParse({
+      display_name: 'Example Agent',
+      cli: 'exampleagent',
+      auth: 'exampleagent login',
+      docs_url: 'https://example.com/agent',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test.each([
+    ['display_name', { display_name: undefined }],
+    ['cli', { cli: undefined }],
+    ['auth', { auth: undefined }],
+    ['docs_url', { docs_url: undefined }],
+  ])('requires %s', (_field, override) => {
+    const candidate: Record<string, unknown> = { ...validAgent, ...override };
+    for (const [key, value] of Object.entries(candidate)) {
+      if (value === undefined) delete candidate[key];
+    }
+    expect(ModuleAgentMetadataSchema.safeParse(candidate).success).toBe(false);
+  });
+
+  test('rejects CLI names and aliases that are not shell-safe lowercase tokens', () => {
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, cli: 'Example Agent' }).success).toBe(false);
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, cli: '9agent' }).success).toBe(false);
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, aliases: ['XA'] }).success).toBe(false);
+  });
+
+  test('rejects free text that would break the Markdown table cell', () => {
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, auth: 'a | b' }).success).toBe(false);
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, auth: 'a\nb' }).success).toBe(false);
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, summary: 'a | b' }).success).toBe(false);
+    expect(ModuleAgentMetadataSchema.safeParse({ ...validAgent, summary: 'a\nb' }).success).toBe(false);
+  });
+
+  test('requires an https docs URL', () => {
+    expect(
+      ModuleAgentMetadataSchema.safeParse({ ...validAgent, docs_url: 'http://example.com/agent' })
+        .success
+    ).toBe(false);
+    expect(
+      ModuleAgentMetadataSchema.safeParse({ ...validAgent, docs_url: 'not-a-url' }).success
+    ).toBe(false);
+  });
+
+  test('rejects unknown agent metadata fields', () => {
+    expect(
+      ModuleAgentMetadataSchema.safeParse({ ...validAgent, install_status: 'default' }).success
+    ).toBe(false);
+  });
+
+  test('allows the agent block only on modules in the agents category', () => {
+    const base = {
+      description: 'Example coding agent',
+      install: ['echo agent'],
+      verify: ['exampleagent --version'],
+      agent: validAgent,
+    };
+
+    expect(ModuleSchema.safeParse({ id: 'agents.example', ...base }).success).toBe(true);
+    expect(
+      ModuleSchema.safeParse({ id: 'tools.example', category: 'agents', ...base }).success
+    ).toBe(true);
+
+    const wrongCategory = ModuleSchema.safeParse({ id: 'tools.example', ...base });
+    expect(wrongCategory.success).toBe(false);
+    if (!wrongCategory.success) {
+      expect(
+        wrongCategory.error.issues.some(
+          (issue) => issue.path.join('.') === 'agent' && issue.message.includes('agents')
+        )
+      ).toBe(true);
     }
   });
 });

@@ -887,6 +887,14 @@ modules:
     optional: false
     enabled_by_default: true
     tags: [recommended, agent]
+    agent:
+      display_name: Claude Code
+      vendor: Anthropic
+      cli: claude
+      aliases: [cc]
+      auth: claude auth login
+      docs_url: https://docs.claude.com/en/docs/claude-code/overview
+      summary: Long autonomous runs with deep tool use; the ACFS default driver.
     dependencies:
       - base.system
     installed_check:
@@ -929,6 +937,14 @@ modules:
     optional: false
     enabled_by_default: true
     tags: [recommended, agent]
+    agent:
+      display_name: Codex CLI
+      vendor: OpenAI
+      cli: codex
+      aliases: [cod]
+      auth: codex login --device-auth
+      docs_url: https://github.com/openai/codex
+      summary: Runs on a ChatGPT plan; --device-auth is the login path on a headless VPS.
     dependencies:
       - lang.bun
     installed_check:
@@ -964,6 +980,13 @@ modules:
     optional: true
     enabled_by_default: false
     tags: [legacy, agent]
+    agent:
+      display_name: Gemini CLI
+      vendor: Google
+      cli: gemini
+      auth: gemini
+      docs_url: https://github.com/google-gemini/gemini-cli
+      summary: Retired upstream on 2026-06-18; kept installable for existing setups, use Antigravity instead.
     dependencies:
       - lang.bun
       - lang.nvm
@@ -1064,6 +1087,14 @@ modules:
     optional: false
     enabled_by_default: true
     tags: [recommended, agent]
+    agent:
+      display_name: Antigravity CLI
+      vendor: Google
+      cli: agy
+      aliases: [agy, gmi]
+      auth: agy
+      docs_url: https://antigravity.google/cli
+      summary: Google's successor to the Gemini CLI; ACFS pins its model and permissions via agy-locked.
     dependencies:
       - base.system
     installed_check:
@@ -1222,6 +1253,12 @@ modules:
     optional: true
     enabled_by_default: false
     tags: [optional, agent]
+    agent:
+      display_name: OpenCode
+      cli: opencode
+      auth: opencode auth login
+      docs_url: https://opencode.ai/docs
+      summary: Multi-provider harness; drives Claude, GPT, and Gemini models from one TUI.
     dependencies:
       - base.system
     installed_check:
@@ -1253,6 +1290,12 @@ modules:
     optional: true
     enabled_by_default: false
     tags: [optional, agent]
+    agent:
+      display_name: oh-my-pi
+      cli: omp
+      auth: omp auth-broker login <provider>
+      docs_url: https://omp.sh
+      summary: Community fork of the Pi agent with its own model roster and credential broker.
     dependencies:
       - base.system
     installed_check:
@@ -1291,6 +1334,13 @@ modules:
     optional: true
     enabled_by_default: false
     tags: [optional, agent]
+    agent:
+      display_name: Grok CLI
+      vendor: xAI
+      cli: grok
+      auth: grok login
+      docs_url: https://x.ai/cli
+      summary: xAI's terminal agent; also accepts GROK_DEPLOYMENT_KEY for headless use.
     dependencies:
       - base.system
     installed_check:

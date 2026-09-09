@@ -510,5 +510,8 @@ export type ModuleOutput = z.output<typeof ModuleSchema>;
 export type ModuleWebMetadataInput = z.input<typeof ModuleWebMetadataSchema>;
 export type ModuleWebMetadataOutput = z.output<typeof ModuleWebMetadataSchema>;
 
+export type ModuleAgentMetadataInput = z.input<typeof ModuleAgentMetadataSchema>;
+export type ModuleAgentMetadataOutput = z.output<typeof ModuleAgentMetadataSchema>;
+
 export type ManifestInput = z.input<typeof ManifestSchema>;
 export type ManifestOutput = z.output<typeof ManifestSchema>;

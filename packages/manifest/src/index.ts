@@ -9,6 +9,7 @@ export type {
   Manifest,
   ManifestDefaults,
   Module,
+  ModuleAgentMetadata,
   ModuleWebMetadata,
   ModuleCategory,
   ValidationResult,
@@ -26,6 +27,8 @@ export type {
   ModuleOutput,
   ModuleWebMetadataInput,
   ModuleWebMetadataOutput,
+  ModuleAgentMetadataInput,
+  ModuleAgentMetadataOutput,
   ManifestDefaultsInput,
   ManifestDefaultsOutput,
 } from './schema.js';
@@ -34,6 +37,7 @@ export type {
 export {
   ManifestSchema,
   ModuleSchema,
+  ModuleAgentMetadataSchema,
   ModuleWebMetadataSchema,
   ManifestDefaultsSchema,
 } from './schema.js';

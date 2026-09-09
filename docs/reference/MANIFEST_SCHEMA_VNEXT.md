@@ -337,6 +337,33 @@ The `web` block drives website content generation. All fields are optional; the 
 - `href` must be absolute path (`/...`) or full URL (`https://...`)
 - `cli_name` must be lowercase alphanumeric with hyphens/underscores
 
+### Agent Roster Fields (`agent` block)
+
+The `agent` block is the single source for the "Compatible Agents" roster that
+the generator renders into the `README.md` marked regions and into
+`apps/web/lib/generated/manifest-agents.ts`. It is permitted **only** on modules
+whose resolved category is `agents`, and the drift contract fails when an
+`agents` module omits it.
+
+| Field | Type | Required | Max Length | Description |
+|-------|------|----------|------------|-------------|
+| `display_name` | string | yes | 100 | Agent name (e.g., "Claude Code") |
+| `vendor` | string | no | 60 | Vendor shown next to the name (e.g., "Anthropic") |
+| `cli` | string | yes | 30 | Primary CLI entrypoint on PATH (e.g., "claude") |
+| `aliases` | string[] | no | 10 items / 30 chars | Shell aliases ACFS defines (e.g., `[cc]`) |
+| `auth` | string | yes | 200 | Command or first-run action that signs the agent in |
+| `docs_url` | string | yes | - | Upstream documentation URL (`https://` only) |
+| `summary` | string | no | 200 | One-line "what it is good for"; falls back to `description` |
+
+Install status is **not** declared here. It is derived from
+`enabled_by_default`, `optional`, and the `legacy` tag, so the roster cannot
+disagree with what the installer actually does.
+
+**Security Constraints:**
+- `cli` and `aliases` entries must be lowercase alphanumeric with hyphens/underscores
+- `auth` and `summary` must be a single line with no raw `|` (they render inside a Markdown table)
+- `docs_url` must be an `https://` URL
+
 ## Examples
 
 ### Standard Module (apt packages)
@@ -577,6 +604,7 @@ The manifest generates TypeScript data files for the Next.js website. This keeps
 | `apps/web/lib/generated/manifest-tldr.ts` | TL;DR page tool summaries |
 | `apps/web/lib/generated/manifest-commands.ts` | CLI command reference |
 | `apps/web/lib/generated/manifest-lessons-index.ts` | Lesson navigation index |
+| `apps/web/lib/generated/manifest-agents.ts` | Compatible-agent roster built from `agent:` metadata |
 | `apps/web/lib/generated/manifest-web-index.ts` | Re-exports all generated modules |
 
 **IMPORTANT:** Never edit files in `apps/web/lib/generated/`. They are overwritten on every generation.

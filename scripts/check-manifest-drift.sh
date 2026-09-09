@@ -246,6 +246,7 @@ GENERATED_OUTPUT_PATHS=(
     scripts/generated/install_users.sh
     scripts/generated/internal_checksums.sh
     scripts/generated/manifest_index.sh
+    apps/web/lib/generated/manifest-agents.ts
     apps/web/lib/generated/manifest-commands.ts
     apps/web/lib/generated/manifest-lessons-index.ts
     apps/web/lib/generated/manifest-modules.ts

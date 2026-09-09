@@ -13,6 +13,17 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { parseManifestFile, validateManifestData } from './parser.js';
 import {
+  README_AGENT_ROSTER_BEGIN,
+  README_AGENT_ROSTER_END,
+  README_AGENT_SUMMARY_BEGIN,
+  README_AGENT_SUMMARY_END,
+  buildAgentRoster,
+  generateAgentRosterMarkdown,
+  generateAgentRosterSummaryMarkdown,
+  readMarkedRegion,
+} from './generate.js';
+import { resolveModuleCategory } from './utils.js';
+import {
   validateManifest as validateManifestAdvanced,
   validateVerifiedInstallerChecksums,
   type InstallerChecksumEntry,
@@ -33,6 +44,10 @@ export type DriftContractCode =
   | 'LESSON_LINK_MISSING'
   | 'ONBOARDING_LESSON_MISSING'
   | 'README_SNIPPET_MISSING'
+  | 'AGENT_ROSTER_METADATA_MISSING'
+  | 'README_AGENT_ROSTER_REGION_MISSING'
+  | 'README_AGENT_ROSTER_DRIFT'
+  | 'WEB_AGENT_MISSING'
   | 'MISSING_VERIFIED_INSTALLER_CHECKSUM'
   | 'INVALID_VERIFIED_INSTALLER_CHECKSUM'
   | 'VERIFIED_INSTALLER_URL_MISMATCH'
@@ -57,6 +72,7 @@ export interface DriftContractSummary {
   lessonLinkedModules: number;
   doctorChecksExpected: number;
   readmeSnippetsExpected: number;
+  agentRosterEntries: number;
   checked: number;
 }
 
@@ -370,6 +386,90 @@ function checkReadmeSnippets(
   }
 }
 
+/**
+ * The "Compatible Agents" roster is generated from `agent:` metadata into a
+ * marked README region and into apps/web. Three ways it can rot are checked
+ * here: an agents module with no roster metadata (the agent would silently
+ * vanish from the table), a README region that no longer matches the manifest,
+ * and a generated web file that lost a row.
+ */
+function checkAgentRoster(
+  root: string,
+  manifest: Manifest,
+  readme: string | null,
+  mismatches: DriftContractMismatch[]
+): number {
+  for (const module of manifest.modules) {
+    if (resolveModuleCategory(module) !== 'agents') continue;
+    if (module.agent !== undefined) continue;
+    mismatches.push({
+      code: 'AGENT_ROSTER_METADATA_MISSING',
+      file: 'acfs.manifest.yaml',
+      moduleId: module.id,
+      message: `Agent module "${module.id}" has no "agent:" roster metadata, so it would be missing from the Compatible Agents roster`,
+    });
+  }
+
+  const roster = buildAgentRoster(manifest);
+  // A manifest with no roster metadata at all (a fixture, or a distribution
+  // that ships no coding agents) has no roster surfaces to keep in sync. Any
+  // agents module that IS missing metadata was already reported above.
+  if (roster.length === 0) return 0;
+
+  if (readme !== null) {
+    const regions: Array<{ name: string; begin: string; end: string; body: string }> = [
+      {
+        name: 'compatible-agents',
+        begin: README_AGENT_ROSTER_BEGIN,
+        end: README_AGENT_ROSTER_END,
+        body: generateAgentRosterMarkdown(manifest),
+      },
+      {
+        name: 'compatible-agents-summary',
+        begin: README_AGENT_SUMMARY_BEGIN,
+        end: README_AGENT_SUMMARY_END,
+        body: generateAgentRosterSummaryMarkdown(manifest),
+      },
+    ];
+
+    for (const region of regions) {
+      const actual = readMarkedRegion(readme, region.begin, region.end);
+      if (actual === null) {
+        mismatches.push({
+          code: 'README_AGENT_ROSTER_REGION_MISSING',
+          file: 'README.md',
+          expected: `${region.begin} ... ${region.end}`,
+          message: `README is missing a usable "${region.name}" generated region, so the roster cannot be regenerated`,
+        });
+        continue;
+      }
+      if (actual !== `\n${region.body}\n`) {
+        mismatches.push({
+          code: 'README_AGENT_ROSTER_DRIFT',
+          file: 'README.md',
+          message: `README "${region.name}" region does not match acfs.manifest.yaml; run \`bun run --cwd packages/manifest generate\``,
+        });
+      }
+    }
+  }
+
+  const webAgents = readText(root, 'apps/web/lib/generated/manifest-agents.ts', mismatches);
+  if (webAgents !== null) {
+    for (const entry of roster) {
+      if (!webAgents.includes(`"${entry.moduleId}"`)) {
+        mismatches.push({
+          code: 'WEB_AGENT_MISSING',
+          file: 'apps/web/lib/generated/manifest-agents.ts',
+          moduleId: entry.moduleId,
+          message: `Generated web agent roster is missing "${entry.moduleId}"`,
+        });
+      }
+    }
+  }
+
+  return roster.length;
+}
+
 export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContractResult {
   const root = resolve(rootDir);
   const mismatches: DriftContractMismatch[] = [];
@@ -382,6 +482,7 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
     lessonLinkedModules: 0,
     doctorChecksExpected: 0,
     readmeSnippetsExpected: REQUIRED_README_SNIPPETS.length,
+    agentRosterEntries: 0,
     checked: 0,
   };
 
@@ -682,7 +783,9 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
   }
 
   checkOnboardingLessons(root, lessonModules, mismatches);
-  checkReadmeSnippets(readText(root, 'README.md', mismatches), mismatches);
+  const readmeText = readText(root, 'README.md', mismatches);
+  checkReadmeSnippets(readmeText, mismatches);
+  summary.agentRosterEntries = checkAgentRoster(root, manifest, readmeText, mismatches);
 
   summary.checked =
     summary.verifiedInstallers +
@@ -692,7 +795,8 @@ export function checkManifestDriftContract(rootDir = DEFAULT_ROOT): DriftContrac
     summary.webCommandModules +
     summary.webTldrModules +
     summary.lessonLinkedModules * 2 +
-    summary.readmeSnippetsExpected;
+    summary.readmeSnippetsExpected +
+    summary.agentRosterEntries;
 
   return {
     ok: mismatches.length === 0,
@@ -712,6 +816,7 @@ Checks manifest-derived surfaces for semantic drift:
   - apps/web/lib/generated manifest metadata
   - acfs/onboard/lessons lesson files
   - README release gate snippets
+  - README + apps/web compatible-agent roster
 `);
 }
 
