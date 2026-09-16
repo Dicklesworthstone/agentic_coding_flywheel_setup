@@ -5974,8 +5974,11 @@ fix_apt_issues() {
     # take /var/lib/dpkg/lock-frontend and exits 100 on a perfectly healthy
     # system, which made every run decide apt needed repairing (#396). A probe
     # that cannot read the state must report "unknown", never "broken".
+    # `sudo -n true` first: where sudo would prompt, the probe's failure would
+    # again be about permissions rather than packages, which is the same
+    # mistake one level further out.
     local -a probe_cmd=()
-    if update_sudo_prefix probe_cmd; then
+    if update_sudo_prefix probe_cmd && "${probe_cmd[@]}" true &>/dev/null; then
         if ! "${probe_cmd[@]}" apt-get check &>/dev/null; then
             needs_fix=true
             log_to_file "apt-get check reported issues"
