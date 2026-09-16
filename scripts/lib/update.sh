@@ -5935,20 +5935,28 @@ fix_apt_issues() {
             return 1
         fi
         log_item "run" "dpkg repair"
-        log_to_file "Running: $(update_sudo_display sudo_cmd)dpkg --configure -a"
-        local dpkg_output
-        local dpkg_exit=0
-        if dpkg_output=$("${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 dpkg --configure -a 2>&1); then
-            :
+        # Same rule as the apt repair below: a preview does not configure
+        # packages (#396). Report and carry on, so the rest of the section is
+        # still previewed.
+        if update_is_read_only_mode; then
+            update_finish_cmd_skip "dpkg repair" \
+                "dry-run: $(update_sudo_display sudo_cmd)dpkg --configure -a"
         else
-            dpkg_exit=$?
+            log_to_file "Running: $(update_sudo_display sudo_cmd)dpkg --configure -a"
+            local dpkg_output
+            local dpkg_exit=0
+            if dpkg_output=$("${sudo_cmd[@]}" env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 dpkg --configure -a 2>&1); then
+                :
+            else
+                dpkg_exit=$?
+            fi
+            [[ -n "$dpkg_output" ]] && log_to_file "dpkg output: $dpkg_output"
+            if [[ $dpkg_exit -ne 0 ]]; then
+                update_finish_cmd_fail "dpkg repair" "dpkg --configure -a failed (exit $dpkg_exit)"
+                return 1
+            fi
+            update_finish_cmd_ok "dpkg repair" "configured interrupted packages"
         fi
-        [[ -n "$dpkg_output" ]] && log_to_file "dpkg output: $dpkg_output"
-        if [[ $dpkg_exit -ne 0 ]]; then
-            update_finish_cmd_fail "dpkg repair" "dpkg --configure -a failed (exit $dpkg_exit)"
-            return 1
-        fi
-        update_finish_cmd_ok "dpkg repair" "configured interrupted packages"
     fi
 
     # Check for broken dependencies or packages needing reinstall
@@ -5961,10 +5969,19 @@ fix_apt_issues() {
         log_to_file "Found $broken_count package(s) in reinstall-required state"
     fi
 
-    # Also check if apt reports broken dependencies
-    if ! apt-get check &>/dev/null; then
-        needs_fix=true
-        log_to_file "apt-get check reported issues"
+    # Also check if apt reports broken dependencies. This has to run with the
+    # same privileges the repair would use: unprivileged `apt-get check` cannot
+    # take /var/lib/dpkg/lock-frontend and exits 100 on a perfectly healthy
+    # system, which made every run decide apt needed repairing (#396). A probe
+    # that cannot read the state must report "unknown", never "broken".
+    local -a probe_cmd=()
+    if update_sudo_prefix probe_cmd; then
+        if ! "${probe_cmd[@]}" apt-get check &>/dev/null; then
+            needs_fix=true
+            log_to_file "apt-get check reported issues"
+        fi
+    else
+        log_to_file "Skipping apt-get check: no privileged path to read package state"
     fi
 
     if [[ "$needs_fix" == "true" ]]; then
@@ -5973,6 +5990,14 @@ fix_apt_issues() {
         if ! update_sudo_prefix sudo_cmd; then
             update_finish_cmd_fail "apt repair" "sudo unavailable for non-root apt repair"
             return 1
+        fi
+        # `--dry-run` previews; it does not repair. Every other step in this
+        # section already reports itself skipped, and this one mutated the
+        # system instead (#396).
+        if update_is_read_only_mode; then
+            update_finish_cmd_skip "apt repair" \
+                "dry-run: $(update_sudo_display sudo_cmd)apt-get -f install -y"
+            return 0
         fi
         log_to_file "Running: $(update_sudo_display sudo_cmd)apt-get -f install -y"
         local apt_output
