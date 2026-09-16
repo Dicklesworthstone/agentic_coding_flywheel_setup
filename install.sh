@@ -29,9 +29,9 @@
 #   --strict          Treat ALL tools as critical (any checksum mismatch aborts)
 #   --list-modules    List available modules and exit
 #   --print-plan      Print execution plan and exit (no installs)
-#   --only <module>       Only run a specific module (repeatable)
-#   --only-phase <phase>  Only run modules in a specific phase (repeatable)
-#   --skip <module>       Skip a specific module (repeatable)
+#   --only <modules>      Only run these modules (repeatable; comma/space list ok)
+#   --only-phase <phases> Only run these phases (repeatable; comma/space list ok)
+#   --skip <modules>      Skip these modules (repeatable; comma/space list ok)
 #   --no-deps             Disable automatic dependency closure (expert/debug)
 #   --checksums-ref <ref> Fetch checksums.yaml from this ref (default: main for pinned tags/SHAs)
 #   --verified-installer-cache <dir>  Use a verified installer entrypoint cache; refuse live fallback
@@ -1153,6 +1153,28 @@ log_error() {
 log_fatal() {
     log_error "$1"
     exit 1
+}
+
+# Append a selection argument to ARRAY, accepting one id, a comma-separated
+# list, or a whitespace-separated list (#398). The flags are repeatable, but
+# `--print-plan` echoes the parsed selection space-separated, so a list reads
+# like it was accepted; rejecting one as a single unknown id was a papercut
+# with no upside. Empty items between separators are ignored so `a,,b` and a
+# trailing comma behave.
+append_comma_or_space_separated() {
+    local -n _target="$1"
+    local raw="$2" flag="$3" item="" added=0
+    local -a items=()
+    IFS=', ' read -r -a items <<<"$raw"
+    for item in "${items[@]}"; do
+        if [[ -n "$item" ]]; then
+            _target+=("$item")
+            added=$((added + 1))
+        fi
+    done
+    if [[ "$added" -eq 0 ]]; then
+        log_fatal "$flag requires at least one non-empty value (got: $raw)"
+    fi
 }
 
 log_section() {
@@ -2351,6 +2373,15 @@ Options:
   --print                 Print script without running
   --resume                Resume interrupted installation
   --force-reinstall       Force reinstall of all modules
+  --list-modules          List available modules and exit
+  --print-plan            Print the execution plan and exit (no installs)
+  --only <modules>        Only run these modules. Repeatable, and accepts a
+                          comma- or space-separated list:
+                            --only stack.cass --only stack.ubs
+                            --only stack.cass,stack.ubs
+  --only-phase <phases>   Only run these phases (same list forms)
+  --skip <modules>        Skip these modules (same list forms)
+  --no-deps               Disable automatic dependency closure (expert/debug)
   --verified-installer-cache <dir>
                           Use a verified installer entrypoint cache and refuse live fallback
   --help, -h              Show this help message
@@ -2561,29 +2592,29 @@ EOF
                 shift
                 ;;
             --only)
-                # Add module to ONLY_MODULES list (for manifest-driven selection)
+                # Add module(s) to ONLY_MODULES list (for manifest-driven selection)
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
                     log_fatal "--only requires a module ID"
                 fi
-                ONLY_MODULES+=("$2")
+                append_comma_or_space_separated ONLY_MODULES "$2" "--only"
                 ACFS_EXPLICIT_TARGETED_SELECTION=true
                 shift 2
                 ;;
             --only-phase)
-                # Add phase to ONLY_PHASES list
+                # Add phase(s) to ONLY_PHASES list
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
                     log_fatal "--only-phase requires a phase number"
                 fi
-                ONLY_PHASES+=("$2")
+                append_comma_or_space_separated ONLY_PHASES "$2" "--only-phase"
                 ACFS_EXPLICIT_TARGETED_SELECTION=true
                 shift 2
                 ;;
             --skip)
-                # Add module to SKIP_MODULES list
+                # Add module(s) to SKIP_MODULES list
                 if [[ -z "${2:-}" || "$2" == -* ]]; then
                     log_fatal "--skip requires a module ID"
                 fi
-                SKIP_MODULES+=("$2")
+                append_comma_or_space_separated SKIP_MODULES "$2" "--skip"
                 shift 2
                 ;;
             --no-deps)
