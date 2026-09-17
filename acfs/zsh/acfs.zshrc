@@ -78,7 +78,12 @@ plugins=(
   git
   sudo
   colored-man-pages
-  command-not-found
+  # command-not-found: REMOVED 2026-09-15. The plugin points
+  # command_not_found_handler at /usr/lib/command-not-found, a python3 script
+  # that searches the apt database. Measured cost of a single typo: 1.8 s on
+  # trj, 1.0-2.3 s across the fleet, and it also overrode the fast handler
+  # installed from ~/.zshenv. zsh's built-in "command not found" message is
+  # instant; run `command-not-found <cmd>` by hand if you want the apt hint.
   docker
   docker-compose
   python
