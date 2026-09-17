@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================
 # ACFS Installer - Ubuntu Upgrade Library
-# Automatically upgrades Ubuntu to target version (default: 25.10)
+# Automatically upgrades Ubuntu to target version (default: 26.04 LTS)
 #
 # Requires: logging.sh, os_detect.sh to be sourced first
 # ============================================================
 
 # Target Ubuntu version for ACFS
 # Callers (install.sh / upgrade_resume.sh) may override by exporting
-# UBUNTU_TARGET_VERSION (and optionally UBUNTU_TARGET_VERSION_NUM) before sourcing.
-export UBUNTU_TARGET_VERSION="${UBUNTU_TARGET_VERSION:-25.10}"
-if [[ -z "${UBUNTU_TARGET_VERSION_NUM:-}" ]]; then
-    UBUNTU_TARGET_VERSION_NUM="$(printf "%d%02d" "$((10#${UBUNTU_TARGET_VERSION%%.*}))" "$((10#${UBUNTU_TARGET_VERSION#*.}))")"
-fi
+# UBUNTU_TARGET_VERSION before sourcing. The numeric form is always derived;
+# an inherited number must not disagree with the requested/stored release.
+export UBUNTU_TARGET_VERSION="${UBUNTU_TARGET_VERSION:-26.04}"
+case "$UBUNTU_TARGET_VERSION" in
+    22.04|24.04|26.04) ;;
+    *)
+        printf 'ERROR: Unsupported Ubuntu upgrade target: %s. Use 26.04 LTS (or a supported 22.04/24.04 LTS target).\n' "$UBUNTU_TARGET_VERSION" >&2
+        return 1 2>/dev/null || exit 1
+        ;;
+esac
+UBUNTU_TARGET_VERSION_NUM="${UBUNTU_TARGET_VERSION/./}"
 export UBUNTU_TARGET_VERSION_NUM
 
 # Minimum disk space required for upgrade (in MB)
@@ -324,105 +330,178 @@ ubuntu_get_next_lts() {
     fi
 }
 
-# Enable normal (non-LTS) release upgrades
-# Required when upgrading from LTS to non-LTS releases
-ubuntu_enable_normal_releases() {
-    local config="/etc/update-manager/release-upgrades"
+# Select the release channel for the actual source, not the final target.
+# LTS-to-LTS upgrades use Prompt=lts; 25.10 recovery uses Prompt=normal.
+# The optional path is for filesystem fixtures; production callers use the
+# OS-owned config. Never inherit a config-path override from the environment.
+ubuntu_configure_release_prompt() {
+    local config="${1:-/etc/update-manager/release-upgrades}"
+    local current prompt parent existing tmp backup
+    current=$(ubuntu_get_version_number) || return 1
+    ubuntu_validate_upgrade_versions "$current" "$UBUNTU_TARGET_VERSION_NUM" || return 1
+    case "$current" in
+        2204|2404|2604) prompt=lts ;;
+        2510) prompt=normal ;;
+        *) return 1 ;;
+    esac
 
-    if [[ ! -f "$config" ]]; then
-        log_warn "Release upgrade config not found: $config"
-        return 0
+    # Refuse redirected/root-capable writes, including symlinked parents.
+    [[ "$config" == /* && "$config" != *'/../'* && "$config" != */.. ]] || return 1
+    parent="$config"
+    while [[ "$parent" != / && -n "$parent" ]]; do
+        if [[ -L "$parent" ]]; then
+            log_error "Refusing symlinked release config path: $parent"
+            return 1
+        fi
+        parent="${parent%/*}"
+    done
+    if [[ ! -f "$config" ]] || [[ "$(stat -c %h -- "$config")" != 1 ]]; then
+        log_error "Release upgrade config must be a single-link regular file: $config"
+        return 1
     fi
 
-    # Check current setting
-    if grep -q "^Prompt=lts" "$config"; then
-        # Backup original
-        cp "$config" "${config}.disabled"
+    # Require a single unambiguous setting in [DEFAULT]. Do not silently edit
+    # malformed or custom sectioned config and then claim the channel changed.
+    existing=$(awk '
+        /^[[:space:]]*\[/ { section=$0; gsub(/[[:space:]]/, "", section) }
+        /^[[:space:]]*Prompt[[:space:]]*=/ {
+            if (section != "[DEFAULT]") exit 1
+            count++; value=$0
+            sub(/^[[:space:]]*Prompt[[:space:]]*=[[:space:]]*/, "", value)
+            sub(/[[:space:]]*[#;].*$/, "", value)
+            sub(/[[:space:]]*$/, "", value)
+        }
+        END { if (count != 1) exit 1; print value }
+    ' "$config") || {
+        log_error "Expected one Prompt setting in [DEFAULT]: $config"
+        return 1
+    }
+    case "$existing" in lts|normal|never) ;; *) log_error "Invalid release channel: $existing"; return 1 ;; esac
+    [[ "$existing" != "$prompt" ]] || return 0
 
-        # Change to normal releases
-        sed -i 's/^Prompt=lts$/Prompt=normal/' "$config"
-
-        log_detail "Enabled normal release upgrades (was LTS-only)"
+    backup="${config}.disabled"
+    if [[ -e "$backup" || -L "$backup" ]]; then
+        if [[ -L "$backup" || ! -f "$backup" ]] || [[ "$(stat -c %h -- "$backup")" != 1 ]]; then
+            log_error "Refusing unsafe release config backup: $backup"
+            return 1
+        fi
+    else
+        cp -p -- "$config" "$backup" || return 1
     fi
 
-    return 0
+    tmp=$(mktemp "${config}.acfs.XXXXXX") || return 1
+    if ! awk -v prompt="$prompt" '
+        /^[[:space:]]*Prompt[[:space:]]*=/ { print "Prompt=" prompt; next }
+        { print }
+    ' "$config" > "$tmp" || ! chmod --reference="$config" "$tmp" \
+        || ! chown --reference="$config" "$tmp" || ! mv -- "$tmp" "$config"; then
+        log_error "Could not set release channel; original saved at $backup (temporary file: $tmp)"
+        return 1
+    fi
+    log_detail "Set Ubuntu release channel to $prompt (original preserved at $backup)"
 }
 
-# Restore LTS-only release setting after upgrade complete
+# Existing resume services call this entry point before their next hop. Keep
+# that call source-aware as well: "enable" must not route an LTS through EOL
+# interim releases. New callers use ubuntu_configure_release_prompt directly.
+ubuntu_enable_normal_releases() {
+    ubuntu_configure_release_prompt "$@"
+}
+
+# Restore the caller's original release policy, if ACFS changed it.
 ubuntu_restore_lts_only() {
     local config="/etc/update-manager/release-upgrades"
     local backup="${config}.disabled"
 
     if [[ -f "$backup" ]]; then
         if mv "$backup" "$config" 2>/dev/null; then
-            log_detail "Restored LTS-only release setting"
+            log_detail "Restored original release upgrade setting"
         else
-            log_warn "Failed to restore LTS-only release setting (left backup at $backup)"
+            log_warn "Failed to restore release upgrade setting (left backup at $backup)"
         fi
     fi
 
     return 0
 }
 
-# Get next available upgrade version by querying do-release-upgrade
-# Returns: next version string (e.g., "24.10") or empty if none
+# Query stable release availability. A failed command, ambiguous announcement,
+# or closed rollout gate is NOT permission to run a hardcoded/development hop.
 ubuntu_get_next_upgrade() {
-    # Check if do-release-upgrade is available
     if ! command -v do-release-upgrade &>/dev/null; then
         log_error "do-release-upgrade not found. Installing ubuntu-release-upgrader-core..."
         apt-get -o DPkg::Lock::Timeout=120 install -y ubuntu-release-upgrader-core &>/dev/null || return 1
     fi
+    ubuntu_configure_release_prompt || return 1
 
-    # Query available upgrade (check mode, don't actually do it)
-    local output
-    # Force C locale so parsing is stable across non-English environments.
-    output=$(LC_ALL=C LANG=C do-release-upgrade -c 2>&1) || true
-
-    # Parse output for version info
-    # Output examples:
-    #   "New release '24.10' available."
-    #   "New release '24.04.1 LTS' available."
-    # Extract the first major.minor pair inside the quotes.
-    local release_line
-    release_line=$(echo "$output" | { grep -oE "New release '[^']+' available" || true; } | head -n 1)
-
-    if [[ -n "$release_line" ]]; then
-        local version
-        version=$(echo "$release_line" | { grep -oE "[0-9]+\.[0-9]+" || true; } | head -n 1)
-        if [[ -n "$version" ]]; then
-            echo "$version"
-            return 0
-        fi
+    local output line version=""
+    if ! output=$(LC_ALL=C LANG=C do-release-upgrade -c 2>&1); then
+        log_error "Ubuntu release discovery failed; no automatic upgrade will be attempted"
+        return 1
     fi
+    local announcement="^New release '([0-9]{2}\\.(04|10))(\\.[0-9]+)?( LTS)?' available\\.?$"
+    while IFS= read -r line; do
+        line="${line%$'\r'}"
+        if [[ "$line" =~ $announcement ]]; then
+            if [[ -n "$version" ]]; then
+                log_error "Ambiguous Ubuntu release discovery output"
+                return 1
+            fi
+            version="${BASH_REMATCH[1]}"
+        fi
+    done <<< "$output"
+    if [[ -z "$version" ]]; then
+        log_error "No stable Ubuntu upgrade is currently offered. Retry after Canonical enables this path, or provision a fresh 26.04 LTS host; ACFS will not use -d."
+        return 1
+    fi
+    printf '%s\n' "$version"
+}
 
-    # No upgrade available
+# Validate both endpoints before comparison or any upgrade-side mutation.
+# 25.10 is accepted only as a recovery source on the way to 26.04, never as
+# a destination or a successful no-op. Earlier EOL interim releases require
+# manual recovery/reprovisioning, not invented release-skipping paths.
+ubuntu_validate_upgrade_versions() {
+    local current="${1:-}"
+    local target="${2:-$UBUNTU_TARGET_VERSION_NUM}"
+    case "$target" in
+        2204|2404|2604) ;;
+        *) log_error "Unsupported Ubuntu target: $target (recommended: 26.04 LTS)"; return 1 ;;
+    esac
+    case "$current" in
+        2204|2404|2604) return 0 ;;
+        2510)
+            if [[ "$target" == 2604 ]]; then return 0; fi
+            log_error "Ubuntu 25.10 is end-of-life and must upgrade to 26.04 LTS"
+            ;;
+        *) log_error "No reviewed automatic upgrade path from Ubuntu $current; recover manually or provision Ubuntu 26.04 LTS" ;;
+    esac
     return 1
 }
 
-# Get next upgrade version from hardcoded path
-# Fallback when do-release-upgrade -c doesn't work (e.g., network issues)
-# This function knows the Ubuntu release schedule
-# NOTE: EOL releases are skipped (e.g., 24.10 is EOL as of late 2025)
+# Planned, supported edges only. This is not a fallback authorization to run
+# an upgrade when do-release-upgrade -c reports no release. Canonical controls
+# rollout availability, and the executor must confirm the exact planned edge.
+# https://documentation.ubuntu.com/release-notes/26.04/
 ubuntu_get_next_version_hardcoded() {
     local current="$1"
+    local target="${2:-$UBUNTU_TARGET_VERSION_NUM}"
 
-    case "$current" in
-        2204) echo "24.04" ;;  # LTS to LTS
-        2404) echo "25.04" ;;  # 24.04 → 25.04 (skip 24.10, it's EOL)
-        2410) echo "25.04" ;;  # If somehow on 24.10, go to 25.04
-        2504) echo "25.10" ;;
-        *) return 1 ;;  # Unknown version
+    case "$current:$target" in
+        2204:2404|2204:2604) printf '24.04\n' ;;
+        2404:2604|2510:2604) printf '26.04\n' ;;
+        *) return 1 ;;
     esac
 }
 
 # Calculate full upgrade path from current to target
 # Returns: newline-separated list of versions to upgrade through
-# Usage: ubuntu_calculate_upgrade_path 2510
+# Usage: ubuntu_calculate_upgrade_path 2604
 # shellcheck disable=SC2120  # $1 is optional with default
 ubuntu_calculate_upgrade_path() {
     local target="${1:-$UBUNTU_TARGET_VERSION_NUM}"
     local current
     current=$(ubuntu_get_version_number) || return 1
+    ubuntu_validate_upgrade_versions "$current" "$target" || return 1
 
     if ubuntu_version_gte "$current" "$target"; then
         return 0  # Already at or above target
@@ -433,22 +512,34 @@ ubuntu_calculate_upgrade_path() {
 
     while [[ "$check_version" -lt "$target" ]]; do
         local next
-        next=$(ubuntu_get_next_version_hardcoded "$check_version")
-
-        if [[ -z "$next" ]]; then
+        if ! next=$(ubuntu_get_next_version_hardcoded "$check_version" "$target"); then
             log_error "Cannot determine upgrade path from $check_version"
             return 1
         fi
 
+        case "$next" in
+            24.04|26.04) ;;
+            *) log_error "Unreviewed upgrade hop: $next"; return 1 ;;
+        esac
+        local next_num="${next/./}"
+        if [[ "$next_num" -le "$check_version" || "$next_num" -gt "$target" ]]; then
+            log_error "Upgrade hop $next does not advance toward the requested target"
+            return 1
+        fi
         path+=("$next")
-
-        # Convert to number for comparison
-        local major="${next%%.*}"
-        local minor="${next#*.}"
-        check_version=$(printf "%d%02d" "$((10#$major))" "$((10#$minor))")
+        check_version="$next_num"
     done
 
     printf '%s\n' "${path[@]}"
+}
+
+# Recompute the next hop from the live OS, never from checkpoint completion
+# counts. Empty output means the host already satisfies a supported target.
+ubuntu_next_upgrade_target() {
+    local path
+    path=$(ubuntu_calculate_upgrade_path) || return 1
+    [[ -n "$path" ]] || return 1
+    printf '%s\n' "${path%%$'\n'*}"
 }
 
 # Get number of upgrades needed to reach target
@@ -556,9 +647,11 @@ ubuntu_check_network() {
 
 # Check apt state - no broken packages
 ubuntu_check_apt_state() {
-    # Check for broken packages
-    if ! dpkg --audit &>/dev/null; then
-        log_error "dpkg audit failed - run 'sudo dpkg --configure -a'"
+    # dpkg --audit can report unpacked/unconfigured packages while exiting 0.
+    # Both successful execution AND an empty diagnostic are required.
+    local audit
+    if ! audit=$(dpkg --audit 2>&1) || [[ -n "${audit//[[:space:]]/}" ]]; then
+        log_error "dpkg reports incomplete package state - run 'sudo dpkg --configure -a' and inspect 'sudo dpkg --audit'"
         return 1
     fi
 
@@ -752,6 +845,7 @@ ubuntu_cleanup_deb822_workaround() {
 # Runs apt update and dist-upgrade to ensure clean state
 ubuntu_prepare_upgrade() {
     log_step "Preparing system for upgrade..."
+    ubuntu_check_apt_state || return 1
 
     # Update package lists
     log_detail "Updating package lists..."
@@ -782,36 +876,23 @@ ubuntu_prepare_upgrade() {
 # Returns: 0 on success (reboot may be required), 1 on failure
 ubuntu_do_upgrade() {
     local expected_next_version="${1:-}"
-
-    local next_version=""
-    next_version="$(ubuntu_get_next_upgrade || true)"
-
-    if [[ -z "$next_version" ]]; then
-        log_error "No upgrade available"
+    local planned_version=""
+    planned_version=$(ubuntu_next_upgrade_target) || {
+        log_error "No reviewed upgrade hop is needed or available for this host/target"
+        return 1
+    }
+    if [[ -n "$expected_next_version" && "$expected_next_version" != "$planned_version" ]]; then
+        log_error "Checkpoint/caller requests $expected_next_version, but the live host requires $planned_version"
         return 1
     fi
 
-    # Validate detected version is reasonable
-    if [[ -n "$expected_next_version" ]] && [[ "$next_version" != "$expected_next_version" ]]; then
-        # Convert versions to comparable numbers (24.10 -> 2410)
-        local expected_num detected_num current_num
-        expected_num="${expected_next_version//./}"
-        detected_num="${next_version//./}"
-        current_num="$(ubuntu_get_version_number)"
-
-        if [[ "$detected_num" -gt "$expected_num" ]]; then
-            # Skipping an EOL release (e.g., 24.10 EOL, jumping to 25.04) - OK
-            log_warn "Skipping EOL release: expected $expected_next_version, upgrading to $next_version"
-        elif [[ "$detected_num" -lt "$expected_num" ]]; then
-            # Check if it's still an upgrade from current
-            if [[ "$detected_num" -gt "$current_num" ]]; then
-                log_warn "Target version $next_version is lower than expected $expected_next_version, but is a valid upgrade from current. Proceeding."
-            else
-                # Going backwards or staying same - not OK
-                log_error "Unexpected downgrade/same target: $next_version (current: $(ubuntu_get_version_string), expected: $expected_next_version)"
-                return 1
-            fi
-        fi
+    local next_version=""
+    if ! next_version=$(ubuntu_get_next_upgrade); then
+        return 1
+    fi
+    if [[ "$next_version" != "$planned_version" ]]; then
+        log_error "Ubuntu offered $next_version, not the reviewed hop $planned_version; refusing to change releases"
+        return 1
     fi
 
     log_section "Upgrading Ubuntu to $next_version"
@@ -825,7 +906,7 @@ ubuntu_do_upgrade() {
     # After apt-get dist-upgrade in prepare, kernel updates may have created
     # /var/run/reboot-required. do-release-upgrade refuses to run in that state.
     # Handle this by rebooting first, then resuming. (Fixes #165)
-    if [[ -f /var/run/reboot-required ]]; then
+    if ! ubuntu_check_reboot_required; then
         log_warn "Kernel update during preparation requires reboot before do-release-upgrade"
         if [[ -f /var/run/reboot-required.pkgs ]]; then
             log_detail "Packages requiring reboot: $(tr '\n' ' ' < /var/run/reboot-required.pkgs | sed 's/ $//')"
@@ -862,15 +943,19 @@ ubuntu_do_upgrade() {
                && [[ -f "${resume_reuse_dir}/continue_context.env" ]] \
                && { systemctl is-enabled --quiet acfs-upgrade-resume.service 2>/dev/null \
                     || systemctl enable acfs-upgrade-resume.service >/dev/null 2>&1; }; then
-                if type -t state_update &>/dev/null; then
-                    state_update ".ubuntu_upgrade.enabled = true | .ubuntu_upgrade.current_stage = \"pre_upgrade_reboot\"" 2>/dev/null || true
+                if ! type -t state_update &>/dev/null || ! state_update ".ubuntu_upgrade.enabled = true | .ubuntu_upgrade.current_stage = \"pre_upgrade_reboot\""; then
+                    log_error "Cannot persist pre-upgrade reboot state; refusing automatic reboot"
+                    return 1
                 fi
                 if type -t upgrade_update_motd &>/dev/null; then
                     upgrade_update_motd "Rebooting to apply kernel updates before Ubuntu upgrade..."
                 fi
                 log_warn "Rebooting in 5 seconds to clear pending kernel updates (existing resume service will re-attempt this hop)..."
                 sleep 5
-                shutdown -r now "ACFS: Rebooting to apply kernel updates before do-release-upgrade"
+                if ! shutdown -r now "ACFS: Rebooting to apply kernel updates before do-release-upgrade"; then
+                    log_error "Could not schedule kernel reboot; upgrade has not run"
+                    return 1
+                fi
                 exit 0
             fi
             log_error "Cannot determine ACFS source directory for resume setup; refusing automatic reboot"
@@ -878,8 +963,9 @@ ubuntu_do_upgrade() {
         fi
 
         # Record state so installer knows to resume the upgrade after reboot
-        if type -t state_update &>/dev/null; then
-            state_update ".ubuntu_upgrade.enabled = true | .ubuntu_upgrade.current_stage = \"pre_upgrade_reboot\"" 2>/dev/null || true
+        if ! type -t state_update &>/dev/null || ! state_update ".ubuntu_upgrade.enabled = true | .ubuntu_upgrade.current_stage = \"pre_upgrade_reboot\""; then
+            log_error "Cannot persist pre-upgrade reboot state; refusing automatic reboot"
+            return 1
         fi
 
         # Pass the original install args (captured in ubuntu_start_upgrade_sequence)
@@ -898,13 +984,23 @@ ubuntu_do_upgrade() {
         log_warn "Rebooting in 5 seconds to clear pending kernel updates..."
         log_info "After reboot, the upgrade will continue automatically."
         sleep 5
-        shutdown -r now "ACFS: Rebooting to apply kernel updates before do-release-upgrade"
+        if ! shutdown -r now "ACFS: Rebooting to apply kernel updates before do-release-upgrade"; then
+            log_error "Could not schedule kernel reboot; upgrade has not run"
+            return 1
+        fi
         exit 0
     fi
 
-    # Apply workaround for DEB822 format bug in do-release-upgrade
-    # Bug: AttributeError: property 'suites' of 'ExplodedDeb822SourceEntry' object has no setter
-    ubuntu_workaround_deb822_bug || true
+    # Preparation can update the release upgrader and its metadata. Recheck
+    # before execution; never assume the initial offer still applies. Preserve
+    # Signed-By and all other DEB822 options rather than invoking the lossy
+    # legacy-source conversion. An upgrader error requires recovery, not a
+    # silent rewrite which drops repository trust configuration.
+    local refreshed_version=""
+    if ! refreshed_version=$(ubuntu_get_next_upgrade) || [[ "$refreshed_version" != "$planned_version" ]]; then
+        log_error "Ubuntu release offer changed/unavailable after preparation; refusing upgrade"
+        return 1
+    fi
 
     # Run do-release-upgrade in non-interactive mode
     log_step "Starting do-release-upgrade..."
@@ -927,15 +1023,26 @@ ubuntu_do_upgrade() {
     # restrictive root umask (e.g. 0077), which can cause `_apt` permission
     # errors while fetching release artifacts.
     local upgrade_result=0
-    if ! (cd "$upgrade_work_dir" && umask 022 && do-release-upgrade -f DistUpgradeViewNonInteractive); then
+    if ! (cd "$upgrade_work_dir" && umask 022 && LC_ALL=C LANG=C do-release-upgrade -f DistUpgradeViewNonInteractive); then
         log_error "do-release-upgrade failed"
         upgrade_result=1
     fi
 
-    # Cleanup the DEB822 workaround (whether upgrade succeeded or failed)
-    ubuntu_cleanup_deb822_workaround || true
-
     if [[ $upgrade_result -ne 0 ]]; then
+        return 1
+    fi
+
+    # Exit zero is not proof that a release upgrade occurred (the tool can
+    # decline a rollout or otherwise perform no work). Verify the live system
+    # before the caller records completion or schedules a reboot.
+    local installed_num=""
+    installed_num=$(ubuntu_get_version_number) || return 1
+    if [[ "$installed_num" != "${planned_version/./}" ]]; then
+        log_error "Upgrade exited successfully but the host is Ubuntu $installed_num, not $planned_version; checkpoint not completed"
+        return 1
+    fi
+    if ! ubuntu_check_apt_state; then
+        log_error "Upgrade left incomplete package configuration; refusing to mark the hop complete"
         return 1
     fi
 
@@ -1007,6 +1114,10 @@ ubuntu_cleanup_resume() {
 # Note: shutdown -r +N uses MINUTES, not seconds
 ubuntu_trigger_reboot() {
     local delay_minutes="${1:-1}"
+    if [[ ! "$delay_minutes" =~ ^[0-9]{1,3}$ ]]; then
+        log_error "Invalid reboot delay (expected minutes): $delay_minutes"
+        return 1
+    fi
 
     log_warn "System will reboot in $delay_minutes minute(s)..."
     echo ""
@@ -1018,7 +1129,12 @@ ubuntu_trigger_reboot() {
 
     # Use shutdown for graceful reboot
     # Note: +N means N minutes from now
-    shutdown -r +"$delay_minutes" "ACFS: Ubuntu upgrade requires reboot" &
+    # shutdown schedules the reboot and returns. Backgrounding it hides a
+    # scheduling failure and leaves a supposedly completed sequence stranded.
+    if ! shutdown -r +"$delay_minutes" "ACFS: Ubuntu upgrade requires reboot"; then
+        log_error "Could not schedule the reboot; no reboot is pending from ACFS"
+        return 1
+    fi
 
     return 0
 }
@@ -1600,6 +1716,17 @@ upgrade_teardown_infrastructure() {
 # This is the main entry point for initiating upgrades
 # Usage: ubuntu_start_upgrade_sequence <source_dir> [install_args...]
 ubuntu_start_upgrade_sequence() {
+    if ! upgrade_acquire_lock; then
+        return 1
+    fi
+    local result=0
+    _ubuntu_start_upgrade_sequence_locked "$@" || result=$?
+    upgrade_release_lock
+    return "$result"
+}
+
+# All live-host reads and state/continuation writes run under the upgrade lock.
+_ubuntu_start_upgrade_sequence_locked() {
     local source_dir="$1"
     shift
     local install_args=("$@")
@@ -1617,7 +1744,8 @@ ubuntu_start_upgrade_sequence() {
     }
 
     local current_num
-    current_num=$(ubuntu_get_version_number)
+    current_num=$(ubuntu_get_version_number) || return 1
+    ubuntu_validate_upgrade_versions "$current_num" "$UBUNTU_TARGET_VERSION_NUM" || return 1
 
     # Check if upgrade is needed
     if ubuntu_version_gte "$current_num" "$UBUNTU_TARGET_VERSION_NUM"; then
@@ -1629,13 +1757,9 @@ ubuntu_start_upgrade_sequence() {
     log_step "Current: Ubuntu $current_version"
     log_step "Target:  Ubuntu $UBUNTU_TARGET_VERSION"
 
-    # Ensure non-LTS upgrades are permitted (LTS defaults to Prompt=lts).
-    # ACFS targets interim releases (e.g. 25.04, 25.10) on the path to 25.10, skipping EOL releases when needed.
-    ubuntu_enable_normal_releases || true
-
     # Calculate upgrade path
     local upgrade_path
-    upgrade_path=$(ubuntu_calculate_upgrade_path)
+    upgrade_path=$(ubuntu_calculate_upgrade_path) || return 1
 
     if [[ -z "$upgrade_path" ]]; then
         log_error "Cannot determine upgrade path"
@@ -1646,23 +1770,17 @@ ubuntu_start_upgrade_sequence() {
     upgrade_count=$(echo "$upgrade_path" | wc -l | tr -d ' ')
     log_step "Upgrades needed: $upgrade_count"
 
-    if ! upgrade_acquire_lock; then
-        return 1
-    fi
-
     # Convert upgrade path to JSON array for state
     local path_json
-    path_json=$(echo "$upgrade_path" | jq -R . | jq -s .)
+    path_json=$(printf '%s\n' "$upgrade_path" | jq -R . | jq -s .) || return 1
 
     # Initialize state tracking
     if ! state_upgrade_init "$current_version" "$UBUNTU_TARGET_VERSION" "$path_json"; then
-        upgrade_release_lock
         return 1
     fi
 
     # Setup infrastructure for resume after reboot
     if ! upgrade_setup_infrastructure "$source_dir" "${install_args[@]}"; then
-        upgrade_release_lock
         return 1
     fi
 
@@ -1673,26 +1791,38 @@ ubuntu_start_upgrade_sequence() {
     local first_target
     first_target=$(echo "$upgrade_path" | head -1)
 
-    state_upgrade_start "$current_version" "$first_target"
+    if ! state_upgrade_start "$current_version" "$first_target"; then
+        return 1
+    fi
 
     if ! ubuntu_do_upgrade "$first_target"; then
         log_error "First upgrade failed"
-        state_upgrade_set_error "do-release-upgrade failed"
-        upgrade_release_lock
+        state_upgrade_set_error "do-release-upgrade failed" || true
         return 1
     fi
 
     # Mark first upgrade complete
-    state_upgrade_complete "$first_target"
+    if ! state_upgrade_complete "$first_target"; then
+        log_error "Cannot persist completed hop; refusing automatic reboot"
+        return 1
+    fi
 
     # Mark needs reboot
-    state_upgrade_needs_reboot
+    if ! state_upgrade_needs_reboot; then
+        log_error "Cannot persist reboot state; refusing automatic reboot"
+        return 1
+    fi
 
     # Copy updated state to resume location
     local state_file
-    state_file="$(state_get_file)"
-    if [[ -f "$state_file" ]] && [[ "$state_file" != "${ACFS_RESUME_DIR}/state.json" ]]; then
-        cp "$state_file" "${ACFS_RESUME_DIR}/state.json"
+    if ! state_file="$(state_get_file)" || [[ ! -f "$state_file" ]]; then
+        log_error "Upgrade state is missing; refusing automatic reboot"
+        return 1
+    fi
+    if [[ "$state_file" != "${ACFS_RESUME_DIR}/state.json" ]]; then
+        if ! cp "$state_file" "${ACFS_RESUME_DIR}/state.json"; then
+                return 1
+        fi
     fi
 
     # Update MOTD before reboot
@@ -1700,7 +1830,10 @@ ubuntu_start_upgrade_sequence() {
 
     # Trigger reboot (1 minute delay for user to read messages)
     log_warn "Upgrade step complete. Rebooting in 1 minute..."
-    ubuntu_trigger_reboot 1
+    if ! ubuntu_trigger_reboot 1; then
+        state_upgrade_set_error "reboot_scheduling_failed" || true
+        return 1
+    fi
 
     return 0
 }
@@ -2038,38 +2171,18 @@ ubuntu_create_diagnostic_dump() {
     echo "$dump_file"
 }
 
-# Graceful degradation - continue ACFS on current version if upgrade fails
+# Retry recovery, but never report a requested release upgrade as successful
+# merely because APT can still refresh indexes on the old or partial system.
 ubuntu_upgrade_with_fallback() {
     if ubuntu_do_upgrade; then
         return 0
     fi
-
     log_error "Ubuntu upgrade failed"
-
-    # Attempt recovery
-    if ubuntu_recover_failed_upgrade; then
-        log_success "Recovery successful - retrying upgrade"
-        if ubuntu_do_upgrade; then
-            return 0
-        fi
-    fi
-
-    # Create diagnostic dump
-    ubuntu_create_diagnostic_dump
-
-    # Check if system is still functional
-    if apt-get -o DPkg::Lock::Timeout=120 update &>/dev/null; then
-        log_warn "System is functional. Continuing ACFS on current Ubuntu version."
-        log_warn "Some features may not work optimally on older Ubuntu."
-
-        # Mark upgrade as skipped, not failed
-        state_upgrade_set_error "upgrade_failed_graceful_degradation"
-
-        # Return success to allow ACFS to continue
+    if ubuntu_recover_failed_upgrade && ubuntu_do_upgrade; then
         return 0
-    else
-        log_error "System may be in inconsistent state. Manual recovery needed."
-        log_error "Check diagnostic dump and /var/log/acfs/upgrade_resume.log"
-        return 1
     fi
+    ubuntu_create_diagnostic_dump || true
+    state_upgrade_set_error "upgrade_failed_requires_recovery" || true
+    log_error "The requested Ubuntu upgrade did not complete; ACFS installation must not continue"
+    return 1
 }
