@@ -424,11 +424,386 @@ ubuntu_restore_lts_only() {
     return 0
 }
 
+# Move only Ubuntu 25.10's official archive URIs to old-releases. Preserve
+# suites, trust, architecture filters, comments, and disabled/third-party
+# sources. No network commands run until the whole local source plan succeeds.
+# Optional explicit arguments are for fixtures/manual previews, not env inputs.
+ubuntu_prepare_eol_repositories() {
+    local current python_bin apt_root="${1:-/etc/apt}" mode="${2:-apply}"
+    current=$(ubuntu_get_version_number) || return 1
+    [[ "$current" == 2510 ]] || return 0
+    if [[ "$UBUNTU_TARGET_VERSION_NUM" != 2604 ]]; then
+        log_error "Ubuntu 25.10 repository recovery requires target 26.04 LTS"
+        return 1
+    fi
+    case "$mode" in apply|--dry-run) ;; *) log_error "Invalid EOL repository recovery mode"; return 1 ;; esac
+    if [[ -n "${APT_CONFIG:-}" ]]; then
+        log_error "Custom APT_CONFIG requires manual EOL repository recovery"
+        return 1
+    fi
+    python_bin=$(ubuntu_system_binary_path python3) || {
+        log_error "Python 3 is required to safely recover EOL Ubuntu repositories"
+        return 1
+    }
+    "$python_bin" -I - "$apt_root" "$mode" <<'ACFS_EOL_APT_PY'
+# Ubuntu EOL recovery changes archive locations, never release codenames.
+# https://help.ubuntu.com/community/EOLUpgrades
+# https://manpages.debian.org/trixie/apt/sources.list.5.en.html
+import hashlib
+import os
+import re
+import stat
+import sys
+import subprocess
+import tempfile
+import uuid
+from urllib.parse import urlsplit
+
+
+class RecoveryError(Exception):
+    pass
+
+
+SUITES = {"questing", "questing-updates", "questing-security", "questing-backports", "questing-proposed"}
+MAX_FILE_BYTES = 1024 * 1024
+
+
+def archive_uri(value):
+    """Return the reviewed archive URI, or None for an unrelated repository."""
+    try:
+        uri = urlsplit(value)
+        host = (uri.hostname or "").lower()
+        official = host in {"archive.ubuntu.com", "security.ubuntu.com", "ports.ubuntu.com", "old-releases.ubuntu.com"} or host.endswith(".archive.ubuntu.com")
+        if not official:
+            return None
+        if uri.scheme not in {"http", "https"} or uri.username is not None or uri.password is not None or uri.port is not None or uri.query or uri.fragment:
+            raise RecoveryError("Unsupported official archive URI; review it manually")
+        paths = {"/ubuntu", "/ubuntu/"}
+        if host == "ports.ubuntu.com":
+            paths |= {"/ubuntu-ports", "/ubuntu-ports/"}
+        if uri.path not in paths:
+            raise RecoveryError("Unsupported official archive path; review it manually")
+        return "https://old-releases.ubuntu.com/ubuntu" + ("/" if uri.path.endswith("/") else "")
+    except ValueError as exc:
+        raise RecoveryError("Malformed repository URI; review it manually") from exc
+
+
+def check_trust(options):
+    """Do not carry insecure overrides into automatic recovery."""
+    for key, value in options.items():
+        key = key.rstrip("+-")
+        value = value.strip().lower()
+        if key in {"trusted", "allow-insecure", "allow-weak", "allow-downgrade-to-insecure"} and value not in {"no", "false", "0"}:
+            raise RecoveryError("An Ubuntu source bypasses signature checks; review it manually")
+        if key in {"check-valid-until", "check-date"} and value not in {"yes", "true", "1"}:
+            raise RecoveryError("An Ubuntu source bypasses freshness checks; review it manually")
+
+
+def transform_list(text):
+    result = []
+    binary_sources = 0
+    pattern = re.compile(r"^([ \t]*(?:deb|deb-src)[ \t]+(?:\[[^\]\r\n]*\][ \t]+)?)(\S+)([ \t]+)(\S+)([^\r\n]*)(\r?\n?)$")
+    for line in text.splitlines(keepends=True):
+        if not line.strip() or line.lstrip().startswith("#"):
+            result.append(line)
+            continue
+        # Comments are not part of the one-line source definition.
+        active = line.split("#", 1)[0].rstrip("\r\n")
+        match = pattern.fullmatch(active)
+        if not match:
+            raise RecoveryError("Malformed one-line APT source; no source files were changed")
+        replacement = archive_uri(match[2])
+        if replacement is None:
+            result.append(line)
+            continue
+        if match[4] not in SUITES or not match[5].strip():
+            raise RecoveryError("Mixed or incomplete Ubuntu releases in APT sources; refusing recovery")
+        option_text = re.search(r"\[([^\]]*)\]", match[1])
+        options = {}
+        if option_text:
+            for token in option_text[1].split():
+                key, sep, value = token.partition("=")
+                if not sep or key.lower() in options:
+                    raise RecoveryError("Ambiguous Ubuntu source options; refusing recovery")
+                options[key.lower()] = value
+        check_trust(options)
+        binary_sources += int(match[1].lstrip().startswith("deb ") or match[1].lstrip().startswith("deb\t"))
+        result.append(line[:match.start(2)] + replacement + line[match.end(2):])
+    return "".join(result), binary_sources
+
+
+def transform_stanza(lines):
+    fields = {}
+    indexes = {}
+    current = None
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            continue
+        if line[:1] in {" ", "\t"}:
+            if current is None:
+                raise RecoveryError("Unbound DEB822 continuation line; refusing recovery")
+            fields[current] += " " + line.strip()
+            indexes[current].append(index)
+            continue
+        match = re.fullmatch(r"([A-Za-z][A-Za-z0-9-]*):[ \t]*(.*?)(?:\r?\n)?", line)
+        if not match:
+            raise RecoveryError("Malformed DEB822 field; refusing recovery")
+        current = match[1].lower()
+        if current in fields:
+            raise RecoveryError("Duplicate DEB822 field; refusing recovery")
+        fields[current] = match[2]
+        indexes[current] = [index]
+    if not fields:
+        return lines, 0
+    enabled = fields.get("enabled", "yes").lower().strip()
+    if enabled in {"no", "false", "0"}:
+        return lines, 0
+    if enabled not in {"yes", "true", "1"}:
+        raise RecoveryError("Ambiguous DEB822 Enabled field; refusing recovery")
+    for key in ("types", "uris", "suites"):
+        if not fields.get(key, "").split():
+            raise RecoveryError("Incomplete DEB822 source; refusing recovery")
+    uris = fields["uris"].split()
+    replacements = [archive_uri(uri) for uri in uris]
+    if all(value is None for value in replacements):
+        return lines, 0
+    if any(value is None for value in replacements):
+        raise RecoveryError("Mixed official and third-party URIs in one stanza; review manually")
+    if not set(fields["suites"].split()) <= SUITES or not fields.get("components", "").split():
+        raise RecoveryError("Mixed or incomplete Ubuntu releases in APT sources; refusing recovery")
+    types = set(fields["types"].split())
+    if not types <= {"deb", "deb-src"}:
+        raise RecoveryError("Unsupported Ubuntu repository type; refusing recovery")
+    check_trust(fields)
+    mapping = dict(zip(uris, replacements))
+    rewritten = list(lines)
+    for index in indexes["uris"]:
+        line = lines[index]
+        prefix, values = line.split(":", 1) if index == indexes["uris"][0] else ("", line)
+        if prefix:
+            prefix += ":"
+        rewritten[index] = prefix + re.sub(r"\S+", lambda token: mapping[token[0]], values)
+    return rewritten, int("deb" in types)
+
+
+def transform_sources(text):
+    output, stanza = [], []
+    binary_sources = 0
+    for line in text.splitlines(keepends=True) + [""]:
+        if not line.strip():
+            if stanza:
+                rewritten, count = transform_stanza(stanza)
+                output.extend(rewritten)
+                binary_sources += count
+                stanza = []
+            output.append(line)
+        else:
+            stanza.append(line)
+    return "".join(output), binary_sources
+
+
+def open_directory(path):
+    """Walk directories without following symlinks, anchoring later operations."""
+    if not path.startswith("/") or any(part in {".", ".."} for part in path.split("/")):
+        raise RecoveryError("APT directory must be an absolute non-traversing path")
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in filter(None, path.split("/")):
+            next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+            info = os.fstat(fd)
+            if info.st_uid not in {0, os.geteuid()} or (info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX):
+                raise RecoveryError("APT directory has an untrusted writable parent")
+        info = os.fstat(fd)
+        if info.st_mode & 0o022:
+            raise RecoveryError("APT source directory must not be group/world-writable")
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def read_source(directory, name):
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid not in {0, os.geteuid()} or info.st_mode & 0o022:
+            raise RecoveryError("APT source is not a trusted single-link regular file")
+        if info.st_size > MAX_FILE_BYTES:
+            raise RecoveryError("APT source exceeds the recovery size limit")
+        data = bytearray()
+        while True:
+            chunk = os.read(fd, min(65536, MAX_FILE_BYTES + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+            if len(data) > MAX_FILE_BYTES:
+                raise RecoveryError("APT source grew past the recovery size limit")
+        attributes = {key: os.getxattr(fd, key) for key in os.listxattr(fd)}
+        return bytes(data), info, attributes
+    finally:
+        os.close(fd)
+
+
+def identity(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_mode, info.st_uid, info.st_gid, info.st_nlink)
+
+
+def write_new(directory, name, data, info, attributes, backup=False):
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+    try:
+        view = memoryview(data)
+        while view:
+            count = os.write(fd, view)
+            if count == 0:
+                raise RecoveryError("Could not finish writing an APT recovery file")
+            view = view[count:]
+        if os.geteuid() == 0:
+            os.fchown(fd, info.st_uid, info.st_gid)
+        if not backup:
+            for key, value in attributes.items():
+                os.setxattr(fd, key, value)
+            os.fchmod(fd, stat.S_IMODE(info.st_mode))
+        os.fsync(fd)
+    except BaseException:
+        # Only unlink a name after this call successfully created it with
+        # O_EXCL. A collision must never delete someone else's recovery file.
+        os.close(fd)
+        fd = -1
+        os.unlink(name, dir_fd=directory)
+        raise
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def validate_with_apt(candidates):
+    # Ask APT itself to reject cross-file conflicts, such as different
+    # Signed-By restrictions collapsing onto the same archive URI/suite.
+    # indextargets is read-only and never downloads repository metadata.
+    with tempfile.TemporaryDirectory(prefix="acfs-eol-parse-") as directory:
+        parts = os.path.join(directory, "sources")
+        lists = os.path.join(directory, "lists")
+        os.mkdir(parts)
+        os.mkdir(lists)
+        os.mkdir(os.path.join(lists, "partial"))
+        for index, (name, data) in enumerate(candidates):
+            suffix = ".sources" if name.endswith(".sources") else ".list"
+            with open(os.path.join(parts, str(index).zfill(4) + suffix), "xb") as stream:
+                stream.write(data)
+        try:
+            result = subprocess.run([
+                "/usr/bin/apt-get",
+                "-o", "Dir::Etc::sourcelist=-",
+                "-o", "Dir::Etc::sourceparts=" + parts,
+                "-o", "Dir::State::lists=" + lists,
+                "-o", "Dir::State::status=/dev/null",
+                "indextargets",
+            ], env={"PATH": "/usr/bin:/bin", "LC_ALL": "C", "APT_CONFIG": "/dev/null"},
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise RecoveryError("APT could not validate the recovery plan; no source files were changed") from exc
+        if result.returncode != 0:
+            # APT errors may quote credential-bearing third-party URIs. Do not
+            # copy its raw diagnostic into installer or support-bundle logs.
+            raise RecoveryError("APT rejected the rewritten source configuration; no source files were changed")
+
+
+def prepare_sources(root, apply=False):
+    """Validate with read-only APT, then stage all changes before replacement."""
+    directories, entries, changes, candidates = [], [], [], []
+    staged, replaced = [], 0
+    try:
+        directory = open_directory(root)
+        directories.append(directory)
+        if "sources.list" in os.listdir(directory):
+            entries.append((directory, "sources.list"))
+        if "sources.list.d" in os.listdir(directory):
+            directory = open_directory(root.rstrip("/") + "/sources.list.d")
+            directories.append(directory)
+            for name in sorted(os.listdir(directory)):
+                if re.fullmatch(r"[A-Za-z0-9_.-]+\.(?:list|sources)", name):
+                    entries.append((directory, name))
+        if len(entries) > 256:
+            raise RecoveryError("Too many APT source files for automatic recovery")
+        binary_sources = 0
+        for directory, name in entries:
+            data, info, attributes = read_source(directory, name)
+            text = data.decode("utf-8")
+            if any(ord(char) < 32 and char not in "\t\n\r" for char in text):
+                raise RecoveryError("Control characters in an APT source; refusing recovery")
+            transformed, count = (transform_sources if name.endswith(".sources") else transform_list)(text)
+            binary_sources += count
+            updated = transformed.encode("utf-8")
+            candidates.append((name, updated))
+            if updated != data:
+                changes.append((directory, name, data, info, attributes, updated))
+        if not binary_sources:
+            raise RecoveryError("No enabled official Questing binary archive found; review custom mirrors manually")
+        validate_with_apt(candidates)
+        if not apply:
+            return len(changes)
+
+        # Backups and replacement files exist before the first source changes.
+        # Every source is checked again before replacement to detect concurrent
+        # edits. All operations are relative to pinned directory descriptors.
+        for directory, name, data, info, attributes, updated in changes:
+            backup = "." + name[:80] + ".acfs-eol-" + hashlib.sha256(data).hexdigest()[:16] + ".bak"
+            if backup in os.listdir(directory):
+                saved, saved_info, _ = read_source(directory, backup)
+                if saved != data or saved_info.st_mode & 0o077:
+                    raise RecoveryError("An existing APT recovery backup is incompatible; refusing to overwrite it")
+            else:
+                write_new(directory, backup, data, info, {}, backup=True)
+            temp = ".acfs-eol-stage-" + uuid.uuid4().hex + ".tmp"
+            write_new(directory, temp, updated, info, attributes)
+            staged.append((directory, temp))
+            os.fsync(directory)
+        for plan, (directory, temp) in zip(changes, staged):
+            _, name, data, info, _, _ = plan
+            actual, actual_info, _ = read_source(directory, name)
+            if actual != data or identity(actual_info) != identity(info):
+                raise RecoveryError("An APT source changed during preparation; refusing to replace that file")
+            os.replace(temp, name, src_dir_fd=directory, dst_dir_fd=directory)
+            replaced += 1
+            os.fsync(directory)
+        return len(changes)
+    except BaseException:
+        if replaced:
+            print("EOL preparation stopped after %d replacement(s); original backups are retained. Review and retry before running APT." % replaced, file=sys.stderr)
+        raise
+    finally:
+        for directory, name in staged:
+            try:
+                os.unlink(name, dir_fd=directory)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                print("Could not remove a temporary APT recovery file; sources were not deleted.", file=sys.stderr)
+        for directory in directories:
+            os.close(directory)
+
+
+if __name__ == "__main__":
+    try:
+        count = prepare_sources(sys.argv[1], apply=sys.argv[2] == "apply")
+        verb = "Updated" if sys.argv[2] == "apply" else "Would update"
+        print("%s %d Ubuntu 25.10 APT source file(s); suites and trust settings preserved." % (verb, count), file=sys.stderr)
+    except (RecoveryError, OSError, UnicodeError) as exc:
+        message = exc.strerror if isinstance(exc, OSError) else str(exc)
+        print("Ubuntu EOL archive preparation failed: " + message, file=sys.stderr)
+        sys.exit(1)
+ACFS_EOL_APT_PY
+}
+
 # Query stable release availability. A failed command, ambiguous announcement,
 # or closed rollout gate is NOT permission to run a hardcoded/development hop.
 ubuntu_get_next_upgrade() {
+    ubuntu_prepare_eol_repositories || return 1
     if ! command -v do-release-upgrade &>/dev/null; then
         log_error "do-release-upgrade not found. Installing ubuntu-release-upgrader-core..."
+        apt-get -o DPkg::Lock::Timeout=120 -o APT::Update::Error-Mode=any update || return 1
         apt-get -o DPkg::Lock::Timeout=120 install -y ubuntu-release-upgrader-core &>/dev/null || return 1
     fi
     ubuntu_configure_release_prompt || return 1
@@ -846,10 +1221,11 @@ ubuntu_cleanup_deb822_workaround() {
 ubuntu_prepare_upgrade() {
     log_step "Preparing system for upgrade..."
     ubuntu_check_apt_state || return 1
+    ubuntu_prepare_eol_repositories || return 1
 
     # Update package lists
     log_detail "Updating package lists..."
-    if ! apt-get -o DPkg::Lock::Timeout=120 update -y; then
+    if ! apt-get -o DPkg::Lock::Timeout=120 -o APT::Update::Error-Mode=any update -y; then
         log_error "apt-get update failed"
         return 1
     fi
