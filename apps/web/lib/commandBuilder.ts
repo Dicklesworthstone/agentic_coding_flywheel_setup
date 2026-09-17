@@ -14,6 +14,7 @@ import {
   type ModuleSelectionInput,
 } from "./moduleSelection";
 import { manifestModules, manifestProvenance, manifestSelectionProfiles } from "./generated/manifest-modules";
+import { ACFS_RECOMMENDED_UBUNTU } from "./vpsProviders";
 import {
   containsIPAddress,
   isValidIP,
@@ -475,7 +476,7 @@ export function buildSshKeyLoginCommands(
 
 /**
  * The `commandline` value for a Windows Terminal profile. Windows launches
- * this string without a shell, so `$HOME` would never be expanded here; only
+ * this string without a shell, so `$HOME` would never be expanded there; only
  * `%USERPROFILE%` is (#302). Never show this string as something to type.
  */
 export function buildWindowsTerminalProfileSshCommand(username: string, host: string): string {
@@ -672,6 +673,8 @@ export interface InstallCommandDetails {
   usesTargetUserPrefix: boolean;
   /** Module-selection flags appended after `--mode`. */
   selectorArgs: string[];
+  /** Explicit upgrade destination; never inherit a stale install.sh default. */
+  targetUbuntu: string;
 }
 
 /**
@@ -694,13 +697,14 @@ export function buildInstallCommandDetails(
   const installerUrl = `${INSTALL_SCRIPT_BASE_URL}/${installRef}/install.sh`;
 
   return {
-    command: `curl -fsSL "${installerUrl}" | ${userEnv}bash -s -- --yes --mode ${mode}${refArg}${selectorArgSuffix}`,
+    command: `curl -fsSL "${installerUrl}" | ${userEnv}bash -s -- --yes --mode ${mode} --target-ubuntu=${ACFS_RECOMMENDED_UBUNTU}${refArg}${selectorArgSuffix}`,
     mode,
     installRef,
     pinned: safeRef !== null,
     targetUser: safeUsername,
     usesTargetUserPrefix: safeUsername !== null,
     selectorArgs,
+    targetUbuntu: ACFS_RECOMMENDED_UBUNTU,
   };
 }
 
