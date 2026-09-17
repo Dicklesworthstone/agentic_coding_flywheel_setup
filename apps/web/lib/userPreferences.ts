@@ -22,7 +22,7 @@ import {
 } from "./utils";
 import {
   VPS_PROVIDERS,
-  VPS_UBUNTU_IMAGE_OPTIONS,
+  validateUbuntuImage,
   type WorkloadId,
 } from "./vpsProviders";
 
@@ -99,7 +99,8 @@ function normalizeWorkloadId(value: unknown): WorkloadId {
   return WORKLOAD_IDS.includes(value as WorkloadId) ? (value as WorkloadId) : "standard";
 }
 
-function normalizeVPSReadinessSelection(value: unknown): VPSReadinessSelection | null {
+/** Restore host facts without silently upgrading an image, plan, or region. */
+export function normalizeVPSReadinessSelection(value: unknown): VPSReadinessSelection | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
@@ -122,18 +123,19 @@ function normalizeVPSReadinessSelection(value: unknown): VPSReadinessSelection |
       candidate.id.toLowerCase() === normalizedRequestedRegion ||
       candidate.aliases.some((alias) => alias.toLowerCase() === normalizedRequestedRegion),
   );
-  const requestedUbuntuVersion = normalizePreferenceString(record.ubuntuVersion, "25.10");
-  const ubuntuVersion = VPS_UBUNTU_IMAGE_OPTIONS.includes(
-    requestedUbuntuVersion as (typeof VPS_UBUNTU_IMAGE_OPTIONS)[number],
-  )
-    ? requestedUbuntuVersion
-    : provider?.readiness.recommendedUbuntu ?? VPS_UBUNTU_IMAGE_OPTIONS[0];
+  const requestedUbuntuVersion = normalizePreferenceString(record.ubuntuVersion, "unknown");
+  // The purchase menu is not a migration map. Keep recognizable old images so
+  // lifecycle checks can reject them, and never fabricate an OS after redaction
+  // or a missing/invalid value. Validate the whole label before extracting it.
+  const ubuntuVersion = validateUbuntuImage(requestedUbuntuVersion).status === "unknown"
+    ? "unknown"
+    : requestedUbuntuVersion.match(/\d{2}\.(?:04|10)/)?.[0] ?? "unknown";
 
   return {
     providerId: provider?.id ?? "other",
-    planName: plan?.name ?? provider?.recommended.name ?? "custom plan",
+    planName: plan?.name ?? "custom plan",
     ubuntuVersion,
-    region: region?.id ?? provider?.regionOptions[0]?.id ?? "not-listed",
+    region: region?.id ?? "not-listed",
     targetAgents: normalizeTargetAgents(record.targetAgents),
     workloadId: normalizeWorkloadId(record.workloadId),
   };
