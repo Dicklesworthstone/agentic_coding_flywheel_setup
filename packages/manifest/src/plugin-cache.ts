@@ -7,6 +7,7 @@ import {
 import { dirname, join, parse, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
 import type { PluginInstallAction, PluginInstallPlan } from './plugin-plan.js';
+import type { PluginInstallReceipt, PluginRuntimeOptions } from './plugin-runtime.js';
 
 export const PLUGIN_CACHE_LIMITS = Object.freeze({
   entrypointBytes: 8 * 1024 * 1024,
@@ -194,6 +195,7 @@ export async function preparePluginInstallerCache(
     const acquired = new Map<string, string>();
     const entries: CacheEntry[] = [];
     let total = 0;
+    let executionBytes = 0;
     for (const action of plan.actions) {
       cancelled(signal);
       const identity = JSON.stringify([action.installer.url, action.installer.sha256]);
@@ -212,6 +214,10 @@ export async function preparePluginInstallerCache(
         total += bytes.length;
         if (total > PLUGIN_CACHE_LIMITS.totalBytes) refuse('plugin_cache_too_large', 'Selected entrypoints exceed the cache size budget');
         blobs.set(path, bytes);
+      }
+      executionBytes += bytes.length;
+      if (executionBytes > PLUGIN_CACHE_LIMITS.totalBytes) {
+        refuse('plugin_cache_too_large', 'Selected actions exceed the runtime staging budget');
       }
       entries.push({ moduleId: action.id, tool: action.installer.tool, url: action.installer.url,
         sha256: action.installer.sha256, sizeBytes: bytes.length, path });
@@ -284,6 +290,7 @@ export function loadPluginInstallerCache(
     const byAction = new Map<string, { action: string; path: string }>();
     const actions = new Map(plan.actions.map((action) => [action.id, action]));
     let total = 0;
+    let executionBytes = 0;
     for (const entry of data.entries) {
       cancelled(options.signal);
       if (!record(entry) || !keys(entry, 'moduleId,path,sha256,sizeBytes,tool,url') || typeof entry.moduleId !== 'string') {
@@ -307,6 +314,10 @@ export function loadPluginInstallerCache(
         blobs.set(path, script);
       }
       if (script.length !== entry.sizeBytes) refuse('plugin_cache_hash_mismatch', 'Cached entrypoint size differs from its declaration');
+      executionBytes += script.length;
+      if (executionBytes > PLUGIN_CACHE_LIMITS.totalBytes) {
+        refuse('plugin_cache_too_large', 'Selected actions exceed the runtime staging budget');
+      }
       byAction.set(entry.moduleId, { path, action: JSON.stringify(action) });
     }
     const expectedFiles = [...blobs.keys()].map((path) => path.slice('scripts/'.length)).sort();
@@ -327,4 +338,17 @@ export function loadPluginInstallerCache(
       },
     };
   } catch (error) { return safeError(error); }
+}
+
+/** The selected cache is the ONLY acquisition channel; never retry through HTTPS. */
+export async function executeCachedPluginInstallPlan(
+  input: PluginInstallPlan,
+  directory: string,
+  options: Omit<PluginRuntimeOptions, 'download'> = {},
+): Promise<PluginInstallReceipt> {
+  const plan = snapshotPlan(input);
+  const cache = loadPluginInstallerCache(directory, plan, { signal: options.signal });
+  const { executePluginInstallPlan } = await import('./plugin-runtime.js');
+  // Assign download last: an untyped caller cannot accidentally override cache-only acquisition.
+  return executePluginInstallPlan(plan, { ...options, download: cache.download });
 }

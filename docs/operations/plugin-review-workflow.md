@@ -61,6 +61,113 @@ Ubuntu 26.04 support throughout ACFS. Execution checks the actual Linux OS
 version, architecture, and glibc against the explicit target. Previewing a plan
 on a different host is allowed; executing it there is not.
 
+## Prepare and transport verified entrypoints
+
+`--prepare-cache` downloads the entrypoint scripts for the reviewed selection
+without installing anything. `--installer-cache` consumes those scripts locally
+with **no live entrypoint fallback**. This is a plugin-plan-bound cache, not an
+air-gapped installation bundle: upstream scripts may still download packages,
+release archives, repositories, or other dependencies when executed.
+
+Preview preparation first, using the same archive, review, target, and selection:
+
+```bash
+bun run plugin:install \
+  --archive /path/to/example-tools.tar.gz \
+  --review /trusted/reviews/example-tools.json \
+  --target ubuntu/26.04/x86_64/glibc \
+  --only plugin.example_tools.cli \
+  --prepare-cache /path/to/new-plugin-cache --json
+```
+
+This is still a dry run. It reports `operation: "prepare-cache"` and the plan
+fingerprint, but makes no downloads, cache reads, directory changes, or installer
+calls. Set `PLAN_SHA256` to the reviewed `plan.planSha256`, then prepare:
+
+```bash
+bun run plugin:install \
+  --archive /path/to/example-tools.tar.gz \
+  --review /trusted/reviews/example-tools.json \
+  --target ubuntu/26.04/x86_64/glibc \
+  --only plugin.example_tools.cli \
+  --prepare-cache /path/to/new-plugin-cache \
+  --yes --accept-plan "$PLAN_SHA256" --json
+```
+
+Preparation reports `status: "cache_prepared"`, never installation completion.
+It downloads and verifies all selected entrypoints before creating the output.
+The output path must not exist, even as an empty directory. Identical source and
+digest acquisitions are deduplicated; identical contents share one stored file.
+Publication reserves a new private directory, writes and fsyncs the scripts, and
+writes `manifest.json` last as the acceptance marker. Existing output is never
+merged, replaced, or deleted. A failed disk publication is retained for inspection
+and does not receive a success result; retry using a new output directory.
+
+The exact selected directory contains:
+
+```text
+new-plugin-cache/
+  manifest.json
+  scripts/
+    <sha256>.sh
+```
+
+Transport the directory, the original plugin archive, and the independently
+trusted review to the target. The cache does not include the archive, review,
+canonical ACFS checkout, or runtime dependencies. The target must have those
+inputs and the manifest package's dependencies available separately. Cache paths
+are not part of the execution fingerprint, so relocating an unchanged cache is
+supported. Use normal copies that preserve private permissions, not hardlinks.
+
+Preview on the target with `--installer-cache /path/to/transported-plugin-cache`
+instead of `--prepare-cache`. The preview reports `acquisition: "cache_required"`
+and `cacheValidated: false`: it validates the plan but does not read or certify the
+cache. Then apply as the matching non-root target user:
+
+```bash
+bun run plugin:install \
+  --archive /path/to/example-tools.tar.gz \
+  --review /trusted/reviews/example-tools.json \
+  --target ubuntu/26.04/x86_64/glibc \
+  --only plugin.example_tools.cli \
+  --installer-cache /path/to/transported-plugin-cache \
+  --yes --accept-plan "$PLAN_SHA256" --json
+```
+
+Each invocation rebuilds the plan from the current canonical trust files and
+valid external review. The cache must match that exact plan and package digest.
+Changed selections, targets, installer arguments, verification checks, package
+bytes, or canonical trust files require a new matching cache. A cache cannot
+extend an expired review or replace canonical installer checksums.
+
+The consumer validates the entire selected cache before starting the runtime,
+including entries for previously completed actions. It requires complete unique
+coverage, declared members only, canonical JSON, exact URL/tool/hash/size bindings,
+and a 30-day validity interval. Future-dated or expired caches, unsafe paths,
+symlinks, hardlinks, special files, writable-by-others members, or corrupt scripts
+are refused before installation-state writes or installer execution. Every script
+is read into a bounded verified snapshot; execution never reopens mutable cache
+paths. Missing or invalid caches cannot fall back to HTTPS, including on retries.
+
+Limits are 8 MiB per script, 1 MiB for the manifest, 1,024 selected actions, and
+32 MiB total script bytes. The 32 MiB runtime staging budget also counts repeated
+uses of the same script per action, even when disk storage is deduplicated.
+The schema is `acfs.plugin-entrypoint-cache.v1`; its fixed policy explicitly says
+`entrypointFetchMode: "cache_only"`, `executionNetworkMode: "may_be_required"`,
+and `transitiveClosure: "not_bundled"`.
+
+Cache preparation and consumption cannot be combined, or mixed with `--status`
+or `--recover`. Neither mode is selected through environment variables. After
+interruption, inspect/recover without cache flags, then use a separate approved
+`--installer-cache` invocation to retry. Normal verification, inherited locking,
+receipts, and completed-dependency checks remain active during cached installs.
+
+This plugin cache is **not interchangeable** with the first-party
+[`acfs installer-cache` format](offline-artifact-pack.md): that format is keyed
+to first-party manifest modules, while this one binds a reviewed plugin plan.
+Neither format claims to supply transitive artifacts or eliminate networking
+from arbitrary upstream installer execution.
+
 ## Execution and resume behavior
 
 First-party dependencies must already be installed. Their canonical verification
@@ -68,8 +175,10 @@ commands run without privilege elevation; the plugin command never installs,
 upgrades, or repairs them. A failed prerequisite stops before downloads. Install
 missing prerequisites through the normal ACFS workflow and preview again.
 
-Every pending installer is downloaded over verified HTTPS and checked against
-`checksums.yaml` before **any** installer runs. Redirects cannot downgrade TLS or
+By default, every pending installer is downloaded over verified HTTPS and checked
+against `checksums.yaml` before **any** installer runs. With `--installer-cache`,
+the same runtime instead receives verified in-memory cache snapshots and cannot
+attempt a live entrypoint download. HTTPS redirects cannot downgrade TLS or
 add credentials. Downloads are bounded to 8 MiB per entrypoint, 32 MiB total
 staging, five redirects, and a 60-second download deadline. Script snapshots
 stay in memory and are passed to fixed `/bin/bash` or `/bin/sh` runners over stdin,
@@ -170,11 +279,12 @@ legacy receipt to manufacture protocol support or overwrite the evidence file.
 An exact pre-existing backup is accepted after a crash between backup and state
 replacement; a different backup is never overwritten.
 
-Install command exits: `0` for a valid preview, verified installation, successful
-status query (including busy/not-started), or completed recovery operation; `1`
+Install command exits: `0` for a valid preview, prepared cache, verified installation,
+successful status query (including busy/not-started), or completed recovery operation; `1`
 for trust, planning, state, prerequisite, or execution refusal; `2` for invalid
 arguments; `130`/`143` for interrupt/termination. JSON output distinguishes
-`status: "planned"`, `"inspected"`, `"recovered"`, `"complete"`, and `"failed"`.
+`status: "planned"`, `"cache_prepared"`, `"inspected"`, `"recovered"`, `"complete"`,
+and `"failed"`. Cache preparation success does not mean tools are installed.
 Recovery success means state is retryable, not that tools are installed.
 `plugin:verify` retains its previous output and exit
 contract, including `activation: "disabled"` because it never performs installs.
@@ -252,6 +362,11 @@ canonical schema, merged graph, phases, capability policy and checksum map.
 selection-specific plan; `buildPluginInstallPlan` is its pure planning core.
 `inspectPluginInstallPlan` and `recoverPluginInstallPlan` expose the same receipt
 operations for a freshly validated plan; neither executes that plan.
+`preparePluginInstallerCache` acquires a complete plan-specific entrypoint cache;
+`loadPluginInstallerCache` validates it and returns copied script snapshots;
+`executeCachedPluginInstallPlan` connects those snapshots to the existing runtime
+without an alternate downloader. These APIs require a freshly reviewed plan,
+not an untrusted deserialized plan object with a self-computed digest.
 Low-level archive readers still return semantically untrusted `unknown` content.
 Do not replace these boundaries with deserialized "valid" results or plan files.
 
@@ -260,6 +375,7 @@ cd packages/manifest
 bun test src/plugin-archive.test.ts src/plugin-review.test.ts src/plugin-verify.test.ts
 bun test src/plugin-plan.test.ts src/plugin-runtime.test.ts src/plugin-install.test.ts
 bun test src/plugin-supervision.test.ts src/plugin-recovery.test.ts src/plugin-recovery-cli.test.ts
+bun test src/plugin-cache.test.ts src/plugin-cache-install.test.ts
 bun test src/plugin.test.ts
 bun run type-check
 bun run generate --validate
@@ -274,3 +390,7 @@ Supervision/recovery tests kill a real parent, check the surviving lease, preser
 the ambiguous receipt, and retry without replaying completed dependencies. CLI
 routing tests inject a plan loader; they do not substitute for canonical archive,
 review, manifest, and checksum integration tests.
+Cache integration includes real HTTPS acquisition, server shutdown, directory
+transport, and local script execution, plus tamper refusals and cache-backed
+retries. It proves local entrypoint acquisition, not a network-denied installation
+of all transitive third-party dependencies.

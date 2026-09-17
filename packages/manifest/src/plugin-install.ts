@@ -5,7 +5,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildPluginInstallPlan, PluginPlanError, type PluginInstallPlan, type PluginPlanTarget } from './plugin-plan.js';
 import { executePluginInstallPlan, inspectPluginInstallPlan, recoverPluginInstallPlan, PluginInstallError,
-  type PluginInstallReceipt, type PluginInstallInspection, type PluginInstallRecovery } from './plugin-runtime.js';
+  downloadPluginInstaller, type PluginInstallReceipt, type PluginInstallInspection, type PluginInstallRecovery } from './plugin-runtime.js';
+import { executeCachedPluginInstallPlan, preparePluginInstallerCache, PluginCacheError,
+  PLUGIN_CACHE_LIMITS, type PluginCacheSummary } from './plugin-cache.js';
 
 export interface PluginInstallArguments {
   archive: string;
@@ -18,6 +20,8 @@ export interface PluginInstallArguments {
   status: boolean;
   recover: boolean;
   acceptReceipt?: string;
+  prepareCache?: string;
+  installerCache?: string;
   json: boolean;
 }
 export function parsePluginInstallArguments(args: readonly string[]): PluginInstallArguments {
@@ -29,7 +33,8 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
       if (flags.has(option)) throw new Error('Duplicate plugin install option');
       flags.add(option); continue;
     }
-    if (!['--archive', '--review', '--target', '--only', '--skip', '--accept-plan', '--accept-receipt'].includes(option)
+    if (!['--archive', '--review', '--target', '--only', '--skip', '--accept-plan', '--accept-receipt',
+      '--prepare-cache', '--installer-cache'].includes(option)
         || values.has(option)) throw new Error('Unknown or duplicate plugin install option');
     const value = args[++index];
     if (!value || value.startsWith('--')) throw new Error('Plugin install option requires a value');
@@ -55,6 +60,8 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
   const status = flags.has('--status');
   const recover = flags.has('--recover');
   const acceptReceipt = values.get('--accept-receipt');
+  const prepareCache = values.get('--prepare-cache');
+  const installerCache = values.get('--installer-cache');
   if ((apply && flags.has('--dry-run')) || (apply !== (acceptPlan !== undefined))
       || (acceptPlan !== undefined && !/^[a-f0-9]{64}$/.test(acceptPlan))) {
     throw new Error('Installation requires --yes and the exact --accept-plan digest; --dry-run cannot be combined with installation');
@@ -65,9 +72,15 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
       || (acceptReceipt !== undefined && !/^[a-f0-9]{64}$/.test(acceptReceipt))) {
     throw new Error('Status is read-only; recovery requires --yes, --accept-plan and --accept-receipt together');
   }
+  if ((prepareCache !== undefined && installerCache !== undefined)
+      || ((status || recover) && (prepareCache !== undefined || installerCache !== undefined))
+      || [prepareCache, installerCache].some((path) => path !== undefined && /[\x00-\x1f\x7f]/.test(path))) {
+    throw new Error('Cache preparation and cache-only installation are separate operations, not status or recovery options');
+  }
   return { archive: values.get('--archive')!, review: values.get('--review')!,
     target: { os: parts[0]!, version: parts[1]!, arch: parts[2]!, libc: parts[3]! },
-    only: parseIds('--only'), skip: parseIds('--skip'), apply, acceptPlan, status, recover, acceptReceipt, json: flags.has('--json') };
+    only: parseIds('--only'), skip: parseIds('--skip'), apply, acceptPlan, status, recover, acceptReceipt,
+    prepareCache, installerCache, json: flags.has('--json') };
 }
 
 /** Load one immutable pair of canonical trust files, then validate the reviewed archive. */
@@ -114,6 +127,8 @@ export async function loadPluginInstallPlan(options: PluginInstallArguments): Pr
 export interface PluginInstallCommandServices {
   loadPlan: (options: PluginInstallArguments) => Promise<PluginInstallPlan>;
   execute: (plan: PluginInstallPlan, signal: AbortSignal) => Promise<PluginInstallReceipt>;
+  prepareCache?: (plan: PluginInstallPlan, directory: string, signal: AbortSignal) => Promise<PluginCacheSummary>;
+  executeCached?: (plan: PluginInstallPlan, directory: string, signal: AbortSignal) => Promise<PluginInstallReceipt>;
   inspect?: (plan: PluginInstallPlan, signal: AbortSignal) => Promise<PluginInstallInspection>;
   recover?: (plan: PluginInstallPlan, receiptSha256: string, signal: AbortSignal) => Promise<PluginInstallRecovery>;
   write: (message: string) => void;
@@ -123,13 +138,15 @@ export async function pluginInstallMain(
   services: PluginInstallCommandServices = {
     loadPlan: loadPluginInstallPlan,
     execute: (plan, signal) => executePluginInstallPlan(plan, { signal }),
+    prepareCache: (plan, directory, signal) => preparePluginInstallerCache(plan, directory, downloadPluginInstaller, { signal }),
+    executeCached: (plan, directory, signal) => executeCachedPluginInstallPlan(plan, directory, { signal }),
     inspect: (plan, signal) => inspectPluginInstallPlan(plan, { signal }),
     recover: (plan, digest, signal) => recoverPluginInstallPlan(plan, digest, { signal }),
     write: (message) => console.log(message),
   },
 ): Promise<number> {
   if (args.length === 1 && ['--help', '-h'].includes(args[0]!)) {
-    services.write('Usage: bun run plugin:install --archive package.tar.gz --review trusted-review.json --target os/version/arch/libc --only plugin.package.module[,id...] [--skip id,...] [--json]\nDefault: read-only plan; no network, installers, or state writes.\nApply: repeat the same inputs with --yes --accept-plan <planSha256>. Run as the target user, never root.\nInspect: --status reads the receipt without running health checks or installers.\nRecover: --recover --yes --accept-plan <planSha256> --accept-receipt <receiptSha256> preserves interrupted evidence and allows a separate retry; it never installs.');
+    services.write('Usage: bun run plugin:install --archive package.tar.gz --review trusted-review.json --target os/version/arch/libc --only plugin.package.module[,id...] [--skip id,...] [--json]\nDefault: read-only plan; no network, installers, or state writes.\nApply: repeat the same inputs with --yes --accept-plan <planSha256>. Run installs as the target user, never root.\nPrepare entrypoints: --prepare-cache <new-directory> plus --yes --accept-plan downloads and verifies scripts without installing.\nUse local entrypoints: --installer-cache <directory> refuses missing, changed or expired caches without any live entrypoint fallback. Execution may still need networking; this is not an air-gap bundle.\nInspect: --status reads the receipt without running health checks or installers.\nRecover: --recover --yes --accept-plan <planSha256> --accept-receipt <receiptSha256> preserves interrupted evidence and allows a separate retry; it never installs.');
     return 0;
   }
   const json = args.includes('--json');
@@ -154,12 +171,31 @@ export async function pluginInstallMain(
       return 0;
     }
     if (!options.apply) {
-      services.write(json ? JSON.stringify({ status: 'planned', mode: 'dry-run', plan })
-        : `Plugin plan ${plan.planSha256}\nInstall: ${plan.actions.map((action) => action.id).join(', ')}\nExisting prerequisites: ${plan.prerequisites.map((entry) => entry.id).join(', ') || 'none'}\nNo changes made. Apply with the same inputs plus --yes --accept-plan ${plan.planSha256}`);
+      const acquisition = options.installerCache ? 'cache_required' : 'https';
+      const operation = options.prepareCache ? 'prepare-cache' : 'install';
+      services.write(json ? JSON.stringify({ status: 'planned', mode: 'dry-run', operation, acquisition,
+        cacheValidated: false, executionNetworkMode: 'may_be_required', plan })
+        : `Plugin plan ${plan.planSha256}\nOperation: ${operation}\nSelected: ${plan.actions.map((action) => action.id).join(', ')}\nExisting prerequisites: ${plan.prerequisites.map((entry) => entry.id).join(', ') || 'none'}\nEntrypoint source: ${acquisition}; cache bytes are checked when applying. Execution may still require networking.\nNo changes made. Apply with the same inputs plus --yes --accept-plan ${plan.planSha256}`);
       return 0;
     }
     if (options.acceptPlan !== plan.planSha256) {
       throw new PluginInstallError('plugin_plan_changed', 'Plan changed since review; preview the current plan before installation');
+    }
+    if (options.prepareCache) {
+      if (!services.prepareCache) throw new PluginInstallError('plugin_operation_unavailable', 'Plugin cache preparation is unavailable');
+      const cache = await services.prepareCache(plan, options.prepareCache, controller.signal);
+      controller.signal.throwIfAborted();
+      if (cache.schema !== 'acfs.plugin-entrypoint-cache-summary.v1' || cache.planSha256 !== plan.planSha256
+          || cache.packageSha256 !== plan.package.pluginSha256 || cache.moduleCount !== plan.actions.length
+          || !Number.isInteger(cache.artifactCount) || cache.artifactCount < 1 || cache.artifactCount > cache.moduleCount
+          || !Number.isInteger(cache.totalBytes) || cache.totalBytes < 1 || cache.totalBytes > PLUGIN_CACHE_LIMITS.totalBytes
+          || cache.entrypointFetchMode !== 'cache_only' || cache.executionNetworkMode !== 'may_be_required'
+          || cache.transitiveClosure !== 'not_bundled' || !Number.isFinite(Date.parse(cache.expiresAt))) {
+        throw new PluginInstallError('plugin_cache_invalid', 'Cache preparation returned inconsistent completion metadata');
+      }
+      services.write(json ? JSON.stringify({ status: 'cache_prepared', mode: 'prepare-cache', cache })
+        : `Verified entrypoint cache prepared: ${cache.moduleCount} modules, ${cache.artifactCount} scripts, ${cache.totalBytes} bytes.\nNo installers ran. Select this directory with --installer-cache to install; execution may still require networking.`);
+      return 0;
     }
     if (options.recover) {
       if (!services.recover) throw new PluginInstallError('plugin_operation_unavailable', 'Interrupted-install recovery is unavailable');
@@ -179,7 +215,12 @@ export async function pluginInstallMain(
         : `Interrupted evidence preserved: ${recovery.preservedReceipt}\nRetryable modules: ${recovery.retryModuleIds.join(', ')}\nNo installers ran. Run the separately approved install command to retry.`);
       return 0;
     }
-    const receipt = await services.execute(plan, controller.signal);
+    if (options.installerCache && !services.executeCached) {
+      throw new PluginInstallError('plugin_operation_unavailable', 'Cache-only execution is unavailable; live fallback is refused');
+    }
+    const receipt = options.installerCache
+      ? await services.executeCached!(plan, options.installerCache, controller.signal)
+      : await services.execute(plan, controller.signal);
     controller.signal.throwIfAborted();
     if (receipt.status !== 'complete' || receipt.planSha256 !== plan.planSha256
         || receipt.packageSha256 !== plan.package.pluginSha256
@@ -187,11 +228,12 @@ export async function pluginInstallMain(
         || Object.values(receipt.actions).some((action) => action.status !== 'complete' || action.exitCode !== 0)) {
       throw new PluginInstallError('plugin_install_incomplete', 'Installation did not produce a complete verified receipt');
     }
-    services.write(json ? JSON.stringify({ status: 'complete', mode: 'install', receipt })
+    services.write(json ? JSON.stringify({ status: 'complete', mode: 'install',
+      acquisition: options.installerCache ? 'cache_required' : 'https', receipt })
       : `Plugin installation verified: ${plan.actions.map((action) => action.id).join(', ')}\nReceipt: ~/.acfs/plugin-installs/${plan.planSha256}.json`);
     return 0;
   } catch (error) {
-    const known = error instanceof PluginInstallError || error instanceof PluginPlanError;
+    const known = error instanceof PluginInstallError || error instanceof PluginPlanError || error instanceof PluginCacheError;
     const diagnostic = { code: cancelCode ? 'plugin_install_cancelled' : known ? error.code : parsed ? 'plugin_trust_inputs_unavailable' : 'plugin_install_arguments_invalid',
       message: cancelCode ? 'Plugin installation cancelled; no success was recorded'
         : known ? error.message : parsed ? 'Package verification could not complete; check trust inputs and manifest dependencies'

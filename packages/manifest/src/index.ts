@@ -114,3 +114,17 @@ export { loadPluginInstallPlan } from './plugin-install.js';
 export type { PluginInstallArguments } from './plugin-install.js';
 export { inspectPluginInstallPlan, recoverPluginInstallPlan } from './plugin-runtime.js';
 export type { PluginInstallReceipt, PluginInstallInspection, PluginInstallRecovery } from './plugin-runtime.js';
+
+export {
+  preparePluginInstallerCache,
+  loadPluginInstallerCache,
+  executeCachedPluginInstallPlan,
+  PluginCacheError,
+  PLUGIN_CACHE_LIMITS,
+} from './plugin-cache.js';
+export type {
+  PluginCacheOptions,
+  PluginCacheSummary,
+  PluginInstallerDownload,
+  LoadedPluginInstallerCache,
+} from './plugin-cache.js';
