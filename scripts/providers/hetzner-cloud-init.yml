@@ -6,7 +6,9 @@
 # Monitor: sudo tail -f /var/log/acfs/cloud-init.log /var/log/acfs/install.log
 # Verify:  sudo cloud-init status --long
 # Retry:   sudo /bin/bash -p /var/lib/acfs/cloud-init-install.sh
-# The retry uses ACFS's normal installation checkpoints.
+# Status:  sudo /bin/bash -p /var/lib/acfs/cloud-init-install.sh --status
+# Retries reuse the saved source and ACFS checkpoints; a prior success is
+# rechecked with doctor instead of blindly trusted or reinstalled.
 
 locale: en_US.UTF-8
 timezone: UTC
@@ -36,62 +38,292 @@ write_files:
       export PATH=/usr/sbin:/usr/bin:/sbin:/bin
       umask 077
 
+      mode=install
+      if (($# > 1)); then
+          printf 'Usage: cloud-init-install.sh [--status | --help]\n' >&2
+          exit 2
+      fi
+      case "${1:-}" in
+          '') ;;
+          --status) mode=status ;;
+          --help)
+              printf '%s\n' 'Usage: cloud-init-install.sh [--status]' \
+                  'With no arguments, install/resume the pinned source and verify ACFS.' \
+                  '--status reads JSON without downloading or changing anything.' \
+                  'Status exit codes: 0 last run verified, 1 failed, 2 unavailable, 3 running.'
+              exit 0 ;;
+          *) printf 'Usage: cloud-init-install.sh [--status | --help]\n' >&2; exit 2 ;;
+      esac
       if [[ "$EUID" != 0 ]]; then
           printf 'ACFS cloud-init installation requires root.\n' >&2
           exit 1
       fi
       log_dir=/var/log/acfs
       run_dir=/run/acfs-cloud-init
-      mkdir -p "$log_dir" "$run_dir"
-      exec >>"$log_dir/cloud-init.log" 2>&1
-      trap 'rc=$?; if ((rc != 0)); then printf "ACFS cloud-init FAILED (exit %s); inspect /var/log/acfs/install.log.\n" "$rc"; fi' EXIT
+      state_dir=/var/lib/acfs/cloud-init
+      repo=Dicklesworthstone/agentic_coding_flywheel_setup
+      upgrade_lock=/run/acfs-upgrade.lock
+      upgrade_state=/var/lib/acfs/state.json
+      reboot_required=/run/reboot-required
 
+      # State and logs are root-owned. Do not follow links or open a shared path
+      # when a retry finds pre-existing files. Only root-owned sticky ancestors
+      # (for example /tmp in tests) may be writable; final directories may not.
+      safe_directory() {
+          local path="$1" parent="$1" owner bits
+          [[ "$path" == /* && "$path" != *'/../'* && "$path" != */.. ]] || return 1
+          while [[ -n "$parent" && "$parent" != / ]]; do
+              if [[ -e "$parent" || -L "$parent" ]]; then
+                  [[ -d "$parent" && ! -L "$parent" ]] || return 1
+                  read -r owner bits < <(stat -c '%u %a' -- "$parent") || return 1
+                  [[ "$owner" == 0 || "$owner" == "$EUID" ]] || return 1
+                  [[ "$bits" =~ ^[0-7]{3,4}$ ]] || return 1
+                  if (( (8#$bits & 8#022) != 0 )); then
+                      [[ "$parent" != "$path" ]] && (( (8#$bits & 8#1000) != 0 )) || return 1
+                  fi
+              fi
+              parent="${parent%/*}"
+          done
+      }
+      safe_file() {
+          local path="$1" owner links bits
+          [[ -e "$path" || -L "$path" ]] || return 0
+          [[ -f "$path" && ! -L "$path" ]] || return 1
+          read -r owner links bits < <(stat -c '%u %h %a' -- "$path") || return 1
+          [[ "$owner" == "$EUID" && "$links" == 1 && "$bits" =~ ^[0-7]{3,4}$ ]] || return 1
+          (( (8#$bits & 8#022) == 0 ))
+      }
+      read_source() {
+          jq -ser --arg repo "$repo" '
+              if length == 1 then .[0] else error("ambiguous source") end
+              | select(.schema_version == 1 and .repository == $repo)
+              | .commit | strings | select(test("^[0-9a-f]{40}$"))' "$state_dir/source.json"
+      }
+      read_status() {
+          jq -cse 'if length == 1 then .[0] else error("ambiguous status") end
+              | select(.schema_version == 1 and .target_user == "ubuntu")
+              | select(.exit_code | type == "number" and . == floor and . >= 0 and . <= 255)
+              | select(.updated_at | type == "string" and length > 0)
+              | select(.phase == "starting" or .phase == "resolving" or .phase == "downloading"
+                  or .phase == "installing" or .phase == "verifying" or .phase == "complete")
+              | select(.source_commit == null or (.source_commit | strings | test("^[0-9a-f]{40}$")))
+              | select((.status == "running" and .exit_code == 0)
+                  or (.status == "failed" and .exit_code > 0)
+                  or (.status == "succeeded" and .exit_code == 0 and .phase == "complete"
+                      and (.source_commit | strings | test("^[0-9a-f]{40}$"))))' \
+              "$state_dir/status.json"
+      }
+      if ! safe_directory "$state_dir" || ! safe_file "$state_dir/status.json"; then
+          printf 'Unsafe cloud-init state path; no installation was started.\n' >&2
+          exit 2
+      fi
+      if [[ "$mode" == status ]]; then
+          if [[ ! -f "$state_dir/status.json" ]]; then
+              printf '{"schema_version":1,"status":"not_started"}\n'
+              exit 2
+          fi
+          document=$(read_status) || { printf 'Cloud-init status is invalid.\n' >&2; exit 2; }
+          if [[ "$(jq -r .status <<< "$document")" == succeeded ]]; then
+              safe_file "$state_dir/source.json" || exit 2
+              saved_source=$(read_source) || exit 2
+              [[ "$(jq -r .source_commit <<< "$document")" == "$saved_source" ]] || exit 2
+          fi
+          printf '%s\n' "$document"
+          case "$(jq -r .status <<< "$document")" in
+              succeeded) exit 0 ;; failed) exit 1 ;; *) exit 3 ;;
+          esac
+      fi
+
+      for path in "$log_dir" "$run_dir"; do
+          safe_directory "$path" || { printf 'Unsafe cloud-init log/staging directory.\n' >&2; exit 2; }
+      done
+      mkdir -p "$log_dir" "$run_dir" "$state_dir"
+      for path in "$state_dir/source.json" "$state_dir/lock" \
+          "$log_dir/cloud-init.log" "$log_dir/install.log" "$state_dir/doctor.json"; do
+          safe_file "$path" || { printf 'Unsafe existing cloud-init file.\n' >&2; exit 2; }
+      done
+      exec >>"$log_dir/cloud-init.log" 2>&1
+      # The lock is inherited by the installer. A concurrent retry must not change
+      # the running worker's status or start another installation.
+      exec 9>>"$state_dir/lock"
+      if ! flock -n 9; then
+          printf 'ACFS cloud-init installation is already running.\n'
+          exit 75
+      fi
+      # Coordinate with ubuntu_upgrade.sh, whose /var/run lock resolves to /run
+      # on the supported Ubuntu images. --skip-ubuntu-upgrade is not permission to
+      # run a second package manager while an OS upgrade is still in progress.
+      if [[ ! /var/run -ef /run ]] || ! safe_file "$upgrade_lock"; then
+          printf 'Cannot establish the shared Ubuntu upgrade lock safely.\n' >&2
+          exit 2
+      fi
+      exec 8>>"$upgrade_lock"
+      if ! flock -n 8; then
+          printf 'An Ubuntu upgrade is already running; no cloud-init install started.\n' >&2
+          exit 75
+      fi
+      prior_status='{}'
+      if [[ -f "$state_dir/status.json" ]]; then
+          prior_status=$(read_status) || { printf 'Invalid prior status; review it before retrying.\n' >&2; exit 2; }
+      fi
+      sha=''
+      phase=starting
+      write_status() {
+          local status="$1" code="$2" temporary
+          temporary=$(mktemp "$state_dir/.status.XXXXXX") || return 1
+          if ! jq -n --arg status "$status" --arg phase "$phase" --arg sha "$sha" \
+              --arg at "$(date -Iseconds)" --argjson code "$code" \
+              '{schema_version:1,status:$status,phase:$phase,target_user:"ubuntu",
+                source_commit:(if $sha == "" then null else $sha end),
+                updated_at:$at,exit_code:$code}' > "$temporary"; then
+              rm -f -- "$temporary"
+              return 1
+          fi
+          if ! mv -fT -- "$temporary" "$state_dir/status.json"; then
+              rm -f -- "$temporary"
+              return 1
+          fi
+          sync "$state_dir/status.json" "$state_dir"
+      }
+      finish() {
+          local rc=$?
+          trap - EXIT
+          if ((rc != 0)); then
+              write_status failed "$rc" || printf 'Could not persist failure status.\n' >&2
+              printf 'ACFS cloud-init FAILED in %s (exit %s); inspect /var/log/acfs/install.log.\n' "$phase" "$rc" >&2
+          fi
+          exit "$rc"
+      }
+      trap finish EXIT
+      trap 'exit 143' TERM
+      trap 'exit 130' INT
+      write_status running 0
       printf '\n=== ACFS cloud-init started at %s ===\n' "$(date -Iseconds)"
-      # This handoff deliberately cannot start a distribution upgrade/reboot
-      # from inside cloud-final. Older images need the separate upgrade flow.
+      # A cloud-final handoff must not start a distribution upgrade or reboot.
       . /etc/os-release
       if [[ "${ID:-}" != ubuntu || ! "${VERSION_ID:-}" =~ ^26\.04(\.[0-9]+)?$ ]]; then
           printf 'Use a fresh Ubuntu 26.04 LTS image; this template does not upgrade the OS.\n' >&2
           exit 1
       fi
-
-      # Resolve once, then use that immutable object for BOTH the downloaded
-      # entrypoint and its own archive bootstrap. Never execute mutable main
-      # after resolving a different ref. No caller-supplied ref is inherited.
-      repo=Dicklesworthstone/agentic_coding_flywheel_setup
-      curl_args=(-q --proto '=https' --proto-redir '=https' -fsSL
-          --connect-timeout 15 --max-time 120 --retry 3 --retry-max-time 180)
-      sha=$(curl "${curl_args[@]}" -H 'Accept: application/vnd.github.sha' \
-          -H 'X-GitHub-Api-Version: 2022-11-28' \
-          "https://api.github.com/repos/$repo/commits/main")
-      if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
-          printf 'Could not resolve main to one immutable commit; no installer was executed.\n' >&2
+      # A stopped upgrader may have released its lock without completing. Never
+      # bypass that recovery checkpoint, pending reboot, or incomplete packages.
+      if [[ -e "$upgrade_state" || -L "$upgrade_state" ]]; then
+          if ! safe_directory "${upgrade_state%/*}" || ! safe_file "$upgrade_state" \
+              || ! jq -se 'length == 1 and (.[0] | type == "object" and
+                  (.ubuntu_upgrade == null or (.ubuntu_upgrade |
+                      type == "object" and .current_stage == "completed" and
+                      (.target_version == "22.04" or .target_version == "24.04" or .target_version == "26.04") and
+                      ((.needs_reboot // false) == false) and
+                      ((.resume_after_reboot // false) == false) and .current_upgrade == null)))' \
+                  "$upgrade_state" >/dev/null; then
+              printf 'Unfinished or invalid Ubuntu recovery state; resolve it before cloud-init retry.\n' >&2
+              exit 1
+          fi
+      fi
+      if [[ -e "$reboot_required" || -L "$reboot_required" ]]; then
+          printf 'A reboot is pending; reboot and review recovery before retrying.\n' >&2
           exit 1
       fi
+      package_audit=''
+      if ! package_audit=$(dpkg --audit 2>&1) || [[ -n "${package_audit//[[:space:]]/}" ]]; then
+          printf 'Package configuration requires recovery; inspect dpkg --audit.\n' >&2
+          exit 1
+      fi
+      # Prefer Git transport, which does not spend the anonymous REST API quota.
+      # Fall back to the API only when a bounded, isolated Git lookup cannot resolve
+      # the exact branch. Neither path authorizes downloading a mutable entrypoint.
+      resolve_source_commit() {
+          local refs candidate
+          if refs=$(env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C HOME=/ \
+              GIT_TERMINAL_PROMPT=0 GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+              timeout --kill-after=2s 30s git -C / ls-remote --exit-code --refs \
+              "https://github.com/$repo.git" refs/heads/main 2>/dev/null); then
+              candidate="${refs%%$'\t'*}"
+              if [[ "$candidate" =~ ^[0-9a-f]{40}$ && "$refs" == "$candidate"$'\trefs/heads/main' ]]; then
+                  printf '%s\n' "$candidate"
+                  return 0
+              fi
+          fi
+          curl "${curl_args[@]}" -H 'Accept: application/vnd.github.sha' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$repo/commits/main"
+      }
+      phase=resolving
+      write_status running 0
+      curl_args=(-q --proto '=https' --proto-redir '=https' -fsSL
+          --connect-timeout 15 --max-time 120 --retry 3 --retry-max-time 180)
+      if [[ -f "$state_dir/source.json" ]]; then
+          # Reboots/retries reuse the same immutable source, even if main moved or
+          # the API is unavailable. Invalid saved provenance never falls back live.
+          sha=$(read_source)
+      else
+          sha=$(resolve_source_commit)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { printf 'Could not resolve one immutable source commit.\n' >&2; exit 1; }
+          source_tmp=$(mktemp "$state_dir/.source.XXXXXX")
+          jq -n --arg repo "$repo" --arg sha "$sha" \
+              '{schema_version:1,repository:$repo,commit:$sha}' > "$source_tmp"
+          mv -fT -- "$source_tmp" "$state_dir/source.json"
+      fi
+      [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
+      # Flush the pin and its directory before any installer can execute.
+      sync "$state_dir/source.json" "$state_dir"
       printf 'ACFS source commit: %s\n' "$sha"
 
-      # Download completely before execution. A failed/truncated download
-      # must not feed a partial script into a privileged interpreter.
-      installer=$(mktemp "$run_dir/install.XXXXXX")
-      curl "${curl_args[@]}" -o "$installer" \
-          "https://raw.githubusercontent.com/$repo/$sha/install.sh"
-      [[ -s "$installer" ]] || { printf 'Downloaded installer is empty.\n' >&2; exit 1; }
-      /bin/bash -n "$installer"
-      # Stream the complete file: executing it by pathname would make ACFS
-      # mistake /run/acfs-cloud-init for a complete local repository checkout.
-      # Keep the installer's exact exit status; tee must not turn it into zero.
-      status=0
-      TARGET_USER=ubuntu /bin/bash -p -s -- --yes --mode vibe \
-          --target-ubuntu=26.04 --skip-ubuntu-upgrade --ref "$sha" \
-          < "$installer" >>"$log_dir/install.log" 2>&1 || status=$?
-      if ((status != 0)); then
-          printf 'ACFS installer failed with exit %s.\n' "$status" >&2
-          exit "$status"
+      # A previous success skips installation, never verification. A stale marker
+      # cannot keep reporting ready after installed tools disappear or break.
+      if ! jq -e --arg sha "$sha" '.status == "succeeded" and .source_commit == $sha' \
+          <<< "$prior_status" >/dev/null; then
+          phase=downloading
+          write_status running 0
+          installer=$(mktemp "$run_dir/install.XXXXXX")
+          curl "${curl_args[@]}" -o "$installer" \
+              "https://raw.githubusercontent.com/$repo/$sha/install.sh"
+          [[ -s "$installer" ]] || { printf 'Downloaded installer is empty.\n' >&2; exit 1; }
+          /bin/bash -n "$installer"
+          phase=installing
+          write_status running 0
+          # Stream the complete file. A pathname invocation would make ACFS treat
+          # /run/acfs-cloud-init as a local repository without its runtime assets.
+          status=0
+          TARGET_USER=ubuntu /bin/bash -p -s -- --yes --mode vibe \
+              --target-ubuntu=26.04 --skip-ubuntu-upgrade --ref "$sha" \
+              < "$installer" >>"$log_dir/install.log" 2>&1 || status=$?
+          if ((status != 0)); then exit "$status"; fi
+          printf 'ACFS installer succeeded; verifying the installed environment.\n'
       fi
-      printf '=== ACFS installer succeeded at %s (commit %s) ===\n' "$(date -Iseconds)" "$sha"
+      phase=verifying
+      write_status running 0
+      entry=$(getent passwd ubuntu)
+      IFS=: read -r user _ uid _ _ home _ <<< "$entry"
+      if [[ "$entry" == *$'\n'* || "$user" != ubuntu || ! "$uid" =~ ^[1-9][0-9]{0,9}$ \
+          || "$home" != /* || "$home" == / || ! -d "$home" ]]; then
+          printf 'Cannot resolve the installed ubuntu account.\n' >&2
+          exit 1
+      fi
+      doctor="$home/.acfs/bin/acfs"
+      [[ -x "$doctor" ]] || { printf 'Installed ACFS doctor is missing.\n' >&2; exit 1; }
+      # Drop privileges before executing user-owned ACFS code. No login shell or
+      # inherited startup hooks may pollute JSON or redirect the target account.
+      status=0
+      timeout --kill-after=10s 300s runuser -u ubuntu -- env -i \
+          "HOME=$home" USER=ubuntu LOGNAME=ubuntu TARGET_USER=ubuntu "TARGET_HOME=$home" \
+          PATH=/usr/local/bin:/usr/bin:/bin LC_ALL=C.UTF-8 \
+          /bin/bash "$doctor" doctor --json > "$state_dir/doctor.json" || status=$?
+      if ((status != 0)); then exit "$status"; fi
+      if ! jq -se 'length == 1 and (.[0] |
+          .user == "ubuntu" and .mode == "vibe" and .os.id == "ubuntu" and
+          (.os.version | strings | test("^26\\.04(\\.[0-9]+)?$")) and
+          .summary.fail == 0 and (.checks | type == "array" and length > 0) and
+          any(.checks[]; .status == "pass") and
+          all(.checks[]; .status == "pass" or .status == "warn" or .status == "skip"))' \
+          "$state_dir/doctor.json" >/dev/null; then
+          printf 'Doctor did not produce one valid, non-failing Ubuntu 26.04 report.\n' >&2
+          exit 1
+      fi
+      phase=complete
+      write_status succeeded 0
+      printf 'ACFS READY: installation and doctor verification succeeded (commit %s).\n' "$sha"
 
-# String runcmd entries run under /bin/sh. Use an argv entry to select Bash
-# explicitly; do not put Bash process substitution in cloud-init's sh script.
 runcmd:
   - ["/bin/bash", "-p", "/var/lib/acfs/cloud-init-install.sh"]
 
@@ -99,6 +331,7 @@ runcmd:
 # unconditional ACFS-success claim here.
 final_message: |
   Cloud-init finished after $UPTIME seconds. Check 'cloud-init status --long'.
-  ACFS result: /var/log/acfs/cloud-init.log
+  ACFS state: /var/lib/acfs/cloud-init/status.json
+  Progress: /var/log/acfs/cloud-init.log
   Installer details: /var/log/acfs/install.log
-  Run 'onboard' as ubuntu only after the installer reports success.
+  Run 'onboard' as ubuntu only after ACFS reports READY.
