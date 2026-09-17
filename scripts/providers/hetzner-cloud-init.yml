@@ -1,35 +1,23 @@
 #cloud-config
-# ============================================================
-# ACFS Hetzner Cloud-Init Template
-# ============================================================
+# ACFS first-boot installation on a fresh Ubuntu 26.04 LTS server.
+# Select Ubuntu 26.04 and your REAL SSH key in the provider console, then
+# paste this file as cloud-init user data. It does not upgrade older images.
 #
-# Usage (Hetzner Cloud Console or hcloud CLI):
-#   1. Create a new server (Ubuntu 24.04 or later recommended)
-#   2. Under "Cloud config", paste this file
-#   3. Add your SSH key in the Hetzner UI
-#   4. Launch the server
-#
-# hcloud CLI example:
-#   hcloud server create \
-#     --name acfs-dev \
-#     --type cpx31 \
-#     --image ubuntu-24.04 \
-#     --ssh-key your-key-name \
-#     --user-data-from-file scripts/providers/hetzner-cloud-init.yml
-#
-# After boot (~5-10 min), SSH in and ACFS will be fully installed.
-# To monitor install progress: tail -f /var/log/acfs/install.log
-# ============================================================
+# Monitor: sudo tail -f /var/log/acfs/cloud-init.log /var/log/acfs/install.log
+# Verify:  sudo cloud-init status --long
+# Retry:   sudo /bin/bash -p /var/lib/acfs/cloud-init-install.sh
+# The retry uses ACFS's normal installation checkpoints.
 
-# Set locale and timezone
 locale: en_US.UTF-8
 timezone: UTC
 
-# Ensure system is updated before ACFS install
-package_update: true
-package_upgrade: true
+# Keep the image's default user and provider-supplied authorized keys. Never
+# insert a sample public key, replace authorized_keys, or change SSH policy.
+users:
+  - default
 
-# Install minimal bootstrap dependencies
+package_update: true
+package_upgrade: false
 packages:
   - curl
   - git
@@ -38,34 +26,79 @@ packages:
   - unzip
   - tmux
 
-# Create the target user (ACFS will configure the rest)
-users:
-  - name: ubuntu
-    groups: sudo
-    shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    ssh_authorized_keys:
-      # Replace with your SSH public key(s):
-      - ssh-ed25519 AAAA... your-email@example.com
+write_files:
+  - path: /var/lib/acfs/cloud-init-install.sh
+    owner: root:root
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+      umask 077
 
-# Run ACFS installer after first boot
+      if [[ "$EUID" != 0 ]]; then
+          printf 'ACFS cloud-init installation requires root.\n' >&2
+          exit 1
+      fi
+      log_dir=/var/log/acfs
+      run_dir=/run/acfs-cloud-init
+      mkdir -p "$log_dir" "$run_dir"
+      exec >>"$log_dir/cloud-init.log" 2>&1
+      trap 'rc=$?; if ((rc != 0)); then printf "ACFS cloud-init FAILED (exit %s); inspect /var/log/acfs/install.log.\n" "$rc"; fi' EXIT
+
+      printf '\n=== ACFS cloud-init started at %s ===\n' "$(date -Iseconds)"
+      # This handoff deliberately cannot start a distribution upgrade/reboot
+      # from inside cloud-final. Older images need the separate upgrade flow.
+      . /etc/os-release
+      if [[ "${ID:-}" != ubuntu || ! "${VERSION_ID:-}" =~ ^26\.04(\.[0-9]+)?$ ]]; then
+          printf 'Use a fresh Ubuntu 26.04 LTS image; this template does not upgrade the OS.\n' >&2
+          exit 1
+      fi
+
+      # Resolve once, then use that immutable object for BOTH the downloaded
+      # entrypoint and its own archive bootstrap. Never execute mutable main
+      # after resolving a different ref. No caller-supplied ref is inherited.
+      repo=Dicklesworthstone/agentic_coding_flywheel_setup
+      curl_args=(-q --proto '=https' --proto-redir '=https' -fsSL
+          --connect-timeout 15 --max-time 120 --retry 3 --retry-max-time 180)
+      sha=$(curl "${curl_args[@]}" -H 'Accept: application/vnd.github.sha' \
+          -H 'X-GitHub-Api-Version: 2022-11-28' \
+          "https://api.github.com/repos/$repo/commits/main")
+      if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+          printf 'Could not resolve main to one immutable commit; no installer was executed.\n' >&2
+          exit 1
+      fi
+      printf 'ACFS source commit: %s\n' "$sha"
+
+      # Download completely before execution. A failed/truncated download
+      # must not feed a partial script into a privileged interpreter.
+      installer=$(mktemp "$run_dir/install.XXXXXX")
+      curl "${curl_args[@]}" -o "$installer" \
+          "https://raw.githubusercontent.com/$repo/$sha/install.sh"
+      [[ -s "$installer" ]] || { printf 'Downloaded installer is empty.\n' >&2; exit 1; }
+      /bin/bash -n "$installer"
+      # Stream the complete file: executing it by pathname would make ACFS
+      # mistake /run/acfs-cloud-init for a complete local repository checkout.
+      # Keep the installer's exact exit status; tee must not turn it into zero.
+      status=0
+      TARGET_USER=ubuntu /bin/bash -p -s -- --yes --mode vibe \
+          --target-ubuntu=26.04 --skip-ubuntu-upgrade --ref "$sha" \
+          < "$installer" >>"$log_dir/install.log" 2>&1 || status=$?
+      if ((status != 0)); then
+          printf 'ACFS installer failed with exit %s.\n' "$status" >&2
+          exit "$status"
+      fi
+      printf '=== ACFS installer succeeded at %s (commit %s) ===\n' "$(date -Iseconds)" "$sha"
+
+# String runcmd entries run under /bin/sh. Use an argv entry to select Bash
+# explicitly; do not put Bash process substitution in cloud-init's sh script.
 runcmd:
-  # Log everything for debugging
-  - mkdir -p /var/log/acfs
-  - |
-    exec > >(tee -a /var/log/acfs/cloud-init.log) 2>&1
-    echo "=== ACFS cloud-init started at $(date -Iseconds) ==="
+  - ["/bin/bash", "-p", "/var/lib/acfs/cloud-init-install.sh"]
 
-    # Run the ACFS installer in non-interactive mode
-    # --yes: skip all prompts
-    # --mode vibe: enable passwordless sudo and full agent permissions
-    curl -fsSL "https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh" \
-      | bash -s -- --yes --mode vibe 2>&1 | tee -a /var/log/acfs/install.log
-
-    echo "=== ACFS cloud-init finished at $(date -Iseconds) ==="
-
-# Write a post-install message
+# cloud-init prints this even when a previous module failed. Do not make an
+# unconditional ACFS-success claim here.
 final_message: |
-  ACFS cloud-init complete.
-  System uptime: $UPTIME
-  SSH as 'ubuntu' and run 'onboard' to get started.
+  Cloud-init finished after $UPTIME seconds. Check 'cloud-init status --long'.
+  ACFS result: /var/log/acfs/cloud-init.log
+  Installer details: /var/log/acfs/install.log
+  Run 'onboard' as ubuntu only after the installer reports success.
