@@ -40,53 +40,32 @@ mkdir -p "$(dirname "$ACFS_LOG")"
 read_target_version_from_state() {
     local state_file="$1"
     [[ -f "$state_file" ]] || return 1
-
-    local target=""
-    if command -v jq &>/dev/null; then
-        target=$(jq -r '.ubuntu_upgrade.target_version // empty' "$state_file" 2>/dev/null || true)
-    else
-        target=$(sed -n 's/.*"target_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$state_file" | head -n 1)
-    fi
-
-    if [[ -n "$target" && "$target" != "null" ]]; then
-        printf '%s' "$target"
-        return 0
-    fi
-
-    return 1
+    command -v jq &>/dev/null || return 1
+    # The resume state is JSON, not arbitrary text containing a target_version
+    # substring. Reject damaged/missing state instead of inventing a target.
+    jq -er '.ubuntu_upgrade.target_version | strings | select(test("^[0-9]{2}\\.(04|10)$"))' \
+        "$state_file" 2>/dev/null
 }
 
 compute_version_num() {
     local version="$1"
-    if [[ ! "$version" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+    if [[ ! "$version" =~ ^([0-9]{2})\.(04|10)(\.[0-9]+)?$ ]]; then
         return 1
     fi
 
     local major="${BASH_REMATCH[1]}"
     local minor="${BASH_REMATCH[2]}"
 
-    # Force base-10 parsing so versions like "25.08" don't get treated as octal.
+    # Force base-10 parsing for the zero-prefixed April release number.
     printf "%d%02d" "$((10#$major))" "$((10#$minor))"
 }
 
 ubuntu_is_at_or_beyond_target_version() {
     local current_version="$1"
-
-    if [[ "$current_version" == "$UBUNTU_TARGET_VERSION" ]]; then
-        return 0
-    fi
-
-    if [[ "$current_version" =~ ^[0-9]+\.[0-9]+$ && "${UBUNTU_TARGET_VERSION_NUM:-}" =~ ^[0-9]+$ ]]; then
-        local current_version_num
-        current_version_num="$(compute_version_num "$current_version" || printf '')"
-        [[ -n "$current_version_num" ]] || return 1
-
-        if [[ "$current_version_num" -ge "$UBUNTU_TARGET_VERSION_NUM" ]]; then
-            return 0
-        fi
-    fi
-
-    return 1
+    local current_version_num target_version_num
+    current_version_num=$(compute_version_num "$current_version") || return 1
+    target_version_num=$(compute_version_num "$UBUNTU_TARGET_VERSION") || return 1
+    [[ "$current_version_num" -ge "$target_version_num" ]]
 }
 
 state_target_version="$(read_target_version_from_state "$ACFS_STATE_FILE" || true)"
@@ -95,9 +74,9 @@ if [[ -n "${state_target_version:-}" ]]; then
 fi
 export UBUNTU_TARGET_VERSION
 
-if [[ -z "${UBUNTU_TARGET_VERSION_NUM:-}" ]]; then
-    UBUNTU_TARGET_VERSION_NUM="$(compute_version_num "$UBUNTU_TARGET_VERSION" || printf '')"
-fi
+# Always derive the number after reading the stored target. Never allow a
+# caller's stale numeric value to disagree with the persisted release string.
+UBUNTU_TARGET_VERSION_NUM="$(compute_version_num "$UBUNTU_TARGET_VERSION" || printf '')"
 if [[ ! "${UBUNTU_TARGET_VERSION_NUM:-}" =~ ^[0-9]+$ ]]; then
     UBUNTU_TARGET_VERSION_NUM=""
 fi
@@ -234,8 +213,8 @@ mark_state_complete() {
         tmp_file="$(mktemp "${ACFS_STATE_FILE}.tmp.XXXXXX" 2>/dev/null)" || tmp_file=""
 
         if [[ -z "$tmp_file" ]]; then
-            log_error "mktemp failed; skipping state update"
-            return 0
+            log_error "mktemp failed; cannot persist completion"
+            return 1
         fi
 
         completed_at="$(date -Iseconds)"
@@ -251,12 +230,18 @@ mark_state_complete() {
             else
                 rm -f "$tmp_file" 2>/dev/null || true
                 log_error "Failed to write updated state file"
+                return 1
             fi
         else
             rm -f "$tmp_file" 2>/dev/null || true
             log_error "Failed to update state file"
+            return 1
         fi
+    else
+        log_error "Missing state file or jq; cannot persist completion"
+        return 1
     fi
+    return 0
 }
 
 # Launch continue script using systemd-run for reliability
@@ -374,6 +359,14 @@ log "=== ACFS Upgrade Resume Starting ==="
 log "Script: $0"
 log "Current directory: $(pwd)"
 
+# Keep the current installer's target policy here until its full release graph
+# is migrated. An invalid target must never be interpreted as completion.
+if [[ -z "$state_target_version" || -z "$UBUNTU_TARGET_VERSION_NUM" ]]; then
+    cleanup_service
+    update_motd_failure "Invalid upgrade target - review state"
+    exit 1
+fi
+
 # ============================================================
 # CRITICAL SAFETY CHECK #1: Are we already at target version?
 # This prevents reboot loops if the state file is stale/wrong.
@@ -383,6 +376,12 @@ log "Current directory: $(pwd)"
 if [[ -f /etc/os-release ]]; then
     # shellcheck disable=SC1091
     source /etc/os-release
+    if [[ "${ID:-}" != ubuntu ]]; then
+        log_error "Upgrade resume is only supported on Ubuntu"
+        cleanup_service
+        update_motd_failure "Host is not Ubuntu"
+        exit 1
+    fi
     CURRENT_UBUNTU_VERSION="${VERSION_ID:-unknown}"
 else
     log_error "Cannot read /etc/os-release"
@@ -394,6 +393,16 @@ log "Target Ubuntu version: $UBUNTU_TARGET_VERSION"
 
 # If we're already at target, we're DONE - clean up and exit
 if ubuntu_is_at_or_beyond_target_version "$CURRENT_UBUNTU_VERSION"; then
+    # os-release can change before package configuration finishes. Do not
+    # launch the installer on a partially upgraded machine merely because
+    # its release number now matches the target.
+    package_audit=""
+    if ! package_audit=$(dpkg --audit 2>&1) || [[ -n "${package_audit//[[:space:]]/}" ]]; then
+        log_error "Target version reached but dpkg still requires recovery; refusing installer continuation"
+        cleanup_service
+        update_motd_failure "Package recovery required - run dpkg --audit"
+        exit 1
+    fi
     log "SUCCESS: Already at or beyond target version (current: $CURRENT_UBUNTU_VERSION, target: $UBUNTU_TARGET_VERSION)!"
     log "Cleaning up upgrade infrastructure..."
 
@@ -402,16 +411,24 @@ if ubuntu_is_at_or_beyond_target_version "$CURRENT_UBUNTU_VERSION"; then
 
     # Update state to mark as complete (before removing files)
     export ACFS_STATE_FILE="${ACFS_RESUME_DIR}/state.json"
-    mark_state_complete
+    if ! mark_state_complete; then
+        update_motd_failure "Cannot persist completed upgrade state"
+        exit 1
+    fi
 
     # Remove MOTD
     remove_motd
 
     # Launch continue script BEFORE removing files (it may need them)
-    launch_continue_script || log "Note: Manual installation may be needed"
+    if ! launch_continue_script; then
+        update_motd_failure "Installer continuation failed - retry manually"
+        log_error "Keeping resume files for recovery; installer continuation did not launch"
+        exit 1
+    fi
 
-    # Clean up resume files (after launching continue script)
-    cleanup_resume_files || true
+    # The continuation is a detached service and may still source these
+    # libraries. Do not remove its inputs or recovery evidence underneath it.
+    log "Retaining resume files until the installer continuation finishes"
 
     log "=== Upgrade Resume Complete (target reached) ==="
     exit 0
@@ -433,12 +450,20 @@ log "Sourcing libraries from $ACFS_LIB_DIR"
 
 if [[ -f "$ACFS_LIB_DIR/logging.sh" ]]; then
     # shellcheck source=/dev/null
-    source "$ACFS_LIB_DIR/logging.sh"
+    if ! source "$ACFS_LIB_DIR/logging.sh"; then
+        cleanup_service
+        update_motd_failure "Logging library initialization failed"
+        exit 1
+    fi
 fi
 
 if [[ -f "$ACFS_LIB_DIR/state.sh" ]]; then
     # shellcheck source=/dev/null
-    source "$ACFS_LIB_DIR/state.sh"
+    if ! source "$ACFS_LIB_DIR/state.sh"; then
+        cleanup_service
+        update_motd_failure "State library initialization failed"
+        exit 1
+    fi
 else
     log_error "state.sh not found"
     cleanup_service
@@ -448,7 +473,11 @@ fi
 
 if [[ -f "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]]; then
     # shellcheck source=/dev/null
-    source "$ACFS_LIB_DIR/ubuntu_upgrade.sh"
+    if ! source "$ACFS_LIB_DIR/ubuntu_upgrade.sh"; then
+        cleanup_service
+        update_motd_failure "Upgrade library initialization failed"
+        exit 1
+    fi
 else
     log_error "ubuntu_upgrade.sh not found"
     cleanup_service
@@ -475,66 +504,47 @@ if [[ -f "$ACFS_STATE_FILE" ]] && command -v jq &>/dev/null; then
 fi
 log "Current stage from state file: $current_stage"
 
-# Pre-upgrade reboot: system rebooted to apply pending updates before the first do-release-upgrade.
-# At this point, we should disable the resume service and re-run install.sh (continue_install.sh)
-# which will proceed with the Ubuntu upgrade normally.
+# A kernel-only reboot did not finish a release hop. Continue in this service
+# using the live OS. The existing continuation may contain --skip-ubuntu-upgrade
+# from an earlier hop; launching it here would bypass the remaining upgrades.
 if [[ "$current_stage" == "pre_upgrade_reboot" ]]; then
-    log "Detected pre-upgrade reboot marker. Continuing ACFS installer after reboot..."
-    cleanup_service
-    launch_continue_script || log "Note: Manual installation may be needed"
-    log "=== Upgrade Resume Complete (pre-upgrade reboot) ==="
-    exit 0
+    log "Kernel reboot completed; recomputing the pending release hop from the live OS"
 fi
 
-# Ensure non-LTS upgrades are permitted
-ubuntu_enable_normal_releases || true
+# Preserve the existing channel policy; do not continue after a failed change.
+if ! ubuntu_enable_normal_releases; then
+    cleanup_service
+    update_motd_failure "Cannot configure release upgrade channel"
+    exit 1
+fi
 
 # Mark that we've successfully resumed after reboot
 log "Marking upgrade as resumed"
-state_upgrade_resumed
-
-# ============================================================
-# Check if upgrade is complete (using state file)
-# ============================================================
-
-if state_upgrade_is_complete; then
-    log "All upgrades complete per state file!"
-
-    state_upgrade_mark_complete
-    ubuntu_restore_lts_only || true
-    remove_motd
+if ! state_upgrade_resumed; then
     cleanup_service
-
-    # Launch continue script BEFORE cleaning up files (it may need them)
-    launch_continue_script || log "Note: Manual installation may be needed"
-
-    # Clean up resume files (after launching continue script)
-    cleanup_resume_files || true
-
-    log "=== Upgrade Resume Complete ==="
-    exit 0
+    update_motd_failure "Cannot persist resumed upgrade state"
+    exit 1
 fi
 
 # ============================================================
-# More upgrades needed - get next version
+# More upgrades needed - get next version from the LIVE host
 # ============================================================
 
-next_version=$(state_upgrade_get_next_version)
-if [[ -z "$next_version" ]]; then
-    log_error "No next version found but upgrade not marked complete"
-    log "This may indicate a corrupted state file. Current version: $CURRENT_UBUNTU_VERSION"
-
-    # Safety check: if we're at or beyond target, just clean up
-    if ubuntu_is_at_or_beyond_target_version "$CURRENT_UBUNTU_VERSION"; then
-        log "Actually at or beyond target version - cleaning up anyway"
-        cleanup_service
-        remove_motd
-        launch_continue_script || true
-        exit 0
-    fi
-
+# Completion was checked against os-release above. The persisted path and
+# completed-hop count are progress metadata, not authority to skip a release.
+if ! remaining_path=$(ubuntu_calculate_upgrade_path "$UBUNTU_TARGET_VERSION_NUM") || [[ -z "$remaining_path" ]]; then
+    log_error "No reviewed remaining upgrade path from $CURRENT_UBUNTU_VERSION to $UBUNTU_TARGET_VERSION"
+    state_upgrade_set_error "No reviewed live-host upgrade path" || true
     cleanup_service
-    update_motd_failure "State file corrupted - rerun installer"
+    update_motd_failure "No supported path - review recovery"
+    exit 1
+fi
+next_version="${remaining_path%%$'\n'*}"
+if ! next_version_num=$(compute_version_num "$next_version") \
+    || ! current_version_num=$(compute_version_num "$CURRENT_UBUNTU_VERSION") \
+    || [[ "$next_version_num" -le "$current_version_num" || "$next_version_num" -gt "$UBUNTU_TARGET_VERSION_NUM" ]]; then
+    cleanup_service
+    update_motd_failure "Non-advancing upgrade path - review state"
     exit 1
 fi
 
@@ -546,9 +556,10 @@ upgrade_update_motd "Upgrading: $CURRENT_UBUNTU_VERSION → $next_version"
 
 # Run preflight checks before continuing
 log "Running preflight checks..."
-if ! ubuntu_preflight_checks; then
+package_audit=""
+if ! package_audit=$(dpkg --audit 2>&1) || [[ -n "${package_audit//[[:space:]]/}" ]] || ! ubuntu_preflight_checks; then
     log_error "Preflight checks failed - cannot continue upgrade"
-    state_upgrade_set_error "Preflight checks failed after reboot"
+    state_upgrade_set_error "Preflight checks failed after reboot" || true
     cleanup_service
     update_motd_failure "Preflight checks failed"
     exit 1
@@ -559,11 +570,15 @@ fi
 # ============================================================
 
 log "Starting upgrade from $CURRENT_UBUNTU_VERSION to $next_version"
-state_upgrade_start "$CURRENT_UBUNTU_VERSION" "$next_version"
+if ! state_upgrade_start "$CURRENT_UBUNTU_VERSION" "$next_version"; then
+    cleanup_service
+    update_motd_failure "Cannot persist the next upgrade hop"
+    exit 1
+fi
 
 if ! ubuntu_do_upgrade "$next_version"; then
     log_error "do-release-upgrade failed"
-    state_upgrade_set_error "do-release-upgrade failed for $CURRENT_UBUNTU_VERSION → $next_version"
+    state_upgrade_set_error "do-release-upgrade failed for $CURRENT_UBUNTU_VERSION → $next_version" || true
 
     # CRITICAL: Disable service to prevent reboot loop on failure
     cleanup_service
@@ -578,10 +593,30 @@ fi
 # Upgrade succeeded - prepare for reboot
 # ============================================================
 
-state_upgrade_complete "$next_version"
+# A successful command exit is not proof that the requested release was
+# installed. Never write a completed-hop checkpoint for a no-op or wrong hop.
+installed_version="$(ubuntu_get_version_string)" || installed_version=""
+package_audit=""
+if [[ "$installed_version" != "$next_version" ]] \
+    || ! package_audit=$(dpkg --audit 2>&1) || [[ -n "${package_audit//[[:space:]]/}" ]]; then
+    state_upgrade_set_error "Release upgrade did not finish the requested hop cleanly" || true
+    cleanup_service
+    update_motd_failure "Upgrade incomplete - inspect OS and dpkg"
+    exit 1
+fi
+
+if ! state_upgrade_complete "$next_version"; then
+    cleanup_service
+    update_motd_failure "Cannot persist completed release hop"
+    exit 1
+fi
 log "Upgrade to $next_version completed successfully"
 
-state_upgrade_needs_reboot
+if ! state_upgrade_needs_reboot; then
+    cleanup_service
+    update_motd_failure "Cannot persist reboot state"
+    exit 1
+fi
 log "System needs reboot to complete upgrade"
 
 # Update MOTD before reboot
@@ -589,7 +624,14 @@ upgrade_update_motd "Rebooting to complete upgrade to $next_version..."
 
 # Trigger reboot (1 minute delay for user to read messages)
 log "Triggering reboot in 1 minute..."
-ubuntu_trigger_reboot 1
+# Schedule synchronously: the legacy helper backgrounds shutdown and hides
+# errors, which can strand a host with a checkpoint claiming a reboot is due.
+if ! shutdown -r +1 "ACFS: Ubuntu upgrade requires reboot"; then
+    state_upgrade_set_error "reboot_scheduling_failed" || true
+    cleanup_service
+    update_motd_failure "Reboot scheduling failed - review logs"
+    exit 1
+fi
 
 log "=== Upgrade Resume Script Exiting (reboot pending) ==="
 exit 0
