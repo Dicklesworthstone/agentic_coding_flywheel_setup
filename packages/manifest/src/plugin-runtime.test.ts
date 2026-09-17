@@ -97,6 +97,13 @@ test('exit zero cannot claim success without the declared executable', integrati
   assert.equal(state.status, 'failed'); assert.equal(state.actions['plugin.example.tool0'].exitCode, 1);
 });
 
+test('executes reviewed sh entrypoints with positional arguments', integration, async () => {
+  const item = fixture([installer(0, 'test "$1" = "literal value"')]);
+  item.input.modules[0]!.verified_installer!.runner = 'sh';
+  item.input.modules[0]!.verified_installer!.args = ['literal value'];
+  assert.equal((await executePluginInstallPlan(buildPluginInstallPlan(item.input), item)).status, 'complete');
+});
+
 test('missing binary invalidates a successful checkpoint and triggers repair', integration, async () => {
   const item = fixture([installer(0)]);
   await executePluginInstallPlan(item.plan, item);

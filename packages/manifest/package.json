@@ -30,7 +30,8 @@
     "drift:contract": "bun run src/drift-contract.ts",
     "stack:provenance": "bun run src/stack-provenance-report.ts",
     "agent:readiness": "bun run src/agent-readiness-audit.ts",
-    "plugin:verify": "bun run src/plugin-verify.ts"
+    "plugin:verify": "bun run src/plugin-verify.ts",
+    "plugin:install": "bun run src/plugin-install.ts"
   },
   "dependencies": {
     "yaml": "^2.8.2",

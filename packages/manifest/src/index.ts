@@ -107,3 +107,9 @@ export type { VerifiedPluginArchive, PluginArchiveErrorCode } from './plugin-arc
 export { readReviewedPluginArchive, readPluginReviewRecord, parsePluginTarget, PluginReviewError } from './plugin-review.js';
 export type { ReviewedPluginArchive, PluginArchiveTarget, PluginReviewRecord } from './plugin-review.js';
 export { loadReviewedPluginPackage } from './plugin-verify.js';
+
+export { buildPluginInstallPlan, PluginPlanError } from './plugin-plan.js';
+export type { PluginInstallPlan, PluginInstallAction, PluginPlanInput, PluginPlanTarget } from './plugin-plan.js';
+export { loadPluginInstallPlan } from './plugin-install.js';
+export type { PluginInstallArguments } from './plugin-install.js';
+export type { PluginInstallReceipt } from './plugin-runtime.js';
