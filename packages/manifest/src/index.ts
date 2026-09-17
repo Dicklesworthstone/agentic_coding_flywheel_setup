@@ -101,3 +101,9 @@ export type {
   PluginValidationResult,
   PluginValidationTarget,
 } from './plugin.js';
+
+export { readVerifiedPluginArchive, PluginArchiveError, PLUGIN_ARCHIVE_LIMITS } from './plugin-archive.js';
+export type { VerifiedPluginArchive, PluginArchiveErrorCode } from './plugin-archive.js';
+export { readReviewedPluginArchive, readPluginReviewRecord, parsePluginTarget, PluginReviewError } from './plugin-review.js';
+export type { ReviewedPluginArchive, PluginArchiveTarget, PluginReviewRecord } from './plugin-review.js';
+export { loadReviewedPluginPackage } from './plugin-verify.js';

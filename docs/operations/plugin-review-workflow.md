@@ -1,242 +1,172 @@
-# ACFS Plugin Validator Review Guide
+# ACFS Plugin Archive Verification and Review
 
-> **Implementation status:** ACFS has a schema validator and pure generation
-> seams for plugin-shaped fixtures. It does not yet have the archive loader,
-> independent review-record lookup, target binding, profile integration, or
-> activation planner required to trust a real package. This guide does not
-> activate or install plugins.
+ACFS can now read a real, digest-pinned plugin `tar.gz`, bind it to an external
+review and an explicit target, and validate its manifest against the canonical
+schema, dependency graph, capability policy, and `checksums.yaml`.
 
-This guide records the design-stage review contract and the checks exercised by
-the validator tests. The generator deliberately refuses `--plugin`,
-`--plugins-dir`, `ACFS_PLUGIN_PATHS`, and `ACFS_PLUGINS_DIR` inputs until the
-missing trust bindings are implemented.
+**Verification is read-only, not activation.** It never extracts archive members,
+runs an installer, modifies profiles, or writes generated output. The generator
+continues to refuse `--plugin`, `--plugins-dir`, `ACFS_PLUGIN_PATHS`, and
+`ACFS_PLUGINS_DIR`. Profile integration, activation planning, elevated-capability
+approval, and true offline execution remain separate work. The broader design
+contract is in [plugin-manifest-contract.md](plugin-manifest-contract.md).
 
----
+## Verify a package
 
-## 1. Overview & Trust Architecture
-
-The future plugin loader must extend the declarative manifest without weakening
-the first-party trust guarantees:
-
-- **Fail-Closed by Default**: Untrusted or malformed plugin files are rejected before merge.
-- **External Package Digest**: The compressed package digest (`expectedPackageSha256`) is independently trusted from a review record or pinned digest—never self-attested by the package itself.
-- **Checksum Discipline**: Any `verified_installer` must match a canonical HTTPS URL and SHA-256 digest recorded in `checksums.yaml`.
-- **Distinct Provenance Labeling**: Pure generator functions can tag validated
-  fixtures in installer, manifest-index, doctor, and web output. Canonical ACFS
-  artifacts do not currently contain activated plugin modules.
-
----
-
-## 2. Maintainer Inspection Commands
-
-There is no supported plugin activation command yet. The following commands
-exercise the validator implementation and its static type boundary; they do not
-establish package trust or write plugin-derived generated artifacts:
+Run from a trusted checkout with the manifest package's Bun dependencies installed:
 
 ```bash
 cd packages/manifest
-bun test src/plugin.test.ts
-bun run type-check
+bun run plugin:verify \
+  --archive /path/to/example-tools.tar.gz \
+  --review /trusted/reviews/example-tools.json \
+  --target ubuntu/26.04/x86_64/glibc \
+  --json
 ```
 
-The generator's normal first-party validation remains available:
+The target is always explicit and is never inferred from the developer's laptop
+or copied from the package. OS, version, architecture, and libc must all match
+both the external review and one complete `targets[]` entry in the package.
+This example target does not change the installer defaults or certify Ubuntu
+26.04 support for the rest of ACFS.
 
-```bash
-cd packages/manifest
-bun run generate --validate
-```
+Exit status is `0` for successful verification, `1` for refused package/review
+validation, and `2` for invalid command arguments or unavailable canonical
+inputs. JSON output always states `"activation":"disabled"`. Successful output
+includes the validated module count, not installer commands or untrusted archive
+contents. Errors do not echo archive paths, review identities, or parser input.
+There is no fallback to an unverified package when any check fails.
 
-For research on a proposed verified-installer URL, maintainers may calculate a
-remote digest and inspect the canonical checksum candidate. This is evidence
-for a future review record, not plugin approval by itself:
+## External review record
 
-```bash
-# Calculate remote installer SHA-256
-./scripts/lib/security.sh --checksum "https://example.com/install.sh"
-
-# Review candidate checksums diff
-./scripts/lib/security.sh --update-checksums > /tmp/acfs-checksums.candidate.yaml
-diff -u checksums.yaml /tmp/acfs-checksums.candidate.yaml
-```
-
-An invocation such as `bun run generate --plugin ./plugin.json` must fail with
-the explicit activation-unavailable diagnostic. A bare path cannot provide an
-independently trusted archive digest, review decision, and target tuple.
-
----
-
-## 3. Future Activation Review Checklist
-
-These are acceptance criteria for the future archive/review loader. Completing
-the manual checks today does not activate a package.
-
-| Check | Requirement | Verification Command / Method |
-|---|---|---|
-| **1. Provenance** | `provenance.sourceCommit` and `sourceRef` correspond to an auditable Git commit in an authentic repository. | `git clone` or inspect commit log on remote repository. |
-| **2. Trusted Hash** | Calculate the SHA-256 of the exact compressed package bytes and record it outside the package. | `sha256sum acfs-plugin-package.tar.gz` plus an external review record. |
-| **3. Checksums Entry** | Every `verified_installer` tool matches an exact entry in `checksums.yaml`. | `grep -A 3 "^  <tool>:" checksums.yaml` |
-| **4. Capabilities** | Declared `capabilities.allowed` match only the used capabilities (`verified_installer`, `doctor_check`, `web_metadata`). | Review `capabilities` block in `plugin.json`. |
-| **5. No Review-Required** | No `root_run_as`, `systemd_user_service`, or cross-plugin dependency proceeds without an explicit, unexpired review record. | Inspect the proposed record; the activation command is not implemented. |
-| **6. No Disallowed Logic** | No arbitrary shell strings, eval, `curl \| bash`, or network code execution outside `verified_installer`. | Inspect `install` and `verify` fields. |
-| **7. No Secret Leakage** | No API keys, passwords, tokens, private keys, or host-specific IPs are present in metadata or docs. | Exercise `validatePluginPackage` with independently supplied validation options. |
-| **8. Web & Status Surfaces** | Tool metadata includes clear descriptions and distinct plugin provenance. | Inspect pure generator output in `src/plugin.test.ts`; there is no activated production package. |
-
----
-
-## 4. Status Surfaces & Distinct Labeling
-
-The pure generator seams produce the following provenance surfaces from an
-already validated fixture. These examples are unit-level design evidence, not
-proof that the absent package loader established trust.
-
-### Installer Category Libraries (`scripts/generated/install_<category>.sh`)
-A fixture-derived install function includes the plugin package name and version in its header comment:
-```bash
-# Example command-line tool. [plugin: example.tools@1.2.3]
-acfs_generated_install_plugin_example_tools_cli() {
-    local module_id="plugin.example_tools.cli"
-    acfs_require_contract "module:${module_id}" || return 1
-    ...
-}
-```
-
-### Manifest Index (`scripts/generated/manifest_index.sh`)
-Fixture-derived Bash associative arrays carry provenance records:
-```bash
-declare -gA ACFS_MODULE_PLUGIN_PACKAGE=(
-  ['plugin.example_tools.cli']="example.tools"
-)
-
-declare -gA ACFS_MODULE_PLUGIN_VERSION=(
-  ['plugin.example_tools.cli']="1.2.3"
-)
-
-declare -gA ACFS_MODULE_PLUGIN_SHA256=(
-  ['plugin.example_tools.cli']="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-)
-```
-
-### Web Tool Cards (`apps/web/app/tools/page.tsx`)
-The tool-card component is prepared to display a badge when trusted plugin data
-eventually reaches the canonical generated manifest:
-```tsx
-{tool.plugin && (
-  <span
-    className="inline-flex items-center gap-1 rounded-full bg-purple-500/20 px-2 py-0.5 text-xs font-medium text-purple-300 border border-purple-500/30"
-    title={`Plugin package: ${tool.plugin.packageId} (v${tool.plugin.version})`}
-  >
-    Plugin: {tool.plugin.packageId}
-  </span>
-)}
-```
-
----
-
-## 5. Examples
-
-### Safe Plugin Schema Fixture
-
-This JSON exercises the schema validator when the test supplies a synthetic
-target, actual digest, independently expected digest, first-party manifest, and
-installer checksum map. It is not a standalone trusted package or a file that
-the generator can activate.
+The operator must select a review from a separately trusted source. A review is
+not a signature, and anyone can write a JSON file: accepting a package author's
+self-issued review does not establish independent trust. Never generate the
+review automatically from an untrusted package during verification.
 
 ```json
 {
-  "schema": "acfs.plugin-package.v1",
-  "schemaVersion": 1,
+  "schema": "acfs.plugin-review.v1",
   "packageId": "example.tools",
-  "displayName": "Example Tools",
   "version": "1.2.3",
-  "description": "Installable ACFS modules for Example Tools.",
-  "publisher": {
-    "name": "Example Maintainers",
-    "contactUrl": "https://example.com/security",
-    "sourceUrl": "https://github.com/example/acfs-plugin-example"
+  "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
+  "packageSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "reviewer": "maintainer-identity",
+  "reviewedAt": "2026-09-17T00:00:00Z",
+  "expiresAt": "2026-10-17T00:00:00Z",
+  "target": {
+    "os": "ubuntu",
+    "version": "26.04",
+    "arch": "x86_64",
+    "libc": "glibc"
   },
-  "license": "Apache-2.0",
-  "docsUrl": "https://example.com/acfs-plugin-example",
-  "provenance": {
-    "generatedAt": "2026-05-08T00:00:00Z",
-    "sourceRef": "main",
-    "sourceCommit": "0123456789abcdef0123456789abcdef01234567",
-    "acfsManifestVersion": 1
-  },
-  "targets": [
-    {
-      "os": "ubuntu",
-      "versions": ["25.10"],
-      "arch": ["x86_64"],
-      "libc": ["glibc"]
-    }
-  ],
-  "capabilities": {
-    "allowed": ["verified_installer", "doctor_check", "web_metadata"],
-    "reviewRequired": ["root_run_as", "cross_plugin_dependency", "default_enabled_module"],
-    "disallowed": ["arbitrary_shell", "secret_values"]
-  },
-  "modules": [
-    {
-      "id": "plugin.example_tools.cli",
-      "description": "Example command-line tool.",
-      "category": "tools",
-      "phase": 6,
-      "run_as": "target_user",
-      "optional": false,
-      "enabled_by_default": false,
-      "dependencies": ["lang.bun"],
-      "install": {
-        "kind": "verified_installer",
-        "tool": "example_tools",
-        "url": "https://example.com/install.sh",
-        "runner": "bash",
-        "args": [],
-        "env": []
-      },
-      "verify": [{ "kind": "command_exists", "command": "example" }],
-      "docs_url": "https://example.com/acfs-plugin-example/cli",
-      "web": {
-        "display_name": "Example CLI",
-        "short_name": "Example",
-        "tagline": "A high-performance example CLI tool",
-        "visible": true,
-        "cli_name": "example"
-      }
-    }
-  ],
-  "offline": {
-    "bundlingPolicy": "metadata_only",
-    "liveAuthRequired": false,
-    "providerInteractionRequired": false
-  },
-  "extensions": {}
+  "approvedCapabilities": ["verified_installer", "doctor_check", "web_metadata"]
 }
 ```
 
----
+The digest above is an illustration, not an approval. A maintainer must record
+the SHA-256 of the **exact compressed package bytes** after reviewing the
+package, source revision, installer entry, and declared capabilities. The loader
+checks the digest before decompression and parses the same in-memory byte
+snapshot; a loose `plugin.json` cannot substitute for the archive.
 
-### Rejected Plugin Examples & Diagnostic Codes
+All review fields are required and unknown fields are rejected. UTC timestamps
+must be canonical. Future-dated, expired, reversed, malformed, duplicate-key,
+symlinked, hardlinked, or oversized review records are refused. Expiration is
+exclusive: a review stops being valid at its `expiresAt` timestamp.
 
-#### 1. Package Hash Mismatch (`plugin_package_hash_mismatch`)
-When the computed package archive SHA-256 differs from the trusted digest in the review record:
+Only `verified_installer`, `doctor_check`, and `web_metadata` can currently be
+approved. A review cannot unlock root/current-user execution, default-enabled
+plugin modules, cross-plugin dependencies, arbitrary shell, services, or the
+reserved `release_artifact`, `copy_asset`, and `manual_step` executors. The
+canonical validator retains all of those refusals.
+
+## Archive contract
+
+Packages have exactly one namespace, with these three required regular files:
+
 ```text
-[plugin_package_hash_mismatch] <package>: Plugin package SHA-256 is missing, malformed, or does not match the independently trusted digest
+acfs-plugin-package/
+  plugin.json
+  README.md
+  LICENSE
 ```
 
-#### 2. Undeclared Capability (`plugin_capability_undeclared` / `plugin_review_required`)
-When a plugin uses `run_as: "root"` or `modules[0].web` without declaring it in `capabilities`:
-```text
-[plugin_capability_undeclared] modules[0].web: Module uses capability "web_metadata" which is not declared in capabilities.allowed
+Create a portable archive with a normal directory argument, not an absolute path:
+
+```bash
+tar --format=ustar -czf example-tools.tar.gz acfs-plugin-package
+sha256sum example-tools.tar.gz
 ```
 
-#### 3. Unverified Installer Checksum (`plugin_verified_installer_checksum_required`)
-When a plugin requests a `verified_installer` whose URL or tool name is not in `checksums.yaml`:
-```text
-[plugin_verified_installer_checksum_required] modules[0].install: verified_installer tool "untrusted_tool" has no matching entry in checksums.yaml
+Plain GNU tar and POSIX ustar headers are accepted. PAX/long-name extensions,
+sparse files, symlinks, hardlinks, devices, FIFOs, setuid/setgid/sticky bits,
+absolute paths, dot-segment traversal, duplicate names, conflicting file and
+directory paths, malformed headers, nonzero padding, truncated members, and
+payload after the archive terminator are refused. Paths use portable ASCII
+segments starting with a letter, digit, or underscore and containing only
+letters, digits, underscores, dots, and hyphens.
+
+`plugin.json`, `README.md`, and `LICENSE` are implicitly declared. Every extra
+regular file must be under `assets/`, `docs/`, or `provenance/` and explicitly
+listed with its own SHA-256 in `plugin.json`:
+
+```json
+{
+  "extensions": {
+    "archiveFiles": [
+      {
+        "path": "docs/guide.md",
+        "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ]
+  }
+}
 ```
 
-#### 4. Secret Material Refusal (`plugin_secret_material_refused`)
-When a descriptor or documentation field contains API keys or tokens:
-```text
-[plugin_secret_material_refused] description: Value matches forbidden secret pattern (sk-ant-...)
+Each declaration has exactly `path` and `sha256`. Missing, duplicated,
+undeclared, or content-mismatched files are refused. This is an integrity check,
+not an asset executor or a claim that arbitrary binary contents have been
+semantically reviewed. Static-file contents are not printed or installed.
+
+Limits are 16 MiB compressed, 64 MiB expanded, 1 MiB for `plugin.json`, 8 MiB per
+other member, 1,024 archive entries, and 64 KiB for the external review. JSON also
+has depth and node limits, must be UTF-8, and cannot contain duplicate decoded
+object keys, a byte-order mark, or non-finite numeric values. Archive files and
+review records must be nonempty, single-link regular files.
+
+## Canonical trust checks and API
+
+`loadReviewedPluginPackage(archivePath, reviewPath, options)` requires an explicit
+`options.target` and a trusted first-party manifest/checksum map. It supplies the
+computed compressed digest and the independent review digest to the existing
+plugin validator, then rechecks the merged schema, dependency graph, phases,
+and installer checksums. It returns no modules on failure. It never changes the
+first-party manifest.
+
+The lower-level `readVerifiedPluginArchive` and `readReviewedPluginArchive`
+functions establish byte/review bindings only. Their `manifest` remains
+`unknown`; callers must not treat it as installable without canonical semantic
+validation. Public types and loaders are exported from `@acfs/manifest`.
+
+`verified_installer` still requires an exact tool/HTTPS-URL/SHA-256 entry in
+`checksums.yaml`; a package or review cannot supply a replacement checksum map.
+New canonical installer checksums must continue to be produced through
+`./scripts/lib/security.sh --update-checksums`, not handwritten into the database.
+
+## Tests
+
+```bash
+cd packages/manifest
+bun test src/plugin-archive.test.ts src/plugin-review.test.ts src/plugin-verify.test.ts
+bun test src/plugin.test.ts
+bun run type-check
+bun run generate --validate
 ```
+
+The archive/review tests exercise actual filesystem reads, gzip, and system tar,
+including malicious archives and expiration boundaries. The command tests cover
+argument handling and redacted JSON output; canonical integration tests cover
+normalized provenance, installer-checksum refusal, privilege/default-selection
+refusal, dependency cycles, and unsafe verification commands. Running the full
+Bun/canonical suite remains required before enabling any future activation path.
