@@ -1,6 +1,6 @@
 /** Linux target-user execution of an already reviewed, freshly rebuilt plan. */
 import { createHash, randomUUID } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { constants, closeSync, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdirSync,
   openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { get } from 'node:https';
@@ -31,6 +31,8 @@ export interface PluginInstallReceipt {
   status: 'pending' | 'running' | 'complete' | 'failed';
   updatedAt: string;
   actions: Record<string, ActionState>;
+  /** Only this protocol can prove live orphan installers still exclude a retry. */
+  executionProtocol?: 'inherited-lock-v1';
 }
 
 /** Parse OS-owned release metadata as data, never as shell code. */
@@ -152,32 +154,44 @@ function readReceipt(directory: string, plan: PluginInstallPlan): PluginInstallR
   return data;
 }
 
-/** Kernel lock is owned by a pipe-fed helper; parent death closes stdin and releases it. */
-async function acquireLock(directory: string, env: NodeJS.ProcessEnv): Promise<{ release: () => Promise<void>; signal: AbortSignal }> {
+interface ExecutionLease {
+  fd: number;
+  assertHeld: () => void;
+  release: () => void;
+}
+
+/**
+ * flock locks the shared open-file description, not a pathname or helper PID.
+ * Keep our descriptor open and pass it to ALL execution children. Never unlock
+ * explicitly: surviving descendants must exclude new work after parent death.
+ */
+function acquireLock(directory: string, env: NodeJS.ProcessEnv): ExecutionLease {
   const path = join(directory, 'install.lock');
-  const fd = safeFile(path, constants.O_RDWR | constants.O_CREAT); closeSync(fd);
-  const controller = new AbortController();
-  return new Promise((accept, reject) => {
-    let acquired = false;
-    let releasing = false;
-    const child = spawn('/usr/bin/flock', ['--exclusive', '--nonblock', '--conflict-exit-code', '73', '--no-fork', path,
-      '/bin/bash', '-p', '-c', 'printf "ACFS_LOCKED\\n"; exec /usr/bin/cat >/dev/null'],
-    { env, stdio: ['pipe', 'pipe', 'ignore'] });
-    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new PluginInstallError('plugin_lock_failed', 'Could not acquire the plugin install lock')); }, 5000);
-    const closed = new Promise<void>((done) => child.once('close', () => done()));
-    child.once('error', () => { clearTimeout(timer); reject(new PluginInstallError('plugin_lock_failed', 'Plugin locking requires system flock and Bash')); });
-    child.once('close', (code) => {
-      clearTimeout(timer);
-      if (!acquired) reject(new PluginInstallError(code === 73 ? 'plugin_install_busy' : 'plugin_lock_failed', 'Another install owns the lock, or locking failed'));
-      else if (!releasing) controller.abort();
-    });
-    child.stdout.once('data', (chunk: Buffer) => {
-      if (chunk.toString() !== 'ACFS_LOCKED\n') { child.kill('SIGTERM'); return; }
-      acquired = true; clearTimeout(timer);
-      accept({ signal: controller.signal, release: async () => { releasing = true; child.stdin.end(); await closed; } });
-    });
-    child.stdin.on('error', () => controller.abort());
-  });
+  const fd = safeFile(path, constants.O_RDWR | constants.O_CREAT);
+  let released = false;
+  const release = (): void => { if (!released) { released = true; closeSync(fd); } };
+  const assertHeld = (): void => {
+    if (released) refuse('plugin_lock_failed', 'Plugin execution lease is closed');
+    assertDirectory(dirname(directory), false);
+    assertDirectory(directory, true);
+    const opened = fstatSync(fd);
+    const current = lstatSync(path);
+    if (!current.isFile() || current.isSymbolicLink() || current.dev !== opened.dev
+        || current.ino !== opened.ino || current.nlink !== 1 || current.uid !== process.getuid!()
+        || (current.mode & 0o077) !== 0) {
+      refuse('plugin_lock_failed', 'Plugin execution lock changed; existing receipts were preserved');
+    }
+  };
+  try {
+    const result = spawnSync('/usr/bin/flock', ['--exclusive', '--nonblock', '--conflict-exit-code', '73', '3'],
+      { env, stdio: ['ignore', 'ignore', 'ignore', fd], timeout: 5000 });
+    if (result.error || result.status !== 0) {
+      refuse(result.status === 73 ? 'plugin_install_busy' : 'plugin_lock_failed',
+        'Another install owns the lock, or system locking is unavailable');
+    }
+    assertHeld();
+    return { fd, assertHeld, release };
+  } catch (error) { release(); throw error; }
 }
 
 /** Strict TLS, bounded redirects, a total deadline, and bounded response bytes. */
@@ -230,28 +244,55 @@ export async function downloadPluginInstaller(action: PluginInstallAction, signa
 
 /** Execute script bytes over stdin so another installer cannot swap a staged path. */
 async function command(executable: string, args: string[], home: string, seconds: number,
-  signal: AbortSignal, input?: Buffer): Promise<number> {
+  signal: AbortSignal, lease: ExecutionLease, input?: Buffer): Promise<number> {
   signal.throwIfAborted();
+  lease.assertHeld();
   return new Promise((accept, reject) => {
     // no-new-privs prevents setuid/file-capability elevation through execve.
+    // A new session bounds group cleanup to this command, never the caller.
     const child = spawn('/usr/bin/timeout', ['--signal=TERM', '--kill-after=2s', `${seconds}s`,
       '/usr/bin/setpriv', '--no-new-privs', executable, ...args],
-    { cwd: home, env: environment(home), stdio: ['pipe', 'ignore', 'ignore'] });
-    const cancel = (): void => { child.kill('SIGTERM'); };
+    { cwd: home, env: environment(home), detached: true, stdio: ['pipe', 'ignore', 'ignore', lease.fd] });
+    const groupSignal = (value: NodeJS.Signals | 0): boolean => {
+      if (!child.pid) return false;
+      try { process.kill(-child.pid, value); return true; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+        throw new PluginInstallError('plugin_cleanup_failed', 'Could not stop the installer process group');
+      }
+    };
+    let escalation: ReturnType<typeof setTimeout> | undefined;
+    const cancel = (): void => {
+      try { groupSignal('SIGTERM'); }
+      catch (error) { reject(error); }
+      escalation ??= setTimeout(() => {
+        try { groupSignal('SIGKILL'); } catch (error) { reject(error); }
+      }, 2000);
+    };
     signal.addEventListener('abort', cancel, { once: true });
     if (signal.aborted) cancel();
     child.once('error', () => reject(new PluginInstallError('plugin_execution_failed', 'Required system execution tools are unavailable')));
-    child.once('close', (code) => {
+    child.once('close', async (code) => {
       signal.removeEventListener('abort', cancel);
-      accept(signal.aborted ? 130 : code ?? 1);
+      if (escalation) clearTimeout(escalation);
+      try {
+        const lingering = groupSignal(0);
+        if (lingering) {
+          groupSignal('SIGTERM');
+          await new Promise<void>((done) => setTimeout(done, 2000));
+          groupSignal('SIGKILL');
+        }
+        // An entrypoint that abandons children is not a successful installer.
+        accept(signal.aborted ? 130 : code === 0 && lingering ? 125 : code ?? 1);
+      } catch (error) { reject(error); }
     });
-    child.stdin.on('error', () => { /* Early exit may close stdin; exit status is authoritative. */ });
-    child.stdin.end(input);
+    child.stdin!.on('error', () => { /* Early exit may close stdin; exit status is authoritative. */ });
+    child.stdin!.end(input);
   });
 }
-async function verify(action: PluginInstallAction, home: string, signal: AbortSignal): Promise<boolean> {
+async function verify(action: PluginInstallAction, home: string, signal: AbortSignal, lease: ExecutionLease): Promise<boolean> {
   for (const executable of action.verify) {
-    if (await command('/bin/bash', ['-p', '-c', 'command -v -- "$1" >/dev/null 2>&1', 'acfs-plugin-check', executable], home, 15, signal) !== 0) return false;
+    if (await command('/bin/bash', ['-p', '-c', 'command -v -- "$1" >/dev/null 2>&1', 'acfs-plugin-check', executable], home, 15, signal, lease) !== 0) return false;
   }
   return true;
 }
@@ -268,21 +309,21 @@ export async function executePluginInstallPlan(plan: PluginInstallPlan, options:
   const home = options.home ?? userInfo().homedir;
   const directory = stateDirectory(home);
   const lock = await acquireLock(directory, environment(home));
-  const signal = options.signal ? AbortSignal.any([lock.signal, options.signal]) : lock.signal;
+  const signal = options.signal ?? new AbortController().signal;
   try {
     const state = readReceipt(directory, plan);
-    const save = (): void => { signal.throwIfAborted(); writeReceipt(directory, state); };
+    const save = (): void => { signal.throwIfAborted(); lock.assertHeld(); writeReceipt(directory, state); };
     signal.throwIfAborted();
     for (const prerequisite of plan.prerequisites) {
       for (const check of prerequisite.verify) {
-        if (await command('/bin/bash', ['-p', '-c', check], home, 30, signal) !== 0) {
+        if (await command('/bin/bash', ['-p', '-c', check], home, 30, signal, lock) !== 0) {
           refuse('plugin_prerequisite_missing', `First-party prerequisite failed verification: ${prerequisite.id}`);
         }
       }
     }
     const pending: PluginInstallAction[] = [];
     for (const action of plan.actions) {
-      if (state.actions[action.id]!.status !== 'complete' || !await verify(action, home, signal)) {
+      if (state.actions[action.id]!.status !== 'complete' || !await verify(action, home, signal, lock)) {
         state.actions[action.id] = { status: 'pending', exitCode: null }; pending.push(action);
       }
     }
@@ -298,21 +339,22 @@ export async function executePluginInstallPlan(plan: PluginInstallPlan, options:
       scripts.set(action.id, Buffer.from(bytes));
     }
     // No installer runs until all pending entrypoint bytes have been verified.
+    state.executionProtocol = 'inherited-lock-v1';
     state.status = 'running'; save();
     for (const action of pending) {
       state.actions[action.id] = { status: 'running', exitCode: null }; save();
       const code = await command(action.installer.runner === 'bash' ? '/bin/bash' : '/bin/sh',
-        ['-p', '-s', '--', ...action.installer.args], home, seconds, signal, scripts.get(action.id));
+        ['-p', '-s', '--', ...action.installer.args], home, seconds, signal, lock, scripts.get(action.id));
       scripts.delete(action.id);
-      const passed = code === 0 && !signal.aborted && await verify(action, home, signal);
+      const passed = code === 0 && !signal.aborted && await verify(action, home, signal, lock);
       state.actions[action.id] = { status: passed ? 'complete' : 'failed', exitCode: passed ? 0 : code || 1 };
       if (!passed) state.status = 'failed';
       // A lost lock must never let a stale writer alter another owner's receipt.
-      if (!lock.signal.aborted) writeReceipt(directory, state);
+      lock.assertHeld(); writeReceipt(directory, state);
       if (!passed) refuse('plugin_install_failed', `Plugin installer or verification failed: ${action.id}`);
     }
     for (const action of plan.actions) {
-      if (!await verify(action, home, signal)) {
+      if (!await verify(action, home, signal, lock)) {
         state.actions[action.id] = { status: 'failed', exitCode: 1 }; state.status = 'failed'; save();
         refuse('plugin_verification_failed', `Final plugin verification failed: ${action.id}`);
       }
