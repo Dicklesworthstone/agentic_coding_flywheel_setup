@@ -83,7 +83,9 @@ export interface VPSProvider {
 export type WorkloadId = "light" | "standard" | "heavy";
 export type PlanStatus = "pass" | "warn" | "fail";
 
-export const VPS_UBUNTU_IMAGE_OPTIONS = ["25.10", "24.04", "22.04", "20.04"] as const;
+/** Fresh-image recommendation, not a promise that a provider stocks the image. */
+export const ACFS_RECOMMENDED_UBUNTU = "26.04";
+export const VPS_UBUNTU_IMAGE_OPTIONS = [ACFS_RECOMMENDED_UBUNTU, "24.04", "22.04"] as const;
 
 /**
  * Minimum RAM the ACFS guide recommends for a multi-agent host. Plans below
@@ -241,10 +243,10 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       },
     ],
     readiness: {
-      recommendedUbuntu: "25.10",
-      preferredUbuntuVersions: ["25.10", "24.04"],
+      recommendedUbuntu: ACFS_RECOMMENDED_UBUNTU,
+      preferredUbuntuVersions: [ACFS_RECOMMENDED_UBUNTU],
       minimumUbuntu: "22.04",
-      cautionBelowUbuntu: "24.04",
+      cautionBelowUbuntu: ACFS_RECOMMENDED_UBUNTU,
     },
     isTopPick: true,
     note:
@@ -314,10 +316,10 @@ export const VPS_PROVIDERS: VPSProvider[] = [
       },
     ],
     readiness: {
-      recommendedUbuntu: "25.10",
-      preferredUbuntuVersions: ["25.10", "24.04"],
+      recommendedUbuntu: ACFS_RECOMMENDED_UBUNTU,
+      preferredUbuntuVersions: [ACFS_RECOMMENDED_UBUNTU],
       minimumUbuntu: "22.04",
-      cautionBelowUbuntu: "24.04",
+      cautionBelowUbuntu: ACFS_RECOMMENDED_UBUNTU,
     },
     note:
       "OVH's VPS range now tops out at VPS-4 (24 GB), below the 48 GB ACFS target. Choose OVH only for a small swarm; pick Contabo for 48-64 GB.",
@@ -349,20 +351,49 @@ function normalizeText(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function parseUbuntuVersion(value: string): [number, number] | null {
-  const match = value.match(/(\d{2})\.(\d{2})/);
+function parseUbuntuVersion(value: string): string | null {
+  // Accept provider labels and point releases, but never a version embedded in
+  // an unrelated distribution name or arbitrary text (e.g. "Debian 26.04").
+  const match = value.trim().match(/^(?:Ubuntu\s+)?(\d{2}\.(?:04|10))(?:\.\d+)?(?:\s+LTS)?$/i);
   if (!match) return null;
-  return [Number(match[1]), Number(match[2])];
+  return match[1];
 }
 
-function compareVersion(left: string, right: string): number | null {
-  const parsedLeft = parseUbuntuVersion(left);
-  const parsedRight = parseUbuntuVersion(right);
-  if (!parsedLeft || !parsedRight) return null;
-  const [leftMajor, leftMinor] = parsedLeft;
-  const [rightMajor, rightMinor] = parsedRight;
-  if (leftMajor !== rightMajor) return leftMajor - rightMajor;
-  return leftMinor - rightMinor;
+/**
+ * Evaluate the image independently of provider coverage. Keep this allowlist
+ * explicit: a larger version number is not evidence of release or support.
+ * Ubuntu 25.10 reached EOL on 2026-07-09; its supported destination is 26.04.
+ * https://lists.ubuntu.com/archives/ubuntu-security-announce/2026-July/010877.html
+ */
+export function validateUbuntuImage(value: string): VPSReadinessCheck {
+  const version = parseUbuntuVersion(value);
+  const base = { id: "os", label: "Ubuntu image" } as const;
+  if (version === ACFS_RECOMMENDED_UBUNTU) {
+    return {
+      ...base,
+      status: "supported",
+      message: `Ubuntu ${version} LTS is the recommended fresh image. Confirm it is available in the provider's selected region.`,
+    };
+  }
+  if (version === "22.04" || version === "24.04") {
+    return {
+      ...base,
+      status: "borderline",
+      message: `Ubuntu ${version} LTS is still supported, but the installer's legacy automatic upgrade path targets end-of-life releases. Choose a fresh Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS image or complete a supported LTS upgrade before running ACFS.`,
+    };
+  }
+  if (version && version < ACFS_RECOMMENDED_UBUNTU) {
+    return {
+      ...base,
+      status: "unsupported",
+      message: `Ubuntu ${version} is not a supported ACFS provisioning image. It is end-of-life or below the supported baseline; choose Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS instead.`,
+    };
+  }
+  return {
+    ...base,
+    status: "unknown",
+    message: `This image is not a reviewed Ubuntu release. Choose Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS, not Debian, an unverified future release, or an ambiguous image label.`,
+  };
 }
 
 function combineStatuses(checks: VPSReadinessCheck[]): VPSReadinessStatus {
@@ -475,12 +506,7 @@ export function validateVPSReadiness(
       message:
         "Plan capacity is unknown. Compare RAM, vCPU, and NVMe storage against the recommended host size before purchase.",
     });
-    checks.push({
-      id: "os",
-      label: "Ubuntu image",
-      status: "unknown",
-      message: "Confirm the provider offers Ubuntu 24.04 or newer.",
-    });
+    checks.push(validateUbuntuImage(input.ubuntuVersion));
     checks.push({
       id: "region",
       label: "Region",
@@ -488,9 +514,10 @@ export function validateVPSReadiness(
       message: "Choose the closest region with normal VPS availability.",
     });
 
+    const status = combineStatuses(checks);
     return {
-      status: "unknown",
-      summary: readinessSummary("unknown"),
+      status,
+      summary: readinessSummary(status),
       provider,
       plan: null,
       checks,
@@ -544,44 +571,7 @@ export function validateVPSReadiness(
     });
   }
 
-  const ubuntuComparison = compareVersion(input.ubuntuVersion, provider.readiness.minimumUbuntu);
-  const cautionComparison = compareVersion(input.ubuntuVersion, provider.readiness.cautionBelowUbuntu);
-  if (ubuntuComparison === null) {
-    checks.push({
-      id: "os",
-      label: "Ubuntu image",
-      status: "unknown",
-      message: "Choose Ubuntu, not Debian or another image, unless you plan to validate the installer yourself.",
-    });
-  } else if (ubuntuComparison < 0) {
-    checks.push({
-      id: "os",
-      label: "Ubuntu image",
-      status: "unsupported",
-      message: `Ubuntu ${input.ubuntuVersion} is below the ACFS minimum of ${provider.readiness.minimumUbuntu}.`,
-    });
-  } else if (cautionComparison !== null && cautionComparison < 0) {
-    checks.push({
-      id: "os",
-      label: "Ubuntu image",
-      status: "borderline",
-      message: `Ubuntu ${input.ubuntuVersion} can install, but ${provider.readiness.cautionBelowUbuntu}+ avoids extra upgrade hops.`,
-    });
-  } else if (provider.readiness.preferredUbuntuVersions.includes(input.ubuntuVersion)) {
-    checks.push({
-      id: "os",
-      label: "Ubuntu image",
-      status: "supported",
-      message: `Ubuntu ${input.ubuntuVersion} is a preferred ACFS image.`,
-    });
-  } else {
-    checks.push({
-      id: "os",
-      label: "Ubuntu image",
-      status: "supported",
-      message: `Ubuntu ${input.ubuntuVersion} is new enough for ACFS.`,
-    });
-  }
+  checks.push(validateUbuntuImage(input.ubuntuVersion));
 
   const normalizedRegion = normalizeText(input.region);
   const region = provider.regionOptions.find(

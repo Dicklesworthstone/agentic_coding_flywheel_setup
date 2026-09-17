@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
+  ACFS_RECOMMENDED_UBUNTU,
   PRICING_LAST_UPDATED,
   VPS_PROVIDERS,
   VPS_TOP_PICK,
+  VPS_UBUNTU_IMAGE_OPTIONS,
   calculateRequiredSpecs,
   describePlan,
   getWorkloadProfile,
   isBelowRamRecommendation,
+  validateUbuntuImage,
   validateVPSReadiness,
   type VPSReadinessCheckId,
   type VPSReadinessInput,
@@ -29,6 +32,15 @@ type ProviderReadinessScenario = {
 };
 
 describe("VPS provider table", () => {
+  test("only recommends reviewed LTS images for new hosts", () => {
+    expect(ACFS_RECOMMENDED_UBUNTU).toBe("26.04");
+    expect(VPS_UBUNTU_IMAGE_OPTIONS).toEqual(["26.04", "24.04", "22.04"]);
+    for (const provider of VPS_PROVIDERS) {
+      expect(provider.readiness.recommendedUbuntu).toBe(ACFS_RECOMMENDED_UBUNTU);
+      expect(provider.readiness.preferredUbuntuVersions).toEqual([ACFS_RECOMMENDED_UBUNTU]);
+    }
+  });
+
   test("records when the plan data was last verified", () => {
     expect(PRICING_LAST_UPDATED).toMatch(/^\d{4}-(0[1-9]|1[0-2])$/);
   });
@@ -86,7 +98,7 @@ describe("validateVPSReadiness", () => {
         input: {
           providerId: "contabo",
           planName: "Cloud VPS 16",
-          ubuntuVersion: "25.10",
+          ubuntuVersion: "26.04",
           region: "us",
           targetAgents: 10,
           workloadId: "standard",
@@ -107,7 +119,7 @@ describe("validateVPSReadiness", () => {
         input: {
           providerId: "other",
           planName: "custom plan",
-          ubuntuVersion: "25.10",
+          ubuntuVersion: "26.04",
           region: "not-listed",
           targetAgents: 10,
           workloadId: "standard",
@@ -116,13 +128,13 @@ describe("validateVPSReadiness", () => {
         expectedChecks: {
           provider: "unknown",
           plan: "unknown",
-          os: "unknown",
+          os: "supported",
           region: "unknown",
         },
       },
       {
         category: "unsafe",
-        selectedRecommendation: "choose Ubuntu 24.04+ and a larger host",
+        selectedRecommendation: "choose Ubuntu 26.04 LTS and a larger host",
         artifactPath: "apps/web/lib/vpsProviders.test.ts#provider-readiness-matrix",
         input: {
           providerId: "ovh",
@@ -161,7 +173,7 @@ describe("validateVPSReadiness", () => {
     const result = validateVPSReadiness({
       providerId: "contabo",
       planName: "Cloud VPS 16",
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "26.04",
       region: "us",
       targetAgents: 10,
       workloadId: "standard",
@@ -177,7 +189,7 @@ describe("validateVPSReadiness", () => {
     const result = validateVPSReadiness({
       providerId: "ovh",
       planName: "VPS-4",
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "26.04",
       region: "us-east",
       targetAgents: 3,
       workloadId: "light",
@@ -225,7 +237,7 @@ describe("validateVPSReadiness", () => {
     const result = validateVPSReadiness({
       providerId: "contabo",
       planName: "Cloud VPS 16",
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "26.04",
       region: "asia",
       targetAgents: 10,
       workloadId: "standard",
@@ -239,7 +251,7 @@ describe("validateVPSReadiness", () => {
     const result = validateVPSReadiness({
       providerId: "other",
       planName: "custom plan",
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "26.04",
       region: "not-listed",
       targetAgents: 10,
       workloadId: "standard",
@@ -257,7 +269,7 @@ describe("validateVPSReadiness", () => {
     const result = validateVPSReadiness({
       providerId: "contabo",
       planName: "Cloud VPS 8",
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "26.04",
       region: "us",
       targetAgents: 10,
       workloadId: "standard",
@@ -268,4 +280,45 @@ describe("validateVPSReadiness", () => {
     expect(result.plan).toBeNull();
     expect(checkStatus(result, "plan")).toBe("unknown");
   });
+});
+
+ describe("Ubuntu image lifecycle safety (bd-5ytb5)", () => {
+  for (const image of ["26.04", "26.04.1", "Ubuntu 26.04 LTS", " ubuntu 26.04.1 lts "]) {
+    test(`accepts the supported LTS image label ${JSON.stringify(image)}`, () => {
+      expect(validateUbuntuImage(image).status).toBe("supported");
+    });
+  }
+
+  for (const image of ["22.04", "Ubuntu 24.04.3 LTS"]) {
+    test(`warns about the legacy installer upgrade path for ${image}`, () => {
+      const check = validateUbuntuImage(image);
+      expect(check.status).toBe("borderline");
+      expect(check.message).toContain("legacy automatic upgrade path");
+      expect(check.message).toContain("26.04");
+    });
+  }
+
+  for (const image of ["20.04", "23.04", "23.10", "24.10", "25.04", "25.10", "Ubuntu 25.10"]) {
+    test(`blocks obsolete image ${image}, including with an unknown provider`, () => {
+      expect(validateUbuntuImage(image).status).toBe("unsupported");
+      for (const providerId of ["contabo", "other"]) {
+        const result = validateVPSReadiness({
+          providerId,
+          planName: "recommended",
+          ubuntuVersion: image,
+          region: "us",
+          targetAgents: 1,
+          workloadId: "light",
+        });
+        expect(checkStatus(result, "os")).toBe("unsupported");
+        expect(result.status).toBe("unsupported");
+      }
+    });
+  }
+
+  for (const image of ["", "Debian 26.04", "Ubuntu 26.04 trailing text", "x26.04", "26.04x", "26.10", "28.04", "99.99", "26.13", "260.04"]) {
+    test(`never approves an ambiguous or unreviewed image ${JSON.stringify(image)}`, () => {
+      expect(validateUbuntuImage(image).status).toBe("unknown");
+    });
+  }
 });
