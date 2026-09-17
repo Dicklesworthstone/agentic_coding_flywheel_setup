@@ -7,9 +7,11 @@ import {
 import type { InstallMode } from "./userPreferences";
 import { buildInstallCommand } from "./commandBuilder";
 import {
+  ACFS_RECOMMENDED_UBUNTU,
   calculateRequiredSpecs,
   evaluatePlan,
   getWorkloadProfile,
+  validateUbuntuImage,
   validateVPSReadiness,
   VPS_PROVIDERS,
   PRICING_LAST_UPDATED,
@@ -27,6 +29,12 @@ import type {
 
 export const PROVIDER_PROVISIONING_PACKET_SCHEMA = "acfs.provider-provisioning-packet.v1";
 export const PROVIDER_PROVISIONING_PACKET_SCHEMA_VERSION = 1;
+
+// Preserve the v1 command field without offering a root installer for a packet
+// that cannot pass image/capacity checks. This refuses safely even when copied
+// out of the packet and executed without a consumer checking its stage first.
+const PROVISIONING_NOT_READY_COMMAND =
+  "printf '%s\\n' 'ACFS install blocked: resolve the provisioning packet readiness checks first.' >&2; false";
 
 export type ProviderProvisioningPacketStage =
   | "draft"
@@ -392,7 +400,7 @@ export const PROVIDER_PACKET_MANUAL_STEPS_BY_PROVIDER: Record<string, string[]> 
     "Copy the assigned host address into the wizard; do not store it in a support-safe packet projection.",
   ],
   other: [
-    "Verify the provider offers SSH access, Ubuntu 24.04 or newer, and enough RAM, CPU, and NVMe storage.",
+    `Verify the provider offers SSH access, Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS, and enough RAM, CPU, and NVMe storage.`,
     "Complete account, checkout, and payment steps manually.",
     "Record the assigned host address outside the support-safe packet projection.",
   ],
@@ -469,9 +477,11 @@ function safePacketSlug(value: string | null | undefined, fallback: string): str
 
 function safePacketUbuntuVersion(value: string | null | undefined): string {
   const collapsed = collapsePacketText(value ?? "");
-  if (!collapsed || looksSensitivePacketText(collapsed)) return "25.10";
-  const version = collapsed.match(/\b([0-9]{2}\.[0-9]{2})\b/);
-  return version?.[1] ?? "25.10";
+  if (!collapsed || looksSensitivePacketText(collapsed)) return "unknown";
+  // Validate the whole label before normalizing. Redaction and missing input
+  // must not manufacture a supported image or strip "Debian" off its label.
+  if (validateUbuntuImage(collapsed).status === "unknown") return "unknown";
+  return collapsed.match(/\d{2}\.(?:04|10)/)?.[0] ?? "unknown";
 }
 
 function safeSshPublicKeyFingerprint(value: string | null | undefined): string | undefined {
@@ -567,9 +577,10 @@ function providerPresetFor(providerId: string): ProviderPacketPreset {
 function stageForPacket(
   readinessStatus: VPSReadinessStatus,
   automationLevel: ProviderProvisioningPacketProvider["automationLevel"],
+  osReadiness: VPSReadinessStatus,
 ): ProviderProvisioningPacketStage {
   if (readinessStatus === "unsupported") return "blocked";
-  if (readinessStatus === "unknown") return "draft";
+  if (readinessStatus === "unknown" || osReadiness !== "supported") return "draft";
   if (automationLevel === "api_supported") return "ready_for_api_provisioning";
   return "ready_for_manual_provider_checkout";
 }
@@ -585,16 +596,26 @@ function evaluatedSelectedPlan(
 
 function buildVerificationCommands(
   installCommand: string,
+  installAllowed: boolean,
 ): ProviderProvisioningPacketVerificationCommand[] {
   return PROVIDER_PACKET_BASE_VERIFICATION_COMMANDS.map((command) => ({
     ...command,
     command: command.id === "installer" ? installCommand : command.command,
+    expectedStatus: command.id === "installer" && !installAllowed ? "fail" : command.expectedStatus,
   }));
 }
 
 function buildCloudInit(
   preset: ProviderPacketPreset,
+  installAllowed: boolean,
 ): ProviderProvisioningPacketCloudInit {
+  if (!installAllowed) {
+    return {
+      mode: "none",
+      userDataIncluded: false,
+      notes: ["Resolve the provisioning packet readiness checks before submitting cloud-init user-data or running ACFS."],
+    };
+  }
   const userDataIncluded = preset.cloudInitMode !== "none";
   return {
     mode: preset.cloudInitMode,
@@ -638,19 +659,23 @@ export function buildProviderProvisioningPacket(
   const selectedPlan = evaluatedSelectedPlan(readiness.plan, input.workloadId, targetAgents);
   const sourceRef = normalizeGitRef(input.sourceRef) ?? "main";
   const moduleSelection = safePacketModuleSelection(input.moduleSelection);
-  const installCommand = buildInstallCommand(
-    input.installMode,
-    sourceRef === "main" ? null : sourceRef,
-    targetUsername,
-    moduleSelection,
-  );
   const regionReadiness = readinessCheckStatus(readiness.checks, "region");
   const osReadiness = readinessCheckStatus(readiness.checks, "os");
+  const installAllowed = readiness.status !== "unsupported" && osReadiness === "supported";
+  const installCommand = installAllowed
+    ? buildInstallCommand(
+        input.installMode,
+        sourceRef === "main" ? null : sourceRef,
+        targetUsername,
+        moduleSelection,
+      )
+    : PROVISIONING_NOT_READY_COMMAND;
+  const cloudInit = buildCloudInit(preset, installAllowed);
 
   return {
     schema: PROVIDER_PROVISIONING_PACKET_SCHEMA,
     schemaVersion: PROVIDER_PROVISIONING_PACKET_SCHEMA_VERSION,
-    stage: stageForPacket(readiness.status, preset.automationLevel),
+    stage: stageForPacket(readiness.status, preset.automationLevel, osReadiness),
     privacy: {
       supportBundleSafe: true,
       rawProviderCredentialsIncluded: false,
@@ -699,7 +724,7 @@ export function buildProviderProvisioningPacket(
       distribution: "ubuntu",
       version: ubuntuVersion,
       minimumVersion: readiness.provider?.readiness.minimumUbuntu ?? "22.04",
-      preferredVersions: readiness.provider?.readiness.preferredUbuntuVersions ?? ["25.10", "24.04"],
+      preferredVersions: readiness.provider?.readiness.preferredUbuntuVersions ?? [ACFS_RECOMMENDED_UBUNTU],
       readinessStatus: osReadiness,
     },
     access: {
@@ -711,12 +736,12 @@ export function buildProviderProvisioningPacket(
       sshPrivateKeyIncluded: false,
       sshPrivateKeyPathIncluded: false,
     },
-    cloudInit: buildCloudInit(preset),
+    cloudInit,
     install: {
       mode: input.installMode,
       sourceRef,
       command: installCommand,
-      commandRunLocation: preset.cloudInitMode === "none" ? "vps-root-shell" : "cloud-init",
+      commandRunLocation: cloudInit.mode === "none" ? "vps-root-shell" : "cloud-init",
       moduleSelection,
     },
     compatibility: {
@@ -729,7 +754,7 @@ export function buildProviderProvisioningPacket(
       readinessStatus: readiness.status,
       readinessChecks: readiness.checks,
     },
-    verificationCommands: buildVerificationCommands(installCommand),
+    verificationCommands: buildVerificationCommands(installCommand, installAllowed),
     expectedArtifacts: [...PROVIDER_PACKET_EXPECTED_ARTIFACTS],
   };
 }

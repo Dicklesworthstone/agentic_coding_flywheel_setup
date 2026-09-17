@@ -127,7 +127,7 @@ describe("buildProviderProvisioningPacket", () => {
   const baseInput = {
     providerId: "contabo",
     planName: "Cloud VPS 16",
-    ubuntuVersion: "25.10",
+    ubuntuVersion: "26.04",
     region: "us",
     targetAgents: 10,
     workloadId: "standard" as const,
@@ -216,7 +216,7 @@ describe("buildProviderProvisioningPacket", () => {
       ...baseInput,
       providerId: "ovh",
       planName: "VPS-4",
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "26.04",
       region: "us-east",
       targetAgents: 25,
       workloadId: "heavy",
@@ -267,7 +267,9 @@ describe("buildProviderProvisioningPacket", () => {
     });
 
     expect(packet.osImage.version).toBe("24.04");
-    expect(packet.osImage.readinessStatus).toBe("supported");
+    expect(packet.osImage.readinessStatus).toBe("borderline");
+    expect(packet.stage).toBe("draft");
+    expect(packet.install.command).not.toContain("curl");
   });
 
   test("sanitizes free-form provider metadata before support-safe serialization", () => {
@@ -284,7 +286,8 @@ describe("buildProviderProvisioningPacket", () => {
     expect(packet.provider.id).toBe("other");
     expect(packet.provider.name).toBe("Other provider");
     expect(packet.size.planName).toBe("custom plan");
-    expect(packet.osImage.version).toBe("25.10");
+    expect(packet.osImage.version).toBe("unknown");
+    expect(packet.osImage.readinessStatus).toBe("unknown");
     expect(packet.region.id).toBe("not-listed");
     expect(json).not.toContain("sbp_1234567890123456");
     expect(json).not.toContain("bearer abcdef");
@@ -377,5 +380,57 @@ describe("buildProviderProvisioningPacket", () => {
     expect(json).not.toContain("secretToken");
     expect(json).not.toContain("AKIAABCDEFGHIJKLMNOP");
     expect(json).not.toContain("stack.dcg");
+  });
+
+  for (const ubuntuVersion of ["", "Debian 26.04", "26.04 trailing text", "99.99", "28.04", "password=secret"]) {
+    test(`does not turn an invalid image into a ready packet: ${JSON.stringify(ubuntuVersion)}`, () => {
+      const packet = buildProviderProvisioningPacket({ ...baseInput, ubuntuVersion });
+      expect(packet.osImage.version).toBe("unknown");
+      expect(packet.osImage.readinessStatus).toBe("unknown");
+      expect(packet.stage).toBe("draft");
+      expect(packet.install.command).toContain("ACFS install blocked");
+      expect(packet.install.command).not.toContain("curl");
+      expect(packet.verificationCommands[1]?.command).toBe(packet.install.command);
+      expect(packet.verificationCommands[1]?.expectedStatus).toBe("fail");
+    });
+  }
+
+  for (const providerId of ["contabo", "hetzner", "other"]) {
+    for (const ubuntuVersion of ["24.10", "25.04", "25.10"]) {
+      test(`withholds installer and cloud-init handoffs for ${providerId} on ${ubuntuVersion}`, () => {
+        const packet = buildProviderProvisioningPacket({ ...baseInput, providerId, ubuntuVersion });
+        expect(packet.stage).toBe("blocked");
+        expect(packet.osImage.version).toBe(ubuntuVersion);
+        expect(packet.osImage.readinessStatus).toBe("unsupported");
+        expect(packet.install.command).toContain("ACFS install blocked");
+        expect(packet.install.command).not.toContain("curl");
+        expect(packet.cloudInit.mode).toBe("none");
+        expect(packet.cloudInit.userDataIncluded).toBe(false);
+        expect(packet.cloudInit.templateRef).toBeUndefined();
+        expect(packet.verificationCommands[1]?.expectedStatus).toBe("fail");
+      });
+    }
+  }
+
+  test("normalizes supported point releases and uses the current recommendation for unknown providers", () => {
+    const packet = buildProviderProvisioningPacket({
+      ...baseInput,
+      providerId: "other",
+      ubuntuVersion: "Ubuntu 26.04.1 LTS",
+    });
+    expect(packet.osImage.version).toBe("26.04");
+    expect(packet.osImage.readinessStatus).toBe("supported");
+    expect(packet.osImage.preferredVersions).toEqual(["26.04"]);
+    expect(packet.stage).toBe("draft");
+    expect(packet.install.command).toContain("--mode vibe");
+  });
+
+  test("does not export an executable installer for an undersized plan on a supported image", () => {
+    const packet = buildProviderProvisioningPacket({ ...baseInput, targetAgents: 100, workloadId: "heavy" });
+    expect(packet.osImage.readinessStatus).toBe("supported");
+    expect(packet.stage).toBe("blocked");
+    expect(packet.install.command).not.toContain("curl");
+    expect(packet.install.command).toContain("ACFS install blocked");
+    expect(packet.verificationCommands[1]?.expectedStatus).toBe("fail");
   });
 });
