@@ -24,6 +24,7 @@ import { VPSComparison } from "@/components/wizard/VPSComparison";
 import { cn } from "@/lib/utils";
 import {
   ACFS_RECOMMENDED_MIN_RAM_GB,
+  ACFS_RECOMMENDED_UBUNTU,
   VPS_PROVIDERS,
   VPS_TOP_PICK,
   VPS_UBUNTU_IMAGE_OPTIONS,
@@ -245,7 +246,7 @@ function ProviderCard({ provider, isExpanded, onToggle }: ProviderCardProps) {
 }
 
 const SPEC_CHECKLIST = [
-  { label: "OS", value: "Ubuntu 22.04 or newer (the installer upgrades it to 25.10)" },
+  { label: "OS", value: `Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS (fresh image recommended)` },
   { label: "CPU", value: "12-16 vCPU" },
   { label: "RAM", value: "64GB recommended (48GB workable, 32GB minimum)" },
   { label: "Storage", value: "250GB+ NVMe SSD" },
@@ -256,7 +257,7 @@ const AGENT_COUNT_PRESETS = [5, 10, 15, 25, 50];
 const DEFAULT_VPS_READINESS_SELECTION: VPSReadinessSelection = {
   providerId: VPS_PROVIDERS[0].id,
   planName: VPS_PROVIDERS[0].recommended.name,
-  ubuntuVersion: "25.10",
+  ubuntuVersion: ACFS_RECOMMENDED_UBUNTU,
   region: VPS_PROVIDERS[0].regionOptions[0].id,
   targetAgents: 10,
   workloadId: "standard",
@@ -356,8 +357,8 @@ function CapacityPlanner() {
       const hydratedSelection = savedVPSReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPlannerSelection(hydratedSelection);
-      // Persist the normalized value returned by the preference layer so stale
-      // provider, plan, region, image, or capacity choices are repaired once.
+      // Persist canonical labels without replacing unknown or unsafe host facts
+      // with recommendations. Existing hosts still need an explicit OS upgrade.
       setVPSReadinessSelection(hydratedSelection);
       return;
     }
@@ -630,15 +631,12 @@ function CapacityPlanner() {
               })}
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
-              {readinessPlans.length > 0 ? (
-                readinessPlans.map((plan) => (
-                  <option key={plan.name} value={plan.name}>
-                    {plan.name}
-                  </option>
-                ))
-              ) : (
-                <option value="custom plan">Plan not listed</option>
-              )}
+              {readinessPlans.map((plan) => (
+                <option key={plan.name} value={plan.name}>
+                  {plan.name}
+                </option>
+              ))}
+              <option value="custom plan">Plan not listed — verify specs</option>
             </select>
           </label>
 
@@ -653,11 +651,17 @@ function CapacityPlanner() {
               })}
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
+              {!VPS_UBUNTU_IMAGE_OPTIONS.some((version) => version === ubuntuVersion) && ubuntuVersion !== "unknown" && (
+                <option value={ubuntuVersion} disabled>
+                  Ubuntu {ubuntuVersion} — unsupported saved image
+                </option>
+              )}
               {VPS_UBUNTU_IMAGE_OPTIONS.map((version) => (
                 <option key={version} value={version}>
-                  Ubuntu {version}
+                  Ubuntu {version} LTS{version === ACFS_RECOMMENDED_UBUNTU ? " (recommended)" : " (upgrade review required)"}
                 </option>
               ))}
+              <option value="unknown">Image unknown — verify before installing</option>
             </select>
           </label>
 
@@ -672,15 +676,12 @@ function CapacityPlanner() {
               })}
               className="w-full rounded-md border border-border/50 bg-background px-3 py-2 text-foreground"
             >
-              {readinessRegions.length > 0 ? (
-                readinessRegions.map((region) => (
-                  <option key={region.id} value={region.id}>
-                    {region.label}
-                  </option>
-                ))
-              ) : (
-                <option value="not-listed">Not listed</option>
-              )}
+              {readinessRegions.map((region) => (
+                <option key={region.id} value={region.id}>
+                  {region.label}
+                </option>
+              ))}
+              <option value="not-listed">Not listed — verify region</option>
             </select>
           </label>
         </div>
@@ -688,7 +689,8 @@ function CapacityPlanner() {
         <div className={cn("rounded-lg border p-3", readinessStatusCopy.className)}>
           <p className="font-medium">{readiness.summary}</p>
           <p className="mt-1 text-sm opacity-90">
-            Warnings are advisory. Advanced users can still proceed, but beginners should fix unsupported choices before checkout.
+            Verify these choices in the provider console before checkout. Changing a selection here does not upgrade an existing server.
+            Unsupported images and unresolved OS checks withhold executable installer commands from provisioning packets.
           </p>
         </div>
 
@@ -1035,10 +1037,11 @@ export default function RentVPSPage() {
                 <ul className="mt-2 list-disc space-y-1 pl-5">
                   <li><strong>Region:</strong> Choose closest to you (US or EU)</li>
                   <li><strong>Storage:</strong> Keep the default NVMe option</li>
-                  <li><strong>Image:</strong> Select &quot;Ubuntu 25.10&quot; or newest available</li>
+                  <li><strong>Image:</strong> Select Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS</li>
                 </ul>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  If 25.10 isn&apos;t offered, Ubuntu 24.04 LTS is fine — ACFS upgrades to 25.10 automatically.
+                  Confirm this image is available in your selected region. For Ubuntu 22.04 or 24.04,
+                  complete a supported LTS upgrade first; do not rely on ACFS&apos;s legacy automatic upgrade path.
                 </p>
                 <ScreenshotFigure
                   file="contabo_us_03_order_page.png"
@@ -1109,7 +1112,7 @@ export default function RentVPSPage() {
               <GuideStep number={3} title="Configure your order">
                 During configuration, look for:
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li><strong>Image/OS:</strong> Ubuntu 25.10 (or latest available)</li>
+                  <li><strong>Image/OS:</strong> Ubuntu {ACFS_RECOMMENDED_UBUNTU} LTS</li>
                   <li><strong>Region:</strong> Closest to you (US-East/US-West/EU)</li>
                   <li><strong>Authentication:</strong> Password (skip SSH keys for now)</li>
                 </ul>
@@ -1119,7 +1122,8 @@ export default function RentVPSPage() {
                   caption="Order flow — pick Ubuntu + region, then continue to checkout."
                 />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  If Ubuntu 25.10 isn&apos;t available, Ubuntu 24.04 LTS is fine — ACFS upgrades automatically.
+                  Confirm this image is available before paying. Older LTS images require a supported upgrade
+                  before installation; an arbitrary newer version is not automatically a reviewed ACFS image.
                 </p>
               </GuideStep>
 
