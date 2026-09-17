@@ -7,24 +7,31 @@ SCRIPT="$ROOT/scripts/lib/upgrade_resume.sh"
 # This override is only a test fixture seam. Normal repository runs extract
 # the release policy from the complete production upgrade library.
 LIBRARY="${ACFS_TEST_UPGRADE_LIBRARY:-$ROOT/scripts/lib/ubuntu_upgrade.sh}"
+STATE_LIBRARY="${ACFS_TEST_STATE_LIBRARY:-$ROOT/scripts/lib/state.sh}"
 SUITE=$(mktemp -d "${TMPDIR:-/tmp}/acfs-resume-safety.XXXXXX")
 PASS=0 FAIL=0
 
 extract_function() {
     awk -v name="$1" '$0 == name "() {" { p=1 } p { print } p && /^}/ { exit }' "$SCRIPT"
 }
-for function_name in compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state validate_resume_target mark_state_complete load_continue_context launch_continue_script; do
+for function_name in parse_resume_args compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state validate_resume_target mark_state_complete load_continue_context launch_continue_script resume_recovery_file_safe retarget_resume_checkpoint; do
     extract_function "$function_name" >> "$SUITE/functions.sh"
 done
 awk '/^ubuntu_validate_upgrade_versions\(\) \{/ { p=1 } p { print } p && /^}/ { exit }' "$LIBRARY" > "$SUITE/policy.sh"
 [[ -s "$SUITE/policy.sh" ]]
 source "$SUITE/policy.sh"
+for function_name in _state_update_with_jq state_update_with_args; do
+    awk -v name="$function_name" '$0 == name "() {" { p=1 } p { print } p && /^}/ { exit }' "$STATE_LIBRARY" >> "$SUITE/state-write.sh"
+done
+[[ -s "$SUITE/state-write.sh" ]]
+source "$SUITE/state-write.sh"
 awk '/^log "=== ACFS Upgrade Resume Starting ==="/ { p=1 } p' "$SCRIPT" > "$SUITE/main.sh"
 [[ -s "$SUITE/main.sh" ]]
 bash -n "$SCRIPT"
 bash -n "$SUITE/functions.sh"
 bash -n "$SUITE/main.sh"
 source "$SUITE/functions.sh"
+RESUME_RETARGET_UBUNTU=false
 
 assert_eq() { [[ "$1" == "$2" ]] || { printf 'expected <%s>, got <%s>\n' "$2" "$1" >&2; return 1; }; }
 run() {
@@ -379,5 +386,217 @@ for scenario in success log-failure already-active rejected occupied-unit missin
     missing-script bad-script linked-script missing-context bad-context; do
     run "supervised continuation handoff: $scenario" check_handoff "$scenario"
 done
+
+check_args() {
+    local expected="$1"; shift
+    local RESUME_RETARGET_UBUNTU=true RESUME_HELP=true status=0
+    parse_resume_args "$@" || status=$?
+    case "$expected" in
+        ordinary) assert_eq "$status" 0; assert_eq "$RESUME_RETARGET_UBUNTU" false; assert_eq "$RESUME_HELP" false ;;
+        help) assert_eq "$status" 0; assert_eq "$RESUME_HELP" true; assert_eq "$RESUME_RETARGET_UBUNTU" false ;;
+        retarget) assert_eq "$status" 0; assert_eq "$RESUME_RETARGET_UBUNTU" true ;;
+        rejected) assert_eq "$status" 2; assert_eq "$RESUME_RETARGET_UBUNTU" false ;;
+    esac
+}
+run 'no arguments clear inherited retarget authority' check_args ordinary
+run 'explicit retarget argument accepted' check_args retarget --retarget-ubuntu=26.04
+run 'help is inert' check_args help --help
+run 'unsupported retarget refused' check_args rejected --retarget-ubuntu=28.04
+run 'unknown argument refused' check_args rejected --force
+run 'duplicate arguments refused' check_args rejected --retarget-ubuntu=26.04 --retarget-ubuntu=26.04
+
+check_retarget_dispatch() {
+    local requested_status="$1" WORK RESUME_RETARGET_UBUNTU=true
+    WORK=$(mktemp -d "$SUITE/retarget-dispatch.XXXXXX")
+    log() { :; }
+    retarget_resume_checkpoint() { : > "$WORK/called"; return "$requested_status"; }
+    cleanup_service() { : > "$WORK/unwanted-normal-dispatch"; }
+    local status=0
+    (set -e; builtin source "$SUITE/main.sh") || status=$?
+    assert_eq "$status" "$requested_status"
+    [[ -f "$WORK/called" && ! -f "$WORK/unwanted-normal-dispatch" ]]
+}
+run 'retarget success exits before normal upgrade dispatch' check_retarget_dispatch 0
+run 'retarget failure exits before normal upgrade dispatch' check_retarget_dispatch 1
+
+check_retarget() {
+    local scenario="$1" WORK ACFS_RESUME_DIR ACFS_LIB_DIR ACFS_STATE_FILE ACFS_CONTINUE_CONTEXT_FILE
+    WORK=$(mktemp -d "$SUITE/retarget.XXXXXX")
+    ACFS_RESUME_DIR="$WORK/resume"
+    ACFS_LIB_DIR="$WORK/lib"
+    ACFS_STATE_FILE="$ACFS_RESUME_DIR/state.json"
+    ACFS_CONTINUE_CONTEXT_FILE="$ACFS_RESUME_DIR/continue_context.env"
+    local UBUNTU_TARGET_VERSION=25.10 UBUNTU_TARGET_VERSION_NUM=2510
+    local LIVE_VERSION=24.04 OLD_TARGET=25.10 PLAN=26.04 EXPECTED_STATUS=1
+    local STATE_LOCK_FD='' UPGRADE_LOCK_FD='' INITIAL_STATE='' STATE_CONTENDED=false
+    mkdir -p "$ACFS_RESUME_DIR" "$ACFS_LIB_DIR"
+    : > "$ACFS_LIB_DIR/state.sh"
+    : > "$ACFS_LIB_DIR/ubuntu_upgrade.sh"
+    log() { printf '%s\n' "$*" >> "$WORK/log"; }
+    log_error() { log "$*"; }
+    upgrade_acquire_lock() {
+        [[ "$scenario" != busy-upgrader ]] || return 1
+        exec {UPGRADE_LOCK_FD}>"$WORK/upgrade.lock"
+        flock -n "$UPGRADE_LOCK_FD" || return 1
+        : > "$WORK/locked"
+        if [[ "$scenario" == changed-target ]]; then
+            jq '.ubuntu_upgrade.target_version = "24.04"' "$ACFS_STATE_FILE" > "$WORK/changed.json"
+            mv "$WORK/changed.json" "$ACFS_STATE_FILE"
+        fi
+    }
+    upgrade_release_lock() {
+        : > "$WORK/released"
+        if [[ -n "$UPGRADE_LOCK_FD" ]]; then flock -u "$UPGRADE_LOCK_FD"; fi
+    }
+    _state_acquire_lock() {
+        [[ "$scenario" != busy-state ]] || return 1
+        exec {STATE_LOCK_FD}>"$WORK/state.lock"
+        flock -n "$STATE_LOCK_FD" || return 1
+        : > "$WORK/state-locked"
+        if [[ "$scenario" == changed-state && "$STATE_CONTENDED" == false ]]; then
+            STATE_CONTENDED=true
+            jq '.ubuntu_upgrade.last_error = "concurrent update"' "$ACFS_STATE_FILE" > "$WORK/changed.json"
+            mv "$WORK/changed.json" "$ACFS_STATE_FILE"
+        fi
+    }
+    _state_release_lock() { : > "$WORK/state-released"; flock -u "$STATE_LOCK_FD"; }
+    state_get_file() { printf '%s\n' "$ACFS_STATE_FILE"; }
+    state_load() { cat "$ACFS_STATE_FILE"; }
+    state_write_atomic() {
+        [[ -f "$WORK/locked" && -f "$WORK/state-locked" ]] || return 1
+        [[ "$scenario" != write-failure ]] || return 1
+        local staged
+        staged=$(mktemp "$ACFS_STATE_FILE.tmp.XXXXXX") || return 1
+        printf '%s\n' "$2" > "$staged" || return 1
+        mv "$staged" "$1" || return 1
+        : > "$WORK/written"
+    }
+    ubuntu_get_version_string() { printf '%s\n' "$LIVE_VERSION"; }
+    ubuntu_calculate_upgrade_path() {
+        [[ "$scenario" != no-path ]] || return 1
+        printf '%s' "$PLAN"
+    }
+    ubuntu_check_apt_state() { [[ "$scenario" != dirty-packages ]]; }
+    ubuntu_check_reboot_required() { [[ "$scenario" != pending-reboot ]]; }
+    systemctl() {
+        if [[ "$*" != 'show --property=ActiveState --value acfs-continue-install.service' ]]; then
+            : > "$WORK/service-mutation"; return 99
+        fi
+        case "$scenario" in
+            active-continuation) printf 'active\n' ;;
+            activating-continuation) printf 'activating\n' ;;
+            systemd-unavailable) return 1 ;;
+            unresolved-continuation) printf 'unknown\n' ;;
+            *) printf 'inactive\n' ;;
+        esac
+    }
+    ubuntu_do_upgrade() { : > "$WORK/unsafe-operation"; return 99; }
+    ubuntu_prepare_eol_repositories() { : > "$WORK/unsafe-operation"; return 99; }
+    ubuntu_configure_release_prompt() { : > "$WORK/unsafe-operation"; return 99; }
+    shutdown() { : > "$WORK/unsafe-operation"; return 99; }
+    launch_continue_script() { : > "$WORK/unsafe-operation"; return 99; }
+    case "$scenario" in
+        success|two-hops|eol-source|at-new-target|already-retargeted) EXPECTED_STATUS=0 ;;
+    esac
+    case "$scenario" in
+        two-hops) LIVE_VERSION=22.04; PLAN=$'24.04\n26.04' ;;
+        eol-source) LIVE_VERSION=25.10 ;;
+        at-new-target) LIVE_VERSION=26.04; PLAN='' ;;
+        already-retargeted) OLD_TARGET=26.04 ;;
+        obsolete-source) LIVE_VERSION=25.04 ;;
+        future-source) LIVE_VERSION=28.04 ;;
+        future-target) OLD_TARGET=28.04 ;;
+    esac
+    jq -n --arg target "$OLD_TARGET" '{
+        schema_version: 2, preserved_top_level: {value: "untouched"},
+        ubuntu_upgrade: {enabled: true, target_version: $target, original_version: "22.04",
+            upgrade_path: ["24.04","25.04","25.10"], completed_upgrades: [{from:"22.04",to:"24.04"}],
+            current_stage: "error", last_error: "old failure", needs_reboot: true, resume_after_reboot: true,
+            current_upgrade: {from:"24.04",to:"25.04"}, custom_field: "retained"}
+    }' > "$ACFS_STATE_FILE"
+    if [[ "$scenario" == malformed-history ]]; then
+        jq '.ubuntu_upgrade.target_migrations = {}' "$ACFS_STATE_FILE" > "$WORK/malformed.json"
+        mv "$WORK/malformed.json" "$ACFS_STATE_FILE"
+    fi
+    INITIAL_STATE=$(cat "$ACFS_STATE_FILE")
+    printf 'CONTINUE_INSTALL_ARGS=(--yes --mode safe --only cloud.wrangler --skip-ubuntu-upgrade)\n' > "$ACFS_CONTINUE_CONTEXT_FILE"
+    printf '#!/bin/bash\nINSTALL_ARGS=(--yes --mode safe --only cloud.wrangler --skip-ubuntu-upgrade)\nexit 0\n' > "$ACFS_RESUME_DIR/continue_install.sh"
+    case "$scenario" in
+        missing-skip) printf 'CONTINUE_INSTALL_ARGS=(--yes --mode safe)\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+        argv-mismatch) printf 'CONTINUE_INSTALL_ARGS=(--yes --mode vibe --skip-ubuntu-upgrade)\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+        duplicate-argv) printf 'INSTALL_ARGS=(--skip-ubuntu-upgrade)\n' >> "$ACFS_RESUME_DIR/continue_install.sh" ;;
+        malformed-context) printf 'if then\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+        context-error) printf 'return 1\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+        malformed-script) printf 'if then\n' >> "$ACFS_RESUME_DIR/continue_install.sh" ;;
+        missing-context) ACFS_CONTINUE_CONTEXT_FILE="$WORK/missing" ;;
+        symlink-context)
+            ln -s "$ACFS_CONTINUE_CONTEXT_FILE" "$ACFS_RESUME_DIR/linked.env"
+            ACFS_CONTINUE_CONTEXT_FILE="$ACFS_RESUME_DIR/linked.env"
+            ;;
+        hardlink-context) ln "$ACFS_CONTINUE_CONTEXT_FILE" "$WORK/context-copy" ;;
+        writable-context) chmod 666 "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+        writable-directory) chmod 777 "$ACFS_RESUME_DIR" ;;
+        symlink-library)
+            ln -s "$ACFS_LIB_DIR" "$WORK/linked-lib"
+            ACFS_LIB_DIR="$WORK/linked-lib"
+            ;;
+        old-library) unset -f ubuntu_validate_upgrade_versions ;;
+    esac
+    local before_script before_context status=0
+    before_script=$(sha256sum "$ACFS_RESUME_DIR/continue_install.sh")
+    before_context=$(sha256sum "$ACFS_CONTINUE_CONTEXT_FILE" 2>/dev/null || true)
+    retarget_resume_checkpoint || status=$?
+    assert_eq "$status" "$EXPECTED_STATUS"
+    assert_eq "$(sha256sum "$ACFS_RESUME_DIR/continue_install.sh")" "$before_script"
+    assert_eq "$(sha256sum "$ACFS_CONTINUE_CONTEXT_FILE" 2>/dev/null || true)" "$before_context"
+    [[ ! -f "$WORK/service-mutation" && ! -f "$WORK/unsafe-operation" ]]
+    assert_eq "$UBUNTU_TARGET_VERSION" 25.10
+    assert_eq "$UBUNTU_TARGET_VERSION_NUM" 2510
+    if [[ "$EXPECTED_STATUS" == 0 && "$scenario" != already-retargeted ]]; then
+        jq -e --argjson original "$INITIAL_STATE" --arg live "$LIVE_VERSION" --arg path "$PLAN" '
+            .preserved_top_level == $original.preserved_top_level and
+            .ubuntu_upgrade.target_version == "26.04" and
+            .ubuntu_upgrade.custom_field == "retained" and
+            .ubuntu_upgrade.original_version == "22.04" and
+            .ubuntu_upgrade.upgrade_path == ($path | split("\n") | map(select(length > 0))) and
+            .ubuntu_upgrade.completed_upgrades == [] and
+            .ubuntu_upgrade.current_upgrade == null and
+            .ubuntu_upgrade.needs_reboot == false and
+            .ubuntu_upgrade.resume_after_reboot == false and
+            .ubuntu_upgrade.current_stage == "initializing" and
+            .ubuntu_upgrade.target_migrations[0].previous == $original.ubuntu_upgrade and
+            .ubuntu_upgrade.target_migrations[0].live_version == $live
+        ' "$ACFS_STATE_FILE" >/dev/null
+        [[ -f "$WORK/written" && -f "$WORK/released" && -f "$WORK/state-released" ]]
+        local first_write
+        first_write=$(cat "$ACFS_STATE_FILE")
+        retarget_resume_checkpoint
+        assert_eq "$(cat "$ACFS_STATE_FILE")" "$first_write"
+    else
+        [[ ! -f "$WORK/written" ]]
+        case "$scenario" in
+            changed-target) jq -e '.ubuntu_upgrade.target_version == "24.04"' "$ACFS_STATE_FILE" >/dev/null ;;
+            changed-state)
+                jq -e '.ubuntu_upgrade.last_error == "concurrent update" and .ubuntu_upgrade.target_version == "25.10"' "$ACFS_STATE_FILE" >/dev/null
+                [[ -f "$WORK/state-released" ]]
+                ;;
+            *) assert_eq "$(cat "$ACFS_STATE_FILE")" "$INITIAL_STATE" ;;
+        esac
+    fi
+}
+if [[ "$EUID" == 0 ]]; then
+    # Ownership is part of the production recovery boundary. Exercise it with
+    # real root-owned fixtures rather than replacing the root check in tests.
+    for scenario in success two-hops eol-source at-new-target already-retargeted \
+        obsolete-source future-source future-target busy-upgrader busy-state changed-target changed-state \
+        dirty-packages pending-reboot active-continuation activating-continuation systemd-unavailable \
+        unresolved-continuation no-path write-failure malformed-history missing-skip argv-mismatch \
+        duplicate-argv malformed-context context-error malformed-script missing-context symlink-context \
+        hardlink-context writable-context writable-directory symlink-library old-library; do
+        run "explicit checkpoint recovery: $scenario" check_retarget "$scenario"
+    done
+else
+    printf 'SKIP 34 checkpoint recovery filesystem cases: run as root to exercise ownership checks\n'
+fi
 printf '\n%s passed; %s failed. Fixtures retained at %s\n' "$PASS" "$FAIL" "$SUITE"
 [[ "$FAIL" == 0 ]]

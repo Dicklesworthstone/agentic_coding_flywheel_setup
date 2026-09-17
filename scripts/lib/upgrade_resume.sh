@@ -22,6 +22,33 @@
 
 set -euo pipefail
 
+# Recovery is an explicit CLI operation, never an inherited environment flag.
+# Parse before filesystem writes so --help and invalid arguments are inert.
+parse_resume_args() {
+    RESUME_RETARGET_UBUNTU=false
+    RESUME_HELP=false
+    if [[ $# == 0 ]]; then return 0; fi
+    if [[ $# == 1 ]]; then
+        case "$1" in
+            --retarget-ubuntu=26.04) RESUME_RETARGET_UBUNTU=true; return 0 ;;
+            --help|-h) RESUME_HELP=true; return 0 ;;
+        esac
+    fi
+    printf 'Usage: upgrade_resume.sh [--retarget-ubuntu=26.04 | --help]\n' >&2
+    return 2
+}
+parse_resume_args "$@" || exit "$?"
+if [[ "$RESUME_HELP" == true ]]; then
+    printf '%s\n' \
+        'Usage: upgrade_resume.sh [--retarget-ubuntu=26.04]' \
+        'With no arguments: resume the saved upgrade under systemd.' \
+        '--retarget-ubuntu=26.04: preserve and replan an existing checkpoint, then exit.' \
+        'Requires current recovery libraries and a matching post-upgrade continuation.' \
+        'Does not change APT sources, install packages, start services, or reboot.' \
+        'Take a snapshot first. Review the new plan before restarting the resume service.'
+    exit 0
+fi
+
 # Constants
 ACFS_RESUME_DIR="/var/lib/acfs"
 ACFS_LIB_DIR="${ACFS_RESUME_DIR}/lib"
@@ -115,6 +142,144 @@ load_continue_context() {
 
     # shellcheck source=/dev/null
     source "$ACFS_CONTINUE_CONTEXT_FILE" || return 1
+}
+
+# Retargeting changes authority to mutate the OS on the next boot. Require
+# root-owned recovery inputs and reject redirected or multiply linked files.
+resume_recovery_file_safe() {
+    local path="$1" owner links mode parent
+    [[ -f "$path" && ! -L "$path" ]] || return 1
+    read -r owner links mode < <(stat -c '%u %h %a' -- "$path") || return 1
+    [[ "$owner" == 0 && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    (( (8#$mode & 8#022) == 0 )) || return 1
+    parent="${path%/*}"
+    while [[ -n "$parent" && "$parent" != / ]]; do
+        [[ -d "$parent" && ! -L "$parent" ]] || return 1
+        read -r owner mode < <(stat -c '%u %a' -- "$parent") || return 1
+        [[ "$owner" == 0 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+        # A root-owned sticky ancestor such as /tmp is allowed, but the
+        # recovery directory itself must not be shared/writable.
+        if (( (8#$mode & 8#022) != 0 )); then
+            (( (8#$mode & 8#1000) != 0 )) && [[ "$parent" != "${path%/*}" ]] || return 1
+        fi
+        parent="${parent%/*}"
+    done
+}
+
+# Administrative checkpoint-only recovery. Run in a subshell so the temporary
+# target, context variables and lock trap cannot alter the normal dispatcher.
+retarget_resume_checkpoint() {
+    (
+        [[ "$EUID" == 0 ]] || { log_error "Retargeting requires root"; return 1; }
+        local old_target file current current_num remaining path_json snapshot now active
+        local script="${ACFS_RESUME_DIR}/continue_install.sh"
+        old_target=$(read_target_version_from_state "$ACFS_STATE_FILE") || return 1
+        case "$old_target" in
+            22.04|24.04|25.10|26.04) ;;
+            *) log_error "Only a reviewed older LTS or legacy 25.10 target can be retargeted"; return 1 ;;
+        esac
+        for file in "$ACFS_STATE_FILE" "$ACFS_LIB_DIR/state.sh" \
+            "$ACFS_LIB_DIR/ubuntu_upgrade.sh" "$ACFS_CONTINUE_CONTEXT_FILE" "$script"; do
+            if ! resume_recovery_file_safe "$file"; then
+                log_error "Recovery inputs must be root-owned, single-link regular files in trusted directories"
+                return 1
+            fi
+        done
+        # The new library refuses obsolete targets at source time. This is a
+        # process-local requested target; the checkpoint is not yet changed.
+        export UBUNTU_TARGET_VERSION=26.04 UBUNTU_TARGET_VERSION_NUM=2604
+        # shellcheck source=/dev/null
+        source "$ACFS_LIB_DIR/state.sh" || return 1
+        # shellcheck source=/dev/null
+        source "$ACFS_LIB_DIR/ubuntu_upgrade.sh" || return 1
+        for function_name in ubuntu_validate_upgrade_versions ubuntu_calculate_upgrade_path \
+            ubuntu_check_apt_state ubuntu_check_reboot_required state_update_with_args; do
+            if ! declare -F "$function_name" >/dev/null; then
+                log_error "Restore the current recovery libraries before retargeting"
+                return 1
+            fi
+        done
+        upgrade_acquire_lock || return 1
+        trap 'upgrade_release_lock' EXIT
+        # Use the actual persisted object as a compare-and-swap precondition
+        # inside the state library's separate read/modify/write lock.
+        snapshot=$(jq -cse 'if length == 1 then .[0].ubuntu_upgrade else empty end
+            | select(type == "object")' "$ACFS_STATE_FILE") || return 1
+        if [[ "$(jq -r '.target_version' <<< "$snapshot")" != "$old_target" ]]; then
+            log_error "Upgrade target changed while acquiring the lock; no retarget was applied"
+            return 1
+        fi
+        active=$(systemctl show --property=ActiveState --value acfs-continue-install.service 2>/dev/null) || {
+            log_error "Cannot determine continuation status; no retarget was applied"
+            return 1
+        }
+        case "$active" in inactive|failed) ;; *) log_error "Installer continuation is active or unresolved; no retarget was applied"; return 1 ;; esac
+        current=$(ubuntu_get_version_string) || return 1
+        current_num=$(compute_version_num "$current") || return 1
+        ubuntu_validate_upgrade_versions "$current_num" 2604 || return 1
+        ubuntu_check_apt_state || return 1
+        ubuntu_check_reboot_required || return 1
+        remaining=$(ubuntu_calculate_upgrade_path 2604) || return 1
+        path_json=$(printf '%s' "$remaining" | jq -Rs 'split("\n") | map(select(length > 0))') || return 1
+
+        # Never rewrite or re-interpret a generated continuation. Require its
+        # saved argv to match and already skip the finished OS upgrade; older
+        # kernel-only continuations need regeneration with the current installer.
+        local -a CONTINUE_INSTALL_ARGS=()
+        local declaration rendered="" arg has_skip=false assignments=0 matches=0 line
+        load_continue_context || return 1
+        declaration=$(declare -p CONTINUE_INSTALL_ARGS) || return 1
+        [[ "$declaration" == 'declare -a '* ]] || return 1
+        for arg in "${CONTINUE_INSTALL_ARGS[@]}"; do
+            [[ "$arg" != --skip-ubuntu-upgrade ]] || has_skip=true
+            rendered+=" $(printf '%q' "$arg")"
+        done
+        [[ "$has_skip" == true ]] || { log_error "Continuation must be regenerated with --skip-ubuntu-upgrade before retargeting"; return 1; }
+        /bin/bash -n "$script" || return 1
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            [[ "$line" != INSTALL_ARGS=* ]] || assignments=$((assignments+1))
+            [[ "$line" != "INSTALL_ARGS=(${rendered# })" ]] || matches=$((matches+1))
+        done < "$script"
+        [[ "$assignments" == 1 && "$matches" == 1 ]] || {
+            log_error "Continuation arguments do not match saved context; no retarget was applied"
+            return 1
+        }
+        # Already-retargeted checkpoints are a no-op, not another history entry.
+        if [[ "$old_target" == 26.04 ]]; then
+            log "Saved target is already Ubuntu 26.04; checkpoint unchanged"
+            return 0
+        fi
+        now=$(date -Iseconds) || return 1
+        if ! state_update_with_args '
+            if .ubuntu_upgrade != $expected then error("upgrade state changed during retarget") else
+                .ubuntu_upgrade as $previous |
+                if (($previous.target_migrations // []) | type) != "array" then
+                    error("invalid target migration history")
+                else
+                    .ubuntu_upgrade.target_migrations = (($previous.target_migrations // []) + [{
+                        from: $previous.target_version, to: "26.04", at: $now,
+                        live_version: $current, previous: ($previous | del(.target_migrations))
+                    }]) |
+                    .ubuntu_upgrade.target_version = "26.04" |
+                    .ubuntu_upgrade.upgrade_path = $path |
+                    .ubuntu_upgrade.completed_upgrades = [] |
+                    .ubuntu_upgrade.current_upgrade = null |
+                    .ubuntu_upgrade.completed_at = null |
+                    .ubuntu_upgrade.last_error = null |
+                    .ubuntu_upgrade.current_stage = "initializing" |
+                    .ubuntu_upgrade.enabled = true |
+                    .ubuntu_upgrade.needs_reboot = false |
+                    .ubuntu_upgrade.resume_after_reboot = false
+                end
+            end' --argjson expected "$snapshot" --argjson path "$path_json" \
+            --arg current "$current" --arg now "$now"; then
+            log_error "Could not persist the retargeted checkpoint; no upgrade or reboot was started"
+            return 1
+        fi
+        log "Saved target changed to Ubuntu 26.04; previous checkpoint preserved in ubuntu_upgrade.target_migrations"
+        log "Remaining release hops: ${remaining//$'\n'/ -> }"
+        log "No upgrade was started. Review state, then run: sudo systemctl enable --now acfs-upgrade-resume"
+    )
 }
 
 # Clean up the resume infrastructure on success.
@@ -342,6 +507,11 @@ launch_continue_script() {
 log "=== ACFS Upgrade Resume Starting ==="
 log "Script: $0"
 log "Current directory: $(pwd)"
+
+if [[ "${RESUME_RETARGET_UBUNTU:-false}" == true ]]; then
+    retarget_resume_checkpoint
+    exit "$?"
+fi
 
 # Reject obsolete targets before sourcing a library that requires a reviewed
 # LTS destination. Do not silently upgrade beyond the original request.
