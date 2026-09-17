@@ -28,9 +28,9 @@ ACFS_LIB_DIR="${ACFS_RESUME_DIR}/lib"
 ACFS_LOG="/var/log/acfs/upgrade_resume.log"
 ACFS_STATE_FILE="${ACFS_RESUME_DIR}/state.json"
 ACFS_CONTINUE_CONTEXT_FILE="${ACFS_RESUME_DIR}/continue_context.env"
-# Default target for ACFS. May be overridden by the state file (target_version)
-# or by exporting UBUNTU_TARGET_VERSION before executing this script.
-UBUNTU_TARGET_VERSION="${UBUNTU_TARGET_VERSION:-25.10}"
+# The persisted target is authoritative. A default or ambient environment
+# value must never authorize changing an existing host's requested release.
+UBUNTU_TARGET_VERSION="26.04"
 SERVICE_NAME="acfs-upgrade-resume"
 
 # Ensure log directory exists
@@ -43,8 +43,22 @@ read_target_version_from_state() {
     command -v jq &>/dev/null || return 1
     # The resume state is JSON, not arbitrary text containing a target_version
     # substring. Reject damaged/missing state instead of inventing a target.
-    jq -er '.ubuntu_upgrade.target_version | strings | select(test("^[0-9]{2}\\.(04|10)$"))' \
+    jq -ser 'if length == 1 and (.[0] | type) == "object" then
+        .[0].ubuntu_upgrade.target_version | strings | select(test("^[0-9]{2}\\.(04|10)$"))
+        else empty end' \
         "$state_file" 2>/dev/null
+}
+
+# A numeric comparison is not a release-support policy. Old checkpoints must
+# be explicitly recovered, not silently relabelled as a different target.
+validate_resume_target() {
+    case "${1:-}" in
+        22.04|24.04|26.04) return 0 ;;
+        *)
+            log_error "Unsupported saved Ubuntu target. Review the upgrade state and explicitly select Ubuntu 26.04 LTS with the current installer; the target was not changed."
+            return 1
+            ;;
+    esac
 }
 
 compute_version_num() {
@@ -329,9 +343,10 @@ log "=== ACFS Upgrade Resume Starting ==="
 log "Script: $0"
 log "Current directory: $(pwd)"
 
-# Keep the current installer's target policy here until its full release graph
-# is migrated. An invalid target must never be interpreted as completion.
-if [[ -z "$state_target_version" || -z "$UBUNTU_TARGET_VERSION_NUM" ]]; then
+# Reject obsolete targets before sourcing a library that requires a reviewed
+# LTS destination. Do not silently upgrade beyond the original request.
+if [[ -z "$state_target_version" || -z "$UBUNTU_TARGET_VERSION_NUM" ]] \
+    || ! validate_resume_target "$state_target_version"; then
     cleanup_service
     update_motd_failure "Invalid upgrade target - review state"
     exit 1
@@ -387,6 +402,14 @@ else
     exit 1
 fi
 
+if ! declare -F ubuntu_validate_upgrade_versions >/dev/null \
+    || ! declare -F ubuntu_configure_release_prompt >/dev/null; then
+    log_error "The saved upgrade library predates the reviewed LTS policy; restore recovery files from the current installer before retrying"
+    cleanup_service
+    update_motd_failure "Saved upgrade library needs updating"
+    exit 1
+fi
+
 if ! upgrade_acquire_lock; then
     log_error "Another Ubuntu upgrade process is already running"
     exit 1
@@ -396,6 +419,7 @@ trap 'upgrade_release_lock' EXIT
 # Re-read after acquiring the lock: an installer may have replaced the state
 # between process startup and lock acquisition. Never mix two target versions.
 if ! state_target_version=$(read_target_version_from_state "$ACFS_STATE_FILE") \
+    || ! validate_resume_target "$state_target_version" \
     || ! UBUNTU_TARGET_VERSION_NUM=$(compute_version_num "$state_target_version"); then
     cleanup_service
     update_motd_failure "Upgrade target changed or became invalid"
@@ -427,6 +451,16 @@ fi
 
 log "Current Ubuntu version (from system): $CURRENT_UBUNTU_VERSION"
 log "Target Ubuntu version: $UBUNTU_TARGET_VERSION"
+
+# Apply the SAME source/destination policy as the executor before the early
+# completion path. An EOL or unreviewed future release is not a successful
+# no-op merely because its version number is larger than the target.
+if ! current_version_num=$(compute_version_num "$CURRENT_UBUNTU_VERSION") \
+    || ! ubuntu_validate_upgrade_versions "$current_version_num" "$UBUNTU_TARGET_VERSION_NUM"; then
+    cleanup_service
+    update_motd_failure "Unsupported host or target - review recovery"
+    exit 1
+fi
 
 # If we're already at target, we're DONE - clean up and exit
 if ubuntu_is_at_or_beyond_target_version "$CURRENT_UBUNTU_VERSION"; then
@@ -491,8 +525,8 @@ if [[ "$current_stage" == "pre_upgrade_reboot" ]]; then
     log "Kernel reboot completed; recomputing the pending release hop from the live OS"
 fi
 
-# Preserve the existing channel policy; do not continue after a failed change.
-if ! ubuntu_enable_normal_releases; then
+# Select the channel from the live source: LTS-to-LTS, or 25.10 recovery.
+if ! ubuntu_configure_release_prompt; then
     cleanup_service
     update_motd_failure "Cannot configure release upgrade channel"
     exit 1
@@ -576,8 +610,9 @@ fi
 # A successful command exit is not proof that the requested release was
 # installed. Never write a completed-hop checkpoint for a no-op or wrong hop.
 installed_version="$(ubuntu_get_version_string)" || installed_version=""
+installed_version_num="$(compute_version_num "$installed_version")" || installed_version_num=""
 package_audit=""
-if [[ "$installed_version" != "$next_version" ]] \
+if [[ "$installed_version_num" != "$next_version_num" ]] \
     || ! package_audit=$(dpkg --audit 2>&1) || [[ -n "${package_audit//[[:space:]]/}" ]]; then
     state_upgrade_set_error "Release upgrade did not finish the requested hop cleanly" || true
     cleanup_service

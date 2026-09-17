@@ -4,15 +4,21 @@
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 SCRIPT="$ROOT/scripts/lib/upgrade_resume.sh"
+# This override is only a test fixture seam. Normal repository runs extract
+# the release policy from the complete production upgrade library.
+LIBRARY="${ACFS_TEST_UPGRADE_LIBRARY:-$ROOT/scripts/lib/ubuntu_upgrade.sh}"
 SUITE=$(mktemp -d "${TMPDIR:-/tmp}/acfs-resume-safety.XXXXXX")
 PASS=0 FAIL=0
 
 extract_function() {
     awk -v name="$1" '$0 == name "() {" { p=1 } p { print } p && /^}/ { exit }' "$SCRIPT"
 }
-for function_name in compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state mark_state_complete load_continue_context launch_continue_script; do
+for function_name in compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state validate_resume_target mark_state_complete load_continue_context launch_continue_script; do
     extract_function "$function_name" >> "$SUITE/functions.sh"
 done
+awk '/^ubuntu_validate_upgrade_versions\(\) \{/ { p=1 } p { print } p && /^}/ { exit }' "$LIBRARY" > "$SUITE/policy.sh"
+[[ -s "$SUITE/policy.sh" ]]
+source "$SUITE/policy.sh"
 awk '/^log "=== ACFS Upgrade Resume Starting ==="/ { p=1 } p' "$SCRIPT" > "$SUITE/main.sh"
 [[ -s "$SUITE/main.sh" ]]
 bash -n "$SCRIPT"
@@ -50,7 +56,8 @@ run 'reads the persisted target' check_target_read '{"ubuntu_upgrade":{"target_v
 for value in '{}' 'null' '[]' '{broken "target_version":"26.04"}' \
     '{"ubuntu_upgrade":{"target_version":26.04}}' \
     '{"ubuntu_upgrade":{"target_version":"26.04;echo unsafe"}}' \
-    '{"ubuntu_upgrade":{"target_version":"26.99"}}'; do
+    '{"ubuntu_upgrade":{"target_version":"26.99"}}' \
+    '{"ubuntu_upgrade":{"target_version":"26.04"}} {"ubuntu_upgrade":{"target_version":"24.04"}}'; do
     run 'refuses malformed or missing target metadata' check_target_read "$value" refused
 done
 check_version() { assert_eq "$(compute_version_num "$1")" "$2"; }
@@ -73,7 +80,7 @@ check_mark_complete() {
     WORK=$(mktemp -d "$SUITE/complete.XXXXXX")
     ACFS_STATE_FILE="$WORK/state.json"
     log() { :; }; log_error() { :; }
-    printf '{"ubuntu_upgrade":{"target_version":"25.10","current_stage":"upgrading"}}' > "$ACFS_STATE_FILE"
+    printf '{"ubuntu_upgrade":{"target_version":"26.04","current_stage":"upgrading"}}' > "$ACFS_STATE_FILE"
     mark_state_complete
     jq -e '.ubuntu_upgrade.current_stage == "completed" and .ubuntu_upgrade.needs_reboot == false' "$ACFS_STATE_FILE" >/dev/null
 }
@@ -83,7 +90,7 @@ check_failed_write() {
     WORK=$(mktemp -d "$SUITE/write.XXXXXX")
     ACFS_STATE_FILE="$WORK/state.json"
     log() { :; }; log_error() { :; }
-    printf '{"ubuntu_upgrade":{"target_version":"25.10"}}' > "$ACFS_STATE_FILE"
+    printf '{"ubuntu_upgrade":{"target_version":"26.04"}}' > "$ACFS_STATE_FILE"
     before=$(cat "$ACFS_STATE_FILE")
     case "$scenario" in
         mktemp) mktemp() { return 1; } ;;
@@ -103,9 +110,9 @@ check_dispatch() {
     WORK=$(mktemp -d "$SUITE/dispatch.XXXXXX")
     ACFS_RESUME_DIR="$WORK/resume" ACFS_LIB_DIR="$WORK/lib" ACFS_LOG="$WORK/run.log"
     ACFS_STATE_FILE="$ACFS_RESUME_DIR/state.json"
-    local UBUNTU_TARGET_VERSION=25.10 UBUNTU_TARGET_VERSION_NUM=2510 state_target_version=25.10
-    local BASE_VERSION=25.04 FAKE_ID=ubuntu STAGE=rebooting FAIL_AT='' PLAN=25.10
-    local INSTALLED_VERSION=25.10 AUDIT='' EXPECTED_STATUS=0 EXPECTED_HOP=25.10
+    local UBUNTU_TARGET_VERSION=26.04 UBUNTU_TARGET_VERSION_NUM=2604 state_target_version=26.04
+    local BASE_VERSION=24.04 FAKE_ID=ubuntu STAGE=rebooting FAIL_AT='' PLAN=26.04
+    local INSTALLED_VERSION=26.04 AUDIT='' EXPECTED_STATUS=0 EXPECTED_HOP=26.04
     local upgrade_lock_fd='' holder_fd=''
     mkdir -p "$ACFS_RESUME_DIR" "$ACFS_LIB_DIR"
     : > "$ACFS_LIB_DIR/logging.sh"
@@ -137,6 +144,7 @@ check_dispatch() {
                 printf '{"ubuntu_upgrade":{"target_version":"26.04"}}' > "$ACFS_STATE_FILE"
                 ;;
             corrupted-after-lock) printf '{broken' > "$ACFS_STATE_FILE" ;;
+            obsolete-after-lock) printf '{"ubuntu_upgrade":{"target_version":"25.10"}}' > "$ACFS_STATE_FILE" ;;
         esac
         return 0
     }
@@ -147,7 +155,7 @@ check_dispatch() {
         fi
         : > "$WORK/released"
     }
-    ubuntu_enable_normal_releases() { [[ "$FAIL_AT" != channel ]]; }
+    ubuntu_configure_release_prompt() { : > "$WORK/channel"; [[ "$FAIL_AT" != channel ]]; }
     state_upgrade_resumed() { [[ "$FAIL_AT" != resumed ]]; }
     state_upgrade_is_complete() { : > "$WORK/trusted-checkpoint"; return 0; }
     state_upgrade_get_next_version() { : > "$WORK/trusted-path"; printf '99.10\n'; }
@@ -172,42 +180,52 @@ check_dispatch() {
     case "$scenario" in
         normal) ;;
         kernel-only) STAGE=pre_upgrade_reboot ;;
-        stale-complete) STAGE=completed; BASE_VERSION=24.04; PLAN=$'25.04\n25.10'; INSTALLED_VERSION=25.04; EXPECTED_HOP=25.04 ;;
-        at-target) BASE_VERSION=25.10 ;;
-        beyond-target) BASE_VERSION=26.04 ;;
-        lock-at-target) BASE_VERSION=25.10; FAIL_AT=lock; EXPECTED_STATUS=1 ;;
+        stale-complete) STAGE=completed; BASE_VERSION=22.04; PLAN=$'24.04\n26.04'; INSTALLED_VERSION=24.04; EXPECTED_HOP=24.04 ;;
+        at-target) BASE_VERSION=26.04 ;;
+        beyond-target) BASE_VERSION=26.04; UBUNTU_TARGET_VERSION=24.04; UBUNTU_TARGET_VERSION_NUM=2404; state_target_version=24.04 ;;
+        lock-at-target) BASE_VERSION=26.04; FAIL_AT=lock; EXPECTED_STATUS=1 ;;
         lock-beyond-target) BASE_VERSION=26.04; FAIL_AT=lock; EXPECTED_STATUS=1 ;;
-        real-lock-free) BASE_VERSION=25.10 ;;
+        real-lock-free) BASE_VERSION=26.04 ;;
         real-lock-busy)
-            BASE_VERSION=25.10; EXPECTED_STATUS=1
+            BASE_VERSION=26.04; EXPECTED_STATUS=1
             exec {holder_fd}>"$WORK/shared.lock"
             flock -n "$holder_fd"
             ;;
-        changed-target) BASE_VERSION=25.10; PLAN=26.04; INSTALLED_VERSION=26.04; EXPECTED_HOP=26.04 ;;
+        changed-target) UBUNTU_TARGET_VERSION=24.04; UBUNTU_TARGET_VERSION_NUM=2404; state_target_version=24.04 ;;
         corrupted-after-lock) EXPECTED_STATUS=1 ;;
+        obsolete-after-lock) EXPECTED_STATUS=1 ;;
         library-at-target)
-            BASE_VERSION=25.10; EXPECTED_STATUS=1
+            BASE_VERSION=26.04; EXPECTED_STATUS=1
             printf 'return 1\n' > "$ACFS_LIB_DIR/ubuntu_upgrade.sh"
             ;;
-        missing-libraries-at-target) BASE_VERSION=25.10; EXPECTED_STATUS=1; ACFS_LIB_DIR="$WORK/missing-lib" ;;
+        missing-libraries-at-target) BASE_VERSION=26.04; EXPECTED_STATUS=1; ACFS_LIB_DIR="$WORK/missing-lib" ;;
         bad-os) FAKE_ID=debian; EXPECTED_STATUS=1 ;;
         bad-target) UBUNTU_TARGET_VERSION_NUM=''; EXPECTED_STATUS=1 ;;
         missing-target) state_target_version=''; EXPECTED_STATUS=1 ;;
-        backwards) PLAN=24.04; EXPECTED_STATUS=1 ;;
-        overshoot) PLAN=26.04; EXPECTED_STATUS=1 ;;
+        backwards) PLAN=22.04; EXPECTED_STATUS=1 ;;
+        overshoot) PLAN=28.04; EXPECTED_STATUS=1 ;;
         garbage-hop) PLAN='a[0]'; EXPECTED_STATUS=1 ;;
-        no-op) INSTALLED_VERSION=25.04; EXPECTED_STATUS=1 ;;
-        wrong-release) INSTALLED_VERSION=26.04; EXPECTED_STATUS=1 ;;
+        no-op) INSTALLED_VERSION=24.04; EXPECTED_STATUS=1 ;;
+        wrong-release) INSTALLED_VERSION=25.10; EXPECTED_STATUS=1 ;;
+        point-release) INSTALLED_VERSION=26.04.1 ;;
+        eol-recovery) BASE_VERSION=25.10 ;;
+        eol-host-24) BASE_VERSION=24.10; EXPECTED_STATUS=1 ;;
+        eol-host-25) BASE_VERSION=25.04; EXPECTED_STATUS=1 ;;
+        future-host) BASE_VERSION=28.04; EXPECTED_STATUS=1 ;;
+        future-target) UBUNTU_TARGET_VERSION=28.04; UBUNTU_TARGET_VERSION_NUM=2804; state_target_version=28.04; EXPECTED_STATUS=1 ;;
+        obsolete-target) UBUNTU_TARGET_VERSION=25.10; UBUNTU_TARGET_VERSION_NUM=2510; state_target_version=25.10; EXPECTED_STATUS=1 ;;
+        eol-above-target) BASE_VERSION=25.10; UBUNTU_TARGET_VERSION=24.04; UBUNTU_TARGET_VERSION_NUM=2404; state_target_version=24.04; EXPECTED_STATUS=1 ;;
+        obsolete-library) unset -f ubuntu_validate_upgrade_versions; EXPECTED_STATUS=1 ;;
         audit-output) AUDIT='unconfigured package'; EXPECTED_STATUS=1 ;;
-        target-audit) BASE_VERSION=25.10; AUDIT='unconfigured package'; EXPECTED_STATUS=1 ;;
-        continuation|mark) BASE_VERSION=25.10; FAIL_AT="$scenario"; EXPECTED_STATUS=1 ;;
+        target-audit) BASE_VERSION=26.04; AUDIT='unconfigured package'; EXPECTED_STATUS=1 ;;
+        continuation|mark) BASE_VERSION=26.04; FAIL_AT="$scenario"; EXPECTED_STATUS=1 ;;
         library) printf 'return 1\n' > "$ACFS_LIB_DIR/ubuntu_upgrade.sh"; EXPECTED_STATUS=1 ;;
         state-library) printf 'return 1\n' > "$ACFS_LIB_DIR/state.sh"; EXPECTED_STATUS=1 ;;
         logging-library) printf 'return 1\n' > "$ACFS_LIB_DIR/logging.sh"; EXPECTED_STATUS=1 ;;
         *) FAIL_AT="$scenario"; EXPECTED_STATUS=1 ;;
     esac
     jq -n --arg target "$UBUNTU_TARGET_VERSION" --arg stage "$STAGE" \
-        '{ubuntu_upgrade:{target_version:$target,current_stage:$stage,upgrade_path:["25.04","25.10"],completed_upgrades:[{},{}]}}' > "$ACFS_STATE_FILE"
+        '{ubuntu_upgrade:{target_version:$target,current_stage:$stage,upgrade_path:["24.04","26.04"],completed_upgrades:[{},{}]}}' > "$ACFS_STATE_FILE"
     local result=0
     (set -e; builtin source "$SUITE/main.sh") > "$WORK/stdout" 2> "$WORK/stderr" || result=$?
     assert_eq "$result" "$EXPECTED_STATUS"
@@ -230,11 +248,16 @@ check_dispatch() {
         [[ "$scenario" == continuation || ! -f "$WORK/continued" ]]
         [[ "$scenario" == shutdown || ! -f "$WORK/reboot" ]]
         case "$scenario" in no-op|wrong-release|post-audit|executor) [[ ! -f "$WORK/completed" ]] ;; esac
+        case "$scenario" in eol-host-*|future-*|obsolete-*|eol-above-target)
+            [[ ! -f "$WORK/channel" && ! -f "$WORK/upgraded" && ! -f "$WORK/marked" ]]
+            ;;
+        esac
     fi
 }
 for scenario in normal kernel-only stale-complete at-target beyond-target bad-os bad-target missing-target \
     lock-at-target lock-beyond-target real-lock-free real-lock-busy changed-target corrupted-after-lock \
     library-at-target missing-libraries-at-target \
+    obsolete-after-lock point-release eol-recovery eol-host-24 eol-host-25 future-host future-target obsolete-target eol-above-target obsolete-library \
     backwards overshoot garbage-hop no-op wrong-release audit-output target-audit audit-status post-audit \
     continuation mark library state-library logging-library lock channel resumed start plan preflight executor complete reboot-state shutdown; do
     run "resume dispatcher: $scenario" check_dispatch "$scenario"
