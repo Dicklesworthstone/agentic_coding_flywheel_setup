@@ -673,7 +673,7 @@ describe("buildTeamProfile", () => {
       providerSelection: {
         providerId: "contabo",
         planName: "Cloud VPS 16",
-        ubuntuVersion: "25.10",
+        ubuntuVersion: "26.04",
         region: "us",
         targetAgents: 10,
         workloadId: "standard",
@@ -692,7 +692,7 @@ describe("buildTeamProfile", () => {
       provider: "contabo",
       region: "us",
       planClass: "Cloud VPS 16",
-      operatingSystem: "ubuntu-25.10",
+      operatingSystem: "ubuntu-26.04",
       sshUser: "dev-user",
       sshPort: 22,
     });
@@ -728,7 +728,7 @@ describe("buildTeamProfile", () => {
     expect(profile.providerDefaults.provider).toBe("other");
     expect(profile.providerDefaults.region).toBe("not-listed");
     expect(profile.providerDefaults.planClass).toBe("custom plan");
-    expect(profile.providerDefaults.operatingSystem).toBe("ubuntu-25.10");
+    expect(profile.providerDefaults.operatingSystem).toBe("ubuntu-26.04");
     expect(profile.providerDefaults.sshUser).toBe("ubuntu");
     expect(profile.install.ref.value).toBe("main");
     expect(profile.install.ref.type).toBe("branch");
@@ -750,7 +750,7 @@ describe("buildTeamProfile", () => {
       providerSelection: {
         providerId: "Bearer <credential>",
         planName: "postgres://<user>:<password>@example.invalid/db",
-        ubuntuVersion: "25.10",
+        ubuntuVersion: "26.04",
         region: "203.0.113.42",
         targetAgents: 4,
         workloadId: "light",
@@ -846,7 +846,7 @@ describe("buildTeamProfileImportDiff", () => {
       providerSelection: {
         providerId: "contabo",
         planName: "Cloud VPS 16",
-        ubuntuVersion: "25.10",
+        ubuntuVersion: "26.04",
         region: "us",
         targetAgents: 10,
         workloadId: "standard",
@@ -896,7 +896,7 @@ describe("buildTeamProfileImportDiff", () => {
       providerSelection: {
         providerId: "contabo",
         planName: "Cloud VPS 16",
-        ubuntuVersion: "25.10",
+        ubuntuVersion: "26.04",
         region: "us",
         targetAgents: 10,
         workloadId: "standard",
@@ -910,12 +910,12 @@ describe("buildTeamProfileImportDiff", () => {
       providerSelection: {
         providerId: "contabo",
         planName: "Cloud VPS 16",
-        ubuntuVersion: "25.10",
+        ubuntuVersion: "26.04",
         region: "us",
       },
       installMode: "safe",
       ref: commitSha,
-      ubuntuVersion: "25.10",
+      ubuntuVersion: "26.04",
       username: "dev-user",
       architecture: "x86_64",
       moduleSelection: { profile: "cloud-only" },
@@ -1657,7 +1657,7 @@ describe("buildTeamProfileImportDiff", () => {
       ...original,
       compatibility: {
         ...original.compatibility,
-        targetUbuntuVersions: ["25.10"],
+        targetUbuntuVersions: ["26.04"],
         architectures: ["x86_64"],
       },
       providerDefaults: {

@@ -14,7 +14,7 @@ import {
   type ModuleSelectionInput,
 } from "./moduleSelection";
 import { manifestModules, manifestProvenance, manifestSelectionProfiles } from "./generated/manifest-modules";
-import { ACFS_RECOMMENDED_UBUNTU } from "./vpsProviders";
+import { ACFS_RECOMMENDED_UBUNTU, VPS_UBUNTU_IMAGE_OPTIONS } from "./vpsProviders";
 import {
   containsIPAddress,
   isValidIP,
@@ -178,6 +178,7 @@ export interface TeamProfile {
   compatibility: {
     minAcfsVersion: string;
     schemaVersions: [1];
+    /** Accepted provisioning images, distinct from the installer's upgrade destination. */
     targetUbuntuVersions: string[];
     architectures: TeamProfileArchitecture[];
     installerRefPolicy: "prefer_pinned_ref";
@@ -801,7 +802,7 @@ function redactedTargetHost(host: string): string {
 const DEFAULT_TEAM_PROVIDER_SELECTION: VPSReadinessSelection = {
   providerId: "other",
   planName: "custom plan",
-  ubuntuVersion: "25.10",
+  ubuntuVersion: ACFS_RECOMMENDED_UBUNTU,
   region: "not-listed",
   targetAgents: 10,
   workloadId: "standard",
@@ -896,8 +897,15 @@ function safeProfileSlug(value: string | null | undefined, fallback: string): st
 }
 
 function safeUbuntuVersion(value: string | null | undefined): string {
-  const safe = safeProfileText(value, "25.10", 16);
-  return /^[0-9]{2}\.[0-9]{2}$/.test(safe) ? safe : "25.10";
+  if (value === null || value === undefined) return ACFS_RECOMMENDED_UBUNTU;
+  const safe = typeof value === "string" ? safeProfileText(value, "unreviewed", 16) : "unreviewed";
+  // Preserve recognizable but unsupported releases for review. Invalid saved
+  // input must not silently become an approved new-image recommendation.
+  return /^[0-9]{2}\.[0-9]{2}$/.test(safe) ? safe : "unreviewed";
+}
+
+function isSupportedTeamUbuntuVersion(value: unknown): value is string {
+  return typeof value === "string" && VPS_UBUNTU_IMAGE_OPTIONS.some((version) => version === value);
 }
 
 function inferRefType(ref: string): TeamProfileRefType {
@@ -959,16 +967,6 @@ function buildTeamProfileModulePlan(moduleSelection: ModuleSelectionInput): Team
   };
 }
 
-function moduleSelectionFromTeamProfile(profile: TeamProfile): ModuleSelectionInput {
-  return {
-    profile: profile.install.profile,
-    onlyModules: profile.install.modules.only,
-    onlyPhases: profile.install.modules.onlyPhases,
-    skipModules: profile.install.modules.skip,
-    noDeps: profile.install.modules.noDeps,
-  };
-}
-
 export function buildTeamProfile(inputs: TeamProfileInputs): TeamProfile {
   const providerSelection = inputs.providerSelection ?? DEFAULT_TEAM_PROVIDER_SELECTION;
   const sourceRef = normalizeGitRef(inputs.ref) ?? DEFAULT_INSTALL_REF;
@@ -980,6 +978,12 @@ export function buildTeamProfile(inputs: TeamProfileInputs): TeamProfile {
   const architecture = inputs.architecture ?? "x86_64";
   const moduleSelection = normalizeTeamModuleSelection(inputs.moduleSelection);
   const modulePlan = buildTeamProfileModulePlan(moduleSelection);
+  if (!isSupportedTeamUbuntuVersion(ubuntuVersion)) {
+    modulePlan.ok = false;
+    modulePlan.errors.push("Choose a reviewed Ubuntu provisioning image in the wizard before exporting a runnable profile.");
+  } else if (ubuntuVersion !== ACFS_RECOMMENDED_UBUNTU) {
+    modulePlan.warnings.push("An older LTS starting image was selected. The installer explicitly targets the recommended LTS and may require upgrades and reboots; back up existing data first.");
+  }
   const profileId = profileIdFromInputs(provider, inputs.mode, sourceRef, inputs.profileId);
   const generatedAt = inputs.generatedAt && isCanonicalIsoTimestamp(inputs.generatedAt)
     ? inputs.generatedAt
@@ -1068,14 +1072,13 @@ export function serializeTeamProfileJson(profile: TeamProfile): string {
 }
 
 export function formatTeamProfileReviewMarkdown(profile: TeamProfile): string {
-  const moduleSelection = moduleSelectionFromTeamProfile(profile);
-  const installRef = profile.install.ref.value === DEFAULT_INSTALL_REF ? null : profile.install.ref.value;
-  const installCommand = buildInstallCommand(
-    profile.install.mode,
-    installRef,
-    profile.providerDefaults.sshUser,
-    moduleSelection,
-  );
+  // Revalidate rather than trusting a cached modulePlan.ok flag or letting
+  // invalid selectors throw while the wizard is rendering a review.
+  const review = buildTeamProfileImportDiff(profile, {
+    ubuntuVersion: profile.providerDefaults.operatingSystem.replace(/^ubuntu-/, ""),
+    architecture: profile.providerDefaults.architecture,
+  });
+  const installCommand = review.installerCommand.command;
   const secretSlots = profile.serviceAccounts
     .map((account) => `- ${account.id}: ${account.required ? "required" : "optional"} ${account.secretSlot}`)
     .join("\n");
@@ -1085,9 +1088,13 @@ export function formatTeamProfileReviewMarkdown(profile: TeamProfile): string {
   const warnings = profile.install.modulePlan.warnings.length > 0
     ? profile.install.modulePlan.warnings.map((warning) => `- ${warning}`).join("\n")
     : "- none";
-  const incompatibilities = profile.install.modulePlan.ok
+  const incompatibilityMessages = Array.from(new Set([
+    ...profile.install.modulePlan.errors,
+    ...review.findings.map((finding) => finding.message),
+  ]));
+  const incompatibilities = incompatibilityMessages.length === 0
     ? "- none"
-    : profile.install.modulePlan.errors.map((error) => `- ${error}`).join("\n");
+    : incompatibilityMessages.map((error) => `- ${error}`).join("\n");
 
   return [
     "# ACFS Team Profile Review",
@@ -1102,14 +1109,15 @@ export function formatTeamProfileReviewMarkdown(profile: TeamProfile): string {
     `- Region: ${profile.providerDefaults.region}`,
     `- Plan class: ${profile.providerDefaults.planClass}`,
     `- Operating system: ${profile.providerDefaults.operatingSystem}`,
+    `- Installer destination: Ubuntu ${ACFS_RECOMMENDED_UBUNTU} LTS`,
     `- Architecture: ${profile.providerDefaults.architecture}`,
     `- SSH user: ${profile.providerDefaults.sshUser}`,
     "",
     "## Installer Command Preview",
     "",
-    "```bash",
-    installCommand,
-    "```",
+    installCommand
+      ? ["```bash", installCommand, "```"].join("\n")
+      : "Blocked until incompatibilities and refusals are resolved.",
     "",
     "## Module Plan",
     "",
@@ -1476,7 +1484,21 @@ function validateTeamProfileForImport(
       "compatibility.targetUbuntuVersions must list at least one Ubuntu release in YY.MM form.",
     ));
   }
-  const targetUbuntu = current.ubuntuVersion ?? "25.10";
+  if (targetUbuntuVersions.some((version) => !isSupportedTeamUbuntuVersion(version))) {
+    findings.push(importFinding(
+      "team_profile_ubuntu_unsupported",
+      "compatibility.targetUbuntuVersions",
+      "Profile lists an end-of-life or unreviewed provisioning image. Select a supported LTS image in the wizard and export again.",
+    ));
+  }
+  const targetUbuntu = current.ubuntuVersion ?? current.providerSelection?.ubuntuVersion ?? ACFS_RECOMMENDED_UBUNTU;
+  if (!isSupportedTeamUbuntuVersion(targetUbuntu)) {
+    findings.push(importFinding(
+      "team_profile_ubuntu_unsupported",
+      "current.ubuntuVersion",
+      "The current provisioning image is not a reviewed supported LTS release. Correct the saved image selection before importing this profile.",
+    ));
+  }
   if (targetUbuntuVersions.length > 0 && !targetUbuntuVersions.includes(targetUbuntu)) {
     findings.push(importFinding(
       "team_profile_ubuntu_unsupported",
@@ -1622,7 +1644,7 @@ function validateTeamProfileForImport(
     findings.push(importFinding(
       "team_profile_ref_policy_mismatch",
       "install.ref.pinOnExport",
-      "Profile imports require install.ref.pinOnExport to be true.",
+      "Profile import requires install.ref.pinOnExport to be true.",
     ));
   }
   if (
@@ -1720,6 +1742,17 @@ function validateTeamProfileForImport(
     (value) => /^ubuntu-[0-9]{2}\.[0-9]{2}$/.test(value),
     "Profile operating system must use ubuntu-YY.MM form.",
   );
+  if (
+    typeof providerDefaults.operatingSystem === "string"
+    && /^ubuntu-[0-9]{2}\.[0-9]{2}$/.test(providerDefaults.operatingSystem)
+    && !isSupportedTeamUbuntuVersion(providerDefaults.operatingSystem.slice("ubuntu-".length))
+  ) {
+    findings.push(importFinding(
+      "team_profile_ubuntu_unsupported",
+      "providerDefaults.operatingSystem",
+      "Profile operating-system defaults must name a reviewed supported LTS provisioning image.",
+    ));
+  }
   if (
     typeof providerDefaults.operatingSystem === "string"
     && /^ubuntu-[0-9]{2}\.[0-9]{2}$/.test(providerDefaults.operatingSystem)
@@ -1913,7 +1946,7 @@ export function buildTeamProfileImportDiff(
     compareChange("providerDefaults.planClass", currentProvider?.planName ?? null, profile.providerDefaults.planClass),
     compareChange(
       "providerDefaults.operatingSystem",
-      currentOperatingSystem(current.ubuntuVersion),
+      currentOperatingSystem(current.ubuntuVersion ?? currentProvider?.ubuntuVersion),
       profile.providerDefaults.operatingSystem,
     ),
     compareChange("providerDefaults.architecture", current.architecture ?? null, profile.providerDefaults.architecture),
