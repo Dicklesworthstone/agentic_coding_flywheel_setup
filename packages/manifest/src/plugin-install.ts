@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildPluginInstallPlan, PluginPlanError, type PluginInstallPlan, type PluginPlanTarget } from './plugin-plan.js';
-import { executePluginInstallPlan, PluginInstallError, type PluginInstallReceipt } from './plugin-runtime.js';
+import { executePluginInstallPlan, inspectPluginInstallPlan, recoverPluginInstallPlan, PluginInstallError,
+  type PluginInstallReceipt, type PluginInstallInspection, type PluginInstallRecovery } from './plugin-runtime.js';
 
 export interface PluginInstallArguments {
   archive: string;
@@ -14,6 +15,9 @@ export interface PluginInstallArguments {
   skip: string[];
   apply: boolean;
   acceptPlan?: string;
+  status: boolean;
+  recover: boolean;
+  acceptReceipt?: string;
   json: boolean;
 }
 export function parsePluginInstallArguments(args: readonly string[]): PluginInstallArguments {
@@ -21,11 +25,11 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
   const flags = new Set<string>();
   for (let index = 0; index < args.length; index++) {
     const option = args[index]!;
-    if (['--yes', '--dry-run', '--json'].includes(option)) {
+    if (['--yes', '--dry-run', '--json', '--status', '--recover'].includes(option)) {
       if (flags.has(option)) throw new Error('Duplicate plugin install option');
       flags.add(option); continue;
     }
-    if (!['--archive', '--review', '--target', '--only', '--skip', '--accept-plan'].includes(option)
+    if (!['--archive', '--review', '--target', '--only', '--skip', '--accept-plan', '--accept-receipt'].includes(option)
         || values.has(option)) throw new Error('Unknown or duplicate plugin install option');
     const value = args[++index];
     if (!value || value.startsWith('--')) throw new Error('Plugin install option requires a value');
@@ -48,13 +52,22 @@ export function parsePluginInstallArguments(args: readonly string[]): PluginInst
   };
   const apply = flags.has('--yes');
   const acceptPlan = values.get('--accept-plan');
+  const status = flags.has('--status');
+  const recover = flags.has('--recover');
+  const acceptReceipt = values.get('--accept-receipt');
   if ((apply && flags.has('--dry-run')) || (apply !== (acceptPlan !== undefined))
       || (acceptPlan !== undefined && !/^[a-f0-9]{64}$/.test(acceptPlan))) {
     throw new Error('Installation requires --yes and the exact --accept-plan digest; --dry-run cannot be combined with installation');
   }
+  if ((status && (apply || recover || flags.has('--dry-run') || acceptReceipt !== undefined))
+      || (recover && (!apply || acceptReceipt === undefined))
+      || (!recover && acceptReceipt !== undefined)
+      || (acceptReceipt !== undefined && !/^[a-f0-9]{64}$/.test(acceptReceipt))) {
+    throw new Error('Status is read-only; recovery requires --yes, --accept-plan and --accept-receipt together');
+  }
   return { archive: values.get('--archive')!, review: values.get('--review')!,
     target: { os: parts[0]!, version: parts[1]!, arch: parts[2]!, libc: parts[3]! },
-    only: parseIds('--only'), skip: parseIds('--skip'), apply, acceptPlan, json: flags.has('--json') };
+    only: parseIds('--only'), skip: parseIds('--skip'), apply, acceptPlan, status, recover, acceptReceipt, json: flags.has('--json') };
 }
 
 /** Load one immutable pair of canonical trust files, then validate the reviewed archive. */
@@ -101,6 +114,8 @@ export async function loadPluginInstallPlan(options: PluginInstallArguments): Pr
 export interface PluginInstallCommandServices {
   loadPlan: (options: PluginInstallArguments) => Promise<PluginInstallPlan>;
   execute: (plan: PluginInstallPlan, signal: AbortSignal) => Promise<PluginInstallReceipt>;
+  inspect?: (plan: PluginInstallPlan, signal: AbortSignal) => Promise<PluginInstallInspection>;
+  recover?: (plan: PluginInstallPlan, receiptSha256: string, signal: AbortSignal) => Promise<PluginInstallRecovery>;
   write: (message: string) => void;
 }
 export async function pluginInstallMain(
@@ -108,11 +123,13 @@ export async function pluginInstallMain(
   services: PluginInstallCommandServices = {
     loadPlan: loadPluginInstallPlan,
     execute: (plan, signal) => executePluginInstallPlan(plan, { signal }),
+    inspect: (plan, signal) => inspectPluginInstallPlan(plan, { signal }),
+    recover: (plan, digest, signal) => recoverPluginInstallPlan(plan, digest, { signal }),
     write: (message) => console.log(message),
   },
 ): Promise<number> {
   if (args.length === 1 && ['--help', '-h'].includes(args[0]!)) {
-    services.write('Usage: bun run plugin:install --archive package.tar.gz --review trusted-review.json --target os/version/arch/libc --only plugin.package.module[,id...] [--skip id,...] [--json]\nDefault: read-only plan; no network, installers, or state writes.\nApply: repeat the same inputs with --yes --accept-plan <planSha256>. Run as the target user, never root.');
+    services.write('Usage: bun run plugin:install --archive package.tar.gz --review trusted-review.json --target os/version/arch/libc --only plugin.package.module[,id...] [--skip id,...] [--json]\nDefault: read-only plan; no network, installers, or state writes.\nApply: repeat the same inputs with --yes --accept-plan <planSha256>. Run as the target user, never root.\nInspect: --status reads the receipt without running health checks or installers.\nRecover: --recover --yes --accept-plan <planSha256> --accept-receipt <receiptSha256> preserves interrupted evidence and allows a separate retry; it never installs.');
     return 0;
   }
   const json = args.includes('--json');
@@ -126,6 +143,16 @@ export async function pluginInstallMain(
     const options = parsePluginInstallArguments(args); parsed = true;
     const plan = await services.loadPlan(options);
     controller.signal.throwIfAborted();
+    if (options.status) {
+      if (!services.inspect) throw new PluginInstallError('plugin_operation_unavailable', 'Receipt inspection is unavailable');
+      const inspection = await services.inspect(plan, controller.signal);
+      controller.signal.throwIfAborted();
+      if (inspection.schema !== 'acfs.plugin-install-status.v1' || inspection.planSha256 !== plan.planSha256
+          || inspection.healthChecked !== false) throw new PluginInstallError('plugin_state_invalid', 'Receipt inspection returned an inconsistent result');
+      services.write(json ? JSON.stringify({ status: 'inspected', mode: 'status', inspection })
+        : `Recorded plugin state: ${inspection.status}\nReceipt digest: ${inspection.receiptSha256 ?? 'unavailable'}\nRecovery eligible: ${inspection.recoveryEligible ? 'yes' : 'no'}\nNo health checks or installers ran; recorded completion is not a current health assessment.`);
+      return 0;
+    }
     if (!options.apply) {
       services.write(json ? JSON.stringify({ status: 'planned', mode: 'dry-run', plan })
         : `Plugin plan ${plan.planSha256}\nInstall: ${plan.actions.map((action) => action.id).join(', ')}\nExisting prerequisites: ${plan.prerequisites.map((entry) => entry.id).join(', ') || 'none'}\nNo changes made. Apply with the same inputs plus --yes --accept-plan ${plan.planSha256}`);
@@ -133,6 +160,24 @@ export async function pluginInstallMain(
     }
     if (options.acceptPlan !== plan.planSha256) {
       throw new PluginInstallError('plugin_plan_changed', 'Plan changed since review; preview the current plan before installation');
+    }
+    if (options.recover) {
+      if (!services.recover) throw new PluginInstallError('plugin_operation_unavailable', 'Interrupted-install recovery is unavailable');
+      const recovery = await services.recover(plan, options.acceptReceipt!, controller.signal);
+      controller.signal.throwIfAborted();
+      if (recovery.schema !== 'acfs.plugin-install-recovery.v1' || recovery.planSha256 !== plan.planSha256
+          || recovery.previousReceiptSha256 !== options.acceptReceipt
+          || recovery.preservedReceipt !== `${plan.planSha256}.interrupted-${options.acceptReceipt}.json`
+          || recovery.receipt.planSha256 !== plan.planSha256 || recovery.receipt.packageSha256 !== plan.package.pluginSha256
+          || recovery.receipt.status !== 'failed' || recovery.receipt.recoveredFrom !== options.acceptReceipt
+          || !recovery.retryModuleIds.length || recovery.retryModuleIds.some((id) =>
+            !plan.actions.some((action) => action.id === id) || recovery.receipt.actions[id]?.status !== 'failed'
+              || recovery.receipt.actions[id]?.exitCode !== null)) {
+        throw new PluginInstallError('plugin_state_invalid', 'Recovery did not produce a consistent retryable receipt');
+      }
+      services.write(json ? JSON.stringify({ status: 'recovered', mode: 'recovery', recovery })
+        : `Interrupted evidence preserved: ${recovery.preservedReceipt}\nRetryable modules: ${recovery.retryModuleIds.join(', ')}\nNo installers ran. Run the separately approved install command to retry.`);
+      return 0;
     }
     const receipt = await services.execute(plan, controller.signal);
     controller.signal.throwIfAborted();

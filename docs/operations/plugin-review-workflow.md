@@ -85,8 +85,10 @@ input, inherited credentials, shell startup injection, or an on-disk `$0` script
 The runtime does not forward API keys, tokens, or arbitrary caller environment.
 Raw installer output is discarded rather than persisted or exposed as diagnostics.
 
-A kernel `flock` serializes plugin installs for that user. Each plan stores an
-atomic, fsynced, private receipt at:
+A kernel `flock` serializes plugin installs for that user. The parent keeps its
+locked descriptor open and passes it to execution children. If the parent dies,
+surviving descendants that retain the descriptor continue to exclude a retry.
+Each plan stores an atomic, fsynced, private receipt at:
 
 ```text
 ~/.acfs/plugin-installs/<planSha256>.json
@@ -104,12 +106,77 @@ loss is ambiguous: inspect the receipt, installer processes, and installed files
 before recovery. The command does not steal a live lock, blindly replay an
 interrupted installer, delete evidence, or roll back arbitrary user files.
 Installers have a 15-minute runtime limit and bounded TERM/KILL cleanup for their
-own subprocesses. SIGINT/SIGTERM cancellation cannot produce a success result.
+own process groups. An entrypoint that exits zero but leaves group members behind
+is failed with exit code 125 rather than marked successful. SIGINT/SIGTERM
+cancellation cannot produce a success result. Deliberately detached processes,
+explicitly closed descriptors, or malicious same-user code are not contained by
+this mechanism; reviewed installers must not daemonize or tamper with the lease.
 
-Install command exits: `0` for a valid preview or verified completion; `1` for
-trust, planning, prerequisite, or execution refusal; `2` for invalid arguments;
-`130`/`143` for interrupt/termination. JSON output uses `status: "planned"`,
-`"complete"`, or `"failed"`. `plugin:verify` retains its previous output and exit
+## Inspect and recover an interrupted installation
+
+Use the same archive, review, target, and selection as the original installation.
+These modes still rebuild and validate the plan, require a valid external review,
+and run as the matching target user on the matching host. They do not accept a
+saved plan or arbitrary receipt pathname as authority.
+
+```bash
+bun run plugin:install \
+  --archive /path/to/example-tools.tar.gz \
+  --review /trusted/reviews/example-tools.json \
+  --target ubuntu/26.04/x86_64/glibc \
+  --only plugin.example_tools.cli --status --json
+```
+
+Status returns `status: "inspected"`, `mode: "status"`, and an `inspection`
+containing the exact receipt digest, per-action state, and `recoveryEligible`.
+It creates no directories or lock files, modifies no receipts, downloads nothing,
+and executes no health or installer commands. It briefly takes the existing lock
+for a stable snapshot. A busy lock returns `inspection.status: "busy"` with no
+receipt fingerprint to approve. A recorded `complete` receipt is historical:
+`healthChecked` is always false. An `incomplete` finalization without a running
+action needs an ordinary approved retry, not interruption recovery.
+
+After reviewing the interrupted actions and their possible partial effects,
+set `PLAN_SHA256` to `inspection.planSha256` and `RECEIPT_SHA256` to the inspected
+`inspection.receiptSha256`, then explicitly approve recovery:
+
+```bash
+bun run plugin:install \
+  --archive /path/to/example-tools.tar.gz \
+  --review /trusted/reviews/example-tools.json \
+  --target ubuntu/26.04/x86_64/glibc \
+  --only plugin.example_tools.cli \
+  --recover --yes --accept-plan "$PLAN_SHA256" \
+  --accept-receipt "$RECEIPT_SHA256" --json
+```
+
+Recovery acquires the existing exclusive lease and compares the exact receipt
+bytes with the approved fingerprint. Changed receipts require a new inspection.
+It durably preserves the original bytes in a private file named
+`<planSha256>.interrupted-<receiptSha256>.json` before replacing active state.
+Only `running` actions become `failed` with an unknown (`null`) exit code;
+completed dependencies stay completed. The active receipt records `recoveredFrom`
+so the preserved evidence is identifiable. Recovery never marks an interrupted
+action successful and never downloads, verifies executables, or runs installers.
+A separate normal `--yes --accept-plan` invocation is required to retry; it
+rechecks completed dependencies and all existing trust boundaries as usual.
+
+Legacy interrupted receipts without `executionProtocol: "inherited-lock-v1"`
+remain inspectable but cannot use automatic recovery: an unlocked legacy lock
+does not establish that an orphan installer has exited. Unknown protocols,
+malformed or noncanonical machine receipts, mismatched plan/package identities,
+unsafe files, and conflicting preserved evidence fail closed. Do not edit a
+legacy receipt to manufacture protocol support or overwrite the evidence file.
+An exact pre-existing backup is accepted after a crash between backup and state
+replacement; a different backup is never overwritten.
+
+Install command exits: `0` for a valid preview, verified installation, successful
+status query (including busy/not-started), or completed recovery operation; `1`
+for trust, planning, state, prerequisite, or execution refusal; `2` for invalid
+arguments; `130`/`143` for interrupt/termination. JSON output distinguishes
+`status: "planned"`, `"inspected"`, `"recovered"`, `"complete"`, and `"failed"`.
+Recovery success means state is retryable, not that tools are installed.
+`plugin:verify` retains its previous output and exit
 contract, including `activation: "disabled"` because it never performs installs.
 
 ## External review record
@@ -183,6 +250,8 @@ never extracted, displayed, installed, or interpreted as scripts by the loader.
 canonical schema, merged graph, phases, capability policy and checksum map.
 `loadPluginInstallPlan` reads the canonical checkout's trust files and builds a
 selection-specific plan; `buildPluginInstallPlan` is its pure planning core.
+`inspectPluginInstallPlan` and `recoverPluginInstallPlan` expose the same receipt
+operations for a freshly validated plan; neither executes that plan.
 Low-level archive readers still return semantically untrusted `unknown` content.
 Do not replace these boundaries with deserialized "valid" results or plan files.
 
@@ -190,6 +259,7 @@ Do not replace these boundaries with deserialized "valid" results or plan files.
 cd packages/manifest
 bun test src/plugin-archive.test.ts src/plugin-review.test.ts src/plugin-verify.test.ts
 bun test src/plugin-plan.test.ts src/plugin-runtime.test.ts src/plugin-install.test.ts
+bun test src/plugin-supervision.test.ts src/plugin-recovery.test.ts src/plugin-recovery-cli.test.ts
 bun test src/plugin.test.ts
 bun run type-check
 bun run generate --validate
@@ -200,3 +270,7 @@ and a local TLS server. Run as a non-root Linux user to exercise installation;
 the root-refusal case is exercised separately under root. The canonical
 archive-to-plan test additionally requires the repository and its YAML/Zod/Bun
 dependencies. Local fixture execution is not a live third-party installer test.
+Supervision/recovery tests kill a real parent, check the surviving lease, preserve
+the ambiguous receipt, and retry without replaying completed dependencies. CLI
+routing tests inject a plan loader; they do not substitute for canonical archive,
+review, manifest, and checksum integration tests.

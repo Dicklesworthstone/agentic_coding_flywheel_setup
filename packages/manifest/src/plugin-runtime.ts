@@ -2,7 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { constants, closeSync, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdirSync,
-  openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+  openSync, readFileSync, readSync, renameSync, writeFileSync } from 'node:fs';
 import { get } from 'node:https';
 import { userInfo } from 'node:os';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
@@ -33,6 +33,8 @@ export interface PluginInstallReceipt {
   actions: Record<string, ActionState>;
   /** Only this protocol can prove live orphan installers still exclude a retry. */
   executionProtocol?: 'inherited-lock-v1';
+  /** Digest of the preserved interrupted receipt, not an installer success. */
+  recoveredFrom?: string;
 }
 
 /** Parse OS-owned release metadata as data, never as shell code. */
@@ -80,7 +82,9 @@ function assertDirectory(path: string, privateDirectory: boolean): void {
     refuse('plugin_state_unsafe', 'Plugin state requires real, user-owned directories without unsafe permissions');
   }
 }
-function stateDirectory(home: string): string {
+function stateDirectory(home: string, create?: true): string;
+function stateDirectory(home: string, create: false): string | null;
+function stateDirectory(home: string, create = true): string | null {
   if (!isAbsolute(home) || resolve(home) !== home || /[\x00-\x1f\x7f:]/.test(home)) {
     refuse('plugin_state_unsafe', 'Target-user home must be a canonical absolute path');
   }
@@ -94,9 +98,15 @@ function stateDirectory(home: string): string {
   assertDirectory(home, false);
   for (const part of ['.acfs', 'plugin-installs']) {
     current = join(current, part);
-    try { mkdirSync(current, { mode: 0o700 }); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
-    assertDirectory(current, part === 'plugin-installs');
+    if (create) {
+      try { mkdirSync(current, { mode: 0o700 }); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
+    }
+    try { assertDirectory(current, part === 'plugin-installs'); }
+    catch (error) {
+      if (!create && (error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
   }
   return current;
 }
@@ -123,31 +133,73 @@ function writeReceipt(directory: string, receipt: PluginInstallReceipt): void {
   const directoryFd = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
   try { fsyncSync(directoryFd); } finally { closeSync(directoryFd); }
 }
-function readReceipt(directory: string, plan: PluginInstallPlan): PluginInstallReceipt {
+interface ReceiptSnapshot { receipt: PluginInstallReceipt; bytes: Buffer; receiptSha256: string }
+
+/** A fixed-size snapshot cannot grow without bound between stat and read. */
+function readStateBytes(fd: number): Buffer {
+  const before = fstatSync(fd);
+  if (before.size < 1 || before.size > 1024 * 1024) refuse('plugin_state_invalid', 'Plugin receipt exceeds its size budget or is empty');
+  const bytes = Buffer.alloc(before.size + 1);
+  let offset = 0;
+  while (offset < bytes.length) {
+    const count = readSync(fd, bytes, offset, bytes.length - offset, null);
+    if (count === 0) break;
+    offset += count;
+  }
+  const after = fstatSync(fd);
+  if (offset !== before.size || before.size !== after.size || after.nlink !== 1
+      || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+    refuse('plugin_state_changed', 'Plugin receipt changed during inspection');
+  }
+  return bytes.subarray(0, offset);
+}
+
+function readReceiptSnapshot(directory: string, plan: PluginInstallPlan): ReceiptSnapshot | null {
   let fd: number;
   try { fd = safeFile(join(directory, `${plan.planSha256}.json`), constants.O_RDONLY); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    return { schema: 'acfs.plugin-install-receipt.v1', planSha256: plan.planSha256,
-      packageSha256: plan.package.pluginSha256, status: 'pending', updatedAt: new Date().toISOString(),
-      actions: Object.fromEntries(plan.actions.map((action) => [action.id, { status: 'pending', exitCode: null }])) };
+    return null;
   }
   let data: PluginInstallReceipt;
+  let bytes: Buffer;
   try {
-    if (fstatSync(fd).size > 1024 * 1024) refuse('plugin_state_invalid', 'Plugin receipt exceeds its size budget');
-    data = JSON.parse(readFileSync(fd, 'utf8')) as PluginInstallReceipt;
+    bytes = readStateBytes(fd);
+    data = JSON.parse(bytes.toString('utf8')) as PluginInstallReceipt;
+    // Receipts are machine-written compact JSON. Round-tripping rejects duplicate
+    // keys, invalid UTF-8 and ambiguous encodings without returning raw contents.
+    const canonical = JSON.stringify(data);
+    if (!bytes.equals(Buffer.from(canonical)) && !bytes.equals(Buffer.from(canonical + '\n'))) {
+      refuse('plugin_state_invalid', 'Plugin receipt is not canonical UTF-8 JSON');
+    }
   } catch { return refuse('plugin_state_invalid', 'Plugin receipt is malformed; existing state was preserved'); }
   finally { closeSync(fd); }
   const statuses = new Set(['pending', 'running', 'complete', 'failed']);
   if (!data || data.schema !== 'acfs.plugin-install-receipt.v1' || data.planSha256 !== plan.planSha256
+      || Object.keys(data).some((key) => !['schema', 'planSha256', 'packageSha256', 'status', 'updatedAt',
+        'actions', 'executionProtocol', 'recoveredFrom'].includes(key))
+      || typeof data.updatedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(data.updatedAt)
+      || !Number.isFinite(Date.parse(data.updatedAt)) || new Date(data.updatedAt).toISOString() !== data.updatedAt
+      || (data.executionProtocol !== undefined && data.executionProtocol !== 'inherited-lock-v1')
+      || (data.recoveredFrom !== undefined && !/^[a-f0-9]{64}$/.test(data.recoveredFrom))
       || data.packageSha256 !== plan.package.pluginSha256 || !statuses.has(data.status)
       || !data.actions || Array.isArray(data.actions) || typeof data.actions !== 'object'
       || Object.keys(data.actions).sort().join(',') !== plan.actions.map((action) => action.id).sort().join(',')
       || Object.values(data.actions).some((action) => !action || !statuses.has(action.status)
+        || Object.keys(action).sort().join(',') !== 'exitCode,status'
         || (action.exitCode !== null && (!Number.isInteger(action.exitCode) || action.exitCode < 0 || action.exitCode > 255))
         || (action.status === 'complete' && action.exitCode !== 0))) {
     return refuse('plugin_state_invalid', 'Plugin receipt does not match the reviewed execution plan');
   }
+  return { receipt: data, bytes, receiptSha256: hash(bytes) };
+}
+
+function readReceipt(directory: string, plan: PluginInstallPlan): PluginInstallReceipt {
+  const data = readReceiptSnapshot(directory, plan)?.receipt ?? {
+    schema: 'acfs.plugin-install-receipt.v1', planSha256: plan.planSha256,
+    packageSha256: plan.package.pluginSha256, status: 'pending', updatedAt: new Date().toISOString(),
+    actions: Object.fromEntries(plan.actions.map((action) => [action.id, { status: 'pending', exitCode: null }])),
+  } satisfies PluginInstallReceipt;
   if (Object.values(data.actions).some((action) => action.status === 'running')) {
     refuse('plugin_install_interrupted', 'An interrupted installer has uncertain effects; inspect its receipt and processes before retrying');
   }
@@ -165,9 +217,9 @@ interface ExecutionLease {
  * Keep our descriptor open and pass it to ALL execution children. Never unlock
  * explicitly: surviving descendants must exclude new work after parent death.
  */
-function acquireLock(directory: string, env: NodeJS.ProcessEnv): ExecutionLease {
+function acquireLock(directory: string, env: NodeJS.ProcessEnv, create = true): ExecutionLease {
   const path = join(directory, 'install.lock');
-  const fd = safeFile(path, constants.O_RDWR | constants.O_CREAT);
+  const fd = safeFile(path, create ? constants.O_RDWR | constants.O_CREAT : constants.O_RDONLY);
   let released = false;
   const release = (): void => { if (!released) { released = true; closeSync(fd); } };
   const assertHeld = (): void => {
@@ -192,6 +244,115 @@ function acquireLock(directory: string, env: NodeJS.ProcessEnv): ExecutionLease 
     assertHeld();
     return { fd, assertHeld, release };
   } catch (error) { release(); throw error; }
+}
+
+function validateRuntimePlan(plan: PluginInstallPlan): void {
+  const { planSha256, ...payload } = plan;
+  if (!/^[a-f0-9]{64}$/.test(planSha256) || hash(Buffer.from(JSON.stringify(payload))) !== planSha256) {
+    refuse('plugin_plan_changed', 'Execution plan changed after validation');
+  }
+}
+
+export interface PluginInstallInspection {
+  schema: 'acfs.plugin-install-status.v1';
+  planSha256: string;
+  status: 'not_started' | 'busy' | 'interrupted' | 'incomplete' | 'pending' | 'failed' | 'complete';
+  receiptSha256: string | null;
+  receipt: PluginInstallReceipt | null;
+  recoveryEligible: boolean;
+  /** Status never runs commands or claims installed binaries were checked. */
+  healthChecked: false;
+}
+
+/** No mkdir, receipt writes, downloads or health commands, even for a first run. */
+export async function inspectPluginInstallPlan(
+  plan: PluginInstallPlan, options: Pick<PluginRuntimeOptions, 'home' | 'signal'> = {},
+): Promise<PluginInstallInspection> {
+  checkTarget(plan.target); validateRuntimePlan(plan); options.signal?.throwIfAborted();
+  const result: PluginInstallInspection = { schema: 'acfs.plugin-install-status.v1', planSha256: plan.planSha256,
+    status: 'not_started', receiptSha256: null, receipt: null, recoveryEligible: false, healthChecked: false };
+  const home = options.home ?? userInfo().homedir;
+  const directory = stateDirectory(home, false);
+  if (!directory) return result;
+  let lock: ExecutionLease;
+  try { lock = acquireLock(directory, environment(home), false); }
+  catch (error) {
+    if (error instanceof PluginInstallError && error.code === 'plugin_install_busy') return { ...result, status: 'busy' };
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if (readReceiptSnapshot(directory, plan)) refuse('plugin_state_unsafe', 'Existing plugin receipt has no execution lock');
+    return result;
+  }
+  try {
+    const snapshot = readReceiptSnapshot(directory, plan);
+    lock.assertHeld();
+    if (!snapshot) return result;
+    const interrupted = Object.values(snapshot.receipt.actions).some((action) => action.status === 'running');
+    return { ...result, receipt: snapshot.receipt, receiptSha256: snapshot.receiptSha256,
+      status: interrupted ? 'interrupted' : snapshot.receipt.status === 'running' ? 'incomplete' : snapshot.receipt.status,
+      recoveryEligible: interrupted && snapshot.receipt.executionProtocol === 'inherited-lock-v1' };
+  } finally { lock.release(); }
+}
+
+export interface PluginInstallRecovery {
+  schema: 'acfs.plugin-install-recovery.v1';
+  planSha256: string;
+  previousReceiptSha256: string;
+  preservedReceipt: string;
+  retryModuleIds: string[];
+  receipt: PluginInstallReceipt;
+}
+
+/** Explicit recovery makes interrupted actions retryable, NEVER successful. */
+export async function recoverPluginInstallPlan(
+  plan: PluginInstallPlan, expectedReceiptSha256: string,
+  options: Pick<PluginRuntimeOptions, 'home' | 'signal'> = {},
+): Promise<PluginInstallRecovery> {
+  checkTarget(plan.target); validateRuntimePlan(plan); options.signal?.throwIfAborted();
+  if (!/^[a-f0-9]{64}$/.test(expectedReceiptSha256)) refuse('plugin_receipt_changed', 'An exact inspected receipt digest is required');
+  const home = options.home ?? userInfo().homedir;
+  const directory = stateDirectory(home, false);
+  if (!directory) return refuse('plugin_recovery_not_needed', 'No interrupted receipt exists for this plan');
+  const lock = acquireLock(directory, environment(home), false);
+  try {
+    const snapshot = readReceiptSnapshot(directory, plan);
+    if (!snapshot || snapshot.receiptSha256 !== expectedReceiptSha256) {
+      refuse('plugin_receipt_changed', 'Receipt changed since inspection; inspect again before recovery');
+    }
+    const retryModuleIds = plan.actions.filter((action) => snapshot.receipt.actions[action.id]!.status === 'running').map((action) => action.id);
+    if (!retryModuleIds.length) refuse('plugin_recovery_not_needed', 'This receipt has no interrupted actions');
+    if (snapshot.receipt.executionProtocol !== 'inherited-lock-v1') {
+      refuse('plugin_recovery_unsupported', 'Legacy interrupted receipts require manual process inspection; inherited locking cannot be assumed');
+    }
+    const preservedReceipt = `${plan.planSha256}.interrupted-${snapshot.receiptSha256}.json`;
+    const backupPath = join(directory, preservedReceipt);
+    lock.assertHeld(); options.signal?.throwIfAborted();
+    let fd: number;
+    try { fd = safeFile(backupPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      // A crash after backup but before state replacement is safely repeatable.
+      const existing = safeFile(backupPath, constants.O_RDONLY);
+      try { if (!readStateBytes(existing).equals(snapshot.bytes)) refuse('plugin_state_invalid', 'Preserved recovery evidence differs from the inspected receipt'); }
+      finally { closeSync(existing); }
+      fd = -1;
+    }
+    if (fd !== -1) {
+      try { writeFileSync(fd, snapshot.bytes); fsyncSync(fd); } finally { closeSync(fd); }
+    }
+    // Persist the evidence directory entry BEFORE replacing the active receipt.
+    const directoryFd = openSync(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    try { fsyncSync(directoryFd); } finally { closeSync(directoryFd); }
+    if (readReceiptSnapshot(directory, plan)?.receiptSha256 !== snapshot.receiptSha256) {
+      refuse('plugin_receipt_changed', 'Receipt changed during recovery; original evidence was retained');
+    }
+    const receipt = snapshot.receipt;
+    for (const id of retryModuleIds) receipt.actions[id] = { status: 'failed', exitCode: null };
+    receipt.status = 'failed'; receipt.recoveredFrom = snapshot.receiptSha256;
+    lock.assertHeld(); options.signal?.throwIfAborted();
+    writeReceipt(directory, receipt);
+    return { schema: 'acfs.plugin-install-recovery.v1', planSha256: plan.planSha256,
+      previousReceiptSha256: snapshot.receiptSha256, preservedReceipt, retryModuleIds, receipt };
+  } finally { lock.release(); }
 }
 
 /** Strict TLS, bounded redirects, a total deadline, and bounded response bytes. */
@@ -300,10 +461,7 @@ async function verify(action: PluginInstallAction, home: string, signal: AbortSi
 /** Never accepts a plan file: production callers rebuild this from trusted inputs. */
 export async function executePluginInstallPlan(plan: PluginInstallPlan, options: PluginRuntimeOptions = {}): Promise<PluginInstallReceipt> {
   checkTarget(plan.target);
-  const { planSha256, ...payload } = plan;
-  if (!/^[a-f0-9]{64}$/.test(planSha256) || hash(Buffer.from(JSON.stringify(payload))) !== planSha256) {
-    refuse('plugin_plan_changed', 'Execution plan changed after validation');
-  }
+  validateRuntimePlan(plan);
   const seconds = options.timeoutSeconds ?? 900;
   if (!Number.isInteger(seconds) || seconds < 1 || seconds > 3600) refuse('plugin_timeout_invalid', 'Installer timeout must be between 1 and 3600 seconds');
   const home = options.home ?? userInfo().homedir;

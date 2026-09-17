@@ -112,4 +112,5 @@ export { buildPluginInstallPlan, PluginPlanError } from './plugin-plan.js';
 export type { PluginInstallPlan, PluginInstallAction, PluginPlanInput, PluginPlanTarget } from './plugin-plan.js';
 export { loadPluginInstallPlan } from './plugin-install.js';
 export type { PluginInstallArguments } from './plugin-install.js';
-export type { PluginInstallReceipt } from './plugin-runtime.js';
+export { inspectPluginInstallPlan, recoverPluginInstallPlan } from './plugin-runtime.js';
+export type { PluginInstallReceipt, PluginInstallInspection, PluginInstallRecovery } from './plugin-runtime.js';
