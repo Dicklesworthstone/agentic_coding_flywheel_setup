@@ -96,11 +96,11 @@ log_error() {
 }
 
 load_continue_context() {
-    [[ -f "$ACFS_CONTINUE_CONTEXT_FILE" ]] || return 1
+    [[ -f "$ACFS_CONTINUE_CONTEXT_FILE" && ! -L "$ACFS_CONTINUE_CONTEXT_FILE" ]] || return 1
+    /bin/bash -n "$ACFS_CONTINUE_CONTEXT_FILE" || return 1
 
     # shellcheck source=/dev/null
-    source "$ACFS_CONTINUE_CONTEXT_FILE"
-    return 0
+    source "$ACFS_CONTINUE_CONTEXT_FILE" || return 1
 }
 
 # Clean up the resume infrastructure on success.
@@ -248,106 +248,76 @@ mark_state_complete() {
 # nohup+background is unreliable when parent service exits
 launch_continue_script() {
     local script="${ACFS_RESUME_DIR}/continue_install.sh"
-    load_continue_context || true
+    local unit="acfs-continue-install.service"
+    if ! command -v systemd-run &>/dev/null || ! command -v systemctl &>/dev/null; then
+        log_error "systemd is required for a durable installer continuation; no background fallback was started"
+        return 1
+    fi
 
-    if [[ ! -f "$script" ]]; then
-        log "No continue_install.sh found - manual installation needed"
-        local curl_cmd="curl -fsSL"
-        if command -v curl &>/dev/null && curl --help all 2>/dev/null | grep -q -- '--proto'; then
-            curl_cmd="curl --proto '=https' --proto-redir '=https' -fsSL"
-        fi
+    # A retry must not launch a second package manager or installer alongside
+    # a previously accepted continuation. The fixed unit name also closes the
+    # race if another caller starts it after this check.
+    if systemctl is-active --quiet "$unit"; then
+        log "Installer continuation is already running under $unit; not starting another copy"
+        return 0
+    fi
 
-        local install_url="${CONTINUE_INSTALL_URL:-https://raw.githubusercontent.com/Dicklesworthstone/agentic_coding_flywheel_setup/main/install.sh}"
-        local continue_ref="${CONTINUE_ACFS_REF:-main}"
-        local continue_home="${CONTINUE_HOME:-/root}"
-        local -a continue_args=()
-        local rendered_args=""
-        local arg=""
-        local env_prefix=""
-
-        if declare -p CONTINUE_INSTALL_ARGS >/dev/null 2>&1; then
-            continue_args=("${CONTINUE_INSTALL_ARGS[@]}")
-        else
-            continue_args=(--yes --mode vibe)
-        fi
-
-        for arg in "${continue_args[@]}"; do
-            rendered_args+=" $(printf '%q' "$arg")"
-        done
-        rendered_args="${rendered_args# }"
-
-        [[ -n "${CONTINUE_TARGET_USER:-}" ]] && env_prefix+="TARGET_USER=$(printf '%q' "$CONTINUE_TARGET_USER") "
-        [[ -n "${CONTINUE_TARGET_HOME:-}" ]] && env_prefix+="TARGET_HOME=$(printf '%q' "$CONTINUE_TARGET_HOME") "
-        [[ -n "${CONTINUE_ACFS_HOME:-}" ]] && env_prefix+="ACFS_HOME=$(printf '%q' "$CONTINUE_ACFS_HOME") "
-        [[ -n "${CONTINUE_ACFS_STATE_FILE:-}" ]] && env_prefix+="ACFS_STATE_FILE=$(printf '%q' "$CONTINUE_ACFS_STATE_FILE") "
-        env_prefix+="HOME=$(printf '%q' "$continue_home") "
-        if [[ -n "$continue_ref" ]] && [[ "$continue_ref" != "main" ]]; then
-            env_prefix+="ACFS_REF=$(printf '%q' "$continue_ref") "
-        fi
-
-        log "Run: ${env_prefix}${curl_cmd} $(printf '%q' "$install_url") | bash -s -- ${rendered_args}"
+    if [[ ! -f "$script" || -L "$script" ]] || ! /bin/bash -n "$script"; then
+        log_error "Missing, symlinked, or invalid continuation script: $script"
+        log "Restore the recovery files from the same installer ref before retrying; original options will not be guessed"
+        return 1
+    fi
+    if ! load_continue_context; then
+        log_error "Cannot load the original continuation context; refusing to guess target-user settings"
         return 1
     fi
 
     log "Launching continue_install.sh to resume ACFS installation"
     local continue_home="${CONTINUE_HOME:-/root}"
     local -a continue_env_args=("--setenv=HOME=${continue_home}")
-    local -a continue_nohup_env=("HOME=${continue_home}")
 
     if [[ -n "${CONTINUE_TARGET_USER:-}" ]]; then
         continue_env_args+=("--setenv=TARGET_USER=${CONTINUE_TARGET_USER}")
-        continue_nohup_env+=("TARGET_USER=${CONTINUE_TARGET_USER}")
     fi
     if [[ -n "${CONTINUE_TARGET_HOME:-}" ]]; then
         continue_env_args+=("--setenv=TARGET_HOME=${CONTINUE_TARGET_HOME}")
-        continue_nohup_env+=("TARGET_HOME=${CONTINUE_TARGET_HOME}")
     fi
     if [[ -n "${CONTINUE_ACFS_HOME:-}" ]]; then
         continue_env_args+=("--setenv=ACFS_HOME=${CONTINUE_ACFS_HOME}")
-        continue_nohup_env+=("ACFS_HOME=${CONTINUE_ACFS_HOME}")
     fi
     if [[ -n "${CONTINUE_ACFS_STATE_FILE:-}" ]]; then
         continue_env_args+=("--setenv=ACFS_STATE_FILE=${CONTINUE_ACFS_STATE_FILE}")
-        continue_nohup_env+=("ACFS_STATE_FILE=${CONTINUE_ACFS_STATE_FILE}")
     fi
     if [[ -n "${CONTINUE_ACFS_REF:-}" ]]; then
         continue_env_args+=("--setenv=ACFS_REF=${CONTINUE_ACFS_REF}")
-        continue_nohup_env+=("ACFS_REF=${CONTINUE_ACFS_REF}")
     fi
 
-    # Use systemd-run to spawn a proper transient service that survives this script's exit
-    # --collect: auto-cleanup unit after it finishes (avoids "unit already exists" errors)
-    # --no-block: don't wait for service to complete (we want to exit immediately)
-    # --setenv: restore the original target-user context before install.sh resumes
-    # Service output goes to journal (check with: journalctl -u acfs-continue-install)
-    if command -v systemd-run &>/dev/null; then
-        # Remove any stale unit from previous failed attempts
-        systemctl reset-failed acfs-continue-install 2>/dev/null || true
-
-        if (
-            set -o pipefail
-            systemd-run --collect --no-block \
-                --unit=acfs-continue-install \
-                --description="ACFS Installation Continuation" \
-                --property=Type=oneshot \
-                --property=TimeoutStartSec=7200 \
-                "${continue_env_args[@]}" \
-                /bin/bash "$script" 2>&1 | tee -a "$ACFS_LOG"
-            exit "${PIPESTATUS[0]:-1}"
-        ); then
-            log "ACFS continuation launched via systemd-run"
-            log "Monitor with: journalctl -u acfs-continue-install -f"
-        else
-            log "systemd-run failed, falling back to nohup"
-            env "${continue_nohup_env[@]}" nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
-            log "ACFS continuation launched via nohup (PID: $!)"
-        fi
-    else
-        # Fallback to nohup if systemd-run unavailable (shouldn't happen on Ubuntu)
-        env "${continue_nohup_env[@]}" nohup bash "$script" >> "$ACFS_LOG" 2>&1 &
-        log "ACFS continuation launched via nohup (PID: $!)"
+    # Type=exec without --no-block waits for exec, NOT for the installation to
+    # finish. This catches launch failures that a queued oneshot job conceals.
+    # RuntimeMaxSec replaces the old oneshot's whole-install startup timeout.
+    # Capture the launch result before logging: a full log disk must never
+    # turn an accepted service into an attempted duplicate launch.
+    systemctl reset-failed "$unit" 2>/dev/null || true
+    local launch_output="" launch_status=0
+    launch_output=$(systemd-run --collect --no-ask-password \
+        --unit=acfs-continue-install \
+        --description="ACFS Installation Continuation" \
+        --property=Type=exec \
+        --property=TimeoutStartSec=120 \
+        --property=RuntimeMaxSec=7200 \
+        --property=StandardOutput=journal \
+        --property=StandardError=journal \
+        "${continue_env_args[@]}" \
+        /bin/bash "$script" 2>&1) || launch_status=$?
+    [[ -z "$launch_output" ]] || log "$launch_output" || true
+    if [[ "$launch_status" -ne 0 ]]; then
+        log_error "systemd could not start the installer continuation (status $launch_status); no background fallback was started"
+        log "Inspect: journalctl -u acfs-continue-install; recovery files remain available"
+        return 1
     fi
 
+    log "ACFS continuation started under systemd; installation is still in progress"
+    log "Monitor with: journalctl -u acfs-continue-install -f"
     return 0
 }
 

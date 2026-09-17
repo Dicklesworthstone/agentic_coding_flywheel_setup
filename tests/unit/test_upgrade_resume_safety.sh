@@ -10,7 +10,7 @@ PASS=0 FAIL=0
 extract_function() {
     awk -v name="$1" '$0 == name "() {" { p=1 } p { print } p && /^}/ { exit }' "$SCRIPT"
 }
-for function_name in compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state mark_state_complete; do
+for function_name in compute_version_num ubuntu_is_at_or_beyond_target_version read_target_version_from_state mark_state_complete load_continue_context launch_continue_script; do
     extract_function "$function_name" >> "$SUITE/functions.sh"
 done
 awk '/^log "=== ACFS Upgrade Resume Starting ==="/ { p=1 } p' "$SCRIPT" > "$SUITE/main.sh"
@@ -191,6 +191,123 @@ for scenario in normal kernel-only stale-complete at-target beyond-target bad-os
     backwards overshoot garbage-hop no-op wrong-release audit-output target-audit audit-status post-audit \
     continuation mark library state-library logging-library lock channel resumed start plan preflight executor complete reboot-state shutdown; do
     run "resume dispatcher: $scenario" check_dispatch "$scenario"
+done
+
+check_context() {
+    local scenario="$1" WORK ACFS_CONTINUE_CONTEXT_FILE
+    WORK=$(mktemp -d "$SUITE/context.XXXXXX")
+    ACFS_CONTINUE_CONTEXT_FILE="$WORK/context.env"
+    case "$scenario" in
+        missing) ;;
+        syntax) printf 'if then\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+        error) printf 'return 1\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+        symlink)
+            printf 'CONTINUE_HOME=/root\n' > "$WORK/other.env"
+            ln -s "$WORK/other.env" "$ACFS_CONTINUE_CONTEXT_FILE"
+            ;;
+        valid) printf 'CONTINUE_HOME=/root\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+    esac
+    local status=0
+    load_continue_context || status=$?
+    if [[ "$scenario" == valid ]]; then
+        assert_eq "$status" 0
+        assert_eq "$CONTINUE_HOME" /root
+    else
+        assert_eq "$status" 1
+    fi
+}
+for scenario in valid missing syntax error symlink; do
+    run "continuation context: $scenario" check_context "$scenario"
+done
+
+check_handoff() {
+    local scenario="$1" WORK ACFS_RESUME_DIR ACFS_CONTINUE_CONTEXT_FILE ACFS_LOG
+    WORK=$(mktemp -d "$SUITE/handoff.XXXXXX")
+    ACFS_RESUME_DIR="$WORK/resume"
+    ACFS_CONTINUE_CONTEXT_FILE="$WORK/context.env"
+    ACFS_LOG="$WORK/log"
+    mkdir -p "$ACFS_RESUME_DIR"
+    printf '#!/bin/bash\nexit 0\n' > "$ACFS_RESUME_DIR/continue_install.sh"
+    # These values deliberately contain spaces and shell punctuation. They
+    # must remain single argv values, never evaluated or split by the caller.
+    cat > "$ACFS_CONTINUE_CONTEXT_FILE" <<'CONTEXT'
+CONTINUE_HOME=/root
+CONTINUE_TARGET_USER=dev-user
+CONTINUE_TARGET_HOME='/data/dev user'
+CONTINUE_ACFS_HOME='/data/dev user/.acfs'
+CONTINUE_ACFS_STATE_FILE='/data/dev user/.acfs/state.json'
+CONTINUE_ACFS_REF='release/test-$literal;not-a-command'
+CONTEXT
+    log() { printf '%s\n' "$*" >> "$WORK/log"; [[ "$scenario" != log-failure ]]; }
+    log_error() { printf '%s\n' "$*" >> "$WORK/errors"; }
+    command() {
+        if [[ "$*" == '-v systemd-run' && "$scenario" == missing-run ]]; then return 1; fi
+        if [[ "$*" == '-v systemctl' && "$scenario" == missing-systemctl ]]; then return 1; fi
+        builtin command "$@"
+    }
+    systemctl() {
+        printf '%s\n' "$*" >> "$WORK/systemctl"
+        if [[ "$1" == is-active ]]; then [[ "$scenario" == already-active ]]; else return 1; fi
+    }
+    systemd-run() {
+        printf '%s\0' "$@" >> "$WORK/argv"
+        printf 'systemd launch reply\n'
+        [[ "$scenario" != rejected && "$scenario" != occupied-unit ]]
+    }
+    nohup() { : > "$WORK/unsupervised"; return 0; }
+    case "$scenario" in
+        missing-script) ACFS_RESUME_DIR="$WORK/missing" ;;
+        bad-script) printf 'if then\n' > "$ACFS_RESUME_DIR/continue_install.sh" ;;
+        linked-script)
+            mkdir "$WORK/linked"
+            ln -s "$ACFS_RESUME_DIR/continue_install.sh" "$WORK/linked/continue_install.sh"
+            ACFS_RESUME_DIR="$WORK/linked"
+            ;;
+        missing-context) ACFS_CONTINUE_CONTEXT_FILE="$WORK/missing.env" ;;
+        bad-context) printf 'return 1\n' > "$ACFS_CONTINUE_CONTEXT_FILE" ;;
+    esac
+    local status=0
+    launch_continue_script || status=$?
+    [[ ! -f "$WORK/unsupervised" ]]
+    [[ -f "$WORK/resume/continue_install.sh" ]]
+    case "$scenario" in
+        success|log-failure)
+            assert_eq "$status" 0
+            local -a args=()
+            mapfile -d '' -t args < "$WORK/argv"
+            assert_eq "${#args[@]}" 17
+            assert_eq "${args[0]}" --collect
+            assert_eq "${args[1]}" --no-ask-password
+            assert_eq "${args[2]}" --unit=acfs-continue-install
+            assert_eq "${args[4]}" --property=Type=exec
+            assert_eq "${args[5]}" --property=TimeoutStartSec=120
+            assert_eq "${args[6]}" --property=RuntimeMaxSec=7200
+            assert_eq "${args[7]}" --property=StandardOutput=journal
+            assert_eq "${args[8]}" --property=StandardError=journal
+            assert_eq "${args[9]}" --setenv=HOME=/root
+            assert_eq "${args[10]}" --setenv=TARGET_USER=dev-user
+            assert_eq "${args[11]}" '--setenv=TARGET_HOME=/data/dev user'
+            assert_eq "${args[12]}" '--setenv=ACFS_HOME=/data/dev user/.acfs'
+            assert_eq "${args[13]}" '--setenv=ACFS_STATE_FILE=/data/dev user/.acfs/state.json'
+            assert_eq "${args[14]}" '--setenv=ACFS_REF=release/test-$literal;not-a-command'
+            assert_eq "${args[15]}" /bin/bash
+            assert_eq "${args[16]}" "$ACFS_RESUME_DIR/continue_install.sh"
+            ;;
+        already-active)
+            assert_eq "$status" 0
+            [[ ! -f "$WORK/argv" ]]
+            ! grep -q reset-failed "$WORK/systemctl"
+            ;;
+        rejected|occupied-unit)
+            assert_eq "$status" 1
+            [[ -s "$WORK/argv" && -s "$WORK/errors" ]]
+            ;;
+        *) assert_eq "$status" 1; [[ ! -f "$WORK/argv" ]] ;;
+    esac
+}
+for scenario in success log-failure already-active rejected occupied-unit missing-run missing-systemctl \
+    missing-script bad-script linked-script missing-context bad-context; do
+    run "supervised continuation handoff: $scenario" check_handoff "$scenario"
 done
 printf '\n%s passed; %s failed. Fixtures retained at %s\n' "$PASS" "$FAIL" "$SUITE"
 [[ "$FAIL" == 0 ]]
