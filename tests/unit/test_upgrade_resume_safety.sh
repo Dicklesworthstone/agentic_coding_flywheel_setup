@@ -106,6 +106,7 @@ check_dispatch() {
     local UBUNTU_TARGET_VERSION=25.10 UBUNTU_TARGET_VERSION_NUM=2510 state_target_version=25.10
     local BASE_VERSION=25.04 FAKE_ID=ubuntu STAGE=rebooting FAIL_AT='' PLAN=25.10
     local INSTALLED_VERSION=25.10 AUDIT='' EXPECTED_STATUS=0 EXPECTED_HOP=25.10
+    local upgrade_lock_fd='' holder_fd=''
     mkdir -p "$ACFS_RESUME_DIR" "$ACFS_LIB_DIR"
     : > "$ACFS_LIB_DIR/logging.sh"
     : > "$ACFS_LIB_DIR/state.sh"
@@ -119,11 +120,33 @@ check_dispatch() {
     launch_continue_script() { : > "$WORK/continued"; [[ "$FAIL_AT" != continuation ]]; }
     mark_state_complete() { : > "$WORK/marked"; [[ "$FAIL_AT" != mark ]]; }
     source() {
-        if [[ "$1" == /etc/os-release ]]; then ID="$FAKE_ID"; VERSION_ID="$BASE_VERSION";
+        if [[ "$1" == /etc/os-release ]]; then
+            [[ -f "$WORK/locked" ]] || : > "$WORK/observed-without-lock"
+            ID="$FAKE_ID"; VERSION_ID="$BASE_VERSION";
         else builtin source "$@"; fi
     }
-    upgrade_acquire_lock() { [[ "$FAIL_AT" != lock ]]; }
-    upgrade_release_lock() { : > "$WORK/released"; }
+    upgrade_acquire_lock() {
+        [[ "$FAIL_AT" != lock ]] || return 1
+        if [[ "$scenario" == real-lock-* ]]; then
+            exec {upgrade_lock_fd}>"$WORK/shared.lock"
+            flock -n "$upgrade_lock_fd" || return 1
+        fi
+        : > "$WORK/locked"
+        case "$scenario" in
+            changed-target)
+                printf '{"ubuntu_upgrade":{"target_version":"26.04"}}' > "$ACFS_STATE_FILE"
+                ;;
+            corrupted-after-lock) printf '{broken' > "$ACFS_STATE_FILE" ;;
+        esac
+        return 0
+    }
+    upgrade_release_lock() {
+        if [[ -n "$upgrade_lock_fd" ]]; then
+            flock -u "$upgrade_lock_fd"
+            exec {upgrade_lock_fd}>&-
+        fi
+        : > "$WORK/released"
+    }
     ubuntu_enable_normal_releases() { [[ "$FAIL_AT" != channel ]]; }
     state_upgrade_resumed() { [[ "$FAIL_AT" != resumed ]]; }
     state_upgrade_is_complete() { : > "$WORK/trusted-checkpoint"; return 0; }
@@ -139,6 +162,7 @@ check_dispatch() {
     upgrade_update_motd() { :; }
     dpkg() {
         [[ "$*" == --audit ]] || return 99
+        [[ -f "$WORK/locked" ]] || : > "$WORK/observed-without-lock"
         printf '%s' "$AUDIT"
         if [[ "$FAIL_AT" == audit-status ]]; then return 1; fi
         if [[ "$FAIL_AT" == post-audit && -f "$WORK/upgraded" ]]; then printf 'unconfigured package\n'; fi
@@ -151,6 +175,21 @@ check_dispatch() {
         stale-complete) STAGE=completed; BASE_VERSION=24.04; PLAN=$'25.04\n25.10'; INSTALLED_VERSION=25.04; EXPECTED_HOP=25.04 ;;
         at-target) BASE_VERSION=25.10 ;;
         beyond-target) BASE_VERSION=26.04 ;;
+        lock-at-target) BASE_VERSION=25.10; FAIL_AT=lock; EXPECTED_STATUS=1 ;;
+        lock-beyond-target) BASE_VERSION=26.04; FAIL_AT=lock; EXPECTED_STATUS=1 ;;
+        real-lock-free) BASE_VERSION=25.10 ;;
+        real-lock-busy)
+            BASE_VERSION=25.10; EXPECTED_STATUS=1
+            exec {holder_fd}>"$WORK/shared.lock"
+            flock -n "$holder_fd"
+            ;;
+        changed-target) BASE_VERSION=25.10; PLAN=26.04; INSTALLED_VERSION=26.04; EXPECTED_HOP=26.04 ;;
+        corrupted-after-lock) EXPECTED_STATUS=1 ;;
+        library-at-target)
+            BASE_VERSION=25.10; EXPECTED_STATUS=1
+            printf 'return 1\n' > "$ACFS_LIB_DIR/ubuntu_upgrade.sh"
+            ;;
+        missing-libraries-at-target) BASE_VERSION=25.10; EXPECTED_STATUS=1; ACFS_LIB_DIR="$WORK/missing-lib" ;;
         bad-os) FAKE_ID=debian; EXPECTED_STATUS=1 ;;
         bad-target) UBUNTU_TARGET_VERSION_NUM=''; EXPECTED_STATUS=1 ;;
         missing-target) state_target_version=''; EXPECTED_STATUS=1 ;;
@@ -174,20 +213,28 @@ check_dispatch() {
     assert_eq "$result" "$EXPECTED_STATUS"
     [[ ! -f "$WORK/trusted-checkpoint" && ! -f "$WORK/trusted-path" && ! -f "$WORK/files-removed" ]]
     [[ ! -f "$WORK/legacy-background-reboot" ]]
-    if [[ "$scenario" == at-target || "$scenario" == beyond-target ]]; then
+    [[ ! -f "$WORK/observed-without-lock" ]]
+    if [[ "$scenario" == at-target || "$scenario" == beyond-target || "$scenario" == real-lock-free ]]; then
         [[ -f "$WORK/continued" && -f "$WORK/marked" && -f "$WORK/disabled" && ! -f "$WORK/reboot" ]]
+        [[ -f "$WORK/locked" && -f "$WORK/released" ]]
     elif [[ "$EXPECTED_STATUS" == 0 ]]; then
         assert_eq "$(cat "$WORK/upgraded")" "$EXPECTED_HOP"
         assert_eq "$(cat "$WORK/reboot")" '-r +1 ACFS: Ubuntu upgrade requires reboot'
         [[ ! -f "$WORK/continued" && ! -f "$WORK/disabled" && -f "$WORK/completed" && -f "$WORK/released" ]]
     else
-        if [[ "$scenario" != lock ]]; then [[ -f "$WORK/disabled" && -f "$WORK/failure" ]]; fi
+        if [[ "$FAIL_AT" == lock || "$scenario" == real-lock-busy ]]; then
+            [[ ! -f "$WORK/disabled" && ! -f "$WORK/marked" && ! -f "$WORK/locked" ]]
+        else
+            [[ -f "$WORK/disabled" && -f "$WORK/failure" ]]
+        fi
         [[ "$scenario" == continuation || ! -f "$WORK/continued" ]]
         [[ "$scenario" == shutdown || ! -f "$WORK/reboot" ]]
         case "$scenario" in no-op|wrong-release|post-audit|executor) [[ ! -f "$WORK/completed" ]] ;; esac
     fi
 }
 for scenario in normal kernel-only stale-complete at-target beyond-target bad-os bad-target missing-target \
+    lock-at-target lock-beyond-target real-lock-free real-lock-busy changed-target corrupted-after-lock \
+    library-at-target missing-libraries-at-target \
     backwards overshoot garbage-hop no-op wrong-release audit-output target-audit audit-status post-audit \
     continuation mark library state-library logging-library lock channel resumed start plan preflight executor complete reboot-state shutdown; do
     run "resume dispatcher: $scenario" check_dispatch "$scenario"

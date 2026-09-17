@@ -10,8 +10,8 @@
 # state file, and disables itself when complete or on failure.
 #
 # Workflow:
-# 1. FIRST: Check if already at target version (prevent loops)
-# 2. Source libraries from /var/lib/acfs/lib/
+# 1. Source libraries and acquire the shared upgrade lock
+# 2. Check if already at target version (prevent loops)
 # 3. Check if more upgrades needed
 # 4. If complete: cleanup, disable service, launch continue_install.sh
 # 5. If not complete: run next upgrade and trigger reboot
@@ -337,6 +337,73 @@ if [[ -z "$state_target_version" || -z "$UBUNTU_TARGET_VERSION_NUM" ]]; then
     exit 1
 fi
 
+# Acquire the SAME lock used by the upgrader before observing or completing
+# the live host. os-release and a temporarily clean dpkg audit can otherwise
+# become visible while a different process is still finishing the release.
+# The completion/continuation path needs this lock just as much as a new hop.
+if [[ ! -d "$ACFS_LIB_DIR" ]]; then
+    log_error "Library directory not found: $ACFS_LIB_DIR"
+    cleanup_service
+    update_motd_failure "Library files missing"
+    exit 1
+fi
+
+log "Sourcing libraries from $ACFS_LIB_DIR"
+
+if [[ -f "$ACFS_LIB_DIR/logging.sh" ]]; then
+    # shellcheck source=/dev/null
+    if ! source "$ACFS_LIB_DIR/logging.sh"; then
+        cleanup_service
+        update_motd_failure "Logging library initialization failed"
+        exit 1
+    fi
+fi
+
+if [[ -f "$ACFS_LIB_DIR/state.sh" ]]; then
+    # shellcheck source=/dev/null
+    if ! source "$ACFS_LIB_DIR/state.sh"; then
+        cleanup_service
+        update_motd_failure "State library initialization failed"
+        exit 1
+    fi
+else
+    log_error "state.sh not found"
+    cleanup_service
+    update_motd_failure "state.sh missing"
+    exit 1
+fi
+
+if [[ -f "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]]; then
+    # shellcheck source=/dev/null
+    if ! source "$ACFS_LIB_DIR/ubuntu_upgrade.sh"; then
+        cleanup_service
+        update_motd_failure "Upgrade library initialization failed"
+        exit 1
+    fi
+else
+    log_error "ubuntu_upgrade.sh not found"
+    cleanup_service
+    update_motd_failure "ubuntu_upgrade.sh missing"
+    exit 1
+fi
+
+if ! upgrade_acquire_lock; then
+    log_error "Another Ubuntu upgrade process is already running"
+    exit 1
+fi
+trap 'upgrade_release_lock' EXIT
+
+# Re-read after acquiring the lock: an installer may have replaced the state
+# between process startup and lock acquisition. Never mix two target versions.
+if ! state_target_version=$(read_target_version_from_state "$ACFS_STATE_FILE") \
+    || ! UBUNTU_TARGET_VERSION_NUM=$(compute_version_num "$state_target_version"); then
+    cleanup_service
+    update_motd_failure "Upgrade target changed or became invalid"
+    exit 1
+fi
+export UBUNTU_TARGET_VERSION="$state_target_version"
+export UBUNTU_TARGET_VERSION_NUM
+
 # ============================================================
 # CRITICAL SAFETY CHECK #1: Are we already at target version?
 # This prevents reboot loops if the state file is stale/wrong.
@@ -403,63 +470,6 @@ if ubuntu_is_at_or_beyond_target_version "$CURRENT_UBUNTU_VERSION"; then
     log "=== Upgrade Resume Complete (target reached) ==="
     exit 0
 fi
-
-# ============================================================
-# Check if libraries exist
-# ============================================================
-
-if [[ ! -d "$ACFS_LIB_DIR" ]]; then
-    log_error "Library directory not found: $ACFS_LIB_DIR"
-    cleanup_service
-    update_motd_failure "Library files missing"
-    exit 1
-fi
-
-# Source required libraries
-log "Sourcing libraries from $ACFS_LIB_DIR"
-
-if [[ -f "$ACFS_LIB_DIR/logging.sh" ]]; then
-    # shellcheck source=/dev/null
-    if ! source "$ACFS_LIB_DIR/logging.sh"; then
-        cleanup_service
-        update_motd_failure "Logging library initialization failed"
-        exit 1
-    fi
-fi
-
-if [[ -f "$ACFS_LIB_DIR/state.sh" ]]; then
-    # shellcheck source=/dev/null
-    if ! source "$ACFS_LIB_DIR/state.sh"; then
-        cleanup_service
-        update_motd_failure "State library initialization failed"
-        exit 1
-    fi
-else
-    log_error "state.sh not found"
-    cleanup_service
-    update_motd_failure "state.sh missing"
-    exit 1
-fi
-
-if [[ -f "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]]; then
-    # shellcheck source=/dev/null
-    if ! source "$ACFS_LIB_DIR/ubuntu_upgrade.sh"; then
-        cleanup_service
-        update_motd_failure "Upgrade library initialization failed"
-        exit 1
-    fi
-else
-    log_error "ubuntu_upgrade.sh not found"
-    cleanup_service
-    update_motd_failure "ubuntu_upgrade.sh missing"
-    exit 1
-fi
-
-if ! upgrade_acquire_lock; then
-    log_error "Another Ubuntu upgrade process is already running"
-    exit 1
-fi
-trap 'upgrade_release_lock' EXIT
 
 # Set state file location for resume context
 export ACFS_STATE_FILE="${ACFS_STATE_FILE}"
