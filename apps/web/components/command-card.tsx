@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy, Terminal, CheckCircle2, Server, Monitor } from "lucide-react";
 import { motion, AnimatePresence } from "@/components/motion";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ export interface CommandCardProps {
   completedLabel?: string;
   /** Unique ID for persisting checkbox state in localStorage */
   persistKey?: string;
+  /** Stable accessible control ID when persistKey is a context-bound digest. */
+  checkboxId?: string;
   /** Callback when checkbox is checked */
   onComplete?: () => void;
   /** Where the command should be run - "vps" or "local" (your computer) */
@@ -112,6 +114,7 @@ export function CommandCard({
   checkboxLabel = "I ran this command",
   completedLabel = "Command completed",
   persistKey,
+  checkboxId,
   onComplete,
   runLocation,
   className,
@@ -133,7 +136,7 @@ export function CommandCard({
   // Use TanStack Query for completion state
   const completionKey = getCompletionKey(persistKey);
 
-  const { data: completed = false } = useQuery({
+  const { data: completed = false, status: completionStatus } = useQuery({
     queryKey: completionKey ? commandCompletionKeys.completion(completionKey) : ["disabled"],
     queryFn: () => getCompletionFromStorage(completionKey),
     enabled: !!completionKey,
@@ -152,12 +155,14 @@ export function CommandCard({
     const handleCompletionChanged = (event: Event) => {
       const customEvent = event as CustomEvent<CommandCompletionChangedDetail>;
       if (customEvent.detail?.key !== completionKey) return;
+      if (typeof customEvent.detail.completed !== "boolean") return;
       syncCompletion(customEvent.detail.completed);
     };
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== completionKey) return;
-      syncCompletion(event.newValue === "true");
+      if (event.key !== completionKey && event.key !== null) return;
+      // Read current storage, not an older queued cross-tab event payload.
+      syncCompletion(getCompletionFromStorage(completionKey));
     };
 
     window.addEventListener(
@@ -174,23 +179,6 @@ export function CommandCard({
       window.removeEventListener("storage", handleStorage);
     };
   }, [completionKey, queryClient]);
-
-  const completionMutation = useMutation({
-    mutationFn: async (isChecked: boolean) => {
-      if (completionKey) {
-        setCompletionInStorage(completionKey, isChecked);
-      }
-      return isChecked;
-    },
-    onSuccess: (isChecked) => {
-      if (completionKey) {
-        queryClient.setQueryData(commandCompletionKeys.completion(completionKey), isChecked);
-      }
-      if (isChecked && onComplete) {
-        onComplete();
-      }
-    },
-  });
 
   // Get the appropriate command for the current OS
   const displayCommand = (() => {
@@ -214,13 +202,20 @@ export function CommandCard({
     });
   }, [copy, displayCommand, persistKey, runLocation, os]);
 
-  const { mutate: setCompletion } = completionMutation;
   const handleCheckboxChange = useCallback(
     (checked: CheckedState) => {
+      if (completionKey && completionStatus !== "success") return;
       const isChecked = checked === true;
-      setCompletion(isChecked);
+      // This is a synchronous local acknowledgement, not a network mutation.
+      // An async onSuccess can run after a different host/command is rendered
+      // and mistakenly update that newer context's query or continuation.
+      if (completionKey) {
+        setCompletionInStorage(completionKey, isChecked);
+        queryClient.setQueryData(commandCompletionKeys.completion(completionKey), isChecked);
+      }
+      if (isChecked) onComplete?.();
     },
-    [setCompletion]
+    [completionKey, completionStatus, queryClient, onComplete]
   );
 
   return (
@@ -338,7 +333,7 @@ export function CommandCard({
           full-width, 44px-tall tap target on phones. */}
       {showCheckbox && (
         <label
-          htmlFor={persistKey || "command-completed"}
+          htmlFor={checkboxId || persistKey || "command-completed"}
           className={cn(
             "flex min-h-[44px] cursor-pointer items-center gap-3 border-t border-border/30 px-4 py-3 text-sm transition-colors",
             completed
@@ -347,7 +342,9 @@ export function CommandCard({
           )}
         >
           <Checkbox
-            id={persistKey || "command-completed"}
+            id={checkboxId || persistKey || "command-completed"}
+            data-acfs-completion-key={persistKey}
+            disabled={Boolean(completionKey) && completionStatus !== "success"}
             checked={completed}
             onCheckedChange={handleCheckboxChange}
             className={cn(
