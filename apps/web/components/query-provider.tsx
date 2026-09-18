@@ -79,6 +79,11 @@ function shouldDehydrateQuery(query: Query): boolean {
   if (queryKey[0] === "userPreferences") {
     return false;
   }
+  // CommandCard already owns a canonical storage flag. A second persisted
+  // infinite-stale query can replay "true" after that flag was revoked.
+  if (queryKey[0] === "commandCompletion") {
+    return false;
+  }
   return true;
 }
 
@@ -88,6 +93,9 @@ export function QueryProvider({ children }: { children: ReactNode }) {
   // whenever the options object changes, so build it once.
   const [persistOptions] = useState<Omit<PersistQueryClientOptions, "queryClient">>(() => ({
     persister: makePersister(),
+    // Reject old snapshots that predate the exclusion above. Canonical step,
+    // preference and command flags are separate and are not cleared here.
+    buster: "acfs-canonical-command-completion-v1",
     dehydrateOptions: { shouldDehydrateQuery },
   }));
 

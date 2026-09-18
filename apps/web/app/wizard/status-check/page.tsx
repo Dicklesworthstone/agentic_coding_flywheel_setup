@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -19,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import {
   CommandCard,
   CodeBlock,
-  commandCompletionKeys,
 } from "@/components/command-card";
 import { AlertCard, OutputPreview } from "@/components/alert-card";
 import { WhereAmICheck } from "@/components/connection-check";
@@ -32,7 +30,7 @@ import {
   validateStep,
 } from "@/lib/wizardSteps";
 import {
-  SERVICES,
+  getSelectedAuthServices,
   CATEGORY_NAMES,
   type Service,
   type ServiceCategory,
@@ -47,25 +45,28 @@ import {
 } from "@/components/simpler-guide";
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { Jargon } from "@/components/jargon";
-import { buildInstallCommand, formatSshTarget } from "@/lib/commandBuilder";
-import { useACFSRef, useInstallMode, useModuleSelection, useSSHUsername, useVPSIP } from "@/lib/userPreferences";
-import { safeGetItem, withCurrentSearch } from "@/lib/utils";
+import { formatSshTarget } from "@/lib/commandBuilder";
+import { withCurrentSearch } from "@/lib/utils";
+import { DOCTOR_COMMAND, useInstallationHealth } from "@/lib/hooks/useInstallationHealth";
 
-const STATUS_CHECK_COMPLETION_KEY = "acfs-command-flywheel-doctor";
 const QUICK_CHECKS = [
   {
-    command: "cc --version",
+    moduleId: "agents.claude",
+    command: "claude --version",
     description: "Check Claude Code is installed",
   },
   {
+    moduleId: "lang.bun",
     command: "bun --version",
     description: "Check bun is installed",
   },
   {
+    moduleId: "stack.meta_skill",
     command: "ms --version",
     description: "Check Meta Skill is installed",
   },
   {
+    moduleId: "cli.modern",
     command: "which tmux",
     description: "Check tmux is installed",
   },
@@ -78,22 +79,6 @@ const AUTH_CATEGORY_ICONS: Record<ServiceCategory, React.ReactNode> = {
   cloud: <Cloud className="h-5 w-5" />,
   devtools: <Wrench className="h-5 w-5" />,
 };
-
-// Get services that have auth commands, grouped by category
-function getAuthServices(): Record<ServiceCategory, Service[]> {
-  const groups: Record<ServiceCategory, Service[]> = {
-    access: [],
-    agent: [],
-    cloud: [],
-    devtools: [],
-  };
-  for (const service of SERVICES) {
-    if (service.postInstallCommand && service.installedByAcfs) {
-      groups[service.category].push(service);
-    }
-  }
-  return groups;
-}
 
 function getAuthCommandDescription(service: Service): string {
   switch (service.id) {
@@ -138,33 +123,21 @@ function getAuthCompletedLabel(service: Service): string {
 export default function StatusCheckPage() {
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(false);
-  const [vpsIP, , vpsIPLoaded] = useVPSIP();
-  const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
-  const [installMode, , installModeLoaded] = useInstallMode();
-  const [acfsRef, , acfsRefLoaded] = useACFSRef();
-  const [moduleSelection, moduleSelectionLoaded] = useModuleSelection();
-  const ready =
-    vpsIPLoaded && sshUsernameLoaded && installModeLoaded && acfsRefLoaded && moduleSelectionLoaded;
-  const { data: doctorConfirmed = false } = useQuery({
-    queryKey: commandCompletionKeys.completion(STATUS_CHECK_COMPLETION_KEY),
-    queryFn: () => safeGetItem(STATUS_CHECK_COMPLETION_KEY) === "true",
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
+  const { ready, vpsIP, sshUsername, selectedPlan, reinstallCommand, activeCheckpoint,
+    hashFailed, completionKey, doctorConfirmed } = useInstallationHealth();
   const effectiveVpsIP = vpsIP ?? "";
-  const effectiveSSHUsername = sshUsername.trim() || "ubuntu";
+  const effectiveSSHUsername = sshUsername;
   const reconnectTarget = formatSshTarget(effectiveSSHUsername, effectiveVpsIP);
   const reconnectCommand = `ssh -i ~/.ssh/acfs_ed25519 ${reconnectTarget}`;
   const reconnectWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 ${reconnectTarget}`;
   const codexTunnelCommand = `ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
   const codexTunnelWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
-  // Recovery must retry the same selected installation, never the full defaults.
-  const reinstallCommand = ready ? buildInstallCommand(
-    installMode,
-    acfsRef,
-    effectiveSSHUsername,
-    moduleSelection,
-  ) : "";
+  // Stale registered callbacks cannot advance a newer host or a withdrawn check.
+  const currentCompletion = useRef<string | null>(null);
+  useEffect(() => {
+    currentCompletion.current = doctorConfirmed ? completionKey : null;
+    return () => { currentCompletion.current = null; };
+  }, [doctorConfirmed, completionKey]);
   const promptPrefix = `${effectiveSSHUsername}@`;
 
   // Analytics tracking for this wizard step
@@ -190,6 +163,8 @@ export default function StatusCheckPage() {
   }, [ready, router, vpsIP]);
 
   const handleContinue = useCallback(() => {
+    if (!ready || !reinstallCommand || isNavigating || !doctorConfirmed || !completionKey
+        || currentCompletion.current !== completionKey) return;
     const result = validateStep(12);
     if (!result.valid) {
       return;
@@ -199,7 +174,7 @@ export default function StatusCheckPage() {
     markStepComplete(12);
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/launch-onboarding"));
-  }, [router, markComplete]);
+  }, [ready, reinstallCommand, isNavigating, doctorConfirmed, completionKey, router, markComplete]);
 
   const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
@@ -208,8 +183,11 @@ export default function StatusCheckPage() {
     label: "Everything looks good!",
   });
 
-  // Compute auth services once, not on every category iteration
-  const authServices = getAuthServices();
+  const selectedModules = new Set(selectedPlan?.included.map((entry) => entry.id) ?? []);
+  const quickChecks = QUICK_CHECKS.filter((check) => selectedModules.has(check.moduleId));
+  const authServices = getSelectedAuthServices(selectedModules);
+  const selectedServices = Object.values(authServices).flat();
+  const hasService = (id: string) => selectedServices.some((service) => service.id === id);
 
   if (!ready || vpsIP === null) {
     return (
@@ -217,6 +195,16 @@ export default function StatusCheckPage() {
         <Stethoscope className="h-8 w-8 animate-pulse text-muted-foreground" />
       </div>
     );
+  }
+
+  if (!reinstallCommand) {
+    return <AlertCard variant="error" title="Status check blocked">
+      <p>The current host, installation choices, or reviewed command cannot be validated.
+        No recovery or authentication commands are available.</p>
+      <Link href={withCurrentSearch("/wizard/run-installer")} className="inline-flex min-h-11 items-center underline">
+        Return to Run Installer and review the selected installation
+      </Link>
+    </AlertCard>;
   }
 
   return (
@@ -263,14 +251,14 @@ export default function StatusCheckPage() {
       </AlertCard>
 
       {/* Common Mistake Warning */}
-      <AlertCard variant="error" icon={AlertCircle} title="Common Mistake: Claude Desktop vs Claude Code">
+      {hasService("claude-code") && <AlertCard variant="error" icon={AlertCircle} title="Common Mistake: Claude Desktop vs Claude Code">
         <div className="space-y-2">
           <p>
             <strong>Claude Code is NOT the Claude Desktop app</strong> you download to your computer.
           </p>
           <p className="text-sm">
-            Claude Code is a command-line tool that&apos;s already installed <strong>on your VPS</strong>.
-            To use it:
+            Claude Code is a command-line tool selected for <strong>your VPS</strong>.
+            After verifying its installation:
           </p>
           <ol className="list-decimal list-inside space-y-1 text-sm">
             <li>SSH into your VPS first (using the command above)</li>
@@ -280,7 +268,7 @@ export default function StatusCheckPage() {
             If you&apos;re seeing &quot;command not found&quot; in PowerShell or Terminal on your laptop, you&apos;re in the wrong place!
           </p>
         </div>
-      </AlertCard>
+      </AlertCard>}
 
       {/* Where Am I? Check */}
       <WhereAmICheck />
@@ -289,41 +277,51 @@ export default function StatusCheckPage() {
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground">Run the doctor command</h2>
         <p className="text-sm text-muted-foreground">
-          This checks all installed tools and reports any issues. This is the only
-          checkbox required to continue.
+          Run the health check on this VPS and inspect the actual results. This page
+          knows your selected plan, not what succeeded remotely. The doctor may report
+          tools outside a narrow selection; compare findings with the selected modules below.
         </p>
         <CommandCard
-          command="acfs doctor"
+          command={DOCTOR_COMMAND}
           description="Run Agent Flywheel health check"
           runLocation="vps"
-          showCheckbox
-          checkboxLabel="I ran acfs doctor"
-          completedLabel="Doctor completed"
-          persistKey="flywheel-doctor"
+          showCheckbox={Boolean(activeCheckpoint)}
+          checkboxLabel="I ran acfs doctor for this installation and reviewed the results"
+          completedLabel="Doctor run acknowledged for this installation"
+          persistKey={activeCheckpoint?.persistKey}
+          checkboxId="flywheel-doctor"
         />
+        {!activeCheckpoint && <p role={hashFailed ? "alert" : "status"} className="text-sm text-muted-foreground">
+          {hashFailed
+            ? "Secure browser hashing failed. The command remains available, but completion is blocked; reload in a browser with Web Crypto support."
+            : "Binding the acknowledgement to this host and exact installation..."}
+        </p>}
+        <details className="rounded-lg border border-border/50 p-3">
+          <summary className="min-h-11 cursor-pointer py-2">Selected installation: {selectedPlan?.selectedCount} modules</summary>
+          <p className="break-words font-mono text-xs">{[...selectedModules].join(", ") || "No modules selected."}</p>
+          {selectedPlan?.warnings.map((warning, index) => <p key={index} className="text-sm text-muted-foreground">{warning}</p>)}
+        </details>
       </div>
 
       {/* Expected output */}
-      <OutputPreview title="Expected output (example)">
+      <OutputPreview title="How to read the actual doctor report">
         <div className="space-y-1 font-mono text-xs">
           <p className="text-muted-foreground">Agent Flywheel Doctor - System Health Check</p>
           <p className="text-muted-foreground">{"=".repeat(32)}</p>
-          <p className="text-green">✔ Shell: zsh with oh-my-zsh</p>
-          <p className="text-green">✔ Languages: bun, uv, rust, go</p>
-          <p className="text-green">✔ Tools: <Jargon term="tmux">tmux</Jargon>, <Jargon term="ripgrep">ripgrep</Jargon>, <Jargon term="lazygit">lazygit</Jargon></p>
-          <p className="text-green">✔ Agents: claude-code, codex, agy</p>
-          <p className="mt-2 text-foreground">All checks passed!</p>
+          <p className="text-green">✔ A passing check reports what worked on the VPS.</p>
+          <p className="text-destructive">✘ Investigate failures affecting your selected modules.</p>
+          <p className="mt-2 text-foreground">No remote results are collected or verified by this page.</p>
         </div>
       </OutputPreview>
 
       {/* Quick spot checks */}
-      <div className="space-y-4">
+      {quickChecks.length > 0 && <div className="space-y-4">
         <h2 className="text-xl font-semibold">Quick spot checks</h2>
         <p className="text-sm text-muted-foreground">
-          Try a few commands to verify key tools:
+          These commands cover tools in your selected plan, including dependencies:
         </p>
         <div className="space-y-3">
-          {QUICK_CHECKS.map((check, i) => (
+          {quickChecks.map((check, i) => (
             <CommandCard
               key={i}
               command={check.command}
@@ -332,10 +330,10 @@ export default function StatusCheckPage() {
             />
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Authenticate your services */}
-      <div className="space-y-6">
+      {selectedServices.length > 0 ? <div className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <KeyRound className="h-5 w-5" />
@@ -343,7 +341,7 @@ export default function StatusCheckPage() {
           <div>
             <h2 className="text-xl font-semibold">Authenticate your services</h2>
             <p className="text-sm text-muted-foreground">
-              Log in to the tools you plan to use now (you can do the rest later)
+              Only services from the selected modules are shown. Verify the CLI exists before signing in.
             </p>
           </div>
         </div>
@@ -355,7 +353,7 @@ export default function StatusCheckPage() {
               Your VPS doesn&apos;t have a web browser, so authentication works differently:
             </p>
             <ol className="list-decimal list-inside space-y-1 text-sm">
-              <li>Run a login or auth command below (for example <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">claude</code>)</li>
+              <li>Run the matching login or auth command below for a tool you intend to use</li>
               <li>Agent CLIs usually print a URL or device code; cloud CLIs may instead ask for an access token</li>
               <li><strong>Complete the browser step on your laptop</strong> or create the token there if needed</li>
               <li>Return to your terminal and finish the prompt or export the token in your shell</li>
@@ -368,7 +366,7 @@ export default function StatusCheckPage() {
         </AlertCard>
 
         {/* Codex-specific auth note */}
-        <AlertCard variant="warning" icon={AlertCircle} title="Codex CLI: Special Headless Setup">
+        {hasService("codex-cli") && <AlertCard variant="warning" icon={AlertCircle} title="Codex CLI: Special Headless Setup">
           <div className="space-y-2">
             <p>
               <strong>Codex requires extra steps</strong> because its OAuth callback expects{" "}
@@ -394,10 +392,10 @@ export default function StatusCheckPage() {
               className="mt-1"
             />
           </div>
-        </AlertCard>
+        </AlertCard>}
 
         {/* Wrangler (Cloudflare) headless auth note */}
-        <AlertCard variant="warning" icon={AlertCircle} title="Wrangler: Headless VPS Setup">
+        {hasService("cloudflare") && <AlertCard variant="warning" icon={AlertCircle} title="Wrangler: Headless VPS Setup">
           <div className="space-y-2">
             <p>
               <strong>Wrangler requires a browser</strong> for{" "}
@@ -415,47 +413,46 @@ export default function StatusCheckPage() {
               Then run <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">source ~/.zshrc</code> or start a new shell.
             </p>
           </div>
-        </AlertCard>
+        </AlertCard>}
 
         {/* Other cloud tools headless auth */}
-        <AlertCard variant="warning" icon={AlertCircle} title="Supabase & Vercel: Headless VPS Setup">
+        {(hasService("supabase") || hasService("vercel")) && <AlertCard variant="warning" icon={AlertCircle} title="Selected cloud tools: Headless VPS Setup">
           <div className="space-y-2">
             <p>
-              Supabase works best with an access token on a VPS. Vercel CLI now supports
-              a device-login flow directly from a headless terminal, so you usually do not
-              need a manual token just to sign in.
+              Use the authentication method for the selected CLI. Credentials belong
+              in its normal login flow, never in a shared team profile.
             </p>
             <div className="text-sm space-y-2">
+              {hasService("supabase") && <>
               <p className="font-medium">Supabase:</p>
               <ol className="list-decimal list-inside space-y-1 pl-2 text-sm">
                 <li>Go to <a href="https://supabase.com/dashboard/account/tokens" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 items-center text-primary underline">Supabase → Access Tokens</a></li>
                 <li>Create a token, then add to <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">~/.zshrc</code>:</li>
               </ol>
               <CodeBlock code={`export SUPABASE_ACCESS_TOKEN="your-token-here"`} language="bash" />
+              </>}
 
+              {hasService("vercel") && <>
               <p className="font-medium mt-2">Vercel:</p>
               <ol className="list-decimal list-inside space-y-1 pl-2 text-sm">
                 <li>Run <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">vercel login</code> on the VPS</li>
                 <li>Open the device-login URL on your laptop and approve the prompt</li>
                 <li>If you need automation or CI auth, export <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">VERCEL_TOKEN</code> instead of using the interactive flow</li>
               </ol>
+              </>}
             </div>
           </div>
-        </AlertCard>
+        </AlertCard>}
 
         <AlertCard variant="success" icon={Bot} title="You don't need to log into everything right now">
           <div className="space-y-2 text-sm">
-            <p className="text-muted-foreground">
-              Most people start with <strong className="text-foreground">one</strong> coding agent and add
-              the rest later.
-            </p>
+            <p className="text-muted-foreground">Start with the selected tools you need now:</p>
             <ul className="list-disc space-y-1 pl-5">
-              <li><strong>Recommended now:</strong> GitHub CLI and Claude Code (so you can save code and start coding immediately)</li>
-              <li><strong>Optional now:</strong> Codex, Antigravity, and Tailscale (only if you plan to use them)</li>
-              <li><strong>Optional later:</strong> Cloud tools (Wrangler / Supabase / Vercel) and anything else you don&apos;t need yet</li>
+              {selectedServices.map((service) => <li key={service.id}>{service.name}</li>)}
             </ul>
             <p className="text-xs text-muted-foreground">
-              If you skip a login, the tool is still installed — it just won&apos;t work until you authenticate.
+              Skipping a login does not change the installation plan. Check the tool&apos;s
+              actual availability on the VPS; these checkboxes are personal notes, not auth verification.
             </p>
             <p className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               Only the doctor checkbox is required to continue. The login checkboxes below
@@ -486,23 +483,25 @@ export default function StatusCheckPage() {
                     command={service.postInstallCommand!}
                     description={getAuthCommandDescription(service)}
                     runLocation="vps"
-                    showCheckbox
+                    showCheckbox={Boolean(activeCheckpoint)}
                     checkboxLabel={getAuthCheckboxLabel(service)}
                     completedLabel={getAuthCompletedLabel(service)}
-                    persistKey={`auth-${service.id}`}
+                    persistKey={activeCheckpoint ? `auth-${service.id}-${activeCheckpoint.persistKey}` : undefined}
                   />
                 ))}
               </div>
             </div>
           );
         })}
-      </div>
+      </div> : <p className="text-sm text-muted-foreground">No service sign-ins are mapped to this selected installation.</p>}
 
       {/* Troubleshooting */}
       <AlertCard variant="warning" icon={AlertCircle} title="Something not working?">
-        Try running{" "}
+        {selectedModules.has("shell.omz") ? <>Try running{" "}
         <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">source ~/.zshrc</code> to
-        reload your shell config, then try the doctor again.
+        reload your shell config, then try the doctor again.</>
+          : <>Open a fresh login shell as the configured user and check the installation log.
+            A missing tool outside your selection is not permission to install everything.</>}
       </AlertCard>
 
       {/* Beginner Guide */}
@@ -552,44 +551,24 @@ export default function StatusCheckPage() {
             </div>
           </GuideSection>
 
-          <GuideSection title="Understanding the Quick Spot Checks">
+          {quickChecks.length > 0 && <GuideSection title="Understanding the Quick Spot Checks">
             <p className="mb-3">
               We also show some simple commands you can run to double-check specific tools:
             </p>
             <ul className="space-y-3">
-              <li>
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">cc --version</code>
-                <br />
-                <span className="text-sm text-muted-foreground">
-                  This checks Claude Code, the AI coding assistant. You should see
-                  a version number like &quot;1.0.3&quot;.
-                </span>
-              </li>
-              <li>
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">bun --version</code>
-                <br />
-                <span className="text-sm text-muted-foreground">
-                  This checks Bun, a fast JavaScript runtime. You should see
-                  something like &quot;1.1.38&quot;.
-                </span>
-              </li>
-              <li>
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">which tmux</code>
-                <br />
-                <span className="text-sm text-muted-foreground">
-                  This checks if tmux is installed. You should see a path like
-                  &quot;/usr/bin/tmux&quot;.
-                </span>
-              </li>
+              {quickChecks.map((check) => <li key={check.moduleId}>
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">{check.command}</code>
+                <p className="text-sm text-muted-foreground">{check.description}. Read the actual terminal output.</p>
+              </li>)}
             </ul>
-          </GuideSection>
+          </GuideSection>}
 
           <GuideSection title="What If Something Failed?">
             <p className="mb-3">
               Don&apos;t panic! Here are some common fixes:
             </p>
             <div className="space-y-4">
-              <div>
+              {selectedModules.has("shell.omz") && <div>
                 <p className="font-medium">&quot;Command not found&quot; error</p>
                 <p className="text-sm text-muted-foreground">
                   This usually means your shell config hasn&apos;t loaded yet. Run this command
@@ -599,12 +578,14 @@ export default function StatusCheckPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Then try the doctor command again.
                 </p>
-              </div>
+              </div>}
 
               <div>
                 <p className="font-medium">A specific tool shows ✘</p>
                 <p className="text-sm text-muted-foreground">
-                  You can try re-running the installer. It&apos;s safe to run multiple times:
+                  Inspect the log first and wait for any active install or upgrade to finish.
+                  Then retry this exact selection in the intended VPS root shell, following
+                  any resume instructions from the log. This command does not add excluded modules:
                 </p>
                 <CommandCard command={reinstallCommand} runLocation="vps" className="mt-1" />
               </div>
@@ -619,7 +600,7 @@ export default function StatusCheckPage() {
             </div>
           </GuideSection>
 
-          <GuideSection title="Authenticating Your Services">
+          {selectedServices.length > 0 && <GuideSection title="Authenticating Your Services">
             <p className="mb-3">
               The services you signed up for need to be connected to your VPS.
               Some tools open a browser flow on your laptop, while others use
@@ -627,17 +608,15 @@ export default function StatusCheckPage() {
             </p>
             <div className="space-y-4">
               <GuideStep number={1} title="Run the login command">
-                Copy and run a command like{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">claude</code> or{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">codex login --device-auth</code>.
+                Use a command from the selected service list above after verifying
+                that CLI is installed. Excluded services are not prerequisites for continuing.
               </GuideStep>
 
               <GuideStep number={2} title="Finish the matching auth flow">
                 Follow the instructions for that specific tool. You might open a
                 URL in your laptop&apos;s browser, complete a device-code flow, or
-                add a token such as <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">GEMINI_API_KEY</code>,{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">SUPABASE_ACCESS_TOKEN</code>, or{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">CLOUDFLARE_API_TOKEN</code>.
+                supply a provider token through its documented login method.
+                Do not paste credentials into this page or a team profile.
               </GuideStep>
 
               <GuideStep number={3} title="Return to terminal">
@@ -646,12 +625,12 @@ export default function StatusCheckPage() {
                 They do not block the final step.
               </GuideStep>
             </div>
-          </GuideSection>
+          </GuideSection>}
 
           <GuideTip>
-            If most things show green checkmarks (✔), you&apos;re good to go! Don&apos;t worry
-            about one or two yellow warnings; those are usually optional tools.
-            Click &quot;Everything looks good!&quot; to continue.
+            Review failures and warnings against the selected installation. Once the
+            tools you need are working, acknowledge this doctor run and continue.
+            The browser does not inspect the remote report or certify its results.
           </GuideTip>
 
           <GuideCaution>

@@ -11,7 +11,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   safeGetJSON,
-  safeGetItem,
   safeSetJSON,
   stripSensitiveQueryState,
 } from "./utils";
@@ -23,6 +22,7 @@ import {
   isCreateVPSChecklistComplete,
   setUserOS,
 } from "./userPreferences";
+import { isRenderedCheckpointComplete } from "./installerCheckpoint";
 
 export interface ValidationResult {
   valid: boolean;
@@ -82,28 +82,6 @@ function validateVPSCreation(): ValidationResult {
       };
 }
 
-const COMMAND_COMPLETION_KEY_PREFIX = "acfs-command-";
-
-function isCommandMarkedComplete(persistKey: string): boolean {
-  if (safeGetItem(`${COMMAND_COMPLETION_KEY_PREFIX}${persistKey}`) === "true") {
-    return true;
-  }
-
-  if (typeof document === "undefined") {
-    return false;
-  }
-
-  const checkbox = document.getElementById(persistKey);
-  if (!checkbox) {
-    return false;
-  }
-
-  return (
-    checkbox.getAttribute("data-state") === "checked" ||
-    (checkbox instanceof HTMLInputElement && checkbox.checked)
-  );
-}
-
 /**
  * Step 9 advances only after the visitor confirms they actually ran the
  * installer: every later step (reconnect as ubuntu, key-based login, doctor)
@@ -111,17 +89,17 @@ function isCommandMarkedComplete(persistKey: string): boolean {
  * people three steps later with commands that could not work.
  */
 function validateRunInstaller(): ValidationResult {
-  return isCommandMarkedComplete("run-flywheel-installer")
+  return isRenderedCheckpointComplete("installer")
     ? { valid: true, errors: [] }
     : {
         valid: false,
         errors: ['Run the installer command and tick "I ran this command" before continuing'],
-        focusSelector: "#run-flywheel-installer",
+        focusSelector: '[data-acfs-completion-key^="run-flywheel-installer-v2-"]',
       };
 }
 
 function validateStatusCheck(): ValidationResult {
-  return isCommandMarkedComplete("flywheel-doctor")
+  return isRenderedCheckpointComplete("doctor")
     ? { valid: true, errors: [] }
     : {
         valid: false,

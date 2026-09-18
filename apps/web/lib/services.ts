@@ -64,6 +64,9 @@ export interface Service {
   /** Whether this service is installed by ACFS */
   installedByAcfs: boolean;
 
+  /** Module that supplies this CLI. Capability is not evidence it was selected or installed. */
+  moduleId?: string;
+
   /** External documentation URL */
   docsUrl: string;
 }
@@ -72,6 +75,7 @@ export const SERVICES: Service[] = [
   // Access Layer
   {
     id: 'tailscale',
+    moduleId: 'network.tailscale',
     name: 'Tailscale',
     provider: 'Tailscale',
     logo: '/logos/tailscale.svg',
@@ -96,6 +100,7 @@ export const SERVICES: Service[] = [
   // Coding Agents
   {
     id: 'claude-code',
+    moduleId: 'agents.claude',
     name: 'Claude Code',
     provider: 'Anthropic',
     logo: '/logos/anthropic.svg',
@@ -116,6 +121,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: 'codex-cli',
+    moduleId: 'agents.codex',
     name: 'Codex CLI',
     provider: 'OpenAI',
     logo: '/logos/openai.svg',
@@ -139,6 +145,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: 'antigravity-cli',
+    moduleId: 'agents.antigravity',
     name: 'Antigravity CLI',
     provider: 'Google',
     logo: '/logos/google.svg',
@@ -160,6 +167,7 @@ export const SERVICES: Service[] = [
   // Developer Tools
   {
     id: 'github',
+    moduleId: 'cli.modern',
     name: 'GitHub',
     provider: 'Microsoft',
     logo: '/logos/github.svg',
@@ -180,6 +188,7 @@ export const SERVICES: Service[] = [
   // Cloud Platforms
   {
     id: 'vercel',
+    moduleId: 'cloud.vercel',
     name: 'Vercel',
     provider: 'Vercel',
     logo: '/logos/vercel.svg',
@@ -198,6 +207,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: 'supabase',
+    moduleId: 'cloud.supabase',
     name: 'Supabase',
     provider: 'Supabase',
     logo: '/logos/supabase.svg',
@@ -216,6 +226,7 @@ export const SERVICES: Service[] = [
   },
   {
     id: 'cloudflare',
+    moduleId: 'cloud.wrangler',
     name: 'Cloudflare',
     provider: 'Cloudflare',
     logo: '/logos/cloudflare.svg',
@@ -235,6 +246,16 @@ export const SERVICES: Service[] = [
 ];
 
 // Helper functions
+/** Use the resolver's dependency-complete selection, never the profile label alone. */
+export function getSelectedAuthServices(moduleIds: ReadonlySet<string>): Record<ServiceCategory, Service[]> {
+  const groups: Record<ServiceCategory, Service[]> = { access: [], agent: [], cloud: [], devtools: [] };
+  for (const service of SERVICES) {
+    if (service.installedByAcfs && service.postInstallCommand && service.moduleId
+        && moduleIds.has(service.moduleId)) groups[service.category].push(service);
+  }
+  return groups;
+}
+
 export function getServicesByCategory(category: ServiceCategory): Service[] {
   return SERVICES.filter((s) => s.category === category);
 }

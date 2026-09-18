@@ -13,7 +13,6 @@ import {
   markStepComplete,
   setCompletedSteps,
   TOTAL_STEPS,
-  validateStep,
 } from "@/lib/wizardSteps";
 import { trackConversion } from "@/lib/analytics";
 import { TOTAL_LESSONS } from "@/lib/lessons";
@@ -29,7 +28,7 @@ import {
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { Jargon } from "@/components/jargon";
 import { formatSshTarget } from "@/lib/commandBuilder";
-import { useSSHUsername, useVPSIP } from "@/lib/userPreferences";
+import { useInstallationHealth } from "@/lib/hooks/useInstallationHealth";
 import { withCurrentSearch } from "@/lib/utils";
 import { CommandBuilderPanel } from "@/components/command-builder-panel";
 
@@ -94,7 +93,7 @@ function ConfettiParticle({ delay, left, color, size, rotation, duration, isRoun
 
 export default function LaunchOnboardingStep() {
   const router = useRouter();
-  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [unlockedCheckpoint, setUnlockedCheckpoint] = useState<string | null>(null);
 
   // Analytics tracking for this wizard step
   const { markComplete } = useWizardAnalytics({
@@ -103,13 +102,11 @@ export default function LaunchOnboardingStep() {
     stepTitle: "Launch Onboarding",
   });
 
-  // Get user's VPS IP for reconnection instructions
-  const [vpsIP, , vpsIPLoaded] = useVPSIP();
-  const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
-  const ready = vpsIPLoaded && sshUsernameLoaded;
-  // The page is reachable before an IP is stored (the CommandBuilderPanel
-  // below lets the user enter it inline). Until then, show a readable
-  // placeholder in the reconnect snippets instead of a dangling "ubuntu@".
+  // Re-derive the exact doctor context after the previous page unmounts.
+  // Shared forward-navigation validators intentionally require a rendered
+  // control, so calling validateStep(12) here would cause a redirect loop.
+  const { ready: settingsReady, loading, vpsIP, sshUsername, doctorConfirmed, completionKey } = useInstallationHealth();
+  const ready = settingsReady && !loading;
   const displayIP = vpsIP && vpsIP.trim() ? vpsIP : "YOUR_VPS_IP";
   const effectiveUsername = sshUsername.trim() || "ubuntu";
   const userTarget = formatSshTarget(effectiveUsername, displayIP);
@@ -126,26 +123,24 @@ export default function LaunchOnboardingStep() {
     const canAccess =
       canAccessWizardStep(completedSteps, 13) &&
       highestCompleted >= 12 &&
-      validateStep(12).valid;
+      doctorConfirmed && completionKey !== null;
 
     if (!canAccess) {
       router.replace(withCurrentSearch("/wizard/status-check"));
       return;
     }
 
-    // A missing IP no longer bounces the user back to create-vps: the
-    // CommandBuilderPanel on this page lets them enter it inline, and the
-    // reconnect snippets fall back to a placeholder until they do.
     markComplete({ wizard_completed: true });
     markStepComplete(13);
     const allSteps = Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1);
     setCompletedSteps(allSteps);
     // Use setTimeout to avoid the ESLint set-state-in-effect rule, since
     // this unlock is logically part of the navigation guard check above.
-    setTimeout(() => setIsUnlocked(true), 0);
-  }, [markComplete, ready, router]);
+    const timer = setTimeout(() => setUnlockedCheckpoint(completionKey), 0);
+    return () => clearTimeout(timer);
+  }, [markComplete, ready, router, doctorConfirmed, completionKey]);
 
-  if (!isUnlocked || !ready) {
+  if (!ready || !doctorConfirmed || !completionKey || unlockedCheckpoint !== completionKey) {
     return (
       <div className="flex items-center justify-center py-12">
         <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
