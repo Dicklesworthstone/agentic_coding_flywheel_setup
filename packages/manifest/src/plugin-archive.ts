@@ -314,6 +314,29 @@ export function readVerifiedPluginArchive(
     throw new PluginArchiveError('plugin_package_hash_mismatch', 'An independently trusted SHA-256 is required');
   }
   const compressed = readPluginInputFile(archivePath, PLUGIN_ARCHIVE_LIMITS.compressedBytes);
+  return verifySnapshot(compressed, expectedPackageSha256);
+}
+
+/**
+ * Validate a bounded owned copy of archive bytes, using the same policy as file
+ * ingestion. This is also the package producer's round-trip check, not approval
+ * to install. Runtime consumers still need an independently trusted digest.
+ */
+export function verifyPluginArchiveBytes(
+  bytes: Uint8Array,
+  expectedPackageSha256: string,
+): VerifiedPluginArchive {
+  if (!isDigest(expectedPackageSha256)) {
+    throw new PluginArchiveError('plugin_package_hash_mismatch', 'An independently trusted SHA-256 is required');
+  }
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength < 1
+      || bytes.byteLength > PLUGIN_ARCHIVE_LIMITS.compressedBytes) {
+    invalid('Plugin archive bytes are empty or exceed the compressed size budget');
+  }
+  return verifySnapshot(Buffer.from(bytes), expectedPackageSha256);
+}
+
+function verifySnapshot(compressed: Buffer, expectedPackageSha256: string): VerifiedPluginArchive {
   const packageSha256 = sha256(compressed);
   if (packageSha256 !== expectedPackageSha256.toLowerCase()) {
     throw new PluginArchiveError('plugin_package_hash_mismatch', 'Plugin package digest does not match the trusted digest');
