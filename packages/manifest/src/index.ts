@@ -128,3 +128,9 @@ export type {
   PluginInstallerDownload,
   LoadedPluginInstallerCache,
 } from './plugin-cache.js';
+
+export { verifyPluginArchiveBytes } from './plugin-archive.js';
+export { buildPluginArchive, pluginArchiveBytes, writePluginArchive, PluginPackError } from './plugin-pack.js';
+export type { PluginArchiveBuild, PluginArchivePublication } from './plugin-pack.js';
+export { validatePluginArchiveForPublication } from './plugin-pack-cli.js';
+export type { PluginPackArguments, PluginPackValidation } from './plugin-pack-cli.js';

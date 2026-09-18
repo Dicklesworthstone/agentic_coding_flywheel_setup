@@ -31,7 +31,8 @@
     "stack:provenance": "bun run src/stack-provenance-report.ts",
     "agent:readiness": "bun run src/agent-readiness-audit.ts",
     "plugin:verify": "bun run src/plugin-verify.ts",
-    "plugin:install": "bun run src/plugin-install.ts"
+    "plugin:install": "bun run src/plugin-install.ts",
+    "plugin:pack": "bun run src/plugin-pack-cli.ts"
   },
   "dependencies": {
     "yaml": "^2.8.2",
