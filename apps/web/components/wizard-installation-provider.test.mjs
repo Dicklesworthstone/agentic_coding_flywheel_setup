@@ -1,6 +1,7 @@
 /** Real review/session and preference code; React/query/canonical-validator contracts are doubled. */
 import { strict as assert } from 'node:assert';
 import { webcrypto } from 'node:crypto';
+import { getEventListeners, setMaxListeners } from 'node:events';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
@@ -27,6 +28,9 @@ function fixture(sessionEntries = new Map(), initialPath = '/wizard/run-installe
     removeItem(name) { storageWrites.push([name, null]); sessionEntries.delete(name); },
   };
   const window = new EventTarget();
+  // Each mounted production preference hook subscribes independently, as in a
+  // browser. Node's EventTarget warning threshold is lower than this fixture.
+  setMaxListeners(100, window);
   window.sessionStorage = storage;
   window.location = { href: 'https://example.invalid/wizard/run-installer', search: '' };
   window.history = { state: null, replaceState(_state, _unused, address) {
@@ -38,6 +42,7 @@ function fixture(sessionEntries = new Map(), initialPath = '/wizard/run-installe
   const react = {
     createContext: (value) => ({ value, Provider: Symbol('provider') }),
     useContext: (context) => context.value,
+    useId() { const [owner, n] = slot(); return (owner.slots[n] ??= { value: `fixture-${n}` }).value; },
     useState(initial) {
       const [owner, n] = slot();
       if (!owner.slots[n]) owner.slots[n] = { value: typeof initial === 'function' ? initial() : initial };
@@ -79,9 +84,16 @@ function fixture(sessionEntries = new Map(), initialPath = '/wizard/run-installe
   const contextModule = load(new URL('../lib/wizardInstallation.ts', import.meta.url), { react });
   const queryClient = { invalidateQueries() {}, getQueryData() { return undefined; },
     setQueryData(queryKey, value) { queryWrites.push([plain(queryKey), plain(value)]); } };
+  const queryCache = new Map();
+  const useQuery = ({ queryKey, queryFn }) => {
+    const key = JSON.stringify(queryKey); const next = queryFn(); const previous = queryCache.get(key);
+    const data = previous && JSON.stringify(previous.data) === JSON.stringify(next) ? previous.data : next;
+    queryCache.set(key, { data });
+    return { data, status: loaded ? 'success' : 'pending' };
+  };
   const preferences = load(new URL('../lib/userPreferences.ts', import.meta.url), {
     react, './wizardInstallation': contextModule,
-    '@tanstack/react-query': { useQuery: ({ queryFn }) => ({ data: queryFn(), status: loaded ? 'success' : 'pending' }), useQueryClient: () => queryClient },
+    '@tanstack/react-query': { useQuery, useQueryClient: () => queryClient },
     './inputValidation': {
       isValidIP: (value) => /^203\.0\.113\.\d+$/.test(value),
       normalizeGitRef: (value) => typeof value === 'string' && /^[a-zA-Z0-9/_.-]+$/.test(value.trim()) ? value.trim() : null,
@@ -99,7 +111,17 @@ function fixture(sessionEntries = new Map(), initialPath = '/wizard/run-installe
   });
   let validate = true; let revision = ''; let commandRevision = '';
   const command = (mode, ref, username, selection) => `${mode}|${ref ?? 'main'}|${username}|${JSON.stringify(selection)}`;
-  const commands = { buildInstallCommand: (...args) => command(...args) + commandRevision,
+  const commandCalls = []; const copies = [];
+  const commands = { buildInstallCommand: (...args) => { commandCalls.push(plain(args)); return command(...args) + commandRevision; },
+    formatSshTarget: (user, host) => `${user}@${host}`,
+    buildCommands: (input) => [
+      { id: 'installer', label: 'Install', description: 'Reviewed installer', runLocation: 'vps',
+        command: commands.buildInstallCommand(input.mode, input.ref, input.username, input.moduleSelection) },
+      { id: 'ssh-user', label: 'Reconnect', description: 'Reviewed user', runLocation: 'local',
+        command: `ssh -i ~/.ssh/acfs_ed25519 ${input.username}@${input.ip}`,
+        windowsCommand: `ssh -i $HOME\\.ssh\\acfs_ed25519 ${input.username}@${input.ip}` },
+    ],
+    buildShareURL: () => assert.fail('Reviewed approval cannot be shared through URLs'),
     buildTeamProfileImportDiff(source) {
       return { schema: 'acfs.team-profile-import-diff.v1', dryRun: true, ok: validate,
         profile: { profileId: source.profileId, displayName: source.displayName },
@@ -114,13 +136,56 @@ function fixture(sessionEntries = new Map(), initialPath = '/wizard/run-installe
   const core = load(new URL('../lib/teamProfileImport.ts', import.meta.url), {
     './commandBuilder': commands, './generated/manifest-modules': catalogue,
   });
+  const common = {
+    react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
+    '@/components/ui/button': { Button: 'button' },
+    '@/components/command-card': { CommandCard: 'command-card', CodeBlock: 'code-block',
+      commandCompletionKeys: { completion: (value) => ['command', value] } },
+    '@/lib/userPreferences': preferences, '@/lib/wizardInstallation': contextModule,
+    '@/lib/teamProfileImport': core, '@/lib/commandBuilder': commands,
+    '@/lib/utils': { cn: (...parts) => parts.filter(Boolean).join(' '), safeGetItem: () => null, withCurrentSearch: (path) => path },
+    'lucide-react': Object.fromEntries(['Terminal', 'Link2', 'Check', 'Copy', 'Server', 'Monitor',
+      'Settings2', 'ChevronDown', 'Boxes', 'AlertCircle', 'Stethoscope', 'KeyRound', 'Shield', 'Bot',
+      'Cloud', 'Wrench', 'BookOpen', 'Laptop'].map((value) => [value, `icon-${value}`])),
+  };
+  const panel = load(new URL('./team-profile-import-panel.tsx', import.meta.url), { ...common,
+    '@/lib/vpsProviders': { VPS_UBUNTU_IMAGE_OPTIONS: ['26.04', '24.04', '22.04'] },
+  });
+  const statusPage = load(new URL('../app/wizard/status-check/page.tsx', import.meta.url), { ...common,
+    '@tanstack/react-query': { useQuery }, 'next/link': { default: 'link' },
+    'next/navigation': { useRouter: () => ({ push() {}, replace() {} }) },
+    '@/components/alert-card': { AlertCard: 'alert', OutputPreview: 'output-preview' },
+    '@/components/connection-check': { WhereAmICheck: 'connection-check' },
+    '@/components/simpler-guide': Object.fromEntries(['SimplerGuide', 'GuideSection', 'GuideStep',
+      'GuideExplain', 'GuideTip', 'GuideCaution'].map((key) => [key, `guide-${key}`])),
+    '@/components/jargon': { Jargon: 'jargon' },
+    '@/lib/wizardSteps': { canAccessWizardStep: () => true, getCompletedSteps: () => [],
+      getNextReachableWizardStep: () => ({ slug: 'create-vps' }), markStepComplete() {},
+      useWizardForwardNav: () => ({}), validateStep: () => ({ valid: true }) },
+    '@/lib/services': { SERVICES: [], CATEGORY_NAMES: {} },
+    '@/lib/hooks/useWizardAnalytics': { useWizardAnalytics: () => ({ markComplete() {} }) },
+  });
+  const commandPanel = load(new URL('./command-builder-panel.tsx', import.meta.url), { ...common,
+    '@/components/ui/code-block': { CopyStatus: 'copy-status' },
+    '@/lib/hooks/useCopyFeedback': { useCopyFeedback: () => ({ state: 'idle', copy: async (value) => copies.push(value) }) },
+    '@/lib/moduleSelection': { resolveModuleSelection: () => assert.fail('An active panel must not reenter editable defaults') },
+    '@/lib/generated/manifest-modules': catalogue,
+  });
   const component = load(new URL('./wizard-installation-provider.tsx', import.meta.url), {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     'next/navigation': { usePathname: () => path },
     '@/components/ui/button': { Button: 'button' },
-    '@/components/team-profile-import-panel': { TeamProfileImportPanel: 'review-panel' },
+    '@/components/team-profile-import-panel': panel,
     '@/lib/userPreferences': preferences, '@/lib/wizardInstallation': contextModule,
     '@/lib/teamProfileImport': core, '@/lib/commandBuilder': commands,
+  });
+  const rootLayout = load(new URL('../app/layout.tsx', import.meta.url), {
+    'react/jsx-runtime': common['react/jsx-runtime'], './globals.css': {},
+    'next/font/google': { JetBrains_Mono: () => ({ variable: 'mono' }), Instrument_Sans: () => ({ variable: 'sans' }) },
+    '@/components/query-provider': { QueryProvider: 'query-provider' },
+    '@/components/analytics-provider': { AnalyticsProvider: 'analytics-provider' },
+    '@/components/motion/motion-provider': { MotionProvider: 'motion-provider' },
+    '@/components/wizard-installation-provider': component,
   });
   function invoke(name, fn, effects = true) {
     instance = instances.get(name) ?? { slots: [], effects: [] }; instances.set(name, instance);
@@ -148,7 +213,28 @@ function fixture(sessionEntries = new Map(), initialPath = '/wizard/run-installe
   const profile = { profileId: 'team-example', displayName: 'Team Example', providerDefaults: { sshUser: 'team-user' },
     install: { mode: 'safe', profile: 'full', ref: { value: 'v1.2.3' },
       modules: { only: ['agents.claude'], onlyPhases: [], skip: ['acfs.nightly'], noDeps: false } } };
-  return { render, core, context, profile, preferences, storage, sessionEntries, local, storageWrites, queryWrites, catalogue,
+  function ui(name, renderComponent) {
+    const nodes = invoke(name, () => {
+      const nodes = [];
+      function visit(node) {
+        if (Array.isArray(node)) { node.forEach(visit); return; }
+        if (!node || typeof node !== 'object') return;
+        if (typeof node.type === 'function') { visit(node.type(node.props)); return; }
+        nodes.push(node); visit(node.props.children);
+      }
+      visit(renderComponent()); return nodes;
+    });
+    const find = (test) => { const node = nodes.find(test); assert.ok(node, 'expected element'); return node; };
+    return { nodes, text: () => nodes.map(text).join(' '),
+      button: (label) => find((node) => node.type === 'button' && (node.props['aria-label'] === label || text(node).replace(/\s+/g, ' ').trim() === label)),
+      control: (suffix) => find((node) => node.props.id?.endsWith(`-${suffix}`)),
+    };
+  }
+  return { render, core, context, profile, preferences, storage, sessionEntries, local, storageWrites, queryWrites, catalogue, commandCalls, copies,
+    panel: () => ui('panel', () => panel.TeamProfileImportPanel()),
+    statusPage: () => ui('status-page', () => statusPage.default()),
+    commands: () => ui('command-panel', () => commandPanel.CommandBuilderPanel()),
+    root: () => rootLayout.default({ children: jsx('route', {}) }), providerType: component.WizardInstallationProvider,
     session: () => contextModule.WizardInstallationContext.value,
     hooks: () => invoke('consumer', () => ({ user: preferences.useSSHUsername(), mode: preferences.useInstallMode(),
       ref: preferences.useACFSRef(), profile: preferences.useModuleProfile(), selection: preferences.useModuleSelection() })),
@@ -158,6 +244,8 @@ function fixture(sessionEntries = new Map(), initialPath = '/wizard/run-installe
     changeCommand: () => { commandRevision = '-changed'; }, setLoaded: (value) => { loaded = value; },
     event: (name) => { window.dispatchEvent(new Event(name)); return render(); },
     unmount: () => { for (const item of instances.values()) for (const slot of item.slots) slot?.cleanup?.(); },
+    listenerCount: () => ['storage', 'popstate', 'pageshow', 'focus', 'acfs:user-preferences-updated']
+      .reduce((count, name) => count + getEventListeners(window, name).length, 0),
     hasChildren: () => text(tree).includes('never-used') || JSON.stringify(tree).includes('wizard-children'),
   };
 }
@@ -302,4 +390,127 @@ test('unmounted activation/discard callbacks cannot mutate storage', async () =>
   const f = fixture(); f.render(); const review = await f.review(); const session = f.session(); f.unmount();
   assert.throws(() => session.activate(review, f.context(), true), /Wait/); session.discard();
   assert.deepEqual(f.storageWrites, []);
+});
+
+async function reviewedPanel(f) {
+  f.render(); f.panel().control('arch').props.onChange({ target: { value: 'aarch64' } });
+  f.panel().control('file').props.onChange({ currentTarget: { files: [new Blob([JSON.stringify(f.profile)])], value: 'private.json' } });
+  for (let attempt = 0; attempt < 100; attempt++) {
+    await new Promise((done) => setTimeout(done, 1));
+    const view = f.panel();
+    if (view.nodes.some((node) => node.props.id?.endsWith('-adopt'))) return view;
+  }
+  assert.fail('The actual local review did not finish');
+}
+
+test('root layout mounts one persistent installation provider below QueryProvider', () => {
+  const f = fixture(); let found = 0;
+  function visit(node, ancestors = []) {
+    if (Array.isArray(node)) { node.forEach((child) => visit(child, ancestors)); return; }
+    if (!node || typeof node !== 'object') return;
+    if (node.type === f.providerType) { found++; assert.ok(ancestors.includes('query-provider')); }
+    visit(node.props.children, [...ancestors, node.type]);
+  }
+  visit(f.root()); assert.equal(found, 1);
+});
+
+test('manual-command consent cannot silently adopt wizard settings; adoption has separate explicit consent', async () => {
+  const f = fixture(); let view = await reviewedPanel(f);
+  assert.equal(view.button('Use reviewed installation in this wizard').props.disabled, true);
+  view.control('confirm').props.onChange({ target: { checked: true } });
+  view = f.panel(); view.button('Approve profile command').props.onClick();
+  view = f.panel(); assert.ok(view.nodes.some((node) => node.type === 'command-card'));
+  view.button('Use reviewed installation in this wizard').props.onClick();
+  assert.equal(f.storageWrites.length, 0); assert.equal(f.session().status, 'saved');
+  view.control('adopt').props.onChange({ target: { checked: true } });
+  f.panel().button('Use reviewed installation in this wizard').props.onClick(); f.render();
+  assert.equal(f.session().status, 'active'); assert.equal(f.hooks().user[0], 'team-user');
+});
+
+test('file-review UI activation drives actual retry and command-panel consumers with exact selectors', async () => {
+  const f = fixture(); const saved = [...f.local]; const view = await reviewedPanel(f);
+  view.control('adopt').props.onChange({ target: { checked: true } });
+  f.panel().button('Use reviewed installation in this wizard').props.onClick(); f.render();
+  const active = f.session().installation; assert.ok(active);
+  f.navigate('/wizard/status-check');
+  const status = f.statusPage();
+  assert.ok(status.nodes.some((node) => node.type === 'command-card' && node.props.command === active.command));
+  assert.ok(status.nodes.some((node) => node.type === 'command-card' && node.props.command.includes('team-user@203.0.113.7')));
+  assert.deepEqual(f.commandCalls.at(-1)[3], plain(active.moduleSelection));
+  f.navigate('/wizard/launch-onboarding');
+  const commands = f.commands();
+  assert.ok(commands.nodes.some((node) => node.type === 'code' && text(node) === active.command));
+  assert.equal(commands.nodes.some((node) => node.type === 'input' || node.type === 'select'), false);
+  assert.equal(commands.nodes.some((node) => node.type === 'button' && /Share link/.test(text(node))), false);
+  await commands.button('Copy Install command').props.onClick();
+  assert.equal(f.copies.at(-1), active.command); assert.deepEqual([...f.local], saved);
+});
+
+test('the reload blocker can review and activate again through raw saved hooks', async () => {
+  const f = fixture(new Map([[key, 'review-required']])); f.render();
+  assert.equal(f.session().status, 'review_required'); assert.equal(f.hasChildren(), false);
+  const view = await reviewedPanel(f);
+  view.control('adopt').props.onChange({ target: { checked: true } });
+  f.panel().button('Use reviewed installation in this wizard').props.onClick(); f.render();
+  assert.equal(f.session().status, 'active'); assert.equal(f.hasChildren(), true);
+});
+
+test('clearing a file preview does not silently discard an active installation', async () => {
+  const f = fixture(); let view = await reviewedPanel(f);
+  view.control('adopt').props.onChange({ target: { checked: true } });
+  f.panel().button('Use reviewed installation in this wizard').props.onClick(); f.render();
+  const active = f.session().installation; view = f.panel();
+  view.button('Clear imported profile').props.onClick(); f.panel(); f.render();
+  assert.equal(f.session().installation, active); assert.equal(f.sessionEntries.get(key), 'review-required');
+});
+
+test('a new file or changed declaration clears adoption consent before another activation', async () => {
+  const f = fixture(); let view = await reviewedPanel(f);
+  view.control('adopt').props.onChange({ target: { checked: true } });
+  view = f.panel(); view.control('image').props.onChange({ target: { value: '26.04' } });
+  f.panel();
+  view = await reviewedPanel(f);
+  assert.equal(view.control('adopt').props.checked, false);
+  view.button('Use reviewed installation in this wizard').props.onClick();
+  assert.equal(f.session().status, 'saved'); assert.equal(f.storageWrites.length, 0);
+});
+
+test('status retry preserves an ordinary saved minimal profile too', () => {
+  const f = fixture(); f.local.set('agent-flywheel-module-profile', 'minimal'); f.render();
+  f.statusPage(); assert.deepEqual(f.commandCalls.at(-1)[3], { profile: 'minimal' });
+});
+
+test('status does not build a default retry while exact selections are still loading', () => {
+  const f = fixture(); f.setLoaded(false); f.render(); const before = f.commandCalls.length;
+  assert.equal(f.statusPage().nodes.some((node) => node.type === 'command-card'), false);
+  assert.equal(f.commandCalls.length, before);
+});
+
+test('reviewed command panel retains the matching PowerShell reconnect spelling', async () => {
+  const f = await activeFixture(); f.local.set('agent-flywheel-user-os', 'windows');
+  f.navigate('/wizard/launch-onboarding');
+  const view = f.commands();
+  assert.ok(view.nodes.some((node) => node.type === 'code' && text(node).includes('$HOME\\.ssh\\acfs_ed25519 team-user@203.0.113.7')));
+});
+
+test('cleared and withdrawn adoption callbacks cannot activate through a stale UI closure', async () => {
+  for (const cancel of ['clear', 'withdraw']) {
+    const f = fixture(); let view = await reviewedPanel(f);
+    view.control('adopt').props.onChange({ target: { checked: true } }); view = f.panel();
+    const stale = view.button('Use reviewed installation in this wizard').props.onClick;
+    if (cancel === 'clear') view.button('Clear imported profile').props.onClick();
+    else view.control('adopt').props.onChange({ target: { checked: false } });
+    stale(); f.render(); assert.equal(f.session().status, 'saved'); assert.deepEqual(f.storageWrites, []);
+  }
+});
+
+test('readonly panel refuses a changed generated installer instead of exposing new executable output', async () => {
+  const f = await activeFixture(); f.changeCommand(); const view = f.commands();
+  assert.equal(view.nodes.some((node) => node.type === 'code'), false);
+  assert.match(view.text(), /commands are unavailable or changed/);
+});
+
+test('all native event subscriptions are removed when the connected session and consumers unmount', async () => {
+  const f = await activeFixture(); f.panel(); f.statusPage(); f.commands();
+  assert.ok(f.listenerCount() > 10); f.unmount(); assert.equal(f.listenerCount(), 0);
 });

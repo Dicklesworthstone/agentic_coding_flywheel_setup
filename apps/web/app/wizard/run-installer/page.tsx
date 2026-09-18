@@ -49,12 +49,14 @@ import {
 import { resolveModuleSelection } from "@/lib/moduleSelection";
 import { manifestProvenance, manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
 import { createInstallerCheckpoint, installerCheckpointMatches } from "@/lib/installerCheckpoint";
+import { useWizardInstallation } from "@/lib/wizardInstallation";
 import { ACFS_RECOMMENDED_UBUNTU } from "@/lib/vpsProviders";
 import {
   normalizeGitRef,
   useACFSRef,
   useInstallMode,
   useModuleProfile,
+  useModuleSelection,
   useSSHUsername,
   useUserOS,
   useVPSReadinessSelection,
@@ -125,6 +127,9 @@ export default function RunInstallerPage() {
   const [userOS, , userOSLoaded] = useUserOS();
   const [installMode, , installModeLoaded] = useInstallMode();
   const [moduleProfile, setModuleProfile, moduleProfileLoaded] = useModuleProfile();
+  const [moduleSelection, moduleSelectionLoaded] = useModuleSelection();
+  const installationSession = useWizardInstallation();
+  const reviewedInstallation = installationSession?.status === "active" ? installationSession.installation : null;
   const [pinnedRef, setPinnedRef, acfsRefLoaded] = useACFSRef();
   const [vpsIP, , vpsIPLoaded] = useVPSIP();
   const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
@@ -134,29 +139,34 @@ export default function RunInstallerPage() {
   // Transient "Saved <file>" / "Download failed" message for the handoff buttons.
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
   const downloadStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const usePinnedRef = pinEditorOpen || pinnedRef !== null;
-  const refDraft = pinEditorOpen
-    ? (refDraftOverride ?? pinnedRef ?? "main")
-    : (pinnedRef ?? "main");
+  const usePinnedRef = reviewedInstallation
+    ? reviewedInstallation.ref !== null
+    : pinEditorOpen || pinnedRef !== null;
+  // A previously edited local draft cannot override the newly approved snapshot.
+  const refDraft = reviewedInstallation ? reviewedInstallation.ref ?? "main"
+    : pinEditorOpen ? (refDraftOverride ?? pinnedRef ?? "main") : (pinnedRef ?? "main");
   const safePinnedRef = useMemo(() => normalizeGitRef(refDraft), [refDraft]);
   const hasRefError = usePinnedRef && !safePinnedRef;
   const ready =
     userOSLoaded &&
     installModeLoaded &&
     moduleProfileLoaded &&
+    moduleSelectionLoaded &&
     acfsRefLoaded &&
     vpsIPLoaded &&
     sshUsernameLoaded &&
     vpsReadinessSelectionLoaded;
-  const moduleSelection = useMemo(() => ({ profile: moduleProfile }), [moduleProfile]);
   const modulePlan = useMemo(() => resolveModuleSelection(moduleSelection), [moduleSelection]);
   const selectedProfile = manifestSelectionProfiles.find((profile) => profile.id === moduleProfile);
-  const effectiveInstallMode = selectedProfile?.mode ?? installMode;
-  const canGenerateInstall = ready && vpsIP !== null && !hasRefError && modulePlan.ok && modulePlan.selectedCount > 0;
+  const effectiveInstallMode = reviewedInstallation?.mode ?? selectedProfile?.mode ?? installMode;
+  const canBuildInstall = ready && vpsIP !== null && !hasRefError && modulePlan.ok && modulePlan.selectedCount > 0;
   const effectiveRef = usePinnedRef ? safePinnedRef : null;
   const effectiveUserOS = userOS ?? "mac";
   const effectiveVpsIP = vpsIP ?? "";
   const effectiveSSHUsername = sshUsername.trim() || "ubuntu";
+  const effectiveProviderSelection = useMemo(() => reviewedInstallation
+    ? { ...(vpsReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION), ubuntuVersion: reviewedInstallation.ubuntuVersion }
+    : vpsReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION, [reviewedInstallation, vpsReadinessSelection]);
   const reconnectCommand = useMemo(
     () => `ssh -i ~/.ssh/acfs_ed25519 ${formatSshTarget(effectiveSSHUsername, effectiveVpsIP)}`,
     [effectiveSSHUsername, effectiveVpsIP],
@@ -167,6 +177,7 @@ export default function RunInstallerPage() {
   );
 
   const handlePinnedRefToggle = useCallback((checked: boolean) => {
+    if (reviewedInstallation) return;
     if (!checked) {
       setPinEditorOpen(false);
       setRefDraftOverride(null);
@@ -179,9 +190,10 @@ export default function RunInstallerPage() {
     if (!pinnedRef || !pinnedRef.trim()) {
       setPinnedRef("main");
     }
-  }, [pinnedRef, setPinnedRef]);
+  }, [pinnedRef, setPinnedRef, reviewedInstallation]);
 
   const handlePinnedRefChange = useCallback((value: string) => {
+    if (reviewedInstallation) return;
     setPinEditorOpen(true);
     setRefDraftOverride(value);
 
@@ -195,17 +207,19 @@ export default function RunInstallerPage() {
     if (normalized) {
       setPinnedRef(normalized);
     }
-  }, [setPinnedRef]);
+  }, [setPinnedRef, reviewedInstallation]);
 
   // One validated selection drives every executable command and exported artifact.
   // Never turn an invalid draft into a default/full installation or a main ref.
   const installDetails = useMemo(
-    () => canGenerateInstall
+    () => canBuildInstall
       ? buildInstallCommandDetails(effectiveInstallMode, effectiveRef, effectiveSSHUsername, moduleSelection)
       : null,
-    [canGenerateInstall, effectiveInstallMode, effectiveRef, effectiveSSHUsername, moduleSelection],
+    [canBuildInstall, effectiveInstallMode, effectiveRef, effectiveSSHUsername, moduleSelection],
   );
-  const installCommand = installDetails?.command ?? null;
+  const canGenerateInstall = canBuildInstall
+    && (!reviewedInstallation || installDetails?.command === reviewedInstallation.command);
+  const installCommand = canGenerateInstall ? installDetails?.command ?? null : null;
   // The cache is consumed AFTER Ubuntu auto-upgrade. Preserve the original
   // provisioning image in exports, but cache for the actual command destination.
   const installerTargetUbuntuVersion = installDetails?.targetUbuntu;
@@ -254,7 +268,7 @@ export default function RunInstallerPage() {
   );
   const providerProvisioningPacket = useMemo(
     () => canGenerateInstall ? buildProviderProvisioningPacket({
-      ...(vpsReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION),
+      ...effectiveProviderSelection,
       installMode: effectiveInstallMode,
       sourceRef: effectiveSourceRef,
       username: effectiveSSHUsername,
@@ -267,7 +281,7 @@ export default function RunInstallerPage() {
       effectiveSourceRef,
       effectiveSSHUsername,
       effectiveVpsIP,
-      vpsReadinessSelection,
+      effectiveProviderSelection,
       moduleSelection,
     ],
   );
@@ -278,10 +292,11 @@ export default function RunInstallerPage() {
       username: effectiveSSHUsername,
       mode: effectiveInstallMode,
       ref: effectiveRef,
-      providerSelection: vpsReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION,
+      providerSelection: effectiveProviderSelection,
+      architecture: reviewedInstallation?.architecture,
       moduleSelection,
     }) : null,
-    [canGenerateInstall, effectiveVpsIP, effectiveUserOS, effectiveSSHUsername, effectiveInstallMode, effectiveRef, vpsReadinessSelection, moduleSelection],
+    [canGenerateInstall, effectiveVpsIP, effectiveUserOS, effectiveSSHUsername, effectiveInstallMode, effectiveRef, effectiveProviderSelection, reviewedInstallation, moduleSelection],
   );
 
   // Analytics tracking for this wizard step
@@ -490,7 +505,9 @@ export default function RunInstallerPage() {
           <select
             id="installer-profile"
             value={moduleProfile}
+            disabled={reviewedInstallation !== null}
             onChange={(event) => {
+              if (reviewedInstallation) return;
               const profile = manifestSelectionProfiles.find((item) => item.id === event.target.value);
               if (profile) setModuleProfile(profile.id);
             }}
@@ -506,6 +523,7 @@ export default function RunInstallerPage() {
               ? `${modulePlan.selectedCount} of ${modulePlan.availableCount} modules selected. Install mode: ${effectiveInstallMode}.`
               : "This profile cannot produce an executable installation plan."}
             {" "}The installer, cached command, runbook, provider packet, and team profile use this same selection.
+            {reviewedInstallation && " Exact module and skip overrides from the reviewed file remain active. Discard the reviewed installation before changing its choices."}
           </p>
           {modulePlan.warnings.map((warning, index) => (
             <p key={index} className="text-xs text-muted-foreground">{warning}</p>
@@ -522,6 +540,7 @@ export default function RunInstallerPage() {
             <Checkbox
               id="pin-ref"
               checked={usePinnedRef}
+              disabled={reviewedInstallation !== null}
               onCheckedChange={(checked) =>
                 handlePinnedRefToggle(checked ? checked !== "indeterminate" : false)
               }
@@ -544,6 +563,7 @@ export default function RunInstallerPage() {
                 <input
                   type="text"
                   value={refDraft}
+                  disabled={reviewedInstallation !== null}
                   onChange={(e) => handlePinnedRefChange(e.target.value)}
                   placeholder="main, v1.0.0, or commit SHA"
                   aria-label="Git ref to pin the installer to"
@@ -813,7 +833,7 @@ export default function RunInstallerPage() {
             <div className="space-y-2">
               <p className="font-semibold text-foreground">1. Build cache on your local/connected machine:</p>
               <CommandCard
-                command={`acfs installer-cache build --arch x86_64 --ubuntu-version ${installerTargetUbuntuVersion} --output /tmp/acfs-cache`}
+                command={`acfs installer-cache build --arch ${reviewedInstallation?.architecture ?? "x86_64"} --ubuntu-version ${installerTargetUbuntuVersion} --output /tmp/acfs-cache`}
                 description="Build the verified installer cache"
                 runLocation="local"
               />

@@ -48,7 +48,7 @@ import {
 import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { Jargon } from "@/components/jargon";
 import { buildInstallCommand, formatSshTarget } from "@/lib/commandBuilder";
-import { useACFSRef, useInstallMode, useSSHUsername, useVPSIP } from "@/lib/userPreferences";
+import { useACFSRef, useInstallMode, useModuleSelection, useSSHUsername, useVPSIP } from "@/lib/userPreferences";
 import { safeGetItem, withCurrentSearch } from "@/lib/utils";
 
 const STATUS_CHECK_COMPLETION_KEY = "acfs-command-flywheel-doctor";
@@ -142,8 +142,9 @@ export default function StatusCheckPage() {
   const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
   const [installMode, , installModeLoaded] = useInstallMode();
   const [acfsRef, , acfsRefLoaded] = useACFSRef();
+  const [moduleSelection, moduleSelectionLoaded] = useModuleSelection();
   const ready =
-    vpsIPLoaded && sshUsernameLoaded && installModeLoaded && acfsRefLoaded;
+    vpsIPLoaded && sshUsernameLoaded && installModeLoaded && acfsRefLoaded && moduleSelectionLoaded;
   const { data: doctorConfirmed = false } = useQuery({
     queryKey: commandCompletionKeys.completion(STATUS_CHECK_COMPLETION_KEY),
     queryFn: () => safeGetItem(STATUS_CHECK_COMPLETION_KEY) === "true",
@@ -157,11 +158,13 @@ export default function StatusCheckPage() {
   const reconnectWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 ${reconnectTarget}`;
   const codexTunnelCommand = `ssh -i ~/.ssh/acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
   const codexTunnelWindowsCommand = `ssh -i $HOME\\.ssh\\acfs_ed25519 -L 1455:localhost:1455 ${reconnectTarget}`;
-  const reinstallCommand = buildInstallCommand(
-    installModeLoaded ? installMode : "vibe",
-    acfsRefLoaded ? acfsRef : null,
+  // Recovery must retry the same selected installation, never the full defaults.
+  const reinstallCommand = ready ? buildInstallCommand(
+    installMode,
+    acfsRef,
     effectiveSSHUsername,
-  );
+    moduleSelection,
+  ) : "";
   const promptPrefix = `${effectiveSSHUsername}@`;
 
   // Analytics tracking for this wizard step

@@ -67,6 +67,7 @@ function fixture() {
       normalizeGitRef: (value) => value, normalizeSSHUsername: (value) => value,
     },
     '@/lib/moduleSelection': selection,
+    '@/lib/wizardInstallation': { useWizardInstallation: () => null },
     '@/lib/generated/manifest-modules': catalogue,
     '@/lib/commandBuilder': {
       buildCommands(input) {

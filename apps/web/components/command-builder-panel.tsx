@@ -32,6 +32,8 @@ import {
 import { buildCommands, buildShareURL } from "@/lib/commandBuilder";
 import { resolveModuleSelection } from "@/lib/moduleSelection";
 import { manifestModules, manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
+import { useWizardInstallation } from "@/lib/wizardInstallation";
+import type { ApprovedTeamProfileInstallation } from "@/lib/teamProfileImport";
 
 function LocationBadge({ location }: { location: "local" | "vps" }) {
   return (
@@ -207,6 +209,43 @@ function ExclusionPicker({
 }
 
 export function CommandBuilderPanel() {
+  const session = useWizardInstallation();
+  if (session?.status === "active" && session.installation) {
+    return <ReviewedCommandBuilderPanel installation={session.installation} />;
+  }
+  if (session && session.status !== "saved") {
+    return <p role="status">Review or discard the pending installation before generating commands.</p>;
+  }
+  return <SavedCommandBuilderPanel />;
+}
+
+/** Active approval is immutable; editable drafts and lossy links are separate. */
+function ReviewedCommandBuilderPanel({ installation }: { installation: ApprovedTeamProfileInstallation }) {
+  const [host, , hostLoaded] = useVPSIP();
+  const [os, , osLoaded] = useUserOS();
+  const commands = useMemo(() => {
+    if (!hostLoaded || !osLoaded || !host) return null;
+    try {
+      const next = buildCommands({ ip: host, os: os ?? "mac", username: installation.username,
+        mode: installation.mode, ref: installation.ref, moduleSelection: installation.moduleSelection });
+      return next.find((entry) => entry.id === "installer")?.command === installation.command ? next : null;
+    } catch { return null; }
+  }, [host, os, hostLoaded, osLoaded, installation]);
+  return <section className="space-y-4 rounded-xl border border-primary/30 bg-card/30 p-5">
+    <h2 className="text-sm font-semibold">Your reviewed installation commands</h2>
+    <p className="text-sm text-muted-foreground">
+      These commands retain the exact reviewed selection. Discard the active installation
+      using the banner before editing saved defaults or creating a different command.
+      Sharing an approval through a URL is not supported.
+    </p>
+    {commands ? commands.map((command) => <CommandRow key={command.id}
+      label={command.label} description={command.description} runLocation={command.runLocation}
+      command={os === "windows" && command.windowsCommand ? command.windowsCommand : command.command} />)
+      : <p role="alert">Reviewed commands are unavailable or changed. Review the installation again before continuing.</p>}
+  </section>;
+}
+
+function SavedCommandBuilderPanel() {
   const [vpsIP, setVPSIP] = useVPSIP();
   const [os] = useUserOS();
   const [mode, setMode] = useInstallMode();

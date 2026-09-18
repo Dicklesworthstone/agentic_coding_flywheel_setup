@@ -3,6 +3,7 @@ import { JetBrains_Mono, Instrument_Sans } from "next/font/google";
 import { QueryProvider } from "@/components/query-provider";
 import { AnalyticsProvider } from "@/components/analytics-provider";
 import { MotionProvider } from "@/components/motion/motion-provider";
+import { WizardInstallationProvider } from "@/components/wizard-installation-provider";
 import "./globals.css";
 
 const jetbrainsMono = JetBrains_Mono({
@@ -106,7 +107,9 @@ export default function RootLayout({
         <div className="pointer-events-none fixed inset-0 z-50 bg-noise" />
         <QueryProvider>
           <MotionProvider>
-            <AnalyticsProvider>{children}</AnalyticsProvider>
+            <AnalyticsProvider>
+              <WizardInstallationProvider>{children}</WizardInstallationProvider>
+            </AnalyticsProvider>
           </MotionProvider>
         </QueryProvider>
       </body>

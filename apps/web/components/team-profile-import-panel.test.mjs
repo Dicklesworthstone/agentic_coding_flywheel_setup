@@ -78,9 +78,10 @@ function fixture() {
   const component = load(new URL('./team-profile-import-panel.tsx', import.meta.url), {
     react, 'react/jsx-runtime': { jsx, jsxs: jsx, Fragment: 'fragment' },
     '@/components/ui/button': { Button: 'button' }, '@/components/command-card': { CommandCard: 'command-card' },
-    '@/lib/userPreferences': { useInstallMode: preference('mode'), useModuleProfile: preference('profile'),
-      useACFSRef: preference('ref'), useSSHUsername: preference('username'), useVPSIP: preference('host'),
+    '@/lib/userPreferences': { useSavedInstallMode: preference('mode'), useSavedModuleProfile: preference('profile'),
+      useSavedACFSRef: preference('ref'), useSavedSSHUsername: preference('username'), useVPSIP: preference('host'),
       useVPSReadinessSelection: preference('provider') },
+    '@/lib/wizardInstallation': { useWizardInstallation: () => null },
     '@/lib/vpsProviders': { VPS_UBUNTU_IMAGE_OPTIONS: ['26.04', '24.04', '22.04'] },
     '@/lib/teamProfileImport': review,
   }, scope);

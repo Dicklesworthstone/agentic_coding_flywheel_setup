@@ -45,6 +45,7 @@ function fixture(initial = {}) {
       region: 'not-listed', targetAgents: 10, workloadId: 'standard' }, ...initial };
   const loaded = { os: true, mode: true, ref: true, ip: true, username: true, profile: true, provider: true };
   const calls = { command: [], runbook: [], provider: [], profile: [] };
+  const session = { status: 'saved', installation: null };
   const copies = []; const navigations = []; const completed = []; const slots = [];
   let acknowledgeNext = false; let invalidPlan = false; let cursor = 0; let navigation;
   let lastCompletionKey = null; let lastCheckpoint;
@@ -68,11 +69,19 @@ function fixture(initial = {}) {
     useEffect() { cursor++; },
   };
   const jsx = (type, props) => ({ type, props: props ?? {} });
-  const pref = (key) => () => [prefs[key], (value) => { prefs[key] = value; }, loaded[key]];
+  const pref = (key) => () => {
+    const active = session.status === 'active' ? session.installation : null;
+    const imported = active && ({ mode: active.mode, ref: active.ref, username: active.username,
+      profile: active.moduleSelection.profile });
+    return [imported && Object.hasOwn(imported, key) ? imported[key] : prefs[key],
+      (value) => { if (!active) prefs[key] = value; }, loaded[key]];
+  };
   const command = (mode, ref, username, selection) => {
     calls.command.push(plain({ mode, ref, username, selection: selection ?? null }));
     return `bash install.sh --mode ${mode} --target-ubuntu=${prefs.installDestination ?? '26.04'} --user ${username}`
-      + (ref ? ` --ref "${ref}"` : '') + (selection ? ` --profile "${selection.profile}"` : '');
+      + (ref ? ` --ref "${ref}"` : '') + (selection ? ` --profile "${selection.profile}"` : '')
+      + (selection?.onlyModules ?? []).map((id) => ` --only "${id}"`).join('')
+      + (selection?.skipModules ?? []).map((id) => ` --skip "${id}"`).join('');
   };
   const artifact = (kind) => (input) => {
     calls[kind].push(plain(input));
@@ -116,14 +125,18 @@ function fixture(initial = {}) {
     '@/lib/userPreferences': {
       useUserOS: pref('os'), useInstallMode: pref('mode'), useACFSRef: pref('ref'), useVPSIP: pref('ip'),
       useSSHUsername: pref('username'), useVPSReadinessSelection: pref('provider'), useModuleProfile: pref('profile'),
+      useModuleSelection: () => [session.installation?.moduleSelection ?? { profile: prefs.profile }, loaded.profile],
       normalizeGitRef: (value) => typeof value === 'string' && /^[A-Za-z0-9_./-]+$/.test(value.trim()) && !value.includes('..')
         ? value.trim() : null,
     },
+    '@/lib/wizardInstallation': { useWizardInstallation: () => session },
     '@/lib/generated/manifest-modules': { manifestSelectionProfiles: profiles, manifestProvenance: provenance },
     '@/lib/vpsProviders': { ACFS_RECOMMENDED_UBUNTU: '26.04' },
-    '@/lib/moduleSelection': { resolveModuleSelection: ({ profile }) => {
+    '@/lib/moduleSelection': { resolveModuleSelection: ({ profile, onlyModules, skipModules }) => {
       const valid = !invalidPlan && Object.hasOwn(ids, profile);
-      const included = valid ? ids[profile].map((id) => ({ id, phase: 1, description: `Fixture ${id}`, reason: 'included' })) : [];
+      const included = valid ? (onlyModules?.length ? onlyModules : ids[profile])
+        .filter((id) => !skipModules?.includes(id))
+        .map((id) => ({ id, phase: 1, description: `Fixture ${id}`, reason: 'included' })) : [];
       return { ok: valid, included, excluded: [], selectedCount: included.length, availableCount: 4,
         warnings: [], errors: valid ? [] : ['The selected profile cannot be resolved.'] };
     } },
@@ -172,7 +185,14 @@ function fixture(initial = {}) {
       navigation: () => navigation,
     };
   }
-  return { render, prefs, loaded, calls, copies, navigations, completed, provenance, acknowledgements,
+  return { render, prefs, loaded, calls, copies, navigations, completed, provenance, acknowledgements, session,
+    adopt: (overrides = {}) => {
+      const value = { profileId: 'team-test', displayName: 'Team Test', mode: 'safe', ref: 'v1.2.3',
+        username: 'team-user', architecture: 'aarch64', ubuntuVersion: '22.04',
+        moduleSelection: { profile: 'full', onlyModules: ['agents.claude'], onlyPhases: [], skipModules: ['acfs.nightly'], noDeps: false }, ...overrides };
+      session.status = 'active';
+      session.installation = { ...value, command: command(value.mode, value.ref, value.username, value.moduleSelection) };
+    },
     setAcknowledged: (value) => {
       if (lastCompletionKey) acknowledgements.set(lastCompletionKey, value);
       else acknowledgeNext = value;
@@ -390,4 +410,79 @@ test('missing provider preferences use the shared recommendation rather than ret
   const item = fixture({ provider: null }); item.render();
   assert.equal(item.calls.provider[0].ubuntuVersion, '26.04');
   assert.equal(item.calls.profile[0].providerSelection.ubuntuVersion, '26.04');
+});
+
+test('active reviewed selection drives primary, cache and all handoffs without widening profile-only defaults', async () => {
+  const item = fixture(); item.render(); const saved = plain(item.prefs);
+  item.adopt(); const view = item.render(); const active = item.session.installation;
+  assert.equal(view.main().props.command, active.command);
+  assert.match(view.main().props.command, /--only "agents.claude"/);
+  assert.match(view.cache().props.command, /--skip "acfs.nightly"/);
+  for (const kind of ['runbook', 'profile', 'provider']) {
+    assert.deepEqual(item.calls[kind].at(-1).moduleSelection, active.moduleSelection);
+    assert.equal(item.calls[kind].at(-1).username, 'team-user');
+  }
+  assert.deepEqual(item.prefs, saved);
+  for (const label of ['Runbook JSON', 'Provider Packet', 'Team Profile']) view.button(label).props.onClick();
+  await Promise.resolve();
+  for (const serialized of item.copies) assert.deepEqual(JSON.parse(serialized).input.moduleSelection, active.moduleSelection);
+});
+
+test('adoption ignores an earlier invalid pin draft and prevents settings handlers from changing approved choices', () => {
+  const item = fixture({ ref: 'v0.1.0' }); let view = item.render();
+  view.pinInput().props.onChange({ target: { value: 'bad;ref' } });
+  assert.equal(item.render().main(), undefined);
+  item.adopt(); view = item.render();
+  assert.equal(view.main().props.command, item.session.installation.command);
+  assert.equal(view.picker().props.disabled, true); assert.equal(view.pinInput().props.disabled, true);
+  assert.equal(view.pinToggle().props.disabled, true);
+  view.picker().props.onChange({ target: { value: 'minimal' } });
+  view.pinInput().props.onChange({ target: { value: 'v9.0.0' } });
+  view.pinToggle().props.onCheckedChange(false);
+  assert.equal(item.render().main().props.command, item.session.installation.command);
+  assert.equal(item.prefs.profile, 'cloud-only'); assert.equal(item.prefs.ref, 'v0.1.0');
+});
+
+test('reviewed main ref remains unpinned despite an earlier open pin editor', () => {
+  const item = fixture({ ref: 'old-tag' }); item.render().pinInput().props.onChange({ target: { value: 'other-tag' } });
+  item.adopt({ ref: null }); const view = item.render();
+  assert.equal(view.pinToggle().props.checked, false);
+  assert.doesNotMatch(view.main().props.command, /--ref/);
+  assert.equal(view.main().props.command, item.session.installation.command);
+});
+
+test('reviewed mode is not silently replaced by a conflicting profile label', () => {
+  const item = fixture(); item.adopt({ mode: 'vibe', moduleSelection: { profile: 'safe', onlyModules: [], onlyPhases: [], skipModules: [], noDeps: false } });
+  assert.equal(item.render().main().props.command, item.session.installation.command);
+  assert.ok(item.calls.command.every((call) => call.mode === 'vibe'));
+});
+
+test('cache architecture and export source image use operator-confirmed reviewed facts', () => {
+  const item = fixture(); item.adopt(); const view = item.render();
+  const cacheBuilder = view.nodes.find((node) => node.type === 'command-card' && node.props.description === 'Build the verified installer cache');
+  assert.match(cacheBuilder.props.command, /--arch aarch64/);
+  assert.match(cacheBuilder.props.command, /--ubuntu-version 26.04/);
+  assert.equal(item.calls.profile.at(-1).architecture, 'aarch64');
+  assert.equal(item.calls.profile.at(-1).providerSelection.ubuntuVersion, '22.04');
+  assert.equal(item.calls.provider.at(-1).ubuntuVersion, '22.04');
+  assert.equal(item.prefs.provider.ubuntuVersion, '24.04');
+});
+
+test('an exact-command mismatch blocks primary, cached, exported and continuation paths', () => {
+  const item = fixture(); item.adopt(); item.session.installation.command += ' UNREVIEWED';
+  const view = item.render();
+  assert.equal(view.main(), undefined); assert.equal(view.cache(), undefined);
+  assert.equal(item.calls.runbook.length, 0); assert.equal(item.calls.provider.length, 0); assert.equal(item.calls.profile.length, 0);
+  assert.equal(view.navigation().disabled, true);
+  view.navigation().onContinue(); assert.deepEqual(item.completed, []);
+  for (const label of ['Runbook JSON', 'Provider Packet', 'Team Profile']) view.button(label).props.onClick();
+  assert.equal(item.copies.length, 0);
+});
+
+test('adoption changes the scoped acknowledgement and cannot reuse saved installation completion', () => {
+  const item = fixture(); const previous = item.render().main().props.persistKey;
+  item.setAcknowledged(true); assert.equal(item.render().navigation().disabled, false);
+  item.adopt(); const view = item.render();
+  assert.notEqual(view.main().props.persistKey, previous);
+  assert.equal(view.navigation().disabled, true);
 });

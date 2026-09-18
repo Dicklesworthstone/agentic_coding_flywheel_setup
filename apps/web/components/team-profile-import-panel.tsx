@@ -4,7 +4,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CommandCard } from "@/components/command-card";
 import {
-  useACFSRef, useInstallMode, useModuleProfile, useSSHUsername,
+  useSavedACFSRef as useACFSRef, useSavedInstallMode as useInstallMode,
+  useSavedModuleProfile as useModuleProfile, useSavedSSHUsername as useSSHUsername,
   useVPSIP, useVPSReadinessSelection,
 } from "@/lib/userPreferences";
 import { VPS_UBUNTU_IMAGE_OPTIONS } from "@/lib/vpsProviders";
@@ -14,6 +15,7 @@ import {
   type TeamProfileReviewContext,
 } from "@/lib/teamProfileImport";
 import type { TeamProfileImportChange } from "@/lib/commandBuilder";
+import { useWizardInstallation } from "@/lib/wizardInstallation";
 
 function Changes({ title, changes }: { title: string; changes: TeamProfileImportChange[] }) {
   return <div className="space-y-2">
@@ -28,8 +30,9 @@ function Changes({ title, changes }: { title: string; changes: TeamProfileImport
   </div>;
 }
 
-/** Review-only import: no preferences, completion flags, credentials, or host state are written. */
+/** Review compares saved preferences; adopting a review never writes those preferences. */
 export function TeamProfileImportPanel() {
+  const installationSession = useWizardInstallation();
   const [mode, , modeLoaded] = useInstallMode();
   const [profile, , profileLoaded] = useModuleProfile();
   const [ref, , refLoaded] = useACFSRef();
@@ -41,6 +44,8 @@ export function TeamProfileImportPanel() {
   const [review, setReview] = useState<TeamProfileFileReview | null>(null);
   const [approval, setApproval] = useState<{ review: TeamProfileFileReview; value: ApprovedTeamProfileCommand } | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [adoptionConfirmed, setAdoptionConfirmed] = useState(false);
+  const [reviewGeneration, setReviewGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const request = useRef(0);
@@ -62,6 +67,7 @@ export function TeamProfileImportPanel() {
   if (previousContext !== context) {
     setPreviousContext(context);
     setReview(null); setApproval(null); setConfirmed(false); setBusy(false); setError(null);
+    setAdoptionConfirmed(false);
   }
   useEffect(() => {
     request.current++;
@@ -71,6 +77,7 @@ export function TeamProfileImportPanel() {
   function clear(): void {
     request.current++;
     setReview(null); setApproval(null); setConfirmed(false); setBusy(false); setError(null);
+    setAdoptionConfirmed(false);
   }
   function failure(value: unknown): void {
     setError(value instanceof TeamProfileImportError
@@ -81,18 +88,29 @@ export function TeamProfileImportPanel() {
     if (!context || !file) return;
     const generation = ++request.current;
     setReview(null); setApproval(null); setConfirmed(false); setError(null); setBusy(true);
+    setAdoptionConfirmed(false);
     try {
       const next = await reviewTeamProfileFile(file, context);
-      if (generation === request.current) setReview(next);
+      if (generation === request.current) { setReview(next); setReviewGeneration(generation); }
     } catch (value) { if (generation === request.current) failure(value); }
     finally { if (generation === request.current) setBusy(false); }
   }
   function approve(): void {
-    if (!activeReview || !context || !confirmed || busy) return;
+    if (!activeReview || !context || !confirmed || busy || reviewGeneration !== request.current) return;
+    setReviewGeneration(++request.current);
     try {
       const value = approveTeamProfileReview(activeReview, context, confirmed);
       setApproval({ review: activeReview, value }); setError(null);
     } catch (value) { setApproval(null); setConfirmed(false); failure(value); }
+  }
+  function adopt(): void {
+    if (!installationSession || !activeReview || !context || !adoptionConfirmed || busy
+        || reviewGeneration !== request.current) return;
+    setReviewGeneration(++request.current);
+    try {
+      installationSession.activate(activeReview, context, adoptionConfirmed);
+      setApproval(null); setError(null); setAdoptionConfirmed(false);
+    } catch (value) { setAdoptionConfirmed(false); failure(value); }
   }
 
   return <details className="rounded-xl border border-border/50 bg-card/30 p-4">
@@ -102,8 +120,9 @@ export function TeamProfileImportPanel() {
     <div className="mt-3 space-y-4">
       <p className="text-sm text-muted-foreground">
         Load a team-profile JSON file, review its differences from your saved wizard profile,
-        then explicitly approve a separate manual installer command. This does not apply
-        defaults to the wizard, provision a server, run commands, or mark installation complete.
+        then approve a separate manual command or explicitly use the complete reviewed
+        installation in this wizard tab. Neither choice provisions a server, runs commands,
+        or marks installation complete. Saved wizard preferences are never overwritten.
         The file stays in browser memory: it is not uploaded or saved to local storage.
       </p>
       <p className="text-sm text-muted-foreground">
@@ -169,10 +188,27 @@ export function TeamProfileImportPanel() {
         </div>
         <label htmlFor={`${id}-confirm`} className="flex min-h-11 items-start gap-3 py-2 text-sm">
           <input id={`${id}-confirm`} type="checkbox" checked={confirmed} className="mt-1"
-            onChange={(event) => { setConfirmed(event.target.checked); setApproval(null); }} />
+            onChange={(event) => { setReviewGeneration(++request.current); setConfirmed(event.target.checked); setApproval(null); }} />
           <span>I reviewed these changes and trust this profile&apos;s source. Generate its manual command only; leave my wizard settings and completion state unchanged.</span>
         </label>
         <Button type="button" disabled={!confirmed || busy} onClick={approve}>Approve profile command</Button>
+        {installationSession && <div className="space-y-3 rounded-lg border border-primary/30 p-3">
+          <label htmlFor={`${id}-adopt`} className="flex min-h-11 items-start gap-3 py-2 text-sm">
+            <input id={`${id}-adopt`} type="checkbox" checked={adoptionConfirmed} className="mt-1"
+              onChange={(event) => { setReviewGeneration(++request.current); setAdoptionConfirmed(event.target.checked); }} />
+            <span>I reviewed these changes and trust the source. Use its exact mode, ref,
+              username and module selections throughout this wizard tab, including installer,
+              handoff, reconnection and retry commands. Do not run anything or mark it complete.</span>
+          </label>
+          <Button type="button" disabled={!adoptionConfirmed || busy} onClick={adopt}>
+            Use reviewed installation in this wizard
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            Reloading requires a new review or explicit discard. Only a constant reload guard
+            is saved in this tab; the profile, target and approval remain in memory.
+            Clearing this file review does not discard an already active installation.
+          </p>
+        </div>}
         {approved && <div className="space-y-2">
           <p role="status" className="text-sm">
             Separate manual command approved. Run it only in the intended VPS root shell,
