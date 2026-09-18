@@ -1,6 +1,7 @@
 /** Local-file ingestion and explicit approval for the canonical team-profile diff. */
 import {
   buildTeamProfileImportDiff,
+  type TeamProfile,
   type TeamProfileImportCurrentState,
   type TeamProfileImportDiff,
 } from "./commandBuilder";
@@ -191,4 +192,81 @@ export function approveTeamProfileReview(review: TeamProfileFileReview,
     return refuse("team_profile_review_changed", "The canonical plan changed. Read and review the profile again.");
   }
   return Object.freeze({ sourceSha256: review.sourceSha256, command: diff.installerCommand.command! });
+}
+
+/** The complete install choice, not a sequence of partially applied preferences. */
+export interface ApprovedTeamProfileInstallation extends ApprovedTeamProfileCommand {
+  readonly profileId: string;
+  readonly displayName: string;
+  readonly mode: TeamProfile["install"]["mode"];
+  readonly ref: string | null;
+  readonly username: string;
+  readonly moduleSelection: NonNullable<TeamProfileImportCurrentState["moduleSelection"]>;
+  readonly architecture: NonNullable<TeamProfileImportCurrentState["architecture"]>;
+  /** The operator-confirmed starting image, never the profile author's host claim. */
+  readonly ubuntuVersion: string;
+}
+const installations = new WeakMap<ApprovedTeamProfileInstallation, TeamProfileFileReview>();
+export const TEAM_PROFILE_SESSION_KEY = "acfs-reviewed-installation-pending-v1";
+type SessionStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/** A reload can retain a guard, but never restore approval from browser storage. */
+export function readTeamProfileSessionGuard(storage: Pick<Storage, "getItem">): "clear" | "review_required" | "unavailable" {
+  try { return storage.getItem(TEAM_PROFILE_SESSION_KEY) === null ? "clear" : "review_required"; }
+  catch { return "unavailable"; }
+}
+
+export function teamProfileInstallationMatches(installation: ApprovedTeamProfileInstallation | null,
+  context: TeamProfileReviewContext | null): boolean {
+  if (!installation) return false;
+  return teamProfileReviewMatches(installations.get(installation) ?? null, context);
+}
+
+/**
+ * Atomically select one validated in-memory installation. Only a constant guard
+ * is stored; never the source, host, command, identity, or an approval token.
+ * The guard prevents a reload from silently replacing a narrow team install
+ * with saved/default wizard commands. Explicit discard or a new review is needed.
+ */
+export function activateTeamProfileInstallation(review: TeamProfileFileReview,
+  context: TeamProfileReviewContext, confirmed: boolean, storage: SessionStorage): ApprovedTeamProfileInstallation {
+  const approval = approveTeamProfileReview(review, context, confirmed);
+  // The source has just passed the canonical import validator a second time.
+  // Do not derive settings from public diff fields or parse an approved command.
+  const source = reviews.get(review)!.source as TeamProfile;
+  const installation = freeze({
+    ...approval,
+    profileId: source.profileId,
+    displayName: source.displayName,
+    mode: source.install.mode,
+    ref: source.install.ref.value === "main" ? null : source.install.ref.value,
+    username: source.providerDefaults.sshUser,
+    moduleSelection: {
+      profile: source.install.profile,
+      onlyModules: [...source.install.modules.only],
+      onlyPhases: [...source.install.modules.onlyPhases],
+      skipModules: [...source.install.modules.skip],
+      noDeps: false,
+    },
+    architecture: context.current.architecture!,
+    ubuntuVersion: context.current.ubuntuVersion!,
+  });
+  try {
+    storage.setItem(TEAM_PROFILE_SESSION_KEY, "review-required");
+    if (storage.getItem(TEAM_PROFILE_SESSION_KEY) !== "review-required") throw new Error();
+  } catch {
+    return refuse("team_profile_session_unavailable", "This browser cannot protect the selected installation across reloads. Use the separate manual command instead.");
+  }
+  installations.set(installation, review);
+  return installation;
+}
+
+/** Called only by an explicit discard action. Never clears unrelated preferences. */
+export function discardTeamProfileInstallation(storage: SessionStorage): void {
+  try {
+    storage.removeItem(TEAM_PROFILE_SESSION_KEY);
+    if (storage.getItem(TEAM_PROFILE_SESSION_KEY) !== null) throw new Error();
+  } catch {
+    refuse("team_profile_session_unavailable", "The installation guard could not be cleared. No default installation was selected.");
+  }
 }
