@@ -6,7 +6,9 @@
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useInstallationPreference, useWizardInstallation } from "./wizardInstallation";
+import type { ModuleSelectionInput } from "./moduleSelection";
 import {
   isValidIP,
   normalizeGitRef,
@@ -536,7 +538,7 @@ export function setInstallMode(mode: InstallMode): boolean {
   return storedOk || urlOk;
 }
 
-export function useInstallMode(): [InstallMode, (mode: InstallMode) => void, boolean] {
+export function useSavedInstallMode(): [InstallMode, (mode: InstallMode) => void, boolean] {
   const queryClient = useQueryClient();
   usePreferenceSync(userPreferencesKeys.installMode);
 
@@ -577,7 +579,7 @@ export function setSSHUsername(username: string): boolean {
   return storedOk || urlOk;
 }
 
-export function useSSHUsername(): [string, (username: string) => void, boolean] {
+export function useSavedSSHUsername(): [string, (username: string) => void, boolean] {
   const queryClient = useQueryClient();
   usePreferenceSync(userPreferencesKeys.sshUsername);
 
@@ -621,7 +623,7 @@ export function setACFSRef(ref: string | null): boolean {
   return storedOk || urlOk;
 }
 
-export function useACFSRef(): [string | null, (ref: string | null) => void, boolean] {
+export function useSavedACFSRef(): [string | null, (ref: string | null) => void, boolean] {
   const queryClient = useQueryClient();
   usePreferenceSync(userPreferencesKeys.acfsRef);
 
@@ -669,7 +671,7 @@ export function setModuleProfile(profile: ModuleSelectionProfileId): boolean {
   return storedOk || urlOk;
 }
 
-export function useModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleSelectionProfileId) => void, boolean] {
+export function useSavedModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleSelectionProfileId) => void, boolean] {
   const queryClient = useQueryClient();
   usePreferenceSync(userPreferencesKeys.moduleProfile);
 
@@ -687,4 +689,31 @@ export function useModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleS
   }, [queryClient]);
 
   return [data ?? "full", setProfile, status === "success"];
+}
+
+// Saved hooks above remain the authority for review comparisons. Installation
+// consumers see an atomic in-memory overlay, never imported query-cache values.
+export function useInstallMode(): [InstallMode, (mode: InstallMode) => void, boolean] {
+  return useInstallationPreference(useSavedInstallMode(), (installation) => installation.mode);
+}
+
+export function useSSHUsername(): [string, (username: string) => void, boolean] {
+  return useInstallationPreference(useSavedSSHUsername(), (installation) => installation.username);
+}
+
+export function useACFSRef(): [string | null, (ref: string | null) => void, boolean] {
+  return useInstallationPreference(useSavedACFSRef(), (installation) => installation.ref);
+}
+
+export function useModuleProfile(): [ModuleSelectionProfileId, (profile: ModuleSelectionProfileId) => void, boolean] {
+  return useInstallationPreference(useSavedModuleProfile(), (installation) => installation.moduleSelection.profile ?? "full");
+}
+
+/** Exact selectors must travel together; a profile ID alone loses custom skips. */
+export function useModuleSelection(): [ModuleSelectionInput, boolean] {
+  const [profile, , loaded] = useModuleProfile();
+  const session = useWizardInstallation();
+  const installation = session?.status === "active" ? session.installation : null;
+  const selection = useMemo(() => installation?.moduleSelection ?? { profile }, [installation, profile]);
+  return [selection, loaded];
 }
