@@ -77,6 +77,94 @@ const PHASE_ALIASES: Record<string, string> = {
   final: "10",
 };
 
+const SELECTION_LIST_FIELDS = [
+  "onlyModules", "onlyPhases", "skipModules", "skipTags", "skipCategories",
+] as const;
+
+/** Validate before normalization: dropping a bad --only value can mean "install all". */
+function validateSelectionInput(input: unknown): string[] {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return ["Selection must be an object with explicit selector arrays."];
+  }
+  const prototype = Object.getPrototypeOf(input);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return ["Selection must not inherit selector values."];
+  }
+  const fields = Object.getOwnPropertyDescriptors(input);
+  const allowed = new Set<string>([...SELECTION_LIST_FIELDS, "profile", "noDeps"]);
+  if (Reflect.ownKeys(fields).some((key) => typeof key !== "string" || !allowed.has(key))
+      || Object.values(fields).some((field) => !field.enumerable || !("value" in field))) {
+    return ["Selection contains an unsupported field or accessor."];
+  }
+  const errors: string[] = [];
+  for (const key of SELECTION_LIST_FIELDS) {
+    const value: unknown = fields[key]?.value;
+    if (value === undefined) continue;
+    if (!Array.isArray(value) || value.length > 1024
+        || Array.from(value).some((entry) => typeof entry !== "string" || !entry.length
+          || entry.length > 256 || entry.trim() !== entry || /[\x00-\x1f\x7f]/.test(entry))) {
+      errors.push(`${key} must be a bounded array of nonblank, unpadded strings.`);
+    }
+  }
+  const profile: unknown = fields.profile?.value;
+  if (profile !== undefined && (typeof profile !== "string" || !profile.length
+      || profile.length > 256 || profile.trim() !== profile || /[\x00-\x1f\x7f]/.test(profile))) {
+    errors.push("profile must be a nonblank profile ID.");
+  }
+  if (fields.noDeps?.value !== undefined && typeof fields.noDeps.value !== "boolean") {
+    errors.push("noDeps must be an explicit boolean.");
+  }
+  return errors;
+}
+
+/** The displayed execution order must remain executable, even in expert noDeps mode. */
+function validateModuleCatalogue(modules: ManifestModuleMetadata[]): string[] {
+  const byId = new Map<string, ManifestModuleMetadata>();
+  const position = new Map<string, number>();
+  for (const [index, module] of modules.entries()) {
+    if (!module || typeof module.id !== "string" || !module.id.length
+        || !Number.isInteger(module.phase) || module.phase < 1 || module.phase > 10
+        || !Array.isArray(module.dependencies) || !Array.isArray(module.tags)) {
+      return ["Manifest module metadata is malformed."];
+    }
+    if (byId.has(module.id)) return [`Manifest error: duplicate module ID ${module.id}`];
+    byId.set(module.id, module);
+    position.set(module.id, index);
+  }
+  const indegree = new Map<string, number>();
+  const dependents = new Map<string, string[]>();
+  for (const module of modules) {
+    indegree.set(module.id, new Set(module.dependencies).size);
+    for (const id of new Set(module.dependencies)) {
+      const dependency = byId.get(id);
+      if (!dependency) return [`Manifest error: ${module.id} depends on unknown module ${id}`];
+      if (dependency.phase > module.phase) {
+        return [`Manifest error: ${module.id} depends on later-phase module ${id}`];
+      }
+      const children = dependents.get(id) ?? [];
+      children.push(module.id);
+      dependents.set(id, children);
+    }
+  }
+  const queue = modules.filter((module) => indegree.get(module.id) === 0).map((module) => module.id);
+  for (let index = 0; index < queue.length; index++) {
+    for (const id of dependents.get(queue[index]) ?? []) {
+      const remaining = indegree.get(id)! - 1;
+      indegree.set(id, remaining);
+      if (remaining === 0) queue.push(id);
+    }
+  }
+  if (queue.length !== modules.length) return ["Manifest error: dependency cycle in module catalogue."];
+  for (const module of modules) {
+    for (const id of module.dependencies) {
+      if (position.get(id)! > position.get(module.id)!) {
+        return [`Manifest execution order puts ${module.id} before required ${id}`];
+      }
+    }
+  }
+  return [];
+}
+
 function nonEmpty(values: string[] | undefined): string[] {
   return (values ?? []).filter((value) => value.length > 0);
 }
@@ -139,11 +227,25 @@ export function resolveModuleSelection(
   modules: ManifestModuleMetadata[] = manifestModules,
   profiles: ManifestSelectionProfile[] = manifestSelectionProfiles,
 ): ModuleSelectionPlan {
+  const inputErrors = validateSelectionInput(input);
+  const validationErrors = inputErrors.length ? inputErrors : validateModuleCatalogue(modules);
+  if (validationErrors.length) {
+    return { ok: false, included: [], excluded: [], warnings: [], errors: validationErrors,
+      selectedCount: 0, availableCount: modules.length };
+  }
   const normalized = normalizeSelection(input, profiles);
   const warnings: string[] = [];
   const errors = [...normalized.errors];
   const moduleById = new Map(modules.map((moduleMetadata) => [moduleMetadata.id, moduleMetadata]));
   const phaseSet = new Set(modules.map((moduleMetadata) => String(moduleMetadata.phase)));
+  const tags = new Set(modules.flatMap((moduleMetadata) => moduleMetadata.tags));
+  const categories = new Set(modules.map((moduleMetadata) => moduleMetadata.category));
+  for (const tag of normalized.skipTags) {
+    if (!tags.has(tag)) errors.push("Unknown module tag in skipTags.");
+  }
+  for (const category of normalized.skipCategories) {
+    if (!categories.has(category)) errors.push("Unknown module category in skipCategories.");
+  }
 
   const desired = new Map<string, string>();
   const skipped = new Map<string, string>();
@@ -292,6 +394,7 @@ export function resolveModuleSelection(
 
           if (!desired.has(depId)) {
             desired.set(depId, `dependency of ${currentId}`);
+            excluded.delete(depId);
             queue.push(depId);
           }
         }
@@ -342,10 +445,11 @@ function quoteInstallArg(value: string): string {
 }
 
 export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): string[] {
+  const inputErrors = validateSelectionInput(input);
+  if (inputErrors.length) throw new Error(inputErrors.join("\n"));
   if (nonEmpty(input.skipTags).length > 0 || nonEmpty(input.skipCategories).length > 0) {
     throw new Error("Tag and category skip selectors cannot be serialized to installer CLI arguments yet.");
   }
-
   const plan = resolveModuleSelection(input);
   if (!plan.ok) {
     throw new Error(plan.errors.join("\n"));
