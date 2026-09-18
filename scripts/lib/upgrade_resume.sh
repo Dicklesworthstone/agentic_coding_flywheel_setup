@@ -105,6 +105,104 @@ resume_recovery_file_safe() {
     (( (8#$mode & 8#022) == 0 )) || return 1
 }
 
+# Read one bounded, unambiguous checkpoint snapshot before any recovered code
+# runs. A target_version substring is not authority to resume an OS upgrade.
+# Python is already required by the reviewed EOL recovery path; do not install
+# it here or fall back to a parser that silently accepts duplicate JSON keys.
+resume_read_checkpoint() {
+    local state_file="${1:-}"
+    resume_recovery_file_safe "$state_file" || return 1
+    [[ -x /usr/bin/python3 ]] || {
+        printf 'ERROR: Python 3 is required to validate saved upgrade state.\n' >&2
+        return 1
+    }
+    /usr/bin/python3 -I - "$state_file" <<'ACFS_RESUME_CHECKPOINT_PY'
+import json
+import math
+import os
+import re
+import stat
+import sys
+
+LIMIT = 65536
+STAGES = {
+    "not_started", "initializing", "upgrading", "awaiting_reboot",
+    "pre_upgrade_reboot", "resumed", "step_complete", "completed", "error",
+}
+
+
+def reject(*_):
+    raise ValueError("invalid checkpoint")
+
+
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            reject()
+        result[key] = value
+    return result
+
+
+def identity(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns, info.st_uid, info.st_gid, info.st_mode, info.st_nlink)
+
+
+try:
+    fd = os.open(sys.argv[1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0
+                or before.st_nlink != 1 or before.st_mode & 0o022
+                or not 0 < before.st_size <= LIMIT):
+            reject()
+        data = bytearray()
+        while len(data) <= LIMIT:
+            chunk = os.read(fd, min(16384, LIMIT + 1 - len(data)))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if len(data) != before.st_size or identity(os.fstat(fd)) != identity(before):
+            reject()
+    finally:
+        os.close(fd)
+    state = json.loads(data.decode("utf-8"), object_pairs_hook=unique, parse_constant=reject)
+    pending = [(state, 0)]
+    nodes = 0
+    while pending:
+        value, depth = pending.pop()
+        nodes += 1
+        if depth > 48 or nodes > 16384:
+            reject()
+        if isinstance(value, dict):
+            pending.extend((item, depth + 1) for item in value.values())
+        elif isinstance(value, list):
+            pending.extend((item, depth + 1) for item in value)
+        elif isinstance(value, float) and not math.isfinite(value):
+            reject()
+    if (not isinstance(state, dict) or type(state.get("schema_version")) is not int
+            or state["schema_version"] != 3):
+        reject()
+    upgrade = state.get("ubuntu_upgrade")
+    if (not isinstance(upgrade, dict) or type(upgrade.get("enabled")) is not bool
+            or not isinstance(upgrade.get("current_stage"), str)
+            or upgrade["current_stage"] not in STAGES
+            or not isinstance(upgrade.get("target_version"), str)
+            or not re.fullmatch(r"[0-9]{2}\.(04|10)", upgrade["target_version"])):
+        reject()
+    print(json.dumps(state, sort_keys=True, separators=(",", ":"), allow_nan=False))
+except (OSError, ValueError, TypeError, RecursionError, OverflowError):
+    print("ERROR: Saved upgrade checkpoint is unreadable, ambiguous, unsupported, or oversized; it was not changed.", file=sys.stderr)
+    sys.exit(1)
+ACFS_RESUME_CHECKPOINT_PY
+}
+
+resume_checkpoint_enabled() {
+    jq -e '.ubuntu_upgrade.enabled == true and .ubuntu_upgrade.current_stage != "not_started"' \
+        >/dev/null 2>&1 <<< "$1"
+}
+
 resume_initialize_log() {
     local parent="${ACFS_LOG%/*}"
     resume_recovery_directory_safe "${parent%/*}" || return 1
@@ -155,8 +253,17 @@ SERVICE_NAME="acfs-upgrade-resume"
 
 # Do not let failed recovery write through a redirected log or execute a
 # target-user-controlled library. Keep the evidence intact for manual repair.
-if ! resume_validate_inputs || ! resume_initialize_log; then
+if ! resume_validate_inputs || ! command -v jq >/dev/null 2>&1 \
+    || ! RESUME_CHECKPOINT_SNAPSHOT=$(resume_read_checkpoint "$ACFS_STATE_FILE"); then
     printf 'ERROR: Recovery inputs or log paths are missing, unsafe, or invalid. No service, state, or MOTD changes were made.\n' >&2
+    exit 1
+fi
+if [[ "$RESUME_RETARGET_UBUNTU" != true ]] && ! resume_checkpoint_enabled "$RESUME_CHECKPOINT_SNAPSHOT"; then
+    printf 'ERROR: The saved checkpoint does not enable upgrade resumption. No recovery code or installation was started.\n' >&2
+    exit 1
+fi
+if ! resume_initialize_log; then
+    printf 'ERROR: Recovery log path is unsafe or unavailable. No service, state, or MOTD changes were made.\n' >&2
     exit 1
 fi
 
@@ -206,10 +313,8 @@ ubuntu_is_at_or_beyond_target_version() {
     [[ "$current_version_num" -ge "$target_version_num" ]]
 }
 
-state_target_version="$(read_target_version_from_state "$ACFS_STATE_FILE" || true)"
-if [[ -n "${state_target_version:-}" ]]; then
-    UBUNTU_TARGET_VERSION="$state_target_version"
-fi
+state_target_version=$(jq -er '.ubuntu_upgrade.target_version' <<< "$RESUME_CHECKPOINT_SNAPSHOT")
+UBUNTU_TARGET_VERSION="$state_target_version"
 export UBUNTU_TARGET_VERSION
 
 # Always derive the number after reading the stored target. Never allow a
@@ -289,8 +394,8 @@ retarget_resume_checkpoint() {
         trap 'upgrade_release_lock' EXIT
         # Use the actual persisted object as a compare-and-swap precondition
         # inside the state library's separate read/modify/write lock.
-        snapshot=$(jq -cse 'if length == 1 then .[0].ubuntu_upgrade else empty end
-            | select(type == "object")' "$ACFS_STATE_FILE") || return 1
+        snapshot=$(resume_read_checkpoint "$ACFS_STATE_FILE") || return 1
+        snapshot=$(jq -ce '.ubuntu_upgrade' <<< "$snapshot") || return 1
         if [[ "$(jq -r '.target_version' <<< "$snapshot")" != "$old_target" ]]; then
             log_error "Upgrade target changed while acquiring the lock; no retarget was applied"
             return 1
@@ -671,17 +776,16 @@ if ! upgrade_acquire_lock; then
 fi
 trap 'upgrade_release_lock' EXIT
 
-# Re-read after acquiring the lock: an installer may have replaced the state
-# between process startup and lock acquisition. Never mix two target versions.
-if ! state_target_version=$(read_target_version_from_state "$ACFS_STATE_FILE") \
-    || ! validate_resume_target "$state_target_version" \
-    || ! UBUNTU_TARGET_VERSION_NUM=$(compute_version_num "$state_target_version"); then
-    cleanup_service
-    update_motd_failure "Upgrade target changed or became invalid"
+# Re-read the entire checkpoint after acquiring the lock. Changes to enabled,
+# stage, account, or history matter even if the target release stayed the same.
+# Refusal must not disable another process's service or overwrite its evidence.
+if ! locked_checkpoint=$(resume_read_checkpoint "$ACFS_STATE_FILE") \
+    || [[ "$locked_checkpoint" != "$RESUME_CHECKPOINT_SNAPSHOT" ]] \
+    || ! resume_checkpoint_enabled "$locked_checkpoint"; then
+    log_error "Upgrade checkpoint changed or became invalid while acquiring the lock; review state before retrying"
     exit 1
 fi
-export UBUNTU_TARGET_VERSION="$state_target_version"
-export UBUNTU_TARGET_VERSION_NUM
+current_stage=$(jq -er '.ubuntu_upgrade.current_stage' <<< "$locked_checkpoint")
 
 # ============================================================
 # CRITICAL SAFETY CHECK #1: Are we already at target version?
@@ -714,6 +818,13 @@ if ! current_version_num=$(compute_version_num "$CURRENT_UBUNTU_VERSION") \
     || ! ubuntu_validate_upgrade_versions "$current_version_num" "$UBUNTU_TARGET_VERSION_NUM"; then
     cleanup_service
     update_motd_failure "Unsupported host or target - review recovery"
+    exit 1
+fi
+
+# A completed checkpoint cannot authorize replaying the OS upgrade on a host
+# below its recorded target. This can indicate copied state or a restored VPS.
+if [[ "$current_stage" == completed ]] && ! ubuntu_is_at_or_beyond_target_version "$CURRENT_UBUNTU_VERSION"; then
+    log_error "Checkpoint says completed but the live OS has not reached its target; review recovery instead of replaying an upgrade"
     exit 1
 fi
 
@@ -767,10 +878,7 @@ export ACFS_STATE_FILE="${ACFS_STATE_FILE}"
 # Check current stage in state
 # ============================================================
 
-current_stage=""
-if [[ -f "$ACFS_STATE_FILE" ]] && command -v jq &>/dev/null; then
-    current_stage=$(jq -r '.ubuntu_upgrade.current_stage // "unknown"' "$ACFS_STATE_FILE" 2>/dev/null) || current_stage="unknown"
-fi
+# Use the validated locked snapshot, not a second permissive read of the file.
 log "Current stage from state file: $current_stage"
 
 # A kernel-only reboot did not finish a release hop. Continue in this service
