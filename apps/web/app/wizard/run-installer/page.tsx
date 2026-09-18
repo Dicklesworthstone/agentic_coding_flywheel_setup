@@ -34,7 +34,7 @@ import { useWizardAnalytics } from "@/lib/hooks/useWizardAnalytics";
 import { copyTextToClipboard, safeGetItem, withCurrentSearch } from "@/lib/utils";
 import {
   buildHandoffRunbook,
-  buildInstallCommand,
+  buildInstallCommandDetails,
   buildTeamProfile,
   formatHandoffRunbookMarkdown,
   formatTeamProfileReviewMarkdown,
@@ -46,10 +46,15 @@ import {
   buildProviderProvisioningPacket,
   serializeProviderProvisioningPacketJson,
 } from "@/lib/providerProvisioningPacket";
+import { resolveModuleSelection } from "@/lib/moduleSelection";
+import { manifestProvenance, manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
+import { createInstallerCheckpoint, installerCheckpointMatches } from "@/lib/installerCheckpoint";
+import { ACFS_RECOMMENDED_UBUNTU } from "@/lib/vpsProviders";
 import {
   normalizeGitRef,
   useACFSRef,
   useInstallMode,
+  useModuleProfile,
   useSSHUsername,
   useUserOS,
   useVPSReadinessSelection,
@@ -66,37 +71,11 @@ import {
 } from "@/components/simpler-guide";
 import { Jargon } from "@/components/jargon";
 
-const WHAT_IT_INSTALLS = [
-  {
-    category: "Shell & Terminal UX",
-    items: ["zsh + oh-my-zsh + powerlevel10k", "atuin (shell history)", "fzf", "zoxide", "lsd"],
-  },
-  {
-    category: "Languages & Package Managers",
-    items: ["bun (JavaScript/TypeScript)", "uv (Python)", "rust/cargo", "go"],
-  },
-  {
-    category: "Dev Tools",
-    items: ["tmux", "ripgrep", "ast-grep", "lazygit", "bat"],
-  },
-  {
-    category: "Coding Agents",
-    items: ["Claude Code", "Codex CLI", "Antigravity CLI"],
-  },
-  {
-    category: "Cloud & Database",
-    items: ["PostgreSQL 18", "Vault", "Wrangler", "Supabase CLI", "Vercel CLI"],
-  },
-  {
-    category: "Agent Flywheel Stack",
-    items: ["ntm", "mcp_agent_mail", "beads_viewer", "and 15+ more tools"],
-  },
-];
-
 const DEFAULT_VPS_READINESS_SELECTION: VPSReadinessSelection = {
   providerId: "other",
   planName: "custom plan",
-  ubuntuVersion: "25.10",
+  // A provisioning preference when no image was saved, not detected host state.
+  ubuntuVersion: ACFS_RECOMMENDED_UBUNTU,
   region: "not-listed",
   targetAgents: 10,
   workloadId: "standard",
@@ -110,11 +89,6 @@ const VERIFIED_INSTALLER_CACHE_PATH = "/var/cache/acfs-installer-cache";
  * copying the text. Object URLs are revoked on a timer: Safari and older
  * Firefox cancel a download whose URL is revoked before the navigation begins.
  */
-// The installer CommandCard persists its "I ran this command" checkbox under
-// this key (see COMPLETION_KEY_PREFIX in command-card.tsx); step 9 unlocks
-// Continue from it, the same way step 12 unlocks from the doctor command.
-const RUN_INSTALLER_COMPLETION_KEY = "acfs-command-run-flywheel-installer";
-
 function downloadTextFile(filename: string, contents: string, mimeType: string): boolean {
   if (typeof document === "undefined") return false;
   try {
@@ -150,6 +124,7 @@ export default function RunInstallerPage() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [userOS, , userOSLoaded] = useUserOS();
   const [installMode, , installModeLoaded] = useInstallMode();
+  const [moduleProfile, setModuleProfile, moduleProfileLoaded] = useModuleProfile();
   const [pinnedRef, setPinnedRef, acfsRefLoaded] = useACFSRef();
   const [vpsIP, , vpsIPLoaded] = useVPSIP();
   const [sshUsername, , sshUsernameLoaded] = useSSHUsername();
@@ -158,32 +133,30 @@ export default function RunInstallerPage() {
   const [refDraftOverride, setRefDraftOverride] = useState<string | null>(null);
   // Transient "Saved <file>" / "Download failed" message for the handoff buttons.
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
-  // Shares the CommandCard's query key, so ticking the box unlocks Continue
-  // (and the mobile dock) immediately.
-  const { data: installerAcknowledged = false } = useQuery({
-    queryKey: commandCompletionKeys.completion(RUN_INSTALLER_COMPLETION_KEY),
-    queryFn: () => safeGetItem(RUN_INSTALLER_COMPLETION_KEY) === "true",
-  });
   const downloadStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usePinnedRef = pinEditorOpen || pinnedRef !== null;
   const refDraft = pinEditorOpen
     ? (refDraftOverride ?? pinnedRef ?? "main")
     : (pinnedRef ?? "main");
   const safePinnedRef = useMemo(() => normalizeGitRef(refDraft), [refDraft]);
-  const hasRefError = Boolean(refDraft.trim()) && !safePinnedRef;
+  const hasRefError = usePinnedRef && !safePinnedRef;
   const ready =
     userOSLoaded &&
     installModeLoaded &&
+    moduleProfileLoaded &&
     acfsRefLoaded &&
     vpsIPLoaded &&
     sshUsernameLoaded &&
     vpsReadinessSelectionLoaded;
-  const effectiveInstallMode = installMode;
+  const moduleSelection = useMemo(() => ({ profile: moduleProfile }), [moduleProfile]);
+  const modulePlan = useMemo(() => resolveModuleSelection(moduleSelection), [moduleSelection]);
+  const selectedProfile = manifestSelectionProfiles.find((profile) => profile.id === moduleProfile);
+  const effectiveInstallMode = selectedProfile?.mode ?? installMode;
+  const canGenerateInstall = ready && vpsIP !== null && !hasRefError && modulePlan.ok && modulePlan.selectedCount > 0;
   const effectiveRef = usePinnedRef ? safePinnedRef : null;
   const effectiveUserOS = userOS ?? "mac";
   const effectiveVpsIP = vpsIP ?? "";
   const effectiveSSHUsername = sshUsername.trim() || "ubuntu";
-  const effectiveTargetUbuntuVersion = vpsReadinessSelection?.ubuntuVersion ?? "25.10";
   const reconnectCommand = useMemo(
     () => `ssh -i ~/.ssh/acfs_ed25519 ${formatSshTarget(effectiveSSHUsername, effectiveVpsIP)}`,
     [effectiveSSHUsername, effectiveVpsIP],
@@ -224,55 +197,91 @@ export default function RunInstallerPage() {
     }
   }, [setPinnedRef]);
 
-  // Build command dynamically based on pinning options
-  const installCommand = useMemo(
-    () => buildInstallCommand(effectiveInstallMode, effectiveRef, effectiveSSHUsername),
-    [effectiveInstallMode, effectiveRef, effectiveSSHUsername],
+  // One validated selection drives every executable command and exported artifact.
+  // Never turn an invalid draft into a default/full installation or a main ref.
+  const installDetails = useMemo(
+    () => canGenerateInstall
+      ? buildInstallCommandDetails(effectiveInstallMode, effectiveRef, effectiveSSHUsername, moduleSelection)
+      : null,
+    [canGenerateInstall, effectiveInstallMode, effectiveRef, effectiveSSHUsername, moduleSelection],
   );
+  const installCommand = installDetails?.command ?? null;
+  // The cache is consumed AFTER Ubuntu auto-upgrade. Preserve the original
+  // provisioning image in exports, but cache for the actual command destination.
+  const installerTargetUbuntuVersion = installDetails?.targetUbuntu;
+  const checkpointInput = useMemo(() => installCommand ? {
+    command: installCommand,
+    host: effectiveVpsIP,
+    manifestSha256: manifestProvenance.manifestSha256,
+    checksumsYamlSha256: manifestProvenance.checksumsYamlSha256,
+  } : null, [installCommand, effectiveVpsIP, manifestProvenance.manifestSha256, manifestProvenance.checksumsYamlSha256]);
+  const { data: checkpoint, isError: checkpointError } = useQuery({
+    queryKey: ["installerCheckpoint", checkpointInput],
+    queryFn: () => createInstallerCheckpoint(checkpointInput!),
+    enabled: checkpointInput !== null,
+    staleTime: Infinity,
+    retry: false,
+  });
+  const currentCheckpoint = installerCheckpointMatches(checkpoint, checkpointInput) ? checkpoint : null;
+  const completionKey = currentCheckpoint ? `acfs-command-${currentCheckpoint.persistKey}` : null;
+  // No migration from the old unbound boolean: it cannot identify the host,
+  // command or manifest the user acknowledged. Share the card's exact scoped key.
+  const { data: installerAcknowledged = false } = useQuery({
+    queryKey: commandCompletionKeys.completion(completionKey ?? "unbound-run-installer"),
+    queryFn: () => completionKey !== null && safeGetItem(completionKey) === "true",
+    enabled: completionKey !== null,
+    placeholderData: false,
+  });
+  const canContinue = canGenerateInstall && currentCheckpoint !== null && installerAcknowledged && !isNavigating;
   const cacheTransferTarget = useMemo(
     () => formatSshTarget("root", effectiveVpsIP),
     [effectiveVpsIP],
   );
   const cachedInstallCommand = useMemo(
-    () => `${installCommand} --verified-installer-cache "${VERIFIED_INSTALLER_CACHE_PATH}"`,
+    () => installCommand ? `${installCommand} --verified-installer-cache "${VERIFIED_INSTALLER_CACHE_PATH}"` : null,
     [installCommand],
   );
   const handoffRunbook = useMemo(
-    () => buildHandoffRunbook({
+    () => canGenerateInstall ? buildHandoffRunbook({
       ip: effectiveVpsIP,
       os: effectiveUserOS,
       username: effectiveSSHUsername,
       mode: effectiveInstallMode,
       ref: effectiveRef,
-    }),
-    [effectiveVpsIP, effectiveUserOS, effectiveSSHUsername, effectiveInstallMode, effectiveRef],
+      moduleSelection,
+    }) : null,
+    [canGenerateInstall, effectiveVpsIP, effectiveUserOS, effectiveSSHUsername, effectiveInstallMode, effectiveRef, moduleSelection],
   );
   const providerProvisioningPacket = useMemo(
-    () => buildProviderProvisioningPacket({
+    () => canGenerateInstall ? buildProviderProvisioningPacket({
       ...(vpsReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION),
       installMode: effectiveInstallMode,
       sourceRef: effectiveSourceRef,
       username: effectiveSSHUsername,
       targetHost: effectiveVpsIP,
-    }),
+      moduleSelection,
+    }) : null,
     [
+      canGenerateInstall,
       effectiveInstallMode,
       effectiveSourceRef,
       effectiveSSHUsername,
       effectiveVpsIP,
       vpsReadinessSelection,
+      moduleSelection,
     ],
   );
   const teamProfile = useMemo(
-    () => buildTeamProfile({
+    () => canGenerateInstall ? buildTeamProfile({
       ip: effectiveVpsIP,
       os: effectiveUserOS,
       username: effectiveSSHUsername,
       mode: effectiveInstallMode,
       ref: effectiveRef,
       providerSelection: vpsReadinessSelection ?? DEFAULT_VPS_READINESS_SELECTION,
-    }),
-    [effectiveVpsIP, effectiveUserOS, effectiveSSHUsername, effectiveInstallMode, effectiveRef, vpsReadinessSelection],
+      moduleSelection,
+    }) : null,
+    [canGenerateInstall, effectiveVpsIP, effectiveUserOS, effectiveSSHUsername, effectiveInstallMode, effectiveRef, vpsReadinessSelection, moduleSelection],
   );
 
   // Analytics tracking for this wizard step
@@ -298,11 +307,12 @@ export default function RunInstallerPage() {
   }, [ready, router, vpsIP]);
 
   const handleContinue = useCallback(() => {
+    if (!canContinue) return;
     markComplete();
     markStepComplete(9);
     setIsNavigating(true);
     router.push(withCurrentSearch("/wizard/reconnect-ubuntu"));
-  }, [router, markComplete]);
+  }, [canContinue, router, markComplete]);
   useEffect(() => {
     return () => {
       if (downloadStatusTimerRef.current) {
@@ -338,6 +348,7 @@ export default function RunInstallerPage() {
     [],
   );
   const handleRunbookDownload = useCallback((format: "json" | "markdown") => {
+    if (!handoffRunbook) return;
     if (format === "json") {
       void saveArtifact(
         "acfs-handoff-runbook.json",
@@ -354,6 +365,7 @@ export default function RunInstallerPage() {
     );
   }, [handoffRunbook, saveArtifact]);
   const handleProviderPacketDownload = useCallback(() => {
+    if (!providerProvisioningPacket) return;
     void saveArtifact(
       "acfs-provider-provisioning-packet.json",
       serializeProviderProvisioningPacketJson(providerProvisioningPacket),
@@ -361,6 +373,7 @@ export default function RunInstallerPage() {
     );
   }, [providerProvisioningPacket, saveArtifact]);
   const handleTeamProfileDownload = useCallback((format: "json" | "markdown") => {
+    if (!teamProfile) return;
     if (format === "json") {
       void saveArtifact(
         "acfs-team-profile.json",
@@ -379,7 +392,7 @@ export default function RunInstallerPage() {
 
   const forwardCtaRef = useWizardForwardNav({
     onContinue: handleContinue,
-    disabled: isNavigating || !installerAcknowledged,
+    disabled: !canContinue,
     loading: isNavigating,
     label: "Installation finished",
   });
@@ -411,7 +424,7 @@ export default function RunInstallerPage() {
           </div>
         </div>
         <p className="text-lg text-muted-foreground">
-          This is the magic moment. One command sets everything up.
+          One command installs the profile you review below, including its required dependencies.
         </p>
       </div>
 
@@ -470,6 +483,35 @@ export default function RunInstallerPage() {
           Paste this command in your SSH session
         </h2>
 
+        <div className="space-y-3 rounded-lg border border-border/50 bg-card/50 p-4">
+          <label htmlFor="installer-profile" className="block text-sm font-medium">
+            Installation profile
+          </label>
+          <select
+            id="installer-profile"
+            value={moduleProfile}
+            onChange={(event) => {
+              const profile = manifestSelectionProfiles.find((item) => item.id === event.target.value);
+              if (profile) setModuleProfile(profile.id);
+            }}
+            aria-describedby="installer-profile-summary"
+            className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          >
+            {manifestSelectionProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>{profile.label}</option>
+            ))}
+          </select>
+          <p id="installer-profile-summary" role="status" className="text-sm text-muted-foreground">
+            {modulePlan.ok
+              ? `${modulePlan.selectedCount} of ${modulePlan.availableCount} modules selected. Install mode: ${effectiveInstallMode}.`
+              : "This profile cannot produce an executable installation plan."}
+            {" "}The installer, cached command, runbook, provider packet, and team profile use this same selection.
+          </p>
+          {modulePlan.warnings.map((warning, index) => (
+            <p key={index} className="text-xs text-muted-foreground">{warning}</p>
+          ))}
+        </div>
+
         {/* Pinned ref toggle (bd-31ps.8.2) */}
         <div className="rounded-lg border border-border/50 bg-card/50 p-4 space-y-3">
           {/* The whole row is the label so the 16px box gets a 44px tap target. */}
@@ -524,26 +566,43 @@ export default function RunInstallerPage() {
                 <p id="pin-ref-error" role="alert" className="text-xs text-destructive">
                   Invalid ref format. Allowed characters: letters, numbers, <code className="rounded bg-muted px-1 py-0.5">.</code>,
                   <code className="rounded bg-muted px-1 py-0.5">_</code>, <code className="rounded bg-muted px-1 py-0.5">-</code>,
-                  and <code className="rounded bg-muted px-1 py-0.5">/</code>. Falling back to <code className="rounded bg-muted px-1 py-0.5">main</code>.
+                  and <code className="rounded bg-muted px-1 py-0.5">/</code>. Enter a valid ref or turn off pinning; no installer command or handoff artifact is available until then.
                 </p>
               )}
             </div>
           )}
         </div>
 
-        {installModeLoaded ? (
+        {installCommand ? (
           <CommandCard
+            key={currentCheckpoint?.persistKey ?? "preparing-installer-checkpoint"}
             command={installCommand}
             description="Agent Flywheel installer one-liner"
             runLocation="vps"
-            showCheckbox
-            persistKey="run-flywheel-installer"
+            showCheckbox={currentCheckpoint !== null}
+            persistKey={currentCheckpoint?.persistKey}
             className="border-2 border-primary/20"
           />
         ) : (
-          <div className="rounded-lg border-2 border-primary/20 bg-card/30 p-4 text-sm text-muted-foreground">
-            Loading your saved install mode...
+          <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
+            <p className="font-semibold">Installation command blocked</p>
+            {hasRefError && <p>Fix the pinned ref before copying commands or exporting artifacts.</p>}
+            {modulePlan.errors.map((error, index) => <p key={index}>{error}</p>)}
+            {modulePlan.ok && modulePlan.selectedCount === 0 && <p>Select a profile with at least one module.</p>}
           </div>
+        )}
+        {installCommand && !currentCheckpoint && (
+          <p role={checkpointError ? "alert" : "status"} className="text-sm text-muted-foreground">
+            {checkpointError
+              ? "This browser could not prepare the installation acknowledgement. Reload the wizard over HTTPS in a browser with secure hashing support. No earlier acknowledgement will be reused."
+              : "Preparing the acknowledgement for this host and installer command..."}
+          </p>
+        )}
+        {installCommand && currentCheckpoint && (
+          <p className="text-xs text-muted-foreground">
+            Acknowledge only after this command finishes on this VPS. Changing the profile,
+            mode, pinned ref, username, or host requires an acknowledgement for that context.
+          </p>
         )}
       </div>
 
@@ -561,6 +620,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleRunbookDownload("json")}
+              disabled={!handoffRunbook}
               aria-label="Runbook JSON — download JSON handoff runbook"
             >
               <FileJson className="h-4 w-4" />
@@ -571,6 +631,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleRunbookDownload("markdown")}
+              disabled={!handoffRunbook}
               aria-label="Runbook Markdown — download Markdown handoff runbook"
             >
               <FileText className="h-4 w-4" />
@@ -581,6 +642,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={handleProviderPacketDownload}
+              disabled={!providerProvisioningPacket}
               aria-label="Provider Packet — download the provider provisioning packet as JSON"
             >
               <FileJson className="h-4 w-4" />
@@ -591,6 +653,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleTeamProfileDownload("json")}
+              disabled={!teamProfile}
               aria-label="Team Profile — download the redacted team profile as JSON"
             >
               <FileJson className="h-4 w-4" />
@@ -601,6 +664,7 @@ export default function RunInstallerPage() {
               variant="outline"
               className="justify-start gap-2"
               onClick={() => handleTeamProfileDownload("markdown")}
+              disabled={!teamProfile}
               aria-label="Profile Review — download the team profile review as Markdown"
             >
               <FileText className="h-4 w-4" />
@@ -713,7 +777,7 @@ export default function RunInstallerPage() {
               </p>
             </div>
             <div>
-              <code className="text-primary">--mode {installMode}</code>
+              <code className="text-primary">--mode {effectiveInstallMode}</code>
               <p className="mt-1 font-sans text-muted-foreground">
                 Tells the installer which mode to use based on your wizard selection.
               </p>
@@ -745,16 +809,18 @@ export default function RunInstallerPage() {
             a verified installer entrypoint cache on a fast machine and transfer it to the VPS:
           </p>
 
-          <div className="space-y-3">
+          {cachedInstallCommand ? <div className="space-y-3">
             <div className="space-y-2">
               <p className="font-semibold text-foreground">1. Build cache on your local/connected machine:</p>
               <CommandCard
-                command={`acfs installer-cache build --arch x86_64 --ubuntu-version ${effectiveTargetUbuntuVersion} --output /tmp/acfs-cache`}
+                command={`acfs installer-cache build --arch x86_64 --ubuntu-version ${installerTargetUbuntuVersion} --output /tmp/acfs-cache`}
                 description="Build the verified installer cache"
                 runLocation="local"
               />
               <p className="text-xs text-muted-foreground">
                 If your VPS uses ARM64, replace <code className="rounded bg-muted px-1 py-0.5">x86_64</code> with <code className="rounded bg-muted px-1 py-0.5">aarch64</code>.
+                {" "}The cache targets Ubuntu {installerTargetUbuntuVersion}, the installer&apos;s
+                destination after any upgrade, not the older image originally provisioned.
               </p>
             </div>
 
@@ -780,7 +846,7 @@ export default function RunInstallerPage() {
                 runLocation="vps"
               />
             </div>
-          </div>
+          </div> : <p className="text-destructive">Resolve the blocked installation plan above before preparing or using a cache.</p>}
 
           <AlertCard variant="info" title="Cache Boundaries &amp; Requirements">
             <ul className="list-disc list-inside space-y-1 text-xs text-muted-foreground">
@@ -800,21 +866,21 @@ export default function RunInstallerPage() {
 
       {/* What it installs - collapsible */}
       <DetailsSection summary="What this command installs">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {WHAT_IT_INSTALLS.map((group) => (
-            <div key={group.category}>
-              <h3 className="mb-2 font-medium text-foreground">{group.category}</h3>
-              <ul className="space-y-1 text-sm text-muted-foreground">
-                {group.items.map((item, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    <Check className="h-3 w-3 text-green" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
+        <p className="mb-3 text-sm text-muted-foreground">
+          This is the resolved module list for {selectedProfile?.label ?? "the selected profile"},
+          including dependency closure. Tools outside this list are not requested.
+        </p>
+        <ol className="space-y-2 text-sm">
+          {modulePlan.included.map((entry) => (
+            <li key={entry.id} className="flex items-start gap-2">
+              <Check className="mt-0.5 h-3 w-3 shrink-0 text-green" />
+              <div>
+                <span className="font-mono">[Phase {entry.phase}] {entry.id}</span>
+                <p className="text-muted-foreground">{entry.description} — {entry.reason}</p>
+              </div>
+            </li>
           ))}
-        </div>
+        </ol>
       </DetailsSection>
 
       {/* View source */}
@@ -861,8 +927,8 @@ export default function RunInstallerPage() {
         <div className="space-y-6">
           <GuideExplain term="What is this command doing?">
             This command downloads and runs a setup script that automatically installs
-            everything you need on your VPS. Think of it like running an installer
-            on your computer, but this one installs dozens of tools at once!
+            the selected profile and its dependencies on your VPS. Review the exact
+            module list above before running it; a narrow profile does not install every tool.
             <br /><br />
             The script is <Jargon term="idempotent">&quot;idempotent&quot;</Jargon> which means it&apos;s safe to run multiple times.
             If something fails, you can just run it again.
@@ -922,24 +988,11 @@ export default function RunInstallerPage() {
 
           <GuideSection title="What gets installed?">
             <p className="mb-3">
-              The installer sets up a complete development environment including:
+              The selected profile requests {modulePlan.selectedCount} modules. Open
+              &ldquo;What this command installs&rdquo; above for the exact list and the
+              dependencies added automatically. Changing the profile also changes all
+              installer commands and handoff exports on this page.
             </p>
-            <ul className="space-y-2">
-              <li>
-                <strong>Modern shell (zsh):</strong> A better terminal experience with
-                colors and suggestions
-              </li>
-              <li>
-                <strong>Programming languages:</strong> JavaScript/TypeScript, Python,
-                Rust, and Go
-              </li>
-              <li>
-                <strong>AI coding assistants:</strong> Claude Code, Codex, and Antigravity CLI
-              </li>
-              <li>
-                <strong>Developer tools:</strong> Git interface, file searchers, and more
-              </li>
-            </ul>
           </GuideSection>
 
           <GuideTip>
@@ -1002,7 +1055,7 @@ export default function RunInstallerPage() {
           ref={forwardCtaRef}
           data-wizard-primary-cta
           onClick={handleContinue}
-          disabled={isNavigating || !installerAcknowledged}
+          disabled={!canContinue}
           aria-describedby={!installerAcknowledged ? "run-installer-continue-hint" : undefined}
           size="lg"
           disableMotion
