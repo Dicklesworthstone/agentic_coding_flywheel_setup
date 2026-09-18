@@ -444,6 +444,36 @@ function quoteInstallArg(value: string): string {
   return `"${value.replace(/["\\$`]/g, "\\$&")}"`;
 }
 
+function exactSkippedModules(normalized: NormalizedSelection): string[] {
+  const skipped = new Set(normalized.skipModules);
+  for (const module of manifestModules) {
+    if (normalized.skipCategories.includes(module.category)
+        || normalized.skipTags.some((tag) => module.tags.includes(tag))) {
+      skipped.add(module.id);
+    }
+  }
+  return [...skipped];
+}
+
+/**
+ * Lower group exclusions to exact IDs for portable profiles and handoffs.
+ * Validate the original request before dropping any field. Preserve the
+ * profile itself, not its expanded selectors (combining both is invalid).
+ */
+export function lowerModuleSelectionGroups(input: ModuleSelectionInput = {}): ModuleSelectionInput {
+  if (!resolveModuleSelection(input).ok) {
+    throw new Error("Cannot export an invalid module selection; correct the selection before sharing it.");
+  }
+  const normalized = normalizeSelection(input, manifestSelectionProfiles);
+  return {
+    ...(input.profile === undefined ? {} : { profile: input.profile }),
+    onlyModules: [...new Set(input.onlyModules ?? [])],
+    onlyPhases: [...new Set((input.onlyPhases ?? []).map(normalizePhase))],
+    skipModules: exactSkippedModules(normalized),
+    noDeps: input.noDeps === true,
+  };
+}
+
 export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): string[] {
   const plan = resolveModuleSelection(input);
   if (!plan.ok) {
@@ -473,14 +503,7 @@ export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): stri
   // today's selected plan. Keep explicit skips first and derived skips in
   // manifest order, independent of tag/category enumeration. Never expand a
   // failed plan or silently remove a selected module's required dependency.
-  const skipModules = new Set(normalized.skipModules);
-  for (const module of manifestModules) {
-    if (normalized.skipCategories.includes(module.category)
-        || normalized.skipTags.some((tag) => module.tags.includes(tag))) {
-      skipModules.add(module.id);
-    }
-  }
-  for (const moduleId of skipModules) {
+  for (const moduleId of exactSkippedModules(normalized)) {
     args.push("--skip", quoteInstallArg(moduleId));
   }
   if (input.noDeps === true) {

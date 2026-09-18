@@ -10,6 +10,7 @@
 import type { OperatingSystem, InstallMode, VPSReadinessSelection } from "./userPreferences";
 import {
   buildInstallSelectorArgs,
+  lowerModuleSelectionGroups,
   resolveModuleSelection,
   type ModuleSelectionInput,
 } from "./moduleSelection";
@@ -937,11 +938,15 @@ function normalizeTeamModuleSelection(input: ModuleSelectionInput | undefined): 
   profile: NonNullable<ModuleSelectionInput["profile"]>;
   noDeps: false;
 } {
+  const selection = lowerModuleSelectionGroups(input);
+  if (selection.noDeps) {
+    throw new Error("Team profiles cannot carry --no-deps; review a dependency-complete selection before exporting.");
+  }
   return {
-    profile: input?.profile ?? "full",
-    onlyModules: sortUnique(input?.onlyModules),
-    onlyPhases: sortUnique(input?.onlyPhases),
-    skipModules: sortUnique(input?.skipModules),
+    profile: selection.profile ?? "full",
+    onlyModules: sortUnique(selection.onlyModules),
+    onlyPhases: sortUnique(selection.onlyPhases),
+    skipModules: sortUnique(selection.skipModules),
     noDeps: false,
   };
 }
@@ -1188,7 +1193,8 @@ function isPublicCommitRef(path: string, value: string): boolean {
 }
 
 function isKnownModulePlanId(path: string, value: string): boolean {
-  return /^install\.modulePlan\.(included|excluded|dependencyClosure)\.[0-9]+$/.test(path)
+  return (/^install\.modulePlan\.(included|excluded|dependencyClosure)\.[0-9]+$/.test(path)
+      || /^install\.modules\.(only|skip)\.[0-9]+$/.test(path))
     && TEAM_PROFILE_MODULE_IDS.has(value);
 }
 
@@ -1256,7 +1262,8 @@ function validateStringArray(
   if (value === undefined) return;
   if (
     !Array.isArray(value)
-    || value.some((entry) =>
+    || value.length > 1024
+    || Array.from(value).some((entry) =>
       typeof entry !== "string" || (requireNonEmptyEntries && entry.trim().length === 0)
     )
   ) {
@@ -1673,6 +1680,13 @@ function validateTeamProfileForImport(
     ));
   }
   const modules = isRecord(install.modules) ? install.modules : {};
+  if (Object.keys(modules).some((key) => !["only", "onlyPhases", "skip", "noDeps"].includes(key))) {
+    findings.push(importFinding(
+      "team_profile_schema_unsupported",
+      "install.modules",
+      "Team-profile module selectors must use only, onlyPhases, skip, and noDeps; export group exclusions as exact module IDs.",
+    ));
+  }
   if (install.modules !== undefined && !isRecord(install.modules)) {
     findings.push(importFinding(
       "team_profile_missing_required_field",
@@ -1898,6 +1912,16 @@ export function buildTeamProfileImportDiff(
   current: TeamProfileImportCurrentState = {},
 ): TeamProfileImportDiff {
   const findings = validateTeamProfileForImport(input, current);
+  let currentModules: ReturnType<typeof normalizeTeamModuleSelection> | null = null;
+  try {
+    currentModules = normalizeTeamModuleSelection(current.moduleSelection);
+  } catch {
+    findings.push(importFinding(
+      "team_profile_schema_unsupported",
+      "current.moduleSelection",
+      "The current module selection cannot be compared safely. Correct its selectors before importing a profile.",
+    ));
+  }
   const refusals = findings.filter((finding) =>
     finding.code === "team_profile_secret_material_refused"
     || finding.code === "team_profile_forbidden_field"
@@ -1908,7 +1932,7 @@ export function buildTeamProfileImportDiff(
     ? input as unknown as TeamProfile
     : null;
 
-  if (!profile) {
+  if (!profile || !currentModules) {
     return {
       schema: "acfs.team-profile-import-diff.v1",
       schemaVersion: 1,
@@ -1931,7 +1955,6 @@ export function buildTeamProfileImportDiff(
   const commandRef = profile.install.ref.value === DEFAULT_INSTALL_REF ? null : profile.install.ref.value;
   const commandAllowed = findings.length === 0 && modulePlan.ok;
   const currentProvider = current.providerSelection ?? null;
-  const currentModules = normalizeTeamModuleSelection(current.moduleSelection);
   const installerChanges = compactChanges([
     compareChange("install.mode", current.installMode ?? null, profile.install.mode),
     compareChange("install.ref.value", currentSourceRef(current), profile.install.ref.value),
