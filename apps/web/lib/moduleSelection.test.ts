@@ -272,9 +272,15 @@ describe("buildInstallSelectorArgs", () => {
     );
   });
 
-  test("throws instead of silently dropping unsupported selector types", () => {
+  test("lowers supported group exclusions without dropping dependency checks", () => {
+    expect(buildInstallSelectorArgs({ skipTags: ["maintenance"] })).toEqual([
+      "--skip", '"acfs.nightly"',
+    ]);
+    expect(buildInstallSelectorArgs({ skipCategories: ["network"] })).toEqual([
+      "--skip", '"network.tailscale"', "--skip", '"network.ssh_keepalive"',
+    ]);
     expect(() => buildInstallSelectorArgs({ skipTags: ["critical"] })).toThrow(
-      "Tag and category skip selectors cannot be serialized",
+      "depends on skipped",
     );
   });
 });

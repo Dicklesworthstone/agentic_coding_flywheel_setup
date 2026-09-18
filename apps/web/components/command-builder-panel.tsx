@@ -31,7 +31,7 @@ import {
 } from "@/lib/userPreferences";
 import { buildCommands, buildShareURL } from "@/lib/commandBuilder";
 import { resolveModuleSelection } from "@/lib/moduleSelection";
-import { manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
+import { manifestModules, manifestSelectionProfiles } from "@/lib/generated/manifest-modules";
 
 function LocationBadge({ location }: { location: "local" | "vps" }) {
   return (
@@ -152,6 +152,60 @@ function SettingsToggle({
   );
 }
 
+function ExclusionPicker({
+  kind,
+  options,
+  selected,
+  onChange,
+}: {
+  kind: "category" | "tag";
+  options: { value: string; count: number }[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="space-y-2">
+      <label htmlFor={id} className="text-xs font-medium text-foreground">
+        Exclude {kind}
+      </label>
+      <select
+        id={id}
+        value=""
+        onChange={(event) => {
+          const value = event.target.value;
+          if (options.some((option) => option.value === value) && !selected.includes(value)) {
+            onChange([...selected, value]);
+          }
+        }}
+        className="min-h-11 w-full rounded-md border border-border/50 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+      >
+        <option value="">Choose a {kind} to exclude</option>
+        {options.filter((option) => !selected.includes(option.value)).map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.value} ({option.count} modules)
+          </option>
+        ))}
+      </select>
+      <div className="flex flex-wrap gap-2">
+        {selected.map((value) => (
+          <Button
+            key={value}
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 text-xs"
+            aria-label={`Remove excluded ${kind} ${value}`}
+            onClick={() => onChange(selected.filter((entry) => entry !== value))}
+          >
+            {value} <span aria-hidden="true">×</span>
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CommandBuilderPanel() {
   const [vpsIP, setVPSIP] = useVPSIP();
   const [os] = useUserOS();
@@ -161,6 +215,9 @@ export function CommandBuilderPanel() {
   const [profile, setProfile] = useModuleProfile();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
+  // These are local command customizations, not silently lossy profile exports.
+  const [skipTags, setSkipTags] = useState<string[]>([]);
+  const [skipCategories, setSkipCategories] = useState<string[]>([]);
   const { state: shareCopyState, copy: copyShareLink } = useCopyFeedback();
   const shareCopied = shareCopyState === "copied";
   const [localIP, setLocalIP] = useState("");
@@ -209,14 +266,27 @@ export function CommandBuilderPanel() {
     return normalizedRefDraft;
   }, [normalizedRefDraft, refDraft]);
 
-  const moduleSelection = useMemo(() => ({ profile }), [profile]);
+  const moduleSelection = useMemo(() => ({ profile, skipTags, skipCategories }),
+    [profile, skipTags, skipCategories]);
+  const hasExclusions = skipTags.length > 0 || skipCategories.length > 0;
+  const exclusionOptions = useMemo(() => {
+    const categories = new Map<string, number>();
+    const tags = new Map<string, number>();
+    for (const module of manifestModules) {
+      categories.set(module.category, (categories.get(module.category) ?? 0) + 1);
+      for (const tag of new Set(module.tags)) tags.set(tag, (tags.get(tag) ?? 0) + 1);
+    }
+    const options = (counts: Map<string, number>) => [...counts.keys()].sort()
+      .map((value) => ({ value, count: counts.get(value)! }));
+    return { categories: options(categories), tags: options(tags) };
+  }, []);
 
   const plan = useMemo(() => {
     return resolveModuleSelection(moduleSelection);
   }, [moduleSelection]);
 
   const commands = useMemo(() => {
-    if (!effectiveIP) return null;
+    if (!effectiveIP || !plan.ok) return null;
     return buildCommands({
       ip: effectiveIP,
       os: effectiveOS,
@@ -225,7 +295,7 @@ export function CommandBuilderPanel() {
       ref: effectiveRef,
       moduleSelection,
     });
-  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection]);
+  }, [effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection, plan.ok]);
 
   const refError = useMemo(() => {
     const value = refDraft.trim();
@@ -234,7 +304,7 @@ export function CommandBuilderPanel() {
   }, [normalizedRefDraft, refDraft]);
 
   const handleShare = useCallback(() => {
-    if (!effectiveIP) return;
+    if (!effectiveIP || !plan.ok || hasExclusions) return;
     const url = buildShareURL({
       ip: effectiveIP,
       os: effectiveOS,
@@ -244,7 +314,7 @@ export function CommandBuilderPanel() {
       moduleSelection,
     });
     void copyShareLink(url);
-  }, [copyShareLink, effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection]);
+  }, [copyShareLink, effectiveIP, effectiveOS, effectiveUsername, mode, effectiveRef, moduleSelection, plan.ok, hasExclusions]);
 
   const handleIPChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -340,6 +410,8 @@ export function CommandBuilderPanel() {
             variant="ghost"
             size="sm"
             onClick={handleShare}
+            disabled={!plan.ok || hasExclusions}
+            title={hasExclusions ? "Copy the exact command below; shared links cannot preserve exclusions." : undefined}
             className="gap-1.5 text-xs text-muted-foreground"
           >
             {shareCopied ? (
@@ -427,6 +499,41 @@ export function CommandBuilderPanel() {
         />
       </div>
 
+      <fieldset className="space-y-3 rounded-lg border border-border/40 p-3">
+        <legend className="px-1 text-sm font-medium text-foreground">Customize exclusions</legend>
+        <p className="text-xs text-muted-foreground">
+          Exclude groups from this panel&apos;s commands. Required dependency conflicts block
+          command generation; nothing is installed from this page.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ExclusionPicker kind="category" options={exclusionOptions.categories}
+            selected={skipCategories} onChange={setSkipCategories} />
+          <ExclusionPicker kind="tag" options={exclusionOptions.tags}
+            selected={skipTags} onChange={setSkipTags} />
+        </div>
+        {hasExclusions && (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground" role="status">
+              These exclusions apply only to this panel and stay selected when switching profiles.
+              They are not saved in shared links, saved profiles, or other wizard commands.
+              Copy the exact installer command below for handoff.
+            </p>
+            <Button type="button" variant="outline" size="sm" className="min-h-11"
+              onClick={() => { setSkipTags([]); setSkipCategories([]); }}>
+              Clear all exclusions
+            </Button>
+          </div>
+        )}
+      </fieldset>
+
+      {!plan.ok && (
+        <div role="alert" className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          <p className="font-semibold">Install plan blocked</p>
+          {plan.errors.map((error, index) => <p key={index}>{error}</p>)}
+          <p>Remove the conflicting exclusion or choose another profile. No runnable command is shown.</p>
+        </div>
+      )}
+
       {/* Plan Summary Toggle & Review */}
       <div className="rounded-lg border border-border/40 bg-muted/15 p-3">
         <button
@@ -439,8 +546,8 @@ export function CommandBuilderPanel() {
           <div className="flex items-center gap-1.5">
             <Boxes className="h-3.5 w-3.5 text-primary" />
             <span>
-              Install Plan: {plan.selectedCount} of {plan.availableCount} modules
-              {plan.availableCount > plan.selectedCount
+              {plan.ok ? `Install Plan: ${plan.selectedCount} of ${plan.availableCount} modules` : "Install Plan: blocked"}
+              {plan.ok && plan.availableCount > plan.selectedCount
                 ? ` (${plan.availableCount - plan.selectedCount} skipped)`
                 : ""}
             </span>
@@ -583,6 +690,10 @@ export function CommandBuilderPanel() {
             />
           ))}
         </div>
+      ) : !plan.ok ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">
+          Resolve the install plan conflict above to generate commands.
+        </p>
       ) : (
         <p className="py-4 text-center text-sm text-muted-foreground">
           Enter your VPS IP to generate personalized commands.

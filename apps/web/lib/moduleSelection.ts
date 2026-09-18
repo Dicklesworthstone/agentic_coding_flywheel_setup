@@ -445,11 +445,6 @@ function quoteInstallArg(value: string): string {
 }
 
 export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): string[] {
-  const inputErrors = validateSelectionInput(input);
-  if (inputErrors.length) throw new Error(inputErrors.join("\n"));
-  if (nonEmpty(input.skipTags).length > 0 || nonEmpty(input.skipCategories).length > 0) {
-    throw new Error("Tag and category skip selectors cannot be serialized to installer CLI arguments yet.");
-  }
   const plan = resolveModuleSelection(input);
   if (!plan.ok) {
     throw new Error(plan.errors.join("\n"));
@@ -473,7 +468,19 @@ export function buildInstallSelectorArgs(input: ModuleSelectionInput = {}): stri
     }
   }
 
-  for (const moduleId of normalized.skipModules) {
+  // The installer accepts exact --skip IDs, not the web's group selectors.
+  // Lower every match (including disabled defaults), not just the modules in
+  // today's selected plan. Keep explicit skips first and derived skips in
+  // manifest order, independent of tag/category enumeration. Never expand a
+  // failed plan or silently remove a selected module's required dependency.
+  const skipModules = new Set(normalized.skipModules);
+  for (const module of manifestModules) {
+    if (normalized.skipCategories.includes(module.category)
+        || normalized.skipTags.some((tag) => module.tags.includes(tag))) {
+      skipModules.add(module.id);
+    }
+  }
+  for (const moduleId of skipModules) {
     args.push("--skip", quoteInstallArg(moduleId));
   }
   if (input.noDeps === true) {
