@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # ============================================================
 # ACFS Ubuntu Upgrade Resume Script
 #
@@ -20,7 +20,28 @@
 # This script is designed to be run by systemd on boot.
 # ============================================================
 
-set -euo pipefail
+builtin set -euo pipefail
+
+# This entry point runs as root after reboot, before any recovered library can
+# establish its own command-search policy. Match install.sh's trusted PATH and
+# discard executable environment hooks before the first external command.
+# A startup hook already executed by a caller's `bash script` cannot be undone;
+# systemd and manual recovery should invoke /bin/bash -p (as the shebang does).
+builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+builtin unset BASH_ENV ENV LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT LD_DEBUG LD_PROFILE
+builtin unset DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
+builtin unset CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR REQUESTS_CA_BUNDLE GIT_SSL_CAINFO
+# Lock possession and sourced-library markers are process-minted authority.
+builtin unset ACFS_UPGRADE_LOCK_FD _ACFS_UPGRADE_LOCK_FILE ACFS_LOCK_FD
+builtin unset _ACFS_STATE_LOCKED _ACFS_STATE_LOCK_FILE _ACFS_STATE_LOCK_DEPTH _ACFS_STATE_SH_LOADED
+while IFS= builtin read -r _acfs_resume_inherited_function; do
+    if ! builtin unset -f -- "$_acfs_resume_inherited_function"; then
+        builtin printf 'ERROR: Cannot discard inherited shell functions for upgrade recovery.\n' >&2
+        builtin exit 1
+    fi
+done < <(builtin compgen -A function)
+builtin unset _acfs_resume_inherited_function
+builtin unalias -a 2>/dev/null || true
 
 # Recovery is an explicit CLI operation, never an inherited environment flag.
 # Parse before filesystem writes so --help and invalid arguments are inert.
@@ -49,6 +70,78 @@ if [[ "$RESUME_HELP" == true ]]; then
     exit 0
 fi
 
+# Help and invalid-argument handling above remain usable without privilege.
+if [[ "$EUID" != 0 || "$UID" != "$EUID" ]]; then
+    printf 'ERROR: Upgrade recovery must run directly as root.\n' >&2
+    exit 1
+fi
+umask 077
+
+# Validate the entire root-owned path before creating logs or sourcing saved
+# executable context. A sticky ancestor such as /tmp is allowed for fixtures,
+# never as the controlled directory itself. No environment path override exists.
+resume_recovery_directory_safe() {
+    local path="${1:-}" parent owner mode
+    [[ "$path" == /* && "$path" != / && "$path" != */ && "$path" != *//* ]] || return 1
+    [[ "$path" != *'/./'* && "$path" != */. && "$path" != *'/../'* && "$path" != */.. ]] || return 1
+    parent="$path"
+    while [[ -n "$parent" && "$parent" != / ]]; do
+        [[ -d "$parent" && ! -L "$parent" ]] || return 1
+        read -r owner mode < <(/usr/bin/stat -c '%u %a' -- "$parent") || return 1
+        [[ "$owner" == 0 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+        if (( (8#$mode & 8#022) != 0 )); then
+            (( (8#$mode & 8#1000) != 0 )) && [[ "$parent" != "$path" ]] || return 1
+        fi
+        parent="${parent%/*}"
+    done
+}
+
+resume_recovery_file_safe() {
+    local path="${1:-}" owner links mode
+    [[ "$path" == /* && -f "$path" && ! -L "$path" ]] || return 1
+    resume_recovery_directory_safe "${path%/*}" || return 1
+    read -r owner links mode < <(/usr/bin/stat -c '%u %h %a' -- "$path") || return 1
+    [[ "$owner" == 0 && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
+    (( (8#$mode & 8#022) == 0 )) || return 1
+}
+
+resume_initialize_log() {
+    local parent="${ACFS_LOG%/*}"
+    resume_recovery_directory_safe "${parent%/*}" || return 1
+    if [[ ! -e "$parent" && ! -L "$parent" ]]; then
+        /usr/bin/mkdir -m 700 -- "$parent" || return 1
+    fi
+    resume_recovery_directory_safe "$parent" || return 1
+    if [[ ! -e "$ACFS_LOG" && ! -L "$ACFS_LOG" ]]; then
+        (umask 077; set -C; : > "$ACFS_LOG") || return 1
+    fi
+    resume_recovery_file_safe "$ACFS_LOG"
+}
+
+# Normal resume must enforce the same trust boundary as explicit retargeting.
+# Refuse before logging/MOTD/service changes when recovery inputs are unsafe.
+resume_validate_inputs() {
+    local file
+    for file in "$ACFS_STATE_FILE" "$ACFS_LIB_DIR/state.sh" \
+        "$ACFS_LIB_DIR/ubuntu_upgrade.sh" "$ACFS_CONTINUE_CONTEXT_FILE" \
+        "$ACFS_RESUME_DIR/continue_install.sh"; do
+        resume_recovery_file_safe "$file" || return 1
+    done
+    for file in "$ACFS_LIB_DIR/logging.sh" "$ACFS_LIB_DIR/progress.sh"; do
+        if [[ -e "$file" || -L "$file" ]]; then
+            resume_recovery_file_safe "$file" || return 1
+            /bin/bash -n "$file" || return 1
+        fi
+    done
+    if [[ -e "${ACFS_STATE_FILE}.lock" || -L "${ACFS_STATE_FILE}.lock" ]]; then
+        resume_recovery_file_safe "${ACFS_STATE_FILE}.lock" || return 1
+    fi
+    for file in "$ACFS_LIB_DIR/state.sh" "$ACFS_LIB_DIR/ubuntu_upgrade.sh" \
+        "$ACFS_CONTINUE_CONTEXT_FILE" "$ACFS_RESUME_DIR/continue_install.sh"; do
+        /bin/bash -n "$file" || return 1
+    done
+}
+
 # Constants
 ACFS_RESUME_DIR="/var/lib/acfs"
 ACFS_LIB_DIR="${ACFS_RESUME_DIR}/lib"
@@ -60,8 +153,12 @@ ACFS_CONTINUE_CONTEXT_FILE="${ACFS_RESUME_DIR}/continue_context.env"
 UBUNTU_TARGET_VERSION="26.04"
 SERVICE_NAME="acfs-upgrade-resume"
 
-# Ensure log directory exists
-mkdir -p "$(dirname "$ACFS_LOG")"
+# Do not let failed recovery write through a redirected log or execute a
+# target-user-controlled library. Keep the evidence intact for manual repair.
+if ! resume_validate_inputs || ! resume_initialize_log; then
+    printf 'ERROR: Recovery inputs or log paths are missing, unsafe, or invalid. No service, state, or MOTD changes were made.\n' >&2
+    exit 1
+fi
 
 # Read target version from state file if available.
 read_target_version_from_state() {
@@ -137,33 +234,22 @@ log_error() {
 }
 
 load_continue_context() {
-    [[ -f "$ACFS_CONTINUE_CONTEXT_FILE" && ! -L "$ACFS_CONTINUE_CONTEXT_FILE" ]] || return 1
+    resume_recovery_file_safe "$ACFS_CONTINUE_CONTEXT_FILE" || return 1
     /bin/bash -n "$ACFS_CONTINUE_CONTEXT_FILE" || return 1
 
+    # An omitted field must not inherit another machine/user's environment.
+    # The caller may have a local CONTINUE_INSTALL_ARGS array during retarget;
+    # assign to it rather than unsetting it and exposing a shadowed global.
+    CONTINUE_HOME=""
+    CONTINUE_TARGET_USER=""
+    CONTINUE_TARGET_HOME=""
+    CONTINUE_ACFS_HOME=""
+    CONTINUE_ACFS_STATE_FILE=""
+    CONTINUE_ACFS_REF=""
+    CONTINUE_INSTALL_URL=""
+    CONTINUE_INSTALL_ARGS=()
     # shellcheck source=/dev/null
     source "$ACFS_CONTINUE_CONTEXT_FILE" || return 1
-}
-
-# Retargeting changes authority to mutate the OS on the next boot. Require
-# root-owned recovery inputs and reject redirected or multiply linked files.
-resume_recovery_file_safe() {
-    local path="$1" owner links mode parent
-    [[ -f "$path" && ! -L "$path" ]] || return 1
-    read -r owner links mode < <(stat -c '%u %h %a' -- "$path") || return 1
-    [[ "$owner" == 0 && "$links" == 1 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
-    (( (8#$mode & 8#022) == 0 )) || return 1
-    parent="${path%/*}"
-    while [[ -n "$parent" && "$parent" != / ]]; do
-        [[ -d "$parent" && ! -L "$parent" ]] || return 1
-        read -r owner mode < <(stat -c '%u %a' -- "$parent") || return 1
-        [[ "$owner" == 0 && "$mode" =~ ^[0-7]{3,4}$ ]] || return 1
-        # A root-owned sticky ancestor such as /tmp is allowed, but the
-        # recovery directory itself must not be shared/writable.
-        if (( (8#$mode & 8#022) != 0 )); then
-            (( (8#$mode & 8#1000) != 0 )) && [[ "$parent" != "${path%/*}" ]] || return 1
-        fi
-        parent="${parent%/*}"
-    done
 }
 
 # Administrative checkpoint-only recovery. Run in a subshell so the temporary
@@ -310,7 +396,6 @@ cleanup_resume_files() {
 # Cleanup function - disables the service to prevent loops
 # NOTE: We do NOT call systemctl stop here because this script IS the running
 # service. Calling stop would kill ourselves before completing cleanup.
-# The service will exit naturally when the script finishes.
 cleanup_service() {
     log "Disabling ${SERVICE_NAME} service to prevent reboot loops..."
     systemctl disable "${SERVICE_NAME}.service" 2>/dev/null || true
@@ -441,7 +526,7 @@ launch_continue_script() {
         return 0
     fi
 
-    if [[ ! -f "$script" || -L "$script" ]] || ! /bin/bash -n "$script"; then
+    if ! resume_recovery_file_safe "$script" || ! /bin/bash -n "$script"; then
         log_error "Missing, symlinked, or invalid continuation script: $script"
         log "Restore the recovery files from the same installer ref before retrying; original options will not be guessed"
         return 1
@@ -487,7 +572,7 @@ launch_continue_script() {
         --property=StandardOutput=journal \
         --property=StandardError=journal \
         "${continue_env_args[@]}" \
-        /bin/bash "$script" 2>&1) || launch_status=$?
+        /bin/bash -p "$script" 2>&1) || launch_status=$?
     [[ -z "$launch_output" ]] || log "$launch_output" || true
     if [[ "$launch_status" -ne 0 ]]; then
         log_error "systemd could not start the installer continuation (status $launch_status); no background fallback was started"

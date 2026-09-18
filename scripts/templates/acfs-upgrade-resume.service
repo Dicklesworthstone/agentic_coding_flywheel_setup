@@ -17,7 +17,7 @@ ConditionPathExists=!/run/systemd/maintenance
 Type=oneshot
 
 # Run the resume script
-ExecStart=/bin/bash /var/lib/acfs/upgrade_resume.sh
+ExecStart=/bin/bash -p /var/lib/acfs/upgrade_resume.sh
 
 # Give plenty of time for upgrades (2 hours max)
 TimeoutStartSec=7200
