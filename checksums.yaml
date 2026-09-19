@@ -1,4 +1,4 @@
-# checksums.yaml - Auto-generated 2026-09-17T08:19:20-04:00
+# checksums.yaml - Auto-generated 2026-09-19T14:16:22-04:00
 # Run: ./scripts/lib/security.sh --update-checksums
 
 installers:
@@ -32,7 +32,7 @@ installers:
 
   bv:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/beads_viewer/main/install.sh"
-    sha256: "abb09f3a9452ddafee5149898ccacf0c631db54e9288bb4b4f6b89958765c4f8"
+    sha256: "669ef7ccfaa1b862da3afbb38102429a5cf635e5f5dca3550dd4b9b8e99bff69"
 
   caam:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/coding_agent_account_manager/main/install.sh"
@@ -96,7 +96,7 @@ installers:
 
   mcp_agent_mail:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/mcp_agent_mail_rust/refs/heads/main/install.sh"
-    sha256: "14ee82c2292fddcf2807f27ba1c3198ad78ed36ba7d0e58fb944dcdb1f535e5d"
+    sha256: "b3c6d5e2ecb3c6f23b330acc5cc716cf350fd1115edd3d12e56e848471f1291a"
 
   mdwb:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/markdown_web_browser/main/install.sh"
@@ -184,7 +184,7 @@ installers:
 
   uv:
     url: "https://astral.sh/uv/install.sh"
-    sha256: "716a1d6844740756c68770fcec2f79c2013fb9b03869a113f61e15f6f482a6a1"
+    sha256: "37b82230b28617c6c24fa52364fa28aa37f2aa40c114809a623f6b064a9730e5"
 
   xf:
     url: "https://raw.githubusercontent.com/Dicklesworthstone/xf/main/install.sh"
