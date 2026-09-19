@@ -1,132 +1,58 @@
-name: Ubuntu entrypoint publication check
+name: Ubuntu entrypoint regression tests
 
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/ubuntu-entrypoint.yml']
+    paths:
+      - 'install.sh'
+      - 'scripts/lib/ubuntu_upgrade.sh'
+      - 'scripts/lib/upgrade_resume.sh'
+      - 'scripts/lib/state.sh'
+      - 'tests/unit/test_ubuntu_upgrade*.py'
+      - 'packages/manifest/**'
+      - 'scripts/generated/internal_checksums.sh'
+      - '.github/workflows/ubuntu-entrypoint.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'install.sh'
+      - 'scripts/lib/ubuntu_upgrade.sh'
+      - 'scripts/lib/upgrade_resume.sh'
+      - 'scripts/lib/state.sh'
+      - 'tests/unit/test_ubuntu_upgrade*.py'
+      - 'packages/manifest/**'
+      - 'scripts/generated/internal_checksums.sh'
+      - '.github/workflows/ubuntu-entrypoint.yml'
 
 permissions:
   contents: read
 
 jobs:
-  validate:
-    if: github.repository == 'Dicklesworthstone/agentic_coding_flywheel_setup'
+  regression:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Refuse a changed installer baseline
-        run: test "$(git hash-object install.sh)" = 3fedec0a8db3bddd6a8f7f224431cdb31219b3d6
-      - name: Read the fixed pending patch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import base64, gzip, hashlib, io, json, os, pathlib, urllib.request
-          parts = [
-              '0eacdd95d35c0b964f6a52db9d6cbdc1beff6daa',
-              'e86f7ad9792c6d6f0f1265b287286d41b21a0ad4',
-              'ebfbf9af7ec2c59572aba2bdaa939d7ad81301bf',
-              'a3de3e5500459863be30e55cd9f0c93cd21484f7',
-              '098c3c8edcd5621a33845f7b77cc3d9376ad0d56',
-              '8bbe8848a1d444c5e0514aa496c11e2ddde6197b',
-              '49a326a5ac6ee6a75032a5976dd6e0d1110a40d4',
-              '86a2177b7d8b71142efb67905964d7a5386a22e1',
-              'e82b35d81960f45c352a9180776ac2dcb818a4ad',
-          ]
-          encoded = bytearray()
-          for sha in parts:
-              url = f"https://api.github.com/repos/{os.environ['GITHUB_REPOSITORY']}/git/blobs/{sha}"
-              request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  value = json.load(response)
-              data = base64.b64decode(value['content'])
-              assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == sha
-              encoded.extend(data)
-          packed = base64.b64decode(encoded, validate=True)
-          assert len(packed) == 25658
-          assert hashlib.sha256(packed).hexdigest() == '3e1e693994b86c5c157a85aeca3f072149f9ac516b59ccdb2131d034cb731e6e'
-          with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream:
-              patch = stream.read(104805)
-          assert len(patch) == 104804
-          assert hashlib.sha256(patch).hexdigest() == 'bb982b41712fe8e9b89c00f2140cce5b2f620b4a8a93b6d34f5cd216ca155b7e'
-          (pathlib.Path(os.environ['RUNNER_TEMP']) / 'pending.patch').write_bytes(patch)
-          PY
-      - name: Apply only the reviewed patch
-        run: |
-          git apply --check "$RUNNER_TEMP/pending.patch"
-          git apply "$RUNNER_TEMP/pending.patch"
       - name: Install test tools
         run: |
           sudo apt-get update
           sudo apt-get install -y jq shellcheck
-      - name: Validate full-source syntax and regression tests
+      - name: Check installer syntax and lint
         run: |
           bash -n install.sh
           shellcheck install.sh
+      - name: Run host-safe upgrade regression tests against the full checkout
+        run: |
           sudo python3 tests/unit/test_ubuntu_upgrade_entrypoint.py
           sudo python3 tests/unit/test_ubuntu_upgrade_main.py
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Install canonical generator dependencies
+      - name: Install manifest dependencies
         working-directory: packages/manifest
         run: bun install
-      - name: Regenerate canonical artifacts
+      - name: Check canonical generated artifacts
         working-directory: packages/manifest
-        run: |
-          bun run generate
-          bun run generate --diff
-      - name: Validate exact changed-file scope
-        run: |
-          python3 - <<'PY'
-          import subprocess
-          allowed = {'install.sh', 'scripts/generated/internal_checksums.sh', 'tests/unit/test_ubuntu_upgrade_entrypoint.py', 'tests/unit/test_ubuntu_upgrade_main.py', 'docs/operations/ubuntu-entrypoint-migration.md'}
-          changed = set(subprocess.check_output(['git', 'diff', '--name-only', '-z']).decode().strip('\0').split('\0'))
-          changed.update(subprocess.check_output(['git', 'ls-files', '--others', '--exclude-standard', '-z']).decode().strip('\0').split('\0'))
-          changed.discard('')
-          assert changed == allowed, f'Unexpected changed paths: {sorted(changed ^ allowed)}'
-          subprocess.run(['git', 'add', '--', *sorted(allowed)], check=True)
-          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
-          PY
-      - name: Stage validated Git objects without moving any branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python3 - <<'PY'
-          import base64, hashlib, json, os, pathlib, subprocess, urllib.request
-          repo = os.environ['GITHUB_REPOSITORY']
-          token = os.environ['GH_TOKEN']
-          head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-          assert head == os.environ['GITHUB_SHA']
-          base_tree = subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], text=True).strip()
-          def post(endpoint, value):
-              request = urllib.request.Request(f'https://api.github.com/repos/{repo}/git/{endpoint}', data=json.dumps(value).encode(), headers={'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'}, method='POST')
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  return json.load(response)
-          paths = subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines()
-          entries, verification = [], []
-          for path in paths:
-              data = pathlib.Path(path).read_bytes()
-              expected = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
-              blob = post('blobs', {'encoding': 'base64', 'content': base64.b64encode(data).decode()})['sha']
-              assert blob == expected
-              mode = subprocess.check_output(['git', 'ls-files', '-s', '--', path], text=True).split()[0]
-              entries.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': blob})
-              verification.append({'path': path, 'blob': blob, 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
-          tree = post('trees', {'base_tree': base_tree, 'tree': entries})['sha']
-          result = {'base_commit': head, 'tree': tree, 'files': verification, 'branch_updated': False}
-          destination = pathlib.Path(os.environ['RUNNER_TEMP']) / 'ubuntu-entrypoint-candidate.json'
-          destination.write_text(json.dumps(result, indent=2) + '\n')
-          print(json.dumps(result, indent=2))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ubuntu-entrypoint-candidate
-          path: ${{ runner.temp }}/ubuntu-entrypoint-candidate.json
-          if-no-files-found: error
+        run: bun run generate --diff

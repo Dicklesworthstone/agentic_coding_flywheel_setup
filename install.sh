@@ -25,7 +25,7 @@
 #   --auto-fix-accept-all  Auto-fix all issues without prompting (for CI)
 #   --auto-fix-dry-run     Show what auto-fix would do without executing
 #   --skip-ubuntu-upgrade  Skip automatic Ubuntu version upgrade
-#   --target-ubuntu=VER    Set target Ubuntu version (default: 25.10)
+#   --target-ubuntu=VER    Set target Ubuntu version (default: 26.04 LTS)
 #   --strict          Treat ALL tools as critical (any checksum mismatch aborts)
 #   --list-modules    List available modules and exit
 #   --print-plan      Print execution plan and exit (no installs)
@@ -469,7 +469,7 @@ export AUTO_FIX_MODE
 
 # Ubuntu upgrade options (nb4: integrate upgrade phase)
 SKIP_UBUNTU_UPGRADE=false
-TARGET_UBUNTU_VERSION="25.10"
+TARGET_UBUNTU_VERSION="26.04"
 TARGET_UBUNTU_VERSION_EXPLICIT=false  # true when user passes --target-ubuntu
 
 # Target user configuration
@@ -551,10 +551,9 @@ type -t try_step_eval &>/dev/null || try_step_eval() {
 # Source Ubuntu upgrade library for auto-upgrade functionality (nb4)
 # ============================================================
 _source_ubuntu_upgrade_lib() {
-    # Already loaded?
-    if [[ -n "${ACFS_UBUNTU_UPGRADE_LOADED:-}" ]]; then
-        return 0
-    fi
+    # An inherited marker is not evidence that this process loaded policy.
+    # This entrypoint has one caller: load explicitly, never export a bypass.
+    unset ACFS_UBUNTU_UPGRADE_LOADED
 
     # Only the source root whose closed-world checksum ledger was verified by
     # detect_environment may supply executable upgrade policy.
@@ -563,8 +562,10 @@ _source_ubuntu_upgrade_lib() {
         && [[ -f "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]] \
         && [[ ! -L "$ACFS_LIB_DIR/ubuntu_upgrade.sh" ]]; then
         # shellcheck source=scripts/lib/ubuntu_upgrade.sh
-        source "$ACFS_LIB_DIR/ubuntu_upgrade.sh"
-        export ACFS_UBUNTU_UPGRADE_LOADED=1
+        if ! source "$ACFS_LIB_DIR/ubuntu_upgrade.sh"; then
+            log_error "Ubuntu upgrade policy failed to load; refusing normal installation."
+            return 1
+        fi
         return 0
     fi
 
@@ -6549,8 +6550,59 @@ ensure_ubuntu() {
 # ============================================================
 # Ubuntu Auto-Upgrade Phase (nb4)
 # Runs as "Phase -1" before all other installation phases.
-# Handles multi-reboot upgrade sequences (e.g., 24.04 → 25.04 → 25.10; EOL releases like 24.10 may be skipped)
+# Handles supported LTS hops (22.04 → 24.04 → 26.04) and 25.10 recovery.
 # ============================================================
+acfs_read_upgrade_checkpoint() {
+    local checkpoint="${1:-}" target="${2:-}" parent jq_bin stat_bin metadata
+    local links owner permissions size
+    [[ "$checkpoint" == /* && "$checkpoint" != *'/../'* && "$checkpoint" != */.. ]] || return 1
+    parent="$checkpoint"
+    while [[ -n "$parent" && "$parent" != / ]]; do
+        [[ ! -L "$parent" ]] || return 1
+        parent="${parent%/*}"
+    done
+    if [[ ! -e "$checkpoint" ]]; then
+        printf 'not_started\n'
+        return 0
+    fi
+    # This is system upgrade state, not the target user's application state.
+    # Refuse unsafe or malformed evidence instead of treating it as a new run.
+    [[ -f "$checkpoint" && -r "$checkpoint" ]] || return 1
+    stat_bin=$(acfs_early_system_binary_path stat) || return 1
+    metadata=$("$stat_bin" -c '%h:%u:%a:%s' -- "$checkpoint") || return 1
+    IFS=: read -r links owner permissions size <<< "$metadata"
+    [[ "$links" == 1 && "$owner" == 0 && "$permissions" =~ ^[0-7]{3,4}$ \
+        && "$size" =~ ^[0-9]+$ ]] || return 1
+    (( (8#$permissions & 8#022) == 0 && size > 0 && size <= 1048576 )) || return 1
+    jq_bin=$(acfs_early_system_binary_path jq) || return 1
+    "$jq_bin" -er -s --arg target "$target" '
+        if length != 1 then error("expected one state document") else .[0] end |
+        if type != "object" then error("state object required") else . end |
+        if (.schema_version != 1 and .schema_version != 2 and .schema_version != 3)
+            then error("unsupported state schema") else . end |
+        if .ubuntu_upgrade == null then "not_started" else
+            .ubuntu_upgrade |
+            if type != "object" then error("invalid upgrade state") else . end |
+            if (.enabled | type) != "boolean" then error("invalid enabled flag") else . end |
+            if (.current_stage | type) != "string" then error("invalid stage type") else . end |
+            if (has("needs_reboot") and (.needs_reboot | type) != "boolean") or
+               (has("resume_after_reboot") and (.resume_after_reboot | type) != "boolean")
+                then error("invalid reboot flags") else . end |
+            .current_stage as $stage |
+            if (["not_started", "initializing", "upgrading", "awaiting_reboot", "resumed",
+                 "step_complete", "pre_upgrade_reboot", "completed", "error"] | index($stage)) == null
+                then error("unknown stage") else . end |
+            if $stage != "not_started" and $stage != "completed" and .enabled != true
+                then error("disabled active state") else . end |
+            if $stage != "not_started" and $stage != "completed" and .target_version != $target
+                then error("changed upgrade destination") else . end |
+            if ($stage == "not_started" or $stage == "completed") and
+                (.needs_reboot == true or .resume_after_reboot == true or .current_upgrade != null)
+                then error("unfinished terminal state") else $stage end
+        end
+    ' "$checkpoint" 2>/dev/null
+}
+
 run_ubuntu_upgrade_phase() {
     # Skip if user requested
     if [[ "$SKIP_UBUNTU_UPGRADE" == "true" ]]; then
@@ -6564,63 +6616,46 @@ run_ubuntu_upgrade_phase() {
         return 0
     fi
     # shellcheck disable=SC1091
-    source /etc/os-release
+    if ! source /etc/os-release || [[ -z "${ID:-}" ]]; then
+        log_error "Cannot identify the operating system for the requested upgrade."
+        return 1
+    fi
     if [[ "$ID" != "ubuntu" ]]; then
         log_detail "Not Ubuntu (detected: $ID), skipping upgrade"
         return 0
     fi
 
-    # If the user did NOT explicitly pass --target-ubuntu, check whether this
-    # is a fully-patched LTS release.  LTS users (e.g., 24.04) should not be
-    # forced to upgrade to a non-LTS target just because the default
-    # TARGET_UBUNTU_VERSION is ahead of them.
-    if [[ "$TARGET_UBUNTU_VERSION_EXPLICIT" != "true" ]]; then
-        local _current_ver="${VERSION_ID:-}"
-        # Ubuntu LTS releases have .04 minor versions (e.g., 22.04, 24.04)
-        if [[ "$_current_ver" == *.04 ]]; then
-            # Check whether all packages are up to date (0 upgradable)
-            local _upgradable=0
-            if command -v apt-get &>/dev/null; then
-                # apt-get update may need root; try non-destructively first
-                _upgradable=$(apt list --upgradable 2>/dev/null | grep -c '\[upgradable' || true)
-            fi
-            if [[ "$_upgradable" -eq 0 ]]; then
-                log_detail "Ubuntu $_current_ver LTS is fully patched (0 packages upgradable); skipping auto-upgrade"
-                log_detail "  (pass --target-ubuntu=<VER> to force an upgrade)"
-                return 0
-            fi
-        fi
-    fi
-
-    # CRITICAL: Ensure jq is installed for state tracking (state.sh depends on it).
-    if ! acfs_early_system_binary_path jq &>/dev/null; then
-        log_detail "Installing jq for upgrade state tracking..."
-        local apt_get_bin=""
-        apt_get_bin="$(acfs_early_system_binary_path apt-get 2>/dev/null || true)"
-        if [[ -z "$apt_get_bin" ]]; then
-            log_warn "apt-get not found; cannot install jq for upgrade state tracking"
-        elif [[ $EUID -eq 0 ]]; then
-            "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -qq && "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y jq >/dev/null 2>&1 || true
-        else
-            local sudo_bin=""
-            sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
-            if [[ -n "$sudo_bin" ]]; then
-                "$sudo_bin" -n "$apt_get_bin" -o DPkg::Lock::Timeout=120 update -qq && "$sudo_bin" -n "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y jq >/dev/null 2>&1 || true
-            fi
-        fi
-    fi
+    # Validate the release before arithmetic, library loading, or package writes.
+    # A cached/failed `apt list` is not evidence that an OS upgrade is unnecessary.
+    # The default is now an LTS destination; keeping an older supported LTS is
+    # an explicit --target-ubuntu or --skip-ubuntu-upgrade choice.
+    case "$TARGET_UBUNTU_VERSION" in
+        22.04|24.04|26.04) ;;
+        *)
+            log_error "Unsupported Ubuntu target; use 26.04 LTS (or supported 22.04/24.04 LTS)."
+            return 1
+            ;;
+    esac
+    local target_version_num="${TARGET_UBUNTU_VERSION/./}"
+    # Pass the requested target BEFORE sourcing: the library validates and
+    # derives its numeric counterpart at load time. Do not overwrite it later.
+    export UBUNTU_TARGET_VERSION="$TARGET_UBUNTU_VERSION"
+    export UBUNTU_TARGET_VERSION_NUM="$target_version_num"
 
     # Source upgrade library
     if ! _source_ubuntu_upgrade_lib; then
-        log_warn "Could not load ubuntu_upgrade.sh library"
-        log_warn "Skipping Ubuntu auto-upgrade"
-        return 0
+        log_error "Could not load ubuntu_upgrade.sh; refusing to bypass the requested OS upgrade."
+        return 1
     fi
 
     # Get current version (as number for comparison, as string for display)
     local current_version_num current_version_str
-    current_version_str=$(ubuntu_get_version_string)
-    current_version_num=$(ubuntu_get_version_number)
+    if ! current_version_str=$(ubuntu_get_version_string) \
+        || ! current_version_num=$(ubuntu_get_version_number) \
+        || ! ubuntu_validate_upgrade_versions "$current_version_num" "$target_version_num"; then
+        log_error "No supported Ubuntu source-to-target upgrade policy could be established."
+        return 1
+    fi
     log_detail "Current Ubuntu version: $current_version_str"
 
     # Upgrade tracking state must survive reboots and cannot depend on the
@@ -6634,21 +6669,14 @@ run_ubuntu_upgrade_phase() {
     fi
     export ACFS_STATE_FILE="$upgrade_state_file"
 
-    # Convert target version string to number for comparison
-    # TARGET_UBUNTU_VERSION is "25.10", need 2510
-    local target_version_num
-    local target_major target_minor
-    target_major="${TARGET_UBUNTU_VERSION%%.*}"
-    target_minor="${TARGET_UBUNTU_VERSION#*.}"
-    target_version_num=$(printf "%d%02d" "$((10#$target_major))" "$((10#$target_minor))")
-
-    # Ensure ubuntu_upgrade.sh uses the requested target (not just its defaults).
-    export UBUNTU_TARGET_VERSION="$TARGET_UBUNTU_VERSION"
-    export UBUNTU_TARGET_VERSION_NUM="$target_version_num"
-
-    # Check if we're resuming an upgrade after reboot
+    # Read existing evidence without the lenient "unreadable means not_started"
+    # fallback used by informational state queries. Never repair it implicitly.
     local upgrade_stage
-    upgrade_stage=$(state_upgrade_get_stage 2>/dev/null || echo "not_started")
+    if ! upgrade_stage=$(acfs_read_upgrade_checkpoint "$upgrade_state_file" "$TARGET_UBUNTU_VERSION"); then
+        log_error "Cannot validate existing Ubuntu upgrade state; preserve it and inspect before retrying."
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+        return 1
+    fi
 
     case "$upgrade_stage" in
         initializing|upgrading|awaiting_reboot|resumed|step_complete)
@@ -6662,23 +6690,9 @@ run_ubuntu_upgrade_phase() {
             return 1
             ;;
         pre_upgrade_reboot)
-            # We just rebooted to clear pending package updates
-            log_success "Pre-upgrade reboot complete. Continuing with upgrade..."
-            # Clear the stage so we proceed normally
-            if type -t state_update &>/dev/null; then
-                if ! state_update ".ubuntu_upgrade.current_stage = \"not_started\" | .ubuntu_upgrade.enabled = false"; then
-                    log_error "Failed to clear pre_upgrade_reboot stage; aborting to prevent stale state."
-                    restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
-                    return 1
-                fi
-            else
-                log_error "State tracking is unavailable; cannot continue upgrade safely."
-                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
-                return 1
-            fi
-            # Set flag to skip redundant warning (user already confirmed before reboot)
+            # Do not clear/rewrite this checkpoint until the lock is held and
+            # the recorded target, prerequisites and state have been rechecked.
             local skip_upgrade_warning=true
-            # Fall through to continue with upgrade
             ;;
         error)
             log_error "Previous Ubuntu upgrade attempt failed (stage: error)"
@@ -6687,8 +6701,8 @@ run_ubuntu_upgrade_phase() {
             log_info "  tail -100 /var/log/acfs/upgrade_resume.log"
             log_error "To reset and retry upgrade:"
             log_info "  sudo mv -- '${upgrade_state_file}' '${upgrade_state_file}.backup.\$(date +%Y%m%d_%H%M%S)'"
-            log_error "To proceed without upgrading:"
-            log_info "  Re-run with --skip-ubuntu-upgrade (not recommended)"
+            log_error "Normal installation remains blocked while upgrade recovery is incomplete."
+            log_info "  Preserve the checkpoint and resolve the failed upgrade before retrying."
             restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
             return 1
             ;;
@@ -6696,6 +6710,11 @@ run_ubuntu_upgrade_phase() {
 
     # Check if upgrade is needed (using numeric comparison)
     if ubuntu_version_gte "$current_version_num" "$target_version_num"; then
+        if [[ "$upgrade_stage" == pre_upgrade_reboot ]]; then
+            log_error "An unfinished pre-upgrade checkpoint conflicts with the current OS; inspect resume state."
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+            return 1
+        fi
         log_detail "Ubuntu $current_version_str meets target ($TARGET_UBUNTU_VERSION)"
         restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
         return 0
@@ -6722,19 +6741,30 @@ run_ubuntu_upgrade_phase() {
         return 1
     fi
 
+    # Refuse missing mandatory machinery before acquiring mutation authority.
+    local required_function
+    for required_function in ubuntu_preflight_checks ubuntu_start_upgrade_sequence \
+        state_ensure_valid state_load state_init state_update \
+        upgrade_acquire_lock upgrade_release_lock ubuntu_prepare_eol_repositories; do
+        if ! declare -F "$required_function" >/dev/null; then
+            log_error "Required Ubuntu upgrade function is unavailable: $required_function"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+            return 1
+        fi
+    done
+
     # Calculate upgrade path (function takes target version NUMBER, determines current internally)
     # Returns newline-separated list of version strings to upgrade through
     local upgrade_path
-    upgrade_path=$(ubuntu_calculate_upgrade_path "$target_version_num")
-
-    if [[ -z "$upgrade_path" ]]; then
-        log_detail "No upgrade path found from $current_version_str to $TARGET_UBUNTU_VERSION"
+    if ! upgrade_path=$(ubuntu_calculate_upgrade_path "$target_version_num") \
+        || [[ -z "$upgrade_path" ]]; then
+        log_error "No supported upgrade path found from $current_version_str to $TARGET_UBUNTU_VERSION; refusing normal installation."
         restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
-        return 0
+        return 1
     fi
 
     log_step "-1/9" "Ubuntu Auto-Upgrade"
-    # Format path for display (e.g., "25.04 → 25.10")
+    # Format the validated path for display (e.g., "24.04 → 26.04").
     local upgrade_path_display
     upgrade_path_display=$(echo "$upgrade_path" | tr '\n' ' ' | sed 's/ $//; s/ / → /g')
     log_info "Upgrade path: $current_version_str → $upgrade_path_display"
@@ -6780,6 +6810,49 @@ run_ubuntu_upgrade_phase() {
     fi
     upgrade_lock_acquired=true
 
+    # Another process may have advanced the checkpoint while we requested the
+    # lock. Re-read under the lock, including its destination validation.
+    local locked_stage
+    if ! locked_stage=$(acfs_read_upgrade_checkpoint "$upgrade_state_file" "$TARGET_UBUNTU_VERSION") \
+        || [[ "$locked_stage" != "$upgrade_stage" ]]; then
+        log_error "Ubuntu upgrade state changed before lock acquisition; retry after inspecting the active run."
+        release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
+        restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+        return 1
+    fi
+
+    # The upgrade now runs before normal dependency bootstrap. Its state reader
+    # needs jq and its network preflight needs curl even on a minimal VPS.
+    # On an EOL source, recover official APT locations before acquisition.
+    # Never run package commands before the root/source/lock checks above.
+    local -a upgrade_bootstrap_packages=()
+    local upgrade_bootstrap_tool
+    for upgrade_bootstrap_tool in jq curl; do
+        if ! acfs_early_system_binary_path "$upgrade_bootstrap_tool" &>/dev/null; then
+            upgrade_bootstrap_packages+=("$upgrade_bootstrap_tool")
+        fi
+    done
+    if [[ ${#upgrade_bootstrap_packages[@]} -gt 0 ]]; then
+        local apt_get_bin bootstrap_verified=true
+        if ! ubuntu_prepare_eol_repositories \
+            || ! apt_get_bin=$(acfs_early_system_binary_path apt-get) \
+            || ! "$apt_get_bin" -o DPkg::Lock::Timeout=120 -o APT::Update::Error-Mode=any update -qq \
+            || ! "$apt_get_bin" -o DPkg::Lock::Timeout=120 install -y "${upgrade_bootstrap_packages[@]}"; then
+            bootstrap_verified=false
+        fi
+        for upgrade_bootstrap_tool in jq curl; do
+            if ! acfs_early_system_binary_path "$upgrade_bootstrap_tool" &>/dev/null; then
+                bootstrap_verified=false
+            fi
+        done
+        if [[ "$bootstrap_verified" != true ]]; then
+            log_error "Upgrade prerequisites could not be installed safely; refusing to start an untracked or uncheckable upgrade."
+            release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+            return 1
+        fi
+    fi
+
     # Check if system requires reboot before upgrade (package updates pending)
     # This must be handled before preflight checks, otherwise do-release-upgrade fails
     if [[ -f /var/run/reboot-required ]]; then
@@ -6791,29 +6864,22 @@ run_ubuntu_upgrade_phase() {
         if [[ "$YES_MODE" == "true" ]]; then
             log_info "Automatically rebooting to clear pending updates..."
 
-            # Initialize state file early for tracking
-            # Try without sudo first, fall back to sudo for system directories
+            # This path already requires root. A failed persistent-directory
+            # creation must not be hidden by conditional-call errexit rules.
             local mkdir_bin=""
-            mkdir_bin="$(acfs_early_system_binary_path mkdir 2>/dev/null || true)"
-            if [[ -n "$mkdir_bin" ]] && ! "$mkdir_bin" -p "${ACFS_RESUME_DIR:-/var/lib/acfs}" 2>/dev/null; then
-                local sudo_bin=""
-                local chown_bin=""
-                local id_bin=""
-                sudo_bin="$(acfs_early_sudo_binary_path 2>/dev/null || true)"
-                chown_bin="$(acfs_early_system_binary_path chown 2>/dev/null || true)"
-                id_bin="$(acfs_early_system_binary_path id 2>/dev/null || true)"
-                if [[ $EUID -ne 0 && -n "$sudo_bin" ]]; then
-                    "$sudo_bin" -n "$mkdir_bin" -p "${ACFS_RESUME_DIR:-/var/lib/acfs}"
-                    if [[ -n "$chown_bin" && -n "$id_bin" ]]; then
-                        "$sudo_bin" -n "$chown_bin" "$("$id_bin" -u):$("$id_bin" -g)" "${ACFS_RESUME_DIR:-/var/lib/acfs}" 2>/dev/null || true
-                    fi
-                fi
+            if ! mkdir_bin=$(acfs_early_system_binary_path mkdir) \
+                || ! "$mkdir_bin" -p "${ACFS_RESUME_DIR:-/var/lib/acfs}"; then
+                log_error "Cannot prepare persistent upgrade state; refusing automatic reboot."
+                release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+                return 1
             fi
-            if type -t state_ensure_valid &>/dev/null; then
-                state_ensure_valid || true
-            fi
-            if type -t state_init &>/dev/null; then
-                state_load >/dev/null 2>&1 || state_init || true
+            if ! state_ensure_valid \
+                || { ! state_load >/dev/null 2>&1 && ! state_init; }; then
+                log_error "Cannot initialize valid upgrade state; refusing automatic reboot."
+                release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+                return 1
             fi
 
             # Set stage so we know to continue after reboot
@@ -6862,7 +6928,8 @@ run_ubuntu_upgrade_phase() {
             fi
 
             # Update MOTD before reboot
-            upgrade_update_motd "Rebooting for upgrade to ${UBUNTU_TARGET_VERSION:-Ubuntu}..."
+            # MOTD is best effort, not evidence that recovery or reboot worked.
+            upgrade_update_motd "Rebooting for upgrade to ${UBUNTU_TARGET_VERSION:-Ubuntu}..." || true
 
             # Trigger reboot
             log_warn "Rebooting in 10 seconds..."
@@ -6872,8 +6939,13 @@ run_ubuntu_upgrade_phase() {
             log_info "  journalctl -u acfs-upgrade-resume -f"
             log_info "  tail -f /var/log/acfs/upgrade_resume.log"
             echo ""
-            sleep 10
-            shutdown -r now "ACFS: Rebooting to apply pending updates before Ubuntu upgrade"
+            if ! sleep 10 \
+                || ! shutdown -r now "ACFS: Rebooting to apply pending updates before Ubuntu upgrade"; then
+                log_error "Automatic reboot was not scheduled. The recovery checkpoint was preserved; inspect it before rebooting manually."
+                release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
+                restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+                return 1
+            fi
             exit 0
         else
             log_error "Manual action required: reboot the system first"
@@ -6919,6 +6991,16 @@ run_ubuntu_upgrade_phase() {
         fi
     fi
 
+    # Preserve the prior reboot evidence until all preflight/state checks pass.
+    if [[ "$upgrade_stage" == pre_upgrade_reboot ]]; then
+        if ! state_update ".ubuntu_upgrade.current_stage = \"not_started\" | .ubuntu_upgrade.enabled = false"; then
+            log_error "Failed to clear the pre-upgrade checkpoint under the upgrade lock."
+            release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
+            restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
+            return 1
+        fi
+    fi
+
     # Start the upgrade sequence
     # This will trigger reboots and the resume service will continue
     log_info "Starting Ubuntu upgrade sequence..."
@@ -6949,11 +7031,10 @@ run_ubuntu_upgrade_phase() {
         log_info "Reconnect via SSH after reboot - upgrade will continue automatically."
         exit 0
     else
-        log_warn "ubuntu_start_upgrade_sequence not available"
-        log_warn "Continuing with ACFS installation on current Ubuntu version"
+        log_error "ubuntu_start_upgrade_sequence not available; refusing normal installation."
         release_ubuntu_upgrade_lock_if_acquired "$upgrade_lock_acquired"
         restore_previous_acfs_state_file "$had_state_file" "$previous_state_file"
-        return 0
+        return 1
     fi
 }
 
@@ -11611,11 +11692,63 @@ $summary_content"
 # ============================================================
 # Main
 # ============================================================
+acfs_validate_ubuntu_target() {
+    case "${TARGET_UBUNTU_VERSION:-}" in
+        22.04|24.04|26.04) return 0 ;;
+        *)
+            log_error "Unsupported Ubuntu target; use 26.04 LTS (or supported 22.04/24.04 LTS)."
+            return 1
+            ;;
+    esac
+}
+
+# A narrow tool repair does not imply an OS upgrade. An explicit destination
+# does request one, even with --only/--only-phase. --skip-ubuntu-upgrade wins.
+acfs_ubuntu_upgrade_requested() {
+    [[ "${SKIP_UBUNTU_UPGRADE:-false}" != true ]] && {
+        [[ "${ACFS_EXPLICIT_TARGETED_SELECTION:-false}" != true ]] \
+            || [[ "${TARGET_UBUNTU_VERSION_EXPLICIT:-false}" == true ]]
+    }
+}
+
+# Check SYSTEM upgrade evidence before gum, autofix, dependency bootstrap, or
+# target-user state reset. Targeted selection and --skip-ubuntu-upgrade suppress
+# new distribution upgrades; neither grants permission to modify a half-upgraded
+# system. This read-only gate does not replace the phase's lock and recheck.
+# The system path is fixed, never taken from caller environment.
+acfs_guard_ubuntu_install_checkpoint() {
+    local os_id stage
+    [[ -f /etc/os-release ]] || return 0
+    # shellcheck disable=SC1091
+    if ! os_id=$(source /etc/os-release || exit 1; printf '%s\n' "${ID:-}"); then
+        log_error "Cannot identify the OS before checking upgrade state."
+        return 1
+    fi
+    [[ -n "$os_id" ]] || return 1
+    [[ "$os_id" == ubuntu ]] || return 0
+    if ! stage=$(acfs_read_upgrade_checkpoint /var/lib/acfs/state.json "$TARGET_UBUNTU_VERSION"); then
+        log_error "Cannot validate system upgrade state. Inspect /var/lib/acfs/state.json before installing packages."
+        return 1
+    fi
+    case "$stage" in
+        not_started|completed) return 0 ;;
+        pre_upgrade_reboot)
+            if [[ "${RESET_STATE_ONLY:-false}" != true ]] && acfs_ubuntu_upgrade_requested; then
+                return 0  # The upgrade phase validates/resumes this checkpoint.
+            fi
+            ;;
+    esac
+    log_error "Ubuntu recovery is incomplete (stage: $stage); normal package installation is blocked."
+    log_info "Inspect the resume service and /var/log/acfs/upgrade_resume.log; preserve the checkpoint."
+    return 1
+}
+
 main() {
     parse_args "$@"
     acfs_require_ref_arg_value "ACFS_REF" "${ACFS_REF:-}" "main"
     acfs_require_ref_arg_value "ACFS_CHECKSUMS_REF" "${ACFS_CHECKSUMS_REF:-}" "main"
     normalize_read_only_modes
+    acfs_validate_ubuntu_target || exit 1
 
     if [[ -n "$BOOTSTRAP_ARCHIVE_PATH" && -n "${SCRIPT_DIR:-}" ]]; then
         log_fatal "--bootstrap-archive is only valid for streamed installs; local checkouts already provide the source tree"
@@ -11683,6 +11816,13 @@ main() {
     # Detect environment and source manifest index (mjt.5.3)
     # This must happen BEFORE any handlers that need module data
     detect_environment
+
+    # No package-changing helper or per-user state reset may precede this gate.
+    # Read-only inspection remains available for diagnosing interrupted runs.
+    if [[ "$LIST_MODULES" != true && "$PRINT_PLAN_MODE" != true \
+        && "$DRY_RUN" != true && "$PRINT_MODE" != true ]]; then
+        acfs_guard_ubuntu_install_checkpoint || exit 1
+    fi
 
     # Acquire install-wide flock to prevent concurrent install.sh processes.
     # Uses FD 199 (autofix.sh already uses FD 200 for its own lock).
@@ -11836,7 +11976,26 @@ main() {
         exit 0
     fi
 
-    # Install gum FIRST so the entire script looks amazing
+    # Resolve OS upgrades before ANY helper that can install packages or alter
+    # package-manager configuration. The upgrade phase owns its own bootstrap,
+    # preflight, confirmation, lock and reboot-resume state. General ACFS
+    # preflight/autofix belongs after it, on the final operating system.
+    if [[ "$DRY_RUN" != true && "$PRINT_MODE" != true ]]; then
+        ensure_root
+        validate_target_user
+        init_target_paths
+        ensure_ubuntu
+        if acfs_ubuntu_upgrade_requested; then
+            if ! run_ubuntu_upgrade_phase "$@"; then
+                log_error "Ubuntu preparation failed; normal installation has not started."
+                exit 1
+            fi
+        else
+            log_debug "No new Ubuntu upgrade requested; system checkpoint gate still applies."
+        fi
+    fi
+
+    # Optional presentation tooling must never precede Ubuntu recovery checks.
     install_gum_early
 
     # Fetch commit SHA for version display
@@ -11892,8 +12051,6 @@ main() {
         exit 0
     fi
 
-    ensure_root
-
     # Early dependency bootstrap (issue #152, #180): on a truly fresh Ubuntu,
     # jq and curl may be missing. Install them before anything else so that
     # later phases (state management, JSON parsing, gum install) don't fail.
@@ -11943,29 +12100,11 @@ main() {
     fi
 
     disable_needrestart_apt_hook  # Prevent apt hangs on Ubuntu 22.04+ (issue #70)
-    validate_target_user
-    init_target_paths
     acfs_log_init   # Start capturing stderr to log file (uses ACFS_HOME/logs)
-    ensure_ubuntu
 
-    # Ensure base dependencies (like jq) are installed before upgrade logic
-    # This is safe to run on old Ubuntu versions and ensures jq is available
-    # for state management during the upgrade process.
+    # Normal ACFS dependencies belong after the OS upgrade decision. The upgrade
+    # phase installs its own minimal requirements under its own lock.
     ensure_base_deps
-
-    # ============================================================
-    # Ubuntu Auto-Upgrade Phase (nb4)
-    # ============================================================
-    # Run as "Phase -1" before all other phases.
-    # This may trigger a reboot and exit. After final reboot,
-    # the resume service will call install.sh again to continue.
-    # Skip when --only or --only-phase is specified, since the user
-    # is targeting a specific module on an already-installed system.
-    if [[ "${ACFS_EXPLICIT_TARGETED_SELECTION:-false}" != "true" ]]; then
-        run_ubuntu_upgrade_phase "$@"
-    else
-        log_debug "Skipping Ubuntu auto-upgrade (--only/--only-phase mode)"
-    fi
 
     # ============================================================
     # State Management and Resume Logic (mjt.5.8)
